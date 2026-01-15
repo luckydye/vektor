@@ -38,7 +38,6 @@ tasks:
     dotenv:
       - ../.env.preview
     cmds:
-      - bun i
       - bunx --bun astro build
       - bun ./src/server.ts
   prod:
@@ -47,9 +46,13 @@ tasks:
     dotenv:
       - ../.env.prod
     cmds:
-      - bun i
       - bunx --bun astro build
       - bun ./src/server.ts
+  build:
+    deps: [setup]
+    dir: ./app
+    cmds:
+      - bunx --bun astro build
 
   compile:
     dir: ./app
@@ -59,7 +62,7 @@ tasks:
 
   docker:build:
     cmds:
-      - docker build . --tag wiki
+      - docker build . --tag luckydye/wiki
   docker:up:
     cmd: docker compose up --build
 

@@ -23,7 +23,6 @@ RUN mise trust && mise install
 RUN task build
 
 EXPOSE 8080
-EXPOSE 8081
 
 WORKDIR /app/app
 
