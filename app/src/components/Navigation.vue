@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import DocumentTree from "./DocumentTree.vue";
-import ExternalConnections from "./ExternalConnections.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
 import { computed, ref, Teleport, onMounted, onUnmounted } from "vue";
 import { SpaceSelector, MenuLink } from "~/src/components/index.ts";
@@ -237,11 +236,6 @@ Actions.mapShortcut("meta+shift+f", "find:open");
       </div>
 
       <DocumentTree v-if="!isLoading" />
-    </div>
-
-    <!-- External Connections -->
-    <div v-if="!isLoading" class="px-3xs flex-none @max-xs:invisible min-h-30">
-      <ExternalConnections />
     </div>
   </nav>
 </template>

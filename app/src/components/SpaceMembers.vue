@@ -307,20 +307,22 @@ async function copyMemberId(memberId) {
 
 <template>
   <div class="space-y-6">
-    <!-- Header -->
-    <div>
-      <h3 class="text-lg font-semibold text-neutral-900">Space Access</h3>
-      <p class="text-sm text-neutral-900 mt-1">Manage users and groups with access to this space</p>
-    </div>
-
-    <!-- Add Button -->
-    <div class="flex justify-end">
-      <button
-        @click="showAddMember = true"
-        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        Add Access
-      </button>
+    <div class="flex justify-between items-center">
+        <!-- Header -->
+        <div>
+            <h3 class="text-lg font-semibold text-neutral-900">Space Access</h3>
+            <p class="text-sm text-neutral-900 mt-1">Manage users and groups with access to this space</p>
+        </div>
+    
+        <!-- Add Button -->
+        <div class="flex justify-end">
+            <button
+            @click="showAddMember = true"
+            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+            Add Access
+            </button>
+        </div>
     </div>
 
     <!-- Loading State -->
@@ -436,7 +438,7 @@ async function copyMemberId(memberId) {
   <!-- Add Member Modal -->
   <div
     v-if="showAddMember"
-    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
     @click.self="showAddMember = false"
   >
     <div class="bg-background rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
