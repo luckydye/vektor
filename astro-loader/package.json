@@ -1,0 +1,9 @@
+{
+  "name": "@wiki/astro-loader",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "astro": "^5.16.11",
+    "@types/bun": "latest"
+  }
+}
