@@ -4,6 +4,7 @@ import { useInfiniteQuery } from "@tanstack/vue-query";
 import { formatDate } from "../utils/utils.ts";
 import { api, type DocumentWithProperties, type PropertyFilter, type SearchResult } from "../api/client.ts";
 import SearchFilters from "./SearchFilters.vue";
+import DocumentListItem from "./DocumentListItem.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -226,16 +227,7 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 };
 
-const getDocumentTitle = (result: SearchResult | DocumentWithProperties) => {
-  return result.properties?.title || `Document ${result.id.slice(0, 8)}`;
-};
 
-const getVisibleProperties = (result: SearchResult | DocumentWithProperties) => {
-  const excludedKeys = ['title'];
-  return Object.entries(result.properties || {})
-    .filter(([key]) => !excludedKeys.includes(key))
-    .filter(([, value]) => value?.trim());
-};
 
 const canSearch = computed(() => {
   return searchQuery.value.trim().length > 0 || activeFilters.value.length > 0;
@@ -262,7 +254,7 @@ const canSearch = computed(() => {
           type="text"
           autofocus
           placeholder="Find documents... (e.g., 'typescript', &quot;exact phrase&quot;, java*)"
-          class="w-full py-3 pl-12 pr-12 border-2 border-neutral-200 rounded-lg text-base bg-neutral-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-neutral-200 disabled:cursor-not-allowed"
+          class="w-full py-3 pl-12 pr-12 border-2 border-neutral-100 rounded-lg text-base bg-neutral-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-neutral-200 disabled:cursor-not-allowed"
           @keydown="handleKeydown"
           :disabled="isLoading"
         />
@@ -314,7 +306,7 @@ const canSearch = computed(() => {
 
     <!-- Search Results -->
     <div v-if="results.length > 0" class="mt-8">
-      <div class="mb-6 pb-4 border-b-2 border-neutral-200">
+      <div class="mb-6 pb-4 border-b-1 border-neutral-100">
         <p class="text-sm text-neutral-700">
           <span class="font-semibold">{{ total }}</span>
           result{{ total !== 1 ? "s" : "" }}
@@ -325,43 +317,15 @@ const canSearch = computed(() => {
       </div>
 
       <div class="flex flex-col gap-4">
-        <page-target
+        <DocumentListItem
           v-for="result in results.sort((a, b) => a.rank - b.rank)"
           :key="result.id"
-          :data-document-id="result.id"
-          class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
-        >
-          <a :href="`/${props.spaceSlug}/doc/${result.slug}`" class="block p-6 border border-neutral-200 rounded-lg bg-background hover:border-blue-500 hover:bg-blue-50/30 hover:shadow-md hover:-translate-y-0.5 transition-all">
-            <div class="flex justify-between items-start gap-4 mb-3">
-              <h3 class="text-lg font-semibold text-neutral-900 leading-tight">
-                {{ getDocumentTitle(result) }}
-              </h3>
-              <span v-if="searchQuery.trim()" class="shrink-0 px-2 py-1 bg-neutral-200 text-neutral-500 rounded text-xs font-mono font-medium" :title="`Relevance score: ${result.rank}`">
-                {{ Math.abs(result.rank).toFixed(2) }}
-              </span>
-            </div>
-
-            <div class="mb-3 leading-relaxed text-neutral-600 text-sm [&_mark]:bg-amber-100 [&_mark]:px-0.5 [&_mark]:rounded [&_mark]:font-medium [&_mark]:text-amber-800" v-html="result.snippet"></div>
-
-            <div class="flex items-center gap-4 flex-wrap text-xs text-neutral-500">
-              <span class="flex items-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                Updated {{ formatDate(result.updatedAt) }}
-              </span>
-              <span
-                v-for="[key, value] in getVisibleProperties(result)"
-                :key="key"
-                class="inline-flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded font-medium"
-                :title="`${key}: ${value}`"
-              >
-                <span class="text-neutral-400 text-xs capitalize">{{ key }}:</span>
-                <span class="text-neutral-700">{{ value }}</span>
-              </span>
-            </div>
-          </a>
-        </page-target>
+          :document="result"
+          :space-slug="props.spaceSlug"
+          :show-rank="true"
+          :show-snippet="true"
+          :search-query="searchQuery"
+        />
       </div>
 
       <!-- Pagination -->
@@ -409,7 +373,7 @@ const canSearch = computed(() => {
         </span>
       </p>
 
-      <div class="max-w-md mx-auto p-6 bg-neutral-50 border border-neutral-200 rounded-lg text-left">
+      <div class="max-w-md mx-auto p-6 bg-neutral-50 border border-neutral-100 rounded-lg text-left">
         <p class="font-semibold text-neutral-700 mb-3">💡 Search tips:</p>
         <ul class="list-disc pl-6 space-y-2 text-sm text-neutral-600">
           <li>Use quotes for exact phrases: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">"full text search"</code></li>
@@ -423,7 +387,7 @@ const canSearch = computed(() => {
 
     <!-- All Documents (when not searching) -->
     <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length > 0" class="mt-8">
-      <div class="mb-6 pb-4 border-b-2 border-neutral-200">
+      <div class="mb-6 pb-4 border-b-1 border-neutral-100">
         <p class="text-sm text-neutral-700">
           <span class="font-semibold">{{ allDocuments.length }}</span>
           document{{ allDocuments.length !== 1 ? "s" : "" }}
@@ -435,41 +399,16 @@ const canSearch = computed(() => {
 
       <template v-for="(docs, groupKey) in groupedDocuments" :key="groupKey">
         <div v-if="docs.length > 0" class="mb-12">
-          <h3 class="text-xl font-semibold mb-4 pb-2 border-b-2 border-neutral-200 capitalize">
+          <h3 class="text-base mb-4 pb-2 border-b-1 border-neutral-100 capitalize">
             {{ groupKey === 'thisWeek' ? 'This Week' : groupKey === 'thisMonth' ? 'This Month' : groupKey }}
           </h3>
-          <div class="flex flex-col gap-4">
-            <page-target
+          <div class="flex flex-col gap-2">
+            <DocumentListItem
               v-for="doc in docs"
               :key="doc.id"
-              :data-document-id="doc.id"
-              class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
-            >
-              <a :href="`/${props.spaceSlug}/doc/${doc.slug}`" class="block p-6 border border-neutral-200 rounded-lg bg-background hover:border-blue-500 hover:bg-neutral-50 hover:shadow-md hover:-translate-y-0.5 transition-all">
-                <div class="flex justify-between items-start gap-4 mb-3">
-                  <h3 class="text-lg font-semibold text-neutral-900 leading-tight">
-                    {{ getDocumentTitle(doc) }}
-                  </h3>
-                </div>
-                <div class="flex items-center gap-4 flex-wrap text-xs text-neutral-500">
-                  <span class="flex items-center gap-1.5">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    Updated {{ formatDate(String(doc.updatedAt)) }}
-                  </span>
-                  <span
-                    v-for="[key, value] in getVisibleProperties(doc)"
-                    :key="key"
-                    class="inline-flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded font-medium"
-                    :title="`${key}: ${value}`"
-                  >
-                    <span class="text-neutral-400 text-xs capitalize">{{ key }}:</span>
-                    <span class="text-neutral-700">{{ value }}</span>
-                  </span>
-                </div>
-              </a>
-            </page-target>
+              :document="doc"
+              :space-slug="props.spaceSlug"
+            />
           </div>
         </div>
       </template>
@@ -478,7 +417,7 @@ const canSearch = computed(() => {
         <button
           @click="() => fetchNextPage()"
           :disabled="isFetchingNextPage"
-          class="flex items-center gap-2 px-6 py-3 bg-background border-2 border-neutral-200 rounded-lg font-medium text-sm hover:border-blue-500 hover:text-blue-600 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all"
+          class="flex items-center gap-2 px-6 py-3 bg-background border-2 border-neutral-100 rounded-lg font-medium text-sm hover:border-blue-500 hover:text-blue-600 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all"
         >
           <svg v-if="!isFetchingNextPage" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
