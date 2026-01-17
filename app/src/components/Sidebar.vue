@@ -184,7 +184,7 @@ onUnmounted(() => {
       <button
         @click.stop="toggleCollapse"
         type="button"
-        class="hidden lg:block absolute bottom-8 -right-3 z-50 p-1 rounded-full bg-background border border-neutral-200 shadow-sm hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
+        class="hidden lg:block absolute bottom-6 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
         :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'"
       >
         <Icon
@@ -197,16 +197,16 @@ onUnmounted(() => {
       </button>
 
       <!-- Navigation -->
-      <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden">
+      <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
         <Navigation />
       </wiki-scroll>
 
       <!-- Bottom Actions -->
       <div
-        class="px-2 py-3 space-y-2 bg-background relative"
+        class="px-1 py-3 bg-background relative"
       >
         <!-- User Profile -->
-        <div class="px-3 py-2">
+        <div class="flex">
           <UserProfile />
         </div>
       </div>
@@ -214,7 +214,7 @@ onUnmounted(() => {
       <!-- Desktop Resize Handle -->
       <div
         :class="[
-          'hidden lg:block absolute top-0 bottom-0 right-0 w-px cursor-col-resize hover:bg-blue-500 transition-colors group',
+          'hidden lg:block absolute top-0 bottom-0 right-0 w-px cursor-col-resize hover:bg-blue-500 transition-colors group z-20',
           isResizing && 'bg-blue-500' || 'bg-neutral-100'
         ]"
         @mousedown="startResize"

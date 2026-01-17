@@ -157,7 +157,7 @@ Actions.mapShortcut("meta+shift+f", "find:open");
 <template>
   <nav class="@container flex flex-col gap-xs h-full">
     <!-- Space Selector -->
-    <div class="px-5xs py-4xs flex-none sticky top-0 bg-background z-10">
+    <div class="px-5xs py-4xs flex-none sticky top-0 z-10">
       <SpaceSelector
         :spaces="uiSpaces"
         :model-value="currentSpace?.id || null"

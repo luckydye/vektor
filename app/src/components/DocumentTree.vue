@@ -350,7 +350,7 @@ onUnmounted(() => {
           @dragleave="isEditMode && handleDragLeave()"
           @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
         >
-          <div class="flex items-center gap-2 text-sm text-neutral-900 hover:bg-neutral-100 rounded-md"
+          <div class="flex items-center gap-2 text-sm text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
             :class="{
               'bg-blue-50 border border-blue-300': dragOverIndex === categories.findIndex(c => c.id === category.id) && isEditMode,
               'cursor-move': isEditMode
