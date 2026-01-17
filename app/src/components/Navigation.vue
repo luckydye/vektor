@@ -155,7 +155,7 @@ Actions.mapShortcut("meta+shift+f", "find:open");
 </script>
 
 <template>
-  <nav class="@container flex flex-col gap-xs h-full">
+  <nav class="@container flex flex-col gap-4xs h-full">
     <!-- Space Selector -->
     <div class="px-5xs py-4xs flex-none sticky top-0 z-10">
       <SpaceSelector
@@ -174,11 +174,11 @@ Actions.mapShortcut("meta+shift+f", "find:open");
       </Teleport>
     </div>
 
-    <div v-if="isLoading" class="px-3xs flex-none hidden lg:flex flex-col gap-1.5">
+    <div v-if="isLoading" class="px-3xs flex-none hidden lg:flex flex-col gap-1">
       <div v-for="i in 3" :key="`nav-skeleton-${i}`" class="h-9 bg-neutral-100 rounded-md animate-pulse" />
     </div>
 
-    <div v-if="!isLoading" class="px-3xs flex-none hidden lg:flex flex-col gap-1.5">
+    <div v-if="!isLoading" class="px-3xs flex-none hidden lg:flex flex-col gap-1">
         <MenuLink
             :icon="homeIcon"
             text="Home"

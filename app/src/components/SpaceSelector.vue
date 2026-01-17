@@ -74,7 +74,7 @@ const handleCreateDoc = (event: Event) => {
 <template>
   <a-popover-trigger class="block group relative z-10">
     <button slot="trigger" class="w-full">
-      <div class="flex items-center gap-3xs px-3xs py-4xs rounded-md transition-colors hover:bg-primary-10 group-[[enabled]]:bg-primary-50">
+      <div class="flex items-center gap-3xs px-3xs py-4xs rounded-md transition-colors hover:bg-primary-50 group-[[enabled]]:bg-primary-50">
         <div class="flex w-full gap-3xs cursor-pointer">
           <!-- Space Icon -->
           <div class="flex-none w-10 rounded-md flex items-center justify-center p-1.5 bg-primary-500" :style="{ background: currentSpace?.color }">
