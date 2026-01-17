@@ -92,9 +92,9 @@ function createEditor(
     ]
   });
 
-  api.connections.get(spaceId).then(connections => {
-    editor.storage.ticketLink.connections = connections;
-  })
+  // api.connections.get(spaceId).then(connections => {
+  //   editor.storage.ticketLink.connections = connections;
+  // })
 
   return editor;
 }

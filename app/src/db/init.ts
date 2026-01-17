@@ -47,14 +47,12 @@ export async function prepareSpaceDb(spaceId: string) {
   const documentSQL = generateCreateTableSQL(spaceSchema.document);
   const revisionSQL = generateCreateTableSQL(spaceSchema.revision);
   const propertySQL = generateCreateTableSQL(spaceSchema.property);
-  const connectionSQL = generateCreateTableSQL(spaceSchema.connection);
   const categorySQL = generateCreateTableSQL(spaceSchema.category);
 
   await spaceDb.run(sql.raw(metadataSQL));
   await spaceDb.run(sql.raw(documentSQL));
   await spaceDb.run(sql.raw(revisionSQL));
   await spaceDb.run(sql.raw(propertySQL));
-  await spaceDb.run(sql.raw(connectionSQL));
   await spaceDb.run(sql.raw(categorySQL));
 
   const preferenceSQL = generateCreateTableSQL(spaceSchema.preference);

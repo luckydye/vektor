@@ -900,32 +900,6 @@ export class ApiClient {
     },
   };
 
-  connections = {
-    /**
-     * List connections in a space
-     */
-    get: async (spaceId: string) => {
-      return await this.apiGet<Connection[]>(this.baseUrl, `/api/v1/spaces/${spaceId}/connections`);
-    },
-
-    /**
-     * Create a new connection
-     */
-    post: async (
-      spaceId: string,
-      body: { label: string; url?: string; icon?: string },
-    ) => {
-      return await this.apiPost<Connection>(this.baseUrl, `/api/v1/spaces/${spaceId}/connections`, body);
-    },
-
-    /**
-     * Delete a connection
-     */
-    delete: async (spaceId: string, connectionId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/connections/${connectionId}`);
-    },
-  };
-
   drafts = {
     /**
      * List draft documents in a space (with pagination)

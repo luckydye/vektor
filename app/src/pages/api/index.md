@@ -590,39 +590,6 @@ Delete a webhook.
 
 ---
 
-## Connections
-
-### `GET /api/v1/spaces/{spaceId}/connections`
-
-List all external connections in a space.
-
-**Authentication**: Required  
-**Required Role**: viewer  
-**Response**: Array of connection objects
-
-### `POST /api/v1/spaces/{spaceId}/connections`
-
-Create a new external connection.
-
-**Authentication**: Required  
-**Required Role**: editor  
-**Request Body**:
-- `label` (string, required): Connection label
-- `url` (string, required): Connection URL
-- `icon` (string, optional): Icon identifier
-
-**Response**: Connection object with 201 status
-
-### `DELETE /api/v1/spaces/{spaceId}/connections/{connectionId}`
-
-Delete an external connection.
-
-**Authentication**: Required  
-**Required Role**: editor  
-**Response**: Success status
-
----
-
 ## Import
 
 ### `POST /api/v1/spaces/{spaceId}/import`
