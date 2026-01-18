@@ -155,7 +155,7 @@ class DocumentView extends HTMLElement {
     }
 
     shadow.innerHTML = `<style>${docStyles}</style>`;
-    shadow.appendChild(this.element);
+    shadow.append(this.element);
 
     this.element.className = "tiptap";
     this.editor = createEditor(this.element, spaceId, documentId, user);

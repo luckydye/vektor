@@ -127,7 +127,7 @@ if (diffMins >= 1 && diffMins < 60) {
       data-updated-at={document.updatedAt}
       data-created-at={document.createdAt}
       class={twMerge(
-        "space-y-6 mx-auto h-full flex flex-col"
+        "space-y-6 mx-auto h-full flex flex-col relative"
       )}
      >
       <!-- Archived Document Disclaimer -->
@@ -185,7 +185,7 @@ if (diffMins >= 1 && diffMins < 60) {
       <div
         class={twMerge(
           'max-w-none text-neutral-700 h-full',
-          document.type !== 'canvas' && "pb-20 print:px-0 px-xs lg:px-xl"
+          document.type !== 'canvas' && "print:px-0 px-xs lg:px-xl"
         )}
       >
           <DocumentContent
@@ -197,9 +197,7 @@ if (diffMins >= 1 && diffMins < 60) {
          		initialEditMode={false}
          	/>
 
-         	<div>
-         	    <editor-content></editor-content>
-         	</div>
+       	    <editor-content></editor-content>
 
          	<main class="h-full relative">
                  <CommentManager client:only="vue" spaceId={space.id} documentId={document.id} currentRev={document.currentRev} />
@@ -223,6 +221,8 @@ if (diffMins >= 1 && diffMins < 60) {
 
                  <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
          	</main>
+
+          <document-statusbar class="block sticky left-0 bottom-0 pb-7 pt-20 bg-linear-to-b from-transparent to-background pointer-events-none"></document-statusbar>
       </div>
     </div>
 

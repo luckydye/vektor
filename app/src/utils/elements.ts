@@ -6,3 +6,4 @@ import "../editor/elements/page-target.ts";
 import "../editor/elements/category-target.ts";
 import "../editor/elements/drawer.ts";
 import "../editor/elements/shortcut.ts";
+import "../editor/elements/statusbar.ts";

@@ -53,6 +53,8 @@ async function saveRevisionSnapshot() {
 
 onMounted(() => {
   emit("editor-ready", manualSave);
+  
+  window.dispatchEvent(new CustomEvent("document:edit"));
 
   const editorElement = document.querySelector<ContentEditor>("editor-content");
   editor.value = editorElement?.init(props.spaceId, props.documentId, user.value);
@@ -60,6 +62,8 @@ onMounted(() => {
 
 watch([saveStatus, saveError], () => {
   emit("save-status", { status: saveStatus.value, error: saveError.value });
+  
+  window.dispatchEvent(new CustomEvent("document:save"));
 });
 
 onBeforeUnmount(() => {
