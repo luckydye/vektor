@@ -53,7 +53,7 @@ export function registerFormattingActions() {
   Actions.register("format:strikethrough", {
     title: "Strikethrough",
     description: "Toggle strikethrough formatting",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleStrike().run();
@@ -63,7 +63,7 @@ export function registerFormattingActions() {
   Actions.register("format:code", {
     title: "Inline Code",
     description: "Toggle inline code formatting",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleCode().run();
@@ -73,7 +73,7 @@ export function registerFormattingActions() {
   Actions.register("format:subscript", {
     title: "Subscript",
     description: "Toggle subscript formatting",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleSubscript().run();
@@ -83,7 +83,7 @@ export function registerFormattingActions() {
   Actions.register("format:superscript", {
     title: "Superscript",
     description: "Toggle superscript formatting",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleSuperscript().run();
@@ -94,7 +94,7 @@ export function registerFormattingActions() {
   Actions.register("format:heading:paragraph", {
     title: "Paragraph",
     description: "Convert to normal paragraph",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().setParagraph().run();
@@ -104,7 +104,7 @@ export function registerFormattingActions() {
   Actions.register("format:heading:1", {
     title: "Heading 1",
     description: "Convert to heading level 1",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleHeading({ level: 1 }).run();
@@ -114,7 +114,7 @@ export function registerFormattingActions() {
   Actions.register("format:heading:2", {
     title: "Heading 2",
     description: "Convert to heading level 2",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleHeading({ level: 2 }).run();
@@ -124,7 +124,7 @@ export function registerFormattingActions() {
   Actions.register("format:heading:3", {
     title: "Heading 3",
     description: "Convert to heading level 3",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleHeading({ level: 3 }).run();
@@ -134,7 +134,7 @@ export function registerFormattingActions() {
   Actions.register("format:heading:4", {
     title: "Heading 4",
     description: "Convert to heading level 4",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleHeading({ level: 4 }).run();
@@ -144,7 +144,7 @@ export function registerFormattingActions() {
   Actions.register("format:heading:5", {
     title: "Heading 5",
     description: "Convert to heading level 5",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleHeading({ level: 5 }).run();
@@ -154,7 +154,7 @@ export function registerFormattingActions() {
   Actions.register("format:heading:6", {
     title: "Heading 6",
     description: "Convert to heading level 6",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleHeading({ level: 6 }).run();
@@ -165,7 +165,7 @@ export function registerFormattingActions() {
   Actions.register("format:list:bullet", {
     title: "Bullet List",
     description: "Toggle bullet list",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleBulletList().run();
@@ -175,7 +175,7 @@ export function registerFormattingActions() {
   Actions.register("format:list:ordered", {
     title: "Numbered List",
     description: "Toggle numbered list",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleOrderedList().run();
@@ -185,7 +185,7 @@ export function registerFormattingActions() {
   Actions.register("format:list:task", {
     title: "Task List",
     description: "Toggle task/checkbox list",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleTaskList().run();
@@ -228,7 +228,7 @@ export function registerFormattingActions() {
   Actions.register("format:align:left", {
     title: "Align Left",
     description: "Align text to the left",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().setTextAlign("left").run();
@@ -238,7 +238,7 @@ export function registerFormattingActions() {
   Actions.register("format:align:center", {
     title: "Align Center",
     description: "Center align text",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().setTextAlign("center").run();
@@ -248,7 +248,7 @@ export function registerFormattingActions() {
   Actions.register("format:align:right", {
     title: "Align Right",
     description: "Align text to the right",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().setTextAlign("right").run();
@@ -258,7 +258,7 @@ export function registerFormattingActions() {
   Actions.register("format:align:justify", {
     title: "Justify",
     description: "Justify text alignment",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().setTextAlign("justify").run();
@@ -269,7 +269,7 @@ export function registerFormattingActions() {
   Actions.register("format:blockquote", {
     title: "Blockquote",
     description: "Toggle blockquote",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleBlockquote().run();
@@ -279,7 +279,7 @@ export function registerFormattingActions() {
   Actions.register("format:codeblock", {
     title: "Code Block",
     description: "Toggle code block",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().toggleCodeBlock().run();
@@ -289,7 +289,7 @@ export function registerFormattingActions() {
   Actions.register("format:horizontalrule", {
     title: "Horizontal Rule",
     description: "Insert horizontal divider line",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().setHorizontalRule().run();
@@ -300,7 +300,7 @@ export function registerFormattingActions() {
   Actions.register("format:link", {
     title: "Insert Link",
     description: "Add or edit a hyperlink",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       const editor = getEditor();
@@ -323,7 +323,7 @@ export function registerFormattingActions() {
   Actions.register("format:unlink", {
     title: "Remove Link",
     description: "Remove hyperlink from selection",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().unsetLink().run();
@@ -558,7 +558,7 @@ export function registerFormattingActions() {
   Actions.register("format:color:text", {
     title: "Text Color",
     description: "Change text color",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       // This action triggers an event that the toolbar can listen to
@@ -569,7 +569,7 @@ export function registerFormattingActions() {
   Actions.register("format:color:background", {
     title: "Background Color",
     description: "Change text background color",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       Actions.emit("format:color:background:open", {});
@@ -579,7 +579,7 @@ export function registerFormattingActions() {
   Actions.register("format:color:clear", {
     title: "Clear Background Color",
     description: "Remove background color from text",
-    group: "formatting",
+    // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       getEditor().chain().focus().unsetBackgroundColor().run();

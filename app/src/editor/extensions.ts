@@ -36,10 +36,16 @@ export function contentExtensions(spaceId: string, documentId: string): Extensio
     Paragraph,
     Text,
     Link,
-    Bold,
-    Italic,
+    Bold.extend({
+      addKeyboardShortcuts: () => ({})
+    }),
+    Italic.extend({
+      addKeyboardShortcuts: () => ({})
+    }),
     Strike,
-    Underline,
+    Underline.extend({
+      addKeyboardShortcuts: () => ({})
+    }),
     Superscript,
     Subscript,
     TextStyle,

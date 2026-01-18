@@ -2,5 +2,13 @@
   "meta-k": "ui:toggle:palatte",
   "meta-e": "document:edit",
   "meta-s": "document:save",
-  "meta-b": "ui:toggle:sidebar"
+  "//meta-b": "ui:toggle:sidebar",
+  
+  "meta-u": "format:underline",
+  "meta-b": "format:bold",
+  "meta-i": "format:italic",
+  "tab": "format:list:indent",
+  "shift-tab": "format:list:outdent",
+  
+  "": ""
 }

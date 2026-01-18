@@ -152,10 +152,14 @@ export class Actions {
       return;
     }
 
-    const action = Actions.getActionForShortcut(event);
-    if (action) {
-      Actions.run(action);
-      event.preventDefault();
+    const actionId = Actions.getActionForShortcut(event);
+    if (actionId) {
+      const action = Actions.get(actionId);
+      if(action) {
+        const res = Actions.run(actionId);
+        event.preventDefault();
+        event.stopPropagation();
+      }
     }
   }
 

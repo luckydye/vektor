@@ -30,8 +30,8 @@ customElements.define(
     }
 
     render() {
-      const actions = Actions.group("edit");
-      console.log(actions);
+      const actions1 = Actions.group("edit");
+      const actions2 = Actions.group("formatting");
       
       return html`
         <style>
@@ -53,8 +53,7 @@ customElements.define(
                 gap: 0.5rem;
                 padding: 0.25rem 0.5rem;
                 color: var(--color-neutral-900);
-                background-color: var(--color-neutral-50);
-                opacity: 0.75;
+                background-color: var(--color-primary-10);
                 border-radius: 0.5rem;
                 transition: all 0.15s ease;
                 font-weight: bold;
@@ -72,15 +71,17 @@ customElements.define(
         </style>
 
         <div class="container">
-          ${actions.map(([id, action]) => {
+          ${[...actions1, ...actions2].map(([id, action]) => {
             const shortcut = Actions.getShortcutsForAction(id)?.values().next().value;
             
-            return html`
-                <button type="button">
-                    <a-shortcut data-shortcut=${shortcut}></a-shortcut>
-                    ${action.title}
-                </button>
-            `;
+            if(shortcut) {
+                return html`
+                    <button type="button" @click=${() => {Actions.run(id)}}>
+                        <a-shortcut data-shortcut=${shortcut}></a-shortcut>
+                        ${action.title}
+                    </button>
+                `;
+            }
           })}
         </div>
       `;
