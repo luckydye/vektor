@@ -176,7 +176,7 @@ if (diffMins >= 1 && diffMins < 60) {
 
       <!-- Document Header -->
       <div class={twMerge(
-        document.type === 'canvas' ? 'absolute top-xs right-0 left-0 lg:left-(--sidebar-width) z-10' : 'pt-s mb-xl'
+        document.type === 'canvas' ? 'absolute top-xs right-0 left-0 z-10' : 'pt-s mb-xl'
       )}>
         <div class="print:px-0 px-xs lg:px-xl">
             <Breadcrumbs
@@ -230,11 +230,13 @@ if (diffMins >= 1 && diffMins < 60) {
                  <CommentManager client:only="vue" spaceId={space.id} documentId={document.id} currentRev={document.currentRev} />
 
                  {document.type === "canvas" ? (
-              			<Canvas
-                             client:only="vue"
-                            	documentId={document.id}
-                             spaceId={space.id}
-              			/>
+         			<div class="h-screen">
+                     <Canvas
+                                 client:only="vue"
+                                	documentId={document.id}
+                                 spaceId={space.id}
+                  			/>
+                    </div>
                 	) : (
                      <document-view>
                          <template shadowrootmode="open">

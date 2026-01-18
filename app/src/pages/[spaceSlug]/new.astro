@@ -37,12 +37,13 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
 <SpaceLayout title={`${title} - ${space.name} - Wiki`}>
     <div
       class={twMerge(
-        "space-y-6 mx-auto h-full flex flex-col"
+        "space-y-6 mx-auto h-full flex flex-col relative w-full",
+        ('document') === 'full' ? 'max-w-full' : 'max-w-(--document-width)'
       )}
      >
       <!-- Document Header -->
       <div class={twMerge(
-        type === 'canvas' ? 'absolute top-xs right-0 left-0 lg:left-(--sidebar-width) z-10' : 'pt-s mb-xl'
+        type === 'canvas' ? 'absolute top-xs right-0 left-0 z-10' : 'pt-s mb-xl'
       )}>
         <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xl">
           <div>
