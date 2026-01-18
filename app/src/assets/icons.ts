@@ -48,6 +48,7 @@ export { default as undoIcon } from "../assets/icons/undo.svg?raw";
 export { default as redoIcon } from "../assets/icons/redo.svg?raw";
 export { default as importIcon } from "../assets/icons/import.svg?raw";
 export { default as cmdIcon } from "../assets/icons/cmd.svg?raw";
+export { default as metaIcon } from "../assets/icons/cmd.svg?raw";
 export { default as ctrlIcon } from "../assets/icons/ctrl.svg?raw";
 export { default as shiftIcon } from "../assets/icons/shift.svg?raw";
 export { default as indentIcon } from "../assets/icons/indent.svg?raw";

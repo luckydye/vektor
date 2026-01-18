@@ -155,6 +155,7 @@ export class Actions {
     const action = Actions.getActionForShortcut(event);
     if (action) {
       Actions.run(action);
+      event.preventDefault();
     }
   }
 
@@ -186,14 +187,18 @@ export class Actions {
     actionsLoop: for (const [actionId, shortcuts] of globalShortcuts) {
       for (const shortcut of shortcuts) {
         const mappedShortcut: PressedKeysMap = {
+          meta: false,
           ctrl: false,
           shift: false,
           alt: false,
         };
 
-        const keys = shortcut.toLocaleLowerCase().split("+");
+        const keys = shortcut.toLocaleLowerCase().split("-");
         for (const key of keys) {
           switch (key) {
+            case "meta":
+              mappedShortcut.meta = true;
+              break;
             case "ctrl":
               mappedShortcut.ctrl = true;
               break;
@@ -220,8 +225,8 @@ export class Actions {
 }
 
 if (typeof window !== "undefined") {
-  document.addEventListener("keydown", (e) => Actions.handleKey(e, true));
-  // document.addEventListener("keyup", (e) => Actions.handleKey(e, false));
+  window.addEventListener("keydown", (e) => Actions.handleKey(e, true));
+  // window.addEventListener("keyup", (e) => Actions.handleKey(e, false));
 }
 
 // @ts-expect-error

@@ -1,4 +1,5 @@
 import { render, html } from "lit-html";
+import { Actions, type ActionOptions } from "../../utils/actions.js";
 
 customElements.define(
   "document-statusbar",
@@ -16,8 +17,7 @@ customElements.define(
     
     onEditorEvent = (event: Event) => {
       if(event.type === "document:edit") {
-        // TODO:
-        // render(this.render(), this.shadowRoot);
+        render(this.render(), this.shadowRoot);
       }
       if(event.type === "document:save") {
         
@@ -30,15 +30,58 @@ customElements.define(
     }
 
     render() {
+      const actions = Actions.group("edit");
+      console.log(actions);
+      
       return html`
         <style>
             .container {
                 pointer-events: auto;
             }
+            a-shortcut {
+                --background-color: transparent;
+                
+                color: black;
+                background: var(--color-neutral-100);
+                border-radius: var(--radius-sm);
+            }
+            button {
+                border: none;
+                user-select: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 0.5rem;
+                padding: 0.25rem 0.5rem;
+                color: var(--color-neutral-900);
+                background-color: var(--color-neutral-50);
+                opacity: 0.75;
+                border-radius: 0.5rem;
+                transition: all 0.15s ease;
+                font-weight: bold;
+                font-size: 0.75rem;
+                font-family: monospace;
+            }
+            button:hover {
+                opacity: 1;
+                color: var(--color-neutral-700);
+                background-color: var(--color-neutral-100);
+            }
+            button:active {
+                background-color: var(--color-neutral-200);
+            }
         </style>
 
         <div class="container">
-            Test
+          ${actions.map(([id, action]) => {
+            const shortcut = Actions.getShortcutsForAction(id)?.values().next().value;
+            
+            return html`
+                <button type="button">
+                    <a-shortcut data-shortcut=${shortcut}></a-shortcut>
+                    ${action.title}
+                </button>
+            `;
+          })}
         </div>
       `;
     }

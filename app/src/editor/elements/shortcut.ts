@@ -32,7 +32,7 @@ customElements.define(
       const combinations = this.shortcut?.split(",").map((c) => c.trim());
 
       const prefferedCombination =
-        combinations?.find((c) => OS === "MacIntel" && c.includes("cmd")) ||
+        combinations?.find((c) => OS === "MacIntel" && c.includes("meta")) ||
         combinations?.[0];
 
       const keys = prefferedCombination?.split("-").map(

@@ -151,7 +151,7 @@ Actions.register("find:open", {
   },
 });
 
-Actions.mapShortcut("meta+shift+f", "find:open");
+Actions.mapShortcut("meta-shift-f", "find:open");
 </script>
 
 <template>

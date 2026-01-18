@@ -27,6 +27,15 @@ const editorSaveFunction = ref<(() => Promise<void>) | null>(null);
 function startEditing() {
   isEditing.value = true;
   window.dispatchEvent(new CustomEvent("edit-mode-start"));
+  
+  Actions.register("document:save", {
+    title: "Save Document",
+    description: "Save current document and exit edit mode",
+    group: "edit",
+    run: async () => stopEditing(),
+  });
+  
+  Actions.unregister("document:edit");
 }
 
 Actions.register("document:edit", {
@@ -34,13 +43,6 @@ Actions.register("document:edit", {
   description: "Start editing mode for current document",
   group: "edit",
   run: async () => startEditing(),
-});
-
-Actions.register("document:save", {
-  title: "Save Document",
-  description: "Save current document and exit edit mode",
-  group: "edit",
-  run: async () => stopEditing(),
 });
 
 Actions.register("document:print", {
@@ -129,6 +131,8 @@ async function stopEditing() {
   if (props.documentId) {
     window.location.reload();
   }
+  
+  Actions.unregister("document:save");
 }
 
 function cancelEditing() {
