@@ -158,9 +158,7 @@ const paletteCss = generatePaletteCss(brandColor);
       <!-- Main Content Area with left margin for fixed sidebar -->
       <div transition:name="content" transition:animate="none" class="main-content min-h-screen h-full transition-all lg:transition-none lg:pl-(--sidebar-width) flex">
         <!-- Content -->
-        <div class="w-full max-w-(--site-width) mx-auto">
-          <slot />
-        </div>
+        <slot />
       </div>
     </div>
 

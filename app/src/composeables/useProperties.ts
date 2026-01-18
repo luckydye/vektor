@@ -83,6 +83,12 @@ export function useProperties() {
 
   async function updateProperty(documentId: string, name: string, value: string | null | undefined, type?: string | null) {
     await updatePropertyMutation.mutateAsync({ documentId, name, value, type });
+    
+    if (typeof window !== 'undefined' && name.toLowerCase() === 'layout') {
+      window.dispatchEvent(new CustomEvent('document:property', {
+        detail: { propertyName: name, value }
+      }));
+    }
   }
 
   async function deleteProperty(documentId: string, name: string) {

@@ -40,7 +40,7 @@ if (!permission || permission.permission === "viewer") {
 ---
 
 <SpaceLayout title={`Archive - ${space.name} - Wiki`}>
-  <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl">
+  <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl w-full">
     <h1 class="text-3xl font-bold mb-6">Archived Documents</h1>
     <ArchivedDocuments client:load spaceId={space.id} spaceSlug={spaceSlug} />
   </div>

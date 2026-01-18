@@ -122,12 +122,39 @@ if (diffMins >= 1 && diffMins < 60) {
   title: `${title}`,
   description: document.properties.description || '',
 }}>
+    <script>
+      // TODO: this needs to be in a vue component with hydration
+      
+      // Handle dynamic layout mode changes
+      if (typeof window !== 'undefined') {
+        const documentContainer = document.querySelector('[data-layout]');
+        
+        window.addEventListener('document:property', (event) => {
+          const customEvent = event as CustomEvent;
+          if (customEvent.detail?.propertyName === 'layout' && documentContainer) {
+            const layoutMode = customEvent.detail.value || 'document';
+            documentContainer.setAttribute('data-layout', layoutMode);
+            
+            if (layoutMode === 'full') {
+              documentContainer.classList.remove('max-w-(--document-width)');
+              documentContainer.classList.add('max-w-full');
+            } else {
+              documentContainer.classList.remove('max-w-full');
+              documentContainer.classList.add('max-w-(--document-width)');
+            }
+          }
+        });
+      }
+    </script>
+    
     <div
       data-type={document.type}
       data-updated-at={document.updatedAt}
       data-created-at={document.createdAt}
+      data-layout={document.properties.layout || 'document'}
       class={twMerge(
-        "space-y-6 mx-auto h-full flex flex-col relative"
+        "space-y-6 mx-auto h-full flex flex-col relative w-full",
+        (document.properties.layout || 'document') === 'full' ? 'max-w-full' : 'max-w-(--document-width)'
       )}
      >
       <!-- Archived Document Disclaimer -->

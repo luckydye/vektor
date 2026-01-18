@@ -10,7 +10,9 @@ import {
   plusIcon,
   peopleIcon,
   calendarIcon,
-  propertyIcon
+  propertyIcon,
+  layoutFullIcon,
+  layoutDocumentIcon
 } from "~/src/assets/icons";
 
 import { useCategories } from "../composeables/useCategories.ts";
@@ -83,6 +85,11 @@ const getPropertyLabel = (property: Property) => {
     return category ? category.name : categorySlug;
   }
 
+  if (property.name?.toLowerCase() === 'layout') {
+    if (!property.value) return "Layout";
+    return property.value === 'full' ? "Full Width" : "Document";
+  }
+
   if (property.type === 'user' && property.value) {
     const member = members.value.find(m => m.userId === property.value);
     if (member?.user) {
@@ -111,6 +118,9 @@ const getPropertyIcon = (property: Property) => {
   if (property.id?.toLowerCase() === 'category') {
     return getCategoryIcon(property.value) || undefined;
   }
+  if (property.id?.toLowerCase() === 'layout') {
+    return property.value === 'full' ? layoutFullIcon : layoutDocumentIcon;
+  }
   if (property.type === 'user') {
     return peopleIcon;
   }
@@ -121,26 +131,37 @@ const getPropertyIcon = (property: Property) => {
 }
 
 const getPropertyVariant = (property: Property): "default" | "special" => {
-  return property.name?.toLowerCase() === 'category' ? "special" : "default";
+  const propertyName = property.name?.toLowerCase();
+  return propertyName === 'category' || propertyName === 'layout' ? "special" : "default";
 };
 
 const getPropertyValues = async (property: Property) => {
   if (property.name?.toLowerCase() === "category") {
     return categories.value.map((cat) => {
-      return { id: cat.slug, label: cat.name, icon: getCategoryIcon(cat.slug) || undefined };
+      const icon = getCategoryIcon(cat.slug);
+      return { id: cat.slug, label: cat.name, icon: icon || undefined };
     });
   }
 
+  if (property.name?.toLowerCase() === "layout") {
+    return [
+      { id: "document", label: "Document", icon: layoutDocumentIcon },
+      { id: "full", label: "Full Width", icon: layoutFullIcon }
+    ];
+  }
+
   if (property.type === "user") {
-    return members.value.map((member) => {
-      const user = member.user;
-      const userName = user?.name || user?.email || member.userId;
-      return {
-        id: member.userId,
-        label: userName,
-        icon: peopleIcon
-      };
-    });
+    return members.value
+      .filter(member => member.userId)
+      .map((member) => {
+        const user = member.user;
+        const userName = user?.name || user?.email || member.userId || 'Unknown User';
+        return {
+          id: member.userId!,
+          label: userName,
+          icon: peopleIcon
+        };
+      });
   }
 
   const propertyValues = spaceProperties.value?.find(sp => sp.name === property.name)?.values?.map(value => {
@@ -160,9 +181,16 @@ const properties = computed((): Property[] => {
     value: documentProperties.value.category,
   } as Property);
 
+  props_list.push({
+    id: "layout",
+    name: "layout",
+    type: "select",
+    value: documentProperties.value.layout || "document",
+  } as Property);
+
   const otherProps = Object.entries(documentProperties.value)
     .map(([key, value]): Property | null => {
-      if (["title", "category", "parentid"].includes(key?.toLowerCase())) {
+      if (["title", "category", "layout", "parentid"].includes(key?.toLowerCase())) {
         return null;
       }
       const spaceProperty = spaceProperties.value?.find(sp => sp.name === key);

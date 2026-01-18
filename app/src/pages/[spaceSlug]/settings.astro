@@ -41,7 +41,7 @@ if(!isOwner) {
 ---
 
 <SpaceLayout title={`Settings - ${space.name} - Wiki`}>
-  <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl">
+  <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl w-full">
     {isOwner ? <SpaceSettings client:load /> : <NoAccess client:load /> }
   </div>
 </SpaceLayout>

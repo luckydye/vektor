@@ -40,7 +40,7 @@ if (!permission) {
 ---
 
 <SpaceLayout title={`Search - ${space.name} - Wiki`}>
-  <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl">
+  <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl w-full">
     <SearchComponent client:load spaceId={space.id} spaceSlug={space.slug} />
   </div>
 </SpaceLayout>

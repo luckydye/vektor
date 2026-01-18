@@ -172,7 +172,7 @@ onUnmounted(() => {
         '--color-background': 'var(--color-neutral-50)'
       }"
       :class="[
-        'sidebar',
+        '@container sidebar',
         'flex flex-col bg-background fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
         'z-40 lg:z-10',
         'lg:translate-x-0',
@@ -200,15 +200,17 @@ onUnmounted(() => {
       <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
         <Navigation />
       </wiki-scroll>
+      
+      <div class="pl-4 text-neutral-300 @max-sm:hidden">
+          <a href="mailto:t.havlicek@s-v.de">Send feedback</a>
+      </div>
 
       <!-- Bottom Actions -->
       <div
-        class="px-1 py-3 bg-background relative"
+        class="px-1 py-3 bg-background relative flex items-center"
       >
         <!-- User Profile -->
-        <div class="flex">
-          <UserProfile />
-        </div>
+        <UserProfile />
       </div>
 
       <!-- Desktop Resize Handle -->
