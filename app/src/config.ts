@@ -33,11 +33,11 @@ export function config() {
     OAUTH_AUTHORIZATION_URL: import.meta.env.OAUTH_AUTHORIZATION_URL,
     OAUTH_TOKEN_URL: import.meta.env.OAUTH_TOKEN_URL,
     OAUTH_USERINFO_URL: import.meta.env.OAUTH_USERINFO_URL,
+    OAUTH_REDIRECT_URI: import.meta.env.OAUTH_REDIRECT_URI,
 
     // Feature flags
     FEATURE_CANVAS: import.meta.env.WIKI_FEATURE_CANVAS,
   } as const;
 }
 
-// @ts-expect-error
 globalThis.config = config;

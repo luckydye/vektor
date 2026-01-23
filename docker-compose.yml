@@ -1,12 +1,15 @@
+version: '3.8'
+
 services:
   wiki:
-    build: .
-    env_file: .env.prod
+    image: registry.s-v.de/tihav/wiki
+    container_name: wiki
     ports:
       - "8080:8080"
-      - "8081:8081"
     volumes:
       - wiki_data:/app/app/data
+    restart: unless-stopped
 
 volumes:
   wiki_data:
+    driver: local

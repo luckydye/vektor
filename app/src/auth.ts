@@ -43,6 +43,7 @@ export const auth = betterAuth({
     genericOAuth({
       config: [
         {
+          redirectURI: appConfig.OAUTH_REDIRECT_URI, 
           providerId: appConfig.OAUTH_PROVIDER_ID,
           clientId: appConfig.OAUTH_CLIENT_ID,
           clientSecret: appConfig.OAUTH_CLIENT_SECRET,
