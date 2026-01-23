@@ -62,7 +62,8 @@ tasks:
 
   docker:build:
     cmds:
-      - docker build . --tag luckydye/wiki
+      - docker build . --tag registry.s-v.de/tihav/wiki --platform linux/amd64
+      - docker push registry.s-v.de/tihav/wiki
   docker:up:
     cmd: docker compose up --build
 
