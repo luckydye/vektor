@@ -6,14 +6,11 @@ tasks:
     desc: Authenticate to remote
     requires:
       vars: [SSH_DEPLOY_KEY, SSH_KNOWN_HOST]
-    env:
-      SSH_DEPLOY_KEY: "{{.SSH_DEPLOY_KEY}}"
-      SSH_KNOWN_HOST: "{{.SSH_KNOWN_HOST}}"
     cmds:
       - mkdir -p ~/.ssh
-      - echo "$SSH_KNOWN_HOST" >> ~/.ssh/known_hosts
+      - cat {{.SSH_KNOWN_HOST}} >> ~/.ssh/known_hosts
       - chmod -R 400 ~/.ssh
-      - eval $(ssh-agent -s) && cat "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+      - eval $(ssh-agent -s) && cat {{.SSH_DEPLOY_KEY}} | tr -d '\r' | ssh-add -
 
   # This is a generic deploy task to deploy containers using podman,
   deploy:

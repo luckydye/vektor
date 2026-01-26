@@ -7,4 +7,5 @@ stages:
 deploy-job:
   stage: deploy
   when: manual
+  allow_failure: false
   script: task -t ./Podman.yml deploy
