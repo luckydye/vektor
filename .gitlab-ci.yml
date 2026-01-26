@@ -1,0 +1,9 @@
+stages:
+  - deploy
+
+deploy-job:
+  stage: deploy
+  when: manual
+  script:
+    - echo "Deploying application..."
+    - echo "Application successfully deployed."
