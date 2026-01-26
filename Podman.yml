@@ -12,9 +12,8 @@ tasks:
     cmds:
       - mkdir -p ~/.ssh
       - echo "$SSH_KNOWN_HOST" >> ~/.ssh/known_hosts
-      - echo "$SSH_DEPLOY_KEY" > ~/.ssh/id_rsa
       - chmod -R 400 ~/.ssh
-      - eval $(ssh-agent -s) && echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+      - eval $(ssh-agent -s) && cat "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
 
   # This is a generic deploy task to deploy containers using podman,
   deploy:
@@ -22,12 +21,10 @@ tasks:
     dir: "{{.USER_WORKING_DIR}}"
     deps: [auth]
     requires:
-      vars: [DEST_HOST_USER, DEST_HOST, DEST_HOST_DIR, DEST_IMAGE]
+      vars: [DEST_HOST_USER, DEST_HOST, DEST_HOST_DIR]
     cmds:
-      # copy compose to host
-      - scp ./docker-compose.yml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/docker-compose.yml
-      # pull images
-      # compose down
-      # compose up
-      - ssh {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman pull {{.DEST_IMAGE}}
+      - scp ./compose.yaml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/compose.yaml
+      - ssh {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman compose pull
+      - ssh {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman compose down
+      - ssh {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman compose up
       - echo 'Successfully deployed at "https://{{.DEST_HOST}}/"'

@@ -4,11 +4,12 @@ services:
   wiki:
     image: registry.s-v.de/tihav/wiki
     container_name: wiki
+    restart: unless-stopped
+    env_file: .env
     ports:
       - "8080:8080"
     volumes:
       - wiki_data:/app/app/data
-    restart: unless-stopped
 
 volumes:
   wiki_data:
