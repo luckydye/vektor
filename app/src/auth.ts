@@ -37,7 +37,12 @@ export const auth = betterAuth({
     enabled: !!import.meta.env.DEV,
   },
 
-  trustedOrigins: ["http://127.0.0.1:8080", "http://localhost:4321"],
+  trustedOrigins: [
+    //
+    config().SITE_URL,
+    "http://127.0.0.1:8080", 
+    "http://localhost:4321",
+  ],
 
   plugins: [
     genericOAuth({
