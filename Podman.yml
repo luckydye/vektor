@@ -1,0 +1,33 @@
+# https://taskfile.dev
+version: 3
+
+tasks:
+  auth:
+    desc: Authenticate to remote
+    requires:
+      vars: [SSH_DEPLOY_KEY, SSH_KNOWN_HOST]
+    env:
+      SSH_DEPLOY_KEY: "{{.SSH_DEPLOY_KEY}}"
+      SSH_KNOWN_HOST: "{{.SSH_KNOWN_HOST}}"
+    cmds:
+      - mkdir -p ~/.ssh
+      - echo "$SSH_KNOWN_HOST" >> ~/.ssh/known_hosts
+      - echo "$SSH_DEPLOY_KEY" > ~/.ssh/id_rsa
+      - chmod -R 400 ~/.ssh
+      - eval $(ssh-agent -s) && echo "$SSH_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+
+  # This is a generic deploy task to deploy containers using podman,
+  deploy:
+    desc: Deploy container image to host
+    dir: "{{.USER_WORKING_DIR}}"
+    deps: [auth]
+    requires:
+      vars: [DEST_HOST_USER, DEST_HOST, DEST_HOST_DIR, DEST_IMAGE]
+    cmds:
+      # copy compose to host
+      - scp ./docker-compose.yml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/docker-compose.yml
+      # pull images
+      # compose down
+      # compose up
+      - ssh {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman pull {{.DEST_IMAGE}}
+      - echo 'Successfully deployed at "https://{{.DEST_HOST}}/"'

@@ -1,9 +1,10 @@
+include:
+  - component: $CI_SERVER_FQDN/sv/taskfiles/mise@2.2.0
+
 stages:
   - deploy
 
 deploy-job:
   stage: deploy
   when: manual
-  script:
-    - echo "Deploying application..."
-    - echo "Application successfully deployed."
+  script: task -t ./Podman.yml deploy
