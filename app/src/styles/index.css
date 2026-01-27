@@ -25,6 +25,18 @@ body {
 
 .main-content {
   font-size: var(--content-text-size, 1.125rem);
+  transition: margin-right 300ms ease;
+}
+
+/* Push content when AI chat is open */
+body.ai-chat-open .main-content {
+  margin-right: 480px;
+}
+
+@media (max-width: 768px) {
+  body.ai-chat-open .main-content {
+    margin-right: 0;
+  }
 }
 
 hr {

@@ -55,3 +55,4 @@ export { default as indentIcon } from "../assets/icons/indent.svg?raw";
 export { default as outdentIcon } from "../assets/icons/outdent.svg?raw";
 export { default as layoutFullIcon } from "../assets/icons/layout-full.svg?raw";
 export { default as layoutDocumentIcon } from "../assets/icons/layout-document.svg?raw";
+export { default as sparklesIcon } from "../assets/icons/sparkles.svg?raw";

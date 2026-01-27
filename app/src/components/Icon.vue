@@ -46,6 +46,7 @@ import {
   redoIcon,
   indentIcon,
   outdentIcon,
+  sparklesIcon,
 } from "../assets/icons.ts";
 
 const icons = {
@@ -96,6 +97,7 @@ const icons = {
   redo: redoIcon,
   indent: indentIcon,
   outdent: outdentIcon,
+  sparkles: sparklesIcon,
 };
 
 const props = defineProps<{

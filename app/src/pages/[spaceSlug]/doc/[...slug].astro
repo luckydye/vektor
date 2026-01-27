@@ -20,6 +20,7 @@ import DocumentActions from "../../../components/DocumentActions.vue";
 import DocumentProperties from "../../../components/DocumentProperties.vue";
 import TitleEditor from "../../../components/TitleEditor.vue";
 import RestoreButton from "../../../components/RestoreButton.vue";
+import AIChatPanel from "../../../components/AIChatPanel.vue";
 
 const { spaceSlug, slug } = Astro.params;
 
@@ -146,7 +147,7 @@ if (diffMins >= 1 && diffMins < 60) {
         });
       }
     </script>
-    
+
     <div
       data-type={document.type}
       data-updated-at={document.updatedAt}
@@ -258,5 +259,6 @@ if (diffMins >= 1 && diffMins < 60) {
    	<!-- Revisions Sidebar -->
     <div slot="outer">
         <RevisionsSidebar client:only documentId={document.id} />
+        <AIChatPanel client:only documentId={document.id} />
     </div>
 </SpaceLayout>
