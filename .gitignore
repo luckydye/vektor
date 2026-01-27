@@ -12,5 +12,6 @@ examples/upcoming-events
 examples/bookings
 examples/calendar-view
 
+env
 .env
 .env.*
