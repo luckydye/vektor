@@ -3,6 +3,7 @@
     "@types/bun": "latest"
   },
   "dependencies": {
-    "web-tree-sitter": "^0.26.3"
+    "web-tree-sitter": "^0.26.3",
+		"linkedom": "^0.18.12"
   }
 }

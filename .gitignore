@@ -15,3 +15,7 @@ examples/calendar-view
 env
 .env
 .env.*
+
+*credentials*
+
+.claude
