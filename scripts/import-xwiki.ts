@@ -7,6 +7,7 @@ import { parseHTML } from "linkedom";
 
 const BASE_URL = "http://127.0.0.1:4321";
 const EXPORT_DIR = "./temp/Technik.WebHome/pages";
+const ATTACHMENT_DIR = "./temp/Technik.WebHome/attachment";
 
 interface Document {
   slug: string;
@@ -76,6 +77,51 @@ async function authenticate() {
   }
 
   console.log(`✓ Using credentials from file`);
+}
+
+async function uploadImage(imagePath: string): Promise<string | null> {
+  try {
+    // Decode URL encoding in the path
+    const decodedPath = decodeURIComponent(imagePath);
+
+    // Resolve the image path relative to the attachment directory
+    const fullPath = join(ATTACHMENT_DIR, decodedPath);
+
+    if (!existsSync(fullPath)) {
+      console.log(`⚠ Image not found: ${decodedPath}`);
+      return null;
+    }
+
+    // Read the file
+    const file = Bun.file(fullPath);
+    const arrayBuffer = await file.arrayBuffer();
+    const blob = new Blob([arrayBuffer], { type: file.type });
+
+    // Create form data (upload to space level, not document level)
+    const formData = new FormData();
+    const filename = decodedPath.split("/").pop() || "image";
+    formData.append("file", blob, filename);
+
+    // Upload to API
+    const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
+      method: "POST",
+      headers: {
+        "Cookie": `better-auth.session_token=${sessionToken}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      console.log(`⚠ Failed to upload image ${filename}: ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.url;
+  } catch (error) {
+    console.log(`⚠ Error uploading image ${imagePath}:`, error);
+    return null;
+  }
 }
 
 async function createSpace() {
@@ -192,12 +238,54 @@ function extractTitle(doc: Document, html: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function cleanXWikiHtml(html: string): string {
+async function cleanXWikiHtml(html: string, htmlFilePath: string): Promise<string> {
   const { document } = parseHTML(html);
   const content = document.querySelector("#xwikicontent");
 
   if (!content) {
     return "";
+  }
+
+  // Process images: upload and replace URLs
+  const images = Array.from(content.querySelectorAll("img"));
+
+  for (const img of images) {
+    const src = img.getAttribute("src");
+    if (!src) continue;
+
+    // Skip external URLs and data URLs
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:")) {
+      continue;
+    }
+
+    // Resolve relative path from the HTML file location
+    // XWiki uses paths like "../../../../../attachment/intern/Technik/..."
+    // We need to resolve this relative to the HTML file's directory
+    const htmlDir = htmlFilePath.replace(EXPORT_DIR, "").replace(/\/WebHome\.html$/, "");
+    const pathParts = src.split("/");
+
+    // Count how many levels up (..) and remove them
+    let levelsUp = 0;
+    const cleanParts = [];
+    for (const part of pathParts) {
+      if (part === "..") {
+        levelsUp++;
+      } else if (part && part !== ".") {
+        cleanParts.push(part);
+      }
+    }
+
+    // The path should start with "attachment/" after resolving ../
+    if (cleanParts[0] === "attachment") {
+      // Remove "attachment/" prefix as we'll use ATTACHMENT_DIR
+      const imagePath = cleanParts.slice(1).join("/");
+
+      // Upload the image
+      const newUrl = await uploadImage(imagePath);
+      if (newUrl) {
+        img.setAttribute("src", newUrl);
+      }
+    }
   }
 
   // Remove xtree divs (navigation elements)
@@ -224,16 +312,21 @@ function cleanXWikiHtml(html: string): string {
   // Convert XWiki mentions to user-mention elements
   content.querySelectorAll("a.xwiki-mention, a[data-reference]").forEach((mention) => {
     const username = mention.textContent?.trim();
-    if (username && username.startsWith("@")) {
-      // Extract email from mention text like "@j_schraft@s-v_de"
-      // Remove leading @ and convert underscores to dots in domain
-      const emailPart = username.substring(1); // Remove leading @
-      const email = emailPart.replace(/_/g, ".");
+    const dataReference = mention.getAttribute("data-reference");
 
-      const userMention = document.createElement("user-mention");
-      userMention.setAttribute("email", email);
-      userMention.textContent = username;
-      mention.replaceWith(userMention);
+    if (username && dataReference) {
+      // Extract email from data-reference like "xwiki:XWiki.p\.reichard@s-v\.de" or "intern:XWiki.j_schraft@s-v_de"
+      // Remove the "xwiki:" or "intern:" prefix and "XWiki." prefix
+      const emailMatch = dataReference.match(/(?:xwiki:|intern:)XWiki\.(.+)/);
+      if (emailMatch) {
+        // Unescape the email (remove backslashes) and replace underscores with dots
+        let email = emailMatch[1].replace(/\\/g, "").replace(/_/g, ".");
+
+        const userMention = document.createElement("user-mention");
+        userMention.setAttribute("email", email);
+        userMention.textContent = username;
+        mention.replaceWith(userMention);
+      }
     }
   });
 
@@ -452,7 +545,7 @@ async function main() {
   for (const filePath of htmlFiles) {
     const html = await Bun.file(filePath).text();
     const slug = createSlugFromPath(filePath);
-    const content = cleanXWikiHtml(html);
+    const content = await cleanXWikiHtml(html, filePath);
 
     if (isDocumentEmpty(content)) {
       console.log(`- Skipping empty document: ${slug}`);
