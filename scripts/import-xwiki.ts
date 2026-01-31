@@ -219,18 +219,16 @@ function getHierarchyInfo(slug: string): { parentSlug?: string; level: number; c
 function extractTitle(doc: Document, html: string): string {
   const { document } = parseHTML(html);
 
-  // Try to get the first heading
-  const h1 = document.querySelector("#xwikicontent h1");
-  if (h1?.textContent?.trim()) {
-    return h1.textContent.trim();
+  // Try to get the meta description
+  const metaDescription = document.querySelector('meta[name="description"]');
+  if (metaDescription) {
+    const content = metaDescription.getAttribute("content")?.trim();
+    if (content) {
+      return content;
+    }
   }
 
-  const h2 = document.querySelector("#xwikicontent h2");
-  if (h2?.textContent?.trim()) {
-    return h2.textContent.trim();
-  }
-
-  // Use slug as fallback
+  // Fallback: use slug
   return doc.slug
     .split("/")
     .pop()!
@@ -547,11 +545,6 @@ async function main() {
     const slug = createSlugFromPath(filePath);
     const content = await cleanXWikiHtml(html, filePath);
 
-    if (isDocumentEmpty(content)) {
-      console.log(`- Skipping empty document: ${slug}`);
-      continue;
-    }
-
     const hierarchyInfo = getHierarchyInfo(slug);
     const title = extractTitle({ slug, content, properties: {}, path: filePath, ...hierarchyInfo }, html);
 
@@ -565,10 +558,20 @@ async function main() {
       properties.category = hierarchyInfo.categorySlug;
     }
 
+    // Import all documents, even if empty, to maintain hierarchy
+    // Empty parent pages are needed for their children's parent relationships
+    const isEmpty = isDocumentEmpty(content);
+    if (isEmpty) {
+      console.log(`- Empty document (importing for hierarchy): ${slug}`);
+    }
+
     documents.push({
       slug,
-      content,
-      properties,
+      content: isEmpty ? "<p></p>" : content, // Use minimal HTML for empty docs
+      properties: {
+        ...properties,
+        isEmpty: isEmpty ? "true" : "false", // Track if document was originally empty
+      },
       path: filePath,
       ...hierarchyInfo,
     });
@@ -613,6 +616,8 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
+  const emptyCount = documents.filter(d => d.properties.isEmpty === "true").length;
+
   console.log("\n======================");
   console.log("Import Summary");
   console.log("======================");
@@ -621,7 +626,7 @@ async function main() {
   console.log(`Categories created: ${categoryMap.size}`);
   console.log(`Successfully imported: ${successCount}`);
   console.log(`Failed: ${failCount}`);
-  console.log(`Skipped (empty): ${htmlFiles.length - documents.length}`);
+  console.log(`Empty (imported for hierarchy): ${emptyCount}`);
   console.log(`\nSpace ID: ${spaceId}`);
 }
 
