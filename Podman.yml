@@ -23,7 +23,7 @@ tasks:
       - scp -i {{.SSH_DEPLOY_KEY}} ./compose.yaml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/compose.yaml
       - scp -i {{.SSH_DEPLOY_KEY}} {{.DEST_ENV}} {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/env
       - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman login --username gitlab-ci-token --password $CI_JOB_TOKEN registry.s-v.de
-      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman-compose -f {{.DEST_HOST_DIR}}/compose.yaml pull
-      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman-compose -f {{.DEST_HOST_DIR}}/compose.yaml down
-      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman-compose -f {{.DEST_HOST_DIR}}/compose.yaml up -d
+      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman compose -f {{.DEST_HOST_DIR}}/compose.yaml pull
+      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman compose -f {{.DEST_HOST_DIR}}/compose.yaml down
+      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} podman compose -f {{.DEST_HOST_DIR}}/compose.yaml up -d
       - echo 'Successfully deployed at "https://{{.DEST_HOST}}/"'
