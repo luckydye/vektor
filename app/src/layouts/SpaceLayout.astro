@@ -43,6 +43,16 @@ if (Astro.locals.user) {
 
 // Generate color palette from brand color
 const paletteCss = generatePaletteCss(brandColor);
+
+const publicEnvVars = () => {
+  return {
+    WIKI_FEATURE_CANVAS: process.env.WIKI_FEATURE_CANVAS,
+    WIKI_SITE_URL: process.env.WIKI_SITE_URL,
+    WIKI_API_URL: process.env.WIKI_API_URL,
+    WIKI_COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
+    WIKI_DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
+  }
+};
 ---
 
 <!doctype html>
@@ -57,6 +67,8 @@ const paletteCss = generatePaletteCss(brandColor);
 
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
+    
+    <script type="application/json" id="env" set:html={JSON.stringify(publicEnvVars())}></script>
 
     <meta
       name="theme-color"

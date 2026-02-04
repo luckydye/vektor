@@ -1,5 +1,5 @@
 include:
-  - component: $CI_SERVER_FQDN/sv/taskfiles/mise@2.2.0
+  - component: $CI_SERVER_FQDN/sv/taskfiles/mise@3.0.0
 
 stages:
   - build

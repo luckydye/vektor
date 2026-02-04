@@ -1,17 +1,41 @@
-export function config() {
+let _publicEnvVars: Record<string, string> | undefined;
+
+const publicEnvVars = () => {
+  if(_publicEnvVars) {
+    return _publicEnvVars;
+  }
+  
+  const script = document.getElementById('env') as HTMLScriptElement;
+  if (!script) return {};
+  try {
+    _publicEnvVars = JSON.parse(script.textContent || '');
+  } catch (error) {
+    console.error('Failed to parse public environment variables:', error);
+    return {};
+  }
+  
+  return _publicEnvVars;
+}
+
+export function config() {  
+  const process = globalThis.process || { env: {} };
+  
   return {
+    // Feature flags
+    FEATURE_CANVAS: process.env.WIKI_FEATURE_CANVAS || publicEnvVars()?.WIKI_FEATURE_CANVAS,
+        
     /**
      * Public origin as in the browser
      */
-    SITE_URL: process.env.WIKI_SITE_URL,
+    SITE_URL: process.env.WIKI_SITE_URL || publicEnvVars()?.WIKI_SITE_URL,
     /**
      * API host origin (usually same as site_url)
      */
-    API_URL: process.env.WIKI_API_URL,
+    API_URL: process.env.WIKI_API_URL || publicEnvVars()?.WIKI_API_URL,
     /**
      * Host origin for sync server
      */
-    COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
+    COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST || publicEnvVars()?.WIKI_COLLABORATION_HOST,
 
     /**
      * The default space to redirect to from root "/"
@@ -34,9 +58,6 @@ export function config() {
     OAUTH_TOKEN_URL: process.env.OAUTH_TOKEN_URL,
     OAUTH_USERINFO_URL: process.env.OAUTH_USERINFO_URL,
     OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
-
-    // Feature flags
-    FEATURE_CANVAS: process.env.WIKI_FEATURE_CANVAS,
   } as const;
 }
 
