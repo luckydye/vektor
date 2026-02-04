@@ -26,4 +26,13 @@ tasks:
       - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} docker compose -f {{.DEST_HOST_DIR}}/compose.yaml pull
       - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} docker compose -f {{.DEST_HOST_DIR}}/compose.yaml down
       - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} docker compose -f {{.DEST_HOST_DIR}}/compose.yaml up -d
-      - echo 'Successfully deployed at "https://{{.DEST_HOST}}/"'
+
+  # This is a generic deploy task to deploy containers using podman,
+  shutdown:
+    desc: Deploy container image to host
+    dir: "{{.USER_WORKING_DIR}}"
+    deps: [auth]
+    requires:
+      vars: [DEST_HOST_USER, DEST_HOST, DEST_HOST_DIR]
+    cmds:
+      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} docker compose -f {{.DEST_HOST_DIR}}/compose.yaml down
