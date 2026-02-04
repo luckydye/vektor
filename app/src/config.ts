@@ -5,13 +5,15 @@ const publicEnvVars = () => {
     return _publicEnvVars;
   }
   
-  const script = document.getElementById('env') as HTMLScriptElement;
-  if (!script) return {};
-  try {
-    _publicEnvVars = JSON.parse(script.textContent || '');
-  } catch (error) {
-    console.error('Failed to parse public environment variables:', error);
-    return {};
+  if (typeof window.document !== 'undefined') {
+    const script = document.getElementById('env') as HTMLScriptElement;
+    if (!script) return {};
+    try {
+      _publicEnvVars = JSON.parse(script.textContent || '');
+    } catch (error) {
+      console.error('Failed to parse public environment variables:', error);
+      return {};
+    }
   }
   
   return _publicEnvVars;
