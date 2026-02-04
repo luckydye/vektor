@@ -19,6 +19,8 @@ tasks:
     requires:
       vars: [DEST_HOST_USER, DEST_HOST, DEST_HOST_DIR]
     cmds:
+      - apt-get update && apt-get install -y rsync
+      
       # - scp -i {{.SSH_DEPLOY_KEY}} ./compose.yaml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/compose.yaml
       # - scp -i {{.SSH_DEPLOY_KEY}} {{.DEST_ENV}} {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/
       
