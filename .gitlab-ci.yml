@@ -6,8 +6,9 @@ stages:
   - deploy
 
 build:
-  stage: build
   image: docker:latest
+  stage: build
+  when: manual
   services:
     - docker:dind
   before_script:
@@ -20,5 +21,9 @@ build:
 deploy:
   stage: deploy
   when: manual
-  allow_failure: false
   script: task -t ./Deploy.yml deploy
+
+shutdown:
+  stage: deploy
+  when: manual
+  script: task -t ./Deploy.yml shutdown
