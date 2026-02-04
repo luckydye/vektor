@@ -5,11 +5,17 @@ stages:
   - build
   - deploy
 
-build-job:
+build:
   stage: build
-  script: task -t ./Deploy.yml build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker login --username gitlab-ci-token --password $CI_JOB_TOKEN registry.s-v.de
+    - docker build . --tag registry.s-v.de/tihav/wiki --platform linux/amd64
+    - docker push registry.s-v.de/tihav/wiki
 
-deploy-job:
+deploy:
   stage: deploy
   when: manual
   allow_failure: false
