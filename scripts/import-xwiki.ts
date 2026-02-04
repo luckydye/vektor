@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 
-const BASE_URL = "http://127.0.0.1:4321";
+const DEFAULT_BASE_URL = "http://127.0.0.1:4321";
 const EXPORT_DIR = "./temp/Technik.WebHome/pages";
 const ATTACHMENT_DIR = "./temp/Technik.WebHome/attachment";
 
@@ -22,16 +22,23 @@ interface Document {
 let sessionToken: string;
 let spaceId: string;
 let userId: string;
+let BASE_URL: string;
 const documentIdMap = new Map<string, string>(); // slug -> document ID
 const categoryMap = new Map<string, string>(); // slug -> category ID
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const credentialsFileArg = args.find(arg => arg.startsWith("--credentials="))?.split("=")[1];
+const credentialsFileArg = args
+  .find((arg) => arg.startsWith("--credentials="))
+  ?.split("=")[1];
+const hostArg = args.find((arg) => arg.startsWith("--host="))?.split("=")[1];
+BASE_URL = hostArg || DEFAULT_BASE_URL;
 
 async function authenticate() {
   if (!credentialsFileArg) {
-    throw new Error("Credentials file is required. Use --credentials=<file> or --help for usage.");
+    throw new Error(
+      "Credentials file is required. Use --credentials=<file> or --help for usage.",
+    );
   }
 
   console.log(`Authenticating with credentials file: ${credentialsFileArg}`);
@@ -55,7 +62,7 @@ async function authenticate() {
   } catch {
     // Try key=value format
     for (const line of lines) {
-      const [key, value] = line.split("=").map(s => s.trim());
+      const [key, value] = line.split("=").map((s) => s.trim());
       if (key === "session_token" || key === "sessionToken" || key === "token") {
         token = value;
       }
@@ -66,7 +73,9 @@ async function authenticate() {
   }
 
   if (!token) {
-    throw new Error("Invalid credentials file format. Expected JSON with 'session_token' or key=value format.");
+    throw new Error(
+      "Invalid credentials file format. Expected JSON with 'session_token' or key=value format.",
+    );
   }
 
   sessionToken = token;
@@ -106,7 +115,7 @@ async function uploadImage(imagePath: string): Promise<string | null> {
     const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
       method: "POST",
       headers: {
-        "Cookie": `better-auth.session_token=${sessionToken}`,
+        Cookie: `${sessionToken}`,
       },
       body: formData,
     });
@@ -132,7 +141,7 @@ async function createSpace() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Cookie": `better-auth.session_token=${sessionToken}`,
+      Cookie: `${sessionToken}`,
     },
     body: JSON.stringify({
       name: "Technik",
@@ -160,7 +169,7 @@ async function makeSpacePublic() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Cookie": `better-auth.session_token=${sessionToken}`,
+      Cookie: `${sessionToken}`,
     },
     body: JSON.stringify({
       type: "role",
@@ -180,27 +189,34 @@ async function makeSpacePublic() {
 
 function createSlugFromPath(filePath: string): string {
   // Remove base path and WebHome.html
-  const relativePath = filePath
-    .replace(EXPORT_DIR, "")
-    .replace(/\/WebHome\.html$/, "");
+  const relativePath = filePath.replace(EXPORT_DIR, "").replace(/\/WebHome\.html$/, "");
 
   // Decode URL encoding and clean up
   const decoded = decodeURIComponent(relativePath);
 
   // Remove leading/trailing slashes and convert to slug
-  return decoded
-    .replace(/^\/+|\/+$/g, "")
-    .replace(/^intern\/Technik\/?/, "")
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9-_\/äöüÄÖÜß]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase() || "home";
+  return (
+    decoded
+      .replace(/^\/+|\/+$/g, "")
+      .replace(/^intern\/Technik\/?/, "")
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9-_/äöüÄÖÜß]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "home"
+  );
 }
 
-function getHierarchyInfo(slug: string): { parentSlug?: string; level: number; categorySlug?: string } {
+function getHierarchyInfo(slug: string): {
+  parentSlug?: string;
+  level: number;
+  categorySlug?: string;
+} {
   // Remove common prefix to get actual hierarchy
-  const normalizedSlug = slug.replace(/^temp\/technik-webhome\/pages\/intern\/technik\/?/, "");
+  const normalizedSlug = slug.replace(
+    /^temp\/technik-webhome\/pages\/intern\/technik\/?/,
+    "",
+  );
 
   if (!normalizedSlug || normalizedSlug === slug) {
     // Root document
@@ -210,7 +226,7 @@ function getHierarchyInfo(slug: string): { parentSlug?: string; level: number; c
   const parts = normalizedSlug.split("/");
   const level = parts.length;
 
-  const parentSlug = parts.length > 1 ? slug.replace(/\/[^\/]+$/, "") : undefined;
+  const parentSlug = parts.length > 1 ? slug.replace(/\/[^/]+$/, "") : undefined;
   const categorySlug = parts.length >= 1 ? parts[0] : undefined;
 
   return { parentSlug, level, categorySlug };
@@ -252,7 +268,11 @@ async function cleanXWikiHtml(html: string, htmlFilePath: string): Promise<strin
     if (!src) continue;
 
     // Skip external URLs and data URLs
-    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:")) {
+    if (
+      src.startsWith("http://") ||
+      src.startsWith("https://") ||
+      src.startsWith("data:")
+    ) {
       continue;
     }
 
@@ -294,10 +314,9 @@ async function cleanXWikiHtml(html: string, htmlFilePath: string): Promise<strin
     const element = el as Element;
     // Keep standard HTML semantic meaning, remove XWiki-specific classes
     const classes = Array.from(element.classList);
-    const cleanClasses = classes.filter(cls =>
-      !cls.startsWith("wiki") &&
-      !cls.startsWith("xwiki") &&
-      cls !== "content-wrapper"
+    const cleanClasses = classes.filter(
+      (cls) =>
+        !cls.startsWith("wiki") && !cls.startsWith("xwiki") && cls !== "content-wrapper",
     );
 
     if (cleanClasses.length > 0) {
@@ -318,7 +337,7 @@ async function cleanXWikiHtml(html: string, htmlFilePath: string): Promise<strin
       const emailMatch = dataReference.match(/(?:xwiki:|intern:)XWiki\.(.+)/);
       if (emailMatch) {
         // Unescape the email (remove backslashes) and replace underscores with dots
-        let email = emailMatch[1].replace(/\\/g, "").replace(/_/g, ".");
+        const email = emailMatch[1].replace(/\\/g, "").replace(/_/g, ".");
 
         const userMention = document.createElement("user-mention");
         userMention.setAttribute("email", email);
@@ -448,13 +467,17 @@ async function createCategory(slug: string, name: string): Promise<void> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Cookie": `better-auth.session_token=${sessionToken}`,
+        Cookie: `${sessionToken}`,
       },
       body: JSON.stringify({
         name,
         slug,
         description: `Category for ${name}`,
-        color: "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0"),
+        color:
+          "#" +
+          Math.floor(Math.random() * 16777215)
+            .toString(16)
+            .padStart(6, "0"),
       }),
     });
 
@@ -480,7 +503,7 @@ async function importDocument(doc: Document): Promise<boolean> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Cookie": `better-auth.session_token=${sessionToken}`,
+        Cookie: `${sessionToken}`,
       },
       body: JSON.stringify({
         slug: doc.slug,
@@ -512,16 +535,24 @@ async function main() {
 
   // Show usage if help requested
   if (args.includes("--help") || args.includes("-h")) {
-    console.log("Usage: bun scripts/import-xwiki.ts --credentials=<file>");
+    console.log("Usage: bun scripts/import-xwiki.ts --credentials=<file> [--host=<url>]");
     console.log("\nOptions:");
-    console.log("  --credentials=<file>    Path to credentials file (JSON or key=value format)");
+    console.log(
+      "  --credentials=<file>    Path to credentials file (JSON or key=value format)",
+    );
+    console.log(
+      "  --host=<url>            Base URL of the wiki API (default: http://127.0.0.1:4321)",
+    );
     console.log("  --help, -h             Show this help message");
     console.log("\nCredentials file format:");
-    console.log("  JSON:     { \"session_token\": \"...\", \"userId\": \"...\" }");
+    console.log('  JSON:     { "session_token": "...", "userId": "..." }');
     console.log("  Key=value: session_token=...");
     console.log("             user_id=...");
-    console.log("\nExample:");
+    console.log("\nExamples:");
     console.log("  bun scripts/import-xwiki.ts --credentials=./credentials.json");
+    console.log(
+      "  bun scripts/import-xwiki.ts --credentials=./credentials.json --host=https://wiki.example.com",
+    );
     process.exit(0);
   }
 
@@ -546,7 +577,10 @@ async function main() {
     const content = await cleanXWikiHtml(html, filePath);
 
     const hierarchyInfo = getHierarchyInfo(slug);
-    const title = extractTitle({ slug, content, properties: {}, path: filePath, ...hierarchyInfo }, html);
+    const title = extractTitle(
+      { slug, content, properties: {}, path: filePath, ...hierarchyInfo },
+      html,
+    );
 
     const properties: Record<string, string> = {
       title,
@@ -616,7 +650,7 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  const emptyCount = documents.filter(d => d.properties.isEmpty === "true").length;
+  const emptyCount = documents.filter((d) => d.properties.isEmpty === "true").length;
 
   console.log("\n======================");
   console.log("Import Summary");
