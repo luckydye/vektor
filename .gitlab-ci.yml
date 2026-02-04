@@ -2,16 +2,15 @@ include:
   - component: $CI_SERVER_FQDN/sv/taskfiles/mise@2.2.0
 
 stages:
+  - build
   - deploy
 
-deploy:
+build-job:
+  stage: build
+  script: task -t ./Deploy.yml build
+
+deploy-job:
   stage: deploy
   when: manual
   allow_failure: false
   script: task -t ./Deploy.yml deploy
-
-shutdown:
-  stage: deploy
-  when: manual
-  allow_failure: false
-  script: task -t ./Deploy.yml shutdown

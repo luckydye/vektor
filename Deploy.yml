@@ -12,7 +12,13 @@ tasks:
       - chmod -R 400 ~/.ssh
       - chmod 400 {{.SSH_DEPLOY_KEY}}
 
-  # This is a generic deploy task to deploy containers using podman,
+  build:
+    desc: Build and push Docker image
+    deps: [auth]
+    cmds:
+      - docker build . --tag registry.s-v.de/tihav/wiki --platform linux/amd64
+      - docker push registry.s-v.de/tihav/wiki
+
   deploy:
     desc: Deploy container image to host
     dir: "{{.USER_WORKING_DIR}}"

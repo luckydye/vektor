@@ -60,13 +60,6 @@ tasks:
     cmds:
       - bun build ./src/server.ts --compile --outfile ./wiki
 
-  docker:build:
-    cmds:
-      - docker build . --tag registry.s-v.de/tihav/wiki --platform linux/amd64
-      - docker push registry.s-v.de/tihav/wiki
-  docker:up:
-    cmd: docker compose up --build
-
   test:
     dir: ./app
     cmds:
