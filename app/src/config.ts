@@ -5,7 +5,7 @@ const publicEnvVars = () => {
     return _publicEnvVars;
   }
   
-  if (typeof window.document !== 'undefined') {
+  if (typeof globalThis.document !== 'undefined') {
     const script = document.getElementById('env') as HTMLScriptElement;
     if (!script) return {};
     try {
