@@ -19,13 +19,11 @@ tasks:
     requires:
       vars: [DEST_HOST_USER, DEST_HOST, DEST_HOST_DIR]
     cmds:
-      - apt-get update && apt-get install -y rsync
+      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} rm {{.DEST_HOST_DIR}}/compose.yaml
+      - scp -i {{.SSH_DEPLOY_KEY}} ./compose.yaml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/compose.yaml
       
-      # - scp -i {{.SSH_DEPLOY_KEY}} ./compose.yaml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/compose.yaml
-      # - scp -i {{.SSH_DEPLOY_KEY}} {{.DEST_ENV}} {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/
-      
-      - rsync -e "ssh -i {{.SSH_DEPLOY_KEY}}" -avz --delete ./compose.yaml {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/compose.yaml
-      - rsync -e "ssh -i {{.SSH_DEPLOY_KEY}}" -avz --delete {{.DEST_ENV}} {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/env
+      - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} rm {{.DEST_HOST_DIR}}/env
+      - scp -i {{.SSH_DEPLOY_KEY}} {{.DEST_ENV}} {{.DEST_HOST_USER}}@{{.DEST_HOST}}:{{.DEST_HOST_DIR}}/env
       
       - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} docker login --username gitlab-ci-token --password $CI_JOB_TOKEN registry.s-v.de
       - ssh -i {{.SSH_DEPLOY_KEY}} {{.DEST_HOST_USER}}@{{.DEST_HOST}} docker compose -f {{.DEST_HOST_DIR}}/compose.yaml pull
