@@ -4,8 +4,14 @@ include:
 stages:
   - deploy
 
-deploy-job:
+deploy:
   stage: deploy
   when: manual
   allow_failure: false
-  script: task -t ./Podman.yml deploy
+  script: task -t ./Deploy.yml deploy
+
+shutdown:
+  stage: deploy
+  when: manual
+  allow_failure: false
+  script: task -t ./Deploy.yml shutdown
