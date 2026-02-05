@@ -78,7 +78,8 @@ async function authenticate() {
     );
   }
 
-  sessionToken = token;
+  // Strip prefix if already present (normalize token)
+  sessionToken = token.replace(/^better-auth\.session_token=/, "");
   userId = userIdFromFile;
 
   if (!userId) {
@@ -92,6 +93,7 @@ async function uploadImage(imagePath: string): Promise<string | null> {
   try {
     // Decode URL encoding in the path
     const decodedPath = decodeURIComponent(imagePath);
+    console.log(`  Uploading: ${decodedPath}`);
 
     // Resolve the image path relative to the attachment directory
     const fullPath = join(ATTACHMENT_DIR, decodedPath);
@@ -111,17 +113,25 @@ async function uploadImage(imagePath: string): Promise<string | null> {
     const filename = decodedPath.split("/").pop() || "image";
     formData.append("file", blob, filename);
 
-    // Upload to API
+    // Upload to API with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads`, {
       method: "POST",
       headers: {
-        Cookie: `${sessionToken}`,
+        Cookie: `better-auth.session_token=${sessionToken}`,
+        Origin: BASE_URL,
       },
       body: formData,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      console.log(`⚠ Failed to upload image ${filename}: ${response.statusText}`);
+      const errorText = await response.text();
+      console.log(`⚠ Failed to upload image ${filename}: ${response.statusText} ${response.status} - ${errorText}`);
       return null;
     }
 
@@ -141,7 +151,7 @@ async function createSpace() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: `${sessionToken}`,
+      Cookie: `better-auth.session_token=${sessionToken}`,
     },
     body: JSON.stringify({
       name: "Technik",
@@ -169,7 +179,7 @@ async function makeSpacePublic() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: `${sessionToken}`,
+      Cookie: `better-auth.session_token=${sessionToken}`,
     },
     body: JSON.stringify({
       type: "role",
@@ -467,7 +477,7 @@ async function createCategory(slug: string, name: string): Promise<void> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: `${sessionToken}`,
+        Cookie: `better-auth.session_token=${sessionToken}`,
       },
       body: JSON.stringify({
         name,
@@ -503,7 +513,7 @@ async function importDocument(doc: Document): Promise<boolean> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Cookie: `${sessionToken}`,
+        Cookie: `better-auth.session_token=${sessionToken}`,
       },
       body: JSON.stringify({
         slug: doc.slug,
