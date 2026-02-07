@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { readdir } from "node:fs/promises";
+import { readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -8,6 +8,7 @@ import { parseHTML } from "linkedom";
 const DEFAULT_BASE_URL = "http://127.0.0.1:4321";
 const EXPORT_DIR = "./temp/Technik.WebHome/pages";
 const ATTACHMENT_DIR = "./temp/Technik.WebHome/attachment";
+const SESSION_FILE = "./.import-session.json";
 
 interface Document {
   slug: string;
@@ -19,12 +20,65 @@ interface Document {
   categorySlug?: string;
 }
 
+interface ImportSession {
+  spaceId: string;
+  importedSlugs: string[];
+  categorySlugs: string[];
+  lastUpdated: string;
+  host: string;
+  uploadedImages: Record<string, string>; // image path -> uploaded URL
+}
+
 let sessionToken: string;
 let spaceId: string;
 let userId: string;
 let BASE_URL: string;
 const documentIdMap = new Map<string, string>(); // slug -> document ID
 const categoryMap = new Map<string, string>(); // slug -> category ID
+const uploadedImageCache = new Map<string, string>(); // image path -> uploaded URL
+let existingDocumentsLoaded = false; // Track if we've fetched existing documents
+let sessionData: ImportSession | null = null;
+
+async function loadSession(): Promise<ImportSession | null> {
+  if (!existsSync(SESSION_FILE)) {
+    return null;
+  }
+
+  try {
+    const content = await Bun.file(SESSION_FILE).text();
+    const session = JSON.parse(content) as ImportSession;
+    console.log(`✓ Found existing session file (space: ${session.spaceId})`);
+    return session;
+  } catch (error) {
+    console.log("⚠ Failed to load session file, starting fresh");
+    return null;
+  }
+}
+
+async function saveSession(): Promise<void> {
+  if (!spaceId) return;
+
+  // Convert Map to Record for JSON serialization
+  const uploadedImages: Record<string, string> = {};
+  for (const [key, value] of uploadedImageCache.entries()) {
+    uploadedImages[key] = value;
+  }
+
+  const session: ImportSession = {
+    spaceId,
+    importedSlugs: Array.from(documentIdMap.keys()),
+    categorySlugs: Array.from(categoryMap.keys()),
+    lastUpdated: new Date().toISOString(),
+    host: BASE_URL,
+    uploadedImages,
+  };
+
+  try {
+    await writeFile(SESSION_FILE, JSON.stringify(session, null, 2));
+  } catch (error) {
+    console.log("⚠ Failed to save session file:", error);
+  }
+}
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -32,6 +86,8 @@ const credentialsFileArg = args
   .find((arg) => arg.startsWith("--credentials="))
   ?.split("=")[1];
 const hostArg = args.find((arg) => arg.startsWith("--host="))?.split("=")[1];
+const skipImagesArg = args.includes("--skip-images");
+const resumeArg = args.includes("--resume");
 BASE_URL = hostArg || DEFAULT_BASE_URL;
 
 async function authenticate() {
@@ -90,9 +146,20 @@ async function authenticate() {
 }
 
 async function uploadImage(imagePath: string): Promise<string | null> {
+  // Skip image upload if --skip-images flag is set
+  if (skipImagesArg) {
+    return null;
+  }
+
   try {
     // Decode URL encoding in the path
     const decodedPath = decodeURIComponent(imagePath);
+
+    // Check cache first
+    if (uploadedImageCache.has(decodedPath)) {
+      return uploadedImageCache.get(decodedPath)!;
+    }
+
     console.log(`  Uploading: ${decodedPath}`);
 
     // Resolve the image path relative to the attachment directory
@@ -131,21 +198,72 @@ async function uploadImage(imagePath: string): Promise<string | null> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.log(`⚠ Failed to upload image ${filename}: ${response.statusText} ${response.status} - ${errorText}`);
+      console.log(
+        `⚠ Failed to upload image ${filename}: ${response.statusText} ${response.status} - ${errorText}`,
+      );
       return null;
     }
 
     const data = await response.json();
-    return data.url;
+    const uploadedUrl = data.url;
+
+    // Cache the uploaded URL
+    uploadedImageCache.set(decodedPath, uploadedUrl);
+
+    console.log(`Image uploaded ${imagePath}:`);
+
+    return uploadedUrl;
   } catch (error) {
     console.log(`⚠ Error uploading image ${imagePath}:`, error);
     return null;
   }
 }
 
+async function fetchExistingDocuments(): Promise<void> {
+  if (existingDocumentsLoaded) {
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/documents`, {
+      headers: {
+        Cookie: `better-auth.session_token=${sessionToken}`,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.log(`⚠ Could not fetch existing documents: ${response.statusText}`);
+      return;
+    }
+
+    const data = await response.json();
+    if (data.documents && Array.isArray(data.documents)) {
+      for (const doc of data.documents) {
+        if (doc.slug && doc.id) {
+          documentIdMap.set(doc.slug, doc.id);
+        }
+      }
+    }
+
+    existingDocumentsLoaded = true;
+    console.log(`✓ Found ${documentIdMap.size} existing documents in space`);
+  } catch (error) {
+    console.log(`⚠ Error fetching existing documents:`, error);
+  }
+}
+
 async function createSpace() {
   console.log("Creating space for import...");
   const uniqueSlug = `technik-${Date.now()}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   const response = await fetch(`${BASE_URL}/api/v1/spaces`, {
     method: "POST",
@@ -157,7 +275,10 @@ async function createSpace() {
       name: "Technik",
       slug: uniqueSlug,
     }),
+    signal: controller.signal,
   });
+
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -175,6 +296,9 @@ async function createSpace() {
 async function makeSpacePublic() {
   console.log("Making space public...");
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
   const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/permissions`, {
     method: "POST",
     headers: {
@@ -187,7 +311,10 @@ async function makeSpacePublic() {
       groupId: "public",
       action: "grant",
     }),
+    signal: controller.signal,
   });
+
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -208,11 +335,11 @@ function createSlugFromPath(filePath: string): string {
   return (
     decoded
       .replace(/^\/+|\/+$/g, "")
-      .replace(/^intern\/Technik\/?/, "")
+      .replace(/^(temp\/technik-webhome\/pages\/intern\/technik|intern\/Technik)\/?/i, "")
       .replace(/\s+/g, "-")
       .replace(/[^a-zA-Z0-9-_/äöüÄÖÜß]/g, "-")
       .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "")
+      .replace(/^-+|--+$/g, "")
       .toLowerCase() || "home"
   );
 }
@@ -222,18 +349,12 @@ function getHierarchyInfo(slug: string): {
   level: number;
   categorySlug?: string;
 } {
-  // Remove common prefix to get actual hierarchy
-  const normalizedSlug = slug.replace(
-    /^temp\/technik-webhome\/pages\/intern\/technik\/?/,
-    "",
-  );
-
-  if (!normalizedSlug || normalizedSlug === slug) {
-    // Root document
+  // Slugs are now cleaned up without the temp/technik-webhome/pages/intern/technik prefix
+  if (!slug || slug === "home") {
     return { level: 0 };
   }
 
-  const parts = normalizedSlug.split("/");
+  const parts = slug.split("/");
   const level = parts.length;
 
   const parentSlug = parts.length > 1 ? slug.replace(/\/[^/]+$/, "") : undefined;
@@ -270,48 +391,52 @@ async function cleanXWikiHtml(html: string, htmlFilePath: string): Promise<strin
     return "";
   }
 
-  // Process images: upload and replace URLs
-  const images = Array.from(content.querySelectorAll("img"));
+  // Process images: upload and replace URLs (unless --skip-images is set)
+  if (!skipImagesArg) {
+    const images = Array.from(content.querySelectorAll("img"));
 
-  for (const img of images) {
-    const src = img.getAttribute("src");
-    if (!src) continue;
+    for (const img of images) {
+      const src = img.getAttribute("src");
+      if (!src) continue;
 
-    // Skip external URLs and data URLs
-    if (
-      src.startsWith("http://") ||
-      src.startsWith("https://") ||
-      src.startsWith("data:")
-    ) {
-      continue;
-    }
-
-    // Resolve relative path from the HTML file location
-    // XWiki uses paths like "../../../../../attachment/intern/Technik/..."
-    // We need to resolve this relative to the HTML file's directory
-    const htmlDir = htmlFilePath.replace(EXPORT_DIR, "").replace(/\/WebHome\.html$/, "");
-    const pathParts = src.split("/");
-
-    // Count how many levels up (..) and remove them
-    let levelsUp = 0;
-    const cleanParts = [];
-    for (const part of pathParts) {
-      if (part === "..") {
-        levelsUp++;
-      } else if (part && part !== ".") {
-        cleanParts.push(part);
+      // Skip external URLs and data URLs
+      if (
+        src.startsWith("http://") ||
+        src.startsWith("https://") ||
+        src.startsWith("data:")
+      ) {
+        continue;
       }
-    }
 
-    // The path should start with "attachment/" after resolving ../
-    if (cleanParts[0] === "attachment") {
-      // Remove "attachment/" prefix as we'll use ATTACHMENT_DIR
-      const imagePath = cleanParts.slice(1).join("/");
+      // Resolve relative path from the HTML file location
+      // XWiki uses paths like "../../../../../attachment/intern/Technik/..."
+      // We need to resolve this relative to the HTML file's directory
+      const htmlDir = htmlFilePath
+        .replace(EXPORT_DIR, "")
+        .replace(/\/WebHome\.html$/, "");
+      const pathParts = src.split("/");
 
-      // Upload the image
-      const newUrl = await uploadImage(imagePath);
-      if (newUrl) {
-        img.setAttribute("src", newUrl);
+      // Count how many levels up (..) and remove them
+      let levelsUp = 0;
+      const cleanParts = [];
+      for (const part of pathParts) {
+        if (part === "..") {
+          levelsUp++;
+        } else if (part && part !== ".") {
+          cleanParts.push(part);
+        }
+      }
+
+      // The path should start with "attachment/" after resolving ../
+      if (cleanParts[0] === "attachment") {
+        // Remove "attachment/" prefix as we'll use ATTACHMENT_DIR
+        const imagePath = cleanParts.slice(1).join("/");
+
+        // Upload the image
+        const newUrl = await uploadImage(imagePath);
+        if (newUrl) {
+          img.setAttribute("src", newUrl);
+        }
       }
     }
   }
@@ -473,6 +598,9 @@ async function createCategory(slug: string, name: string): Promise<void> {
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/categories`, {
       method: "POST",
       headers: {
@@ -489,7 +617,10 @@ async function createCategory(slug: string, name: string): Promise<void> {
             .toString(16)
             .padStart(6, "0"),
       }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.error(`Failed to create category ${slug}: ${response.statusText}`);
@@ -504,38 +635,60 @@ async function createCategory(slug: string, name: string): Promise<void> {
   }
 }
 
-async function importDocument(doc: Document): Promise<boolean> {
+async function importDocument(doc: Document): Promise<"imported" | "skipped" | "failed"> {
+  console.log(`  → Starting import of: ${doc.slug}`);
   try {
+    // Check if document already exists (incremental import support)
+    if (documentIdMap.has(doc.slug)) {
+      console.log(`  → Skipping (already exists): ${doc.slug}`);
+      return "skipped";
+    }
+
     const parentId = doc.parentSlug ? documentIdMap.get(doc.parentSlug) : undefined;
 
+    const payload = {
+      slug: doc.slug,
+      content: doc.content,
+      properties: doc.properties,
+      parentId,
+    };
+
+    // Log payload size for debugging
+    const payloadSize = JSON.stringify(payload).length;
+    console.log(`  Payload size: ${(payloadSize / 1024).toFixed(2)} KB`);
+
     // Use the authenticated user's ID as creator
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log(`  ⚠ Timeout after 30s, aborting...`);
+      controller.abort();
+    }, 30000);
+
     const response = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/documents`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Cookie: `better-auth.session_token=${sessionToken}`,
       },
-      body: JSON.stringify({
-        slug: doc.slug,
-        content: doc.content,
-        properties: doc.properties,
-        parentId,
-      }),
+      body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`✗ Failed to import ${doc.slug}: ${response.status} - ${errorText}`);
-      return false;
+      return "failed";
     }
 
     const data = await response.json();
     documentIdMap.set(doc.slug, data.document.id);
     console.log(`✓ Imported: ${doc.slug}`);
-    return true;
+    return "imported";
   } catch (error) {
     console.error(`✗ Error importing ${doc.slug}:`, error);
-    return false;
+    return "failed";
   }
 }
 
@@ -553,6 +706,10 @@ async function main() {
     console.log(
       "  --host=<url>            Base URL of the wiki API (default: http://127.0.0.1:4321)",
     );
+    console.log(
+      "  --skip-images          Skip uploading images (useful if uploads are causing issues)",
+    );
+    console.log("  --resume               Resume from previous import session");
     console.log("  --help, -h             Show this help message");
     console.log("\nCredentials file format:");
     console.log('  JSON:     { "session_token": "...", "userId": "..." }');
@@ -563,6 +720,12 @@ async function main() {
     console.log(
       "  bun scripts/import-xwiki.ts --credentials=./credentials.json --host=https://wiki.example.com",
     );
+    console.log(
+      "  bun scripts/import-xwiki.ts --credentials=./credentials.json --skip-images",
+    );
+    console.log(
+      "  bun scripts/import-xwiki.ts --credentials=./credentials.json --resume",
+    );
     process.exit(0);
   }
 
@@ -571,9 +734,52 @@ async function main() {
     process.exit(1);
   }
 
-  // Authenticate and create space
+  // Authenticate
   await authenticate();
-  await createSpace();
+
+  // Check for existing session if --resume flag is set
+  if (resumeArg) {
+    sessionData = await loadSession();
+    if (sessionData) {
+      // Verify the session is for the same host
+      if (sessionData.host !== BASE_URL) {
+        console.log(
+          `⚠ Session host (${sessionData.host}) doesn't match current host (${BASE_URL})`,
+        );
+        console.log("  Starting fresh import...");
+        sessionData = null;
+      } else {
+        spaceId = sessionData.spaceId;
+        console.log(`✓ Resuming import to space: ${spaceId}`);
+
+        // Restore imported documents from session
+        for (const slug of sessionData.importedSlugs) {
+          documentIdMap.set(slug, "restored");
+        }
+
+        // Restore categories from session
+        for (const slug of sessionData.categorySlugs) {
+          categoryMap.set(slug, "restored");
+        }
+
+        // Restore uploaded images from session
+        if (sessionData.uploadedImages) {
+          for (const [imagePath, url] of Object.entries(sessionData.uploadedImages)) {
+            uploadedImageCache.set(imagePath, url);
+          }
+        }
+
+        console.log(`  Restored ${documentIdMap.size} imported documents`);
+        console.log(`  Restored ${categoryMap.size} categories`);
+        console.log(`  Restored ${uploadedImageCache.size} uploaded images`);
+      }
+    }
+  }
+
+  // Create space only if not resuming
+  if (!sessionData) {
+    await createSpace();
+  }
 
   console.log("\nFinding documents to import...");
   const htmlFiles = await findAllDocuments(EXPORT_DIR);
@@ -643,21 +849,36 @@ async function main() {
     await createCategory(catSlug, name);
   }
 
+  // Save session after categories are created
+  await saveSession();
+
+  // Fetch existing documents to support incremental imports
+  await fetchExistingDocuments();
+
   console.log("\nStarting document import...\n");
 
   let successCount = 0;
   let failCount = 0;
+  let skippedCount = 0;
 
-  for (const doc of documents) {
-    const success = await importDocument(doc);
-    if (success) {
+  for (let i = 0; i < documents.length; i++) {
+    const doc = documents[i];
+    console.log(
+      `[${i + 1}/${documents.length}] Importing (level ${doc.level}): ${doc.slug}`,
+    );
+    const result = await importDocument(doc);
+    if (result === "imported") {
       successCount++;
+      // Save session after each successful import
+      await saveSession();
+    } else if (result === "skipped") {
+      skippedCount++;
     } else {
       failCount++;
     }
 
-    // Small delay to avoid overwhelming the server
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Delay to avoid overwhelming the server
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   const emptyCount = documents.filter((d) => d.properties.isEmpty === "true").length;
@@ -669,6 +890,7 @@ async function main() {
   console.log(`Documents prepared: ${documents.length}`);
   console.log(`Categories created: ${categoryMap.size}`);
   console.log(`Successfully imported: ${successCount}`);
+  console.log(`Skipped (already exist): ${skippedCount}`);
   console.log(`Failed: ${failCount}`);
   console.log(`Empty (imported for hierarchy): ${emptyCount}`);
   console.log(`\nSpace ID: ${spaceId}`);

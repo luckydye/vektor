@@ -2,7 +2,7 @@
 import { ref, watch } from "vue";
 import { useImport } from "../composeables/useImport.ts";
 import { useSpace } from "../composeables/useSpace.ts";
-import { Actions } from "../utils/actions";
+import { Actions } from "../utils/actions.ts";
 
 const show = ref(false);
 
@@ -17,15 +17,18 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const showDialog = ref(false);
 const dragOver = ref(false);
 
-watch(() => show.value, (newValue) => {
-  if (!newValue) {
-    resetImport();
-    showDialog.value = false;
-    if (fileInput.value) {
-      fileInput.value.value = "";
+watch(
+  () => show.value,
+  (newValue) => {
+    if (!newValue) {
+      resetImport();
+      showDialog.value = false;
+      if (fileInput.value) {
+        fileInput.value.value = "";
+      }
     }
-  }
-});
+  },
+);
 
 function openFileDialog() {
   fileInput.value?.click();
@@ -87,7 +90,7 @@ function handleDragLeave() {
 }
 
 function getSupportedFilesText(): string {
-  return "Supported: .md, .html, .json, .txt, .odt, .docx, .rst, .org, .epub, .zip";
+  return "Supported: WIF (.wif.zip, .zip) format only";
 }
 
 Actions.register("import:toggle", {
@@ -110,9 +113,9 @@ Actions.register("import:toggle", {
       @dragleave="handleDragLeave"
     >
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold text-neutral-900">Import Files</h2>
+        <h2 class="text-2xl font-bold text-neutral-900">Import WIF Archive</h2>
         <button @click="closeOverlay" class="text-neutral hover:text-neutral text-3xl leading-none w-8 h-8 flex items-center justify-center">
-          &times;
+          ×
         </button>
       </div>
 
@@ -175,7 +178,7 @@ Actions.register("import:toggle", {
           ref="fileInput"
           type="file"
           @change="handleFileSelect"
-          accept=".md,.markdown,.html,.htm,.json,.txt,.log,.odt,.docx,.rst,.org,.epub,.docbook,.zip"
+          accept=".zip,.wif.zip"
           class="hidden"
         />
       </div>

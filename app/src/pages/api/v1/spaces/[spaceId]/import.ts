@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
 import { join, extname, basename, dirname, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import { exec } from "node:child_process";
@@ -14,12 +14,49 @@ import {
 import { createDocument } from "../../../../../db/documents.ts";
 import { getSpaceDb } from "../../../../../db/db.ts";
 import { document } from "../../../../../db/schema/space.ts";
-import { stripScriptTags } from "~/src/utils/utils.ts";
 
 const execAsync = promisify(exec);
 
 const MAX_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB
 const TEMP_DIR = join(process.cwd(), "data", "temp");
+
+interface WIFManifest {
+  wifVersion: string;
+  exportName: string;
+  createdAt: string;
+  source: {
+    type: string;
+    version?: string;
+    url?: string;
+  };
+  stats?: {
+    documents?: number;
+    mediaFiles?: number;
+    totalSizeBytes?: number;
+  };
+}
+
+interface WIFFrontmatter {
+  wif_version: string;
+  slug: string;
+  title: string;
+  created_at?: string;
+  modified_at?: string;
+  author?: string;
+  parent?: string;
+  order?: number;
+  tags?: string[];
+  category?: string;
+  properties: Record<string, string>;
+}
+
+interface WIFDocument {
+  filePath: string;
+  relativePath: string;
+  frontmatter: WIFFrontmatter;
+  content: string;
+  level: number;
+}
 
 interface ImportResult {
   totalFiles: number;
@@ -28,17 +65,6 @@ interface ImportResult {
   failed: number;
   documents: Array<{ slug: string; title: string; id: string }>;
   errors: Array<{ file: string; error: string }>;
-}
-
-interface ParsedDocument {
-  title: string;
-  content: string;
-  slug: string;
-  metadata: Record<string, string>;
-  relativePath: string;
-  directoryPath: string;
-  createdAt?: Date;
-  updatedAt?: Date;
 }
 
 async function ensureTempDir(): Promise<void> {
@@ -50,299 +76,296 @@ async function extractZipFile(zipPath: string, extractDir: string): Promise<void
   await execAsync(`unzip -o -q "${zipPath}" -d "${extractDir}"`);
 }
 
-function generateSlug(title: string, existingSlugs: Set<string>): string {
-  let baseSlug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .substring(0, 100);
+async function parseWIFManifest(extractDir: string): Promise<WIFManifest | null> {
+  try {
+    const manifestPath = join(extractDir, "wif.json");
+    const content = await readFile(manifestPath, "utf-8");
+    const manifest = JSON.parse(content) as WIFManifest;
 
-  if (!baseSlug) {
-    baseSlug = "document";
+    if (!manifest.wifVersion || !manifest.exportName) {
+      return null;
+    }
+
+    return manifest;
+  } catch {
+    return null;
   }
-
-  let slug = baseSlug;
-  let counter = 1;
-
-  while (existingSlugs.has(slug)) {
-    slug = `${baseSlug}-${counter}`;
-    counter++;
-  }
-
-  existingSlugs.add(slug);
-  return slug;
 }
 
-async function parseMarkdownFile(filePath: string, relativePath: string): Promise<ParsedDocument | null> {
-  try {
-    const content = await readFile(filePath, "utf-8");
-    const lines = content.split("\n");
-    const metadata: Record<string, string> = {};
-    let contentStart = 0;
-    let title = basename(filePath, extname(filePath));
-    let slug = basename(filePath, extname(filePath));
-    let skipFirstH1 = false;
-    let createdAt: Date | undefined;
-    let updatedAt: Date | undefined;
+function parseFrontmatter(content: string): {
+  frontmatter: WIFFrontmatter | null;
+  body: string;
+} {
+  const lines = content.split("\n");
 
-    if (lines[0] === "---") {
-      let i = 1;
-      while (i < lines.length && lines[i] !== "---") {
-        const line = lines[i].trim();
-        if (line) {
-          const colonIndex = line.indexOf(":");
-          if (colonIndex > 0) {
-            const key = line.substring(0, colonIndex).trim();
-            const value = line.substring(colonIndex + 1).trim().replace(/^["']|["']$/g, "");
-            metadata[key] = value;
-            if (key === "title") {
-              title = value;
-            }
-            // Extract creation date from frontmatter
-            if (key === "created" || key === "createdAt") {
-              const parsedDate = new Date(value);
-              if (!isNaN(parsedDate.getTime())) {
-                createdAt = parsedDate;
-              }
-            }
-            // Extract updated date from frontmatter
-            if (key === "updated" || key === "updatedAt" || key === "modified" || key === "lastModified") {
-              const parsedDate = new Date(value);
-              if (!isNaN(parsedDate.getTime())) {
-                updatedAt = parsedDate;
-              }
-            }
+  if (lines[0] !== "---") {
+    return { frontmatter: null, body: content };
+  }
+
+  let i = 1;
+  const frontmatterLines: string[] = [];
+
+  while (i < lines.length && lines[i] !== "---") {
+    frontmatterLines.push(lines[i]);
+    i++;
+  }
+
+  if (i >= lines.length) {
+    return { frontmatter: null, body: content };
+  }
+
+  const body = lines
+    .slice(i + 1)
+    .join("\n")
+    .trim();
+
+  try {
+    const frontmatter: WIFFrontmatter = {
+      wif_version: "",
+      slug: "",
+      title: "",
+      properties: {},
+    };
+
+    const currentKey: string | null = null;
+    let inProperties = false;
+
+    for (const line of frontmatterLines) {
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
+
+      if (trimmed === "properties:") {
+        inProperties = true;
+        continue;
+      }
+
+      if (inProperties && trimmed.startsWith("- ")) {
+        continue;
+      }
+
+      if (inProperties && !trimmed.includes(":")) {
+        inProperties = false;
+      }
+
+      const colonIndex = trimmed.indexOf(":");
+      if (colonIndex > 0) {
+        const key = trimmed.substring(0, colonIndex).trim();
+        let value = trimmed.substring(colonIndex + 1).trim();
+
+        value = value.replace(/^["']|["']$/g, "");
+
+        if (inProperties && key) {
+          frontmatter.properties[key] = value;
+        } else {
+          switch (key) {
+            case "wif_version":
+              frontmatter.wif_version = value;
+              break;
+            case "slug":
+              frontmatter.slug = value;
+              break;
+            case "title":
+              frontmatter.title = value;
+              break;
+            case "created_at":
+              frontmatter.created_at = value;
+              break;
+            case "modified_at":
+              frontmatter.modified_at = value;
+              break;
+            case "author":
+              frontmatter.author = value;
+              break;
+            case "parent":
+              frontmatter.parent = value;
+              break;
+            case "order":
+              frontmatter.order = parseInt(value, 10) || 0;
+              break;
+            case "category":
+              frontmatter.category = value;
+              break;
           }
         }
-        i++;
       }
-      contentStart = i + 1;
     }
 
-    // Check for first H1 in content
-    const firstHeadingIndex = lines.findIndex((line, idx) => idx >= contentStart && line.startsWith("# "));
-
-    // If no title in frontmatter, use first H1 as title
-    if (!metadata.title && firstHeadingIndex !== -1) {
-      title = lines[firstHeadingIndex].replace(/^#\s+/, "");
-    }
-
-    // Always remove first H1 from content (if it exists)
-    let markdownContent: string;
-    if (firstHeadingIndex !== -1) {
-      const contentLines = [...lines.slice(contentStart, firstHeadingIndex), ...lines.slice(firstHeadingIndex + 1)];
-      markdownContent = contentLines.join("\n").trim();
-    } else {
-      markdownContent = lines.slice(contentStart).join("\n").trim();
-    }
-
-    // Convert markdown to HTML
-    const { marked } = await import("marked");
-    const htmlContent = await marked(markdownContent);
-
-    return {
-      title,
-      content: htmlContent,
-      slug,
-      metadata,
-      relativePath,
-      directoryPath: dirname(relativePath),
-      createdAt,
-      updatedAt,
-    };
-  } catch (error) {
-    console.error(`Failed to parse markdown file ${filePath}:`, error);
-    return null;
+    return { frontmatter, body };
+  } catch {
+    return { frontmatter: null, body: content };
   }
 }
 
-async function parseTextFile(filePath: string, relativePath: string): Promise<ParsedDocument | null> {
-  try {
-    const content = await readFile(filePath, "utf-8");
-    const title = basename(filePath, extname(filePath));
+async function scanWIFDocuments(extractDir: string): Promise<WIFDocument[]> {
+  const documentsDir = join(extractDir, "documents");
+  const documents: WIFDocument[] = [];
 
-    // Convert text to HTML wrapped in code block
-    const { marked } = await import("marked");
-    const markdown = `# ${title}\n\n\`\`\`\n${content}\n\`\`\``;
-    const htmlContent = await marked(markdown);
-
-    return {
-      title,
-      content: htmlContent,
-      slug: "",
-      metadata: { type: "text" },
-      relativePath,
-      directoryPath: dirname(relativePath),
-    };
-  } catch (error) {
-    console.error(`Failed to parse text file ${filePath}:`, error);
-    return null;
+  if (
+    !(await readdir(documentsDir)
+      .then(() => true)
+      .catch(() => false))
+  ) {
+    return documents;
   }
-}
 
-async function parseHtmlFile(filePath: string, relativePath: string): Promise<ParsedDocument | null> {
-  try {
-    const html = await readFile(filePath, "utf-8");
+  async function scanDir(dir: string, level: number) {
+    const entries = await readdir(dir, { withFileTypes: true });
 
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-    const title = titleMatch?.[1] || h1Match?.[1] || basename(filePath, extname(filePath));
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      const relativePath = relative(documentsDir, fullPath);
 
-    // Strip script tags for security
-    const sanitizedHtml = stripScriptTags(html);
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
 
-    return {
-      title,
-      content: sanitizedHtml,
-      slug: "",
-      metadata: { type: "html", originalFormat: "html" },
-      relativePath,
-      directoryPath: dirname(relativePath),
-    };
-  } catch (error) {
-    console.error(`Failed to parse HTML file ${filePath}:`, error);
-    return null;
-  }
-}
+      if (entry.isDirectory()) {
+        await scanDir(fullPath, level + 1);
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === ".md") {
+        const content = await readFile(fullPath, "utf-8");
+        const { frontmatter, body } = parseFrontmatter(content);
 
-async function parseJsonFile(filePath: string, relativePath: string): Promise<ParsedDocument | null> {
-  try {
-    const content = await readFile(filePath, "utf-8");
-    const data = JSON.parse(content);
-    const title = basename(filePath, extname(filePath));
-    const jsonContent = JSON.stringify(data, null, 2);
-
-    // Convert JSON markdown to HTML
-    const { marked } = await import("marked");
-    const markdown = `# ${title}\n\n\`\`\`json\n${jsonContent}\n\`\`\``;
-    const htmlContent = await marked(markdown);
-
-    return {
-      title,
-      content: htmlContent,
-      slug: "",
-      metadata: { type: "json" },
-      relativePath,
-      directoryPath: dirname(relativePath),
-    };
-  } catch (error) {
-    console.error(`Failed to parse JSON file ${filePath}:`, error);
-    return null;
-  }
-}
-
-async function parsePandocFile(filePath: string, relativePath: string, fileType: string): Promise<ParsedDocument | null> {
-  try {
-    const title = basename(filePath, extname(filePath));
-
-    // Extract media to a temporary directory adjacent to the file
-    const mediaDir = join(dirname(filePath), `${basename(filePath, extname(filePath))}_media`);
-    await mkdir(mediaDir, { recursive: true });
-
-    const { stdout, stderr } = await execAsync(
-      `pandoc --to commonmark --extract-media="${mediaDir}" "${filePath}"`,
-      { maxBuffer: 10 * 1024 * 1024 }
-    );
-
-    if (stderr?.trim()) {
-      console.warn(`Pandoc warning for ${filePath}:`, stderr);
+        if (frontmatter) {
+          documents.push({
+            filePath: fullPath,
+            relativePath,
+            frontmatter,
+            content: body,
+            level,
+          });
+        }
+      }
     }
+  }
 
-    const markdown = stdout.trim();
+  await scanDir(documentsDir, 0);
 
-    // Clean up media directory if empty
+  // Sort by level (parents before children) and then by order
+  documents.sort((a, b) => {
+    if (a.level !== b.level) {
+      return a.level - b.level;
+    }
+    return (a.frontmatter.order || 0) - (b.frontmatter.order || 0);
+  });
+
+  return documents;
+}
+
+async function scanWIFMedia(extractDir: string): Promise<Map<string, string>> {
+  const mediaDir = join(extractDir, "media");
+  const mediaMap = new Map<string, string>();
+
+  if (
+    !(await readdir(mediaDir)
+      .then(() => true)
+      .catch(() => false))
+  ) {
+    return mediaMap;
+  }
+
+  async function scanDir(dir: string) {
+    const entries = await readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      const relativePath = relative(mediaDir, fullPath);
+
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
+
+      if (entry.isDirectory()) {
+        await scanDir(fullPath);
+      } else if (entry.isFile()) {
+        mediaMap.set(relativePath, fullPath);
+      }
+    }
+  }
+
+  await scanDir(mediaDir);
+  return mediaMap;
+}
+
+async function copyMediaToUploads(
+  spaceId: string,
+  mediaMap: Map<string, string>,
+  tempDir: string,
+): Promise<Map<string, string>> {
+  const uploadedMap = new Map<string, string>();
+  const uploadsDir = join(process.cwd(), "data", "uploads", spaceId);
+
+  await mkdir(uploadsDir, { recursive: true });
+
+  for (const [relativePath, sourcePath] of mediaMap) {
     try {
-      const mediaFiles = await readdir(mediaDir);
-      if (mediaFiles.length === 0) {
-        await rm(mediaDir, { recursive: true });
+      const ext = extname(relativePath);
+      const fileName = `${randomBytes(16).toString("hex")}${ext}`;
+      const destPath = join(uploadsDir, fileName);
+
+      await copyFile(sourcePath, destPath);
+
+      const uploadUrl = `/api/v1/spaces/${spaceId}/uploads/${fileName}`;
+      uploadedMap.set(relativePath, uploadUrl);
+    } catch (error) {
+      console.error(`Failed to copy media file ${relativePath}:`, error);
+    }
+  }
+
+  return uploadedMap;
+}
+
+function updateImageReferences(
+  content: string,
+  mediaMap: Map<string, string>,
+  extractDir: string,
+): string {
+  // Update relative image paths to uploaded URLs
+  // Match patterns like: ![alt](./../media/path/to/file.png) or <img src="./../media/...">
+
+  let updatedContent = content;
+
+  // Markdown image syntax: ![alt](path)
+  const markdownImgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  updatedContent = updatedContent.replace(markdownImgRegex, (match, alt, path) => {
+    // Extract the media path from the relative path
+    const mediaMatch = path.match(/\.\.\/media\/(.+)/);
+    if (mediaMatch) {
+      const mediaPath = mediaMatch[1];
+      const uploadedUrl = mediaMap.get(mediaPath);
+      if (uploadedUrl) {
+        return `![${alt}](${uploadedUrl})`;
       }
-    } catch {
-      // Media dir doesn't exist or couldn't be read, no worries
     }
+    return match;
+  });
 
-    // Convert pandoc markdown output to HTML
-    const { marked } = await import("marked");
-    const htmlContent = await marked(markdown);
-
-    return {
-      title,
-      content: htmlContent,
-      slug: "",
-      metadata: { type: fileType, originalFormat: fileType },
-      relativePath,
-      directoryPath: dirname(relativePath),
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes("pandoc") && errorMessage.includes("not found")) {
-      console.error(`Pandoc is not installed. Install it with: sudo apt-get install pandoc`);
-      throw new Error(`Pandoc is required to import ${fileType.toUpperCase()} files but is not installed`);
+  // HTML img tag syntax: <img src="path">
+  const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  updatedContent = updatedContent.replace(htmlImgRegex, (match, path) => {
+    const mediaMatch = path.match(/\.\.\/media\/(.+)/);
+    if (mediaMatch) {
+      const mediaPath = mediaMatch[1];
+      const uploadedUrl = mediaMap.get(mediaPath);
+      if (uploadedUrl) {
+        return match.replace(path, uploadedUrl);
+      }
     }
-    console.error(`Failed to parse ${fileType.toUpperCase()} file ${filePath}:`, error);
-    return null;
-  }
+    return match;
+  });
+
+  return updatedContent;
 }
 
-async function parseFile(filePath: string, relativePath: string): Promise<ParsedDocument | null> {
-  const ext = extname(filePath).toLowerCase();
-
-  switch (ext) {
-    case ".md":
-    case ".markdown":
-      return parseMarkdownFile(filePath, relativePath);
-    case ".html":
-    case ".htm":
-      return parseHtmlFile(filePath, relativePath);
-    case ".json":
-      return parseJsonFile(filePath, relativePath);
-    case ".txt":
-    case ".log":
-      return parseTextFile(filePath, relativePath);
-    case ".odt":
-      return parsePandocFile(filePath, relativePath, "odt");
-    case ".docx":
-      return parsePandocFile(filePath, relativePath, "docx");
-    case ".rst":
-      return parsePandocFile(filePath, relativePath, "rst");
-    case ".org":
-      return parsePandocFile(filePath, relativePath, "org");
-    case ".epub":
-      return parsePandocFile(filePath, relativePath, "epub");
-    case ".docbook":
-      return parsePandocFile(filePath, relativePath, "docbook");
-    default:
-      return null;
-  }
-}
-
-async function scanDirectory(dirPath: string, baseDir: string): Promise<string[]> {
-  const files: string[] = [];
-  const entries = await readdir(dirPath, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = join(dirPath, entry.name);
-
-    if (entry.name.startsWith(".") || entry.name === "node_modules") {
-      continue;
-    }
-
-    if (entry.isDirectory()) {
-      const subFiles = await scanDirectory(fullPath, baseDir);
-      files.push(...subFiles);
-    } else if (entry.isFile()) {
-      files.push(fullPath);
-    }
-  }
-
-  return files;
-}
-
-async function createDocumentsRecursively(
+async function importWIFDocuments(
   spaceId: string,
   userId: string,
-  parsedDocs: ParsedDocument[],
+  documents: WIFDocument[],
+  mediaMap: Map<string, string>,
   existingSlugs: Set<string>,
-  baseDir: string,
+  extractDir: string,
 ): Promise<{
   imported: number;
   failed: number;
@@ -356,137 +379,78 @@ async function createDocumentsRecursively(
     errors: [] as Array<{ file: string; error: string }>,
   };
 
-  const documentIdMap = new Map<string, string>();
-  const dirDocumentMap = new Map<string, string>();
+  const slugToIdMap = new Map<string, string>();
 
-  // Create a map of directory paths to their index.md documents
-  const dirIndexMap = new Map<string, ParsedDocument>();
-  for (const doc of parsedDocs) {
-    const fileName = basename(doc.relativePath);
-    if (fileName === 'index.md') {
-      dirIndexMap.set(doc.directoryPath, doc);
-    }
-  }
-
-  const sortedDocs = parsedDocs.sort((a, b) => {
-    const aDepth = a.directoryPath.split("/").filter(Boolean).length;
-    const bDepth = b.directoryPath.split("/").filter(Boolean).length;
-    return aDepth - bDepth;
-  });
-
-  for (const parsed of sortedDocs) {
+  for (const doc of documents) {
     try {
-      const normalizedDir = parsed.directoryPath.replace(/\\/g, "/");
-      const dirParts = normalizedDir.split("/").filter(part => part && part !== ".");
+      const { frontmatter, content, relativePath } = doc;
 
-      if (baseDir) {
-        const baseDirName = basename(baseDir);
-        if (dirParts[0] === baseDirName) {
-          dirParts.shift();
+      // Determine the slug
+      let slug = frontmatter.slug;
+      if (!slug || existingSlugs.has(slug)) {
+        // Generate unique slug if not provided or already exists
+        let baseSlug = frontmatter.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .substring(0, 100);
+
+        if (!baseSlug) {
+          baseSlug = "document";
+        }
+
+        slug = baseSlug;
+        let counter = 1;
+        while (existingSlugs.has(slug) || slugToIdMap.has(slug)) {
+          slug = `${baseSlug}-${counter}`;
+          counter++;
         }
       }
 
+      existingSlugs.add(slug);
+
+      // Determine parent
       let parentId: string | null = null;
-
-      // Create all parent directory documents if they don't exist
-      for (let i = 0; i < dirParts.length; i++) {
-        const currentDirPath = dirParts.slice(0, i + 1).join("/");
-        const currentDirName = dirParts[i];
-
-        if (!dirDocumentMap.has(currentDirPath)) {
-          // Get parent document ID (from the previous directory level)
-          const parentDirPath = i > 0 ? dirParts.slice(0, i).join("/") : null;
-          const parentDirId = parentDirPath ? dirDocumentMap.get(parentDirPath) || null : null;
-
-          // Check if this directory has an index.md file
-          const indexDoc = dirIndexMap.get(currentDirPath);
-
-          let dirSlug: string;
-          let dirHtml: string;
-          let dirTitle: string;
-          let dirProperties: Record<string, any>;
-
-          if (indexDoc) {
-            // Use index.md content for this directory
-            dirSlug = generateSlug(indexDoc.slug || currentDirName, existingSlugs);
-            dirHtml = indexDoc.content;
-            dirTitle = indexDoc.title;
-            dirProperties = { ...indexDoc.metadata, type: "directory" };
-          } else {
-            // Create default directory page
-            dirSlug = generateSlug(currentDirName, existingSlugs);
-            const { marked } = await import("marked");
-            const dirMarkdown = `# ${currentDirName}\n\nThis page represents the ${currentDirName} directory.`;
-            dirHtml = await marked(dirMarkdown);
-            dirTitle = currentDirName;
-            dirProperties = { title: currentDirName, type: "directory" };
-          }
-
-          const dirDoc = await createDocument(
-            spaceId,
-            userId,
-            dirSlug,
-            dirHtml,
-            dirProperties,
-            parentDirId,
-            undefined,
-            indexDoc?.createdAt,
-            indexDoc?.updatedAt,
-          );
-
-          dirDocumentMap.set(currentDirPath, dirDoc.id);
-          result.imported++;
-          result.documents.push({
-            slug: dirDoc.slug,
-            title: dirTitle,
-            id: dirDoc.id,
-          });
-        }
+      if (frontmatter.parent) {
+        parentId = slugToIdMap.get(frontmatter.parent) || null;
       }
 
-      // Set parent to the deepest directory
-      if (dirParts.length > 0) {
-        const fullDirPath = dirParts.join("/");
-        parentId = dirDocumentMap.get(fullDirPath) || null;
-      }
+      // Update image references in content
+      const updatedContent = updateImageReferences(content, mediaMap, extractDir);
 
-      // Skip index.md files as they've already been used for directory documents
-      const fileName = basename(parsed.relativePath);
-      if (fileName === 'index.md') {
-        continue;
-      }
+      // Parse dates
+      const createdAt = frontmatter.created_at
+        ? new Date(frontmatter.created_at)
+        : undefined;
+      const updatedAt = frontmatter.modified_at
+        ? new Date(frontmatter.modified_at)
+        : undefined;
 
-      // Use the slug from parsing (filename-based) or generate from title as fallback
-      parsed.slug = generateSlug(parsed.slug || parsed.title, existingSlugs);
-
-      const properties = {
-        title: parsed.title,
-        ...parsed.metadata,
-      };
-
-      const doc = await createDocument(
+      // Create document
+      const createdDoc = await createDocument(
         spaceId,
         userId,
-        parsed.slug,
-        parsed.content,
-        properties,
+        slug,
+        updatedContent,
+        frontmatter.properties || {},
         parentId,
         undefined,
-        parsed.createdAt,
-        parsed.updatedAt,
+        createdAt,
+        updatedAt,
       );
 
-      documentIdMap.set(parsed.relativePath, doc.id);
+      slugToIdMap.set(slug, createdDoc.id);
+
       result.imported++;
       result.documents.push({
-        slug: doc.slug,
-        title: parsed.title,
-        id: doc.id,
+        slug: createdDoc.slug,
+        title: frontmatter.title,
+        id: createdDoc.id,
       });
     } catch (error) {
       result.failed++;
       result.errors.push({
-        file: parsed.relativePath,
+        file: doc.relativePath,
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
@@ -510,6 +474,12 @@ export const POST: APIRoute = async (context) => {
       throw badRequestResponse("No file provided");
     }
 
+    // Only accept ZIP files (WIF format)
+    const ext = extname(file.name).toLowerCase();
+    if (ext !== ".zip") {
+      throw badRequestResponse("Only WIF (.zip) files are supported");
+    }
+
     if (file.size > MAX_UPLOAD_SIZE) {
       throw badRequestResponse(
         `File size exceeds maximum allowed size of ${MAX_UPLOAD_SIZE / 1024 / 1024}MB`,
@@ -524,6 +494,18 @@ export const POST: APIRoute = async (context) => {
     const tempFilePath = join(tempDir, file.name);
     await writeFile(tempFilePath, buffer);
 
+    // Extract ZIP file
+    const extractDir = join(tempDir, "extracted");
+    await extractZipFile(tempFilePath, extractDir);
+
+    // Validate WIF format
+    const manifest = await parseWIFManifest(extractDir);
+    if (!manifest) {
+      throw badRequestResponse(
+        "Invalid WIF format: wif.json manifest not found or invalid",
+      );
+    }
+
     const result: ImportResult = {
       totalFiles: 0,
       imported: 0,
@@ -533,65 +515,44 @@ export const POST: APIRoute = async (context) => {
       errors: [],
     };
 
-    // Get all document slugs in the space to avoid collisions
+    // Get existing slugs to avoid collisions
     const db = getSpaceDb(spaceId);
     const allDocs = await db.select({ slug: document.slug }).from(document).all();
     const existingSlugs = new Set(allDocs.map((d) => d.slug));
 
-    let filesToProcess: string[] = [];
-    const ext = extname(file.name).toLowerCase();
+    // Scan WIF structure
+    const documents = await scanWIFDocuments(extractDir);
+    const mediaFiles = await scanWIFMedia(extractDir);
 
-    if (ext === ".zip") {
-      const extractDir = join(tempDir, "extracted");
-      await extractZipFile(tempFilePath, extractDir);
-      filesToProcess = await scanDirectory(extractDir, extractDir);
-    } else {
-      filesToProcess = [tempFilePath];
+    result.totalFiles = documents.length + mediaFiles.size;
+
+    if (documents.length === 0) {
+      throw badRequestResponse("No valid documents found in WIF export");
     }
 
-    result.totalFiles = filesToProcess.length;
+    // Copy media files to uploads
+    const uploadedMediaMap = await copyMediaToUploads(spaceId, mediaFiles, tempDir);
 
-    const parsedDocs: ParsedDocument[] = [];
-    const baseDir = ext === ".zip" ? join(tempDir, "extracted") : tempDir;
-
-    for (const filePath of filesToProcess) {
-      try {
-        const relativePath = relative(baseDir, filePath);
-        const parsed = await parseFile(filePath, relativePath);
-
-        if (!parsed) {
-          result.skipped++;
-          continue;
-        }
-
-        parsedDocs.push(parsed);
-      } catch (error) {
-        result.failed++;
-        result.errors.push({
-          file: relative(tempDir, filePath),
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-
-    const recursiveResult = await createDocumentsRecursively(
+    // Import documents
+    const importResult = await importWIFDocuments(
       spaceId,
       user.id,
-      parsedDocs,
+      documents,
+      uploadedMediaMap,
       existingSlugs,
-      baseDir,
+      extractDir,
     );
 
-    result.imported += recursiveResult.imported;
-    result.failed += recursiveResult.failed;
-    result.documents.push(...recursiveResult.documents);
-    result.errors.push(...recursiveResult.errors);
+    result.imported = importResult.imported;
+    result.failed = importResult.failed;
+    result.documents = importResult.documents;
+    result.errors = importResult.errors;
 
     return jsonResponse(result, 200);
   } catch (error) {
     if (error instanceof Response) return error;
     console.error("Import error:", error);
-    return jsonResponse({ error: "Failed to import files" }, 500);
+    return jsonResponse({ error: "Failed to import WIF file" }, 500);
   } finally {
     if (tempDir) {
       try {

@@ -594,30 +594,55 @@ Delete a webhook.
 
 ### `POST /api/v1/spaces/{spaceId}/import`
 
-Import documents from various file formats.
+Import documents from WIF (Wiki Interchange Format) files.
 
 **Authentication**: Required  
 **Required Role**: editor  
 **Request Body**: FormData with `file` field  
-**Supported Formats**:
-- Markdown (.md)
-- Text (.txt)
-- HTML (.html, .htm)
-- JSON (.json)
-- ZIP archives containing any of the above
-- Microsoft Word (.docx) - via Pandoc
-- LibreOffice (.odt) - via Pandoc
-- EPUB (.epub) - via Pandoc
+**Supported Format**: WIF ZIP archives only (.wif.zip or .zip)
 
 **Max Size**: 100MB
 
 **Response**: `{ totalFiles: number, imported: number, skipped: number, failed: number, documents: Document[], errors: string[] }`
 
+**WIF Format Structure**:
+```
+export-name.wif.zip
+├── wif.json              # Manifest file
+├── documents/            # Markdown documents with YAML frontmatter
+│   ├── index.md
+│   └── path/
+│       └── to/
+│           └── document.md
+└── media/                # Attachments and images
+    └── path/
+        └── to/
+            └── image.png
+```
+
+**Document Frontmatter**:
+```yaml
+---
+wif_version: "1.0"
+slug: "my-document"
+title: "My Document"
+created_at: "2024-01-15T10:30:00Z"
+modified_at: "2024-01-20T14:22:00Z"
+author: "user@example.com"
+parent: "parent-document-slug"
+order: 1
+category: "documentation"
+properties:
+  key: "value"
+---
+```
+
 **Notes**:
-- ZIP files are extracted and processed recursively
-- Directory structure is preserved as document hierarchy
+- Documents must have YAML frontmatter with at least `wif_version`, `slug`, and `title`
+- Document hierarchy is determined by `parent` field in frontmatter
+- Media files are automatically uploaded and image references are updated
 - Existing slugs are automatically handled with unique suffixes
-- Pandoc is used for advanced format conversion when available
+- Use `bun scripts/convert-xwiki-to-wif.ts` to convert XWiki exports to WIF format
 
 ---
 
