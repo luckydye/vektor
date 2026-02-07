@@ -11,7 +11,7 @@ import {
   requireUser,
   verifySpaceRole,
 } from "../../../../../db/api.ts";
-import { createDocument } from "../../../../../db/documents.ts";
+import { createDocument, setDocumentParent } from "../../../../../db/documents.ts";
 import { createCategory, getCategoryBySlug } from "../../../../../db/categories.ts";
 import { getSpaceDb } from "../../../../../db/db.ts";
 import { document } from "../../../../../db/schema/space.ts";
@@ -472,13 +472,16 @@ export const POST: APIRoute = async (context) => {
         categorySlugs.add(finalSlug);
       }
 
+      // Get parent from either top-level or properties section
+      const parentSlug = frontmatter.parent || frontmatter.properties?.parent;
+
       docInfo.push({
         originalSlug,
         finalSlug,
         title: frontmatter.title,
         isCategory,
         categorySlug: frontmatter.category,
-        parentSlug: frontmatter.parent,
+        parentSlug,
         frontmatter,
         content: doc.content,
         relativePath: doc.relativePath,
@@ -500,25 +503,23 @@ export const POST: APIRoute = async (context) => {
     // STEP 5: Upload media files
     const uploadedMediaMap = await copyMediaToUploads(spaceId, mediaFiles);
 
-    // STEP 6: Import documents
+    // STEP 6: Import documents (two-pass approach)
     const slugToIdMap = new Map<string, string>();
+    const documentParents = new Map<string, string>(); // documentId -> parentSlug
 
+    // First pass: Create all documents without parent relationships
     for (const info of docInfo) {
       try {
         // Update image references
         const updatedContent = updateImageReferences(info.content, uploadedMediaMap);
 
-        // Resolve parent ID
-        let parentId: string | null = null;
-        if (info.parentSlug) {
-          // Check if parent was modified
-          const resolvedParentSlug =
-            slugModifications.get(info.parentSlug) || info.parentSlug;
-          parentId = slugToIdMap.get(resolvedParentSlug) || null;
+        // Build properties - filter out structural metadata
+        const properties: Record<string, string> = {};
+        for (const [key, value] of Object.entries(info.frontmatter.properties)) {
+          if (key !== "parent") {
+            properties[key] = value;
+          }
         }
-
-        // Build properties
-        const properties: Record<string, string> = { ...info.frontmatter.properties };
 
         // Set category for the document
         if (info.isCategory) {
@@ -538,21 +539,26 @@ export const POST: APIRoute = async (context) => {
           ? new Date(info.frontmatter.modified_at)
           : undefined;
 
-        // Create document
+        // Create document without parent (will be set in second pass)
         const createdDoc = await createDocument(
           spaceId,
           user.id,
           info.finalSlug,
           updatedContent,
           properties,
-          parentId,
+          null,
           undefined,
           createdAt,
           updatedAt,
         );
 
-        // Store mapping for child documents
+        // Store mapping for parent resolution
         slugToIdMap.set(info.finalSlug, createdDoc.id);
+
+        // Store parent relationship for second pass
+        if (info.parentSlug) {
+          documentParents.set(createdDoc.id, info.parentSlug);
+        }
 
         result.imported++;
         result.documents.push({
@@ -566,6 +572,21 @@ export const POST: APIRoute = async (context) => {
           file: info.relativePath,
           error: error instanceof Error ? error.message : "Unknown error",
         });
+      }
+    }
+
+    // Second pass: Set parent relationships
+    for (const [documentId, parentSlug] of documentParents) {
+      try {
+        // Resolve parent slug (check if it was modified)
+        const resolvedParentSlug = slugModifications.get(parentSlug) || parentSlug;
+        const parentId = slugToIdMap.get(resolvedParentSlug);
+
+        if (parentId) {
+          await setDocumentParent(spaceId, documentId, parentId);
+        }
+      } catch (error) {
+        console.error(`Failed to set parent for document ${documentId}:`, error);
       }
     }
 

@@ -414,9 +414,25 @@ async function convertXWikiToWIF(
     });
   }
 
-  documents.sort((a, b) => a.level - b.level);
+  // Deduplicate documents by slug (keep first occurrence)
+  const seenSlugs = new Set<string>();
+  const uniqueDocuments = documents.filter((doc) => {
+    if (seenSlugs.has(doc.slug)) {
+      console.log(`- Skipping duplicate: ${doc.slug} (${doc.path})`);
+      return false;
+    }
+    seenSlugs.add(doc.slug);
+    return true;
+  });
 
-  console.log(`\nPrepared ${documents.length} documents for export`);
+  uniqueDocuments.sort((a, b) => a.level - b.level);
+
+  const duplicateCount = documents.length - uniqueDocuments.length;
+
+  console.log(`\nPrepared ${uniqueDocuments.length} documents for export`);
+  if (duplicateCount > 0) {
+    console.log(`Skipped ${duplicateCount} duplicate documents`);
+  }
   console.log(`Found ${categories.size} categories (first-level documents)`);
   console.log(`Found ${mediaMap.size} media files\n`);
 
@@ -433,7 +449,7 @@ async function convertXWikiToWIF(
   let totalSize = 0;
 
   // Create document files preserving original directory structure
-  for (const doc of documents) {
+  for (const doc of uniqueDocuments) {
     // Convert the original HTML path to MD path, preserving directory structure
     const relativeHtmlPath = relative(exportDir, doc.path);
     const relativeMdPath = relativeHtmlPath
@@ -487,7 +503,7 @@ async function convertXWikiToWIF(
       type: "xwiki",
     },
     stats: {
-      documents: documents.length,
+      documents: uniqueDocuments.length,
       categories: categories.size,
       mediaFiles: mediaMap.size,
       totalSizeBytes: totalSize,
@@ -499,7 +515,7 @@ async function convertXWikiToWIF(
 
   console.log(`\n✓ WIF export created: ${outputDir}`);
   console.log(`\nSummary:`);
-  console.log(`  Documents: ${documents.length}`);
+  console.log(`  Documents: ${uniqueDocuments.length}`);
   console.log(`  Categories: ${categories.size} (first-level documents)`);
   console.log(`  Media files: ${mediaMap.size}`);
   console.log(`  Total size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
