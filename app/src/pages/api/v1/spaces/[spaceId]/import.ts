@@ -2,8 +2,7 @@ import type { APIRoute } from "astro";
 import { mkdir, readdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
 import { join, extname, dirname, relative } from "node:path";
 import { randomBytes } from "node:crypto";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
+import AdmZip from "adm-zip";
 import {
   badRequestResponse,
   jsonResponse,
@@ -15,8 +14,6 @@ import { createDocument, setDocumentParent } from "../../../../../db/documents.t
 import { createCategory, getCategoryBySlug } from "../../../../../db/categories.ts";
 import { getSpaceDb } from "../../../../../db/db.ts";
 import { document } from "../../../../../db/schema/space.ts";
-
-const execAsync = promisify(exec);
 
 const MAX_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB
 const TEMP_DIR = join(process.cwd(), "data", "temp");
@@ -70,7 +67,8 @@ async function ensureTempDir(): Promise<void> {
 
 async function extractZipFile(zipPath: string, extractDir: string): Promise<void> {
   await mkdir(extractDir, { recursive: true });
-  await execAsync(`unzip -o -q "${zipPath}" -d "${extractDir}"`);
+  const zip = new AdmZip(zipPath);
+  zip.extractAllTo(extractDir, true);
 }
 
 async function parseWIFManifest(extractDir: string): Promise<WIFManifest | null> {
