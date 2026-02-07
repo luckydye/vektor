@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { mkdir, readdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
-import { join, extname, basename, dirname, relative } from "node:path";
+import { join, extname, dirname, relative } from "node:path";
 import { randomBytes } from "node:crypto";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
@@ -12,6 +12,7 @@ import {
   verifySpaceRole,
 } from "../../../../../db/api.ts";
 import { createDocument } from "../../../../../db/documents.ts";
+import { createCategory, getCategoryBySlug } from "../../../../../db/categories.ts";
 import { getSpaceDb } from "../../../../../db/db.ts";
 import { document } from "../../../../../db/schema/space.ts";
 
@@ -28,11 +29,6 @@ interface WIFManifest {
     type: string;
     version?: string;
     url?: string;
-  };
-  stats?: {
-    documents?: number;
-    mediaFiles?: number;
-    totalSizeBytes?: number;
   };
 }
 
@@ -64,6 +60,7 @@ interface ImportResult {
   skipped: number;
   failed: number;
   documents: Array<{ slug: string; title: string; id: string }>;
+  categories: Array<{ slug: string; name: string }>;
   errors: Array<{ file: string; error: string }>;
 }
 
@@ -127,7 +124,6 @@ function parseFrontmatter(content: string): {
       properties: {},
     };
 
-    const currentKey: string | null = null;
     let inProperties = false;
 
     for (const line of frontmatterLines) {
@@ -243,12 +239,18 @@ async function scanWIFDocuments(extractDir: string): Promise<WIFDocument[]> {
 
   await scanDir(documentsDir, 0);
 
-  // Sort by level (parents before children) and then by order
+  // Sort: index files first, then by order, then alphabetically
   documents.sort((a, b) => {
     if (a.level !== b.level) {
       return a.level - b.level;
     }
-    return (a.frontmatter.order || 0) - (b.frontmatter.order || 0);
+    const aIsIndex = a.relativePath.endsWith("/index.md");
+    const bIsIndex = b.relativePath.endsWith("/index.md");
+    if (aIsIndex && !bIsIndex) return -1;
+    if (!aIsIndex && bIsIndex) return 1;
+    const orderDiff = (a.frontmatter.order || 0) - (b.frontmatter.order || 0);
+    if (orderDiff !== 0) return orderDiff;
+    return a.relativePath.localeCompare(b.relativePath);
   });
 
   return documents;
@@ -292,7 +294,6 @@ async function scanWIFMedia(extractDir: string): Promise<Map<string, string>> {
 async function copyMediaToUploads(
   spaceId: string,
   mediaMap: Map<string, string>,
-  tempDir: string,
 ): Promise<Map<string, string>> {
   const uploadedMap = new Map<string, string>();
   const uploadsDir = join(process.cwd(), "data", "uploads", spaceId);
@@ -317,20 +318,12 @@ async function copyMediaToUploads(
   return uploadedMap;
 }
 
-function updateImageReferences(
-  content: string,
-  mediaMap: Map<string, string>,
-  extractDir: string,
-): string {
-  // Update relative image paths to uploaded URLs
-  // Match patterns like: ![alt](./../media/path/to/file.png) or <img src="./../media/...">
-
+function updateImageReferences(content: string, mediaMap: Map<string, string>): string {
   let updatedContent = content;
 
-  // Markdown image syntax: ![alt](path)
+  // Markdown image syntax
   const markdownImgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   updatedContent = updatedContent.replace(markdownImgRegex, (match, alt, path) => {
-    // Extract the media path from the relative path
     const mediaMatch = path.match(/\.\.\/media\/(.+)/);
     if (mediaMatch) {
       const mediaPath = mediaMatch[1];
@@ -342,7 +335,7 @@ function updateImageReferences(
     return match;
   });
 
-  // HTML img tag syntax: <img src="path">
+  // HTML img tag syntax
   const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
   updatedContent = updatedContent.replace(htmlImgRegex, (match, path) => {
     const mediaMatch = path.match(/\.\.\/media\/(.+)/);
@@ -357,106 +350,6 @@ function updateImageReferences(
   });
 
   return updatedContent;
-}
-
-async function importWIFDocuments(
-  spaceId: string,
-  userId: string,
-  documents: WIFDocument[],
-  mediaMap: Map<string, string>,
-  existingSlugs: Set<string>,
-  extractDir: string,
-): Promise<{
-  imported: number;
-  failed: number;
-  documents: Array<{ slug: string; title: string; id: string }>;
-  errors: Array<{ file: string; error: string }>;
-}> {
-  const result = {
-    imported: 0,
-    failed: 0,
-    documents: [] as Array<{ slug: string; title: string; id: string }>,
-    errors: [] as Array<{ file: string; error: string }>,
-  };
-
-  const slugToIdMap = new Map<string, string>();
-
-  for (const doc of documents) {
-    try {
-      const { frontmatter, content, relativePath } = doc;
-
-      // Determine the slug
-      let slug = frontmatter.slug;
-      if (!slug || existingSlugs.has(slug)) {
-        // Generate unique slug if not provided or already exists
-        let baseSlug = frontmatter.title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .substring(0, 100);
-
-        if (!baseSlug) {
-          baseSlug = "document";
-        }
-
-        slug = baseSlug;
-        let counter = 1;
-        while (existingSlugs.has(slug) || slugToIdMap.has(slug)) {
-          slug = `${baseSlug}-${counter}`;
-          counter++;
-        }
-      }
-
-      existingSlugs.add(slug);
-
-      // Determine parent
-      let parentId: string | null = null;
-      if (frontmatter.parent) {
-        parentId = slugToIdMap.get(frontmatter.parent) || null;
-      }
-
-      // Update image references in content
-      const updatedContent = updateImageReferences(content, mediaMap, extractDir);
-
-      // Parse dates
-      const createdAt = frontmatter.created_at
-        ? new Date(frontmatter.created_at)
-        : undefined;
-      const updatedAt = frontmatter.modified_at
-        ? new Date(frontmatter.modified_at)
-        : undefined;
-
-      // Create document
-      const createdDoc = await createDocument(
-        spaceId,
-        userId,
-        slug,
-        updatedContent,
-        frontmatter.properties || {},
-        parentId,
-        undefined,
-        createdAt,
-        updatedAt,
-      );
-
-      slugToIdMap.set(slug, createdDoc.id);
-
-      result.imported++;
-      result.documents.push({
-        slug: createdDoc.slug,
-        title: frontmatter.title,
-        id: createdDoc.id,
-      });
-    } catch (error) {
-      result.failed++;
-      result.errors.push({
-        file: doc.relativePath,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  }
-
-  return result;
 }
 
 export const POST: APIRoute = async (context) => {
@@ -474,7 +367,6 @@ export const POST: APIRoute = async (context) => {
       throw badRequestResponse("No file provided");
     }
 
-    // Only accept ZIP files (WIF format)
     const ext = extname(file.name).toLowerCase();
     if (ext !== ".zip") {
       throw badRequestResponse("Only WIF (.zip) files are supported");
@@ -506,47 +398,176 @@ export const POST: APIRoute = async (context) => {
       );
     }
 
-    const result: ImportResult = {
-      totalFiles: 0,
-      imported: 0,
-      skipped: 0,
-      failed: 0,
-      documents: [],
-      errors: [],
-    };
-
-    // Get existing slugs to avoid collisions
-    const db = getSpaceDb(spaceId);
-    const allDocs = await db.select({ slug: document.slug }).from(document).all();
-    const existingSlugs = new Set(allDocs.map((d) => d.slug));
-
-    // Scan WIF structure
+    // STEP 1: Scan all documents
     const documents = await scanWIFDocuments(extractDir);
     const mediaFiles = await scanWIFMedia(extractDir);
-
-    result.totalFiles = documents.length + mediaFiles.size;
 
     if (documents.length === 0) {
       throw badRequestResponse("No valid documents found in WIF export");
     }
 
-    // Copy media files to uploads
-    const uploadedMediaMap = await copyMediaToUploads(spaceId, mediaFiles, tempDir);
+    // STEP 2: Get existing slugs to avoid collisions
+    const db = getSpaceDb(spaceId);
+    const allDocs = await db.select({ slug: document.slug }).from(document).all();
+    const existingSlugs = new Set(allDocs.map((d) => d.slug));
 
-    // Import documents
-    const importResult = await importWIFDocuments(
-      spaceId,
-      user.id,
-      documents,
-      uploadedMediaMap,
-      existingSlugs,
-      extractDir,
-    );
+    const result: ImportResult = {
+      totalFiles: documents.length + mediaFiles.size,
+      imported: 0,
+      skipped: 0,
+      failed: 0,
+      documents: [],
+      categories: [],
+      errors: [],
+    };
 
-    result.imported = importResult.imported;
-    result.failed = importResult.failed;
-    result.documents = importResult.documents;
-    result.errors = importResult.errors;
+    // STEP 3: Pre-process - collect all document info and category slugs
+    const docInfo: Array<{
+      originalSlug: string;
+      finalSlug: string;
+      title: string;
+      isCategory: boolean;
+      categorySlug?: string;
+      parentSlug?: string;
+      frontmatter: WIFFrontmatter;
+      content: string;
+      relativePath: string;
+    }> = [];
+
+    const categorySlugs = new Set<string>();
+    const slugModifications = new Map<string, string>(); // original -> final
+
+    // First pass: determine all slugs and identify categories
+    for (const doc of documents) {
+      const { frontmatter } = doc;
+      const originalSlug = frontmatter.slug;
+      let finalSlug = originalSlug;
+
+      // Handle slug collisions
+      if (!finalSlug || existingSlugs.has(finalSlug)) {
+        let baseSlug = frontmatter.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .substring(0, 100);
+
+        if (!baseSlug) baseSlug = "document";
+
+        finalSlug = baseSlug;
+        let counter = 1;
+        while (existingSlugs.has(finalSlug) || slugModifications.has(finalSlug)) {
+          finalSlug = `${baseSlug}-${counter}`;
+          counter++;
+        }
+      }
+
+      // Track slug modification
+      if (originalSlug && originalSlug !== finalSlug) {
+        slugModifications.set(originalSlug, finalSlug);
+      }
+
+      // Check if this is a category
+      const isCategory = frontmatter.properties?.type === "category";
+      if (isCategory) {
+        categorySlugs.add(finalSlug);
+      }
+
+      docInfo.push({
+        originalSlug,
+        finalSlug,
+        title: frontmatter.title,
+        isCategory,
+        categorySlug: frontmatter.category,
+        parentSlug: frontmatter.parent,
+        frontmatter,
+        content: doc.content,
+        relativePath: doc.relativePath,
+      });
+    }
+
+    // STEP 4: Create categories
+    for (const slug of categorySlugs) {
+      const doc = docInfo.find((d) => d.finalSlug === slug);
+      if (doc) {
+        const existing = await getCategoryBySlug(spaceId, slug);
+        if (!existing) {
+          await createCategory(spaceId, doc.title, slug);
+          result.categories.push({ slug, name: doc.title });
+        }
+      }
+    }
+
+    // STEP 5: Upload media files
+    const uploadedMediaMap = await copyMediaToUploads(spaceId, mediaFiles);
+
+    // STEP 6: Import documents
+    const slugToIdMap = new Map<string, string>();
+
+    for (const info of docInfo) {
+      try {
+        // Update image references
+        const updatedContent = updateImageReferences(info.content, uploadedMediaMap);
+
+        // Resolve parent ID
+        let parentId: string | null = null;
+        if (info.parentSlug) {
+          // Check if parent was modified
+          const resolvedParentSlug =
+            slugModifications.get(info.parentSlug) || info.parentSlug;
+          parentId = slugToIdMap.get(resolvedParentSlug) || null;
+        }
+
+        // Build properties
+        const properties: Record<string, string> = { ...info.frontmatter.properties };
+
+        // Set category for the document
+        if (info.isCategory) {
+          properties["category"] = info.finalSlug;
+        } else if (info.categorySlug) {
+          // Resolve category slug if it was modified
+          const resolvedCategorySlug =
+            slugModifications.get(info.categorySlug) || info.categorySlug;
+          properties["category"] = resolvedCategorySlug;
+        }
+
+        // Parse dates
+        const createdAt = info.frontmatter.created_at
+          ? new Date(info.frontmatter.created_at)
+          : undefined;
+        const updatedAt = info.frontmatter.modified_at
+          ? new Date(info.frontmatter.modified_at)
+          : undefined;
+
+        // Create document
+        const createdDoc = await createDocument(
+          spaceId,
+          user.id,
+          info.finalSlug,
+          updatedContent,
+          properties,
+          parentId,
+          undefined,
+          createdAt,
+          updatedAt,
+        );
+
+        // Store mapping for child documents
+        slugToIdMap.set(info.finalSlug, createdDoc.id);
+
+        result.imported++;
+        result.documents.push({
+          slug: createdDoc.slug,
+          title: info.frontmatter.title,
+          id: createdDoc.id,
+        });
+      } catch (error) {
+        result.failed++;
+        result.errors.push({
+          file: info.relativePath,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
 
     return jsonResponse(result, 200);
   } catch (error) {

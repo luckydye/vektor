@@ -20,7 +20,7 @@ const {
 
 // Load expanded items (categories and documents) from localStorage
 function loadExpandedItems() {
-  if (typeof window === 'undefined') return new Set();
+  if (typeof window === "undefined") return new Set();
 
   const stored = localStorage.getItem(`wiki-expanded-items`);
 
@@ -36,12 +36,9 @@ function loadExpandedItems() {
 
 // Save expanded items to localStorage
 function saveExpandedItems(items) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
 
-  localStorage.setItem(
-    `wiki-expanded-items`,
-    JSON.stringify(Array.from(items))
-  );
+  localStorage.setItem(`wiki-expanded-items`, JSON.stringify(Array.from(items)));
 }
 
 const expandedItems = ref(loadExpandedItems());
@@ -49,8 +46,8 @@ const expandedItems = ref(loadExpandedItems());
 // Get slugs of expanded categories
 const expandedCategorySlugs = computed(() => {
   return categories.value
-    .filter(cat => expandedItems.value.has(cat.id))
-    .map(cat => cat.slug);
+    .filter((cat) => expandedItems.value.has(cat.id))
+    .map((cat) => cat.slug);
 });
 
 // Use the composable with all expanded category slugs
@@ -60,20 +57,27 @@ const categoriesWithDocs = computed(() => {
   return categories.value.map((category) => {
     const categoryDocs = documentsBySlug.value.get(category.slug) || [];
 
-    // Root docs are either:
+    // Root docs are:
     // 1. Docs with no parent
-    // 2. Docs whose parent is in a different category (they "break away" to their own category)
+    // 2. Docs whose parent is not in this category's document list
     const rootDocs = categoryDocs.filter((doc) => {
       if (!doc.parentId) return true;
 
       const parent = categoryDocs.find((d) => d.id === doc.parentId);
       if (!parent) return true;
 
-      const parentCategory = parent.properties.category || parent.properties.collection;
-      const docCategory = doc.properties.category || doc.properties.collection;
+      // If the parent is in the same category, this doc is not a root
+      // It will be rendered as a child by DocumentTreeItem
+      const parentCategory = parent.properties?.category || parent.properties?.collection;
+      const docCategory = doc.properties?.category || doc.properties?.collection;
 
-      // If doc has explicit category different from parent's, it's a root in its own category
-      return docCategory && docCategory !== parentCategory;
+      // If both have the same category (or both have no category), doc is not a root
+      if (parentCategory === docCategory) {
+        return false;
+      }
+
+      // If categories differ, this doc breaks away to be a root in its own category
+      return true;
     });
 
     return {
@@ -204,7 +208,7 @@ async function handleDrop(e, index) {
 
   if (!draggedCategory.value) return;
 
-  const newOrder = categories.value.map(c => c.id);
+  const newOrder = categories.value.map((c) => c.id);
   const draggedIndex = newOrder.indexOf(draggedCategory.value.id);
 
   if (draggedIndex === index) {
@@ -284,7 +288,7 @@ async function handleDocumentCategoryChange(event) {
   }
 
   // Find the category to get its slug
-  const targetCategory = categories.value.find(c => c.id === newCategoryId);
+  const targetCategory = categories.value.find((c) => c.id === newCategoryId);
   if (!targetCategory) {
     throw new Error("Target category not found");
   }

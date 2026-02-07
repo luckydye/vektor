@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { parseHTML } from "linkedom";
 import { $ } from "bun";
-import type { WIFDocument, WIFExport } from "./wif/types.ts";
+import type { WIFDocument } from "./wif/types.ts";
 import {
   WIF_VERSION,
   createSlugFromPath,
@@ -13,7 +13,6 @@ import {
   getMediaPath,
   generateFrontmatter,
   calculateRelativePath,
-  sanitizeFilename,
 } from "./wif/index.ts";
 
 const DEFAULT_EXPORT_DIR = "./temp/Technik.WebHome/pages";
@@ -24,6 +23,10 @@ interface XWikiDocument {
   html: string;
   slug: string;
 }
+
+// Track slug mappings for link rewriting
+const pathToSlugMap = new Map<string, string>();
+const categories = new Set<string>();
 
 async function findAllDocuments(dir: string): Promise<string[]> {
   const files: string[] = [];
@@ -86,6 +89,33 @@ function extractTitle(html: string, slug: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function extractXWikiPathFromHref(href: string): string | null {
+  const patterns = [/https?:\/\/[^/]+\/wiki\/(.+)/, /\/wiki\/(.+)/];
+
+  for (const pattern of patterns) {
+    const match = href.match(pattern);
+    if (match) {
+      return decodeURIComponent(match[1]).replace(/\/$/, "");
+    }
+  }
+
+  return null;
+}
+
+function xwikiPathToSlug(xwikiPath: string): string | null {
+  const cleanPath = xwikiPath
+    .replace(/^intern\/Technik\//i, "")
+    .replace(/\/WebHome$/i, "")
+    .replace(/\//g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  return cleanPath || "home";
+}
+
 async function cleanXWikiHtml(
   html: string,
   htmlFilePath: string,
@@ -115,9 +145,6 @@ async function cleanXWikiHtml(
       continue;
     }
 
-    const htmlDir = htmlFilePath
-      .replace(DEFAULT_EXPORT_DIR, "")
-      .replace(/\/WebHome\.html$/, "");
     const pathParts = src.split("/");
 
     let levelsUp = 0;
@@ -140,6 +167,39 @@ async function cleanXWikiHtml(
 
       const relativePath = calculateRelativePath(docPath, sanitizedPath);
       img.setAttribute("src", relativePath);
+    }
+  }
+
+  const links = Array.from(content.querySelectorAll("a[href]"));
+  for (const link of links) {
+    const href = link.getAttribute("href");
+    if (!href) continue;
+
+    if (href.startsWith("http://") || href.startsWith("https://")) {
+      const xwikiPath = extractXWikiPathFromHref(href);
+      if (xwikiPath) {
+        const targetSlug = xwikiPathToSlug(xwikiPath);
+        if (targetSlug) {
+          for (const [, slug] of pathToSlugMap) {
+            if (slug === targetSlug || slug.endsWith(`-${targetSlug}`)) {
+              const targetPath = getDocumentPath(targetSlug);
+              const relativePath = calculateRelativePath(docPath, targetPath);
+              link.setAttribute("href", relativePath.replace(/\.md$/, ""));
+              break;
+            }
+          }
+        }
+      }
+    } else if (href.startsWith("/")) {
+      const xwikiPath = extractXWikiPathFromHref(href);
+      if (xwikiPath) {
+        const targetSlug = xwikiPathToSlug(xwikiPath);
+        if (targetSlug) {
+          const targetPath = getDocumentPath(targetSlug);
+          const relativePath = calculateRelativePath(docPath, targetPath);
+          link.setAttribute("href", relativePath.replace(/\.md$/, ""));
+        }
+      }
     }
   }
 
@@ -268,6 +328,13 @@ async function convertXWikiToWIF(
   const htmlFiles = await findAllDocuments(exportDir);
   console.log(`Found ${htmlFiles.length} HTML files\n`);
 
+  // First pass: collect all path-to-slug mappings
+  for (const filePath of htmlFiles) {
+    const relativePath = relative(exportDir, filePath).replace(/\/WebHome\.html$/, "");
+    const slug = createSlugFromPath(filePath, exportDir);
+    pathToSlugMap.set(relativePath, slug);
+  }
+
   const documents: WIFDocument[] = [];
   const mediaMap = new Map<string, string>();
 
@@ -279,13 +346,9 @@ async function convertXWikiToWIF(
     const hierarchyInfo = getHierarchyInfo(slug);
     const title = extractTitle(html, slug);
 
-    const properties: Record<string, string> = {
-      title,
-      source: "xwiki-import",
-    };
-
-    if (hierarchyInfo.categorySlug && hierarchyInfo.level === 1) {
-      properties.category = hierarchyInfo.categorySlug;
+    // First-level documents ARE categories
+    if (hierarchyInfo.level === 1 && hierarchyInfo.categorySlug) {
+      categories.add(hierarchyInfo.categorySlug);
     }
 
     const isEmpty = isDocumentEmpty(content);
@@ -293,22 +356,33 @@ async function convertXWikiToWIF(
       console.log(`- Empty document (will create for hierarchy): ${slug}`);
     }
 
+    // Build properties without isEmpty
+    const properties: Record<string, string> = {
+      title,
+      source: "xwiki-import",
+    };
+
+    // If this is a first-level doc, mark it as a category
+    if (hierarchyInfo.level === 1) {
+      properties.type = "category";
+    }
+
     documents.push({
       slug,
       title,
       content: isEmpty ? "" : content,
-      properties: {
-        ...properties,
-        isEmpty: isEmpty ? "true" : "false",
-      },
+      parentSlug: hierarchyInfo.parentSlug,
       path: filePath,
-      ...hierarchyInfo,
+      level: hierarchyInfo.level,
+      categorySlug: hierarchyInfo.categorySlug,
+      properties,
     });
   }
 
   documents.sort((a, b) => a.level - b.level);
 
   console.log(`\nPrepared ${documents.length} documents for export`);
+  console.log(`Found ${categories.size} categories (first-level documents)`);
   console.log(`Found ${mediaMap.size} media files\n`);
 
   console.log("Creating WIF export...");
@@ -323,6 +397,7 @@ async function convertXWikiToWIF(
 
   let totalSize = 0;
 
+  // Create document files - first level docs are automatically categories
   for (const doc of documents) {
     const docPath = getDocumentPath(doc.slug);
     const fullPath = join(outputDir, docPath);
@@ -337,7 +412,10 @@ async function convertXWikiToWIF(
     const fileStat = await Bun.file(fullPath).stat();
     totalSize += fileStat.size;
 
-    console.log(`  ✓ Created: ${docPath}`);
+    const isCategory = doc.level === 1;
+    console.log(
+      `  ✓ Created: ${docPath}${isCategory ? " [CATEGORY]" : ""}${doc.parentSlug ? ` (parent: ${doc.parentSlug})` : ""}`,
+    );
   }
 
   console.log("\nCopying media files...");
@@ -370,6 +448,7 @@ async function convertXWikiToWIF(
     },
     stats: {
       documents: documents.length,
+      categories: categories.size,
       mediaFiles: mediaMap.size,
       totalSizeBytes: totalSize,
     },
@@ -381,6 +460,7 @@ async function convertXWikiToWIF(
   console.log(`\n✓ WIF export created: ${outputDir}`);
   console.log(`\nSummary:`);
   console.log(`  Documents: ${documents.length}`);
+  console.log(`  Categories: ${categories.size} (first-level documents)`);
   console.log(`  Media files: ${mediaMap.size}`);
   console.log(`  Total size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
   console.log(`\nTo create a zip file, run:`);
