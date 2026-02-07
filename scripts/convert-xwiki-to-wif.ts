@@ -53,20 +53,55 @@ async function findAllDocuments(dir: string): Promise<string[]> {
   return files;
 }
 
-function getHierarchyInfo(slug: string): {
+function getHierarchyInfo(
+  filePath: string,
+  exportDir: string,
+): {
   parentSlug?: string;
   level: number;
   categorySlug?: string;
 } {
-  if (!slug || slug === "home") {
+  const relativePath = relative(exportDir, filePath);
+  const dirPath = dirname(relativePath);
+
+  // Remove the file name to get just the directory path
+  // e.g., "intern/Technik/Projekte/Modulbibliothek/WebHome.html" -> "intern/Technik/Projekte/Modulbibliothek"
+  const pathParts = dirPath.split("/").filter((p) => p && p !== ".");
+
+  if (pathParts.length === 0) {
     return { level: 0 };
   }
 
-  const parts = slug.split("-");
-  const level = parts.filter((p) => p).length;
+  // Remove the common prefix path (intern/Technik)
+  const relevantParts = pathParts.slice(2); // Skip "intern" and "Technik"
 
-  const parentSlug = parts.length > 1 ? parts.slice(0, -1).join("-") : undefined;
-  const categorySlug = parts.length >= 1 ? parts[0] : undefined;
+  const level = relevantParts.length;
+
+  if (level === 0) {
+    return { level: 0 };
+  }
+
+  // The category is the first part after intern/Technik
+  const categorySlug = relevantParts[0]
+    ? relevantParts[0]
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+    : undefined;
+
+  // Parent slug is all parts except the last one, joined with hyphens
+  const parentSlug =
+    relevantParts.length > 1
+      ? relevantParts
+          .slice(0, -1)
+          .map((p) =>
+            p
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, ""),
+          )
+          .join("-")
+      : undefined;
 
   return { parentSlug, level, categorySlug };
 }
@@ -343,7 +378,7 @@ async function convertXWikiToWIF(
     const slug = createSlugFromPath(filePath, exportDir);
     const content = await cleanXWikiHtml(html, filePath, attachmentDir, mediaMap);
 
-    const hierarchyInfo = getHierarchyInfo(slug);
+    const hierarchyInfo = getHierarchyInfo(filePath, exportDir);
     const title = extractTitle(html, slug);
 
     // First-level documents ARE categories
@@ -397,9 +432,14 @@ async function convertXWikiToWIF(
 
   let totalSize = 0;
 
-  // Create document files - first level docs are automatically categories
+  // Create document files preserving original directory structure
   for (const doc of documents) {
-    const docPath = getDocumentPath(doc.slug);
+    // Convert the original HTML path to MD path, preserving directory structure
+    const relativeHtmlPath = relative(exportDir, doc.path);
+    const relativeMdPath = relativeHtmlPath
+      .replace(/\.html$/i, ".md")
+      .replace(/WebHome\.md$/i, "index.md");
+    const docPath = join("documents", relativeMdPath);
     const fullPath = join(outputDir, docPath);
 
     await mkdir(dirname(fullPath), { recursive: true });

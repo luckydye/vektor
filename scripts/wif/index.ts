@@ -41,25 +41,23 @@ export function createSlugFromPath(filePath: string, baseDir: string): string {
   );
 }
 
-export function getDocumentPath(slug: string): string {
+export function getDocumentPath(slug: string, parentSlug?: string): string {
   if (slug === "home") {
     return "documents/index.md";
   }
 
-  const parts = slug.split("-");
-
-  if (parts.length === 1) {
-    return `documents/${slug}/index.md`;
-  }
-
-  const parentPath = parts.slice(0, -1).join("-");
-  const docName = parts[parts.length - 1];
-
-  if (parentPath) {
+  // If we have a parent slug, nest under parent's directory
+  if (parentSlug && parentSlug !== "home") {
+    // Build path from parent slug
+    const parentPath = parentSlug.replace(/-/g, "/");
+    // Get the last part of current slug as filename
+    const parts = slug.split("-");
+    const docName = parts[parts.length - 1];
     return `documents/${parentPath}/${docName}.md`;
   }
 
-  return `documents/${docName}/index.md`;
+  // No parent - this is a root level document
+  return `documents/${slug}/index.md`;
 }
 
 export function getMediaPath(originalPath: string): string {

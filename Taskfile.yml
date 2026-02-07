@@ -73,15 +73,7 @@ tasks:
     dir: ui/src/assets
     cmd: python3 split-icons.py
 
-  xwiki:convert:
-    desc: Convert XWiki HTML export to Markdown (use --zip for ZIP output)
-    cmd: bun scripts/xwiki-to-markdown.js {{.CLI_ARGS}}
-
   wif:convert:
-    desc: Convert XWiki export to WIF format (outputs to ./output/)
-    cmd: bun scripts/convert-xwiki-to-wif.ts {{.CLI_ARGS}}
-
-  wif:convert-zip:
     desc: Convert XWiki export to WIF and create ZIP archive
     cmds:
       - bun scripts/convert-xwiki-to-wif.ts
