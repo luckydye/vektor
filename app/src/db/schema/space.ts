@@ -155,6 +155,55 @@ export const spaceSecret = sqliteTable(
   }),
 );
 
+export const oauthIntegration = sqliteTable(
+  "oauth_integration",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").notNull(),
+    userId: text("user_id").notNull(),
+    externalAccountId: text("external_account_id").notNull(),
+    externalUsername: text("external_username"),
+    instanceUrl: text("instance_url"),
+    scope: text("scope"),
+    accessTokenCiphertext: text("access_token_ciphertext").notNull(),
+    accessTokenIv: text("access_token_iv").notNull(),
+    accessTokenAuthTag: text("access_token_auth_tag").notNull(),
+    refreshTokenCiphertext: text("refresh_token_ciphertext"),
+    refreshTokenIv: text("refresh_token_iv"),
+    refreshTokenAuthTag: text("refresh_token_auth_tag"),
+    accessTokenExpiresAt: integer("access_token_expires_at", {
+      mode: "timestamp",
+    }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+  },
+  (table) => ({
+    providerUserUnique: uniqueIndex("oauth_integration_provider_user_unique").on(
+      table.provider,
+      table.userId,
+    ),
+  }),
+);
+
+export const oauthIntegrationState = sqliteTable(
+  "oauth_integration_state",
+  {
+    id: text("id").primaryKey(),
+    state: text("state").notNull(),
+    provider: text("provider").notNull(),
+    userId: text("user_id").notNull(),
+    codeVerifier: text("code_verifier").notNull(),
+    redirectTo: text("redirect_to"),
+    instanceUrl: text("instance_url"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => ({
+    stateUnique: uniqueIndex("oauth_integration_state_unique").on(table.state),
+  }),
+);
+
 export const auditLog = sqliteTable("audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   docId: text("doc_id").notNull(),

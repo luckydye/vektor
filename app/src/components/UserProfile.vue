@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import "@sv/elements/popover";
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { authClient } from "../composeables/auth-client.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import Avatar from "./Avatar.vue";
@@ -30,6 +30,13 @@ const handleLogout = async (e: Event) => {
     console.error("Logout failed:", error);
   }
 };
+
+onMounted(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("integration") && params.get("status")) {
+    isPreferencesOpen.value = true;
+  }
+});
 </script>
 
 <template>

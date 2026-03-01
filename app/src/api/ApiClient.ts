@@ -247,6 +247,24 @@ export interface SpaceSecret {
   lastUsedAt: Date | string | null;
 }
 
+export type OAuthIntegrationProvider = "gitlab" | "youtrack";
+
+export interface OAuthIntegrationConnection {
+  provider: OAuthIntegrationProvider;
+  label: string;
+  configured: boolean;
+  missingConfig: string[];
+  connected: boolean;
+  externalAccountId: string | null;
+  externalUsername: string | null;
+  instanceUrl: string | null;
+  scopes: string[];
+  accessTokenExpiresAt: Date | string | null;
+  createdAt: Date | string | null;
+  updatedAt: Date | string | null;
+  lastUsedAt: Date | string | null;
+}
+
 export type AuditEvent =
   | "view"
   | "save"
@@ -1323,6 +1341,53 @@ export class ApiClient {
       await this.apiDelete(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/secrets/${encodeURIComponent(name)}`,
+      );
+    },
+  };
+
+  integrations = {
+    /**
+     * List OAuth integrations for current user in a space
+     */
+    get: async (spaceId: string) => {
+      return await this.apiGet<{ connections: OAuthIntegrationConnection[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/integrations`,
+      );
+    },
+
+    /**
+     * Get one provider integration status
+     */
+    getByProvider: async (spaceId: string, provider: OAuthIntegrationProvider) => {
+      return await this.apiGet<{ connection: OAuthIntegrationConnection }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/integrations/${provider}`,
+      );
+    },
+
+    /**
+     * Start OAuth connect flow for provider
+     */
+    connect: async (
+      spaceId: string,
+      provider: OAuthIntegrationProvider,
+      body?: { redirectTo?: string; instanceUrl?: string },
+    ) => {
+      return await this.apiPost<{ authorizeUrl: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/integrations/${provider}/connect`,
+        body ?? {},
+      );
+    },
+
+    /**
+     * Disconnect provider
+     */
+    disconnect: async (spaceId: string, provider: OAuthIntegrationProvider) => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/integrations/${provider}`,
       );
     },
   };

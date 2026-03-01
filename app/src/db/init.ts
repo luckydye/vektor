@@ -79,6 +79,18 @@ export async function prepareSpaceDb(spaceId: string) {
 
   const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
   await spaceDb.run(sql.raw(spaceSecretSQL));
+  const oauthIntegrationSQL = generateCreateTableSQL(spaceSchema.oauthIntegration);
+  await spaceDb.run(sql.raw(oauthIntegrationSQL));
+  const oauthIntegrationStateSQL = generateCreateTableSQL(
+    spaceSchema.oauthIntegrationState,
+  );
+  await spaceDb.run(sql.raw(oauthIntegrationStateSQL));
+  await spaceDb.run(
+    sql.raw("ALTER TABLE oauth_integration ADD COLUMN instance_url TEXT"),
+  ).catch(() => {});
+  await spaceDb.run(
+    sql.raw("ALTER TABLE oauth_integration_state ADD COLUMN instance_url TEXT"),
+  ).catch(() => {});
 
   await spaceDb.run(
     sql.raw(`
