@@ -156,7 +156,7 @@ const providerLabel = computed(() => {
     case "ollama":
       return { name: ollamaModel.value || "Ollama", sub: "Local" };
     case "openrouter":
-      return { name: "gpt-oss", sub: "OpenRouter" };
+      return { name: "openrouter.ai", sub: "Cloud" };
   }
 });
 
@@ -983,7 +983,7 @@ async function fetchStreamingCompletion(
     ? `${ollamaBaseUrl.value.replace(/\/$/, "")}/v1/chat/completions`
     : "/api/v1/chat/completions";
 
-  const model = isOllama ? ollamaModel.value : "openai/gpt-oss-120b";
+  const model = isOllama ? ollamaModel.value : "qwen/qwen3.5-397b-a17b";
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

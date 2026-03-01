@@ -80,7 +80,7 @@ For API details, see `app/docs/api.md`.
   "agent": {
     "extensionId": "workflow-builder",
     "jobId": "agent",
-    "inputs": [{ "key": "model", "value": "openai/gpt-oss-120b" }],
+    "inputs": [{ "key": "model", "value": "qwen/qwen3.5-397b-a17b" }],
     "depends": ["readSource", "readPromptTemplate"]
   },
   "writeNewDoc": {
@@ -165,7 +165,7 @@ Source: `/Users/tihav/source/wiki-extensions/extensions/workflow-builder/manifes
 - Inputs:
 - `prompt` (`string`, required)
 - `content` (`string`, optional)
-- `model` (`string`, optional, default `openai/gpt-oss-120b`)
+- `model` (`string`, optional, default `qwen/qwen3.5-397b-a17b`)
 - `allowedTools` (`string`, optional): JSON array of tool names to allow
 - `debug` (`boolean`, optional): if true, skips model call and returns empty content
 - Outputs:

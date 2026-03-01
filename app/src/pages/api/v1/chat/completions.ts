@@ -23,7 +23,7 @@ export const POST: APIRoute = (context) =>
       if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
       const bodyJson = await parseJsonBody(context.request);
-      bodyJson.model = "openai/gpt-oss-120b";
+      bodyJson.model = "qwen/qwen3.5-397b-a17b";
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",

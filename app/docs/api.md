@@ -123,7 +123,7 @@ Most errors are JSON:
 - User session OR job headers `X-Job-Token` + `X-Space-Id`.
 - Body:
 - Proxied JSON payload for OpenRouter chat completions.
-- Server forces `model = "openai/gpt-oss-120b"`.
+- Server forces `model = "qwen/qwen3.5-397b-a17b"`.
 - Returns:
 - Proxied upstream status/body (supports streaming).
 
