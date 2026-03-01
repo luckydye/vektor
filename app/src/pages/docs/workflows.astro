@@ -1,0 +1,17 @@
+
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import Content from "../../../docs/workflows.md";
+import docStyles from "../../styles/document.css?inline";
+---
+
+<BaseLayout title="Document - Wiki">
+    <div>
+        <document-view>
+            <template shadowrootmode="open">
+                <style set:html={docStyles}></style>
+                <Content />
+            </template>
+        </document-view>
+    </div>
+</BaseLayout>
