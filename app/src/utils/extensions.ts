@@ -52,7 +52,7 @@ export type ExtensionContext = {
     register: (id: string, provider: SuggestionProvider) => void;
     unregister: (id: string) => void;
   };
-  /** Extension-scoped key-value storage */
+  /** Extension-scoped key-value storage (deprecated; no longer persisted) */
   storage: {
     get: (key: string) => Promise<string | null>;
     set: (key: string, value: string) => Promise<void>;
@@ -349,28 +349,14 @@ export class Extensions {
         },
       },
       storage: {
-        get: async (key: string) => {
-          const result = await api.extensions.storage.get(
-            this.spaceId!,
-            extensionId,
-            key,
-          );
-          return result?.value ?? null;
+        get: async () => null,
+        set: async () => {
+          throw new Error("Extension storage is no longer supported.");
         },
-        set: async (key: string, value: string) => {
-          await api.extensions.storage.set(this.spaceId!, extensionId, key, value);
+        delete: async () => {
+          throw new Error("Extension storage is no longer supported.");
         },
-        delete: async (key: string) => {
-          await api.extensions.storage.delete(this.spaceId!, extensionId, key);
-        },
-        list: async (prefix?: string) => {
-          const entries = await api.extensions.storage.list(
-            this.spaceId!,
-            extensionId,
-            prefix,
-          );
-          return entries.map(({ key, value }) => ({ key, value }));
-        },
+        list: async () => [],
       },
       getActiveEditor: () => window.__editor ?? null,
     };

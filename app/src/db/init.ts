@@ -60,9 +60,7 @@ export async function prepareSpaceDb(spaceId: string) {
 
   const extensionSQL = generateCreateTableSQL(spaceSchema.extension);
   await spaceDb.run(sql.raw(extensionSQL));
-
-  const extensionStorageSQL = generateCreateTableSQL(spaceSchema.extensionStorage);
-  await spaceDb.run(sql.raw(extensionStorageSQL));
+  await spaceDb.run(sql.raw("DROP TABLE IF EXISTS extension_storage"));
 
   const commentsSQL = generateCreateTableSQL(spaceSchema.comment);
   await spaceDb.run(sql.raw(commentsSQL));

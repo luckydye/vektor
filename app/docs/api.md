@@ -88,10 +88,6 @@ Most errors are JSON:
 | GET | `/spaces/:spaceId/extensions/:extensionId` | Returns extension metadata. |
 | DELETE | `/spaces/:spaceId/extensions/:extensionId` | Deletes an extension. |
 | GET | `/spaces/:spaceId/extensions/:extensionId/assets/*` | Serves extension asset files from package zip. |
-| GET | `/spaces/:spaceId/extensions/:extensionId/storage` | Lists extension key/value storage entries. |
-| GET | `/spaces/:spaceId/extensions/:extensionId/storage/:key` | Gets one extension storage value. |
-| PUT | `/spaces/:spaceId/extensions/:extensionId/storage/:key` | Sets one extension storage value. |
-| DELETE | `/spaces/:spaceId/extensions/:extensionId/storage/:key` | Deletes one extension storage value. |
 | POST | `/spaces/:spaceId/extensions/:extensionId/data-sources/:dataSourceId/query` | Runs a data-source job and returns outputs/logs. |
 
 ---
@@ -704,34 +700,6 @@ Most errors are JSON:
 - Auth: session + extension access.
 - Returns:
 - Raw asset file from extension package zip with inferred MIME type.
-
-## `GET /spaces/:spaceId/extensions/:extensionId/storage`
-
-- Auth: session + extension access.
-- Query:
-- optional `prefix`.
-- Returns:
-- `200` storage entries list.
-
-## `GET /spaces/:spaceId/extensions/:extensionId/storage/:key`
-
-- Auth: session + extension access.
-- Returns:
-- `200` `{ key, value }` or `404`.
-
-## `PUT /spaces/:spaceId/extensions/:extensionId/storage/:key`
-
-- Auth: session + extension access.
-- Body:
-- `{ value: string }` required.
-- Returns:
-- `200` `{ key, value, updatedAt }`.
-
-## `DELETE /spaces/:spaceId/extensions/:extensionId/storage/:key`
-
-- Auth: session + extension access.
-- Returns:
-- `200` success.
 
 ## `POST /spaces/:spaceId/extensions/:extensionId/data-sources/:dataSourceId/query`
 

@@ -50,18 +50,6 @@ export const extension = sqliteTable("extension", {
   createdBy: text("created_by").notNull(),
 });
 
-export const extensionStorage = sqliteTable("extension_storage", {
-  id: text("id").primaryKey(),
-  extensionId: text("extension_id").notNull(),
-  key: text("key").notNull(),
-  value: text("value").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
-
-export type ExtensionStorage = typeof extensionStorage.$inferSelect;
-export type ExtensionStorageInsert = typeof extensionStorage.$inferInsert;
-
 export const document = sqliteTable("document", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull(),
