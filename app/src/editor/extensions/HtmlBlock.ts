@@ -1,6 +1,6 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import type { CommandProps } from "@tiptap/core";
-import { stripScriptTags } from "~/src/utils/utils";
+import { stripScriptTags } from "~/src/utils/utils.ts";
 import { render, html } from "lit-html";
 
 declare module "@tiptap/core" {
@@ -28,7 +28,8 @@ export const HtmlBlock = Node.create({
     return {
       "data-html": {
         default: "<p>Enter HTML content here</p>",
-        parseHTML: (element) => element.getAttribute("data-html") || "<p>Enter HTML content here</p>",
+        parseHTML: (element) =>
+          element.getAttribute("data-html") || "<p>Enter HTML content here</p>",
         renderHTML: (attributes) => {
           return {
             "data-html": attributes["data-html"],
@@ -68,18 +69,20 @@ export const HtmlBlock = Node.create({
   addNodeView() {
     return ({ editor, node, getPos }) => {
       const { view } = editor;
-      const dom = document.createElement('div')
+      const dom = document.createElement("div");
 
       const updateHtml = (e: Event) => {
         const textarea = e.target as HTMLInputElement;
         const newHtml = textarea.value;
 
-        if (typeof getPos === 'function') {
+        if (typeof getPos === "function") {
           const pos = getPos();
           if (pos) {
-            view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, {
-              'data-html': newHtml,
-            }))
+            view.dispatch(
+              view.state.tr.setNodeMarkup(pos, undefined, {
+                "data-html": newHtml,
+              }),
+            );
           }
         }
 
@@ -87,9 +90,10 @@ export const HtmlBlock = Node.create({
       };
 
       function renderSource() {
-        const htmlString = node.attrs['data-html'];
+        const htmlString = node.attrs["data-html"];
 
-        render(html`
+        render(
+          html`
           <style>
             .html-block-wrapper {
               display: flex;
@@ -126,7 +130,7 @@ export const HtmlBlock = Node.create({
           </style>
 
           <div class="html-block-wrapper">
-            <div class="w-full" @keydown=${e => e.stopPropagation()} @paste=${e => e.stopPropagation()}>
+            <div class="w-full" @keydown=${(e) => e.stopPropagation()} @paste=${(e) => e.stopPropagation()}>
               <ai-textarea
                 .value=${htmlString}
                 @change=${updateHtml}
@@ -139,12 +143,14 @@ export const HtmlBlock = Node.create({
               <html-block contentEditable="true" data-html=${htmlString}></html-block>
             </div>
           </div>
-        `, dom);
+        `,
+          dom,
+        );
       }
 
       renderSource();
 
       return { dom };
-    }
+    };
   },
 });

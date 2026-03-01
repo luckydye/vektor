@@ -26,10 +26,7 @@ import type { CommandProps } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import {
-  ResizableNodeView,
-  createResizableAttributes,
-} from "./resizable.ts";
+import { ResizableNodeView, createResizableAttributes } from "./resizable.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -104,11 +101,7 @@ function createSuggestionPopup(
 class ResizableFigmaView extends ResizableNodeView {
   figmaEl: HTMLElement;
 
-  constructor(
-    node: ProseMirrorNode,
-    view: EditorView,
-    getPos: () => number | undefined,
-  ) {
+  constructor(node: ProseMirrorNode, view: EditorView, getPos: () => number | undefined) {
     super(node, view, getPos);
 
     this.figmaEl = document.createElement("figma-embed");
@@ -224,20 +217,17 @@ export const FigmaEmbed = Node.create({
             setTimeout(() => {
               const coords = view.coordsAtPos(pastedTextEnd);
 
-              const popup = createSuggestionPopup(
-                () => {
-                  const currentState = view.state;
-                  const embedNode = nodeType.create({ url: text });
-                  const replaceTr = currentState.tr.replaceRangeWith(
-                    pastedTextStart,
-                    pastedTextEnd,
-                    embedNode,
-                  );
-                  view.dispatch(replaceTr);
-                  cleanup();
-                },
-                cleanup,
-              );
+              const popup = createSuggestionPopup(() => {
+                const currentState = view.state;
+                const embedNode = nodeType.create({ url: text });
+                const replaceTr = currentState.tr.replaceRangeWith(
+                  pastedTextStart,
+                  pastedTextEnd,
+                  embedNode,
+                );
+                view.dispatch(replaceTr);
+                cleanup();
+              }, cleanup);
 
               popup.style.left = `${coords.left}px`;
               popup.style.top = `${coords.bottom + 8}px`;

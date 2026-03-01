@@ -1,6 +1,6 @@
 import { type Ref, ref, watchEffect } from "vue";
-import { useSpace } from "./useSpace.js";
-import { api, type DocumentContributor } from "../api/client.js";
+import { useSpace } from "./useSpace.ts";
+import { api, type DocumentContributor } from "../api/client.ts";
 
 export function useContributors(documentId?: string) {
   const { currentSpaceId } = useSpace();
@@ -23,7 +23,10 @@ export function useContributors(documentId?: string) {
     error.value = null;
 
     try {
-      contributors.value = await api.documentContributors.get(currentSpaceId.value, documentId);
+      contributors.value = await api.documentContributors.get(
+        currentSpaceId.value,
+        documentId,
+      );
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Unknown error";
     } finally {

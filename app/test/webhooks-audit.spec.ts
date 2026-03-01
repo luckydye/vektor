@@ -109,7 +109,9 @@ describe("Webhook audit logging types", () => {
     }));
 
     for (const details of testDetails) {
-      expect(details.webhookEvent).toMatch(/^(document\.(published|unpublished|deleted)|mention)$/);
+      expect(details.webhookEvent).toMatch(
+        /^(document\.(published|unpublished|deleted)|mention)$/,
+      );
     }
   });
 

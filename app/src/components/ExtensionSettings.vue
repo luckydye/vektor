@@ -9,7 +9,7 @@
       <!-- Upload Section -->
       <div class="flex items-center gap-4">
         <label
-          class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-neutral-200 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+          class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-neutral-100 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
         >
           <input
             type="file"
@@ -41,7 +41,7 @@
       </div>
 
       <!-- Extensions List -->
-      <div v-else class="overflow-x-auto border border-neutral-200 rounded-md">
+      <div v-else class="overflow-x-auto border border-neutral-100 rounded-md">
         <table class="min-w-full divide-y divide-neutral background">
           <thead class="bg-neutral-200">
             <tr>
@@ -139,10 +139,10 @@ const {
 async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
-  
+
   // Reset the input immediately so the same file can be selected again
   input.value = "";
-  
+
   if (!file) {
     return;
   }
@@ -154,7 +154,7 @@ async function handleDelete(extensionId: string) {
   if (!confirm(`Are you sure you want to delete this extension?`)) {
     return;
   }
-  
+
   await deleteExtension(extensionId);
 }
 

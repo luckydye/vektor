@@ -1,5 +1,6 @@
 ---
 import ExtensionView from "../../../components/ExtensionView.vue";
+import AIChatPanel from "../../../components/AIChatPanel.vue";
 import { hasPermission, ResourceType, getUserGroups } from "../../../db/acl.ts";
 import { findExtensionForRoute } from "../../../db/extensions.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
@@ -59,7 +60,7 @@ const pageTitle = match.route.title || match.extension.manifest.name;
 ---
 
 <SpaceLayout title={`${pageTitle} - ${space.name} - Wiki`}>
-  <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl w-full relative">
+  <div class="mx-auto overflow-hidden h-full w-full relative flex-1">
     <ExtensionView
       client:only
       extensionId={match.extension.id}
@@ -67,4 +68,5 @@ const pageTitle = match.route.title || match.extension.manifest.name;
       spaceId={space.id}
     />
   </div>
+  <AIChatPanel client:only slot="outer" />
 </SpaceLayout>

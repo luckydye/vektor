@@ -1,11 +1,5 @@
 import { html, render } from "lit-html";
-import {
-  bitmapToBlob,
-  blobToUri,
-  debounce,
-  rgbToHex,
-  rgbToHsl,
-} from "../utils.ts";
+import { bitmapToBlob, blobToUri, debounce, rgbToHex, rgbToHsl } from "../utils.ts";
 import { Canvas, CanvasRenderer } from "../Canvas.ts";
 import "./Toolbar.ts";
 import { ContextMenu } from "./ContextMenu.ts";

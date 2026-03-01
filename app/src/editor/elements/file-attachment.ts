@@ -14,7 +14,14 @@ const SPREADSHEET_EXTENSIONS = ["xlsx", "xls", "csv"];
 const ARCHIVE_EXTENSIONS = ["zip"];
 const TEXT_EXTENSIONS = ["md", "txt"];
 
-type FileType = "image" | "document" | "presentation" | "spreadsheet" | "archive" | "text" | "unknown";
+type FileType =
+  | "image"
+  | "document"
+  | "presentation"
+  | "spreadsheet"
+  | "archive"
+  | "text"
+  | "unknown";
 
 function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() || "";
@@ -227,5 +234,5 @@ customElements.define(
         this.removeAttribute("filename");
       }
     }
-  }
+  },
 );

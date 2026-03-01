@@ -5,11 +5,12 @@ import {
   requireParam,
   requireUser,
   verifyDocumentAccess,
-} from "../../../../../../../db/api.ts";
-import { getDocument, getDocumentChildren } from "../../../../../../../db/documents.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import { getDocument, getDocumentChildren } from "#db/documents.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "documentId");
@@ -22,9 +23,4 @@ export const GET: APIRoute = async (context) => {
 
     const children = await getDocumentChildren(spaceId, id);
     return jsonResponse({ children });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to list child documents");

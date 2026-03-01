@@ -35,14 +35,12 @@ customElements.define(
         combinations?.find((c) => OS === "MacIntel" && c.includes("meta")) ||
         combinations?.[0];
 
-      const keys = prefferedCombination?.split("-").map(
-        (key) => {
-          const icon = document.createElement("span");
-          icon.className = "key";
-          icon.innerHTML = ICON[key.toLowerCase() + 'Icon'] || key.toUpperCase();
-          return icon;
-        },
-      );
+      const keys = prefferedCombination?.split("-").map((key) => {
+        const icon = document.createElement("span");
+        icon.className = "key";
+        icon.innerHTML = ICON[key.toLowerCase() + "Icon"] || key.toUpperCase();
+        return icon;
+      });
 
       return html`
         <style>
@@ -76,7 +74,7 @@ customElements.define(
         </style>
 
         ${keys?.map((key, index) =>
-            index > 0 ? html`<span class="spacer"></span>${key}` : key,
+          index > 0 ? html`<span class="spacer"></span>${key}` : key,
         )}
       `;
     }

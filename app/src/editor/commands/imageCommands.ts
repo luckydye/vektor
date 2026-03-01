@@ -26,15 +26,14 @@ export function setImageWidth(editor: Editor, width: number | string | null) {
   const { selection } = state;
   const { $from } = selection;
 
-  const node = $from.parent.type.name === 'image'
-    ? $from.parent
-    : state.doc.nodeAt(selection.from);
+  const node =
+    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
 
-  if (!node || node.type.name !== 'image') {
+  if (!node || node.type.name !== "image") {
     return false;
   }
 
-  return editor.commands.updateAttributes('image', {
+  return editor.commands.updateAttributes("image", {
     width,
     display: null, // Clear display when setting specific width
   });
@@ -68,18 +67,17 @@ export function toggleImageFullWidth(editor: Editor) {
   const { selection } = state;
   const { $from } = selection;
 
-  const node = $from.parent.type.name === 'image'
-    ? $from.parent
-    : state.doc.nodeAt(selection.from);
+  const node =
+    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
 
-  if (!node || node.type.name !== 'image') {
+  if (!node || node.type.name !== "image") {
     return false;
   }
 
   const currentDisplay = node.attrs.display;
-  const newDisplay = currentDisplay === 'full' ? null : 'full';
+  const newDisplay = currentDisplay === "full" ? null : "full";
 
-  return editor.commands.updateAttributes('image', {
+  return editor.commands.updateAttributes("image", {
     display: newDisplay,
     width: null, // Clear width when setting display mode
   });
@@ -100,8 +98,8 @@ export function toggleImageFullWidth(editor: Editor) {
  * </div>
  */
 export function setImageFullWidth(editor: Editor) {
-  return editor.commands.updateAttributes('image', {
-    display: 'full',
+  return editor.commands.updateAttributes("image", {
+    display: "full",
     width: null,
   });
 }
@@ -122,7 +120,7 @@ export function setImageFullWidth(editor: Editor) {
  * });
  */
 export function resetImageSize(editor: Editor) {
-  return editor.commands.updateAttributes('image', {
+  return editor.commands.updateAttributes("image", {
     width: null,
     display: null,
   });
@@ -151,11 +149,10 @@ export function isImageSelected(editor: Editor): boolean {
   const { selection } = state;
   const { $from } = selection;
 
-  const node = $from.parent.type.name === 'image'
-    ? $from.parent
-    : state.doc.nodeAt(selection.from);
+  const node =
+    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
 
-  return node?.type.name === 'image';
+  return node?.type.name === "image";
 }
 
 /**
@@ -201,11 +198,10 @@ export function getImageAttributes(editor: Editor) {
   const { selection } = state;
   const { $from } = selection;
 
-  const node = $from.parent.type.name === 'image'
-    ? $from.parent
-    : state.doc.nodeAt(selection.from);
+  const node =
+    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
 
-  if (!node || node.type.name !== 'image') {
+  if (!node || node.type.name !== "image") {
     return null;
   }
 

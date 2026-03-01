@@ -5,21 +5,21 @@ import {
   PropertyChip,
   PropertyPopover,
   type Property,
-} from "~/src/components";
+} from "~/src/components/index.ts";
 import {
   plusIcon,
   peopleIcon,
   calendarIcon,
   propertyIcon,
   layoutFullIcon,
-  layoutDocumentIcon
-} from "~/src/assets/icons";
+  layoutDocumentIcon,
+} from "~/src/assets/icons.ts";
 
 import { useCategories } from "../composeables/useCategories.ts";
 import { getTextColor } from "../utils/utils.ts";
-import { useProperties } from "../composeables/useProperties";
-import { useDocument } from "../composeables/useDocument";
-import { useMembers } from "../composeables/useMembers";
+import { useProperties } from "../composeables/useProperties.ts";
+import { useDocument } from "../composeables/useDocument.ts";
+import { useMembers } from "../composeables/useMembers.ts";
 
 const props = defineProps<{
   documentId: string;
@@ -31,11 +31,13 @@ const { document } = useDocument(props.documentId);
 const { updateProperty, deleteProperty, properties: spaceProperties } = useProperties();
 const { members } = useMembers();
 
-const documentProperties = computed(() => document.value?.properties || props.initialProperties || {});
+const documentProperties = computed(
+  () => document.value?.properties || props.initialProperties || {},
+);
 
 const handleUpdateProperty = async (property: Property & { search: string }) => {
   let value = property.value;
-  if (property.value === '__new__') {
+  if (property.value === "__new__") {
     value = property.search;
   }
 
@@ -53,7 +55,12 @@ const toggleCreatePopover = () => {
 };
 
 const handleCreate = async (property: { name: string; type: string; value?: string }) => {
-  await updateProperty(props.documentId, property.name, property.value || '', property.type);
+  await updateProperty(
+    props.documentId,
+    property.name,
+    property.value || "",
+    property.type,
+  );
   isCreatePopoverOpen.value = false;
 };
 
@@ -74,7 +81,7 @@ const getCategoryIcon = (categorySlug: string | undefined) => {
 };
 
 const getPropertyLabel = (property: Property) => {
-  if (property.name?.toLowerCase() === 'category') {
+  if (property.name?.toLowerCase() === "category") {
     const categorySlug = property.value;
     if (!categorySlug) return "Category";
 
@@ -85,54 +92,54 @@ const getPropertyLabel = (property: Property) => {
     return category ? category.name : categorySlug;
   }
 
-  if (property.name?.toLowerCase() === 'layout') {
+  if (property.name?.toLowerCase() === "layout") {
     if (!property.value) return "Layout";
-    return property.value === 'full' ? "Full Width" : "Document";
+    return property.value === "full" ? "Full Width" : "Document";
   }
 
-  if (property.type === 'user' && property.value) {
-    const member = members.value.find(m => m.userId === property.value);
+  if (property.type === "user" && property.value) {
+    const member = members.value.find((m) => m.userId === property.value);
     if (member?.user) {
       return member.user.name || member.user.email || property.value;
     }
     return property.value;
   }
 
-  if (property.type === 'date' && property.value) {
+  if (property.type === "date" && property.value) {
     // Format date as readable string (e.g., "Jan 15, 2024")
     const date = new Date(property.value);
     if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
       });
     }
     return property.value;
   }
 
   return property.value || property.name;
-}
+};
 
 const getPropertyIcon = (property: Property) => {
-  if (property.id?.toLowerCase() === 'category') {
+  if (property.id?.toLowerCase() === "category") {
     return getCategoryIcon(property.value) || undefined;
   }
-  if (property.id?.toLowerCase() === 'layout') {
-    return property.value === 'full' ? layoutFullIcon : layoutDocumentIcon;
+  if (property.id?.toLowerCase() === "layout") {
+    return property.value === "full" ? layoutFullIcon : layoutDocumentIcon;
   }
-  if (property.type === 'user') {
+  if (property.type === "user") {
     return peopleIcon;
   }
-  if (property.type === 'date') {
+  if (property.type === "date") {
     return calendarIcon;
   }
   return propertyIcon;
-}
+};
 
 const getPropertyVariant = (property: Property): "default" | "special" => {
   const propertyName = property.name?.toLowerCase();
-  return propertyName === 'category' || propertyName === 'layout' ? "special" : "default";
+  return propertyName === "category" || propertyName === "layout" ? "special" : "default";
 };
 
 const getPropertyValues = async (property: Property) => {
@@ -146,27 +153,30 @@ const getPropertyValues = async (property: Property) => {
   if (property.name?.toLowerCase() === "layout") {
     return [
       { id: "document", label: "Document", icon: layoutDocumentIcon },
-      { id: "full", label: "Full Width", icon: layoutFullIcon }
+      { id: "full", label: "Full Width", icon: layoutFullIcon },
     ];
   }
 
   if (property.type === "user") {
     return members.value
-      .filter(member => member.userId)
+      .filter((member) => member.userId)
       .map((member) => {
         const user = member.user;
-        const userName = user?.name || user?.email || member.userId || 'Unknown User';
+        const userName = user?.name || user?.email || member.userId || "Unknown User";
         return {
           id: member.userId!,
           label: userName,
-          icon: peopleIcon
+          icon: peopleIcon,
         };
       });
   }
 
-  const propertyValues = spaceProperties.value?.find(sp => sp.name === property.name)?.values?.map(value => {
-    return { id: value, label: value, icon: propertyIcon };
-  }) || [];
+  const propertyValues =
+    spaceProperties.value
+      ?.find((sp) => sp.name === property.name)
+      ?.values?.map((value) => {
+        return { id: value, label: value, icon: propertyIcon };
+      }) || [];
 
   return propertyValues;
 };
@@ -193,7 +203,7 @@ const properties = computed((): Property[] => {
       if (["title", "category", "layout", "parentid"].includes(key?.toLowerCase())) {
         return null;
       }
-      const spaceProperty = spaceProperties.value?.find(sp => sp.name === key);
+      const spaceProperty = spaceProperties.value?.find((sp) => sp.name === key);
       const propertyType = (spaceProperty?.type as Property["type"]) || "select";
 
       return {
@@ -215,9 +225,11 @@ const propertyTypes = [
 ];
 
 const availableNewProperties = computed(() => {
-  return spaceProperties.value.filter(sp => {
-    return !(sp.name in documentProperties.value);
-  }) || []
+  return (
+    spaceProperties.value.filter((sp) => {
+      return !(sp.name in documentProperties.value);
+    }) || []
+  );
 });
 </script>
 

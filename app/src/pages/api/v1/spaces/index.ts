@@ -3,43 +3,40 @@ import {
   badRequestResponse,
   createdResponse,
   jsonResponse,
+  parseJsonBody,
   requireUser,
-} from "../../../../db/api.ts";
-import { createSpace, listUserSpaces } from "../../../../db/spaces.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import { createSpace, listUserSpaces } from "#db/spaces.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaces = await listUserSpaces(user.id);
     return jsonResponse(spaces);
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to list spaces");
 
-export const POST: APIRoute = async (context) => {
-  try {
-    const user = requireUser(context);
-    const body = await context.request.json();
-    const { name, slug, preferences } = body;
+export const POST: APIRoute = (context) =>
+  withApiErrorHandling(
+    async () => {
+      const user = requireUser(context);
+      const body = await parseJsonBody(context.request);
+      const { name, slug, preferences } = body;
 
-    if (!name || !slug) {
-      throw badRequestResponse("Name and slug are required");
-    }
+      if (!name || !slug) {
+        throw badRequestResponse("Name and slug are required");
+      }
 
-    const space = await createSpace(user.id, name, slug, preferences);
-    return createdResponse({ space });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    
-    // Handle duplicate slug error
-    if (error instanceof Error && error.message.includes("already exists")) {
-      return badRequestResponse(error.message);
-    }
-    
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+      const space = await createSpace(user.id, name, slug, preferences);
+      return createdResponse({ space });
+    },
+    {
+      fallbackMessage: "Failed to create space",
+      onError: (error) => {
+        if (error instanceof Error && error.message.includes("already exists")) {
+          return badRequestResponse(error.message);
+        }
+        return undefined;
+      },
+    },
+  );

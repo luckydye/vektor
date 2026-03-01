@@ -71,8 +71,8 @@ async function fetchAvailableUsers() {
 
     const memberUserIds = new Set(
       permissions.value
-        .filter(p => p.type === "role" && p.permission.userId)
-        .map(p => p.permission.userId)
+        .filter((p) => p.type === "role" && p.permission.userId)
+        .map((p) => p.permission.userId),
     );
     availableUsers.value = users.filter((u) => !memberUserIds.has(u.id));
   } catch (err) {
@@ -83,12 +83,16 @@ async function fetchAvailableUsers() {
   }
 }
 
-watch(() => currentSpace.value?.id, () => {
-  fetchPermissions();
-  fetchUsers();
-}, {
-  immediate: true
-});
+watch(
+  () => currentSpace.value?.id,
+  () => {
+    fetchPermissions();
+    fetchUsers();
+  },
+  {
+    immediate: true,
+  },
+);
 
 watch(showAddMember, (isOpen) => {
   if (isOpen) {
@@ -101,7 +105,7 @@ watch(showAddMember, (isOpen) => {
 });
 
 const rolePermissions = computed(() => {
-  return permissions.value.filter(p => p.type === "role") || [];
+  return permissions.value.filter((p) => p.type === "role") || [];
 });
 
 async function handleAddMember(e) {
@@ -119,7 +123,9 @@ async function handleAddMember(e) {
     await api.permissions.grant(currentSpace.value.id, {
       type: "role",
       roleOrFeature: newMemberRole.value,
-      ...(isGroup ? { groupId: newMemberId.value.trim() } : { userId: newMemberId.value.trim() })
+      ...(isGroup
+        ? { groupId: newMemberId.value.trim() }
+        : { userId: newMemberId.value.trim() }),
     });
 
     showAddMember.value = false;
@@ -147,7 +153,9 @@ async function handleRoleChange(perm, newRole) {
     await api.permissions.grant(currentSpace.value.id, {
       type: "role",
       roleOrFeature: newRole,
-      ...(isGroup ? { groupId: perm.permission.groupId } : { userId: perm.permission.userId })
+      ...(isGroup
+        ? { groupId: perm.permission.groupId }
+        : { userId: perm.permission.userId }),
     });
     await fetchPermissions();
   } catch (err) {
@@ -176,7 +184,7 @@ async function handleRemoveMember(perm) {
     await api.permissions.revoke(currentSpace.value.id, {
       type: "role",
       roleOrFeature: perm.permission.permission,
-      ...(isGroup ? { groupId: memberId } : { userId: memberId })
+      ...(isGroup ? { groupId: memberId } : { userId: memberId }),
     });
     await fetchPermissions();
   } catch (err) {
@@ -205,7 +213,7 @@ function canEditMember(userId, perm) {
   }
 
   const currentUserPerm = permissions.value.find(
-    p => p.type === "role" && p.permission.userId === user.value.id
+    (p) => p.type === "role" && p.permission.userId === user.value.id,
   );
   if (!currentUserPerm) {
     return false;
@@ -220,7 +228,9 @@ function canEditMember(userId, perm) {
   const currentUserLevel = roleHierarchy[currentUserPerm.permission.permission] || 0;
   const memberLevel = roleHierarchy[perm.permission.permission] || 0;
 
-  return currentUserLevel >= 3 && currentUserLevel > memberLevel || currentUserLevel === 3;
+  return (
+    (currentUserLevel >= 3 && currentUserLevel > memberLevel) || currentUserLevel === 3
+  );
 }
 
 function canRemoveMember(perm) {
@@ -246,7 +256,7 @@ function canRemoveMember(perm) {
   }
 
   const currentUserPerm = permissions.value.find(
-    p => p.type === "role" && p.permission.userId === user.value.id
+    (p) => p.type === "role" && p.permission.userId === user.value.id,
   );
   if (!currentUserPerm) {
     return false;
@@ -336,7 +346,7 @@ async function copyMemberId(memberId) {
     </div>
 
     <!-- Members List -->
-    <div v-if="!isLoading && !loadingUsers && rolePermissions.length > 0" class="border border-neutral-200 rounded-lg overflow-auto">
+    <div v-if="!isLoading && !loadingUsers && rolePermissions.length > 0" class="border border-neutral-100 rounded-lg overflow-auto">
       <table class="min-w-full divide-y divide-neutral-200">
         <thead class="bg-neutral-50">
           <tr>
@@ -396,7 +406,7 @@ async function copyMemberId(memberId) {
                 v-if="canEditMember(perm.permission.userId, perm)"
                 :value="perm.permission.permission"
                 @change="(e) => handleRoleChange(perm, e.target.value)"
-                class="text-sm border border-neutral-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="text-sm border border-neutral-100 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 :disabled="updatingMember === (perm.permission.userId || perm.permission.groupId)"
               >
                 <option value="viewer">Viewer</option>
@@ -427,7 +437,7 @@ async function copyMemberId(memberId) {
     </div>
 
     <!-- Empty State -->
-    <div v-if="!isLoading && !loadingUsers && rolePermissions.length === 0" class="text-center py-12 border border-neutral-200 rounded-lg">
+    <div v-if="!isLoading && !loadingUsers && rolePermissions.length === 0" class="text-center py-12 border border-neutral-100 rounded-lg">
       <svg class="mx-auto h-12 w-12 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
       </svg>
@@ -451,7 +461,7 @@ async function copyMemberId(memberId) {
           <select
             id="member-type"
             v-model="newMemberType"
-            class="w-full px-3 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="user">User</option>
             <option value="group">OAuth Group</option>
@@ -467,7 +477,7 @@ async function copyMemberId(memberId) {
             id="member-id"
             v-model="newMemberId"
             required
-            class="w-full px-3 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             :disabled="loadingAvailableUsers"
           >
             <option value="">Select a user...</option>
@@ -482,7 +492,7 @@ async function copyMemberId(memberId) {
             type="text"
             required
             placeholder="e.g., admins, developers"
-            class="w-full px-3 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <p v-if="newMemberType === 'group'" class="mt-1 text-xs text-neutral-500">
             The group name from your OAuth provider's wiki_groups field
@@ -496,7 +506,7 @@ async function copyMemberId(memberId) {
           <select
             id="member-role"
             v-model="newMemberRole"
-            class="w-full px-3 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="viewer">Viewer - Read-only access</option>
             <option value="editor">Editor - Create and edit content</option>

@@ -1,7 +1,7 @@
 import { computed, watch } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { useSpace } from "./useSpace.js";
-import { api, type Category } from "../api/client.js";
+import { useSpace } from "./useSpace.ts";
+import { api, type Category } from "../api/client.ts";
 
 export function useCategories() {
   const { currentSpaceId: spaceId } = useSpace();
@@ -44,7 +44,7 @@ export function useCategories() {
         ["wiki_categories", spaceId.value],
         (old: Category[] | undefined) => {
           return old ? [...old, newCategory] : [newCategory];
-        }
+        },
       );
     },
   });
@@ -69,10 +69,8 @@ export function useCategories() {
         ["wiki_categories", spaceId.value],
         (old: Category[] | undefined) => {
           if (!old) return [updatedCategory];
-          return old.map((c) =>
-            c.id === variables.categoryId ? updatedCategory : c
-          );
-        }
+          return old.map((c) => (c.id === variables.categoryId ? updatedCategory : c));
+        },
       );
     },
   });
@@ -91,7 +89,7 @@ export function useCategories() {
         (old: Category[] | undefined) => {
           if (!old) return [];
           return old.filter((c) => c.id !== categoryId);
-        }
+        },
       );
     },
   });

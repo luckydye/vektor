@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed } from "vue";
+import { onMounted, onUnmounted, computed, ref } from "vue";
 import CommentThread, { type Comment as CommentThreadType } from "./CommentThread.vue";
-import CommentOverlays, { type Comment as CommentOverlaysType } from "./CommentOverlays.vue";
-import { useComments } from "../composeables/useComments.js";
-import type { Comment as ApiComment } from "../api/ApiClient.js";
+import CommentOverlays, {
+  type Comment as CommentOverlaysType,
+} from "./CommentOverlays.vue";
+import { useComments } from "../composeables/useComments.ts";
+import type { Comment as ApiComment } from "../api/ApiClient.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -18,10 +20,8 @@ const {
   isSubmitting,
   isDeletingComment,
   activeComments,
-  refetch,
   submitComment,
   deleteComment,
-  handleOpenComment,
   setupListeners,
   cleanupListeners,
 } = useComments({
@@ -30,39 +30,80 @@ const {
   currentRev: computed(() => props.currentRev),
 });
 
+const showAddBubble = ref(false);
+const bubbleY = ref(0);
+const addingCommentY = ref<number | null>(null);
+
 const commentsForOverlays = computed(() =>
-  comments.value.map((c: ApiComment) => ({
-    id: c.id,
-    reference: c.reference ?? undefined,
-  } as CommentOverlaysType))
+  comments.value.map(
+    (c: ApiComment) =>
+      ({
+        id: c.id,
+        reference: c.reference ?? undefined,
+      }) as CommentOverlaysType,
+  ),
 );
 
 const commentsForThread = computed(() =>
-  activeComments.value.map((c: ApiComment) => ({
-    id: c.id,
-    content: c.content,
-    createdAt: typeof c.createdAt === "string" ? c.createdAt : c.createdAt.toISOString(),
-    createdBy: c.createdBy,
-    reference: c.reference ?? undefined,
-    parentId: c.parentId ?? undefined,
-  } as CommentThreadType))
+  activeComments.value.map(
+    (c: ApiComment) =>
+      ({
+        id: c.id,
+        content: c.content,
+        createdAt:
+          typeof c.createdAt === "string" ? c.createdAt : c.createdAt.toISOString(),
+        createdBy: c.createdBy,
+        reference: c.reference ?? undefined,
+        parentId: c.parentId ?? undefined,
+      }) as CommentThreadType,
+  ),
 );
+
+function handleMouseMove(e: MouseEvent) {
+  if (activeReference.value || addingCommentY.value !== null) {
+    showAddBubble.value = false;
+    return;
+  }
+  if (e.clientX > window.innerWidth - 60) {
+    showAddBubble.value = true;
+    bubbleY.value = e.clientY;
+  } else {
+    showAddBubble.value = false;
+  }
+}
+
+function handleAddComment() {
+  addingCommentY.value = bubbleY.value;
+  showAddBubble.value = false;
+}
 
 async function handleSubmit(payload: { content: string; reference: string | null }) {
   await submitComment(payload.content, payload.reference);
+}
+
+async function handleSubmitNew(payload: { content: string; reference: string | null }) {
+  await submitComment(payload.content, null);
+  addingCommentY.value = null;
 }
 
 async function handleDeleteComment(commentId: string) {
   await deleteComment(commentId);
 }
 
+function handleMouseLeave() {
+  showAddBubble.value = false;
+}
+
 onMounted(() => {
-  refetch();
   setupListeners();
+  window.addEventListener("mousemove", handleMouseMove);
+  document.documentElement.addEventListener("mouseleave", handleMouseLeave);
 });
 
 onUnmounted(() => {
   cleanupListeners();
+  window.removeEventListener("mousemove", handleMouseMove);
+  document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
 });
 </script>
 
@@ -70,9 +111,27 @@ onUnmounted(() => {
   <div class="contents">
     <CommentOverlays :comments="commentsForOverlays" />
 
+    <!-- Add comment bubble — appears near right viewport edge -->
+    <div
+      v-if="showAddBubble"
+      class="fixed right-4 z-50 -translate-y-1/2 pointer-events-auto"
+      :style="{ top: `${bubbleY}px` }"
+    >
+      <button
+        @click="handleAddComment"
+        class="w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md flex items-center justify-center text-neutral-500 hover:text-primary-600 hover:border-primary-300 hover:shadow-lg transition-all"
+        title="Add comment"
+      >
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Thread for existing comment reference -->
     <div
       v-if="activeReference"
-      class="absolute right-0 z-40"
+      class="fixed right-4 z-40"
       :style="{ top: `${threadPosition}px` }"
     >
       <CommentThread
@@ -83,6 +142,23 @@ onUnmounted(() => {
         @submit="handleSubmit"
         @delete="handleDeleteComment"
         @close="activeReference = null"
+      />
+    </div>
+
+    <!-- Thread for new comment (bubble click) -->
+    <div
+      v-if="addingCommentY !== null && !activeReference"
+      class="fixed right-4 z-40"
+      :style="{ top: `${addingCommentY}px` }"
+    >
+      <CommentThread
+        :comments="[]"
+        :activeReference="null"
+        :isSubmitting="isSubmitting"
+        :isDeletingComment="isDeletingComment"
+        @submit="handleSubmitNew"
+        @delete="handleDeleteComment"
+        @close="addingCommentY = null"
       />
     </div>
   </div>

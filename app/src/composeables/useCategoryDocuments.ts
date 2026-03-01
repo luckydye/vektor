@@ -1,60 +1,72 @@
-import { computed, type Ref, watch } from "vue";
-import { useQueries } from "@tanstack/vue-query";
-import { useSpace } from "./useSpace.js";
-import { api } from "../api/client.js";
-import { useSync } from "./useSync.js";
+import { computed, type Ref } from "vue";
+import { useQuery } from "@tanstack/vue-query";
+import { useSpace } from "./useSpace.ts";
+import { api } from "../api/client.ts";
+import type { DocumentWithProperties } from "../api/ApiClient.ts";
+import { useSync } from "./useSync.ts";
 
 export function useCategoryDocuments(categorySlugs: Ref<string[]>) {
   const { currentSpaceId } = useSpace();
 
-  const queries = useQueries({
-    queries: computed(() =>
-      categorySlugs.value.map((slug) => ({
-        queryKey: ["wiki_category_documents", currentSpaceId.value, slug],
-        queryFn: async () => {
-          if (!currentSpaceId.value) {
-            throw new Error("No space ID");
-          }
-          return await api.categories.documents(currentSpaceId.value, slug);
-        },
-        enabled: !!currentSpaceId.value && !!slug,
-        staleTime: 1000 * 60 * 5, // 5 minutes
-      }))
-    ),
+  const {
+    data: documentsData,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: computed(() => [
+      "wiki_category_documents_batch",
+      currentSpaceId.value,
+      [...categorySlugs.value].sort(),
+    ]),
+    queryFn: async () => {
+      if (!currentSpaceId.value) {
+        throw new Error("No space ID");
+      }
+      if (categorySlugs.value.length === 0) {
+        return {};
+      }
+
+      return await api.documents.getByCategories(
+        currentSpaceId.value,
+        categorySlugs.value,
+      );
+    },
+    enabled: computed(() => !!currentSpaceId.value && categorySlugs.value.length > 0),
+    staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  // Map slug to documents
+  // Ensure all expanded slugs exist in the returned map, even when empty.
   const documentsBySlug = computed(() => {
-    const map = new Map<string, any[]>();
-    categorySlugs.value.forEach((slug, index) => {
-      const query = queries.value[index];
-      map.set(slug, query?.data || []);
-    });
+    const batchedDocuments = documentsData.value || {};
+    const map = new Map<string, DocumentWithProperties[]>();
+
+    for (const slug of categorySlugs.value) {
+      map.set(slug, batchedDocuments[slug] || []);
+    }
+
     return map;
   });
 
-  const isLoading = computed(() =>
-    queries.value.some((query) => query.isPending)
-  );
-
-  const hasError = computed(() =>
-    queries.value.some((query) => query.isError)
-  );
-
-  const refetchAll = () => {
-    queries.value.forEach((query) => query.refetch());
-  };
+  const isLoading = computed(() => isPending.value);
+  const hasError = computed(() => isError.value);
 
   // TODO: syncs are not scopped to documents,
   // one prop updates will send a sync event to all users anywhere in the space
-  useSync(currentSpaceId, keys => {
-    if (keys.includes("wiki_category_documents")) refetchAll();
+  useSync(currentSpaceId, (keys) => {
+    if (
+      keys.includes("document") ||
+      keys.includes("property") ||
+      keys.includes("wiki_category_documents")
+    ) {
+      refetch();
+    }
   });
 
   return {
     documentsBySlug,
     isLoading,
     hasError,
-    refetchAll,
+    refetchAll: refetch,
   };
 }

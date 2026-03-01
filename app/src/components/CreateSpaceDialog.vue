@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { Input, ButtonPrimary, ButtonSecondary } from "~/src/components";
-import { checkIcon, closeIcon } from "~/src/assets/icons";
-import { slugify } from "../utils/utils";
+import { Input, ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
+import { checkIcon, closeIcon } from "~/src/assets/icons.ts";
+import { slugify } from "../utils/utils.ts";
 
 interface Props {
   show?: boolean;
@@ -82,8 +82,8 @@ watch(
 </script>
 
 <template>
-  <div v-if="show" class="fixed inset-0 z-100 flex items-center justify-center bg-black/50" @click.self="handleClose">
-    <div class="bg-background rounded-lg shadow-xl p-s w-full max-w-md">
+  <div v-if="show" class="fixed inset-0 z-100 flex items-center justify-center bg-black/30 text-white overflow-hidden backdrop-blur-sm" @click.self="handleClose">
+    <div class="rounded-lg p-s w-full max-w-md min-w-[250px]">
       <h2 class="text-xl font-semibold text-foreground mb-3xs">Create New Space</h2>
 
       <form @submit.prevent="handleSubmit" class="flex flex-col gap-3xs">
@@ -91,15 +91,15 @@ watch(
           <label for="space-name" class="block text-small font-medium text-foreground mb-5xs">
             Space Name
           </label>
-          <Input v-model="newSpaceName" placeholder="My Wiki" @input="handleNameInput" />
+          <Input v-model="newSpaceName" placeholder="My Wiki" @input="handleNameInput" class="text-black" />
         </div>
 
         <div>
           <label for="space-slug" class="block text-small font-medium text-foreground mb-5xs">
             Slug
           </label>
-          <Input v-model="newSpaceSlug" placeholder="my-wiki" />
-          <p class="mt-5xs text-extra-small text-neutral-600">
+          <Input v-model="newSpaceSlug" placeholder="my-wiki" class="text-black" />
+          <p class="mt-5xs text-extra-small">
             Only lowercase letters, numbers, and hyphens
           </p>
         </div>
@@ -111,9 +111,9 @@ watch(
           <div class="flex gap-4xs items-center">
             <input id="brand-color" v-model="brandColor" type="color"
               class="h-10 w-20 border border-neutral-100 rounded-md cursor-pointer" />
-            <Input v-model="brandColor" placeholder="#42516d" class="flex-1" />
+            <Input v-model="brandColor" placeholder="#42516d" class="flex-1 text-black" />
           </div>
-          <p class="mt-5xs text-extra-small text-neutral-600">
+          <p class="mt-5xs text-extra-small">
             Used for the header and sidebar
           </p>
         </div>
@@ -127,7 +127,7 @@ watch(
           />
           <ButtonPrimary
             :icon="checkIcon"
-            text="Create Space"
+            text="Create"
             class="flex-1"
             @click="handleSubmit"
           />

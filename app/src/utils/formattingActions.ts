@@ -1,4 +1,4 @@
-import { Actions } from "./actions";
+import { Actions } from "./actions.ts";
 
 /**
  * Get the global editor instance
@@ -358,7 +358,11 @@ export function registerFormattingActions() {
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
-      getEditor().chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+      getEditor()
+        .chain()
+        .focus()
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .run();
     },
   });
 
@@ -607,7 +611,7 @@ function setColumnCount(editor: any, newCount: number) {
         for (let i = currentColumns; i < newCount; i++) {
           const columnNode = editor.schema.nodes.columnItem.create(
             null,
-            editor.schema.nodes.paragraph.create()
+            editor.schema.nodes.paragraph.create(),
           );
           tr.insert(pos + node.nodeSize - 1, columnNode);
         }

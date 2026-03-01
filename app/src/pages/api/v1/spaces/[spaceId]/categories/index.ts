@@ -3,14 +3,20 @@ import {
   badRequestResponse,
   createdResponse,
   jsonResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   verifySpaceRole,
-} from "../../../../../../db/api.js";
-import { createCategory, listCategories, reorderCategories } from "../../../../../../db/categories.js";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import {
+  createCategory,
+  listCategories,
+  reorderCategories,
+} from "#db/categories.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "viewer");
@@ -18,19 +24,15 @@ export const GET: APIRoute = async (context) => {
     const categories = await listCategories(spaceId);
 
     return jsonResponse({ categories });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    throw error;
-  }
-};
+  }, "Failed to list categories");
 
-export const POST: APIRoute = async (context) => {
-  try {
+export const POST: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "editor");
 
-    const body = await context.request.json();
+    const body = await parseJsonBody(context.request);
     const { name, slug, description, color, icon } = body;
 
     if (!name || !slug) {
@@ -46,19 +48,15 @@ export const POST: APIRoute = async (context) => {
       icon,
     );
     return createdResponse({ category: categoryData });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    throw error;
-  }
-};
+  }, "Failed to create category");
 
-export const PUT: APIRoute = async (context) => {
-  try {
+export const PUT: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "editor");
 
-    const body = await context.request.json();
+    const body = await parseJsonBody(context.request);
     const { categoryIds } = body;
 
     if (!Array.isArray(categoryIds) || categoryIds.length === 0) {
@@ -67,8 +65,4 @@ export const PUT: APIRoute = async (context) => {
 
     await reorderCategories(spaceId, categoryIds);
     return jsonResponse({ success: true });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    throw error;
-  }
-};
+  }, "Failed to reorder categories");

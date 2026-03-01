@@ -12,7 +12,10 @@ interface WikiConfig {
   documentId: string;
 }
 
-export async function fetchAndInlineHTML(sourceUrl: string, basicAuth?: { username: string; password: string }): Promise<string> {
+export async function fetchAndInlineHTML(
+  sourceUrl: string,
+  basicAuth?: { username: string; password: string },
+): Promise<string> {
   if (!sourceUrl) {
     throw new Error("Source URL is required");
   }
@@ -34,7 +37,8 @@ export async function fetchAndInlineHTML(sourceUrl: string, basicAuth?: { userna
   let html = await response.text();
 
   // Replace all link tags with rel="stylesheet" with inlined style tags
-  const linkTagRegex = /<link\s+(?:[^>]*?\s+)?rel=["']stylesheet["'](?:\s+[^>]*)?\s+href=["']([^"']+)["'][^>]*>/gi;
+  const linkTagRegex =
+    /<link\s+(?:[^>]*?\s+)?rel=["']stylesheet["'](?:\s+[^>]*)?\s+href=["']([^"']+)["'][^>]*>/gi;
 
   let match;
   const replacements: Array<{ original: string; replacement: string }> = [];
@@ -62,16 +66,22 @@ export async function fetchAndInlineHTML(sourceUrl: string, basicAuth?: { userna
   }
 
   // Replace all relative URLs in href attributes with absolute URLs
-  html = html.replace(/href=["'](?!(?:https?:|\/\/|#|mailto:))([^"']+)["']/gi, (match, url) => {
-    const absoluteUrl = new URL(url, sourceUrl).href;
-    return `href="${absoluteUrl}"`;
-  });
+  html = html.replace(
+    /href=["'](?!(?:https?:|\/\/|#|mailto:))([^"']+)["']/gi,
+    (match, url) => {
+      const absoluteUrl = new URL(url, sourceUrl).href;
+      return `href="${absoluteUrl}"`;
+    },
+  );
 
   // Replace all relative URLs in src attributes with absolute URLs
-  html = html.replace(/src=["'](?!(?:https?:|\/\/|#|data:))([^"']+)["']/gi, (match, url) => {
-    const absoluteUrl = new URL(url, sourceUrl).href;
-    return `src="${absoluteUrl}"`;
-  });
+  html = html.replace(
+    /src=["'](?!(?:https?:|\/\/|#|data:))([^"']+)["']/gi,
+    (match, url) => {
+      const absoluteUrl = new URL(url, sourceUrl).href;
+      return `src="${absoluteUrl}"`;
+    },
+  );
 
   // Replace :root with :root, :host in style definitions
   html = html.replace(/:root\b/g, ":root, :host");
@@ -92,10 +102,7 @@ export async function fetchAndInlineHTML(sourceUrl: string, basicAuth?: { userna
 
   return html;
 }
-export async function postToWiki(
-  html: string,
-  config: WikiConfig
-): Promise<void> {
+export async function postToWiki(html: string, config: WikiConfig): Promise<void> {
   const wikiUrl = `${config.url}/api/v1/spaces/${config.spaceId}/documents/${config.documentId}`;
 
   console.log(`PUT ${wikiUrl}`);
@@ -110,9 +117,7 @@ export async function postToWiki(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to post to wiki: ${response.status} ${response.statusText}`
-    );
+    throw new Error(`Failed to post to wiki: ${response.status} ${response.statusText}`);
   }
 }
 
@@ -142,9 +147,10 @@ async function main() {
     throw new Error("WIKI_TOKEN environment variable is not set");
   }
 
-  const basicAuth = basicAuthUsername && basicAuthPassword
-    ? { username: basicAuthUsername, password: basicAuthPassword }
-    : undefined;
+  const basicAuth =
+    basicAuthUsername && basicAuthPassword
+      ? { username: basicAuthUsername, password: basicAuthPassword }
+      : undefined;
 
   console.log(`Fetching from ${sourceUrl}...`);
   const inlinedHTML = await fetchAndInlineHTML(sourceUrl, basicAuth);

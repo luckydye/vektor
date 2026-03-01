@@ -17,15 +17,12 @@ export async function getStorageValue(
   extensionId: string,
   key: string,
 ): Promise<string | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const result = await db
     .select({ value: extensionStorage.value })
     .from(extensionStorage)
     .where(
-      and(
-        eq(extensionStorage.extensionId, extensionId),
-        eq(extensionStorage.key, key),
-      ),
+      and(eq(extensionStorage.extensionId, extensionId), eq(extensionStorage.key, key)),
     )
     .get();
 
@@ -41,17 +38,14 @@ export async function setStorageValue(
   key: string,
   value: string,
 ): Promise<StorageEntry> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   const existing = await db
     .select({ id: extensionStorage.id })
     .from(extensionStorage)
     .where(
-      and(
-        eq(extensionStorage.extensionId, extensionId),
-        eq(extensionStorage.key, key),
-      ),
+      and(eq(extensionStorage.extensionId, extensionId), eq(extensionStorage.key, key)),
     )
     .get();
 
@@ -87,14 +81,11 @@ export async function deleteStorageValue(
   extensionId: string,
   key: string,
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const result = await db
     .delete(extensionStorage)
     .where(
-      and(
-        eq(extensionStorage.extensionId, extensionId),
-        eq(extensionStorage.key, key),
-      ),
+      and(eq(extensionStorage.extensionId, extensionId), eq(extensionStorage.key, key)),
     );
 
   return result.rowsAffected > 0;
@@ -108,7 +99,7 @@ export async function listStorageEntries(
   extensionId: string,
   prefix?: string,
 ): Promise<StorageEntry[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const conditions = [eq(extensionStorage.extensionId, extensionId)];
   if (prefix) {
@@ -135,7 +126,7 @@ export async function clearExtensionStorage(
   spaceId: string,
   extensionId: string,
 ): Promise<number> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const result = await db
     .delete(extensionStorage)
     .where(eq(extensionStorage.extensionId, extensionId));

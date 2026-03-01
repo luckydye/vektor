@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useSpace } from "../composeables/useSpace.ts";
+import { api } from "../api/client.ts";
 
 const props = defineProps<{
   documentId: string;
@@ -22,20 +23,7 @@ const handleRestore = async () => {
   isLoading.value = true;
 
   try {
-    const response = await fetch(
-      `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ restore: true }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to restore document");
-    }
+    await api.document.restore(currentSpaceId.value, props.documentId);
 
     // Reload the page to update the UI
     window.location.reload();

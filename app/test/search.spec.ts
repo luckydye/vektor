@@ -12,7 +12,7 @@ const BASE_URL = "http://127.0.0.1:4321";
 let testUser: { id: string; email: string; name: string };
 let sessionToken: string;
 let testSpaceId: string;
-let testDocIds: string[] = [];
+const testDocIds: string[] = [];
 
 async function createTestUser() {
   const testEmail = `test-search-${Date.now()}@example.com`;
@@ -103,27 +103,32 @@ beforeAll(async () => {
     const testDocs = [
       {
         slug: "javascript-guide",
-        content: "# JavaScript Programming Guide\n\nJavaScript is a versatile programming language used for web development.",
+        content:
+          "# JavaScript Programming Guide\n\nJavaScript is a versatile programming language used for web development.",
         properties: { title: "JavaScript Guide", category: "Programming" },
       },
       {
         slug: "typescript-basics",
-        content: "# TypeScript Basics\n\nTypeScript is a typed superset of JavaScript that compiles to plain JavaScript.",
+        content:
+          "# TypeScript Basics\n\nTypeScript is a typed superset of JavaScript that compiles to plain JavaScript.",
         properties: { title: "TypeScript Basics", category: "Programming" },
       },
       {
         slug: "python-tutorial",
-        content: "# Python Tutorial\n\nPython is a high-level programming language known for its simplicity.",
+        content:
+          "# Python Tutorial\n\nPython is a high-level programming language known for its simplicity.",
         properties: { title: "Python Tutorial", category: "Programming" },
       },
       {
         slug: "database-design",
-        content: "# Database Design Principles\n\nLearn about relational databases, SQL, and normalization.",
+        content:
+          "# Database Design Principles\n\nLearn about relational databases, SQL, and normalization.",
         properties: { title: "Database Design", category: "Data" },
       },
       {
         slug: "react-components",
-        content: "# React Components\n\nReact is a JavaScript library for building user interfaces with reusable components.",
+        content:
+          "# React Components\n\nReact is a JavaScript library for building user interfaces with reusable components.",
         properties: { title: "React Components", category: "Frontend" },
       },
     ];
@@ -142,7 +147,7 @@ beforeAll(async () => {
     console.log(`Created ${testDocIds.length} test documents`);
 
     // Give the FTS index a moment to catch up
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   } catch (error) {
     console.error("Failed to set up test environment:", error);
     throw error;
@@ -182,7 +187,9 @@ describe("Search API Tests", () => {
   });
 
   it("should find documents with simple single word query", async () => {
-    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/search?q=javascript`);
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=javascript`,
+    );
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -209,7 +216,9 @@ describe("Search API Tests", () => {
   });
 
   it("should find documents with multiple word query", async () => {
-    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/search?q=programming language`);
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=programming language`,
+    );
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -220,7 +229,9 @@ describe("Search API Tests", () => {
   });
 
   it("should find documents by title property", async () => {
-    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/search?q=typescript`);
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=typescript`,
+    );
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -232,7 +243,7 @@ describe("Search API Tests", () => {
 
   it("should handle quoted phrases", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=${encodeURIComponent('"programming language"')}`
+      `/api/v1/spaces/${testSpaceId}/search?q=${encodeURIComponent('"programming language"')}`,
     );
 
     expect(response.status).toBe(200);
@@ -283,7 +294,7 @@ describe("Search API Tests", () => {
 
   it("should handle pagination with limit and offset", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=2&offset=0`
+      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=2&offset=0`,
     );
 
     expect(response.status).toBe(200);
@@ -296,7 +307,7 @@ describe("Search API Tests", () => {
 
   it("should respect limit parameter", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=1`
+      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=1`,
     );
 
     expect(response.status).toBe(200);
@@ -307,7 +318,7 @@ describe("Search API Tests", () => {
 
   it("should return 400 for invalid limit", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=test&limit=200`
+      `/api/v1/spaces/${testSpaceId}/search?q=test&limit=200`,
     );
 
     expect(response.status).toBe(400);
@@ -315,7 +326,7 @@ describe("Search API Tests", () => {
 
   it("should return 400 for negative offset", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=test&offset=-1`
+      `/api/v1/spaces/${testSpaceId}/search?q=test&offset=-1`,
     );
 
     expect(response.status).toBe(400);
@@ -323,7 +334,7 @@ describe("Search API Tests", () => {
 
   it("should handle special characters gracefully", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=${encodeURIComponent("test@#$%")}`
+      `/api/v1/spaces/${testSpaceId}/search?q=${encodeURIComponent("test@#$%")}`,
     );
 
     // Should not crash, even if no results
@@ -339,7 +350,8 @@ describe("Search API Tests", () => {
       method: "POST",
       body: JSON.stringify({
         slug: "archived-doc",
-        content: "# Archived Document\n\nThis document contains uniquearchivedsearchterm.",
+        content:
+          "# Archived Document\n\nThis document contains uniquearchivedsearchterm.",
         properties: { title: "Archived Doc" },
       }),
     });
@@ -351,14 +363,14 @@ describe("Search API Tests", () => {
     // Archive the document
     const archiveResponse = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${archivedDocId}/archive`,
-      { method: "POST" }
+      { method: "POST" },
     );
 
     expect(archiveResponse.status).toBe(200);
 
     // Search should not find it
     const searchResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=uniquearchivedsearchterm`
+      `/api/v1/spaces/${testSpaceId}/search?q=uniquearchivedsearchterm`,
     );
 
     expect(searchResponse.status).toBe(200);
@@ -368,7 +380,7 @@ describe("Search API Tests", () => {
 
   it("should return total count greater than limit when more results exist", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=1`
+      `/api/v1/spaces/${testSpaceId}/search?q=programming&limit=1`,
     );
 
     expect(response.status).toBe(200);
@@ -387,7 +399,7 @@ describe("Search API Tests", () => {
         headers: {
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     expect(response.status).toBe(401);
@@ -399,7 +411,7 @@ describe("Search Property Filters", () => {
     // Filter for documents with category = "Programming"
     const filters = JSON.stringify([{ key: "category", value: "Programming" }]);
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(200);
@@ -419,7 +431,7 @@ describe("Search Property Filters", () => {
     // Filter for documents that have the "category" property (any value)
     const filters = JSON.stringify([{ key: "category", value: null }]);
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(200);
@@ -439,7 +451,7 @@ describe("Search Property Filters", () => {
     // Search for "javascript" AND category = "Programming"
     const filters = JSON.stringify([{ key: "category", value: "Programming" }]);
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=javascript&filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?q=javascript&filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(200);
@@ -458,7 +470,7 @@ describe("Search Property Filters", () => {
   it("should return empty results when no documents match filter", async () => {
     const filters = JSON.stringify([{ key: "category", value: "NonExistentCategory" }]);
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(200);
@@ -472,17 +484,17 @@ describe("Search Property Filters", () => {
     // Filter for documents with category = "Programming" AND title exists
     const filters = JSON.stringify([
       { key: "category", value: "Programming" },
-      { key: "title", value: null }
+      { key: "title", value: null },
     ]);
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(200);
     const data = await response.json();
 
     expect(data.results).toBeDefined();
-    
+
     // All results should match both filters
     for (const result of data.results) {
       expect(result.properties.category).toBe("Programming");
@@ -492,7 +504,7 @@ describe("Search Property Filters", () => {
 
   it("should return 400 for invalid filters JSON", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=not-valid-json`
+      `/api/v1/spaces/${testSpaceId}/search?filters=not-valid-json`,
     );
 
     expect(response.status).toBe(400);
@@ -501,7 +513,7 @@ describe("Search Property Filters", () => {
   it("should return 400 for filters that are not an array", async () => {
     const filters = JSON.stringify({ key: "category", value: "Programming" });
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(400);
@@ -510,7 +522,7 @@ describe("Search Property Filters", () => {
   it("should return 400 for filter without key", async () => {
     const filters = JSON.stringify([{ value: "Programming" }]);
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(400);
@@ -520,7 +532,7 @@ describe("Search Property Filters", () => {
     // Filter with lowercase value should match "Programming"
     const filters = JSON.stringify([{ key: "category", value: "programming" }]);
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
     );
 
     expect(response.status).toBe(200);
@@ -539,10 +551,12 @@ describe("Search Index Rebuild", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     // Response is the string directly
-    expect(typeof data === 'string').toBe(true);
+    expect(typeof data === "string").toBe(true);
 
     // Verify search still works after rebuild
-    const searchResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/search?q=javascript`);
+    const searchResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=javascript`,
+    );
     expect(searchResponse.status).toBe(200);
     const searchData = await searchResponse.json();
     expect(searchData.total).toBeGreaterThan(0);

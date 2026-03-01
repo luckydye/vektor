@@ -1,6 +1,6 @@
 import { type Ref, ref, watchEffect } from "vue";
-import { useSpace } from "./useSpace.js";
-import { api, type AuditLog } from "../api/client.js";
+import { useSpace } from "./useSpace.ts";
+import { api, type AuditLog } from "../api/client.ts";
 
 export function useAuditLogs(documentId: string) {
   const { currentSpaceId } = useSpace();

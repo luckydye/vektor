@@ -38,7 +38,12 @@ export type Feature = (typeof Feature)[keyof typeof Feature];
 // Default features granted based on space permission level
 // These are used when no explicit feature ACL entry exists
 const DEFAULT_FEATURES: Record<string, Feature[]> = {
-  owner: [Feature.COMMENT, Feature.VIEW_HISTORY, Feature.VIEW_AUDIT, Feature.MANAGE_EXTENSIONS],
+  owner: [
+    Feature.COMMENT,
+    Feature.VIEW_HISTORY,
+    Feature.VIEW_AUDIT,
+    Feature.MANAGE_EXTENSIONS,
+  ],
   editor: [Feature.COMMENT, Feature.VIEW_HISTORY],
   viewer: [],
 };
@@ -63,11 +68,7 @@ export async function getUserGroups(userId: string): Promise<string[]> {
     return ["public"];
   }
 
-  const userRecord = await authDb
-    .select()
-    .from(user)
-    .where(eq(user.id, userId))
-    .get();
+  const userRecord = await authDb.select().from(user).where(eq(user.id, userId)).get();
 
   const groups = ["public"];
 
@@ -95,14 +96,11 @@ export async function grantPermission(
     throw new Error("Either userId or groupId must be provided");
   }
 
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   // Check if permission already exists
-  const conditions = [
-    eq(acl.resourceType, resourceType),
-    eq(acl.resourceId, resourceId),
-  ];
+  const conditions = [eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId)];
 
   if (userId) {
     conditions.push(eq(acl.userId, userId));
@@ -126,17 +124,15 @@ export async function grantPermission(
       .where(and(...conditions));
   } else {
     // Insert new permission
-    await db
-      .insert(acl)
-      .values({
-        resourceType,
-        resourceId,
-        userId: userId || null,
-        groupId: groupId || null,
-        permission,
-        createdAt: now,
-        updatedAt: now,
-      });
+    await db.insert(acl).values({
+      resourceType,
+      resourceId,
+      userId: userId || null,
+      groupId: groupId || null,
+      permission,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
   if (resourceType === ResourceType.DOCUMENT) {
@@ -169,12 +165,9 @@ export async function revokePermission(
   userId?: string,
   groupId?: string,
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
-  const conditions = [
-    eq(acl.resourceType, resourceType),
-    eq(acl.resourceId, resourceId),
-  ];
+  const conditions = [eq(acl.resourceType, resourceType), eq(acl.resourceId, resourceId)];
 
   if (userId) {
     conditions.push(eq(acl.userId, userId));
@@ -183,9 +176,7 @@ export async function revokePermission(
     conditions.push(eq(acl.groupId, groupId));
   }
 
-  await db
-    .delete(acl)
-    .where(and(...conditions));
+  await db.delete(acl).where(and(...conditions));
 
   if (resourceType === ResourceType.DOCUMENT) {
     await createAuditLog(db, {
@@ -208,7 +199,7 @@ export async function getPermission(
   userId: string,
   userGroups?: string[],
 ): Promise<AclEntry | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const allPermissions: Array<{
     resourceType: string;
@@ -239,9 +230,7 @@ export async function getPermission(
   }
 
   // Always include "public" in group checks to support public access
-  const effectiveGroups = userGroups && userGroups.length > 0
-    ? userGroups
-    : ["public"];
+  const effectiveGroups = userGroups && userGroups.length > 0 ? userGroups : ["public"];
 
   // Get group-based permissions (including "public")
   const groupResults = await db
@@ -288,7 +277,7 @@ export async function listPermissions(
   resourceType: ResourceType,
   resourceId: string,
 ): Promise<AclEntry[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const results = await db
     .select()
@@ -313,7 +302,7 @@ export async function listUserPermissions(
   userGroups?: string[],
   resourceType?: ResourceType,
 ): Promise<AclEntry[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const conditions = [eq(acl.userId, userId)];
   if (resourceType) {
@@ -361,11 +350,20 @@ export async function hasPermission(
   requiredPermission: string,
   userGroups?: string[],
 ): Promise<boolean> {
-  const userPermission = await getPermission(spaceId, resourceType, resourceId, userId, userGroups);
+  const userPermission = await getPermission(
+    spaceId,
+    resourceType,
+    resourceId,
+    userId,
+    userGroups,
+  );
 
   if (!userPermission) {
     // For documents and extensions, fall back to space-level permission
-    if (resourceType === ResourceType.DOCUMENT || resourceType === ResourceType.EXTENSION) {
+    if (
+      resourceType === ResourceType.DOCUMENT ||
+      resourceType === ResourceType.EXTENSION
+    ) {
       const spacePermission = await getPermission(
         spaceId,
         ResourceType.SPACE,
@@ -417,7 +415,7 @@ export async function hasFeature(
   userId: string,
   userGroups?: string[],
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   // Check for explicit feature ACL entry (user-specific)
   const userEntry = await db
@@ -457,7 +455,13 @@ export async function hasFeature(
   }
 
   // Fall back to defaults based on space permission level
-  const spacePerm = await getPermission(spaceId, ResourceType.SPACE, spaceId, userId, userGroups);
+  const spacePerm = await getPermission(
+    spaceId,
+    ResourceType.SPACE,
+    spaceId,
+    userId,
+    userGroups,
+  );
   if (!spacePerm) {
     return false;
   }
@@ -482,7 +486,14 @@ export async function grantFeature(
   userId?: string,
   groupId?: string,
 ): Promise<AclEntry> {
-  return grantPermission(spaceId, ResourceType.FEATURE, feature, userId, Permission.VIEWER, groupId);
+  return grantPermission(
+    spaceId,
+    ResourceType.FEATURE,
+    feature,
+    userId,
+    Permission.VIEWER,
+    groupId,
+  );
 }
 
 /**
@@ -498,7 +509,14 @@ export async function denyFeature(
   userId?: string,
   groupId?: string,
 ): Promise<AclEntry> {
-  return grantPermission(spaceId, ResourceType.FEATURE, feature, userId, "denied", groupId);
+  return grantPermission(
+    spaceId,
+    ResourceType.FEATURE,
+    feature,
+    userId,
+    "denied",
+    groupId,
+  );
 }
 
 /**
@@ -520,7 +538,7 @@ export async function revokeFeature(
  * List all feature permissions for a space.
  */
 export async function listFeaturePermissions(spaceId: string): Promise<AclEntry[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const results = await db
     .select()
@@ -546,7 +564,7 @@ export async function listAccessibleResources(
   userGroups?: string[],
   minPermission?: string,
 ): Promise<string[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const conditions = [eq(acl.userId, userId), eq(acl.resourceType, resourceType)];
 
@@ -567,7 +585,11 @@ export async function listAccessibleResources(
 
   // Also get group-based accessible resources
   if (userGroups && userGroups.length > 0) {
-    const groupConditions = [isNull(acl.userId), inArray(acl.groupId, userGroups), eq(acl.resourceType, resourceType)];
+    const groupConditions = [
+      isNull(acl.userId),
+      inArray(acl.groupId, userGroups),
+      eq(acl.resourceType, resourceType),
+    ];
 
     if (minPermission) {
       const minLevel = PERMISSION_HIERARCHY[minPermission] || 0;
@@ -598,7 +620,7 @@ export async function copyPermissions(
   targetResourceType: ResourceType,
   targetResourceId: string,
 ): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   const sourcePermissions = await listPermissions(
@@ -627,7 +649,7 @@ export async function bulkGrantPermission(
   permission: string,
   groupIds?: string[],
 ): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   const values: any[] = userIds.map((userId) => ({
@@ -674,7 +696,7 @@ export async function bulkRevokePermissions(
   userIds?: string[],
   groupIds?: string[],
 ): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   if (userIds && userIds.length > 0) {
     await db
@@ -714,7 +736,7 @@ export async function countSpaceMembers(spaceId: string): Promise<number> {
  * @returns Set of user IDs with access to the space
  */
 export async function getSpaceMemberIds(spaceId: string): Promise<Set<string>> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const authDb = getAuthDb();
 
   const results = await db
@@ -766,7 +788,7 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
   groupMembers: Map<string, string[]>; // userId -> groupIds
   groupsToCheck: string[];
 }> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const authDb = getAuthDb();
 
   const results = await db
@@ -885,7 +907,7 @@ export async function isDocumentPublic(
   spaceId: string,
   documentId: string,
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const result = await db
     .select()

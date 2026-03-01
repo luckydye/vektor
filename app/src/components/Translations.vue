@@ -2,7 +2,7 @@
 import strings from "../config/strings.json";
 
 const props = defineProps<{
-  lang: string
+  lang: string;
 }>();
 
 function getLanguage() {
@@ -13,7 +13,7 @@ function getLanguage() {
     }
   } else {
     const ssrLng = props.lang;
-    if(ssrLng) {
+    if (ssrLng) {
       return ssrLng;
     }
   }

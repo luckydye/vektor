@@ -20,7 +20,7 @@
 
 <script setup>
 import { computed } from "vue";
-import { getTextColor } from "../utils/utils.js";
+import { getTextColor } from "../utils/utils.ts";
 
 const props = defineProps({
   category: {

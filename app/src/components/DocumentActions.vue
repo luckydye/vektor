@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { Icon, ContextMenu, ContextMenuItem, ButtonPrimary, ButtonSecondary } from "~/src/components";
+import {
+  Icon,
+  ContextMenu,
+  ContextMenuItem,
+  ButtonPrimary,
+  ButtonSecondary,
+} from "~/src/components/index.ts";
 import Contributors from "./Contributors.vue";
 import { onMounted, onUnmounted, ref, computed, watchEffect } from "vue";
 import { useSpace } from "../composeables/useSpace.ts";
-import { Actions, type ActionOptions } from "../utils/actions.js";
+import { Actions, type ActionOptions } from "../utils/actions.ts";
 import { api } from "../api/client.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 
 const props = defineProps<{
-  documentId?: string,
-  title?: string,
-  readonly: boolean
+  documentId?: string;
+  title?: string;
+  readonly: boolean;
 }>();
 
 const { currentSpaceId, currentSpace } = useSpace();
@@ -27,14 +33,14 @@ const editorSaveFunction = ref<(() => Promise<void>) | null>(null);
 function startEditing() {
   isEditing.value = true;
   window.dispatchEvent(new CustomEvent("edit-mode-start"));
-  
+
   Actions.register("document:save", {
     title: "Save Document",
     description: "Save current document and exit edit mode",
     group: "edit",
     run: async () => stopEditing(),
   });
-  
+
   Actions.unregister("document:edit");
 }
 
@@ -87,7 +93,7 @@ Actions.register("document:accesstoken", {
       // Create a 30-day access token for this document
       const documentName = props.title || props.documentId;
       const tokenResult = await api.accessTokens.create(currentSpaceId.value, {
-        name: `API Access: ${documentName} (${new Date().toISOString().split('T')[0]})`,
+        name: `API Access: ${documentName} (${new Date().toISOString().split("T")[0]})`,
         resourceType: "document",
         resourceId: props.documentId,
         permission: "editor",
@@ -102,10 +108,14 @@ Actions.register("document:accesstoken", {
       await navigator.clipboard.writeText(command);
 
       // Show success message
-      alert(`✓ API command copied to clipboard!\n\nA 30-day access token has been created and included.\nToken ID: ${tokenResult.id}`);
+      alert(
+        `✓ API command copied to clipboard!\n\nA 30-day access token has been created and included.\nToken ID: ${tokenResult.id}`,
+      );
     } catch (error) {
       console.error("Failed to create token:", error);
-      alert("❌ Failed to create access token. Please check your permissions and try again.");
+      alert(
+        "❌ Failed to create access token. Please check your permissions and try again.",
+      );
     } finally {
       isCreatingToken.value = false;
     }
@@ -116,7 +126,7 @@ const actions = ref<[string, ActionOptions][]>([]);
 const actionsDanger = ref<[string, ActionOptions][]>([]);
 
 async function stopEditing() {
-  if(!isEditing.value) return;
+  if (!isEditing.value) return;
 
   if (editorSaveFunction.value) {
     isSaving.value = true;
@@ -131,7 +141,7 @@ async function stopEditing() {
   if (props.documentId) {
     window.location.reload();
   }
-  
+
   Actions.unregister("document:save");
 }
 
@@ -155,11 +165,11 @@ onMounted(async () => {
   Actions.subscribe("actions:register", () => {
     actions.value = Actions.group("document");
     actionsDanger.value = Actions.group("document:danger");
-  })
+  });
   Actions.subscribe("actions:unregister", () => {
     actions.value = Actions.group("document");
     actionsDanger.value = Actions.group("document:danger");
-  })
+  });
 
   actions.value = Actions.group("document");
   actionsDanger.value = Actions.group("document:danger");
@@ -173,6 +183,44 @@ function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
   e.target?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
+
+watchEffect(() => {
+  Actions.unregister("document:pin");
+  Actions.unregister("document:unpin");
+
+  if (userCanEdit.value && currentSpace.value && props.documentId) {
+    const isPinned =
+      currentSpace.value.preferences?.pinnedDocumentId === props.documentId;
+
+    if (isPinned) {
+      Actions.register("document:unpin", {
+        title: "Unpin from Home",
+        icon: () => "pin-filled",
+        description: "Remove this document from the space home page",
+        group: "document",
+        run: async () => {
+          await api.space.patch(currentSpace.value!.id, {
+            preferences: { pinnedDocumentId: "" },
+          });
+          window.location.reload();
+        },
+      });
+    } else {
+      Actions.register("document:pin", {
+        title: "Pin to Home",
+        icon: () => "pin",
+        description: "Showcase this document on the space home page",
+        group: "document",
+        run: async () => {
+          await api.space.patch(currentSpace.value!.id, {
+            preferences: { pinnedDocumentId: props.documentId! },
+          });
+          window.location.reload();
+        },
+      });
+    }
+  }
+});
 
 watchEffect(() => {
   Actions.unregister("document:archive");
@@ -211,7 +259,7 @@ watchEffect(() => {
       },
     });
   }
-})
+});
 </script>
 
 <template>

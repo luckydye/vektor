@@ -5,15 +5,17 @@ import { randomBytes } from "node:crypto";
 import AdmZip from "adm-zip";
 import {
   badRequestResponse,
+  errorResponse,
   jsonResponse,
   requireParam,
   requireUser,
   verifySpaceRole,
-} from "../../../../../db/api.ts";
-import { createDocument, setDocumentParent } from "../../../../../db/documents.ts";
-import { createCategory, getCategoryBySlug } from "../../../../../db/categories.ts";
-import { getSpaceDb } from "../../../../../db/db.ts";
-import { document } from "../../../../../db/schema/space.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import { createDocument, setDocumentParent } from "#db/documents.ts";
+import { createCategory, getCategoryBySlug } from "#db/categories.ts";
+import { getSpaceDb } from "#db/db.ts";
+import { document } from "#db/schema/space.ts";
 
 const MAX_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB
 const TEMP_DIR = join(process.cwd(), "data", "temp");
@@ -350,256 +352,262 @@ function updateImageReferences(content: string, mediaMap: Map<string, string>): 
   return updatedContent;
 }
 
-export const POST: APIRoute = async (context) => {
-  let tempDir: string | null = null;
+export const POST: APIRoute = (context) =>
+  withApiErrorHandling(
+    async () => {
+      let tempDir: string | null = null;
 
-  try {
-    const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "editor");
-
-    const formData = await context.request.formData();
-    const file = formData.get("file") as File | null;
-
-    if (!file) {
-      throw badRequestResponse("No file provided");
-    }
-
-    const ext = extname(file.name).toLowerCase();
-    if (ext !== ".zip") {
-      throw badRequestResponse("Only WIF (.zip) files are supported");
-    }
-
-    if (file.size > MAX_UPLOAD_SIZE) {
-      throw badRequestResponse(
-        `File size exceeds maximum allowed size of ${MAX_UPLOAD_SIZE / 1024 / 1024}MB`,
-      );
-    }
-
-    await ensureTempDir();
-    tempDir = join(TEMP_DIR, `import-${randomBytes(16).toString("hex")}`);
-    await mkdir(tempDir, { recursive: true });
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const tempFilePath = join(tempDir, file.name);
-    await writeFile(tempFilePath, buffer);
-
-    // Extract ZIP file
-    const extractDir = join(tempDir, "extracted");
-    await extractZipFile(tempFilePath, extractDir);
-
-    // Validate WIF format
-    const manifest = await parseWIFManifest(extractDir);
-    if (!manifest) {
-      throw badRequestResponse(
-        "Invalid WIF format: wif.json manifest not found or invalid",
-      );
-    }
-
-    // STEP 1: Scan all documents
-    const documents = await scanWIFDocuments(extractDir);
-    const mediaFiles = await scanWIFMedia(extractDir);
-
-    if (documents.length === 0) {
-      throw badRequestResponse("No valid documents found in WIF export");
-    }
-
-    // STEP 2: Get existing slugs to avoid collisions
-    const db = getSpaceDb(spaceId);
-    const allDocs = await db.select({ slug: document.slug }).from(document).all();
-    const existingSlugs = new Set(allDocs.map((d) => d.slug));
-
-    const result: ImportResult = {
-      totalFiles: documents.length + mediaFiles.size,
-      imported: 0,
-      skipped: 0,
-      failed: 0,
-      documents: [],
-      categories: [],
-      errors: [],
-    };
-
-    // STEP 3: Pre-process - collect all document info and category slugs
-    const docInfo: Array<{
-      originalSlug: string;
-      finalSlug: string;
-      title: string;
-      isCategory: boolean;
-      categorySlug?: string;
-      parentSlug?: string;
-      frontmatter: WIFFrontmatter;
-      content: string;
-      relativePath: string;
-    }> = [];
-
-    const categorySlugs = new Set<string>();
-    const slugModifications = new Map<string, string>(); // original -> final
-
-    // First pass: determine all slugs and identify categories
-    for (const doc of documents) {
-      const { frontmatter } = doc;
-      const originalSlug = frontmatter.slug;
-      let finalSlug = originalSlug;
-
-      // Handle slug collisions
-      if (!finalSlug || existingSlugs.has(finalSlug)) {
-        let baseSlug = frontmatter.title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .substring(0, 100);
-
-        if (!baseSlug) baseSlug = "document";
-
-        finalSlug = baseSlug;
-        let counter = 1;
-        while (existingSlugs.has(finalSlug) || slugModifications.has(finalSlug)) {
-          finalSlug = `${baseSlug}-${counter}`;
-          counter++;
-        }
-      }
-
-      // Track slug modification
-      if (originalSlug && originalSlug !== finalSlug) {
-        slugModifications.set(originalSlug, finalSlug);
-      }
-
-      // Check if this is a category
-      const isCategory = frontmatter.properties?.type === "category";
-      if (isCategory) {
-        categorySlugs.add(finalSlug);
-      }
-
-      // Get parent from either top-level or properties section
-      const parentSlug = frontmatter.parent || frontmatter.properties?.parent;
-
-      docInfo.push({
-        originalSlug,
-        finalSlug,
-        title: frontmatter.title,
-        isCategory,
-        categorySlug: frontmatter.category,
-        parentSlug,
-        frontmatter,
-        content: doc.content,
-        relativePath: doc.relativePath,
-      });
-    }
-
-    // STEP 4: Create categories
-    for (const slug of categorySlugs) {
-      const doc = docInfo.find((d) => d.finalSlug === slug);
-      if (doc) {
-        const existing = await getCategoryBySlug(spaceId, slug);
-        if (!existing) {
-          await createCategory(spaceId, doc.title, slug);
-          result.categories.push({ slug, name: doc.title });
-        }
-      }
-    }
-
-    // STEP 5: Upload media files
-    const uploadedMediaMap = await copyMediaToUploads(spaceId, mediaFiles);
-
-    // STEP 6: Import documents (two-pass approach)
-    const slugToIdMap = new Map<string, string>();
-    const documentParents = new Map<string, string>(); // documentId -> parentSlug
-
-    // First pass: Create all documents without parent relationships
-    for (const info of docInfo) {
       try {
-        // Update image references
-        const updatedContent = updateImageReferences(info.content, uploadedMediaMap);
+        const user = requireUser(context);
+        const spaceId = requireParam(context.params, "spaceId");
+        await verifySpaceRole(spaceId, user.id, "editor");
 
-        // Build properties - filter out structural metadata
-        const properties: Record<string, string> = {};
-        for (const [key, value] of Object.entries(info.frontmatter.properties)) {
-          if (key !== "parent") {
-            properties[key] = value;
+        const formData = await context.request.formData();
+        const file = formData.get("file") as File | null;
+
+        if (!file) {
+          throw badRequestResponse("No file provided");
+        }
+
+        const ext = extname(file.name).toLowerCase();
+        if (ext !== ".zip") {
+          throw badRequestResponse("Only WIF (.zip) files are supported");
+        }
+
+        if (file.size > MAX_UPLOAD_SIZE) {
+          throw badRequestResponse(
+            `File size exceeds maximum allowed size of ${MAX_UPLOAD_SIZE / 1024 / 1024}MB`,
+          );
+        }
+
+        await ensureTempDir();
+        tempDir = join(TEMP_DIR, `import-${randomBytes(16).toString("hex")}`);
+        await mkdir(tempDir, { recursive: true });
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const tempFilePath = join(tempDir, file.name);
+        await writeFile(tempFilePath, buffer);
+
+        // Extract ZIP file
+        const extractDir = join(tempDir, "extracted");
+        await extractZipFile(tempFilePath, extractDir);
+
+        // Validate WIF format
+        const manifest = await parseWIFManifest(extractDir);
+        if (!manifest) {
+          throw badRequestResponse(
+            "Invalid WIF format: wif.json manifest not found or invalid",
+          );
+        }
+
+        // STEP 1: Scan all documents
+        const documents = await scanWIFDocuments(extractDir);
+        const mediaFiles = await scanWIFMedia(extractDir);
+
+        if (documents.length === 0) {
+          throw badRequestResponse("No valid documents found in WIF export");
+        }
+
+        // STEP 2: Get existing slugs to avoid collisions
+        const db = await getSpaceDb(spaceId);
+        const allDocs = await db.select({ slug: document.slug }).from(document).all();
+        const existingSlugs = new Set(allDocs.map((d) => d.slug));
+
+        const result: ImportResult = {
+          totalFiles: documents.length + mediaFiles.size,
+          imported: 0,
+          skipped: 0,
+          failed: 0,
+          documents: [],
+          categories: [],
+          errors: [],
+        };
+
+        // STEP 3: Pre-process - collect all document info and category slugs
+        const docInfo: Array<{
+          originalSlug: string;
+          finalSlug: string;
+          title: string;
+          isCategory: boolean;
+          categorySlug?: string;
+          parentSlug?: string;
+          frontmatter: WIFFrontmatter;
+          content: string;
+          relativePath: string;
+        }> = [];
+
+        const categorySlugs = new Set<string>();
+        const slugModifications = new Map<string, string>(); // original -> final
+
+        // First pass: determine all slugs and identify categories
+        for (const doc of documents) {
+          const { frontmatter } = doc;
+          const originalSlug = frontmatter.slug;
+          let finalSlug = originalSlug;
+
+          // Handle slug collisions
+          if (!finalSlug || existingSlugs.has(finalSlug)) {
+            let baseSlug = frontmatter.title
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "")
+              .substring(0, 100);
+
+            if (!baseSlug) baseSlug = "document";
+
+            finalSlug = baseSlug;
+            let counter = 1;
+            while (existingSlugs.has(finalSlug) || slugModifications.has(finalSlug)) {
+              finalSlug = `${baseSlug}-${counter}`;
+              counter++;
+            }
+          }
+
+          // Track slug modification
+          if (originalSlug && originalSlug !== finalSlug) {
+            slugModifications.set(originalSlug, finalSlug);
+          }
+
+          // Check if this is a category
+          const isCategory = frontmatter.properties?.type === "category";
+          if (isCategory) {
+            categorySlugs.add(finalSlug);
+          }
+
+          // Get parent from either top-level or properties section
+          const parentSlug = frontmatter.parent || frontmatter.properties?.parent;
+
+          docInfo.push({
+            originalSlug,
+            finalSlug,
+            title: frontmatter.title,
+            isCategory,
+            categorySlug: frontmatter.category,
+            parentSlug,
+            frontmatter,
+            content: doc.content,
+            relativePath: doc.relativePath,
+          });
+        }
+
+        // STEP 4: Create categories
+        for (const slug of categorySlugs) {
+          const doc = docInfo.find((d) => d.finalSlug === slug);
+          if (doc) {
+            const existing = await getCategoryBySlug(spaceId, slug);
+            if (!existing) {
+              await createCategory(spaceId, doc.title, slug);
+              result.categories.push({ slug, name: doc.title });
+            }
           }
         }
 
-        // Set category for the document
-        if (info.isCategory) {
-          properties["category"] = info.finalSlug;
-        } else if (info.categorySlug) {
-          // Resolve category slug if it was modified
-          const resolvedCategorySlug =
-            slugModifications.get(info.categorySlug) || info.categorySlug;
-          properties["category"] = resolvedCategorySlug;
+        // STEP 5: Upload media files
+        const uploadedMediaMap = await copyMediaToUploads(spaceId, mediaFiles);
+
+        // STEP 6: Import documents (two-pass approach)
+        const slugToIdMap = new Map<string, string>();
+        const documentParents = new Map<string, string>(); // documentId -> parentSlug
+
+        // First pass: Create all documents without parent relationships
+        for (const info of docInfo) {
+          try {
+            // Update image references
+            const updatedContent = updateImageReferences(info.content, uploadedMediaMap);
+
+            // Build properties - filter out structural metadata
+            const properties: Record<string, string> = {};
+            for (const [key, value] of Object.entries(info.frontmatter.properties)) {
+              if (key !== "parent") {
+                properties[key] = value;
+              }
+            }
+
+            // Set category for the document
+            if (info.isCategory) {
+              properties["category"] = info.finalSlug;
+            } else if (info.categorySlug) {
+              // Resolve category slug if it was modified
+              const resolvedCategorySlug =
+                slugModifications.get(info.categorySlug) || info.categorySlug;
+              properties["category"] = resolvedCategorySlug;
+            }
+
+            // Parse dates
+            const createdAt = info.frontmatter.created_at
+              ? new Date(info.frontmatter.created_at)
+              : undefined;
+            const updatedAt = info.frontmatter.modified_at
+              ? new Date(info.frontmatter.modified_at)
+              : undefined;
+
+            // Create document without parent (will be set in second pass)
+            const createdDoc = await createDocument(
+              spaceId,
+              user.id,
+              info.finalSlug,
+              updatedContent,
+              properties,
+              null,
+              undefined,
+              createdAt,
+              updatedAt,
+            );
+
+            // Store mapping for parent resolution
+            slugToIdMap.set(info.finalSlug, createdDoc.id);
+
+            // Store parent relationship for second pass
+            if (info.parentSlug) {
+              documentParents.set(createdDoc.id, info.parentSlug);
+            }
+
+            result.imported++;
+            result.documents.push({
+              slug: createdDoc.slug,
+              title: info.frontmatter.title,
+              id: createdDoc.id,
+            });
+          } catch (error) {
+            result.failed++;
+            result.errors.push({
+              file: info.relativePath,
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
         }
 
-        // Parse dates
-        const createdAt = info.frontmatter.created_at
-          ? new Date(info.frontmatter.created_at)
-          : undefined;
-        const updatedAt = info.frontmatter.modified_at
-          ? new Date(info.frontmatter.modified_at)
-          : undefined;
+        // Second pass: Set parent relationships
+        for (const [documentId, parentSlug] of documentParents) {
+          try {
+            // Resolve parent slug (check if it was modified)
+            const resolvedParentSlug = slugModifications.get(parentSlug) || parentSlug;
+            const parentId = slugToIdMap.get(resolvedParentSlug);
 
-        // Create document without parent (will be set in second pass)
-        const createdDoc = await createDocument(
-          spaceId,
-          user.id,
-          info.finalSlug,
-          updatedContent,
-          properties,
-          null,
-          undefined,
-          createdAt,
-          updatedAt,
-        );
-
-        // Store mapping for parent resolution
-        slugToIdMap.set(info.finalSlug, createdDoc.id);
-
-        // Store parent relationship for second pass
-        if (info.parentSlug) {
-          documentParents.set(createdDoc.id, info.parentSlug);
+            if (parentId) {
+              await setDocumentParent(spaceId, documentId, parentId);
+            }
+          } catch (error) {
+            console.error(`Failed to set parent for document ${documentId}:`, error);
+          }
         }
 
-        result.imported++;
-        result.documents.push({
-          slug: createdDoc.slug,
-          title: info.frontmatter.title,
-          id: createdDoc.id,
-        });
-      } catch (error) {
-        result.failed++;
-        result.errors.push({
-          file: info.relativePath,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-
-    // Second pass: Set parent relationships
-    for (const [documentId, parentSlug] of documentParents) {
-      try {
-        // Resolve parent slug (check if it was modified)
-        const resolvedParentSlug = slugModifications.get(parentSlug) || parentSlug;
-        const parentId = slugToIdMap.get(resolvedParentSlug);
-
-        if (parentId) {
-          await setDocumentParent(spaceId, documentId, parentId);
+        return jsonResponse(result, 200);
+      } finally {
+        if (tempDir) {
+          try {
+            await rm(tempDir, { recursive: true, force: true });
+          } catch (cleanupError) {
+            console.error("Failed to cleanup temp directory:", cleanupError);
+          }
         }
-      } catch (error) {
-        console.error(`Failed to set parent for document ${documentId}:`, error);
       }
-    }
-
-    return jsonResponse(result, 200);
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("Import error:", error);
-    return jsonResponse({ error: "Failed to import WIF file" }, 500);
-  } finally {
-    if (tempDir) {
-      try {
-        await rm(tempDir, { recursive: true, force: true });
-      } catch (cleanupError) {
-        console.error("Failed to cleanup temp directory:", cleanupError);
-      }
-    }
-  }
-};
+    },
+    {
+      fallbackMessage: "Failed to import WIF file",
+      onError: (error) => {
+        console.error("Import error:", error);
+        return errorResponse("Failed to import WIF file", 500);
+      },
+    },
+  );

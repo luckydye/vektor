@@ -5,6 +5,7 @@ import { useCategories } from "../composeables/useCategories.ts";
 import { useCategoryDocuments } from "../composeables/useCategoryDocuments.ts";
 import { getTextColor } from "../utils/utils.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { canEdit } from "../composeables/usePermissions.ts";
 import { api } from "../api/client.ts";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
@@ -277,7 +278,11 @@ async function handleDocumentParentChange(event) {
   });
 
   // Then, update the category property
-  await api.documentProperty.delete(currentSpace.value.id, documentId, "category");
+  await api.document.patch(currentSpace.value.id, documentId, {
+    properties: {
+      category: null,
+    },
+  });
 }
 
 async function handleDocumentCategoryChange(event) {
@@ -299,9 +304,12 @@ async function handleDocumentCategoryChange(event) {
   });
 
   // Then, update the category property
-  await api.documentProperty.put(currentSpace.value.id, documentId, {
-    key: "category",
-    value: targetCategory.slug,
+  await api.document.patch(currentSpace.value.id, documentId, {
+    properties: {
+      category: {
+        value: targetCategory.slug,
+      },
+    },
   });
 }
 
@@ -319,7 +327,7 @@ onUnmounted(() => {
 <template>
   <div class="document-tree">
     <!-- Categories Header with Edit Button -->
-    <div class="flex items-center justify-between gap-3xs px-3xs mb-2">
+    <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
       <h3 class="text-xs font-medium text-neutral-900 uppercase tracking-wider opacity-50">
         Categories
       </h3>
@@ -342,7 +350,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Categories List and Documents -->
-    <div class="px-2 space-y-1">
+    <div class="px-5xs space-y-1">
       <!-- Category Items -->
       <div v-for="category in categoriesWithDocs" :key="category.id">
         <category-target
@@ -354,7 +362,7 @@ onUnmounted(() => {
           @dragleave="isEditMode && handleDragLeave()"
           @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
         >
-          <div class="flex items-center gap-2 text-sm text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
+          <div class="group/category flex items-center gap-2 text-sm text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
             :class="{
               'bg-blue-50 border border-blue-300': dragOverIndex === categories.findIndex(c => c.id === category.id) && isEditMode,
               'cursor-move': isEditMode
@@ -376,6 +384,19 @@ onUnmounted(() => {
 
               <span class="font-medium">{{ category.name }}</span>
             </button>
+
+            <!-- New Document Button (shown on hover, hidden in edit mode, editors only) -->
+            <a
+              v-if="!isEditMode && canEdit(currentSpace?.userRole)"
+              :href="`/${currentSpace?.slug}/new?category=${category.slug}`"
+              class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded transition-all shrink-0 mr-2"
+              title="New document in this category"
+              @click.stop
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+            </a>
 
             <!-- Edit/Delete Buttons (shown in edit mode) -->
             <div v-if="isEditMode" class="flex items-center gap-1 shrink-0 pr-2">
@@ -402,7 +423,7 @@ onUnmounted(() => {
           </div>
         </category-target>
 
-        <div v-if="expandedItems.has(category.id) && !isEditMode" class="pl-4 space-y-1">
+        <div v-if="expandedItems.has(category.id) && !isEditMode" class="space-y-1">
           <DocumentTreeItem v-for="doc in category.rootDocs" :key="doc.id" :doc="doc" :all-docs="category.docs"
             :active-doc-id="getActiveDocSlug()" :expanded-items="expandedItems" @toggle="toggleItem" />
         </div>
@@ -436,7 +457,7 @@ onUnmounted(() => {
                 v-model="formData.name"
                 type="text"
                 required
-                class="w-full px-3 py-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Category name"
               />
             </div>
@@ -448,7 +469,7 @@ onUnmounted(() => {
                 type="text"
                 required
                 pattern="[a-z0-9-]+"
-                class="w-full px-3 py-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="slug-name"
               />
               <p class="mt-1 text-xs text-neutral">Lowercase, numbers, hyphens only</p>
@@ -459,7 +480,7 @@ onUnmounted(() => {
               <textarea
                 v-model="formData.description"
                 rows="2"
-                class="w-full px-3 py-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Description (optional)"
               />
             </div>
@@ -470,14 +491,14 @@ onUnmounted(() => {
                 <input
                   v-model="formData.color"
                   type="color"
-                  class="h-8 w-16 border border-neutral-200 rounded cursor-pointer"
+                  class="h-8 w-16 border border-neutral-100 rounded cursor-pointer"
                 />
                 <input
                   v-model="formData.color"
                   type="text"
                   placeholder="#4ECDC4"
                   pattern="^#[0-9A-Fa-f]{6}$"
-                  class="flex-1 px-3 py-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="flex-1 px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -488,7 +509,7 @@ onUnmounted(() => {
                 v-model="formData.icon"
                 type="text"
                 maxlength="10"
-                class="w-full px-3 py-2 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Icon (emoji or text)"
               />
             </div>
@@ -502,7 +523,7 @@ onUnmounted(() => {
                 type="button"
                 @click="cancelEdit"
                 :disabled="isSaving"
-                class="flex-1 px-4 py-2 text-sm font-medium text-neutral-900 bg-background border border-neutral-200 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 text-sm font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>

@@ -66,10 +66,10 @@ class TableCache {
   }
 
   static getInstance(table: HTMLTableElement): TableCache {
-    if (!this.instances.has(table)) {
-      this.instances.set(table, new TableCache(table));
+    if (!TableCache.instances.has(table)) {
+      TableCache.instances.set(table, new TableCache(table));
     }
-    return this.instances.get(table)!;
+    return TableCache.instances.get(table)!;
   }
 
   private buildCache(): void {
@@ -97,7 +97,9 @@ class TableCache {
         if (expressionEl) {
           this.cells.set(key, {
             value: null,
-            formula: expressionEl.getAttribute("data-formula") || expressionEl.textContent?.trim(),
+            formula:
+              expressionEl.getAttribute("data-formula") ||
+              expressionEl.textContent?.trim(),
             element: expressionEl as HTMLElement,
           });
         } else {
@@ -164,7 +166,9 @@ class TableCache {
 
     for (let row = range.start.row; row <= range.end.row; row++) {
       for (let colCode = startColCode; colCode <= endColCode; colCode++) {
-        values.push(this.getCellValue({ col: String.fromCharCode(colCode), row, isFixed: false }));
+        values.push(
+          this.getCellValue({ col: String.fromCharCode(colCode), row, isFixed: false }),
+        );
       }
     }
 
@@ -194,7 +198,7 @@ class ExpressionEvaluator {
     try {
       return this.evaluateFormula(formula);
     } catch (error) {
-      return `#ERROR: ${error instanceof Error ? error.message : 'Invalid formula'}`;
+      return `#ERROR: ${error instanceof Error ? error.message : "Invalid formula"}`;
     }
   }
 
@@ -226,14 +230,19 @@ class ExpressionEvaluator {
   }
 
   private replaceFunctions(formula: string): string {
-    return formula.replace(/(SUM|COUNT|AVERAGE|AVG|MIN|MAX)\s*\(([^)]+)\)/gi, (_, funcName, args) => {
-      return this.evaluateFunction(funcName.toUpperCase(), args.trim()).toString();
-    });
+    return formula.replace(
+      /(SUM|COUNT|AVERAGE|AVG|MIN|MAX)\s*\(([^)]+)\)/gi,
+      (_, funcName, args) => {
+        return this.evaluateFunction(funcName.toUpperCase(), args.trim()).toString();
+      },
+    );
   }
 
   private evaluateFunction(funcName: string, args: string): number {
     const values = this.parseArguments(args);
-    const numbers = values.map((v) => this.valueToNumber(v)).filter((n) => !Number.isNaN(n));
+    const numbers = values
+      .map((v) => this.valueToNumber(v))
+      .filter((n) => !Number.isNaN(n));
 
     if (numbers.length === 0) return 0;
 
@@ -452,7 +461,10 @@ customElements.define(
 
       if (this.inEditor) {
         this.setupEditorMode();
-        this.cursorCheckInterval = window.setInterval(() => this.checkCursorPosition(), 100);
+        this.cursorCheckInterval = window.setInterval(
+          () => this.checkCursorPosition(),
+          100,
+        );
       } else if (this.formula) {
         this.compute();
       }
@@ -464,7 +476,7 @@ customElements.define(
           if (this.contains(m.target) || m.target === this) return false;
           return true;
         });
-        
+
         if (shouldRecompute) {
           this.cache?.refresh();
           this.updateDisplay();
@@ -494,7 +506,8 @@ customElements.define(
       const selection = window.getSelection();
       if (selection?.rangeCount) {
         const range = selection.getRangeAt(0);
-        this.hasCursor = this.contains(range.startContainer) || this === range.startContainer;
+        this.hasCursor =
+          this.contains(range.startContainer) || this === range.startContainer;
       }
     }
 
@@ -524,7 +537,8 @@ customElements.define(
       }
 
       const range = selection.getRangeAt(0);
-      const cursorInside = this.contains(range.startContainer) || this === range.startContainer;
+      const cursorInside =
+        this.contains(range.startContainer) || this === range.startContainer;
 
       if (cursorInside !== this.hasCursor) {
         this.hasCursor = cursorInside;
@@ -575,15 +589,16 @@ customElements.define(
         const evaluator = new ExpressionEvaluator(this.cache);
         const result = evaluator.evaluate(this.formula);
 
-        this.computedResult = typeof result === "number"
-          ? result.toFixed(2).replace(/\.?0+$/, "")
-          : String(result);
+        this.computedResult =
+          typeof result === "number"
+            ? result.toFixed(2).replace(/\.?0+$/, "")
+            : String(result);
 
         if (this.textContent !== this.computedResult) {
           this.textContent = this.computedResult;
         }
       } catch (error) {
-        this.computedResult = `#ERROR: ${error instanceof Error ? error.message : 'Invalid formula'}`;
+        this.computedResult = `#ERROR: ${error instanceof Error ? error.message : "Invalid formula"}`;
         this.textContent = this.computedResult;
       } finally {
         this.isComputing = false;
@@ -605,5 +620,5 @@ customElements.define(
         (expr as unknown as { compute?: () => void }).compute?.();
       }
     }
-  }
+  },
 );

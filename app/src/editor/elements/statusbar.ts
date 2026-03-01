@@ -1,28 +1,26 @@
 import { render, html } from "lit-html";
-import { Actions, type ActionOptions } from "../../utils/actions.js";
+import { Actions, type ActionOptions } from "../../utils/actions.ts";
 
 customElements.define(
   "document-statusbar",
   class StatusbarElement extends HTMLElement {
-    
     connectedCallback() {
       window.addEventListener("document:edit", this.onEditorEvent);
       window.addEventListener("document:save", this.onEditorEvent);
     }
-    
+
     disconnectedCallback() {
       window.removeEventListener("document:edit", this.onEditorEvent);
       window.removeEventListener("document:save", this.onEditorEvent);
     }
-    
+
     onEditorEvent = (event: Event) => {
-      if(event.type === "document:edit") {
+      if (event.type === "document:edit") {
         render(this.render(), this.shadowRoot);
       }
-      if(event.type === "document:save") {
-        
+      if (event.type === "document:save") {
       }
-    }
+    };
 
     constructor() {
       super();
@@ -32,7 +30,7 @@ customElements.define(
     render() {
       const actions1 = Actions.group("edit");
       const actions2 = Actions.group("formatting");
-      
+
       return html`
         <style>
             .container {
@@ -53,7 +51,7 @@ customElements.define(
                 gap: 0.5rem;
                 padding: 0.25rem 0.5rem;
                 color: var(--color-neutral-900);
-                background-color: var(--color-primary-10);
+                background-color: var(--color-neutral-10);
                 border-radius: 0.5rem;
                 transition: all 0.15s ease;
                 font-weight: bold;
@@ -73,10 +71,12 @@ customElements.define(
         <div class="container">
           ${[...actions1, ...actions2].map(([id, action]) => {
             const shortcut = Actions.getShortcutsForAction(id)?.values().next().value;
-            
-            if(shortcut) {
-                return html`
-                    <button type="button" @click=${() => {Actions.run(id)}}>
+
+            if (shortcut) {
+              return html`
+                    <button type="button" @click=${() => {
+                      Actions.run(id);
+                    }}>
                         <a-shortcut data-shortcut=${shortcut}></a-shortcut>
                         ${action.title}
                     </button>

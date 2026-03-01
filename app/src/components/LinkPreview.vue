@@ -77,7 +77,7 @@ function handleMouseEnter(event: MouseEvent | CustomEvent<{ target: HTMLElement 
   const rect = link.getBoundingClientRect();
 
   let x = rect.left + window.scrollX;
-  let y = rect.bottom + window.scrollY + 8;
+  const y = rect.bottom + window.scrollY + 8;
 
   const previewWidth = 320;
   if (x + previewWidth > window.innerWidth) {
@@ -195,7 +195,7 @@ function isInternal(url: string): boolean {
     >
       <div
         v-if="activePreview"
-        class="fixed z-9999 bg-background dark:bg-neutral-800 max-w-[300px] rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-none"
+        class="fixed z-9999 bg-background dark:bg-neutral-800 max-w-[300px] rounded-lg shadow-xl border border-neutral-100 dark:border-neutral-700 overflow-hidden pointer-events-none"
         :style="{
           left: `${activePreview.x}px`,
           top: `${activePreview.y}px`,

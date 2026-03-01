@@ -14,7 +14,7 @@ export async function createComment(
   type: string = "comment",
   reference?: string,
 ): Promise<Comment> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const id = crypto.randomUUID();
   const now = new Date();
 
@@ -47,7 +47,7 @@ export async function listComments(
   resourceType: string,
   resourceId: string,
 ): Promise<Comment[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   return db
     .select()
@@ -66,21 +66,15 @@ export async function getComment(
   spaceId: string,
   commentId: string,
 ): Promise<Comment | undefined> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
-  const [foundComment] = await db
-    .select()
-    .from(comment)
-    .where(eq(comment.id, commentId));
+  const [foundComment] = await db.select().from(comment).where(eq(comment.id, commentId));
 
   return foundComment;
 }
 
-export async function archiveComment(
-  spaceId: string,
-  commentId: string,
-): Promise<void> {
-  const db = getSpaceDb(spaceId);
+export async function archiveComment(spaceId: string, commentId: string): Promise<void> {
+  const db = await getSpaceDb(spaceId);
   await db
     .update(comment)
     .set({ archived: true, updatedAt: new Date() })

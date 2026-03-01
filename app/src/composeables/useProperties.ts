@@ -1,8 +1,8 @@
 import { computed } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { useSpace } from "./useSpace.js";
-import { api } from "../api/client.js";
-import { useSync } from "./useSync.js";
+import { useSpace } from "./useSpace.ts";
+import { api } from "../api/client.ts";
+import { useSync } from "./useSync.ts";
 
 export interface PropertyInfo {
   name: string;
@@ -33,11 +33,11 @@ export function useProperties() {
   const properties = computed(() => propertiesData.value || []);
 
   const getPropertyKeys = computed(() => {
-    return properties.value.map(p => p.name);
+    return properties.value.map((p) => p.name);
   });
 
   const getProperty = (name: string): PropertyInfo | undefined => {
-    return properties.value.find(p => p.name === name);
+    return properties.value.find((p) => p.name === name);
   };
 
   const getValuesForProperty = (name: string): string[] => {
@@ -46,23 +46,31 @@ export function useProperties() {
   };
 
   const hasProperty = (name: string): boolean => {
-    return properties.value.some(p => p.name === name);
+    return properties.value.some((p) => p.name === name);
   };
 
   const updatePropertyMutation = useMutation({
-    mutationFn: async (params: { documentId: string; name: string; value: string | null | undefined; type?: string | null }) => {
+    mutationFn: async (params: {
+      documentId: string;
+      name: string;
+      value: string | null | undefined;
+      type?: string | null;
+    }) => {
       if (!spaceId.value) {
         throw new Error("No space ID");
       }
-      await api.documentProperty.put(spaceId.value, params.documentId, {
-        key: params.name,
-        value: params.value || "",
-        type: params.type
+      await api.document.patch(spaceId.value, params.documentId, {
+        properties: {
+          [params.name]: {
+            value: params.value || "",
+            type: params.type,
+          },
+        },
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["wiki_properties", spaceId.value]
+        queryKey: ["wiki_properties", spaceId.value],
       });
     },
   });
@@ -72,22 +80,33 @@ export function useProperties() {
       if (!spaceId.value) {
         throw new Error("No space ID");
       }
-      await api.documentProperty.delete(spaceId.value, params.documentId, params.name);
+      await api.document.patch(spaceId.value, params.documentId, {
+        properties: {
+          [params.name]: null,
+        },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["wiki_properties", spaceId.value]
+        queryKey: ["wiki_properties", spaceId.value],
       });
     },
   });
 
-  async function updateProperty(documentId: string, name: string, value: string | null | undefined, type?: string | null) {
+  async function updateProperty(
+    documentId: string,
+    name: string,
+    value: string | null | undefined,
+    type?: string | null,
+  ) {
     await updatePropertyMutation.mutateAsync({ documentId, name, value, type });
-    
-    if (typeof window !== 'undefined' && name.toLowerCase() === 'layout') {
-      window.dispatchEvent(new CustomEvent('document:property', {
-        detail: { propertyName: name, value }
-      }));
+
+    if (typeof window !== "undefined" && name.toLowerCase() === "layout") {
+      window.dispatchEvent(
+        new CustomEvent("document:property", {
+          detail: { propertyName: name, value },
+        }),
+      );
     }
   }
 
@@ -97,7 +116,7 @@ export function useProperties() {
 
   // TODO: syncs are not scopped to documents,
   // one prop updates will send a sync event to all users anywhere in the space
-  useSync(spaceId, keys => {
+  useSync(spaceId, (keys) => {
     if (keys.includes("property")) refresh();
   });
 
@@ -111,6 +130,6 @@ export function useProperties() {
     getValuesForProperty,
     hasProperty,
     updateProperty,
-    deleteProperty
+    deleteProperty,
   };
 }

@@ -2,23 +2,25 @@ import type { APIRoute } from "astro";
 import {
   jsonResponse,
   notFoundResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   successResponse,
   verifyExtensionAccess,
-} from "../../../../../../../../db/api.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
 import {
   getStorageValue,
   setStorageValue,
   deleteStorageValue,
-} from "../../../../../../../../db/extensionStorage.ts";
+} from "#db/extensionStorage.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId/storage/:key
  * Get a single storage value
  */
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const extensionId = requireParam(context.params, "extensionId");
@@ -32,19 +34,14 @@ export const GET: APIRoute = async (context) => {
     }
 
     return jsonResponse({ key, value });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("Get storage value error:", error);
-    return jsonResponse({ error: "Failed to get storage value" }, 500);
-  }
-};
+  }, "Failed to get storage value");
 
 /**
  * PUT /api/v1/spaces/:spaceId/extensions/:extensionId/storage/:key
  * Set a storage value
  */
-export const PUT: APIRoute = async (context) => {
-  try {
+export const PUT: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const extensionId = requireParam(context.params, "extensionId");
@@ -52,7 +49,7 @@ export const PUT: APIRoute = async (context) => {
 
     await verifyExtensionAccess(spaceId, extensionId, user.id);
 
-    const body = await context.request.json();
+    const body = await parseJsonBody(context.request);
     const value = body.value;
 
     if (typeof value !== "string") {
@@ -66,19 +63,14 @@ export const PUT: APIRoute = async (context) => {
       value: entry.value,
       updatedAt: entry.updatedAt.toISOString(),
     });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("Set storage value error:", error);
-    return jsonResponse({ error: "Failed to set storage value" }, 500);
-  }
-};
+  }, "Failed to set storage value");
 
 /**
  * DELETE /api/v1/spaces/:spaceId/extensions/:extensionId/storage/:key
  * Delete a storage value
  */
-export const DELETE: APIRoute = async (context) => {
-  try {
+export const DELETE: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const extensionId = requireParam(context.params, "extensionId");
@@ -92,9 +84,4 @@ export const DELETE: APIRoute = async (context) => {
     }
 
     return successResponse();
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("Delete storage value error:", error);
-    return jsonResponse({ error: "Failed to delete storage value" }, 500);
-  }
-};
+  }, "Failed to delete storage value");

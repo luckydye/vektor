@@ -97,7 +97,7 @@ watchEffect(() => {
   shadow.appendChild(contentDiv);
 
   contentContainer.value.appendChild(docView);
-})
+});
 
 function closeOverlay() {
   isOpen.value = false;
@@ -151,12 +151,12 @@ async function fetchDocumentBySlug(spaceId: string, slug: string) {
 
   try {
     // First check cached documents from useDocuments
-    let doc = documents.value.find(d => d.slug === slug);
+    let doc = documents.value.find((d) => d.slug === slug);
 
     // If not in cache, fetch fresh list
     if (!doc) {
       const freshDocs = await api.documents.get(spaceId);
-      doc = freshDocs.documents?.find(d => d.slug === slug);
+      doc = freshDocs.documents?.find((d) => d.slug === slug);
     }
 
     if (!doc) {
@@ -200,7 +200,7 @@ watch(isOpen, (open) => {
 function getInitials(name: string): string {
   return name
     .split(" ")
-    .map(part => part.charAt(0).toUpperCase())
+    .map((part) => part.charAt(0).toUpperCase())
     .slice(0, 2)
     .join("");
 }
@@ -260,7 +260,7 @@ function formatCommentTime(date: Date | string): string {
 
                 <div class="flex-1 bg-background max-h-screen h-full pointer-events-auto flex flex-col">
                     <!-- Header -->
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-200 shrink-0">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0">
                       <div class="flex items-center gap-3 min-w-0">
                         <svg class="w-5 h-5 text-neutral-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -312,7 +312,7 @@ function formatCommentTime(date: Date | string): string {
                         <p class="text-neutral-600">{{ error }}</p>
                         <button
                           @click="closeOverlay"
-                          class="mt-4 px-4 py-2 text-sm font-medium text-neutral-600 hover:text-foreground border border-neutral-200 rounded hover:bg-neutral-50 transition-colors"
+                          class="mt-4 px-4 py-2 text-sm font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded hover:bg-neutral-50 transition-colors"
                         >
                           Close
                         </button>
@@ -322,7 +322,7 @@ function formatCommentTime(date: Date | string): string {
                       <div v-else-if="documentData" ref="contentContainer" class="p-6" />
 
                       <!-- Comments Thread -->
-                      <div v-if="documentData" class="border-t border-neutral-200 bg-neutral-50">
+                      <div v-if="documentData" class="border-t border-neutral-100 bg-neutral-50">
                         <!-- Comments Header -->
                         <div class="px-6 py-4 flex items-center gap-2">
                           <svg class="w-4 h-4 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -364,7 +364,7 @@ function formatCommentTime(date: Date | string): string {
                         </div>
 
                         <!-- Add Comment Input -->
-                        <div class="px-6 py-4 border-t border-neutral-200 bg-white">
+                        <div class="px-6 py-4 border-t border-neutral-100 bg-white">
                           <div class="flex gap-3">
                             <div class="w-8 h-8 rounded-full bg-linear-to-br from-purple-400 to-purple-600 flex items-center justify-center text-xs font-semibold text-white shrink-0">
                               You
@@ -372,7 +372,7 @@ function formatCommentTime(date: Date | string): string {
                             <div class="flex-1">
                               <textarea
                                 placeholder="Add a comment..."
-                                class="w-full px-3 py-2 text-sm border border-neutral-200 rounded bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                                 rows="2"
                               />
                               <div class="mt-2 flex justify-end gap-2">

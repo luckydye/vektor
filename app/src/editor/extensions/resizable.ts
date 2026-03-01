@@ -44,11 +44,7 @@ export abstract class ResizableNodeView implements NodeView {
   aspectRatio?: number;
   resizeMode: ResizeMode = "width";
 
-  constructor(
-    node: ProseMirrorNode,
-    view: EditorView,
-    getPos: () => number | undefined,
-  ) {
+  constructor(node: ProseMirrorNode, view: EditorView, getPos: () => number | undefined) {
     this.node = node;
     this.view = view;
     this.getPos = getPos;
@@ -64,8 +60,7 @@ export abstract class ResizableNodeView implements NodeView {
     this.resizeMode = mode;
 
     if (mode === "width") {
-      this.aspectRatio =
-        contentEl.offsetWidth / contentEl.offsetHeight || 16 / 9;
+      this.aspectRatio = contentEl.offsetWidth / contentEl.offsetHeight || 16 / 9;
     }
 
     if (mode === "height") {
@@ -257,8 +252,7 @@ export function createResizableAttributes() {
     },
     display: {
       default: null,
-      parseHTML: (element: HTMLElement) =>
-        element.getAttribute("data-display") || null,
+      parseHTML: (element: HTMLElement) => element.getAttribute("data-display") || null,
       renderHTML: (attributes: ResizableAttrs) => {
         if (!attributes.display) {
           return {};

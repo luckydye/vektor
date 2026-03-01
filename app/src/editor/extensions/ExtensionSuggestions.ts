@@ -49,7 +49,10 @@ const extensionSuggestionsPluginKey = new PluginKey("extensionSuggestions");
 
 const providers = new Map<string, SuggestionProvider>();
 
-export function registerSuggestionProvider(id: string, provider: SuggestionProvider): void {
+export function registerSuggestionProvider(
+  id: string,
+  provider: SuggestionProvider,
+): void {
   providers.set(id, provider);
 }
 
@@ -158,7 +161,10 @@ export const ExtensionSuggestions = Extension.create({
     const editor = this.editor;
     const storage = this.storage;
 
-    const updatePopupPosition = (view: { coordsAtPos: (pos: number) => { left: number; bottom: number } }, from: number) => {
+    const updatePopupPosition = (
+      view: { coordsAtPos: (pos: number) => { left: number; bottom: number } },
+      from: number,
+    ) => {
       if (!storage.popup) return;
 
       const coords = view.coordsAtPos(from);
@@ -166,7 +172,10 @@ export const ExtensionSuggestions = Extension.create({
       storage.popup.style.top = `${coords.bottom + 4}px`;
     };
 
-    const showPopup = (view: { coordsAtPos: (pos: number) => { left: number; bottom: number } }, from: number) => {
+    const showPopup = (
+      view: { coordsAtPos: (pos: number) => { left: number; bottom: number } },
+      from: number,
+    ) => {
       if (!storage.popup) {
         storage.popup = createSuggestionPopup();
         document.body.appendChild(storage.popup);
@@ -235,10 +244,16 @@ export const ExtensionSuggestions = Extension.create({
 
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              const newIndex = (storage.state.selectedIndex + 1) % storage.state.items.length;
+              const newIndex =
+                (storage.state.selectedIndex + 1) % storage.state.items.length;
               storage.state.selectedIndex = newIndex;
               if (storage.popup) {
-                renderSuggestionItems(storage.popup, storage.state.items, newIndex, selectItem);
+                renderSuggestionItems(
+                  storage.popup,
+                  storage.state.items,
+                  newIndex,
+                  selectItem,
+                );
               }
               return true;
             }
@@ -250,7 +265,12 @@ export const ExtensionSuggestions = Extension.create({
                 storage.state.items.length;
               storage.state.selectedIndex = newIndex;
               if (storage.popup) {
-                renderSuggestionItems(storage.popup, storage.state.items, newIndex, selectItem);
+                renderSuggestionItems(
+                  storage.popup,
+                  storage.state.items,
+                  newIndex,
+                  selectItem,
+                );
               }
               return true;
             }
@@ -277,8 +297,7 @@ export const ExtensionSuggestions = Extension.create({
                 // Check if at start of line or after whitespace
                 const $from = view.state.doc.resolve(from);
                 const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
-                const isValidPosition =
-                  textBefore.length === 0 || /\s$/.test(textBefore);
+                const isValidPosition = textBefore.length === 0 || /\s$/.test(textBefore);
 
                 if (isValidPosition) {
                   // Start suggestion mode after the character is inserted

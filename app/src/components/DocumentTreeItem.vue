@@ -1,7 +1,7 @@
 <template>
   <page-target :data-document-id="doc.id"
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50">
-    <div class="flex items-center gap-1">
+    <div class="pl-3 flex items-center gap-1">
       <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded"
         :aria-label="isExpanded ? 'Collapse' : 'Expand'">
         <svg class="w-3 h-3 transition-transform text-neutral" :class="{ 'rotate-90': isExpanded }" fill="none"
@@ -15,7 +15,7 @@
       <a :href="getDocumentUrl(doc.slug)" :class="[
         'flex-1 px-3 py-2 text-sm rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive
-          ? 'bg-primary-200 text-neutral-700 font-medium'
+          ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'
       ]">
         <span>{{ doc.properties.title || 'Untitled' }}</span>
@@ -25,7 +25,7 @@
       </a>
     </div>
 
-    <div v-if="isExpanded && hasChildren" class="pl-4 ml-2 border-l border-neutral-200 space-y-1">
+    <div v-if="isExpanded && hasChildren" class="pl-2 ml-2 border-l border-neutral-100 space-y-1">
       <DocumentTreeItem v-for="child in children" :key="child.id" :doc="child" :all-docs="allDocs"
         :active-doc-id="activeDocId" :expanded-items="expandedItems" @toggle="$emit('toggle', $event)" />
     </div>
@@ -34,7 +34,7 @@
 
 <script setup>
 import { computed } from "vue";
-import { useSpace } from "../composeables/useSpace.js";
+import { useSpace } from "../composeables/useSpace.ts";
 
 const props = defineProps({
   doc: {

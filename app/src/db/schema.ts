@@ -1,2 +1,2 @@
-export * from "./schema/auth.js";
-export * from "./schema/space.js";
+export * from "./schema/auth.ts";
+export * from "./schema/space.ts";

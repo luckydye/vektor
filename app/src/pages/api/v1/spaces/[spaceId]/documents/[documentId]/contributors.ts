@@ -5,20 +5,21 @@ import {
   requireParam,
   requireUser,
   verifyDocumentAccess,
-} from "../../../../../../../db/api.ts";
-import { getAuditLogsForDocument } from "../../../../../../../db/auditLogs.ts";
-import { getAuthDb, getSpaceDb } from "../../../../../../../db/db.ts";
-import { user } from "../../../../../../../db/schema/auth.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import { getAuditLogsForDocument } from "#db/auditLogs.ts";
+import { getAuthDb, getSpaceDb } from "#db/db.ts";
+import { user } from "#db/schema/auth.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const currentUser = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const documentId = requireParam(context.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, currentUser.id);
 
-    const db = getSpaceDb(spaceId);
+    const db = await getSpaceDb(spaceId);
     const logs = await getAuditLogsForDocument(db, documentId, 1000);
 
     // Extract unique user IDs from audit logs
@@ -49,9 +50,4 @@ export const GET: APIRoute = async (context) => {
       .all();
 
     return jsonResponse({ contributors });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to list contributors");

@@ -8,7 +8,7 @@ import { verifyDocumentRole } from "./db/api.ts";
 import { Hocuspocus } from "@hocuspocus/server";
 import { TiptapTransformer } from "@hocuspocus/transformer";
 import { contentExtensions } from "./editor/extensions.ts";
-import { generateJSON } from '@tiptap/html'
+import { generateJSON } from "@tiptap/html";
 import * as Y from "yjs";
 import { Canvas } from "./canvas/Canvas.ts";
 
@@ -59,11 +59,11 @@ const hocuspocus = new Hocuspocus({
     const doc = await getDocument(spaceId, documentId);
 
     if (doc?.type === "canvas") {
-      return Canvas.fromString(doc.content || '').doc;
+      return Canvas.fromString(doc.content || "").doc;
     } else {
       const extensions = contentExtensions(spaceId, documentId);
 
-      const json = generateJSON(doc?.content || '', extensions)
+      const json = generateJSON(doc?.content || "", extensions);
       const ydoc = TiptapTransformer.toYdoc(
         // the actual JSON
         json,
@@ -75,7 +75,7 @@ const hocuspocus = new Hocuspocus({
 
       return ydoc;
     }
-  }
+  },
 });
 
 const { app } = expressWebsockets(express());
@@ -104,19 +104,19 @@ function sync(onSyncEvent: (ev: any) => () => void) {
 
     spaceConnections.add(ws);
 
-    ws.on('message', (msg) => {
+    ws.on("message", (msg) => {
       ws.send(msg);
     });
 
     const off = onSyncEvent((ev) => {
       ws.send(JSON.stringify({ scope: ev }));
-    })
+    });
 
     ws.on("close", () => {
       off();
       spaceConnections.delete(ws);
       console.log("Connection closed");
-    })
+    });
   };
 }
 
@@ -130,8 +130,8 @@ const syncCallback = (callback) => {
   syncCallbacks.add(callback);
   return () => {
     syncCallbacks.delete(callback);
-  }
-}
+  };
+};
 
 app.use(express.json({ limit: "100mb" }));
 app.post("/sync", async (req, res, next) => {
@@ -152,6 +152,6 @@ app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
 
 import("../dist/server/entry.mjs").then(({ handler }) => {
   app.use(handler);
-})
+});
 
 app.listen(8080);

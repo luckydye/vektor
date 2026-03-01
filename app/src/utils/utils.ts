@@ -148,7 +148,7 @@ export function generatePaletteCss(baseColor: string) {
     light: Object.entries(generateColorPalette(baseColor))
       .map(([key, value]) => `--color-primary-${key}: ${value};`)
       .join("\n  "),
-    dark: Object.entries(generateDarkColorPalette(baseColor) )
+    dark: Object.entries(generateDarkColorPalette(baseColor))
       .map(([key, value]) => `--color-primary-${key}: ${value};`)
       .join("\n  "),
   };
@@ -198,16 +198,14 @@ export function formatRelativeTime(timestamp: number) {
   if (hours > 0) return `${hours}h ago`;
   if (minutes > 0) return `${minutes}m ago`;
   return "Just now";
-};
+}
 
 export function getUserInitials(userId: string) {
   return userId.slice(0, 2).toUpperCase();
 }
 
 export function slugify(text: string) {
-  const reservedSlugs = [
-    "new",
-  ];
+  const reservedSlugs = ["new"];
 
   let slug = text
     .toLowerCase()
@@ -221,7 +219,9 @@ export function slugify(text: string) {
   return slug;
 }
 
-export function detectAppType(label: string): "jira" | "youtrack" | "linear" | "github" | "gitlab" | undefined {
+export function detectAppType(
+  label: string,
+): "jira" | "youtrack" | "linear" | "github" | "gitlab" | undefined {
   const lowerLabel = label.toLowerCase();
 
   if (lowerLabel.includes("jira")) {
@@ -248,6 +248,6 @@ export function detectAppType(label: string): "jira" | "youtrack" | "linear" | "
  */
 export function stripScriptTags(html: string): string {
   return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<script[^>]*>/gi, '');
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<script[^>]*>/gi, "");
 }

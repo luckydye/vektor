@@ -1,4 +1,3 @@
-
 /* Unordered Lists */
 ul {
   @apply list-disc list-outside pl-5 space-y-1;
@@ -34,7 +33,7 @@ ol ol ol ol {
 
 /* List Items */
 li {
-  @apply leading-relaxed  ;
+  @apply leading-relaxed;
 }
 
 li p {
@@ -97,7 +96,7 @@ dd {
 
 /* Bordered list */
 .list-bordered {
-  @apply divide-y divide-neutral-200 border border-neutral-200 rounded-lg bg-background shadow-sm;
+  @apply divide-y divide-neutral-200 border border-neutral-100 rounded-lg bg-background shadow-sm;
 }
 
 .list-bordered li {
@@ -139,7 +138,7 @@ dd {
 }
 
 .list-feature li {
-  @apply flex items-start gap-3 p-3 rounded-lg bg-neutral-50 border border-neutral-200;
+  @apply flex items-start gap-3 p-3 rounded-lg bg-neutral-50 border border-neutral-100;
 }
 
 .list-feature li::before {
@@ -166,7 +165,7 @@ dd {
 
 /* Menu list */
 .list-menu {
-  @apply list-none bg-background border border-neutral-200 rounded-lg shadow-lg divide-y divide-neutral-100;
+  @apply list-none bg-background border border-neutral-100 rounded-lg shadow-lg divide-y divide-neutral-100;
 }
 
 .list-menu li {

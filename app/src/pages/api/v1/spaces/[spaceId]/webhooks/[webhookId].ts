@@ -3,95 +3,75 @@ import {
   badRequestResponse,
   jsonResponse,
   notFoundResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   verifySpaceRole,
-} from "../../../../../../db/api.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
 import {
   getWebhook,
   updateWebhook,
   deleteWebhook,
-  parseWebhookEvents,
-  type WebhookEvent,
-} from "../../../../../../db/webhooks.ts";
-import { getSpaceDb } from "../../../../../../db/db.ts";
+  toWebhookDto,
+  validateWebhookEventsInput,
+} from "#db/webhooks.ts";
+import { getSpaceDb } from "#db/db.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const webhookId = requireParam(context.params, "webhookId");
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const db = getSpaceDb(spaceId);
+    const db = await getSpaceDb(spaceId);
     const webhook = await getWebhook(db, webhookId);
 
     if (!webhook) {
       throw notFoundResponse("Webhook");
     }
 
-    return jsonResponse({
-      webhook: {
-        id: webhook.id,
-        url: webhook.url,
-        events: parseWebhookEvents(webhook),
-        documentId: webhook.documentId,
-        enabled: webhook.enabled,
-        createdAt: webhook.createdAt,
-        updatedAt: webhook.updatedAt,
-        createdBy: webhook.createdBy,
-      },
-    });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+    return jsonResponse({ webhook: toWebhookDto(webhook) });
+  }, "Failed to get webhook");
 
-export const PATCH: APIRoute = async (context) => {
-  try {
+export const PATCH: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const webhookId = requireParam(context.params, "webhookId");
 
     await verifySpaceRole(spaceId, user.id, "admin");
 
-    const db = getSpaceDb(spaceId);
+    const db = await getSpaceDb(spaceId);
     const existingWebhook = await getWebhook(db, webhookId);
 
     if (!existingWebhook) {
       throw notFoundResponse("Webhook");
     }
 
-    const body = await context.request.json();
+    const body = await parseJsonBody(context.request);
     const { url, events, documentId, secret, enabled } = body;
+    let parsedEvents = events;
 
     if (url !== undefined && typeof url !== "string") {
       throw badRequestResponse("URL must be a string");
     }
 
     if (events !== undefined) {
-      if (!Array.isArray(events) || events.length === 0) {
-        throw badRequestResponse("Events must be a non-empty array");
+      const validatedEvents = validateWebhookEventsInput(events);
+      if (!validatedEvents.valid) {
+        throw badRequestResponse(validatedEvents.message);
       }
-
-      const validEvents: WebhookEvent[] = [
-        "document.published",
-        "document.unpublished",
-        "document.deleted",
-        "mention",
-      ];
-
-      for (const event of events) {
-        if (!validEvents.includes(event)) {
-          throw badRequestResponse(`Invalid event: ${event}`);
-        }
-      }
+      parsedEvents = validatedEvents.events;
     }
 
-    if (documentId !== undefined && documentId !== null && typeof documentId !== "string") {
+    if (
+      documentId !== undefined &&
+      documentId !== null &&
+      typeof documentId !== "string"
+    ) {
       throw badRequestResponse("Document ID must be a string or null");
     }
 
@@ -105,40 +85,24 @@ export const PATCH: APIRoute = async (context) => {
 
     const webhook = await updateWebhook(db, webhookId, {
       url,
-      events,
+      events: parsedEvents,
       documentId,
       secret,
       enabled,
     });
 
-    return jsonResponse({
-      webhook: {
-        id: webhook.id,
-        url: webhook.url,
-        events: parseWebhookEvents(webhook),
-        documentId: webhook.documentId,
-        enabled: webhook.enabled,
-        createdAt: webhook.createdAt,
-        updatedAt: webhook.updatedAt,
-        createdBy: webhook.createdBy,
-      },
-    });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+    return jsonResponse({ webhook: toWebhookDto(webhook) });
+  }, "Failed to update webhook");
 
-export const DELETE: APIRoute = async (context) => {
-  try {
+export const DELETE: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const webhookId = requireParam(context.params, "webhookId");
 
     await verifySpaceRole(spaceId, user.id, "admin");
 
-    const db = getSpaceDb(spaceId);
+    const db = await getSpaceDb(spaceId);
     const webhook = await getWebhook(db, webhookId);
 
     if (!webhook) {
@@ -148,9 +112,4 @@ export const DELETE: APIRoute = async (context) => {
     await deleteWebhook(db, webhookId);
 
     return jsonResponse({ success: true });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to delete webhook");

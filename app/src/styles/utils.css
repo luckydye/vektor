@@ -3,7 +3,7 @@
 @custom-variant enabled (&:not([disabled]):not([aria-disabled="true"]));
 
 @utility button-with-icon {
-  @apply [&_svg]:align-middle [&_svg]:w-[1em] [&_svg]:h-[1em] [&_svg]:block [&_svg]:text-inherit;
+  @apply [&_svg]:align-middle [&_svg]:w-[1.35em] [&_svg]:h-[1.35em] [&_svg]:block [&_svg]:text-inherit;
   @apply [&_.icon+span]:ml-3xs;
 }
 @utility button-disabled {
@@ -17,7 +17,7 @@
   @apply button-with-icon;
 }
 @utility button-primary-base {
-  @apply whitespace-nowrap cursor-pointer inline-flex items-center bg-primary-500 border border-primary-700 rounded-lg font-medium text-interactive min-h-[2rem] text-white;
+  @apply whitespace-nowrap cursor-pointer inline-flex items-center bg-primary-500 border border-primary-500 rounded-lg font-medium text-interactive min-h-[2rem] text-white;
 }
 @utility button-primary-pointer {
   @apply transition-colors enabled:hover:bg-primary-400 enabled:active:bg-primary-600;

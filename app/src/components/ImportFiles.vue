@@ -122,7 +122,7 @@ Actions.register("import:toggle", {
       <div
         :class="[
           'border-2 border-dashed rounded-lg p-12 text-center transition-colors',
-          dragOver ? 'border-blue-600 bg-blue-50' : 'border-neutral-300 bg-neutral-50'
+          dragOver ? 'border-blue-600 bg-blue-50' : 'border-neutral-100 bg-neutral-50'
         ]"
       >
         <svg
@@ -237,7 +237,7 @@ Actions.register("import:toggle", {
           <div v-if="progress.documents.length > 0" class="mt-6">
             <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-900 mb-3">Created Documents</h4>
             <ul class="space-y-0">
-              <li v-for="doc in progress.documents" :key="doc.id" class="py-2 border-b border-neutral-200 last:border-b-0">
+              <li v-for="doc in progress.documents" :key="doc.id" class="py-2 border-b border-neutral-100 last:border-b-0">
                 <a :href="`/spaces/${currentSpace?.slug}/docs/${doc.slug}`" class="text-blue-600 hover:underline font-medium">
                   {{ doc.title }}
                 </a>
@@ -248,14 +248,14 @@ Actions.register("import:toggle", {
           <div v-if="progress.errors.length > 0" class="mt-6">
             <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-900 mb-3">Errors</h4>
             <ul class="space-y-0">
-              <li v-for="(err, idx) in progress.errors" :key="idx" class="py-2 border-b border-neutral-200 last:border-b-0 text-sm text-red-600">
+              <li v-for="(err, idx) in progress.errors" :key="idx" class="py-2 border-b border-neutral-100 last:border-b-0 text-sm text-red-600">
                 <strong>{{ err.file }}:</strong> {{ err.error }}
               </li>
             </ul>
           </div>
         </div>
 
-        <div class="px-6 py-4 border-t border-neutral-200 flex justify-end">
+        <div class="px-6 py-4 border-t border-neutral-100 flex justify-end">
           <button @click="closeAll" class="px-6 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition-colors">
             Close
           </button>

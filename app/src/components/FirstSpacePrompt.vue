@@ -27,7 +27,7 @@
             type="text"
             required
             placeholder="Engineering, Product, Company Wiki..."
-            class="w-full px-4 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             :disabled="isCreating"
           />
         </div>
@@ -43,7 +43,7 @@
             required
             placeholder="engineering"
             pattern="[a-z0-9-]+"
-            class="w-full px-4 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             :disabled="isCreating"
           />
           <p class="mt-1 text-xs text-neutral">
@@ -60,14 +60,14 @@
               id="brand-color"
               v-model="brandColor"
               type="color"
-              class="h-10 w-20 border border-neutral-200 rounded-md cursor-pointer"
+              class="h-10 w-20 border border-neutral-100 rounded-md cursor-pointer"
             />
             <input
               v-model="brandColor"
               type="text"
               placeholder="#1e293b"
               pattern="^#[0-9A-Fa-f]{6}$"
-              class="flex-1 px-3 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="flex-1 px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <p class="mt-1 text-xs text-neutral">
@@ -86,9 +86,9 @@
               accept=".svg,image/svg+xml"
               @change="handleLogoUpload"
               :disabled="isCreating"
-              class="w-full px-4 py-2 border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-            <div v-if="logoSvg" class="flex items-center gap-2 p-2 bg-neutral-300 border border-neutral-200 rounded-md">
+            <div v-if="logoSvg" class="flex items-center gap-2 p-2 bg-neutral-300 border border-neutral-100 rounded-md">
               <div v-html="logoSvg" class="h-8 flex items-center"></div>
               <button
                 type="button"
@@ -129,7 +129,7 @@
 
 <script setup>
 import { onMounted, ref, watch } from "vue";
-import { slugify } from "../utils/utils.js";
+import { slugify } from "../utils/utils.ts";
 
 const showPrompt = ref(false);
 const spaceName = ref("");

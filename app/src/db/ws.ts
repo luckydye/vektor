@@ -1,4 +1,4 @@
-import { config } from "../config";
+import { config } from "../config.ts";
 
 // Batching and debouncing for sync events
 const pendingScopes = new Set<string>();
@@ -11,17 +11,20 @@ async function flushSyncEvents() {
   const appConfig = config();
 
   try {
-    await fetch(`http${import.meta.env.DEV ? '' : 's'}://${appConfig.COLLABORATION_HOST}/sync`, {
-      method: "POST",
-      headers: {
-        'Content-Type': 'application/json'
+    await fetch(
+      `http${import.meta.env.DEV ? "" : "s"}://${appConfig.COLLABORATION_HOST}/sync`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify([...pendingScopes]),
       },
-      body: JSON.stringify([...pendingScopes])
-    });
+    );
 
     pendingScopes.clear();
-  } catch(err) {
-    console.warn('Failed to send sync events:', err);
+  } catch (err) {
+    console.warn("Failed to send sync events:", err);
   }
 }
 

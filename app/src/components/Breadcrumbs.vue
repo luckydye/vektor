@@ -1,33 +1,33 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed } from "vue";
 
 interface BreadcrumbItem {
-  id: string
-  slug: string
-  title: string
+  id: string;
+  slug: string;
+  title: string;
 }
 
 interface Category {
-  id: string
-  name: string
-  slug: string
-  color?: string
-  icon?: string
+  id: string;
+  name: string;
+  slug: string;
+  color?: string;
+  icon?: string;
 }
 
 interface Props {
-  spaceSlug: string
-  category?: Category | null
-  parents?: BreadcrumbItem[]
-  currentTitle: string
+  spaceSlug: string;
+  category?: Category | null;
+  parents?: BreadcrumbItem[];
+  currentTitle: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   parents: () => [],
   category: null,
-})
+});
 
-const showBreadcrumbs = computed(() => props.category || props.parents.length > 0)
+const showBreadcrumbs = computed(() => props.category || props.parents.length > 0);
 </script>
 
 <template>

@@ -70,7 +70,8 @@ export function validateManifest(data: unknown): ExtensionManifest {
     entries: {
       frontend: entries.frontend as string | undefined,
     },
-    description: typeof manifest.description === "string" ? manifest.description : undefined,
+    description:
+      typeof manifest.description === "string" ? manifest.description : undefined,
     author: typeof manifest.author === "string" ? manifest.author : undefined,
   };
 }

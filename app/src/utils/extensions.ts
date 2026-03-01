@@ -73,6 +73,20 @@ export type ExtensionInfo = {
     view?: string;
   };
   routes?: ExtensionRoute[];
+  jobs?: Array<{
+    id: string;
+    name: string;
+    inputs?: Record<string, { type: string; required?: boolean }>;
+    outputs?: Record<string, { type: string; required?: boolean }>;
+  }>;
+  dataSources?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    jobId: string;
+    inputs?: Record<string, { type: string; required?: boolean }>;
+    cacheTtlMs?: number;
+  }>;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -111,36 +125,36 @@ export class Extensions {
    * Initialise extensions for a space
    * Fetches extension list and loads all frontend entries
    */
-   private initPromise: Promise<void> | null = null;
+  private initPromise: Promise<void> | null = null;
 
-   async init(spaceId: string): Promise<void> {
-     // If already initializing or initialized for this space, wait for completion
-     if (this.spaceId === spaceId && this.initPromise) {
-       return this.initPromise;
-     }
+  async init(spaceId: string): Promise<void> {
+    // If already initializing or initialized for this space, wait for completion
+    if (this.spaceId === spaceId && this.initPromise) {
+      return this.initPromise;
+    }
 
-     // If switching spaces, unload previous extensions
-     if (this.spaceId !== spaceId) {
-       await this.unloadAll();
-     }
+    // If switching spaces, unload previous extensions
+    if (this.spaceId !== spaceId) {
+      await this.unloadAll();
+    }
 
-     this.spaceId = spaceId;
+    this.spaceId = spaceId;
 
-     this.initPromise = (async () => {
-       const extensions = await this.fetchExtensions(spaceId);
+    this.initPromise = (async () => {
+      const extensions = await this.fetchExtensions(spaceId);
 
-       for (const ext of extensions) {
-         await this.loadExtension(ext);
-       }
+      for (const ext of extensions) {
+        await this.loadExtension(ext);
+      }
 
-       // Notify listeners that extensions have loaded
-       if (typeof window !== "undefined") {
-         window.dispatchEvent(new CustomEvent("extensions:loaded"));
-       }
-     })();
+      // Notify listeners that extensions have loaded
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("extensions:loaded"));
+      }
+    })();
 
-     return this.initPromise;
-   }
+    return this.initPromise;
+  }
 
   /**
    * Fetch extension list from API
@@ -323,7 +337,11 @@ export class Extensions {
       },
       storage: {
         get: async (key: string) => {
-          const result = await api.extensions.storage.get(this.spaceId!, extensionId, key);
+          const result = await api.extensions.storage.get(
+            this.spaceId!,
+            extensionId,
+            key,
+          );
           return result?.value ?? null;
         },
         set: async (key: string, value: string) => {
@@ -333,7 +351,11 @@ export class Extensions {
           await api.extensions.storage.delete(this.spaceId!, extensionId, key);
         },
         list: async (prefix?: string) => {
-          const entries = await api.extensions.storage.list(this.spaceId!, extensionId, prefix);
+          const entries = await api.extensions.storage.list(
+            this.spaceId!,
+            extensionId,
+            prefix,
+          );
           return entries.map(({ key, value }) => ({ key, value }));
         },
       },
@@ -351,8 +373,18 @@ export class Extensions {
   /**
    * Get all menu links from loaded extensions (routes with menuItem defined)
    */
-  getMenuLinks(): Array<{ extensionId: string; route: string; title: string; icon?: string }> {
-    const links: Array<{ extensionId: string; route: string; title: string; icon?: string }> = [];
+  getMenuLinks(): Array<{
+    extensionId: string;
+    route: string;
+    title: string;
+    icon?: string;
+  }> {
+    const links: Array<{
+      extensionId: string;
+      route: string;
+      title: string;
+      icon?: string;
+    }> = [];
     for (const loaded of this.loaded.values()) {
       if (!loaded.info.routes) continue;
       for (const route of loaded.info.routes) {
@@ -372,7 +404,9 @@ export class Extensions {
   /**
    * Find extension that handles a given route path
    */
-  findExtensionForRoute(routePath: string): { extension: ExtensionInfo; route: ExtensionRoute } | null {
+  findExtensionForRoute(
+    routePath: string,
+  ): { extension: ExtensionInfo; route: ExtensionRoute } | null {
     for (const loaded of this.loaded.values()) {
       if (!loaded.info.routes) continue;
       for (const route of loaded.info.routes) {
@@ -387,7 +421,11 @@ export class Extensions {
   /**
    * Render an extension view into a container
    */
-  async renderView(extensionId: string, routePath: string, container: HTMLElement): Promise<boolean> {
+  async renderView(
+    extensionId: string,
+    routePath: string,
+    container: HTMLElement,
+  ): Promise<boolean> {
     const loaded = this.loaded.get(extensionId);
     if (!loaded) {
       console.error(`Extension '${extensionId}' not loaded`);
@@ -420,7 +458,9 @@ export class Extensions {
 
     const render = loaded.registeredViews.get(routePath);
     if (!render) {
-      console.error(`Extension '${extensionId}' has no view registered for route '${routePath}'`);
+      console.error(
+        `Extension '${extensionId}' has no view registered for route '${routePath}'`,
+      );
       return false;
     }
 
@@ -431,7 +471,10 @@ export class Extensions {
       }
       return true;
     } catch (err) {
-      console.error(`Error rendering view for '${extensionId}' route '${routePath}':`, err);
+      console.error(
+        `Error rendering view for '${extensionId}' route '${routePath}':`,
+        err,
+      );
       return false;
     }
   }
@@ -439,7 +482,9 @@ export class Extensions {
   /**
    * Get all routes with specific placement
    */
-  getRoutesWithPlacement(placement: "page" | "home-top"): Array<{ extensionId: string; route: ExtensionRoute }> {
+  getRoutesWithPlacement(
+    placement: "page" | "home-top",
+  ): Array<{ extensionId: string; route: ExtensionRoute }> {
     const routes: Array<{ extensionId: string; route: ExtensionRoute }> = [];
     for (const loaded of this.loaded.values()) {
       if (!loaded.info.routes) continue;
@@ -483,6 +528,8 @@ export class ExtensionViewElement extends HTMLElement {
     `;
 
     const root = document.createElement("div");
+    root.style.height = "100%";
+    root.style.width = "100%";
     shadow.appendChild(root);
     this.root = root;
   }

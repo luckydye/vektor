@@ -128,6 +128,23 @@ export interface Webhook {
   createdBy: string;
 }
 
+export type WorkflowNodeStatus = "pending" | "running" | "completed" | "failed";
+
+export interface WorkflowNodeState {
+  status: WorkflowNodeStatus;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown> | null;
+  error: string | null;
+  logs: string[];
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface WorkflowRunStatus {
+  status: WorkflowNodeStatus;
+  nodes: Record<string, WorkflowNodeState>;
+}
+
 export interface ExtensionRouteMenuItem {
   title: string;
   icon?: string;
@@ -142,6 +159,27 @@ export interface ExtensionRoute {
   placements?: Array<"page" | "home-top">;
 }
 
+export interface ExtensionJobField {
+  type: string;
+  required?: boolean;
+}
+
+export interface ExtensionJobInfo {
+  id: string;
+  name: string;
+  inputs?: Record<string, ExtensionJobField>;
+  outputs?: Record<string, ExtensionJobField>;
+}
+
+export interface ExtensionDataSourceInfo {
+  id: string;
+  name: string;
+  description?: string;
+  jobId: string;
+  inputs?: Record<string, ExtensionJobField>;
+  cacheTtlMs?: number;
+}
+
 export interface ExtensionInfo {
   id: string;
   name: string;
@@ -152,6 +190,8 @@ export interface ExtensionInfo {
     view?: string;
   };
   routes?: ExtensionRoute[];
+  jobs?: ExtensionJobInfo[];
+  dataSources?: ExtensionDataSourceInfo[];
   createdAt: Date | string;
   updatedAt: Date | string;
   createdBy: string;
@@ -222,6 +262,13 @@ export interface PropertyInfo {
   type: string | null;
   values: string[];
 }
+
+export type DocumentPropertyPatchValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { value: string | number | boolean | null; type?: string | null };
 
 // Property filter for advanced search
 // Use value: null to filter for documents that have the property (any value)
@@ -315,8 +362,8 @@ export class ApiClient {
       ...fetchOptions,
       headers: {
         ...fetchOptions.headers,
-        ...(this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {})
-      }
+        ...(this.accessToken ? { Authorization: `Bearer ${this.accessToken}` } : {}),
+      },
     });
 
     if (!response.ok) {
@@ -431,7 +478,16 @@ export class ApiClient {
      * Get a user by ID
      */
     getById: async (id: string) => {
-      return await this.apiGet<User>(this.baseUrl, `/api/v1/users?id=${encodeURIComponent(id)}`);
+      return await this.apiGet<User>(
+        this.baseUrl,
+        `/api/v1/users?id=${encodeURIComponent(id)}`,
+      );
+    },
+    /**
+     * Get the currently authenticated user
+     */
+    me: async () => {
+      return await this.apiGet<User>(this.baseUrl, "/api/v1/users/me");
     },
   };
 
@@ -451,7 +507,11 @@ export class ApiClient {
       slug: string;
       preferences?: Record<string, string>;
     }) => {
-      const response = await this.apiPost<{ space: Space }>(this.baseUrl, "/api/v1/spaces", body);
+      const response = await this.apiPost<{ space: Space }>(
+        this.baseUrl,
+        "/api/v1/spaces",
+        body,
+      );
       return response.space;
     },
   };
@@ -465,13 +525,13 @@ export class ApiClient {
     },
 
     /**
-     * Update a space
+     * Partially update a space (PATCH)
      */
-    put: async (
+    patch: async (
       spaceId: string,
       body: { name?: string; slug?: string; preferences?: Record<string, string> },
     ) => {
-      return await this.apiPut<Space>(this.baseUrl, `/api/v1/spaces/${spaceId}`, body);
+      return await this.apiPatch<Space>(this.baseUrl, `/api/v1/spaces/${spaceId}`, body);
     },
 
     /**
@@ -487,7 +547,10 @@ export class ApiClient {
      * List members in a space
      */
     get: async (spaceId: string) => {
-      return await this.apiGet<SpaceMember[]>(this.baseUrl, `/api/v1/spaces/${spaceId}/members`);
+      return await this.apiGet<SpaceMember[]>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/members`,
+      );
     },
   };
 
@@ -608,17 +671,6 @@ export class ApiClient {
     },
 
     /**
-     * List documents in a category
-     */
-    documents: async (spaceId: string, slug: string) => {
-      const response = await this.apiGet<{ documents: DocumentWithProperties[] }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/categories/${slug}/documents`,
-      );
-      return response.documents;
-    },
-
-    /**
      * Reorder categories
      */
     reorder: async (spaceId: string, categoryIds: string[]) => {
@@ -677,7 +729,10 @@ export class ApiClient {
     /**
      * List documents in a space
      */
-    get: async (spaceId: string, query?: Record<string, string | number | boolean>) => {
+    get: async (
+      spaceId: string,
+      query?: Record<string, string | number | boolean | undefined>,
+    ) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
         total: number;
@@ -685,6 +740,20 @@ export class ApiClient {
         offset: number;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, query);
       return response;
+    },
+
+    /**
+     * List documents by categories as a grouped map, including descendants.
+     */
+    getByCategories: async (spaceId: string, categorySlugs: string[]) => {
+      const response = await this.apiGet<{
+        documentsByCategory: Record<string, DocumentWithProperties[]>;
+        categorySlugs: string[];
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, {
+        categorySlugs: categorySlugs.join(","),
+        grouped: true,
+      });
+      return response.documentsByCategory;
     },
 
     /**
@@ -740,7 +809,7 @@ export class ApiClient {
         headers: {
           "Content-Type": "text/html",
         },
-        body: JSON.stringify({ content }),
+        body: content,
       });
 
       if (!response.ok) {
@@ -753,32 +822,54 @@ export class ApiClient {
     },
 
     /**
-     * Patch document properties
+     * Patch document metadata and operations
      */
     patch: async (
       spaceId: string,
       documentId: string,
       body: {
+        properties?: Record<string, DocumentPropertyPatchValue>;
         parentId?: string | null;
         publishedRev?: number | null;
         readonly?: boolean;
       },
     ) => {
-      return await this.apiPatch(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}`, body);
+      return await this.apiPatch<{ success?: boolean; slug?: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+        body,
+      );
     },
 
     /**
      * Archive a document
      */
     archive: async (spaceId: string, documentId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}`);
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+      );
     },
 
     /**
      * Delete a document permanently
      */
     delete: async (spaceId: string, documentId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}?permanent=true`);
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}?permanent=true`,
+      );
+    },
+
+    /**
+     * Restore an archived document
+     */
+    restore: async (spaceId: string, documentId: string) => {
+      return await this.apiPut<{ success: boolean }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+        { restore: true },
+      );
     },
 
     /**
@@ -851,42 +942,6 @@ export class ApiClient {
     },
   };
 
-  documentProperty = {
-    /**
-     * Set a document property
-     */
-    put: async (
-      spaceId: string,
-      documentId: string,
-      body: { key: string; value: string; type?: string | null },
-    ) => {
-      return await this.apiPut<{
-        slug?: string;
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}/property`, body);
-    },
-
-    /**
-     * Delete a document property
-     */
-    delete: async (spaceId: string, documentId: string, key: string) => {
-      const response = await fetch(
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/property`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ key }),
-        },
-      );
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`API request failed: ${response.status} ${error}`);
-      }
-    },
-  };
-
   documentPublish = {
     /**
      * Restore a document to a specific revision
@@ -894,24 +949,9 @@ export class ApiClient {
     post: async (spaceId: string, documentId: string, rev: number) => {
       await this.apiPost(
         this.baseUrl,
-        `/api/v1/spaces/${spaceId}/documents/${documentId}/publish?rev=${rev}`,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/revisions?rev=${rev}`,
         {},
       );
-    },
-  };
-
-  drafts = {
-    /**
-     * List draft documents in a space (with pagination)
-     */
-    get: async (spaceId: string, query?: Record<string, string | number | boolean>) => {
-      const response = await this.apiGet<{
-        documents: DocumentWithProperties[];
-        total: number;
-        limit: number;
-        offset: number;
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/drafts`, query);
-      return response;
     },
   };
 
@@ -981,7 +1021,10 @@ export class ApiClient {
      * List uploads in a space
      */
     get: async (spaceId: string) => {
-      await this.apiGet(this.baseUrl, `/api/v1/spaces/${spaceId}/uploads`);
+      const result = await this.apiGet<{
+        files: { key: string; url: string; size: number; updatedAt: string }[];
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/uploads`);
+      return result.files;
     },
 
     /**
@@ -1102,6 +1145,38 @@ export class ApiClient {
     },
 
     /**
+     * Grant token access to a specific resource
+     */
+    grantResource: async (
+      spaceId: string,
+      tokenId: string,
+      resourceType: string,
+      resourceId: string,
+      body: { permission: string },
+    ) => {
+      return await this.apiPut<{ resources: any[]; message: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/${resourceType}/${resourceId}`,
+        body,
+      );
+    },
+
+    /**
+     * Revoke token access to a specific resource
+     */
+    revokeResource: async (
+      spaceId: string,
+      tokenId: string,
+      resourceType: string,
+      resourceId: string,
+    ) => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/${resourceType}/${resourceId}`,
+      );
+    },
+
+    /**
      * Revoke an access token
      */
     revoke: async (spaceId: string, tokenId: string) => {
@@ -1116,7 +1191,10 @@ export class ApiClient {
      * Delete an access token
      */
     delete: async (spaceId: string, tokenId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}`);
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}`,
+      );
     },
   };
 
@@ -1125,7 +1203,10 @@ export class ApiClient {
      * List webhooks in a space
      */
     get: async (spaceId: string) => {
-      return await this.apiGet<{ webhooks: Webhook[] }>(this.baseUrl, `/api/v1/spaces/${spaceId}/webhooks`);
+      return await this.apiGet<{ webhooks: Webhook[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/webhooks`,
+      );
     },
 
     /**
@@ -1177,7 +1258,10 @@ export class ApiClient {
      * Delete a webhook
      */
     delete: async (spaceId: string, webhookId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/webhooks/${webhookId}`);
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/webhooks/${webhookId}`,
+      );
     },
   };
 
@@ -1186,7 +1270,10 @@ export class ApiClient {
      * List all extensions in a space
      */
     get: async (spaceId: string): Promise<ExtensionInfo[]> => {
-      return await this.apiGet<ExtensionInfo[]>(this.baseUrl, `/api/v1/spaces/${spaceId}/extensions`);
+      return await this.apiGet<ExtensionInfo[]>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/extensions`,
+      );
     },
 
     /**
@@ -1223,7 +1310,10 @@ export class ApiClient {
      * Delete an extension
      */
     delete: async (spaceId: string, extensionId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/extensions/${extensionId}`);
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/extensions/${extensionId}`,
+      );
     },
 
     /**
@@ -1291,7 +1381,26 @@ export class ApiClient {
         const params = prefix ? { prefix } : undefined;
         return await this.apiGet<
           Array<{ key: string; value: string; createdAt: string; updatedAt: string }>
-        >(this.baseUrl, `/api/v1/spaces/${spaceId}/extensions/${extensionId}/storage`, params);
+        >(
+          this.baseUrl,
+          `/api/v1/spaces/${spaceId}/extensions/${extensionId}/storage`,
+          params,
+        );
+      },
+    },
+
+    dataSources: {
+      query: async (
+        spaceId: string,
+        extensionId: string,
+        dataSourceId: string,
+        inputs: Record<string, unknown> = {},
+      ): Promise<{ outputs: Record<string, unknown>; logs: string[] }> => {
+        return await this.apiPost<{ outputs: Record<string, unknown>; logs: string[] }>(
+          this.baseUrl,
+          `/api/v1/spaces/${spaceId}/extensions/${extensionId}/data-sources/${dataSourceId}/query`,
+          { inputs },
+        );
       },
     },
   };
@@ -1367,6 +1476,94 @@ export class ApiClient {
           body: JSON.stringify({ commentId }),
         },
       );
+    },
+  };
+
+  workflows = {
+    /**
+     * Start a workflow run for a workflow document
+     */
+    startRun: async (spaceId: string, documentId: string): Promise<{ runId: string }> => {
+      return await this.apiPost<{ runId: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/runs`,
+        { documentId },
+      );
+    },
+
+    /**
+     * Get the latest run status for a workflow document. Returns null if no run exists.
+     */
+    getLatestRun: async (
+      spaceId: string,
+      documentId: string,
+    ): Promise<{ runId: string; status: string } | null> => {
+      try {
+        return await this.apiGet<{ runId: string; status: string }>(
+          this.baseUrl,
+          `/api/v1/spaces/${spaceId}/workflows/runs?documentId=${encodeURIComponent(documentId)}`,
+        );
+      } catch {
+        return null;
+      }
+    },
+
+    /**
+     * Get the status of a workflow run
+     */
+    getRun: async (spaceId: string, runId: string): Promise<WorkflowRunStatus> => {
+      return await this.apiGet<WorkflowRunStatus>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
+      );
+    },
+
+    cancelRun: async (spaceId: string, runId: string): Promise<void> => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
+      );
+    },
+
+    listRunning: async (spaceId: string) => {
+      const response = await this.apiGet<{
+        runs: {
+          runId: string;
+          documentId: string;
+          documentSlug: string | null;
+          documentTitle: string;
+          status: string;
+        }[];
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`);
+      return response.runs;
+    },
+  };
+
+  jobs = {
+    run: async (
+      spaceId: string,
+      jobId: string,
+      inputs: Record<string, unknown> = {},
+    ): Promise<{ outputs: Record<string, unknown>; logs: string[] }> => {
+      return await this.apiPost(this.baseUrl, `/api/v1/spaces/${spaceId}/jobs/run`, {
+        jobId,
+        inputs,
+      });
+    },
+
+    runStream: (
+      spaceId: string,
+      jobId: string,
+      inputs: Record<string, unknown> = {},
+      signal?: AbortSignal,
+    ): Promise<Response> => {
+      return fetch(`${this.baseUrl}/api/v1/spaces/${spaceId}/jobs/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ jobId, inputs, stream: true }),
+        signal,
+      });
     },
   };
 

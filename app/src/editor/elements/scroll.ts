@@ -37,14 +37,13 @@ customElements.define(
         this.loadSavedScrollPosition();
       }, 250);
 
-      window.addEventListener('astro:page-load', () => {
+      window.addEventListener("astro:page-load", () => {
         this.loadSavedScrollPosition();
       });
 
       setInterval(() => {
         const storage = sessionStorage;
-        if(this.name)
-          storage.setItem(this.name, this.scrollTop.toString());
+        if (this.name) storage.setItem(this.name, this.scrollTop.toString());
       }, 1000);
     }
 
@@ -64,8 +63,7 @@ customElements.define(
         }
 
         window.addEventListener("beforeunload", () => {
-          if(this.name)
-            storage.setItem(this.name, this.scrollTop.toString());
+          if (this.name) storage.setItem(this.name, this.scrollTop.toString());
         });
       }
     }

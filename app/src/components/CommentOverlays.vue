@@ -11,12 +11,13 @@ const props = defineProps<{
 }>();
 
 const overlays = ref<{ top: number; count: number; reference: string }[]>([]);
-const floatingBubble = ref<{ y: number; reference: string | number } | null>(null);
-const cursorY = ref(0);
 
 function findElement(reference: string, root: Element | ShadowRoot): Element | null {
   // Case 1: Reference is an ID
-  const byId = root instanceof ShadowRoot ? root.getElementById(reference) : root.querySelector(`#${reference}`);
+  const byId =
+    root instanceof ShadowRoot
+      ? root.getElementById(reference)
+      : root.querySelector(`#${reference}`);
   if (byId) return byId;
 
   // Case 2: Reference is a selector (e.g. "p:nth-of-type(1)")
@@ -31,7 +32,7 @@ function findElement(reference: string, root: Element | ShadowRoot): Element | n
 function updateOverlays() {
   // Group comments by reference
   const counts = new Map<string, number>();
-  props.comments.forEach(c => {
+  props.comments.forEach((c) => {
     if (c.reference) {
       let ref = c.reference;
       if (ref.startsWith("{")) {
@@ -46,7 +47,7 @@ function updateOverlays() {
 
   const newOverlays: typeof overlays.value = [];
 
-  const root = document.querySelector('document-view');
+  const root = document.querySelector("document-view");
   if (!root) return;
 
   const containerRect = root.getBoundingClientRect();
@@ -74,76 +75,32 @@ function handleResize() {
 }
 
 function openSidebar(reference: string | number) {
-  window.dispatchEvent(new CustomEvent('comment:create', {
-    detail: { reference }
-  }));
-}
-
-function handleMouseMove(e: MouseEvent) {
-  const docView = document.querySelector('document-view');
-  if (!docView) return;
-
-  const contentRect = docView.getBoundingClientRect();
-
-  cursorY.value = e.clientY - contentRect.top;
-
-  const distanceFromRight = contentRect.right - e.clientX;
-  const distanceToClosestThread = 0;
-
-  // Show bubble when cursor is within 100px of right edge
-  if (distanceFromRight < 10 && distanceFromRight > -100 && e.clientY > contentRect.top && e.clientY < contentRect.bottom) {
-    floatingBubble.value = {
-      y: cursorY.value,
-      reference: Math.round(cursorY.value)
-    };
-  } else {
-    floatingBubble.value = null;
-  }
-}
-
-function handleBubbleClick() {
-  if (floatingBubble.value) {
-    openSidebar(floatingBubble.value.reference);
-    floatingBubble.value = null;
-  }
+  window.dispatchEvent(
+    new CustomEvent("comment:create", {
+      detail: { reference },
+    }),
+  );
 }
 
 watch(() => props.comments, updateOverlays, { deep: true });
 
 onMounted(() => {
-  window.addEventListener('resize', handleResize);
-  window.addEventListener('pointermove', handleMouseMove as EventListener);
-})
+  window.addEventListener("resize", handleResize);
+});
 
 onUnmounted(() => {
-  window.removeEventListener('pointermove', handleMouseMove as EventListener);
-  window.removeEventListener('resize', handleResize);
+  window.removeEventListener("resize", handleResize);
 });
 </script>
 
 <template>
   <div class="absolute inset-0 right-0 pointer-events-none overflow-visible">
-    <button
-      v-if="floatingBubble"
-      @click.stop="handleBubbleClick"
-      class="absolute right-0 pointer-events-auto cursor-pointer
-              flex items-center justify-center border border-neutral-200 w-[38px] h-[38px] rounded-full
-              bg-primary-600 hover:bg-primary-700 text-white shadow-lg
-              transition-none z-10"
-      :style="{ top: `${cursorY - 20}px` }"
-      title="Add comment"
-      >
-      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-      </svg>
-    </button>
-
     <template v-for="overlay in overlays" :key="overlay.reference">
       <button
         @click.stop="openSidebar(overlay.reference)"
         class="absolute right-0 pointer-events-auto cursor-pointer
                flex items-center justify-center min-w-[40px] h-[40px] px-1.5 rounded-full
-               bg-primary-200 border border-neutral-200
+               bg-primary-200 border border-neutral-100
                hover:border-primary-300 hover:ring-2 hover:ring-primary-100 hover:text-primary-600
                transition-color duration-200 z-20"
         :style="{ top: `${overlay.top}px` }"

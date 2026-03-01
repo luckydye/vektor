@@ -37,11 +37,7 @@ export const ColumnLayout = Node.create<ColumnLayoutOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      "div",
-      mergeAttributes(HTMLAttributes, { "data-type": "column-layout" }),
-      0,
-    ];
+    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "column-layout" }), 0];
   },
 
   addCommands() {
@@ -79,10 +75,6 @@ export const ColumnItem = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      "div",
-      mergeAttributes(HTMLAttributes, { "data-type": "column-item" }),
-      0,
-    ];
+    return ["div", mergeAttributes(HTMLAttributes, { "data-type": "column-item" }), 0];
   },
 });

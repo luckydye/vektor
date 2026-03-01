@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { getAuthDb } from "../src/db/db.js";
-import { user as userTable } from "../src/db/schema/auth.js";
+import { getAuthDb } from "../src/db/db.ts";
+import { user as userTable } from "../src/db/schema/auth.ts";
 import { eq } from "drizzle-orm";
 
 const DATA_DIR = "./data";
@@ -374,21 +374,17 @@ describe("Frontend ACL Tests - Document-Level Permissions on Frontend", () => {
   it("should allow document-specific access even without space membership", async () => {
     // Grant user direct access to specific document
     // Grant user viewer access to SPECIFIC document only
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          userId: docLevelUser.id,
-          resourceType: "document",
-          resourceId: testDocumentId,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: docLevelUser.id,
+        resourceType: "document",
+        resourceId: testDocumentId,
+        action: "grant",
+      }),
+    });
 
     const response = await pageRequest(
       `/${testSpaceSlug}/doc/${testDocumentSlug}`,
@@ -626,7 +622,8 @@ describe("Frontend ACL Tests - Group-Based Access", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          content: "<h1>Group Access Document</h1><p>This document tests group access.</p>",
+          content:
+            "<h1>Group Access Document</h1><p>This document tests group access.</p>",
           properties: {
             title: "Group Access Document",
           },
@@ -656,7 +653,10 @@ describe("Frontend ACL Tests - Group-Based Access", () => {
 
   it("should deny user in editor group access to settings page", async () => {
     // Editor role should not have access to settings (owner only)
-    const response = await pageRequest(`/${groupSpaceSlug}/settings`, groupTestUser.token);
+    const response = await pageRequest(
+      `/${groupSpaceSlug}/settings`,
+      groupTestUser.token,
+    );
 
     expect(response.status).not.toBe(200);
     expect([403, 404]).toContain(response.status);
@@ -664,15 +664,19 @@ describe("Frontend ACL Tests - Group-Based Access", () => {
 
   it("should allow user in viewer group to access space but not settings", async () => {
     // Owner changes the test-group role to viewer
-    await apiRequest(`/api/v1/spaces/${groupSpaceId}/permissions`, groupSpaceOwner.token, {
-      method: "POST",
-      body: JSON.stringify({
-        type: "role",
-        roleOrFeature: "viewer",
-        groupId: "test-group",
-        action: "grant",
-      }),
-    });
+    await apiRequest(
+      `/api/v1/spaces/${groupSpaceId}/permissions`,
+      groupSpaceOwner.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "viewer",
+          groupId: "test-group",
+          action: "grant",
+        }),
+      },
+    );
 
     // groupTestUser should still be able to access the space frontend
     const spaceResponse = await pageRequest(`/${groupSpaceSlug}`, groupTestUser.token);

@@ -1,0 +1,19 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import docStyles from "../../styles/document.css?inline";
+---
+
+<BaseLayout title="Document - Wiki">
+    <document-view>
+        <template shadowrootmode="open">
+            <style set:html={docStyles}></style>
+            
+            <div>
+                <ul>
+                    <li><a href="/docs/extensions">Extensions</a></li>
+                    <li><a href="/docs/api">API</a></li>
+                </ul>
+            </div>
+        </template>
+    </document-view>
+</BaseLayout>

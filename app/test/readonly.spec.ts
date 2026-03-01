@@ -162,7 +162,7 @@ describe("API Tests - Readonly Documents", () => {
 
     const data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document.readonly).toBe(true);
   });
@@ -262,7 +262,7 @@ describe("API Tests - Readonly Documents", () => {
 
     const data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document.readonly).toBe(false);
   });
@@ -361,7 +361,7 @@ describe("API Tests - Readonly Documents", () => {
 
     const data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     // Should remain readonly
     expect(data.document.readonly).toBe(beforeData.document.readonly);
@@ -395,7 +395,7 @@ describe("API Tests - Readonly Documents", () => {
 
     let data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document.readonly).toBe(true);
 
@@ -413,7 +413,7 @@ describe("API Tests - Readonly Documents", () => {
 
     data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document.readonly).toBe(false);
 
@@ -431,7 +431,7 @@ describe("API Tests - Readonly Documents", () => {
 
     data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document.readonly).toBe(true);
   });
@@ -547,7 +547,7 @@ describe("API Tests - Readonly Documents", () => {
 
     const publishData = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     // Readonly status should be maintained
     expect(publishData.document.readonly).toBe(true);

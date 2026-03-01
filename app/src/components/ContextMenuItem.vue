@@ -2,8 +2,8 @@
 import "@sv/elements/list";
 
 const props = defineProps<{
-  onClick: (e: Event) => void
-}>()
+  onClick: (e: Event) => void;
+}>();
 </script>
 
 <template>

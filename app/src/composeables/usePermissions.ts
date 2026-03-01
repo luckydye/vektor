@@ -63,7 +63,7 @@ export function hasPermission(
  * Check if user has access to a specific feature.
  * Features can be explicitly granted/denied via the features record,
  * or fall back to defaults based on permission level.
- * 
+ *
  * @param userRole - The user's permission level (viewer, editor, owner)
  * @param feature - The feature to check
  * @param features - Optional explicit feature grants/denies from the API
@@ -80,10 +80,10 @@ export function hasFeature(
 
   // Fall back to defaults based on permission level
   if (!userRole) return false;
-  
+
   const defaultFeatures = DEFAULT_FEATURES[userRole as Permission];
   if (!defaultFeatures) return false;
-  
+
   return defaultFeatures.includes(feature);
 }
 

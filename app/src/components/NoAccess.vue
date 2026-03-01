@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ButtonPrimary } from '~/src/components';
-import { useTranslations } from "../composeables/useTranslations.js";
+import { ButtonPrimary } from "~/src/components/index.ts";
+import { useTranslations } from "../composeables/useTranslations.ts";
 
 function goBack() {
   history.back();

@@ -1,5 +1,5 @@
-import { authClient } from "~/src/composeables/auth-client";
-import { detectAppType, stripScriptTags } from "~/src/utils/utils";
+import { authClient } from "~/src/composeables/auth-client.ts";
+import { detectAppType, stripScriptTags } from "~/src/utils/utils.ts";
 import docStyles from "../../styles/document.css?inline";
 import "./textarea.ts";
 import "./expression.ts";
@@ -15,7 +15,7 @@ import Collaboration from "@tiptap/extension-collaboration";
 import { getUserColor } from "../../composeables/useUserProfile.ts";
 import { contentExtensions } from "../extensions.ts";
 import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
-import { IndexedDBStore } from "../../utils/storage.ts";
+import type { IndexedDBStore } from "../../utils/storage.ts";
 import { createYProvider } from "../../utils/sync.ts";
 import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
 
@@ -48,8 +48,149 @@ function createEditor(
   const provider = createYProvider(roomName, ydoc);
 
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+  let hasPointerPosition = false;
+  let blockDropIndicator: HTMLDivElement | null = null;
 
-  const editor = new Editor({
+  let editor: Editor;
+
+  const handlePointerMove = (event: PointerEvent) => {
+    lastPointerX = event.clientX;
+    lastPointerY = event.clientY;
+    hasPointerPosition = true;
+  };
+
+  const syncDragHandlePosition = () => {
+    if (!hasPointerPosition || !editor?.view?.dom) return;
+
+    // Force drag-handle plugin to forget current node so same-node scroll updates reposition.
+    editor.commands.setMeta("hideDragHandle", true);
+
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        cancelable: true,
+        clientX: lastPointerX,
+        clientY: lastPointerY,
+        view: window,
+      }),
+    );
+  };
+
+  const cleanupDragHandleSync = () => {
+    window.removeEventListener("pointermove", handlePointerMove, true);
+    window.removeEventListener("scroll", syncDragHandlePosition, true);
+    window.removeEventListener("resize", syncDragHandlePosition, true);
+  };
+
+  const ensureBlockDropIndicator = () => {
+    if (blockDropIndicator) return blockDropIndicator;
+
+    const indicator = document.createElement("div");
+    indicator.className = "wiki-block-drop-indicator";
+    Object.assign(indicator.style, {
+      position: "fixed",
+      left: "0",
+      top: "0",
+      width: "0",
+      height: "2px",
+      borderRadius: "999px",
+      backgroundColor: "var(--color-primary-500, #3b82f6)",
+      boxShadow:
+        "0 0 0 1px color-mix(in srgb, var(--color-primary-500, #3b82f6) 25%, transparent)",
+      pointerEvents: "none",
+      opacity: "0",
+      zIndex: "10000",
+    });
+    document.body.appendChild(indicator);
+    blockDropIndicator = indicator;
+    return indicator;
+  };
+
+  const hideBlockDropIndicator = () => {
+    if (!blockDropIndicator) return;
+    blockDropIndicator.style.opacity = "0";
+    blockDropIndicator.style.width = "0";
+  };
+
+  const getTopLevelBlockAtPoint = (
+    clientX: number,
+    clientY: number,
+  ): HTMLElement | null => {
+    const root = editor.view.root as Document | ShadowRoot;
+    const elements = root.elementsFromPoint(clientX, clientY);
+
+    for (const element of elements) {
+      if (!(element instanceof HTMLElement)) continue;
+      if (!editor.view.dom.contains(element)) continue;
+
+      let current: HTMLElement | null = element;
+      while (
+        current &&
+        current.parentElement &&
+        current.parentElement !== editor.view.dom
+      ) {
+        current = current.parentElement;
+      }
+
+      if (current?.parentElement === editor.view.dom) {
+        return current;
+      }
+    }
+
+    return null;
+  };
+
+  const updateBlockDropIndicator = (event: DragEvent) => {
+    if (!editor.isEditable) return;
+
+    const block = getTopLevelBlockAtPoint(event.clientX, event.clientY);
+    if (!block) {
+      hideBlockDropIndicator();
+      return;
+    }
+
+    const rect = block.getBoundingClientRect();
+    const isTopHalf = event.clientY < rect.top + rect.height / 2;
+    const lineY = isTopHalf ? rect.top : rect.bottom;
+    const indicator = ensureBlockDropIndicator();
+
+    indicator.style.left = `${Math.round(rect.left)}px`;
+    indicator.style.top = `${Math.round(lineY - 1)}px`;
+    indicator.style.width = `${Math.round(rect.width)}px`;
+    indicator.style.opacity = "1";
+  };
+
+  const handleEditorDragOver = (event: DragEvent) => {
+    updateBlockDropIndicator(event);
+  };
+
+  const cleanupBlockDropIndicator = () => {
+    editor?.view?.dom?.removeEventListener("dragover", handleEditorDragOver);
+    editor?.view?.dom?.removeEventListener("drop", hideBlockDropIndicator);
+    window.removeEventListener("dragend", hideBlockDropIndicator, true);
+
+    if (blockDropIndicator) {
+      blockDropIndicator.remove();
+      blockDropIndicator = null;
+    }
+  };
+
+  window.addEventListener("pointermove", handlePointerMove, {
+    capture: true,
+    passive: true,
+  });
+  window.addEventListener("scroll", syncDragHandlePosition, {
+    capture: true,
+    passive: true,
+  });
+  window.addEventListener("resize", syncDragHandlePosition, {
+    capture: true,
+    passive: true,
+  });
+
+  editor = new Editor({
     element: editorElement,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
@@ -58,7 +199,10 @@ function createEditor(
     onCreate: async ({ editor: currentEditor }) => {
       currentEditor.commands.focus();
     },
-    onUpdate: () => {
+    onUpdate: () => {},
+    onDestroy: () => {
+      cleanupDragHandleSync();
+      cleanupBlockDropIndicator();
     },
     extensions: [
       ...contentExtensions(spaceId, documentId),
@@ -66,13 +210,24 @@ function createEditor(
       TrailingNodePlus,
 
       DragHandle.configure({
+        computePositionConfig: {
+          strategy: "fixed",
+        },
         render: () => {
           const element = document.createElement("div");
           element.classList.add("custom-drag-handle");
           return element;
         },
+        onElementDragEnd: () => {
+          // Reset plugin state after a drag so handle can reappear on the same block.
+          editor.commands.setMeta("hideDragHandle", true);
+        },
       }),
-      Dropcursor,
+      Dropcursor.configure({
+        color: "var(--color-primary-500)",
+        width: 2,
+        class: "wiki-dropcursor",
+      }),
       MentionSuggestons.configure({
         spaceId: spaceId,
       }),
@@ -89,8 +244,12 @@ function createEditor(
           color: getUserColor(user?.email),
         },
       }),
-    ]
+    ],
   });
+
+  editor.view.dom.addEventListener("dragover", handleEditorDragOver);
+  editor.view.dom.addEventListener("drop", hideBlockDropIndicator);
+  window.addEventListener("dragend", hideBlockDropIndicator, { capture: true });
 
   // api.connections.get(spaceId).then(connections => {
   //   editor.storage.ticketLink.connections = connections;
@@ -99,8 +258,7 @@ function createEditor(
   return editor;
 }
 
-class DocumentView extends HTMLElement {
-
+export class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   editor?: Editor;
   store?: IndexedDBStore<EditorStoreEntry>;
@@ -114,7 +272,7 @@ class DocumentView extends HTMLElement {
       // no template for declarative shadow DOM
       const shadow = this.attachShadow({ mode: "open" });
       Object.assign(shadow, {
-        createRange: document.createRange.bind(document)
+        createRange: document.createRange.bind(document),
       });
 
       // on client navigation, declarative shadow DOM does not work
@@ -138,11 +296,11 @@ class DocumentView extends HTMLElement {
 
     let attached = false;
     this.addEventListener("pointerover", () => {
-      if(!attached) {
+      if (!attached) {
         this.attachListeners();
       }
       attached = true;
-    })
+    });
 
     this.attachListeners();
   }
@@ -173,56 +331,76 @@ class DocumentView extends HTMLElement {
   }
 
   attachListeners() {
-    this.root?.addEventListener("input", (e) => {
-      if (this.editor) return; // we ignore checkbox changes in read mode only
+    this.root?.addEventListener(
+      "input",
+      (e) => {
+        if (this.editor) return; // we ignore checkbox changes in read mode only
 
-      window.dispatchEvent(new CustomEvent("edit-mode-start"));
-    }, { capture: true })
+        window.dispatchEvent(new CustomEvent("edit-mode-start"));
+      },
+      { capture: true },
+    );
 
     // make link previews work
-    this.root?.addEventListener("pointerover", (e) => {
-      document.dispatchEvent(new CustomEvent("hover", {
-        detail: {
-          target: e.target
-        }
-      }));
-    }, {
-      capture: true
-    });
-    this.root?.addEventListener("pointerout", (e) => {
-      document.dispatchEvent(new CustomEvent("mouseout"));
-    }, {
-      capture: true
-    });
+    this.root?.addEventListener(
+      "pointerover",
+      (e) => {
+        document.dispatchEvent(
+          new CustomEvent("hover", {
+            detail: {
+              target: e.target,
+            },
+          }),
+        );
+      },
+      {
+        capture: true,
+      },
+    );
+    this.root?.addEventListener(
+      "pointerout",
+      (e) => {
+        document.dispatchEvent(new CustomEvent("mouseout"));
+      },
+      {
+        capture: true,
+      },
+    );
 
     // Handle clicks on internal document links - open in overlay
     // Hold Shift to navigate normally instead
-    this.root?.addEventListener("click", ((e: MouseEvent) => {
-      if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+    this.root?.addEventListener(
+      "click",
+      ((e: MouseEvent) => {
+        if (e.shiftKey || e.ctrlKey || e.metaKey) return;
 
-      const target = e.target as HTMLElement;
-      const anchor = target.closest("a");
-      if (!anchor) return;
+        const target = e.target as HTMLElement;
+        const anchor = target.closest("a");
+        if (!anchor) return;
 
-      const href = anchor.getAttribute("href");
-      if (!href) return;
+        const href = anchor.getAttribute("href");
+        if (!href) return;
 
-      // Check if this is an internal document link
-      const docSlug = this.parseDocumentSlug(href);
-      if (!docSlug) return;
+        // Check if this is an internal document link
+        const docSlug = this.parseDocumentSlug(href);
+        if (!docSlug) return;
 
-      // Prevent default navigation
-      e.preventDefault();
-      e.stopPropagation();
+        // Prevent default navigation
+        e.preventDefault();
+        e.stopPropagation();
 
-      // Get spaceId from body dataset and dispatch event for overlay
-      const spaceId = document.body.dataset.spaceId;
-      if (!spaceId) return;
+        // Get spaceId from body dataset and dispatch event for overlay
+        const spaceId = document.body.dataset.spaceId;
+        if (!spaceId) return;
 
-      window.dispatchEvent(new CustomEvent("view-document-by-slug", {
-        detail: { spaceId, docSlug }
-      }));
-    }) as EventListener, { capture: true });
+        window.dispatchEvent(
+          new CustomEvent("view-document-by-slug", {
+            detail: { spaceId, docSlug },
+          }),
+        );
+      }) as EventListener,
+      { capture: true },
+    );
   }
 
   // Extract document slug from URL like /space-slug/doc/document-slug
@@ -243,22 +421,23 @@ class DocumentView extends HTMLElement {
   }
 }
 
-customElements.define("document-view", class extends DocumentView { });
-customElements.define("editor-content", class extends DocumentView { });
+customElements.define("document-view", class extends DocumentView {});
 
 function createFigmaEmbedUrl(figmaUrl: string): string {
   return `https://www.figma.com/embed?embed_host=share&url=${encodeURIComponent(figmaUrl)}`;
 }
 
-customElements.define("figma-embed", class extends HTMLElement {
-  connectedCallback() {
-    const figmaUrl = this.dataset.figmaUrl;
-    if (!figmaUrl) return;
+customElements.define(
+  "figma-embed",
+  class extends HTMLElement {
+    connectedCallback() {
+      const figmaUrl = this.dataset.figmaUrl;
+      if (!figmaUrl) return;
 
-    const height = this.getAttribute("height") || "450px";
+      const height = this.getAttribute("height") || "450px";
 
-    const shadow = this.attachShadow({ mode: 'open' });
-    shadow.innerHTML = `
+      const shadow = this.attachShadow({ mode: "open" });
+      shadow.innerHTML = `
       <style>
         :host {
           display: block;
@@ -269,18 +448,18 @@ customElements.define("figma-embed", class extends HTMLElement {
       </style>
     `;
 
-    const iframe = document.createElement("iframe");
-    iframe.src = createFigmaEmbedUrl(figmaUrl);
-    iframe.style.cssText = "width: 100%; height: 100%; display: block; border: none;";
-    if (height) {
-      iframe.style.height = `${height}px`;
+      const iframe = document.createElement("iframe");
+      iframe.src = createFigmaEmbedUrl(figmaUrl);
+      iframe.style.cssText = "width: 100%; height: 100%; display: block; border: none;";
+      if (height) {
+        iframe.style.height = `${height}px`;
+      }
+      iframe.setAttribute("allowfullscreen", "true");
+
+      shadow.appendChild(iframe);
     }
-    iframe.setAttribute("allowfullscreen", "true");
-
-    shadow.appendChild(iframe);
-  }
-})
-
+  },
+);
 
 customElements.define(
   "html-block",
@@ -401,68 +580,71 @@ customElements.define(
 //     console.log('Mentioned user:', e.detail.email);
 //     // Navigate to user profile, show tooltip, etc.
 //   });
-customElements.define("user-mention", class UserMentionElement extends HTMLElement {
-  connectedCallback() {
-    this.setAttribute("role", "button");
-    this.setAttribute("tabindex", "0");
+customElements.define(
+  "user-mention",
+  class UserMentionElement extends HTMLElement {
+    connectedCallback() {
+      this.setAttribute("role", "button");
+      this.setAttribute("tabindex", "0");
 
-    this.addEventListener("click", this.handleClick);
-    this.addEventListener("keydown", this.handleKeyDown);
+      this.addEventListener("click", this.handleClick);
+      this.addEventListener("keydown", this.handleKeyDown);
 
-    // Check if this mention is for the current user
-    this.checkSelfMention();
-  }
+      // Check if this mention is for the current user
+      this.checkSelfMention();
+    }
 
-  async checkSelfMention() {
-    const mentionEmail = this.getAttribute("email");
-    if (!mentionEmail) return;
+    async checkSelfMention() {
+      const mentionEmail = this.getAttribute("email");
+      if (!mentionEmail) return;
 
-    try {
-      const { data: session } = await authClient.getSession();
-      if (session?.user?.email === mentionEmail) {
-        this.setAttribute("data-self-mention", "true");
+      try {
+        const { data: session } = await authClient.getSession();
+        if (session?.user?.email === mentionEmail) {
+          this.setAttribute("data-self-mention", "true");
+        }
+      } catch {
+        // Silently fail if we can't check
       }
-    } catch {
-      // Silently fail if we can't check
     }
-  }
 
-  disconnectedCallback() {
-    this.removeEventListener("click", this.handleClick);
-    this.removeEventListener("keydown", this.handleKeyDown);
-  }
-
-  handleClick = (event: Event) => {
-    event.preventDefault();
-    const email = this.getAttribute("email");
-
-    if (email) {
-      this.dispatchEvent(
-        new CustomEvent("mention-click", {
-          detail: { email },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+    disconnectedCallback() {
+      this.removeEventListener("click", this.handleClick);
+      this.removeEventListener("keydown", this.handleKeyDown);
     }
-  };
 
-  handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
+    handleClick = (event: Event) => {
       event.preventDefault();
-      this.handleClick(event);
-    }
-  };
+      const email = this.getAttribute("email");
 
-  get email(): string | null {
-    return this.getAttribute("email");
-  }
+      if (email) {
+        this.dispatchEvent(
+          new CustomEvent("mention-click", {
+            detail: { email },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
+    };
 
-  set email(value: string | null) {
-    if (value) {
-      this.setAttribute("email", value);
-    } else {
-      this.removeAttribute("email");
+    handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this.handleClick(event);
+      }
+    };
+
+    get email(): string | null {
+      return this.getAttribute("email");
     }
-  }
-});
+
+    set email(value: string | null) {
+      if (value) {
+        this.setAttribute("email", value);
+      } else {
+        this.removeAttribute("email");
+      }
+    }
+  },
+);

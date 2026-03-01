@@ -114,7 +114,7 @@ async function fetchActivities() {
 
     // Filter out ACL permission events
     activities.value = (logsData.auditLogs || []).filter(
-      (log: AuditLogEntry) => log.event !== "acl_grant" && log.event !== "acl_revoke"
+      (log: AuditLogEntry) => log.event !== "acl_grant" && log.event !== "acl_revoke",
     );
 
     const usersMap = new Map<string, User>();
@@ -194,9 +194,9 @@ function formatTime(dateString: string): string {
     const diffDays = Math.floor(diffMs / 86400000);
 
     if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
-    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
-    if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
+    if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
 
     return date.toLocaleDateString();
   } catch {
@@ -252,7 +252,7 @@ onMounted(() => {
 
     <div v-else-if="isLoading" class="space-y-6">
       <div class="space-y-3">
-        <div class="text-xs font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 bg-background py-2 h-4 bg-neutral-200 rounded w-32 animate-pulse" />
+        <div class="text-xs font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 py-2 h-4 bg-neutral-200 rounded w-32 animate-pulse" />
         <div class="space-y-1">
           <div v-for="i in 5" :key="`skeleton-${i}`" class="flex items-start gap-3 p-3 rounded-lg animate-pulse">
             <div class="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-neutral-200" />
@@ -271,24 +271,24 @@ onMounted(() => {
 
     <div v-else class="space-y-6">
       <div v-for="group in groupedActivities" :key="group.date" class="space-y-3">
-        <div class="text-xs font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 bg-background py-2">
+        <div class="text-xs font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 py-2">
           {{ group.date }}
         </div>
-        <div class="space-y-1">
+        <div class="space-y-0.5">
           <div
             v-for="activity in group.items"
             :key="activity.id"
             class="flex items-start gap-3 p-3 rounded-lg hover:bg-neutral-300 transition-colors group"
           >
             <div
-              class="flex-shrink-0 w-2 h-2 mt-2 rounded-full"
+              class="flex-shrink-0 w-2 h-2 mt-1.5 rounded-full"
               :class="getEventColor(activity.event)"
             />
-            <div class="flex-1 min-w-0">
+            <div class="flex-1 min-w-0 flex justify-between flex-wrap">
               <p class="text-sm text-neutral-900">
                 {{ formatEventDescription(activity) }}
               </p>
-              <p class="text-xs text-neutral-900 mt-1">
+              <p class="text-xs text-neutral-900">
                 {{ formatTime(activity.createdAt) }}
               </p>
             </div>

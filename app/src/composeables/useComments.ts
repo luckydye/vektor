@@ -1,7 +1,7 @@
 import { computed, ref, type Ref } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { api } from "../api/client.js";
-import type { Comment } from "../api/ApiClient.js";
+import { api } from "../api/client.ts";
+import type { Comment } from "../api/ApiClient.ts";
 
 export function useComments(options: {
   spaceId: Ref<string | undefined>;
@@ -32,9 +32,7 @@ export function useComments(options: {
         options.documentId.value,
       );
     },
-    enabled: computed(
-      () => !!options.spaceId.value && !!options.documentId.value,
-    ),
+    enabled: computed(() => !!options.spaceId.value && !!options.documentId.value),
   });
 
   const comments = computed(() => commentsData.value || []);
@@ -71,11 +69,7 @@ export function useComments(options: {
     },
     onSuccess: (newComment) => {
       queryClient.setQueryData(
-        [
-          "wiki_comments",
-          options.spaceId.value,
-          options.documentId.value,
-        ],
+        ["wiki_comments", options.spaceId.value, options.documentId.value],
         (old: Comment[] | undefined) => {
           return old ? [...old, newComment] : [newComment];
         },
@@ -100,11 +94,7 @@ export function useComments(options: {
     },
     onSuccess: (_, commentId) => {
       queryClient.setQueryData(
-        [
-          "wiki_comments",
-          options.spaceId.value,
-          options.documentId.value,
-        ],
+        ["wiki_comments", options.spaceId.value, options.documentId.value],
         (old: Comment[] | undefined) => {
           return old ? old.filter((c: Comment) => c.id !== commentId) : [];
         },
@@ -143,7 +133,6 @@ export function useComments(options: {
 
       const docContent = document.querySelector("document-view");
       const root = docContent?.shadowRoot || document;
-      const container = document.querySelector("main");
 
       if (!Number.isNaN(activeReference.value)) {
         threadPosition.value = Number(activeReference.value);
@@ -157,11 +146,9 @@ export function useComments(options: {
           } catch {}
         }
 
-        if (element && container) {
+        if (element) {
           const rect = element.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
-
-          threadPosition.value = rect.top - containerRect.top + container.scrollTop;
+          threadPosition.value = rect.top;
         }
       }
     }
@@ -175,10 +162,7 @@ export function useComments(options: {
     window.removeEventListener("comment:create", handleOpenComment);
   }
 
-  async function submitComment(
-    content: string,
-    reference: string | null,
-  ) {
+  async function submitComment(content: string, reference: string | null) {
     return await submitCommentMutation.mutateAsync({ content, reference });
   }
 

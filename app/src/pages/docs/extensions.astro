@@ -1,14 +1,16 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import ExtensionsDocs from "../../../../docs/extensions.md";
+import Content from "../../../docs/extensions.md";
 import docStyles from "../../styles/document.css?inline";
 ---
 
 <BaseLayout title="Document - Wiki">
-    <document-view>
- 			<template shadowrootmode="open">
-        <style set:html={docStyles}></style>
-        <ExtensionsDocs />
-      </template>
-</document-view>
+    <div>
+        <document-view>
+            <template shadowrootmode="open">
+                <style set:html={docStyles}></style>
+                <Content />
+            </template>
+        </document-view>
+    </div>
 </BaseLayout>

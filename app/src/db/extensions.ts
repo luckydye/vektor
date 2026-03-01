@@ -18,6 +18,30 @@ export interface ExtensionRoute {
   placements?: Array<"page" | "home-top">;
 }
 
+export interface JobIOField {
+  type: "string" | "number" | "boolean" | "object" | "file";
+  required?: boolean;
+}
+
+export interface JobDefinition {
+  id: string;
+  name: string;
+  entry: string;
+  inputs?: Record<string, JobIOField>;
+  outputs?: Record<string, JobIOField>;
+}
+
+export interface DataSourceDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  /** Job id defined in manifest.jobs */
+  jobId: string;
+  inputs?: Record<string, JobIOField>;
+  /** Optional default cache TTL hint for consumers */
+  cacheTtlMs?: number;
+}
+
 export interface ExtensionManifest {
   id: string;
   name: string;
@@ -28,6 +52,8 @@ export interface ExtensionManifest {
     view?: string;
   };
   routes?: ExtensionRoute[];
+  jobs?: JobDefinition[];
+  dataSources?: DataSourceDefinition[];
 }
 
 export interface Extension {
@@ -39,7 +65,7 @@ export interface Extension {
 }
 
 export async function listExtensions(spaceId: string): Promise<Extension[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const rows = await db.select().from(extension);
 
   return rows.map((row) => {
@@ -58,11 +84,8 @@ export async function getExtension(
   spaceId: string,
   extensionId: string,
 ): Promise<Extension | null> {
-  const db = getSpaceDb(spaceId);
-  const rows = await db
-    .select()
-    .from(extension)
-    .where(eq(extension.id, extensionId));
+  const db = await getSpaceDb(spaceId);
+  const rows = await db.select().from(extension).where(eq(extension.id, extensionId));
 
   if (rows.length === 0) {
     return null;
@@ -83,7 +106,7 @@ export async function getExtensionPackage(
   spaceId: string,
   extensionId: string,
 ): Promise<Buffer | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const rows = await db
     .select({ package: extension.package })
     .from(extension)
@@ -102,7 +125,7 @@ export async function createExtension(
   packageBuffer: Buffer,
   userId: string,
 ): Promise<Extension> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
   const manifest = extractManifest(packageBuffer);
 
@@ -128,7 +151,7 @@ export async function updateExtension(
   extensionId: string,
   packageBuffer: Buffer,
 ): Promise<Extension | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   const existing = await getExtension(spaceId, extensionId);
@@ -158,11 +181,9 @@ export async function deleteExtension(
   spaceId: string,
   extensionId: string,
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
-  const result = await db
-    .delete(extension)
-    .where(eq(extension.id, extensionId));
+  const result = await db.delete(extension).where(eq(extension.id, extensionId));
 
   return result.rowsAffected > 0;
 }
@@ -216,14 +237,72 @@ function extractManifest(zipBuffer: Buffer): ExtensionManifest {
     throw new Error("Extension manifest missing required 'entries' field");
   }
 
+  const jobIds = new Set<string>();
+  if (manifest.jobs !== undefined) {
+    if (!Array.isArray(manifest.jobs)) {
+      throw new Error("Extension manifest 'jobs' must be an array");
+    }
+    for (const job of manifest.jobs) {
+      if (!job || typeof job !== "object") {
+        throw new Error("Extension manifest contains invalid job definition");
+      }
+      if (!job.id || typeof job.id !== "string") {
+        throw new Error("Extension manifest job is missing required 'id' field");
+      }
+      if (!job.entry || typeof job.entry !== "string") {
+        throw new Error(
+          `Extension manifest job '${job.id}' is missing required 'entry' field`,
+        );
+      }
+      jobIds.add(job.id);
+    }
+  }
+
+  if (manifest.dataSources !== undefined) {
+    if (!Array.isArray(manifest.dataSources)) {
+      throw new Error("Extension manifest 'dataSources' must be an array");
+    }
+    const ids = new Set<string>();
+    for (const ds of manifest.dataSources) {
+      if (!ds || typeof ds !== "object") {
+        throw new Error("Extension manifest contains invalid data source definition");
+      }
+      if (!ds.id || typeof ds.id !== "string") {
+        throw new Error("Extension data source is missing required 'id' field");
+      }
+      if (ids.has(ds.id)) {
+        throw new Error(`Extension data source id '${ds.id}' is duplicated`);
+      }
+      ids.add(ds.id);
+      if (!ds.name || typeof ds.name !== "string") {
+        throw new Error(
+          `Extension data source '${ds.id}' is missing required 'name' field`,
+        );
+      }
+      if (!ds.jobId || typeof ds.jobId !== "string") {
+        throw new Error(
+          `Extension data source '${ds.id}' is missing required 'jobId' field`,
+        );
+      }
+      if (!jobIds.has(ds.jobId)) {
+        throw new Error(
+          `Extension data source '${ds.id}' references unknown jobId '${ds.jobId}'`,
+        );
+      }
+      if (
+        ds.cacheTtlMs !== undefined &&
+        (typeof ds.cacheTtlMs !== "number" || ds.cacheTtlMs < 0)
+      ) {
+        throw new Error(`Extension data source '${ds.id}' has invalid 'cacheTtlMs'`);
+      }
+    }
+  }
+
   return manifest;
 }
 
 // Extract a specific file from zip buffer
-export function extractFile(
-  zipBuffer: Buffer,
-  filePath: string,
-): Buffer | null {
+export function extractFile(zipBuffer: Buffer, filePath: string): Buffer | null {
   const files = parseZip(zipBuffer);
   // Normalise path - remove leading ./ or /
   const normalised = filePath.replace(/^\.?\//, "");
@@ -264,10 +343,7 @@ function parseZip(buffer: Buffer): ZipEntry[] {
       .toString("utf-8");
 
     const dataStart = offset + 30 + fileNameLength + extraFieldLength;
-    const compressedData = buffer.subarray(
-      dataStart,
-      dataStart + compressedSize,
-    );
+    const compressedData = buffer.subarray(dataStart, dataStart + compressedSize);
 
     let fileData: Buffer;
 

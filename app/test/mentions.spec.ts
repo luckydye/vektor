@@ -6,9 +6,9 @@ describe("Mention extraction", () => {
     const html = `
       <p>Hey <user-mention email="john@example.com">@John Doe</user-mention>, can you review this?</p>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
-    
+
     expect(mentions).toHaveLength(1);
     expect(mentions[0].email).toBe("john@example.com");
     expect(mentions[0].label).toBe("John Doe");
@@ -20,9 +20,9 @@ describe("Mention extraction", () => {
       <user-mention email="jane@example.com">@Jane Smith</user-mention>, 
       let's discuss this with <user-mention email="bob@example.com">@Bob</user-mention>.</p>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
-    
+
     expect(mentions).toHaveLength(3);
     expect(mentions[0].email).toBe("john@example.com");
     expect(mentions[1].email).toBe("jane@example.com");
@@ -41,9 +41,9 @@ describe("Mention extraction", () => {
         </div>
       </div>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
-    
+
     expect(mentions).toHaveLength(2);
     expect(mentions[0].email).toBe("alice@example.com");
     expect(mentions[1].email).toBe("bob@example.com");
@@ -53,9 +53,9 @@ describe("Mention extraction", () => {
     const html = `
       <p><user-mention email="test@example.com"></user-mention></p>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
-    
+
     expect(mentions).toHaveLength(1);
     expect(mentions[0].email).toBe("test@example.com");
     expect(mentions[0].label).toBeUndefined();
@@ -65,9 +65,9 @@ describe("Mention extraction", () => {
     const html = `
       <p><user-mention email="test@example.com">@TestUser</user-mention></p>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
-    
+
     expect(mentions).toHaveLength(1);
     expect(mentions[0].label).toBe("TestUser");
   });
@@ -79,9 +79,9 @@ describe("Mention extraction", () => {
         <p>No mentions here!</p>
       </div>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
-    
+
     expect(mentions).toHaveLength(0);
   });
 
@@ -89,9 +89,9 @@ describe("Mention extraction", () => {
     const html = `
       <p>Some text <user-mention>Missing email</user-mention></p>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
-    
+
     expect(mentions).toHaveLength(0);
   });
 
@@ -101,9 +101,9 @@ describe("Mention extraction", () => {
       <user-mention email="jane@example.com">@Jane</user-mention> and 
       <user-mention email="john@example.com">@John again</user-mention></p>
     `;
-    
+
     const emails = getUniqueMentionedEmails(html);
-    
+
     expect(emails).toHaveLength(2);
     expect(emails).toContain("john@example.com");
     expect(emails).toContain("jane@example.com");
@@ -123,10 +123,10 @@ describe("Mention extraction", () => {
         <li>Update roadmap</li>
       </ol>
     `;
-    
+
     const mentions = extractMentionsFromHtml(html);
     const emails = getUniqueMentionedEmails(html);
-    
+
     expect(mentions).toHaveLength(4);
     expect(emails).toHaveLength(3);
     expect(emails).toContain("alice@company.com");

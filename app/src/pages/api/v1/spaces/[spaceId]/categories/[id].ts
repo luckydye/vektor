@@ -3,21 +3,21 @@ import {
   badRequestResponse,
   jsonResponse,
   notFoundResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   successResponse,
-  verifySpaceOwnership,
   verifySpaceRole,
-} from "../../../../../../db/api.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
 import {
   deleteCategory,
   getCategory,
   updateCategory,
-} from "../../../../../../db/categories.ts";
-import { getSpace } from "../../../../../../db/spaces.ts";
+} from "#db/categories.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "id");
@@ -29,21 +29,16 @@ export const GET: APIRoute = async (context) => {
     }
 
     return jsonResponse({ category: categoryData });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to get category");
 
-export const PUT: APIRoute = async (context) => {
-  try {
+export const PUT: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "id");
     await verifySpaceRole(spaceId, user.id, "editor");
 
-    const body = await context.request.json();
+    const body = await parseJsonBody(context.request);
     const { name, slug, description, color, icon } = body;
 
     if (!name || !slug) {
@@ -65,15 +60,10 @@ export const PUT: APIRoute = async (context) => {
     }
 
     return jsonResponse({ category: categoryData });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to update category");
 
-export const DELETE: APIRoute = async (context) => {
-  try {
+export const DELETE: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "id");
@@ -81,9 +71,4 @@ export const DELETE: APIRoute = async (context) => {
 
     await deleteCategory(spaceId, id);
     return successResponse();
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to delete category");

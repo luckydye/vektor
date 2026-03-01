@@ -1,13 +1,23 @@
 import type { APIContext } from "astro";
-import { hasPermission, hasFeature, getUserGroups, ResourceType, type Feature } from "./acl.ts";
+import {
+  hasPermission,
+  hasFeature,
+  getUserGroups,
+  ResourceType,
+  type Feature,
+} from "./acl.ts";
 import { getSpace } from "./spaces.ts";
 import { validateAccessToken, getTokenUserId } from "./accessTokens.ts";
 import type { ValidateTokenResult } from "./accessTokens.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
+  const body = JSON.stringify(data);
+  return new Response(body, {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body).toString(),
+    },
   });
 }
 
@@ -39,6 +49,39 @@ export function createdResponse(data: unknown): Response {
   return jsonResponse(data, 201);
 }
 
+export async function withApiErrorHandling(
+  handler: () => Promise<Response> | Response,
+  optionsOrMessage:
+    | string
+    | {
+        fallbackMessage?: string;
+        onError?: (
+          error: unknown,
+        ) => Response | undefined | Promise<Response | undefined>;
+      } = "Internal server error",
+): Promise<Response> {
+  const options =
+    typeof optionsOrMessage === "string"
+      ? { fallbackMessage: optionsOrMessage }
+      : optionsOrMessage;
+
+  try {
+    return await handler();
+  } catch (error) {
+    if (error instanceof Response) {
+      return error;
+    }
+    if (options.onError) {
+      const mapped = await options.onError(error);
+      if (mapped) {
+        return mapped;
+      }
+    }
+    console.error(error);
+    return errorResponse(options.fallbackMessage ?? "Internal server error", 500);
+  }
+}
+
 export function requireUser(context: APIContext) {
   const user = context.locals.user;
   if (!user) {
@@ -56,6 +99,66 @@ export function requireParam(
     throw badRequestResponse(`${key} is required`);
   }
   return value;
+}
+
+export function parseQueryInt(
+  searchParams: URLSearchParams,
+  key: string,
+  options: {
+    defaultValue?: number;
+    min?: number;
+    max?: number;
+  } = {},
+): number {
+  const { defaultValue, min, max } = options;
+  const raw = searchParams.get(key);
+  if (raw === null || raw.trim() === "") {
+    if (defaultValue !== undefined) {
+      return defaultValue;
+    }
+    throw badRequestResponse(`${key} is required`);
+  }
+
+  if (!/^-?\d+$/.test(raw)) {
+    throw badRequestResponse(`${key} must be an integer`);
+  }
+
+  const value = Number.parseInt(raw, 10);
+
+  if (min !== undefined && value < min) {
+    throw badRequestResponse(`${key} must be >= ${min}`);
+  }
+
+  if (max !== undefined && value > max) {
+    throw badRequestResponse(`${key} must be <= ${max}`);
+  }
+
+  return value;
+}
+
+export async function parseJsonBody<T = Record<string, unknown>>(
+  request: Request,
+): Promise<T> {
+  try {
+    return (await request.json()) as T;
+  } catch {
+    throw badRequestResponse("Invalid JSON body");
+  }
+}
+
+export async function parseJsonBodyOrEmpty<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(request: Request): Promise<Partial<T>> {
+  const rawBody = await request.text();
+  if (rawBody.trim() === "") {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    throw badRequestResponse("Invalid JSON body");
+  }
 }
 
 export async function verifySpaceOwnership(
@@ -216,7 +319,9 @@ export async function verifyFeatureAccess(
   const userGroups = await getUserGroups(userId);
   const hasAccess = await hasFeature(spaceId, feature, userId, userGroups);
   if (!hasAccess) {
-    throw forbiddenResponse(`You don't have access to the ${feature.replace("_", " ")} feature`);
+    throw forbiddenResponse(
+      `You don't have access to the ${feature.replace("_", " ")} feature`,
+    );
   }
 }
 
@@ -361,7 +466,9 @@ export async function verifyTokenPermission(
   );
 
   if (!hasAccess) {
-    throw forbiddenResponse(`Token does not have ${requiredPermission} permission for this ${resourceType}`);
+    throw forbiddenResponse(
+      `Token does not have ${requiredPermission} permission for this ${resourceType}`,
+    );
   }
 }
 

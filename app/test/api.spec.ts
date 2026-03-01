@@ -323,7 +323,7 @@ describe("API Tests - Documents", () => {
 
     const data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${childDocumentId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document.parentId).toBe(null);
   });
@@ -360,16 +360,13 @@ describe("API Tests - Documents", () => {
 
   it("should restore an archived document", async () => {
     // First, create a new document to archive and restore
-    const createResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          content: "<p>Document to be restored</p>",
-          properties: { title: "Restore Test Doc" },
-        }),
-      },
-    );
+    const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Document to be restored</p>",
+        properties: { title: "Restore Test Doc" },
+      }),
+    });
     expect(createResponse.status).toBe(201);
     const createData = await createResponse.json();
     const docToRestoreId = createData.document.id;
@@ -395,7 +392,7 @@ describe("API Tests - Documents", () => {
     const restoreResponse = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${docToRestoreId}`,
       {
-        method: "PATCH",
+        method: "PUT",
         body: JSON.stringify({ restore: true }),
       },
     );
@@ -403,7 +400,7 @@ describe("API Tests - Documents", () => {
 
     const restoreData = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${docToRestoreId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(restoreData.document.archived).toBe(false);
 
@@ -473,12 +470,13 @@ describe("API Tests - Document Properties", () => {
 
   it("should update a document property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "status",
-          value: "published",
+          properties: {
+            status: { value: "published" },
+          },
         }),
       },
     );
@@ -494,12 +492,13 @@ describe("API Tests - Document Properties", () => {
 
   it("should update an existing document property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "author",
-          value: "Updated Author",
+          properties: {
+            author: { value: "Updated Author" },
+          },
         }),
       },
     );
@@ -515,11 +514,13 @@ describe("API Tests - Document Properties", () => {
 
   it("should delete a document property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {
-        method: "DELETE",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "status",
+          properties: {
+            "status": null,
+          },
         }),
       },
     );
@@ -535,12 +536,13 @@ describe("API Tests - Document Properties", () => {
 
   it("should create property_update audit log when updating a property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "testProperty",
-          value: "initial value",
+          properties: {
+            testProperty: { value: "initial value" },
+          },
         }),
       },
     );
@@ -553,8 +555,8 @@ describe("API Tests - Document Properties", () => {
 
     const auditData = await auditResponse.json();
     const propertyUpdateLog = auditData.auditLogs.find(
-      (log: any) => log.event === "property_update" &&
-      log.details?.propertyKey === "testProperty"
+      (log: any) =>
+        log.event === "property_update" && log.details?.propertyKey === "testProperty",
     );
 
     expect(propertyUpdateLog).toBeDefined();
@@ -568,12 +570,13 @@ describe("API Tests - Document Properties", () => {
   it("should track previous value in property_update audit log", async () => {
     // Update the property again to test previousValue tracking
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "testProperty",
-          value: "updated value",
+          properties: {
+            testProperty: { value: "updated value" },
+          },
         }),
       },
     );
@@ -584,8 +587,8 @@ describe("API Tests - Document Properties", () => {
     );
     const auditData = await auditResponse.json();
     const propertyUpdateLogs = auditData.auditLogs.filter(
-      (log: any) => log.event === "property_update" &&
-      log.details?.propertyKey === "testProperty"
+      (log: any) =>
+        log.event === "property_update" && log.details?.propertyKey === "testProperty",
     );
 
     // Should have at least 2 logs now (one for create, one for update)
@@ -604,11 +607,13 @@ describe("API Tests - Document Properties", () => {
 
   it("should create property_delete audit log when deleting a property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {
-        method: "DELETE",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "testProperty",
+          properties: {
+            "testProperty": null,
+          },
         }),
       },
     );
@@ -621,8 +626,8 @@ describe("API Tests - Document Properties", () => {
 
     const auditData = await auditResponse.json();
     const propertyDeleteLog = auditData.auditLogs.find(
-      (log: any) => log.event === "property_delete" &&
-      log.details?.propertyKey === "testProperty"
+      (log: any) =>
+        log.event === "property_delete" && log.details?.propertyKey === "testProperty",
     );
 
     expect(propertyDeleteLog).toBeDefined();
@@ -798,11 +803,13 @@ describe("API Tests - Error Handling", () => {
     const docId = (await createResponse.json()).document.id;
 
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${docId}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${docId}`,
       {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
-          value: "some value",
+          properties: {
+            "": { value: "some value" },
+          },
         }),
       },
     );
@@ -1028,7 +1035,7 @@ describe("API Tests - Revisions", () => {
 
     const data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${revisionTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document).toBeDefined();
     expect(data.document.publishedRev).toBe(secondRevisionNumber);
@@ -1049,7 +1056,7 @@ describe("API Tests - Revisions", () => {
 
   it("should restore an old revision", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${revisionTestDocId}/publish?rev=${firstRevisionNumber}`,
+      `/api/v1/spaces/${testSpaceId}/documents/${revisionTestDocId}/revisions?rev=${firstRevisionNumber}`,
       {
         method: "POST",
         body: JSON.stringify({
@@ -1099,7 +1106,7 @@ describe("API Tests - Revisions", () => {
 
     const data = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${revisionTestDocId}`,
-    ).then(res => res.json());
+    ).then((res) => res.json());
 
     expect(data.document.publishedRev).toBe(null);
   });
@@ -1317,11 +1324,13 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
       const docId = (await createResponse.json()).document.id;
 
       const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${docId}/property`,
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}`,
         {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify({
-            value: "some value",
+            properties: {
+              "": { value: "some value" },
+            },
           }),
         },
       );
@@ -1521,12 +1530,13 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
       const longValue = "b".repeat(1000);
 
       const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${docId}/property`,
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}`,
         {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify({
-            key: longKey,
-            value: longValue,
+            properties: {
+              [longKey]: { value: longValue },
+            },
           }),
         },
       );
@@ -1635,7 +1645,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
       const docId = (await createResponse.json()).document.id;
 
       const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${docId}/publish?rev=99999`,
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}/revisions?rev=99999`,
         {
           method: "POST",
           body: JSON.stringify({}),
@@ -1655,7 +1665,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
       const docId = (await createResponse.json()).document.id;
 
       const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${docId}/publish?rev=invalid`,
+        `/api/v1/spaces/${testSpaceId}/documents/${docId}/revisions?rev=invalid`,
         {
           method: "POST",
           body: JSON.stringify({}),
@@ -1793,10 +1803,13 @@ describe("API Tests - Audit Logs", () => {
   });
 
   it("should track restore events in audit logs", async () => {
-    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/publish?rev=1`, {
-      method: "POST",
-      body: JSON.stringify({ message: "Restoring for audit test" }),
-    });
+    await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/revisions?rev=1`,
+      {
+        method: "POST",
+        body: JSON.stringify({ message: "Restoring for audit test" }),
+      },
+    );
 
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
@@ -1988,7 +2001,7 @@ describe("API Tests - Audit Logs", () => {
 
     // Restore the document
     await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${newDocId}`, {
-      method: "PATCH",
+      method: "PUT",
       body: JSON.stringify({ restore: true }),
     });
 
@@ -2023,9 +2036,12 @@ describe("API Tests - Audit Logs", () => {
     const dataBeforeDelete = await logsBeforeDelete.json();
     const initialLogCount = dataBeforeDelete.auditLogs.length;
 
-    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${newDocId}?permanent=true`, {
-      method: "DELETE",
-    });
+    await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${newDocId}?permanent=true`,
+      {
+        method: "DELETE",
+      },
+    );
 
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${newDocId}/audit-logs`,
@@ -2110,16 +2126,13 @@ describe("API Tests - Contributors", () => {
   });
 
   it("should include contributors who saved revisions", async () => {
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          html: "<p>Updated by test user</p>",
-          message: "Contributors test save",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`, {
+      method: "POST",
+      body: JSON.stringify({
+        html: "<p>Updated by test user</p>",
+        message: "Contributors test save",
+      }),
+    });
 
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}/contributors`,
@@ -2132,27 +2145,21 @@ describe("API Tests - Contributors", () => {
   });
 
   it("should return unique contributors only", async () => {
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          html: "<p>Another save by same user</p>",
-          message: "Second save",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`, {
+      method: "POST",
+      body: JSON.stringify({
+        html: "<p>Another save by same user</p>",
+        message: "Second save",
+      }),
+    });
 
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          html: "<p>Third save by same user</p>",
-          message: "Third save",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`, {
+      method: "POST",
+      body: JSON.stringify({
+        html: "<p>Third save by same user</p>",
+        message: "Third save",
+      }),
+    });
 
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}/contributors`,
@@ -2224,19 +2231,16 @@ describe("API Tests - Contributors", () => {
   });
 
   it("should reflect contributors from various document actions", async () => {
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          html: "<p>Save for contributors test</p>",
-          message: "Testing contributors",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`, {
+      method: "POST",
+      body: JSON.stringify({
+        html: "<p>Save for contributors test</p>",
+        message: "Testing contributors",
+      }),
+    });
 
     await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}/publish?rev=1`,
+      `/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}/revisions?rev=1`,
       {
         method: "POST",
         body: JSON.stringify({ message: "Restore for contributors test" }),

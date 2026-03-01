@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/libsql";
+import type { drizzle } from "drizzle-orm/libsql";
 import {
   grantPermission,
   listAccessibleResources,
@@ -7,6 +7,7 @@ import {
   ResourceType,
 } from "./acl.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { sendSyncEvent } from "./ws.ts";
 import { getSpaceDb } from "./db.ts";
 import { createRevision } from "./revisions.ts";
 import { document, property, revision } from "./schema/space.ts";
@@ -20,11 +21,11 @@ async function generateUniqueSlug(
   baseTitle: string,
   excludeDocumentId?: string,
 ): Promise<string> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
-  let baseSlug = slugify(baseTitle);
+  const baseSlug = slugify(baseTitle);
   if (!baseSlug) {
-    throw new Error("slug is empty")
+    throw new Error("slug is empty");
   }
 
   // Get all existing slugs in the space
@@ -34,9 +35,7 @@ async function generateUniqueSlug(
     .all();
 
   const existingSlugs = new Set(
-    allDocs
-      .filter((d) => d.id !== excludeDocumentId)
-      .map((d) => d.slug)
+    allDocs.filter((d) => d.id !== excludeDocumentId).map((d) => d.slug),
   );
 
   // If the base slug is available, use it
@@ -57,7 +56,7 @@ async function generateUniqueSlug(
 }
 
 async function updateDocumentFts(spaceId: string, documentId: string): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
 
@@ -131,7 +130,7 @@ export async function createDocument(
   createdAt?: Date,
   updatedAt?: Date,
 ): Promise<DocumentWithProperties> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const id = crypto.randomUUID();
   const now = new Date();
   const documentCreatedAt = createdAt || now;
@@ -174,7 +173,7 @@ export async function createDocument(
 
   await createRevision(spaceId, id, content, createdBy, "Initial revision");
 
-  await createAuditLog(getSpaceDb(spaceId), {
+  await createAuditLog(await getSpaceDb(spaceId), {
     docId: id,
     revisionId: 1,
     userId: createdBy,
@@ -203,7 +202,7 @@ export async function getDocument(
   spaceId: string,
   id: string,
 ): Promise<DocumentWithProperties | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const doc = await db.select().from(document).where(eq(document.id, id)).get();
 
   if (!doc) {
@@ -238,7 +237,7 @@ export async function getDocumentBySlug(
   spaceId: string,
   slug: string,
 ): Promise<DocumentWithProperties | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const doc = await db.select().from(document).where(eq(document.slug, slug)).get();
 
   if (!doc) {
@@ -279,7 +278,7 @@ export async function updateDocument(
   content: string,
   userId?: string,
 ): Promise<DocumentWithProperties | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const existing = await getDocument(spaceId, id);
   if (!existing) {
     return null;
@@ -318,6 +317,10 @@ export async function updateDocument(
     });
   }
 
+  // Always notify clients that the document content changed
+  sendSyncEvent("document");
+  sendSyncEvent(`document:${id}`);
+
   return {
     id,
     slug: existing.slug,
@@ -340,7 +343,7 @@ export async function archiveDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   if (userId) {
     await createAuditLog(db, {
@@ -371,7 +374,7 @@ export async function restoreDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   if (userId) {
     await createAuditLog(db, {
@@ -402,7 +405,7 @@ export async function deleteDocument(
   id: string,
   userId?: string,
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   if (userId) {
     await createAuditLog(db, {
@@ -435,7 +438,7 @@ export async function listDocuments(
   limit?: number,
   offset?: number,
 ): Promise<{ documents: DocumentWithProperties[]; total: number }> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   // Get total count first
   const countResult = await db
@@ -490,10 +493,7 @@ export async function listDocuments(
   }
 
   // Fetch all properties in one query instead of N queries
-  const allProps = await db
-    .select()
-    .from(property)
-    .all();
+  const allProps = await db.select().from(property).all();
 
   // Group properties by document ID
   const propsByDocId = new Map<string, Record<string, string>>();
@@ -505,7 +505,7 @@ export async function listDocuments(
   }
 
   // Build results
-  const results: DocumentWithProperties[] = docs.map(doc => ({
+  const results: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
     slug: doc.slug,
     type: doc.type || "document",
@@ -527,7 +527,7 @@ export async function listDocuments(
 export async function listArchivedDocuments(
   spaceId: string,
 ): Promise<DocumentWithProperties[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const docs = await db
     .select({
@@ -547,10 +547,7 @@ export async function listArchivedDocuments(
     .where(eq(document.archived, true))
     .all();
 
-  const allProps = await db
-    .select()
-    .from(property)
-    .all();
+  const allProps = await db.select().from(property).all();
 
   const propsByDocId = new Map<string, Record<string, string>>();
   for (const prop of allProps) {
@@ -560,7 +557,7 @@ export async function listArchivedDocuments(
     propsByDocId.get(prop.documentId)![prop.key] = prop.value;
   }
 
-  const results: DocumentWithProperties[] = docs.map(doc => ({
+  const results: DocumentWithProperties[] = docs.map((doc) => ({
     id: doc.id,
     slug: doc.slug,
     type: doc.type,
@@ -581,8 +578,11 @@ export async function listArchivedDocuments(
 
 export async function getDocumentCountsByCategory(
   spaceId: string,
-): Promise<{ counts: Record<string, number>; firstDocs: Record<string, { id: string; slug: string }> }> {
-  const db = getSpaceDb(spaceId);
+): Promise<{
+  counts: Record<string, number>;
+  firstDocs: Record<string, { id: string; slug: string }>;
+}> {
+  const db = await getSpaceDb(spaceId);
 
   // Get all document IDs and slugs
   const docs = await db
@@ -612,7 +612,7 @@ export async function getDocumentCountsByCategory(
   // Build counts and first docs per category
   const counts: Record<string, number> = {};
   const firstDocs: Record<string, { id: string; slug: string }> = {};
-  const docMap = new Map(docs.map(d => [d.id, d]));
+  const docMap = new Map(docs.map((d) => [d.id, d]));
 
   for (const prop of categoryProps) {
     const category = prop.value;
@@ -629,10 +629,8 @@ export async function getDocumentCountsByCategory(
   return { counts, firstDocs };
 }
 
-export async function countDocuments(
-  spaceId: string,
-): Promise<number> {
-  const db = getSpaceDb(spaceId);
+export async function countDocuments(spaceId: string): Promise<number> {
+  const db = await getSpaceDb(spaceId);
 
   const result = await db
     .select({ count: sql<number>`count(*)` })
@@ -648,7 +646,7 @@ export async function listDraftDocuments(
   limit?: number,
   offset?: number,
 ): Promise<{ documents: DocumentWithProperties[]; total: number }> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   // Get all documents
   const docs = await db
@@ -673,10 +671,7 @@ export async function listDraftDocuments(
   if (docs.length === 0) return { documents: [], total: 0 };
 
   // Fetch all properties in one query
-  const allProps = await db
-    .select()
-    .from(property)
-    .all();
+  const allProps = await db.select().from(property).all();
 
   // Group properties by document ID
   const propsByDocId = new Map<string, Record<string, string>>();
@@ -728,38 +723,6 @@ export async function listDraftDocuments(
   return { documents: results, total };
 }
 
-export async function countDrafts(
-  spaceId: string,
-): Promise<number> {
-  const db = getSpaceDb(spaceId);
-
-  // Get all document IDs
-  const docs = await db
-    .select({ id: document.id })
-    .from(document)
-    .where(eq(document.archived, false))
-    .all();
-
-  if (docs.length === 0) return 0;
-
-  // Get category/collection properties for all documents
-  const categoryProps = await db
-    .select({
-      documentId: property.documentId,
-      key: property.key,
-      value: property.value,
-    })
-    .from(property)
-    .where(sql`${property.key} IN ('category', 'collection')`)
-    .all();
-
-  // Build set of documents that have a category
-  const docsWithCategory = new Set(categoryProps.map(p => p.documentId));
-
-  // Count documents without category (drafts)
-  return docs.length - docsWithCategory.size;
-}
-
 export async function updateDocumentProperty(
   spaceId: string,
   documentId: string,
@@ -768,7 +731,7 @@ export async function updateDocumentProperty(
   type?: string | null,
   userId?: string,
 ) {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   const existing = await db
@@ -780,14 +743,14 @@ export async function updateDocumentProperty(
   const previousValue = existing?.value;
 
   if (existing) {
-    const updateData: { value: string; updatedAt: Date; type?: string | null } = { value, updatedAt: now };
+    const updateData: { value: string; updatedAt: Date; type?: string | null } = {
+      value,
+      updatedAt: now,
+    };
     if (type !== undefined) {
       updateData.type = type;
     }
-    await db
-      .update(property)
-      .set(updateData)
-      .where(eq(property.id, existing.id));
+    await db.update(property).set(updateData).where(eq(property.id, existing.id));
   } else {
     await db.insert(property).values({
       id: crypto.randomUUID(),
@@ -825,10 +788,7 @@ export async function updateDocumentProperty(
     payload.slug = newSlug;
   } else {
     // Update the document's updatedAt timestamp
-    await db
-      .update(document)
-      .set({ updatedAt: now })
-      .where(eq(document.id, documentId));
+    await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
   }
 
   await updateDocumentFts(spaceId, documentId);
@@ -842,7 +802,7 @@ export async function deleteDocumentProperty(
   key: string,
   userId?: string,
 ): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   // Get the property value before deletion for audit log
@@ -871,10 +831,7 @@ export async function deleteDocumentProperty(
   }
 
   // Update the document's updatedAt timestamp
-  await db
-    .update(document)
-    .set({ updatedAt: now })
-    .where(eq(document.id, documentId));
+  await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
 
   await updateDocumentFts(spaceId, documentId);
 }
@@ -950,12 +907,7 @@ async function countMentionsForUser(
       snapshot: revision.snapshot,
     })
     .from(revision)
-    .where(
-      and(
-        eq(revision.documentId, documentId),
-        eq(revision.rev, doc.publishedRev)
-      )
-    )
+    .where(and(eq(revision.documentId, documentId), eq(revision.rev, doc.publishedRev)))
     .get();
 
   if (!rev?.snapshot) {
@@ -965,7 +917,7 @@ async function countMentionsForUser(
   try {
     const html = decompressHtml(rev.snapshot);
     const mentions = extractMentionsFromHtml(html);
-    const count = mentions.filter(m => m.email === userEmail).length;
+    const count = mentions.filter((m) => m.email === userEmail).length;
 
     mentionCountCache.set(cacheKey, count);
 
@@ -977,18 +929,21 @@ async function countMentionsForUser(
 }
 
 /**
- * List all documents in a space, optionally filtered by category
- * If categorySlug is provided, returns documents in that category plus all their descendants
- * Returns minimal document fields without content for efficient tree building
+ * List documents for multiple categories in one pass.
+ * For each category slug, includes documents directly in that category plus all descendants.
  */
-export async function listAllDocuments(
+export async function listAllDocumentsByCategories(
   spaceId: string,
-  categorySlug: string,
+  categorySlugs: string[],
   userEmail?: string,
-): Promise<DocumentWithProperties[]> {
-  const db = getSpaceDb(spaceId);
+): Promise<Record<string, DocumentWithProperties[]>> {
+  const uniqueSlugs = Array.from(new Set(categorySlugs.filter(Boolean)));
+  if (uniqueSlugs.length === 0) {
+    return {};
+  }
 
-  // Fetch all documents without content
+  const db = await getSpaceDb(spaceId);
+
   const docs = await db
     .select({
       id: document.id,
@@ -1008,14 +963,9 @@ export async function listAllDocuments(
     .orderBy(desc(document.updatedAt))
     .all();
 
-  // Fetch all properties in one query instead of N queries
-  const allProps = await db
-    .select()
-    .from(property)
-    .all();
-
-  // Group properties by document ID
+  const allProps = await db.select().from(property).all();
   const propsByDocId = new Map<string, Record<string, string>>();
+
   for (const prop of allProps) {
     if (!propsByDocId.has(prop.documentId)) {
       propsByDocId.set(prop.documentId, {});
@@ -1023,66 +973,97 @@ export async function listAllDocuments(
     propsByDocId.get(prop.documentId)![prop.key] = prop.value;
   }
 
-  // Build results for all documents
-  const results: DocumentWithProperties[] = docs.map(doc => ({
-    id: doc.id,
-    slug: doc.slug,
-    type: doc.type || "document",
-    content: "",
-    currentRev: doc.currentRev,
-    publishedRev: doc.publishedRev,
-    properties: propsByDocId.get(doc.id) || {},
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    createdBy: doc.createdBy,
-    parentId: doc.parentId || null,
-    readonly: doc.readonly,
-    archived: doc.archived,
-  }));
+  const typeFilteredResults: DocumentWithProperties[] = docs
+    .map((doc) => ({
+      id: doc.id,
+      slug: doc.slug,
+      type: doc.type || "document",
+      content: "",
+      currentRev: doc.currentRev,
+      publishedRev: doc.publishedRev,
+      properties: propsByDocId.get(doc.id) || {},
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      createdBy: doc.createdBy,
+      parentId: doc.parentId || null,
+      readonly: doc.readonly,
+      archived: doc.archived,
+    }))
+    .filter((doc) => doc.type === "document");
 
-  // If no category filter, return all documents
-  if (!categorySlug) {
-    return results;
+  const childrenByParentId = new Map<string, string[]>();
+  for (const doc of typeFilteredResults) {
+    if (!doc.parentId) continue;
+    const children = childrenByParentId.get(doc.parentId) || [];
+    children.push(doc.id);
+    childrenByParentId.set(doc.parentId, children);
   }
 
-  // Filter by category: find documents that belong to this category
-  const directCategoryDocs = new Set<string>();
-  for (const doc of results) {
-    const properties = doc.properties;
-    if (properties.category === categorySlug || properties.collection === categorySlug) {
-      directCategoryDocs.add(doc.id);
+  const directDocIdsBySlug = new Map<string, Set<string>>();
+  for (const slug of uniqueSlugs) {
+    directDocIdsBySlug.set(slug, new Set<string>());
+  }
+
+  for (const doc of typeFilteredResults) {
+    const category = doc.properties.category || doc.properties.collection;
+    if (!category) continue;
+    if (directDocIdsBySlug.has(category)) {
+      directDocIdsBySlug.get(category)!.add(doc.id);
     }
   }
 
-  // Recursively collect all child documents
-  const collectChildren = (parentId: string, collected: Set<string>) => {
-    for (const doc of results) {
-      if (doc.parentId === parentId && !collected.has(doc.id)) {
-        collected.add(doc.id);
-        collectChildren(doc.id, collected);
+  const docIdsBySlug = new Map<string, Set<string>>();
+
+  for (const slug of uniqueSlugs) {
+    const collected = new Set<string>(directDocIdsBySlug.get(slug) || []);
+    const stack = Array.from(collected);
+
+    while (stack.length > 0) {
+      const parentId = stack.pop()!;
+      const childIds = childrenByParentId.get(parentId) || [];
+      for (const childId of childIds) {
+        if (collected.has(childId)) continue;
+        collected.add(childId);
+        stack.push(childId);
       }
     }
-  };
 
-  // Collect all documents: direct category members + all their descendants
-  const allCategoryDocIds = new Set<string>(directCategoryDocs);
-  for (const docId of directCategoryDocs) {
-    collectChildren(docId, allCategoryDocIds);
+    docIdsBySlug.set(slug, collected);
   }
 
-  // Add mention counts if userEmail is provided
+  const mentionCountByDocId = new Map<string, number>();
   if (userEmail) {
-    const filteredResults = results.filter(doc => allCategoryDocIds.has(doc.id));
+    const docIds = new Set<string>();
+    for (const ids of docIdsBySlug.values()) {
+      for (const id of ids) {
+        docIds.add(id);
+      }
+    }
+
     await Promise.all(
-      filteredResults.map(async (doc) => {
-        doc.mentionCount = await countMentionsForUser(db, doc.id, userEmail);
-      })
+      Array.from(docIds).map(async (docId) => {
+        const count = await countMentionsForUser(db, docId, userEmail);
+        mentionCountByDocId.set(docId, count);
+      }),
     );
-    return filteredResults;
   }
 
-  // Return filtered results
-  return results.filter(doc => allCategoryDocIds.has(doc.id));
+  const result: Record<string, DocumentWithProperties[]> = {};
+
+  for (const slug of uniqueSlugs) {
+    const ids = docIdsBySlug.get(slug) || new Set<string>();
+    result[slug] = typeFilteredResults
+      .filter((doc) => ids.has(doc.id))
+      .map((doc) => {
+        if (!userEmail) return doc;
+        return {
+          ...doc,
+          mentionCount: mentionCountByDocId.get(doc.id) || 0,
+        };
+      });
+  }
+
+  return result;
 }
 
 export async function setDocumentParent(
@@ -1090,7 +1071,7 @@ export async function setDocumentParent(
   documentId: string,
   parentId: string | null,
 ): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const now = new Date();
 
   if (parentId === documentId) {
@@ -1107,7 +1088,7 @@ export async function getDocumentChildren(
   spaceId: string,
   parentId: string,
 ): Promise<DocumentWithProperties[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const docs = await db
     .select()
     .from(document)
@@ -1150,7 +1131,7 @@ export async function getDocumentChildren(
 
 export async function searchDocuments(
   spaceId: string,
-  userId: string,
+  userId: string | null,
   query: string,
   limit = 20,
   offset = 0,
@@ -1164,11 +1145,14 @@ export async function searchDocuments(
     return { results: [], total: 0 };
   }
 
-  const db = getSpaceDb(spaceId);
-  const docIds = await listAccessibleResources(spaceId, userId, ResourceType.DOCUMENT);
+  const db = await getSpaceDb(spaceId);
 
-  if (docIds.length === 0) {
-    return { results: [], total: 0 };
+  let docIds: string[] | null = null;
+  if (userId !== null) {
+    docIds = await listAccessibleResources(spaceId, userId, ResourceType.DOCUMENT);
+    if (docIds.length === 0) {
+      return { results: [], total: 0 };
+    }
   }
 
   // Helper to check if a document matches property filters
@@ -1182,7 +1166,10 @@ export async function searchDocuments(
         }
       } else {
         // Filter for specific value (case-insensitive)
-        if (propValue === undefined || propValue.toLowerCase() !== filter.value.toLowerCase()) {
+        if (
+          propValue === undefined ||
+          propValue.toLowerCase() !== filter.value.toLowerCase()
+        ) {
           return false;
         }
       }
@@ -1218,35 +1205,37 @@ export async function searchDocuments(
     });
 
     // Split into tokens and clean each
-    const tokens = sanitizedQuery.split(/\s+/).filter(t => t.length > 0);
-    const cleanedTokens = tokens.map(token => {
-      // Restore quoted phrases
-      if (token.startsWith('__QUOTED_')) {
-        const index = Number.parseInt(token.replace('__QUOTED_', '').replace('__', ''));
-        const phrase = quotedPhrases[index];
-        // Remove all non-word characters from phrase for safety
-        const cleaned = phrase.replace(/[^\w\s\-]/g, '');
-        if (!cleaned) return '';
-        // Escape internal double quotes and wrap in quotes for FTS5 phrase matching
-        return `"${cleaned.replace(/"/g, '""')}"`;
-      }
+    const tokens = sanitizedQuery.split(/\s+/).filter((t) => t.length > 0);
+    const cleanedTokens = tokens
+      .map((token) => {
+        // Restore quoted phrases
+        if (token.startsWith("__QUOTED_")) {
+          const index = Number.parseInt(token.replace("__QUOTED_", "").replace("__", ""));
+          const phrase = quotedPhrases[index];
+          // Remove all non-word characters from phrase for safety
+          const cleaned = phrase.replace(/[^\w\s-]/g, "");
+          if (!cleaned) return "";
+          // Escape internal double quotes and wrap in quotes for FTS5 phrase matching
+          return `"${cleaned.replace(/"/g, '""')}"`;
+        }
 
-      // Remove all special characters except asterisks (needed for prefix matching in quotes)
-      // This prevents FTS5 operator injection while keeping * for prefix matching
-      token = token.replace(/[^\w*\-]/g, '');
+        // Remove all special characters except asterisks (needed for prefix matching in quotes)
+        // This prevents FTS5 operator injection while keeping * for prefix matching
+        token = token.replace(/[^\w*-]/g, "");
 
-      // Skip empty tokens after cleaning
-      if (!token) return '';
+        // Skip empty tokens after cleaning
+        if (!token) return "";
 
-      // Add wildcard for prefix matching if token doesn't have one and is long enough
-      if (!token.endsWith('*') && token.length > 2) {
-        token = token + '*';
-      }
+        // Add wildcard for prefix matching if token doesn't have one and is long enough
+        if (!token.endsWith("*") && token.length > 2) {
+          token = token + "*";
+        }
 
-      // Wrap in double quotes to prevent FTS5 operator interpretation
-      // Note: wildcards work inside quotes in FTS5 for prefix matching
-      return `"${token.replace(/"/g, '""')}"`;
-    }).filter(t => t.length > 0);
+        // Wrap in double quotes to prevent FTS5 operator interpretation
+        // Note: wildcards work inside quotes in FTS5 for prefix matching
+        return `"${token.replace(/"/g, '""')}"`;
+      })
+      .filter((t) => t.length > 0);
 
     // If no valid tokens but we have filters, do filter-only search
     if (cleanedTokens.length === 0 && !hasFilters) {
@@ -1255,7 +1244,7 @@ export async function searchDocuments(
 
     if (cleanedTokens.length > 0) {
       // Join with OR for broader matching - all tokens are quoted, so operators are safe
-      const ftsQuery = cleanedTokens.join(' OR ');
+      const ftsQuery = cleanedTokens.join(" OR ");
 
       // Query FTS table directly, then join with document table
       allRawResults = await db.all<{
@@ -1281,6 +1270,7 @@ export async function searchDocuments(
         JOIN document d ON d.rowid = document_fts.rowid
         WHERE document_fts MATCH ${ftsQuery}
         AND (d.archived = 0 OR d.archived = '0' OR d.archived = '0.0' OR d.archived IS NULL OR d.archived = FALSE)
+        AND (d.type = 'document' OR d.type IS NULL)
         ORDER BY rank
       `);
     } else {
@@ -1310,12 +1300,14 @@ export async function searchDocuments(
         substr(d.content, 1, 200) as snippet
       FROM document d
       WHERE (d.archived = 0 OR d.archived = '0' OR d.archived = '0.0' OR d.archived IS NULL OR d.archived = FALSE)
+      AND (d.type = 'document' OR d.type IS NULL)
       ORDER BY d.updated_at DESC
     `);
   }
 
-  // Filter by accessible IDs
-  let accessibleResults = allRawResults.filter(r => docIds.includes(r.id));
+  // Filter by accessible IDs (null docIds means job token — all docs accessible)
+  let accessibleResults =
+    docIds === null ? allRawResults : allRawResults.filter((r) => docIds!.includes(r.id));
 
   // If we have filters, apply them by loading properties for each document
   if (hasFilters && accessibleResults.length > 0) {
@@ -1389,7 +1381,7 @@ export async function searchDocuments(
 }
 
 export async function rebuildSearchIndex(spaceId: string): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   await db.run(sql`DELETE FROM document_fts`);
 
@@ -1426,12 +1418,9 @@ export interface PropertyInfo {
 export async function getAllPropertiesWithValues(
   spaceId: string,
 ): Promise<PropertyInfo[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
-  const allProperties = await db
-    .select()
-    .from(property)
-    .all();
+  const allProperties = await db.select().from(property).all();
 
   const propertyMap: Record<string, { type: string | null; values: Set<string> }> = {};
 
@@ -1470,7 +1459,7 @@ export async function getDocumentBreadcrumbs(
   spaceId: string,
   documentId: string,
 ): Promise<BreadcrumbItem[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const breadcrumbs: BreadcrumbItem[] = [];
 
   let currentId: string | null = documentId;

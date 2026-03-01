@@ -1,6 +1,6 @@
-import Mention from '@tiptap/extension-mention';
-import { render, html } from 'lit-html';
-import type { SpaceMember } from '~/src/api/client';
+import Mention from "@tiptap/extension-mention";
+import { render, html } from "lit-html";
+import type { SpaceMember } from "~/src/api/client.ts";
 
 export interface MentionOptions {
   spaceId: string;
@@ -12,10 +12,10 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
   parseHTML() {
     return [
       {
-        tag: 'user-mention',
+        tag: "user-mention",
         getAttrs: (element: any) => {
-          const email = element.getAttribute('email');
-          const label = element.textContent?.replace('@', '') || email;
+          const email = element.getAttribute("email");
+          const label = element.textContent?.replace("@", "") || email;
           return {
             id: email,
             label: label,
@@ -27,7 +27,7 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
 
   renderHTML({ node }) {
     return [
-      'user-mention',
+      "user-mention",
       {
         email: node.attrs.id,
       },
@@ -39,18 +39,18 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
     return {
       ...this.parent?.(),
       HTMLAttributes: {
-        class: 'mention',
+        class: "mention",
       },
       spaceId: "",
       suggestion: {
-        char: '@',
+        char: "@",
         allowSpaces: true,
         items: async ({ query, editor }: { query: string; editor: any }) => {
           const options = editor.extensionManager.extensions.find(
-            (ext: any) => ext.name === 'mention-suggestons'
+            (ext: any) => ext.name === "mention-suggestons",
           )?.options;
 
-          const members = await api.spaceMembers.get(options.spaceId) || [];
+          const members = (await api.spaceMembers.get(options.spaceId)) || [];
 
           if (!members || members.length === 0) {
             return [];
@@ -58,16 +58,18 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
 
           return members
             .filter((member: SpaceMember) => {
-              const userName = member.user?.name || '';
-              const userEmail = member.user?.email || '';
-              return userName.toLowerCase().includes(query.toLowerCase()) ||
-                     userEmail.toLowerCase().includes(query.toLowerCase());
+              const userName = member.user?.name || "";
+              const userEmail = member.user?.email || "";
+              return (
+                userName.toLowerCase().includes(query.toLowerCase()) ||
+                userEmail.toLowerCase().includes(query.toLowerCase())
+              );
             })
             .slice(0, 5)
             .map((member: SpaceMember) => ({
               id: member.user?.email || member.userId,
-              label: member.user?.name || 'Unknown User',
-              email: member.user?.email || '',
+              label: member.user?.name || "Unknown User",
+              email: member.user?.email || "",
               image: member.user?.image || null,
             }));
         },
@@ -80,7 +82,9 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
 
           function assertClientRect(props: any) {
             if (!props.clientRect) {
-              throw new Error('Mention suggestion requires clientRect to position the popup.');
+              throw new Error(
+                "Mention suggestion requires clientRect to position the popup.",
+              );
             }
           }
 
@@ -111,17 +115,17 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
 
           function onKeyDown(props: any, event: KeyboardEvent) {
             switch (event.key) {
-              case 'Escape':
+              case "Escape":
                 return true; // let the suggestion lifecycle handle closing
-              case 'ArrowDown':
+              case "ArrowDown":
                 selectedIndex = Math.min(selectedIndex + 1, currentItems.length - 1);
                 renderList(props);
                 return true;
-              case 'ArrowUp':
+              case "ArrowUp":
                 selectedIndex = Math.max(selectedIndex - 1, 0);
                 renderList(props);
                 return true;
-              case 'Enter':
+              case "Enter":
                 // Prevent default form submissions or editor handling
                 event.preventDefault();
                 selectItem(props, selectedIndex);
@@ -139,56 +143,68 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
             if (currentItems.length === 0) {
               selectedIndex = 0;
             } else {
-              selectedIndex = Math.max(0, Math.min(selectedIndex, currentItems.length - 1));
+              selectedIndex = Math.max(
+                0,
+                Math.min(selectedIndex, currentItems.length - 1),
+              );
             }
 
             // Position first — will throw if missing so we fail loudly
             movePopup(props);
 
-            render(html`
-              <div class="w-64 bg-background border border-neutral-200 rounded shadow-lg overflow-hidden text-sm" role="listbox" @keydown=${(e: Event) => e.stopPropagation()}>
+            render(
+              html`
+              <div class="w-64 bg-background border border-neutral-100 rounded shadow-lg overflow-hidden text-sm" role="listbox" @keydown=${(e: Event) => e.stopPropagation()}>
                 <ul class="max-h-56 overflow-auto" @mousedown=${onItemMouseDown}>
-                  ${currentItems.map((item: any, index: number) => html`
+                  ${currentItems.map(
+                    (item: any, index: number) => html`
                     <li
-                      class="flex items-center gap-2 px-3 py-2 cursor-pointer ${index === selectedIndex ? 'bg-neutral-100' : 'hover:bg-neutral-50'}"
+                      class="flex items-center gap-2 px-3 py-2 cursor-pointer ${index === selectedIndex ? "bg-neutral-100" : "hover:bg-neutral-50"}"
                       role="option"
                       aria-selected=${index === selectedIndex}
                       @click=${(e: MouseEvent) => onItemClick(e, props, index)}
                     >
-                      ${item.image ? html`
+                      ${
+                        item.image
+                          ? html`
                         <img src=${item.image} alt=${item.label} class="w-6 h-6 rounded-full object-cover" />
-                      ` : html`
+                      `
+                          : html`
                         <div class="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs text-neutral-700">
-                          ${item.label ? item.label.slice(0,1).toUpperCase() : '?'}
+                          ${item.label ? item.label.slice(0, 1).toUpperCase() : "?"}
                         </div>
-                      `}
+                      `
+                      }
                       <div class="flex flex-col">
                         <span class="font-medium leading-4">${item.label}</span>
                         <span class="text-xs text-neutral-500 leading-4">${item.email}</span>
                       </div>
                     </li>
-                  `)}
+                  `,
+                  )}
                 </ul>
               </div>
-            `, popup);
+            `,
+              popup,
+            );
           }
 
           return {
             onStart: (props: any) => {
               if (!props) {
-                throw new Error('Mention suggestion onStart requires props.');
+                throw new Error("Mention suggestion onStart requires props.");
               }
 
               // create popup container
-              popup = document.createElement('div');
-              popup.style.position = 'fixed';
-              popup.style.zIndex = '50';
-              popup.style.left = '0px';
-              popup.style.top = '0px';
-              popup.style.pointerEvents = 'auto';
+              popup = document.createElement("div");
+              popup.style.position = "fixed";
+              popup.style.zIndex = "50";
+              popup.style.left = "0px";
+              popup.style.top = "0px";
+              popup.style.pointerEvents = "auto";
 
               // Prevent native focus changes when clicking items
-              popup.addEventListener('mousedown', (e) => e.preventDefault());
+              popup.addEventListener("mousedown", (e) => e.preventDefault());
 
               document.body.appendChild(popup);
 
@@ -199,7 +215,7 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
 
             onUpdate: (props: any) => {
               if (!popup) {
-                throw new Error('Mention suggestion updated after being destroyed.');
+                throw new Error("Mention suggestion updated after being destroyed.");
               }
               // update items and reposition
               renderList(props);

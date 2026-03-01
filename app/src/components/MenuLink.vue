@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { twMerge } from 'tailwind-merge';
+import { twMerge } from "tailwind-merge";
 
 const props = defineProps<{
   icon?: string;
@@ -14,15 +14,15 @@ const props = defineProps<{
   <a
     :href="props.href"
     :class="twMerge(
-      'button-with-icon inline-flex items-center px-3xs rounded-md font-normal text-neutral-950 transition-colors hover:transition-none cursor-pointer',
+      'button-with-icon inline-flex items-center px-3xs rounded-md font-normal text-neutral-800 transition-colors hover:transition-none cursor-pointer',
       '@max-xs:justify-center',
-      isActive ? 'bg-primary-300 text-neutral-900' : 'hover:bg-primary-100 active:bg-primary-200',
+      isActive ? 'bg-primary-100 text-primary-700' : 'hover:bg-primary-50 active:bg-primary-100',
       'leading-[36px] min-h-[36px]',
-      'text-link overflow-hidden whitespace-nowrap',
+      'overflow-hidden whitespace-nowrap',
     )"
   >
-    <div class="flex-1 flex items-center @max-xs:justify-center">
-        <div v-html="icon" class="icon inline flex-none @max-xs:text-lg" />
+    <div class="flex-1 flex items-center @max-xs:justify-center text-sm">
+        <div v-html="icon" class="icon inline flex-none" />
         <span class="@max-xs:hidden">{{ text }}</span>
     </div>
 

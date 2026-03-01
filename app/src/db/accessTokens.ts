@@ -2,7 +2,13 @@ import { eq, and, isNull } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
 import { accessToken } from "./schema/space.ts";
 import type { AccessToken, AccessTokenInsert } from "./schema/space.ts";
-import { grantPermission, revokePermission, listUserPermissions, hasPermission, type ResourceType } from "./acl.ts";
+import {
+  grantPermission,
+  revokePermission,
+  listUserPermissions,
+  hasPermission,
+  type ResourceType,
+} from "./acl.ts";
 import { createHash, randomBytes } from "node:crypto";
 
 export interface CreateAccessTokenOptions {
@@ -89,7 +95,7 @@ export function extractTokenId(tokenUserId: string): string {
 export async function createAccessToken(
   options: CreateAccessTokenOptions,
 ): Promise<{ id: string; token: string }> {
-  const db = getSpaceDb(options.spaceId);
+  const db = await getSpaceDb(options.spaceId);
   if (!db) {
     throw new Error("Space not found");
   }
@@ -128,9 +134,7 @@ export async function createAccessToken(
  * });
  * ```
  */
-export async function grantTokenAccess(
-  options: GrantTokenAccessOptions,
-): Promise<void> {
+export async function grantTokenAccess(options: GrantTokenAccessOptions): Promise<void> {
   const tokenUserId = getTokenUserId(options.tokenId);
 
   await grantPermission(
@@ -163,12 +167,7 @@ export async function revokeTokenAccess(
 ): Promise<void> {
   const tokenUserId = getTokenUserId(tokenId);
 
-  await revokePermission(
-    spaceId,
-    resourceType,
-    resourceId,
-    tokenUserId,
-  );
+  await revokePermission(spaceId, resourceType, resourceId, tokenUserId);
 }
 
 /**
@@ -211,7 +210,13 @@ export async function hasTokenPermission(
   requiredPermission: string,
 ): Promise<boolean> {
   const tokenUserId = getTokenUserId(tokenId);
-  return hasPermission(spaceId, resourceType, resourceId, tokenUserId, requiredPermission);
+  return hasPermission(
+    spaceId,
+    resourceType,
+    resourceId,
+    tokenUserId,
+    requiredPermission,
+  );
 }
 
 /**
@@ -238,7 +243,7 @@ export async function validateAccessToken(
   token: string,
   spaceId: string,
 ): Promise<ValidateTokenResult | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   if (!db) {
     return null;
   }
@@ -248,12 +253,7 @@ export async function validateAccessToken(
   const [result] = await db
     .select()
     .from(accessToken)
-    .where(
-      and(
-        eq(accessToken.token, hashedToken),
-        isNull(accessToken.revokedAt),
-      ),
-    )
+    .where(and(eq(accessToken.token, hashedToken), isNull(accessToken.revokedAt)))
     .limit(1);
 
   if (!result) {
@@ -287,8 +287,11 @@ export async function validateAccessToken(
  * await revokeAccessToken("space123", "token_abc123");
  * ```
  */
-export async function revokeAccessToken(spaceId: string, tokenId: string): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+export async function revokeAccessToken(
+  spaceId: string,
+  tokenId: string,
+): Promise<boolean> {
+  const db = await getSpaceDb(spaceId);
   if (!db) {
     return false;
   }
@@ -311,8 +314,10 @@ export async function revokeAccessToken(spaceId: string, tokenId: string): Promi
  * const tokens = await listAccessTokens("space123");
  * ```
  */
-export async function listAccessTokens(spaceId: string): Promise<Omit<AccessToken, "token">[]> {
-  const db = getSpaceDb(spaceId);
+export async function listAccessTokens(
+  spaceId: string,
+): Promise<Omit<AccessToken, "token">[]> {
+  const db = await getSpaceDb(spaceId);
   if (!db) {
     return [];
   }
@@ -341,8 +346,11 @@ export async function listAccessTokens(spaceId: string): Promise<Omit<AccessToke
  * const token = await getAccessToken("space123", "token_abc123");
  * ```
  */
-export async function getAccessToken(spaceId: string, tokenId: string): Promise<Omit<AccessToken, "token"> | null> {
-  const db = getSpaceDb(spaceId);
+export async function getAccessToken(
+  spaceId: string,
+  tokenId: string,
+): Promise<Omit<AccessToken, "token"> | null> {
+  const db = await getSpaceDb(spaceId);
   if (!db) {
     return null;
   }
@@ -373,8 +381,11 @@ export async function getAccessToken(spaceId: string, tokenId: string): Promise<
  * await deleteAccessToken("space123", "token_abc123");
  * ```
  */
-export async function deleteAccessToken(spaceId: string, tokenId: string): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+export async function deleteAccessToken(
+  spaceId: string,
+  tokenId: string,
+): Promise<boolean> {
+  const db = await getSpaceDb(spaceId);
   if (!db) {
     return false;
   }
@@ -398,7 +409,7 @@ export async function deleteAccessToken(spaceId: string, tokenId: string): Promi
  * ```
  */
 export async function cleanupExpiredTokens(spaceId: string): Promise<number> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   if (!db) {
     return 0;
   }
@@ -406,9 +417,7 @@ export async function cleanupExpiredTokens(spaceId: string): Promise<number> {
   const now = new Date();
 
   // Get all tokens with expiration dates
-  const tokens = await db
-    .select()
-    .from(accessToken);
+  const tokens = await db.select().from(accessToken);
 
   // Filter expired tokens
   const expiredTokens = tokens.filter((t) => t.expiresAt && t.expiresAt < now);
@@ -416,9 +425,7 @@ export async function cleanupExpiredTokens(spaceId: string): Promise<number> {
   // Delete expired tokens one by one
   let deletedCount = 0;
   for (const token of expiredTokens) {
-    await db
-      .delete(accessToken)
-      .where(eq(accessToken.id, token.id));
+    await db.delete(accessToken).where(eq(accessToken.id, token.id));
     deletedCount++;
   }
 

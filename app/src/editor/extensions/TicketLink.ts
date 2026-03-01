@@ -1,13 +1,15 @@
 import { Mark } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { Connection } from "~/src/api/client";
+import type { Connection } from "~/src/api/client.ts";
 import { detectAppType } from "~/src/utils/utils.ts";
 
 export interface TicketLinkOptions {
   connections: Connection[];
 }
 
-function getTicketPattern(appType: "jira" | "youtrack" | "linear" | "github" | "gitlab"): RegExp {
+function getTicketPattern(
+  appType: "jira" | "youtrack" | "linear" | "github" | "gitlab",
+): RegExp {
   switch (appType) {
     case "jira":
     case "youtrack":
@@ -77,17 +79,13 @@ export const TicketLink = Mark.create<TicketLinkOptions>({
   parseHTML() {
     return [
       {
-        tag: 'ticket-link',
+        tag: "ticket-link",
       },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      "ticket-link",
-      HTMLAttributes,
-      0,
-    ];
+    return ["ticket-link", HTMLAttributes, 0];
   },
 
   addProseMirrorPlugins() {
@@ -121,7 +119,7 @@ export const TicketLink = Mark.create<TicketLinkOptions>({
             const nodeEnd = pos + node.nodeSize;
 
             // First, remove all ticket link marks from this text node
-            if (node.marks.some(mark => mark.type === markType)) {
+            if (node.marks.some((mark) => mark.type === markType)) {
               tr.removeMark(nodeStart, nodeEnd, markType);
               modified = true;
             }
@@ -132,10 +130,7 @@ export const TicketLink = Mark.create<TicketLinkOptions>({
               if (!appType) continue;
 
               const ticketPattern = getTicketPattern(appType);
-              const regex = new RegExp(
-                ticketPattern.source,
-                "g"
-              );
+              const regex = new RegExp(ticketPattern.source, "g");
 
               for (const match of Array.from(text.matchAll(regex))) {
                 const start = pos + match.index;
@@ -154,7 +149,7 @@ export const TicketLink = Mark.create<TicketLinkOptions>({
                     connectionUrl: connection.url,
                     connectionLabel: connection.label,
                     connectionId: connection.id,
-                  })
+                  }),
                 );
                 modified = true;
               }

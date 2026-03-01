@@ -23,7 +23,7 @@ const PERFORMANCE_THRESHOLDS = {
 let testUser: { id: string; email: string; name: string };
 let sessionToken: string;
 let testSpaceId: string;
-let documentIds: string[] = [];
+const documentIds: string[] = [];
 
 interface BenchmarkResult {
   timestamp: string;
@@ -62,7 +62,7 @@ interface BenchmarkResult {
   };
 }
 
-let currentResults: Partial<BenchmarkResult> = {};
+const currentResults: Partial<BenchmarkResult> = {};
 
 function ensureSnapshotDir() {
   if (!existsSync(SNAPSHOT_DIR)) {
@@ -169,9 +169,11 @@ function compareWithBaseline(baseline: BenchmarkResult | null) {
     }
 
     console.log(
-      `${status} ${comp.name.padEnd(28)} ${comp.current.toFixed(2)}${comp.unit} (${sign}${percentChange}%) [${statusText}]`
+      `${status} ${comp.name.padEnd(28)} ${comp.current.toFixed(2)}${comp.unit} (${sign}${percentChange}%) [${statusText}]`,
     );
-    console.log(`   Baseline: ${comp.baseline.toFixed(2)}${comp.unit} | Threshold: ${comp.threshold.max}${comp.unit}`);
+    console.log(
+      `   Baseline: ${comp.baseline.toFixed(2)}${comp.unit} | Threshold: ${comp.threshold.max}${comp.unit}`,
+    );
   }
 
   console.log("═══════════════════════════════════════════════════════════");
@@ -290,357 +292,377 @@ afterAll(async () => {
   }
 });
 
-describe.if(import.meta.env.TEST_PERF)("Performance Benchmark - Document Operations", () => {
-  const baseline = loadBaseline();
+describe.if(import.meta.env.TEST_PERF)(
+  "Performance Benchmark - Document Operations",
+  () => {
+    const baseline = loadBaseline();
 
-  if (baseline) {
-    console.log(`\n📊 Loaded baseline from: ${baseline.timestamp}`);
-  }
-  it("should create 2000 documents in reasonable time", async () => {
-    const DOCUMENT_COUNT = 2000;
-    const startTime = performance.now();
+    if (baseline) {
+      console.log(`\n📊 Loaded baseline from: ${baseline.timestamp}`);
+    }
+    it("should create 2000 documents in reasonable time", async () => {
+      const DOCUMENT_COUNT = 2000;
+      const startTime = performance.now();
 
-    console.log(`\n🚀 Starting creation of ${DOCUMENT_COUNT} documents...`);
+      console.log(`\n🚀 Starting creation of ${DOCUMENT_COUNT} documents...`);
 
-    const batchSize = 100;
-    const batches = Math.ceil(DOCUMENT_COUNT / batchSize);
+      const batchSize = 100;
+      const batches = Math.ceil(DOCUMENT_COUNT / batchSize);
 
-    for (let batch = 0; batch < batches; batch++) {
-      const batchStart = batch * batchSize;
-      const batchEnd = Math.min(batchStart + batchSize, DOCUMENT_COUNT);
-      const promises: Promise<Response>[] = [];
+      for (let batch = 0; batch < batches; batch++) {
+        const batchStart = batch * batchSize;
+        const batchEnd = Math.min(batchStart + batchSize, DOCUMENT_COUNT);
+        const promises: Promise<Response>[] = [];
 
-      for (let i = batchStart; i < batchEnd; i++) {
-        const categories = ["guide", "reference", "tutorial", "api", "concept"];
-        const statuses = ["draft", "review", "published", "archived"];
-        const tags = ["performance", "testing", "benchmark", "docs", "wiki"];
+        for (let i = batchStart; i < batchEnd; i++) {
+          const categories = ["guide", "reference", "tutorial", "api", "concept"];
+          const statuses = ["draft", "review", "published", "archived"];
+          const tags = ["performance", "testing", "benchmark", "docs", "wiki"];
 
-        const promise = apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
-          method: "POST",
-          body: JSON.stringify({
-            content: `# Performance Test Document ${i}\n\nThis is a test document created for performance benchmarking.\n\nContent: ${"Lorem ipsum dolor sit amet. ".repeat(20)}`,
-            properties: {
-              title: `Performance Test Doc ${i}`,
-              category: categories[i % categories.length],
-              status: statuses[i % statuses.length],
-              tags: tags.slice(0, (i % tags.length) + 1).join(","),
-              author: testUser.name,
-              priority: String((i % 5) + 1),
-              version: "1.0.0",
-            },
-          }),
-        });
+          const promise = apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+            method: "POST",
+            body: JSON.stringify({
+              content: `# Performance Test Document ${i}\n\nThis is a test document created for performance benchmarking.\n\nContent: ${"Lorem ipsum dolor sit amet. ".repeat(20)}`,
+              properties: {
+                title: `Performance Test Doc ${i}`,
+                category: categories[i % categories.length],
+                status: statuses[i % statuses.length],
+                tags: tags.slice(0, (i % tags.length) + 1).join(","),
+                author: testUser.name,
+                priority: String((i % 5) + 1),
+                version: "1.0.0",
+              },
+            }),
+          });
 
-        promises.push(promise);
-      }
-
-      const responses = await Promise.all(promises);
-
-      for (const response of responses) {
-        if (!response.ok) {
-          throw new Error(`Failed to create document: ${response.statusText}`);
+          promises.push(promise);
         }
+
+        const responses = await Promise.all(promises);
+
+        for (const response of responses) {
+          if (!response.ok) {
+            throw new Error(`Failed to create document: ${response.statusText}`);
+          }
+          const data = await response.json();
+          documentIds.push(data.document.id);
+        }
+
+        const progress = Math.round(((batch + 1) / batches) * 100);
+        console.log(
+          `  📝 Progress: ${progress}% (${documentIds.length}/${DOCUMENT_COUNT})`,
+        );
+      }
+
+      const endTime = performance.now();
+      const totalTime = endTime - startTime;
+      const docsPerSecond = (DOCUMENT_COUNT / (totalTime / 1000)).toFixed(2);
+
+      console.log(
+        `\n✅ Created ${DOCUMENT_COUNT} documents in ${totalTime.toFixed(2)}ms`,
+      );
+      console.log(
+        `   Average: ${(totalTime / DOCUMENT_COUNT).toFixed(2)}ms per document`,
+      );
+      console.log(`   Throughput: ${docsPerSecond} docs/second\n`);
+
+      currentResults.documentCreation = {
+        totalTime,
+        avgTime: totalTime / DOCUMENT_COUNT,
+        throughput: Number.parseFloat(docsPerSecond),
+        count: DOCUMENT_COUNT,
+      };
+
+      expect(documentIds.length).toBe(DOCUMENT_COUNT);
+      expect(totalTime).toBeLessThan(120000);
+    }, 180000);
+
+    it("should query random document properties efficiently", async () => {
+      const QUERY_COUNT = 100;
+      const startTime = performance.now();
+
+      console.log(`\n🔍 Querying ${QUERY_COUNT} random documents...`);
+
+      const results: Array<{ time: number; docId: string }> = [];
+
+      for (let i = 0; i < QUERY_COUNT; i++) {
+        const randomIndex = Math.floor(Math.random() * documentIds.length);
+        const randomDocId = documentIds[randomIndex];
+
+        const queryStart = performance.now();
+        const response = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}`,
+        );
+        const queryEnd = performance.now();
+
+        if (!response.ok) {
+          throw new Error(`Failed to query document: ${response.statusText}`);
+        }
+
         const data = await response.json();
-        documentIds.push(data.document.id);
+        expect(data.document.id).toBe(randomDocId);
+        expect(data.document.properties).toBeDefined();
+
+        results.push({
+          time: queryEnd - queryStart,
+          docId: randomDocId,
+        });
       }
 
-      const progress = Math.round(((batch + 1) / batches) * 100);
-      console.log(`  📝 Progress: ${progress}% (${documentIds.length}/${DOCUMENT_COUNT})`);
-    }
+      const endTime = performance.now();
+      const totalTime = endTime - startTime;
+      const avgQueryTime = results.reduce((sum, r) => sum + r.time, 0) / results.length;
+      const minQueryTime = Math.min(...results.map((r) => r.time));
+      const maxQueryTime = Math.max(...results.map((r) => r.time));
 
-    const endTime = performance.now();
-    const totalTime = endTime - startTime;
-    const docsPerSecond = (DOCUMENT_COUNT / (totalTime / 1000)).toFixed(2);
+      console.log(`\n✅ Queried ${QUERY_COUNT} documents in ${totalTime.toFixed(2)}ms`);
+      console.log(`   Average query time: ${avgQueryTime.toFixed(2)}ms`);
+      console.log(`   Min query time: ${minQueryTime.toFixed(2)}ms`);
+      console.log(`   Max query time: ${maxQueryTime.toFixed(2)}ms\n`);
 
-    console.log(`\n✅ Created ${DOCUMENT_COUNT} documents in ${totalTime.toFixed(2)}ms`);
-    console.log(`   Average: ${(totalTime / DOCUMENT_COUNT).toFixed(2)}ms per document`);
-    console.log(`   Throughput: ${docsPerSecond} docs/second\n`);
+      currentResults.documentQuery = {
+        totalTime,
+        avgTime: avgQueryTime,
+        minTime: minQueryTime,
+        maxTime: maxQueryTime,
+        count: QUERY_COUNT,
+      };
 
-    currentResults.documentCreation = {
-      totalTime,
-      avgTime: totalTime / DOCUMENT_COUNT,
-      throughput: Number.parseFloat(docsPerSecond),
-      count: DOCUMENT_COUNT,
-    };
+      expect(avgQueryTime).toBeLessThan(100);
+    }, 60000);
 
-    expect(documentIds.length).toBe(DOCUMENT_COUNT);
-    expect(totalTime).toBeLessThan(120000);
-  }, 180000);
+    it("should list all documents efficiently", async () => {
+      console.log("\n📋 Listing all documents...");
 
-  it("should query random document properties efficiently", async () => {
-    const QUERY_COUNT = 100;
-    const startTime = performance.now();
+      const startTime = performance.now();
+      const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`);
+      const endTime = performance.now();
 
-    console.log(`\n🔍 Querying ${QUERY_COUNT} random documents...`);
+      if (!response.ok) {
+        throw new Error(`Failed to list documents: ${response.statusText}`);
+      }
 
-    const results: Array<{ time: number; docId: string }> = [];
+      const data = await response.json();
+      const totalTime = endTime - startTime;
 
-    for (let i = 0; i < QUERY_COUNT; i++) {
+      console.log(
+        `\n✅ Listed ${data.documents.length} documents in ${totalTime.toFixed(2)}ms\n`,
+      );
+
+      currentResults.documentList = {
+        totalTime,
+        count: data.documents.length,
+      };
+
+      expect(data.documents.length).toBeGreaterThanOrEqual(2000);
+      expect(totalTime).toBeLessThan(5000);
+    }, 30000);
+
+    it("should query random document revisions efficiently", async () => {
+      const REVISION_COUNT = 50;
+      const startTime = performance.now();
+
+      console.log(`\n📚 Creating and querying ${REVISION_COUNT} document revisions...`);
+
       const randomIndex = Math.floor(Math.random() * documentIds.length);
       const randomDocId = documentIds[randomIndex];
 
-      const queryStart = performance.now();
-      const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}`,
+      for (let i = 0; i < REVISION_COUNT; i++) {
+        const saveResponse = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              html: `<h1>Revision ${i}</h1><p>Updated content version ${i}</p>`,
+              message: `Revision ${i}`,
+            }),
+          },
+        );
+
+        if (!saveResponse.ok) {
+          throw new Error(`Failed to create revision: ${saveResponse.statusText}`);
+        }
+      }
+
+      const historyStart = performance.now();
+      const historyResponse = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}/revisions`,
       );
-      const queryEnd = performance.now();
+      const historyEnd = performance.now();
+
+      if (!historyResponse.ok) {
+        throw new Error(`Failed to get history: ${historyResponse.statusText}`);
+      }
+
+      const historyData = await historyResponse.json();
+      const endTime = performance.now();
+
+      const totalTime = endTime - startTime;
+      const historyQueryTime = historyEnd - historyStart;
+
+      console.log(`\n✅ Created ${REVISION_COUNT} revisions and queried history`);
+      console.log(`   Total time: ${totalTime.toFixed(2)}ms`);
+      console.log(`   History query: ${historyQueryTime.toFixed(2)}ms`);
+      console.log(`   Revisions returned: ${historyData.revisions.length}\n`);
+
+      currentResults.revisionOperations = {
+        totalTime,
+        historyQueryTime,
+        revisionCount: historyData.revisions.length,
+      };
+
+      expect(historyData.revisions.length).toBeGreaterThanOrEqual(REVISION_COUNT);
+      expect(historyQueryTime).toBeLessThan(1000);
+    }, 60000);
+
+    it("should query random document properties by key", async () => {
+      const PROPERTY_QUERY_COUNT = 100;
+      const startTime = performance.now();
+
+      console.log(`\n🔑 Querying ${PROPERTY_QUERY_COUNT} random document properties...`);
+
+      const propertyKeys = ["title", "category", "status", "tags", "author", "priority"];
+      const results: Array<{ time: number; key: string }> = [];
+
+      for (let i = 0; i < PROPERTY_QUERY_COUNT; i++) {
+        const randomDocIndex = Math.floor(Math.random() * documentIds.length);
+        const randomDocId = documentIds[randomDocIndex];
+        const randomKey = propertyKeys[Math.floor(Math.random() * propertyKeys.length)];
+
+        const queryStart = performance.now();
+        const response = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}`,
+        );
+        const queryEnd = performance.now();
+
+        if (!response.ok) {
+          throw new Error(`Failed to query document: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        expect(data.document.properties).toBeDefined();
+        expect(data.document.properties[randomKey]).toBeDefined();
+
+        results.push({
+          time: queryEnd - queryStart,
+          key: randomKey,
+        });
+      }
+
+      const endTime = performance.now();
+      const totalTime = endTime - startTime;
+      const avgQueryTime = results.reduce((sum, r) => sum + r.time, 0) / results.length;
+
+      console.log(
+        `\n✅ Queried ${PROPERTY_QUERY_COUNT} properties in ${totalTime.toFixed(2)}ms`,
+      );
+      console.log(`   Average query time: ${avgQueryTime.toFixed(2)}ms\n`);
+
+      currentResults.propertyQuery = {
+        totalTime,
+        avgTime: avgQueryTime,
+        count: PROPERTY_QUERY_COUNT,
+      };
+
+      expect(avgQueryTime).toBeLessThan(100);
+    }, 60000);
+
+    it("should query audit logs efficiently for random documents", async () => {
+      const AUDIT_QUERY_COUNT = 50;
+      const startTime = performance.now();
+
+      console.log(
+        `\n📊 Querying audit logs for ${AUDIT_QUERY_COUNT} random documents...`,
+      );
+
+      const results: Array<{ time: number; logCount: number }> = [];
+
+      for (let i = 0; i < AUDIT_QUERY_COUNT; i++) {
+        const randomIndex = Math.floor(Math.random() * documentIds.length);
+        const randomDocId = documentIds[randomIndex];
+
+        const queryStart = performance.now();
+        const response = await apiRequest(
+          `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}/audit-logs`,
+        );
+        const queryEnd = performance.now();
+
+        if (!response.ok) {
+          throw new Error(`Failed to query audit logs: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        results.push({
+          time: queryEnd - queryStart,
+          logCount: data.auditLogs.length,
+        });
+      }
+
+      const endTime = performance.now();
+      const totalTime = endTime - startTime;
+      const avgQueryTime = results.reduce((sum, r) => sum + r.time, 0) / results.length;
+      const avgLogCount =
+        results.reduce((sum, r) => sum + r.logCount, 0) / results.length;
+
+      console.log(
+        `\n✅ Queried audit logs for ${AUDIT_QUERY_COUNT} documents in ${totalTime.toFixed(2)}ms`,
+      );
+      console.log(`   Average query time: ${avgQueryTime.toFixed(2)}ms`);
+      console.log(`   Average log entries per doc: ${avgLogCount.toFixed(2)}\n`);
+
+      currentResults.auditLogQuery = {
+        totalTime,
+        avgTime: avgQueryTime,
+        avgLogCount,
+        count: AUDIT_QUERY_COUNT,
+      };
+
+      expect(avgQueryTime).toBeLessThan(200);
+    }, 60000);
+
+    it("should compare results with baseline and save snapshot", () => {
+      const results: BenchmarkResult = {
+        timestamp: new Date().toISOString(),
+        ...(currentResults as Omit<BenchmarkResult, "timestamp">),
+      };
+
+      const comparison = compareWithBaseline(baseline);
+
+      saveSnapshot(results);
+
+      if (comparison?.hasRegression) {
+        throw new Error(
+          "Performance regression detected - metrics exceed maximum thresholds",
+        );
+      }
+    });
+
+    it("should detect performance regression when thresholds are exceeded", async () => {
+      console.log("\n🧪 Testing regression detection with artificial delay...\n");
+
+      const slowDocId = documentIds[0];
+      const startTime = performance.now();
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const response = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents/${slowDocId}`,
+      );
+      const endTime = performance.now();
 
       if (!response.ok) {
         throw new Error(`Failed to query document: ${response.statusText}`);
       }
 
       const data = await response.json();
-      expect(data.document.id).toBe(randomDocId);
-      expect(data.document.properties).toBeDefined();
+      const queryTime = endTime - startTime;
 
-      results.push({
-        time: queryEnd - queryStart,
-        docId: randomDocId,
-      });
-    }
+      console.log(`⏱️  Artificially delayed query took: ${queryTime.toFixed(2)}ms`);
+      console.log(`✅ Document retrieved successfully despite delay\n`);
 
-    const endTime = performance.now();
-    const totalTime = endTime - startTime;
-    const avgQueryTime = results.reduce((sum, r) => sum + r.time, 0) / results.length;
-    const minQueryTime = Math.min(...results.map((r) => r.time));
-    const maxQueryTime = Math.max(...results.map((r) => r.time));
-
-    console.log(`\n✅ Queried ${QUERY_COUNT} documents in ${totalTime.toFixed(2)}ms`);
-    console.log(`   Average query time: ${avgQueryTime.toFixed(2)}ms`);
-    console.log(`   Min query time: ${minQueryTime.toFixed(2)}ms`);
-    console.log(`   Max query time: ${maxQueryTime.toFixed(2)}ms\n`);
-
-    currentResults.documentQuery = {
-      totalTime,
-      avgTime: avgQueryTime,
-      minTime: minQueryTime,
-      maxTime: maxQueryTime,
-      count: QUERY_COUNT,
-    };
-
-    expect(avgQueryTime).toBeLessThan(100);
-  }, 60000);
-
-  it("should list all documents efficiently", async () => {
-    console.log("\n📋 Listing all documents...");
-
-    const startTime = performance.now();
-    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`);
-    const endTime = performance.now();
-
-    if (!response.ok) {
-      throw new Error(`Failed to list documents: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const totalTime = endTime - startTime;
-
-    console.log(`\n✅ Listed ${data.documents.length} documents in ${totalTime.toFixed(2)}ms\n`);
-
-    currentResults.documentList = {
-      totalTime,
-      count: data.documents.length,
-    };
-
-    expect(data.documents.length).toBeGreaterThanOrEqual(2000);
-    expect(totalTime).toBeLessThan(5000);
-  }, 30000);
-
-  it("should query random document revisions efficiently", async () => {
-    const REVISION_COUNT = 50;
-    const startTime = performance.now();
-
-    console.log(`\n📚 Creating and querying ${REVISION_COUNT} document revisions...`);
-
-    const randomIndex = Math.floor(Math.random() * documentIds.length);
-    const randomDocId = documentIds[randomIndex];
-
-    for (let i = 0; i < REVISION_COUNT; i++) {
-      const saveResponse = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            html: `<h1>Revision ${i}</h1><p>Updated content version ${i}</p>`,
-            message: `Revision ${i}`,
-          }),
-        },
-      );
-
-      if (!saveResponse.ok) {
-        throw new Error(`Failed to create revision: ${saveResponse.statusText}`);
-      }
-    }
-
-    const historyStart = performance.now();
-    const historyResponse = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}/revisions`,
-    );
-    const historyEnd = performance.now();
-
-    if (!historyResponse.ok) {
-      throw new Error(`Failed to get history: ${historyResponse.statusText}`);
-    }
-
-    const historyData = await historyResponse.json();
-    const endTime = performance.now();
-
-    const totalTime = endTime - startTime;
-    const historyQueryTime = historyEnd - historyStart;
-
-    console.log(`\n✅ Created ${REVISION_COUNT} revisions and queried history`);
-    console.log(`   Total time: ${totalTime.toFixed(2)}ms`);
-    console.log(`   History query: ${historyQueryTime.toFixed(2)}ms`);
-    console.log(`   Revisions returned: ${historyData.revisions.length}\n`);
-
-    currentResults.revisionOperations = {
-      totalTime,
-      historyQueryTime,
-      revisionCount: historyData.revisions.length,
-    };
-
-    expect(historyData.revisions.length).toBeGreaterThanOrEqual(REVISION_COUNT);
-    expect(historyQueryTime).toBeLessThan(1000);
-  }, 60000);
-
-  it("should query random document properties by key", async () => {
-    const PROPERTY_QUERY_COUNT = 100;
-    const startTime = performance.now();
-
-    console.log(`\n🔑 Querying ${PROPERTY_QUERY_COUNT} random document properties...`);
-
-    const propertyKeys = ["title", "category", "status", "tags", "author", "priority"];
-    const results: Array<{ time: number; key: string }> = [];
-
-    for (let i = 0; i < PROPERTY_QUERY_COUNT; i++) {
-      const randomDocIndex = Math.floor(Math.random() * documentIds.length);
-      const randomDocId = documentIds[randomDocIndex];
-      const randomKey = propertyKeys[Math.floor(Math.random() * propertyKeys.length)];
-
-      const queryStart = performance.now();
-      const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}`,
-      );
-      const queryEnd = performance.now();
-
-      if (!response.ok) {
-        throw new Error(`Failed to query document: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      expect(data.document.properties).toBeDefined();
-      expect(data.document.properties[randomKey]).toBeDefined();
-
-      results.push({
-        time: queryEnd - queryStart,
-        key: randomKey,
-      });
-    }
-
-    const endTime = performance.now();
-    const totalTime = endTime - startTime;
-    const avgQueryTime = results.reduce((sum, r) => sum + r.time, 0) / results.length;
-
-    console.log(`\n✅ Queried ${PROPERTY_QUERY_COUNT} properties in ${totalTime.toFixed(2)}ms`);
-    console.log(`   Average query time: ${avgQueryTime.toFixed(2)}ms\n`);
-
-    currentResults.propertyQuery = {
-      totalTime,
-      avgTime: avgQueryTime,
-      count: PROPERTY_QUERY_COUNT,
-    };
-
-    expect(avgQueryTime).toBeLessThan(100);
-  }, 60000);
-
-  it("should query audit logs efficiently for random documents", async () => {
-    const AUDIT_QUERY_COUNT = 50;
-    const startTime = performance.now();
-
-    console.log(`\n📊 Querying audit logs for ${AUDIT_QUERY_COUNT} random documents...`);
-
-    const results: Array<{ time: number; logCount: number }> = [];
-
-    for (let i = 0; i < AUDIT_QUERY_COUNT; i++) {
-      const randomIndex = Math.floor(Math.random() * documentIds.length);
-      const randomDocId = documentIds[randomIndex];
-
-      const queryStart = performance.now();
-      const response = await apiRequest(
-        `/api/v1/spaces/${testSpaceId}/documents/${randomDocId}/audit-logs`,
-      );
-      const queryEnd = performance.now();
-
-      if (!response.ok) {
-        throw new Error(`Failed to query audit logs: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      results.push({
-        time: queryEnd - queryStart,
-        logCount: data.auditLogs.length,
-      });
-    }
-
-    const endTime = performance.now();
-    const totalTime = endTime - startTime;
-    const avgQueryTime = results.reduce((sum, r) => sum + r.time, 0) / results.length;
-    const avgLogCount = results.reduce((sum, r) => sum + r.logCount, 0) / results.length;
-
-    console.log(`\n✅ Queried audit logs for ${AUDIT_QUERY_COUNT} documents in ${totalTime.toFixed(2)}ms`);
-    console.log(`   Average query time: ${avgQueryTime.toFixed(2)}ms`);
-    console.log(`   Average log entries per doc: ${avgLogCount.toFixed(2)}\n`);
-
-    currentResults.auditLogQuery = {
-      totalTime,
-      avgTime: avgQueryTime,
-      avgLogCount,
-      count: AUDIT_QUERY_COUNT,
-    };
-
-    expect(avgQueryTime).toBeLessThan(200);
-  }, 60000);
-
-  it("should compare results with baseline and save snapshot", () => {
-    const results: BenchmarkResult = {
-      timestamp: new Date().toISOString(),
-      ...currentResults as Omit<BenchmarkResult, "timestamp">,
-    };
-
-    const comparison = compareWithBaseline(baseline);
-
-    saveSnapshot(results);
-
-    if (comparison?.hasRegression) {
-      throw new Error("Performance regression detected - metrics exceed maximum thresholds");
-    }
-  });
-
-  it("should detect performance regression when thresholds are exceeded", async () => {
-    console.log("\n🧪 Testing regression detection with artificial delay...\n");
-
-    const slowDocId = documentIds[0];
-    const startTime = performance.now();
-
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${slowDocId}`,
-    );
-    const endTime = performance.now();
-
-    if (!response.ok) {
-      throw new Error(`Failed to query document: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const queryTime = endTime - startTime;
-
-    console.log(`⏱️  Artificially delayed query took: ${queryTime.toFixed(2)}ms`);
-    console.log(`✅ Document retrieved successfully despite delay\n`);
-
-    expect(data.document.id).toBe(slowDocId);
-    expect(queryTime).toBeGreaterThan(50);
-  });
-});
+      expect(data.document.id).toBe(slowDocId);
+      expect(queryTime).toBeGreaterThan(50);
+    });
+  },
+);

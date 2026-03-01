@@ -18,8 +18,8 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref, watch } from "vue";
-import { useSpace } from "../composeables/useSpace.js";
-import { api } from "../api/client.js";
+import { useSpace } from "../composeables/useSpace.ts";
+import { api } from "../api/client.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
 
@@ -78,14 +78,13 @@ async function updateTitle() {
         throw new Error("No space selected");
       }
 
-      const data = await api.documentProperty.put(
-        currentSpaceId.value,
-        props.documentId,
-        {
-          key: "title",
-          value: localTitle.value,
+      const data = await api.document.patch(currentSpaceId.value, props.documentId, {
+        properties: {
+          title: {
+            value: localTitle.value,
+          },
         },
-      );
+      });
 
       // Update URL with new slug
       const newSlug = data.slug;
@@ -116,7 +115,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("edit-mode-start", handleEditModeStart);
 });
-
 
 const status = ref("idle");
 const error = ref(null);

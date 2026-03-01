@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { authClient } from "../composeables/auth-client.js";
+import { authClient } from "../composeables/auth-client.ts";
 
 const loading = ref(false);
 const user = ref<{

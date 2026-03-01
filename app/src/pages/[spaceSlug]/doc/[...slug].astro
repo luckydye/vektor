@@ -11,8 +11,6 @@ import {
 import { getPublishedContent } from "../../../db/revisions.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
 import { getCategoryBySlug } from "../../../db/categories.ts";
-import CommentManager from "../../../components/CommentManager.vue";
-import docStyles from "../../../styles/document.css?inline";
 import Canvas from "~/src/canvas/Canvas.vue";
 import Breadcrumbs from "~/src/components/Breadcrumbs.vue";
 import { twMerge } from "tailwind-merge";
@@ -79,7 +77,11 @@ if (!hasAccess) {
 const title = document.properties.title || "Untitled Document";
 
 // Archived documents should be treated as readonly
-const isReadonly = document.readonly || document.archived || document.type === "canvas";
+const isReadonly =
+  document.readonly ||
+  document.archived ||
+  document.type === "canvas" ||
+  document.type === "app";
 
 let htmlContent = document.content;
 if (document.publishedRev !== null) {
@@ -177,7 +179,7 @@ if (diffMins >= 1 && diffMins < 60) {
 
       <!-- Document Header -->
       <div class={twMerge(
-        document.type === 'canvas' ? 'absolute top-xs right-0 left-0 z-10' : 'pt-s mb-xl'
+        (document.type === 'canvas' || document.type === 'app') ? 'hidden' : 'pt-s mb-xl'
       )}>
         <div class="print:px-0 px-xs lg:px-xl">
             <Breadcrumbs
@@ -213,23 +215,20 @@ if (diffMins >= 1 && diffMins < 60) {
       <div
         class={twMerge(
           'max-w-none text-neutral-700 h-full',
-          document.type !== 'canvas' && "print:px-0 px-xs lg:px-xl"
+          document.type !== 'canvas' && document.type !== 'app' && "print:px-0 px-xs lg:px-xl"
         )}
       >
           <DocumentContent
          		client:load
          		documentId={document.id}
+            initialHtml={htmlContent}
          		spaceId={space.id}
          		documentType={document.type ?? "document"}
          		readonly={isReadonly}
          		initialEditMode={false}
          	/>
 
-       	    <editor-content></editor-content>
-
-         	<main class="h-full relative">
-                 <CommentManager client:only="vue" spaceId={space.id} documentId={document.id} currentRev={document.currentRev} />
-
+         	<main class="relative">
                  {document.type === "canvas" ? (
          			<div class="h-screen">
                      <Canvas
@@ -239,20 +238,11 @@ if (diffMins >= 1 && diffMins < 60) {
                   			/>
                     </div>
                 	) : (
-                     <document-view>
-                         <template shadowrootmode="open">
-                             <style set:html={docStyles}></style>
-                             <div part="content">
-                                 <div set:html={htmlContent}></div>
-                             </div>
-                         </template>
-                  	  </document-view>
+                    null
                  )}
 
                  <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
          	</main>
-
-          <document-statusbar class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-background pointer-events-none"></document-statusbar>
       </div>
     </div>
 

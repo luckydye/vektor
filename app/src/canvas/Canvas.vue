@@ -2,8 +2,8 @@
 import "./components/CanvasElement.ts";
 import type CanvasElement from "./components/CanvasElement.ts";
 import { onMounted, ref } from "vue";
-import { createYProvider } from "../utils/sync";
-import { useDocument } from "../composeables/useDocument";
+import { createYProvider } from "../utils/sync.ts";
+import { useDocument } from "../composeables/useDocument.ts";
 
 const canvasRef = ref<CanvasElement>();
 
@@ -12,10 +12,7 @@ const props = defineProps<{
   documentId?: string;
 }>();
 
-const { saveDocument } = useDocument(
-  props.documentId,
-  "canvas",
-);
+const { saveDocument } = useDocument(props.documentId, "canvas");
 
 async function manualSave() {
   const canvas = canvasRef.value?.canvas;
@@ -35,8 +32,7 @@ onMounted(() => {
   }
 
   setInterval(() => manualSave(), 5000);
-})
-
+});
 </script>
 
 <template>

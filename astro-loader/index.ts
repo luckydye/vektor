@@ -1,4 +1,4 @@
-import type { LiveLoader } from 'astro/loaders';
+import type { LiveLoader } from "astro/loaders";
 
 interface Article {
   id: string;
@@ -7,29 +7,29 @@ interface Article {
   author: string;
 }
 
-export function documentLoader(config: { 
-  apiKey: string,
-  host: string,
-  spaceId: string,
+export function documentLoader(config: {
+  apiKey: string;
+  host: string;
+  spaceId: string;
 }): LiveLoader<Article> {
   return {
-    name: 'wiki-loader',
+    name: "wiki-loader",
     loadCollection: async ({ filter }) => {
       const url = `${config.host}/api/v1/spaces/${config.spaceId}/categories/${filter?.collectionSlug}/documents`;
-      
+
       try {
         const response = await fetch(url, {
           headers: {
-            "Authorization": `Bearer ${config.apiKey}`
-          }
+            Authorization: `Bearer ${config.apiKey}`,
+          },
         });
-        
+
         if (!response.ok) {
           return {
-            error: new Error('Article could not be loaded'),
+            error: new Error("Article could not be loaded"),
           };
         }
-        
+
         const category = await response.json();
 
         return {
@@ -46,20 +46,20 @@ export function documentLoader(config: {
     },
     loadEntry: async ({ filter }) => {
       const url = `${config.host}/api/v1/spaces/${config.spaceId}/documents/${filter.id}`;
-      
+
       try {
         const response = await fetch(url, {
           headers: {
-            "Authorization": `Bearer ${config.apiKey}`
-          }
+            Authorization: `Bearer ${config.apiKey}`,
+          },
         });
 
         if (!response.ok) {
           return {
-            error: new Error('Article could not be loaded'),
+            error: new Error("Article could not be loaded"),
           };
         }
-        
+
         const doc = await response.json();
 
         return {

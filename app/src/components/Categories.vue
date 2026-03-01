@@ -1,32 +1,48 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { getTextColor } from '../utils/utils';
-import { api, type Category } from '../api/client.ts';
+import { ref, onMounted } from "vue";
+import { getTextColor } from "../utils/utils.ts";
+import { api, type Category } from "../api/client.ts";
 
 const props = defineProps<{
-  spaceSlug: string
-  spaceId: string
+  spaceSlug: string;
+  spaceId: string;
 }>();
 
 const categories = ref<Category[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const categoryDocCounts = ref<Record<string, number>>({});
+const categoryFirstDocSlug = ref<Record<string, string | null>>({});
 
 onMounted(async () => {
   try {
-    const fetchedCategories = await api.categories.get(props.spaceId)
+    const fetchedCategories = await api.categories.get(props.spaceId);
     categories.value = fetchedCategories;
+
+    const firstDocs = await Promise.all(
+      fetchedCategories.map(async (cat) => {
+        const response = await api.documents.get(props.spaceId, {
+          categorySlugs: cat.slug,
+        });
+        const docs = response.documents;
+        const mostRecent = docs.sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        )[0];
+        return [cat.slug, mostRecent?.slug ?? null] as const;
+      }),
+    );
+    categoryFirstDocSlug.value = Object.fromEntries(firstDocs);
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to load categories'
+    error.value = err instanceof Error ? err.message : "Failed to load categories";
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-})
+});
 
 const getCategoryHref = (category: Category): string => {
-  return `/${props.spaceSlug}?category=${category.slug}`
-}
+  const docSlug = categoryFirstDocSlug.value[category.slug];
+  if (docSlug) return `/${props.spaceSlug}/doc/${docSlug}`;
+  return `/${props.spaceSlug}?category=${category.slug}`;
+};
 </script>
 
 <template>
@@ -34,7 +50,7 @@ const getCategoryHref = (category: Category): string => {
     <!-- Empty State -->
     <div
       v-if="!loading && categories.length === 0"
-      class="text-center py-12 bg-neutral-50 rounded-lg border border-neutral-200"
+      class="text-center py-12 bg-neutral-50 rounded-lg border border-neutral-100"
     >
       <svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -52,7 +68,7 @@ const getCategoryHref = (category: Category): string => {
 
     <!-- Loading State - Skeletons -->
     <div v-if="loading" class="flex flex-wrap gap-4">
-      <div v-for="i in 3" :key="`skeleton-${i}`" class="block p-6 bg-background rounded-lg border-2 border-neutral-200 min-w-[250px] flex-1 animate-pulse">
+      <div v-for="i in 3" :key="`skeleton-${i}`" class="block p-6 bg-background rounded-lg border-2 border-neutral-100 min-w-[250px] flex-1 animate-pulse">
         <div class="flex items-start gap-4">
           <div class="w-14 h-14 rounded-lg flex-shrink-0 bg-neutral-200"></div>
           <div class="flex-1 min-w-0 space-y-2">
@@ -75,7 +91,7 @@ const getCategoryHref = (category: Category): string => {
         v-for="category in categories"
         :key="category.id"
         :href="getCategoryHref(category)"
-        class="block p-6 bg-background rounded-lg border-2 border-neutral-200 hover:border-blue-500 hover:shadow-md min-w-[250px] flex-1"
+        class="block p-6 bg-background rounded-lg border-2 border-neutral-100 hover:border-blue-500 hover:shadow-md min-w-[250px] flex-1"
       >
         <div class="flex items-start gap-4">
           <div

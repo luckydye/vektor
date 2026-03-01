@@ -40,7 +40,7 @@ export const auth = betterAuth({
   trustedOrigins: [
     //
     config().SITE_URL,
-    "http://127.0.0.1:8080", 
+    "http://127.0.0.1:8080",
     "http://localhost:4321",
   ],
 
@@ -48,7 +48,7 @@ export const auth = betterAuth({
     genericOAuth({
       config: [
         {
-          redirectURI: appConfig.OAUTH_REDIRECT_URI, 
+          redirectURI: appConfig.OAUTH_REDIRECT_URI,
           providerId: appConfig.OAUTH_PROVIDER_ID,
           clientId: appConfig.OAUTH_CLIENT_ID,
           clientSecret: appConfig.OAUTH_CLIENT_SECRET,
@@ -58,7 +58,9 @@ export const auth = betterAuth({
           userInfoUrl: appConfig.OAUTH_USERINFO_URL,
           mapProfileToUser: async (profile) => {
             const groups = profile.wiki_groups || [];
-            const groupsString = Array.isArray(groups) ? JSON.stringify(groups) : JSON.stringify([]);
+            const groupsString = Array.isArray(groups)
+              ? JSON.stringify(groups)
+              : JSON.stringify([]);
 
             return {
               id: profile.id,
@@ -68,7 +70,7 @@ export const auth = betterAuth({
               emailVerified: profile.emailVerified || false,
               groups: groupsString,
             };
-          }
+          },
         },
       ],
     }),

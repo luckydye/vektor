@@ -30,7 +30,8 @@ export const ExpressionCell = Node.create({
     return {
       "data-formula": {
         default: "=",
-        parseHTML: (element) => element.getAttribute("data-formula") || element.textContent?.trim() || "=",
+        parseHTML: (element) =>
+          element.getAttribute("data-formula") || element.textContent?.trim() || "=",
         renderHTML: (attributes) => {
           return {
             "data-formula": attributes["data-formula"],
@@ -146,7 +147,7 @@ export const ExpressionCell = Node.create({
                   {
                     "data-formula": "=",
                   },
-                  [state.schema.text("=")]
+                  [state.schema.text("=")],
                 );
 
                 // Replace and set selection inside the expression cell

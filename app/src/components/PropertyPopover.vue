@@ -3,7 +3,7 @@ import { ref, watchEffect, computed, onMounted } from "vue";
 import "@sv/elements/blur";
 import SelectMenu, { type SelectMenuItem } from "./SelectMenu.vue";
 import ButtonPrimary from "./ButtonPrimary.vue";
-import { plusIcon } from "~/src/assets/icons";
+import { plusIcon } from "~/src/assets/icons.ts";
 
 export type PropertyType = "text" | "select" | "date" | "user";
 
@@ -54,13 +54,15 @@ const selectedPropertyName = ref("");
 
 const spacePropertyItems = computed<SelectMenuItem[]>(() => {
   return [
-    ...props.spaceProperties.filter(p => {
-      return !['title'].includes(p.name)
-    }).map(sp => ({
-      id: sp.name,
-      label: sp.name,
-      icon: "",
-    })),
+    ...props.spaceProperties
+      .filter((p) => {
+        return !["title"].includes(p.name);
+      })
+      .map((sp) => ({
+        id: sp.name,
+        label: sp.name,
+        icon: "",
+      })),
     { id: "__new__", label: "New Property", icon: plusIcon },
   ];
 });
@@ -72,7 +74,7 @@ const handleSpacePropertySelect = (item: SelectMenuItem) => {
     selectedType.value = "";
   } else {
     selectedPropertyName.value = item.id;
-    const spaceProperty = props.spaceProperties.find(sp => sp.name === item.id);
+    const spaceProperty = props.spaceProperties.find((sp) => sp.name === item.id);
     if (spaceProperty) {
       emit("create", {
         name: spaceProperty.name,
@@ -128,12 +130,12 @@ const handleExit = () => {
 };
 
 onMounted(() => {
-  window.addEventListener("pointerdown", e => {
+  window.addEventListener("pointerdown", (e) => {
     if (!e.target?.closest("a-blur") && props.isOpen === true) {
       handleExit();
     }
-  })
-})
+  });
+});
 </script>
 
 <template>

@@ -7,9 +7,10 @@ import CommandPalatte from "../components/CommandPalatte.vue";
 import { generatePaletteCss } from "../utils/utils.ts";
 import Translations from "../components/Translations.vue";
 import ImportFiles from "../components/ImportFiles.vue";
+import CalDAVSetupDialog from "../components/CalDAVSetupDialog.vue";
 import LinkPreview from "../components/LinkPreview.vue";
 import DocumentOverlay from "../components/DocumentOverlay.vue";
-import SeoMeta from "../layouts/SeoMeta.astro";
+import DockedWindowLayout from "../components/DockedWindowLayout.vue";
 import { ClientRouter } from "astro:transitions";
 
 export interface Props {
@@ -51,7 +52,7 @@ const publicEnvVars = () => {
     WIKI_API_URL: process.env.WIKI_API_URL,
     WIKI_COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
     WIKI_DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
-  }
+  };
 };
 ---
 
@@ -62,8 +63,13 @@ const publicEnvVars = () => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <title>{title}</title>
-
-    <SeoMeta meta={meta} />
+    
+    { meta?.description ? (<meta name="description" content={meta.description} />) : null }
+    
+    { meta?.image ? (<meta property="og:image" content={meta.image} />) : null }
+    { meta?.title ? (<meta property="og:title" content={meta.title} />) : null }
+    { meta?.description ? (<meta property="og:description" content={meta.description} />) : null }
+    { meta?.url ? (<meta property="og:url" content={meta.url} />) : null }
 
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="manifest" href="/manifest.json" />
@@ -168,15 +174,18 @@ const publicEnvVars = () => {
       <Sidebar client:load transition:name="navigation" />
 
       <!-- Main Content Area with left margin for fixed sidebar -->
-      <div transition:name="content" transition:animate="none" class="main-content min-h-screen h-full transition-all lg:transition-none lg:pl-(--sidebar-width) flex">
-        <!-- Content -->
-        <slot />
+      <div transition:name="content" transition:animate="none" class="main-content min-h-screen h-full transition-all lg:transition-none lg:ml-(--sidebar-width) relative">
+        <DockedWindowLayout client:load>
+          <slot />
+        </DockedWindowLayout>
       </div>
     </div>
 
     <CommandPalatte client:only />
 
     <ImportFiles client:only />
+
+    <CalDAVSetupDialog client:only />
 
     <!-- <LinkPreview client:only /> -->
 

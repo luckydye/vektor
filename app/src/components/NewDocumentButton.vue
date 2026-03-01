@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from "vue";
-import { Icon } from "~/src/components";
+import { Icon } from "~/src/components/index.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { features } from "../config/features.ts";
 import { Actions } from "../utils/actions.ts";

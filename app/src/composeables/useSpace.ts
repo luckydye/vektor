@@ -1,6 +1,6 @@
 import { computed, ref, watchEffect, type ComputedRef, type Ref } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { api, type Space } from "../api/client.js";
+import { api, type Space } from "../api/client.ts";
 import { useRoute } from "./useRoute.ts";
 
 const currentSpace = ref<Space | null>(null);
@@ -50,7 +50,7 @@ export function useSpace() {
       preferences?: Record<string, string>;
     }) => {
       const { spaceId, ...rest } = params;
-      return await api.space.put(spaceId, rest);
+      return await api.space.patch(spaceId, rest);
     },
     onSuccess: (updatedSpace, variables) => {
       queryClient.setQueryData(["wiki_spaces"], (old: Space[] | undefined) => {

@@ -22,6 +22,7 @@ interface Props {
   modelValue?: string | null;
   canAccessSettings?: boolean;
   canCreateDocs?: boolean;
+  loading?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -29,6 +30,7 @@ const props = withDefaults(defineProps<Props>(), {
   modelValue: null,
   canAccessSettings: false,
   canCreateDocs: false,
+  loading: false,
 });
 
 const emit = defineEmits<{
@@ -72,24 +74,31 @@ const handleCreateDoc = (event: Event) => {
 </script>
 
 <template>
-  <a-popover-trigger class="block group relative z-10">
+  <div v-if="loading" class="flex items-center gap-3xs px-4xs py-4xs">
+    <div class="flex-none w-9 h-9 bg-neutral-200 rounded-md animate-pulse" />
+    <div class="flex-1 flex flex-col gap-1">
+      <div class="h-4 bg-neutral-200 rounded animate-pulse w-28" />
+      <div class="h-3 bg-neutral-100 rounded animate-pulse w-16" />
+    </div>
+  </div>
+  <a-popover-trigger v-else class="block group relative z-10 overflow-hidden">
     <button slot="trigger" class="w-full">
-      <div class="flex items-center gap-3xs px-3xs py-4xs rounded-md transition-colors hover:bg-primary-50 group-[[enabled]]:bg-primary-50">
+      <div class="flex items-center gap-3xs px-4xs py-4xs rounded-md transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50">
         <div class="flex w-full gap-3xs cursor-pointer">
           <!-- Space Icon -->
-          <div class="flex-none w-10 rounded-md flex items-center justify-center p-1.5 bg-primary-500" :style="{ background: currentSpace?.color }">
+          <div class="flex-none w-9 rounded-md flex items-center justify-center bg-primary-500 overflow-hidden" :style="{ background: currentSpace?.color }">
             <div v-if="currentSpace?.logoSvg && currentSpace.logoSvg.startsWith('<')" v-html="currentSpace.logoSvg" class="text-white" />
             <img v-else-if="currentSpace?.logoSvg" :src="currentSpace.logoSvg" class="w-full h-full object-contain" />
             <div v-else v-html="homeIcon" class="text-white" />
           </div>
 
           <!-- Space Info -->
-          <div class="relative h-10 flex-1 text-left">
-            <div class="absolute -top-1 left-0 w-full h-full">
-              <div class="whitespace-nowrap text-base leading-[1.5em] font-normal text-foreground overflow-hidden text-ellipsis">
+          <div class="relative h-9 flex-1 text-left">
+            <div class="left-0 w-full h-full">
+              <div class="whitespace-nowrap text-base leading-[1.35em] font-normal text-foreground overflow-hidden text-ellipsis">
                 {{ currentSpace?.name || spaceName || 'Select Space' }}
               </div>
-              <div class="whitespace-nowrap text-label leading-[1.5em] text-neutral-600 overflow-hidden text-ellipsis">
+              <div class="whitespace-nowrap text-label leading-[1.35em] text-neutral-600 overflow-hidden text-ellipsis">
                 {{ currentSpace?.members || 0 }} Members
               </div>
             </div>
@@ -106,9 +115,9 @@ const handleCreateDoc = (event: Event) => {
       </div>
     </button>
 
-    <a-popover class="group" placements="bottom-start">
+    <a-popover class="group" placements="bottom">
       <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
-        <div class="bg-background border border-neutral-100 rounded-lg origin-top scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100 min-w-[280px] max-h-[500px] overflow-y-auto">
+        <div class="bg-neutral-50 border border-neutral-100 rounded-lg origin-top scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100 min-w-[240px] max-h-[500px] overflow-y-auto">
           <div class="p-[4px] flex flex-col gap-[4px]">
             <!-- Space List -->
             <button
@@ -116,15 +125,15 @@ const handleCreateDoc = (event: Event) => {
               :key="space.id"
               type="button"
               @click="handleSpaceSelect(space)"
-              class="flex items-center gap-2.5 px-3xs py-5xs w-full rounded-md transition-colors hover:bg-primary-10 text-left"
+              class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors hover:bg-neutral-100 text-left"
               :class="{
-                'bg-primary-50': space.id === modelValue,
+                'bg-primary-100': space.id === modelValue,
               }"
             >
-              <div class="w-6 h-6 rounded flex items-center justify-center p-1" :style="{ background: space.color || '#6366f1' }">
-                <div v-if="space.logoSvg && space.logoSvg.startsWith('<')" v-html="space.logoSvg" class="w-4 h-4 text-white" />
-                <img v-else-if="space.logoSvg" :src="space.logoSvg" class="w-4 h-4 object-contain" />
-                <div v-else v-html="homeIcon" class="w-4 h-4 text-white" />
+              <div class="w-6 h-6 rounded overflow-hidden flex items-center justify-center" :style="{ background: space.color || '#6366f1' }">
+                <div v-if="space.logoSvg && space.logoSvg.startsWith('<')" v-html="space.logoSvg" class="block text-white" />
+                <img v-else-if="space.logoSvg" :src="space.logoSvg" class="block object-contain" />
+                <div v-else v-html="homeIcon" class="text-white [&>svg]:w-4 [&>svg]:h-4 [&>svg]:object-contain" />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="text-interactive font-medium text-foreground truncate">
@@ -138,7 +147,7 @@ const handleCreateDoc = (event: Event) => {
               <button
                 type="button"
                 @click="handleCreateClick"
-                class="flex items-center gap-2.5 px-3xs py-3xs w-full rounded-md transition-colors hover:bg-primary-10 text-primary-500"
+                class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors hover:bg-neutral-100 text-neutral-500"
               >
                 <Icon name="plus" />
                 <span class="text-interactive leading-none font-medium">

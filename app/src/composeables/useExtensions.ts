@@ -1,6 +1,11 @@
 import { ref, computed, toValue } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { api, type ExtensionInfo, type ExtensionRoute, type ExtensionRouteMenuItem } from "../api/client.ts";
+import {
+  api,
+  type ExtensionInfo,
+  type ExtensionRoute,
+  type ExtensionRouteMenuItem,
+} from "../api/client.ts";
 import { useSpace } from "./useSpace.ts";
 import { extensions } from "../utils/extensions.ts";
 

@@ -33,7 +33,7 @@ async function renderView() {
   const success = await extensions.renderView(
     props.extensionId,
     props.routePath,
-    containerRef.value?.root
+    containerRef.value?.root,
   );
 
   if (!success) {
@@ -52,7 +52,7 @@ watch(
   () => [props.extensionId, props.routePath, props.spaceId, containerRef.value?.root],
   () => {
     renderView();
-  }
+  },
 );
 
 onUnmounted(() => {
@@ -68,7 +68,7 @@ onUnmounted(() => {
 
     <div
       v-else-if="error"
-      class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700"
+      class="m-12 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700"
     >
       <p class="font-medium">Extension Error</p>
       <p class="text-sm mt-1">{{ error }}</p>
@@ -77,3 +77,13 @@ onUnmounted(() => {
     <extension-view ref="containerRef" :class="twMerge(loading && 'hidden')"></extension-view>
   </div>
 </template>
+
+<style>
+extension-view {
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 1rem;
+}
+</style>

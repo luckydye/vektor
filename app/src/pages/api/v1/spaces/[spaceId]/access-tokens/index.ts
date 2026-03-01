@@ -3,24 +3,26 @@ import {
   badRequestResponse,
   createdResponse,
   jsonResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   verifySpaceRole,
-} from "../../../../../../db/api.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
 import {
   createAccessToken,
   grantTokenAccess,
   listAccessTokens,
   listTokenResources,
-} from "../../../../../../db/accessTokens.ts";
-import { ResourceType } from "../../../../../../db/acl.ts";
+} from "#db/accessTokens.ts";
+import { ResourceType } from "#db/acl.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens
  * List all access tokens and their permissions in this space
  */
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
@@ -41,12 +43,7 @@ export const GET: APIRoute = async (context) => {
     );
 
     return jsonResponse({ tokens: tokensWithResources });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to list access tokens");
 
 /**
  * POST /api/v1/spaces/:spaceId/access-tokens
@@ -58,14 +55,14 @@ export const GET: APIRoute = async (context) => {
  *   - permission: "viewer" | "editor" | "owner"
  *   - expiresInDays: Optional expiration in days
  */
-export const POST: APIRoute = async (context) => {
-  try {
+export const POST: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
     await verifySpaceRole(spaceId, user.id, "editor");
 
-    const body = await context.request.json();
+    const body = await parseJsonBody(context.request);
     const { name, resourceType, resourceId, permission, expiresInDays } = body;
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -86,7 +83,7 @@ export const POST: APIRoute = async (context) => {
       throw badRequestResponse("Permission is required");
     }
 
-    const validPermissions = ["viewer", "editor"];
+    const validPermissions = ["viewer", "editor", "extensions"];
     if (!validPermissions.includes(permission)) {
       throw badRequestResponse(
         `Permission must be one of: ${validPermissions.join(", ")}`,
@@ -128,9 +125,4 @@ export const POST: APIRoute = async (context) => {
       message:
         "Token created successfully. Make sure to save it - you won't be able to see it again!",
     });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to create access token");

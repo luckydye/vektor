@@ -32,7 +32,7 @@ body[data-editing] main {
 }
 
 [data-editing="true"] .breadcrumbs {
-    opacity: 0;
+  opacity: 0;
 }
 
 document-view {
@@ -43,6 +43,6 @@ document-view {
   z-index: 0;
 }
 
-drawer-track::part(track){
-    height: 100%;
+drawer-track::part(track) {
+  height: 100%;
 }

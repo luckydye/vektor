@@ -1,6 +1,6 @@
 @media print {
   /* hide everything that is not a descendent of .main-content */
-  :not(.main-content,body,html,body>div):not(.main-content *) {
+  :not(.main-content, body, html, body > div):not(.main-content *) {
     display: none !important;
   }
   /*and this*/

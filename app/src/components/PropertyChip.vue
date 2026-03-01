@@ -6,7 +6,7 @@ import SelectMenu from "./SelectMenu.vue";
 import Tooltip from "./Tooltip.vue";
 import "@sv/elements/blur";
 import "@sv/elements/calendar";
-import { plusIcon } from "~/src/assets/icons";
+import { plusIcon } from "~/src/assets/icons.ts";
 import Icon from "./Icon.vue";
 import { twMerge } from "tailwind-merge";
 
@@ -40,14 +40,14 @@ const handleClick = async () => {
     selectedValue.value = props.property.value;
 
     // For date properties, set the date value
-    if (props.property.type === 'date' && props.property.value) {
+    if (props.property.type === "date" && props.property.value) {
       dateValue.value = props.property.value;
     }
 
     await new Promise((resolve) => setTimeout(resolve, 25));
 
     // Only fetch options for non-date properties
-    if (props.property.type !== 'date') {
+    if (props.property.type !== "date") {
       inputElement.value?.focus();
 
       props.propertyValues?.(props.property).then((options) => {
@@ -59,12 +59,14 @@ const handleClick = async () => {
 
 const filteredValueOptions = computed(() => {
   const searchTerm = searchInput.value.toLowerCase();
-  const items = valueOptions.value.filter(item => item.label?.toLowerCase().includes(searchTerm));
-  if(items.length === 0) {
+  const items = valueOptions.value.filter((item) =>
+    item.label?.toLowerCase().includes(searchTerm),
+  );
+  if (items.length === 0) {
     return [{ id: "__new__", label: `Add ${searchInput.value}`, icon: plusIcon }];
   }
   return items;
-})
+});
 
 const handleValueSelect = (item: SelectMenuItem) => {
   if (props.property) {
@@ -73,7 +75,7 @@ const handleValueSelect = (item: SelectMenuItem) => {
       ...props.property,
       name: propertyName.value,
       value: item.id,
-      search: searchInput.value
+      search: searchInput.value,
     });
     handleExit();
   }
@@ -86,7 +88,7 @@ const handleDateChange = (event: Event) => {
       ...props.property,
       name: propertyName.value,
       value: target.value,
-      search: ""
+      search: "",
     });
     handleExit();
   }
@@ -106,12 +108,12 @@ const handleExit = () => {
 };
 
 onMounted(() => {
-  window.addEventListener("pointerdown", e => {
+  window.addEventListener("pointerdown", (e) => {
     if (!e.target?.closest("a-blur") && isEditPopoverOpen.value === true) {
       handleExit();
     }
-  })
-})
+  });
+});
 </script>
 
 <template>
@@ -123,6 +125,7 @@ onMounted(() => {
           'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
           'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
           'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
+          'py-1': true,
           'cursor-pointer': property !== null,
           'cursor-default': property === null,
         }"
@@ -149,6 +152,7 @@ onMounted(() => {
         'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
         'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
         'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
+        'py-1': true,
         'cursor-pointer': property !== null,
         'cursor-default': property === null,
       }"

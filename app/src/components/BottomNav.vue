@@ -1,5 +1,5 @@
 <template>
-  <nav class="lg:hidden fixed bottom-xs left-1/2 -translate-x-1/2 rounded-4xl px-m border border-neutral-200 z-10 bg-neutral-100">
+  <nav class="lg:hidden fixed bottom-xs left-1/2 -translate-x-1/2 rounded-4xl px-m border border-neutral-100 z-10 bg-neutral-100">
     <div class="flex items-center justify-around gap-m">
       <a
         :href="`/${spaceSlug}`"
@@ -60,7 +60,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { Actions } from "../utils/actions.js";
+import { Actions } from "../utils/actions.ts";
 
 const props = withDefaults(
   defineProps<{

@@ -16,7 +16,7 @@ export class DrawerTrack extends Track {
         }
 
         try {
-          const scale = 1 - ((track.position.y / window.innerHeight) * 0.075);
+          const scale = 1 - (track.position.y / window.innerHeight) * 0.075;
           const root = document.querySelector<HTMLDivElement>("#root");
           if (root) {
             if (scale > 0.999) {

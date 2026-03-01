@@ -1,12 +1,25 @@
 <script setup>
 import { defineAsyncComponent, onMounted, onUnmounted, ref, computed, watch } from "vue";
 import ToolbarFormatting from "./ToolbarFormatting.vue";
+import ToolbarTable from "./ToolbarTable.vue";
 import DiffView from "./DiffView.vue";
-import { useSpace } from "../composeables/useSpace.js";
+import CommentManager from "./CommentManager.vue";
+import { useSpace } from "../composeables/useSpace.ts";
+import { useSync } from "../composeables/useSync.ts";
+import { useDocument } from "../composeables/useDocument.ts";
+import { useRevisions } from "../composeables/useRevisions.ts";
+import { useUserProfile } from "../composeables/useUserProfile.ts";
+import { useQuery } from "@tanstack/vue-query";
+import { api } from "../api/client.ts";
+import docStyles from "../styles/document.css?inline";
 
 const props = defineProps({
   documentId: {
     type: String,
+  },
+  initialHtml: {
+    type: String,
+    default: "",
   },
   spaceId: {
     type: String,
@@ -35,8 +48,26 @@ const sidebarOpen = ref(false);
 const showingDiff = ref(false);
 const diffPatch = ref("");
 const { currentSpaceId } = useSpace();
+const pendingReload = ref(false);
+const renderedHtml = ref(props.initialHtml || "");
+const readViewEl = ref(null);
+const editorViewEl = ref(null);
+const getEditor = () => globalThis.__editor;
+const handleVisibilityChange = () => {
+  if (pendingReload.value && document.visibilityState === "visible") {
+    pendingReload.value = false;
+    reloadIfReady();
+  }
+};
 
-const Editor = defineAsyncComponent(() => import("./Editor.vue"));
+const user = useUserProfile();
+const { saveStatus, saveError, saveDocument, cancelDebounce } = useDocument(
+  props.documentId,
+  props.documentType,
+);
+const { saveRevision } = useRevisions(props.documentId);
+
+const AppView = defineAsyncComponent(() => import("./AppView.vue"));
 
 function handleEditModeStart() {
   if (!viewingRevision.value) {
@@ -48,19 +79,52 @@ watch(isEditingReady, (ready) => {
   document.body.dataset.editing = !!isEditingReady.value;
 });
 
-function handleEditorReady(saveFunction) {
-  window.dispatchEvent(new CustomEvent("editor-ready", { detail: { saveFunction } }));
-  isEditingReady.value = true;
-}
-
-function handleSaveStatus({ status, error }) {
-  window.dispatchEvent(
-    new CustomEvent("save-status-changed", { detail: { status, error } }),
-  );
-  if (props.documentType !== 'canvas') {
-    isEditing.value = false;
+async function manualSave() {
+  const editor = getEditor();
+  if (editor) {
+    const content = editor.getHTML();
+    await saveRevisionSnapshot();
+    await saveDocument(content);
   }
 }
+
+async function saveRevisionSnapshot() {
+  const editor = getEditor();
+  if (editor) {
+    const html = editor.getHTML();
+    await saveRevision(html, "Manual save");
+  }
+}
+
+watch([saveStatus, saveError], () => {
+  window.dispatchEvent(
+    new CustomEvent("save-status-changed", {
+      detail: { status: saveStatus.value, error: saveError.value },
+    }),
+  );
+  if (saveStatus.value === "saved" && props.documentType !== "canvas") {
+    isEditing.value = false;
+  }
+});
+
+function initEditor() {
+  if (!editorViewEl.value) return;
+
+  window.dispatchEvent(
+    new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }),
+  );
+  isEditingReady.value = true;
+  window.dispatchEvent(new CustomEvent("document:edit"));
+
+  editorViewEl.value.init(props.spaceId, props.documentId, user.value);
+}
+
+watch(isEditing, (editing) => {
+  if (editing && !viewingRevision.value) {
+    // Wait for the v-if to render the document-view element
+    requestAnimationFrame(initEditor);
+  }
+});
 
 function handleRevisionView(event) {
   viewingRevision.value = true;
@@ -73,14 +137,18 @@ function handleRevisionView(event) {
 
 function handleRevisionClose() {
   viewingRevision.value = false;
-  document.body.removeAttribute('data-revision');
+  document.body.removeAttribute("data-revision");
   revisionNumber.value = null;
   revisionContent.value = "";
 
   const params = new URLSearchParams(location.search);
   params.delete("revision");
 
-  history.replaceState(null, "", `${location.origin}${location.pathname}${params.toString()}`)
+  history.replaceState(
+    null,
+    "",
+    `${location.origin}${location.pathname}${params.toString()}`,
+  );
 }
 
 function closeRevisionView() {
@@ -97,7 +165,7 @@ async function handleRevisionDiff(event) {
 
   try {
     const response = await fetch(
-      `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}/diff?rev=${event.detail.revision}`
+      `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}/diff?rev=${event.detail.revision}`,
     );
     if (!response.ok) throw new Error("Failed to fetch diff");
 
@@ -114,7 +182,7 @@ async function handleRevisionDiff(event) {
 }
 
 onMounted(() => {
-  if (props.documentType !== 'canvas') {
+  if (props.documentType !== "canvas" && props.documentType !== "app") {
     window.addEventListener("edit-mode-start", handleEditModeStart);
   }
 
@@ -122,6 +190,16 @@ onMounted(() => {
   window.addEventListener("revision:close", handleRevisionClose);
   window.addEventListener("revisions:toggled", handleSidebarToggle);
   window.addEventListener("revision:diff", handleRevisionDiff);
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+  }
+
+  renderReadView();
+
+  if (props.initialEditMode) {
+    requestAnimationFrame(initEditor);
+  }
 });
 
 onUnmounted(() => {
@@ -130,6 +208,82 @@ onUnmounted(() => {
   window.removeEventListener("revision:close", handleRevisionClose);
   window.removeEventListener("revisions:toggled", handleSidebarToggle);
   window.removeEventListener("revision:diff", handleRevisionDiff);
+  if (typeof window !== "undefined") {
+    window.removeEventListener("visibilitychange", handleVisibilityChange);
+  }
+  cancelDebounce();
+});
+
+function reloadIfReady() {
+  if (isEditing.value || viewingRevision.value) return;
+  if (!props.documentId) return;
+  refreshDocument();
+}
+
+const { data: documentData, refetch: refreshDocument } = useQuery({
+  queryKey: computed(() => ["wiki_document", currentSpaceId.value, props.documentId]),
+  queryFn: async () => {
+    if (!currentSpaceId.value) {
+      throw new Error("No space ID");
+    }
+    if (!props.documentId) {
+      return null;
+    }
+    return await api.document.get(currentSpaceId.value, props.documentId);
+  },
+  enabled: computed(() => !!currentSpaceId.value && !!props.documentId),
+});
+
+watch(documentData, (doc) => {
+  if (doc && typeof doc.content === "string") {
+    renderedHtml.value = doc.content;
+  }
+});
+
+function renderReadView() {
+  if (!readViewEl.value) return;
+  if (isEditing.value || viewingRevision.value) return;
+  if (props.documentType === "canvas" || props.documentType === "app") return;
+
+  const container = readViewEl.value;
+  const root = container.shadowRoot;
+
+  if (!root) {
+    requestAnimationFrame(renderReadView);
+    return;
+  }
+
+  root.innerHTML = "";
+
+  const style = document.createElement("style");
+  style.textContent = docStyles;
+
+  const content = document.createElement("div");
+  content.setAttribute("part", "content");
+
+  const inner = document.createElement("div");
+  inner.innerHTML = renderedHtml.value;
+
+  content.appendChild(inner);
+  root.appendChild(style);
+  root.appendChild(content);
+}
+
+watch([renderedHtml, isEditing, viewingRevision], () => {
+  renderReadView();
+});
+
+useSync(currentSpaceId, (scopes) => {
+  if (!props.documentId) return;
+  const matchesDocument =
+    scopes.includes("document") || scopes.includes(`document:${props.documentId}`);
+  if (!matchesDocument) return;
+
+  if (document.visibilityState === "visible") {
+    reloadIfReady();
+  } else {
+    pendingReload.value = true;
+  }
 });
 </script>
 
@@ -137,6 +291,7 @@ onUnmounted(() => {
   <div>
     <!-- Floating Text Formatting Menu -->
     <ToolbarFormatting />
+    <ToolbarTable />
 
     <!-- Revision Disclaimer Banner -->
     <div
@@ -175,24 +330,39 @@ onUnmounted(() => {
     </div>
 
     <!-- Revision View -->
-    <div v-if="viewingRevision && !showingDiff">
+    <div v-if="viewingRevision && !showingDiff && props.documentType !== 'app'">
       <document-view>
         <template v-html="revisionContent"></template>
       </document-view>
     </div>
-  </div>
 
-  <!-- Format Sidebar -->
-  <!-- <FormatSidebar v-if="isEditing && isEditingReady && !viewingRevision" /> -->
+    <!-- Read View -->
+    <div v-if="!isEditing && !viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app'">
+      <document-view ref="readViewEl"></document-view>
+    </div>
+
+    <!-- App View -->
+    <div v-if="props.documentType === 'app' && !viewingRevision" class="h-full">
+      <AppView :html="renderedHtml" />
+    </div>
+
+    <!-- App Revision View -->
+    <div v-if="props.documentType === 'app' && viewingRevision && !showingDiff" class="h-full">
+      <AppView :html="revisionContent" />
+    </div>
+  </div>
 
   <!-- Editor -->
-  <div v-if="isEditing && !viewingRevision" :class="[!isEditingReady && 'opacity-0']">
-    <Editor
-      :documentId="documentId"
-      :spaceId="spaceId"
-      :documentType="documentType"
-      @editor-ready="handleEditorReady"
-      @save-status="handleSaveStatus"
-    />
+  <div v-if="isEditing && !viewingRevision" :class="['h-full', !isEditingReady && 'opacity-0']">
+    <document-view ref="editorViewEl"></document-view>
   </div>
+  
+  <document-statusbar class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
+
+  <CommentManager
+    v-if="props.documentId && props.documentType !== 'canvas' && props.documentType !== 'app'"
+    :spaceId="props.spaceId"
+    :documentId="props.documentId"
+    :currentRev="documentData?.currentRev"
+  />
 </template>

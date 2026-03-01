@@ -1,9 +1,20 @@
 import type { APIRoute } from "astro";
-import { authenticateRequest, requireParam, requireUser, verifyDocumentAccess, verifyDocumentRole, verifyTokenPermission } from "../../../db/api";
-import { getSpaceBySlug } from "../../../db/spaces";
-import { getDocumentBySlug, getDocumentChildren, type DocumentWithProperties } from "../../../db/documents";
+import {
+  authenticateRequest,
+  requireParam,
+  requireUser,
+  verifyDocumentAccess,
+  verifyDocumentRole,
+  verifyTokenPermission,
+} from "../../../db/api.ts";
+import { getSpaceBySlug } from "../../../db/spaces.ts";
+import {
+  getDocumentBySlug,
+  getDocumentChildren,
+  type DocumentWithProperties,
+} from "../../../db/documents.ts";
 import * as html5parser from "html5parser";
-import { ResourceType } from "~/src/db/acl";
+import { ResourceType } from "~/src/db/acl.ts";
 
 type TagNode = html5parser.ITag;
 type TextNode = html5parser.IText;
@@ -27,19 +38,33 @@ function getTextContent(nodes: AnyNode[]): string {
 }
 
 // Elements that should be kept as raw HTML in the markdown output
-const HTML_PASSTHROUGH_TAGS = new Set([
-  "table", "figma-embed", "file-attachment",
-]);
+const HTML_PASSTHROUGH_TAGS = new Set(["table", "figma-embed", "file-attachment"]);
 
 function attrsToString(attrs: html5parser.IAttribute[]): string {
-  return attrs.map((a) => {
-    if (a.value === undefined) return a.name.value;
-    const quote = a.value.quote || '"';
-    return `${a.name.value}=${quote}${a.value.value}${quote}`;
-  }).join(" ");
+  return attrs
+    .map((a) => {
+      if (a.value === undefined) return a.name.value;
+      const quote = a.value.quote || '"';
+      return `${a.name.value}=${quote}${a.value.value}${quote}`;
+    })
+    .join(" ");
 }
 
-const VOID_TAGS = new Set(["img", "br", "hr", "input", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr"]);
+const VOID_TAGS = new Set([
+  "img",
+  "br",
+  "hr",
+  "input",
+  "meta",
+  "link",
+  "area",
+  "base",
+  "col",
+  "embed",
+  "source",
+  "track",
+  "wbr",
+]);
 
 function reconstructHtml(tag: TagNode): string {
   const attrs = tag.attributes?.length ? " " + attrsToString(tag.attributes) : "";
@@ -50,12 +75,14 @@ function reconstructHtml(tag: TagNode): string {
   }
 
   const children = tag.body || [];
-  const inner = children.map((child) => {
-    if (child.type === html5parser.SyntaxKind.Text) {
-      return (child as TextNode).value;
-    }
-    return reconstructHtml(child as TagNode);
-  }).join("");
+  const inner = children
+    .map((child) => {
+      if (child.type === html5parser.SyntaxKind.Text) {
+        return (child as TextNode).value;
+      }
+      return reconstructHtml(child as TagNode);
+    })
+    .join("");
   return `<${tag.name}${attrs}>${inner}</${tag.name}>`;
 }
 
@@ -86,17 +113,25 @@ function nodeToMarkdown(node: AnyNode): string {
 
   switch (name) {
     // Block elements
-    case "h1": return `\n\n# ${childContent().trim()}\n\n`;
-    case "h2": return `\n\n## ${childContent().trim()}\n\n`;
-    case "h3": return `\n\n### ${childContent().trim()}\n\n`;
-    case "p": return `\n\n${childContent().trim()}\n\n`;
-    case "blockquote": return `\n\n> ${childContent().trim().replace(/\n/g, "\n> ")}\n\n`;
-    case "hr": return "\n\n---\n\n";
-    case "br": return "\n";
+    case "h1":
+      return `\n\n# ${childContent().trim()}\n\n`;
+    case "h2":
+      return `\n\n## ${childContent().trim()}\n\n`;
+    case "h3":
+      return `\n\n### ${childContent().trim()}\n\n`;
+    case "p":
+      return `\n\n${childContent().trim()}\n\n`;
+    case "blockquote":
+      return `\n\n> ${childContent().trim().replace(/\n/g, "\n> ")}\n\n`;
+    case "hr":
+      return "\n\n---\n\n";
+    case "br":
+      return "\n";
 
     // Lists
     case "ul":
-    case "ol": return "\n\n" + childContent() + "\n";
+    case "ol":
+      return "\n\n" + childContent() + "\n";
     case "li": {
       const isTask = getAttr(tag, "data-type") === "taskItem";
       const checked = getAttr(tag, "data-checked") === "true";
@@ -106,15 +141,22 @@ function nodeToMarkdown(node: AnyNode): string {
 
     // Inline formatting
     case "strong":
-    case "b": return `**${childContent()}**`;
+    case "b":
+      return `**${childContent()}**`;
     case "em":
-    case "i": return `*${childContent()}*`;
+    case "i":
+      return `*${childContent()}*`;
     case "s":
-    case "strike": return `~~${childContent()}~~`;
-    case "u": return `<u>${childContent()}</u>`;
-    case "code": return `\`${childContent()}\``;
-    case "sub": return `<sub>${childContent()}</sub>`;
-    case "sup": return `<sup>${childContent()}</sup>`;
+    case "strike":
+      return `~~${childContent()}~~`;
+    case "u":
+      return `<u>${childContent()}</u>`;
+    case "code":
+      return `\`${childContent()}\``;
+    case "sub":
+      return `<sub>${childContent()}</sub>`;
+    case "sup":
+      return `<sup>${childContent()}</sup>`;
 
     // Links and images
     case "a": {
@@ -130,10 +172,13 @@ function nodeToMarkdown(node: AnyNode): string {
     // Code blocks
     case "pre": {
       const codeNode = children.find(
-        (c) => c.type === html5parser.SyntaxKind.Tag && (c as TagNode).name === "code"
+        (c) => c.type === html5parser.SyntaxKind.Tag && (c as TagNode).name === "code",
       ) as TagNode | undefined;
       const text = codeNode ? getTextContent(codeNode.body || []) : childContent();
-      const lang = codeNode?.attributes?.find((a) => a.name.value === "class")?.value?.value?.match(/language-(\w+)/)?.[1] || "";
+      const lang =
+        codeNode?.attributes
+          ?.find((a) => a.name.value === "class")
+          ?.value?.value?.match(/language-(\w+)/)?.[1] || "";
       return `\n\n\`\`\`${lang}\n${text}\n\`\`\`\n\n`;
     }
 
@@ -157,7 +202,9 @@ function nodeToMarkdown(node: AnyNode): string {
       const dateStr = getAttr(tag, "data-date") || "";
       try {
         return new Date(dateStr).toLocaleDateString("en-AU", {
-          year: "numeric", month: "long", day: "numeric",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
         });
       } catch {
         return dateStr;
@@ -168,17 +215,25 @@ function nodeToMarkdown(node: AnyNode): string {
     }
 
     // Default: just render children
-    default: return childContent();
+    default:
+      return childContent();
   }
 }
 
 function htmlToMarkdown(html: string): string {
   if (!html) return "";
   const ast = html5parser.parse(html);
-  return ast.map(nodeToMarkdown).join("").trim().replace(/\n{3,}/g, "\n\n");
+  return ast
+    .map(nodeToMarkdown)
+    .join("")
+    .trim()
+    .replace(/\n{3,}/g, "\n\n");
 }
 
-async function documentToMarkdown(spaceId: string, document: DocumentWithProperties): Promise<string> {
+async function documentToMarkdown(
+  spaceId: string,
+  document: DocumentWithProperties,
+): Promise<string> {
   const children = await getDocumentChildren(spaceId, document.id);
   const childrenSlugs = children.map((child) => child.slug).join(", ");
   const markdownContent = htmlToMarkdown(document.content || "");
@@ -228,7 +283,13 @@ export const GET: APIRoute = async (context) => {
 
     // Handle token-based authentication
     if (auth.type === "token") {
-      await verifyTokenPermission(auth.token, space.id, ResourceType.DOCUMENT, document.id, "viewer");
+      await verifyTokenPermission(
+        auth.token,
+        space.id,
+        ResourceType.DOCUMENT,
+        document.id,
+        "viewer",
+      );
     } else {
       // Handle user-based authentication
       await verifyDocumentRole(space.id, document.id, auth.user.id, "viewer");

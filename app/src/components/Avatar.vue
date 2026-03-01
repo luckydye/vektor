@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, toRef } from "vue";
-import { useUser } from "../composeables/useUsers.js";
+import { useUser } from "../composeables/useUsers.ts";
 
 interface Props {
   user?: {
@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<Props>(), {
   size: "medium",
 });
 
-const { user: fetchedUser } = useUser(toRef(() => props.user ? undefined : props.id));
+const { user: fetchedUser } = useUser(toRef(() => (props.user ? undefined : props.id)));
 
 const resolvedUser = computed(() => {
   if (props.user) {

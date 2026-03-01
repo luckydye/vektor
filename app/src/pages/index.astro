@@ -1,6 +1,6 @@
 ---
 import FirstSpacePrompt from "../components/FirstSpacePrompt.vue";
-import { config } from "../config";
+import { config } from "../config.ts";
 import { listUserSpaces, getSpaceBySlug } from "../db/spaces.ts";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
@@ -10,9 +10,11 @@ if (!Astro.locals.session) {
 
 const appConfig = config();
 
-const defaultSpace = appConfig.DEFAULT_SPACE ? await getSpaceBySlug(appConfig.DEFAULT_SPACE) : null;
+const defaultSpace = appConfig.DEFAULT_SPACE
+  ? await getSpaceBySlug(appConfig.DEFAULT_SPACE)
+  : null;
 
-if(defaultSpace) {
+if (defaultSpace) {
   return Astro.redirect(`/${defaultSpace.slug}`);
 }
 

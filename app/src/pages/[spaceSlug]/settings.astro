@@ -35,7 +35,7 @@ const isOwner = await hasPermission(
   userGroups,
 );
 
-if(!isOwner) {
+if (!isOwner) {
   Astro.response.status = 403;
 }
 ---

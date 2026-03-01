@@ -1,7 +1,7 @@
 export type ActionOptions = {
   title?: string;
   description?: string;
-  icon?: (() => string);
+  icon?: () => string;
   group?: string;
   run: () => Promise<void>;
 };
@@ -76,7 +76,7 @@ export class Actions {
   }
 
   static get(actionId: string) {
-    return globalActions.get(actionId);
+    return globalActions.get(actionId.toLocaleLowerCase());
   }
 
   static run(id: string) {
@@ -155,7 +155,7 @@ export class Actions {
     const actionId = Actions.getActionForShortcut(event);
     if (actionId) {
       const action = Actions.get(actionId);
-      if(action) {
+      if (action) {
         const res = Actions.run(actionId);
         event.preventDefault();
         event.stopPropagation();

@@ -40,7 +40,7 @@ const commentListRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 const getUserName = (userId: string): string => {
-  const member = members.value.find(m => m.userId === userId);
+  const member = members.value.find((m) => m.userId === userId);
   return member?.user?.name || member?.user?.email || userId;
 };
 
@@ -75,13 +75,16 @@ function handleDeleteComment(commentId: string) {
   }
 }
 
-watch(() => props.comments.length, () => {
-  nextTick(() => {
-    if (commentListRef.value) {
-      commentListRef.value.scrollTop = commentListRef.value.scrollHeight;
-    }
-  });
-});
+watch(
+  () => props.comments.length,
+  () => {
+    nextTick(() => {
+      if (commentListRef.value) {
+        commentListRef.value.scrollTop = commentListRef.value.scrollHeight;
+      }
+    });
+  },
+);
 
 onMounted(() => {
   if (textareaRef.value) {
@@ -91,7 +94,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-background rounded-lg shadow-xl border border-neutral-200 w-80 max-h-[600px]">
+  <div class="flex flex-col h-full bg-background rounded-lg shadow-xl border border-neutral-100 w-80 max-h-[600px]">
     <!-- Header -->
     <div class="flex items-center justify-between p-3 border-b border-neutral-100 bg-neutral-50/80 rounded-t-lg backdrop-blur-sm">
       <div class="flex items-center gap-2">

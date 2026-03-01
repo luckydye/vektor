@@ -1,8 +1,8 @@
 import { type Ref, ref, computed } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { useSpace } from "./useSpace.js";
-import { api } from "../api/client.js";
-import { useSync } from "./useSync.js";
+import { useSpace } from "./useSpace.ts";
+import { api } from "../api/client.ts";
+import { useSync } from "./useSync.ts";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -19,7 +19,12 @@ export function useDocument(
 
   const { currentSpaceId: spaceId } = useSpace();
 
-  const { data, isPending: isLoading, error, refetch: refresh } = useQuery({
+  const {
+    data,
+    isPending: isLoading,
+    error,
+    refetch: refresh,
+  } = useQuery({
     queryKey: computed(() => ["wiki_document", spaceId.value, documentId]),
     queryFn: async () => {
       if (!spaceId.value) {
@@ -60,6 +65,9 @@ export function useDocument(
           type: documentType,
           properties: {
             title,
+            ...(new URLSearchParams(window.location.search).get("category")
+              ? { category: new URLSearchParams(window.location.search).get("category")! }
+              : {}),
           },
         });
         return { content, isNew: true, document: response };
@@ -121,7 +129,7 @@ export function useDocument(
 
   // TODO: syncs are not scopped to documents,
   // one prop updates will send a sync event to all users anywhere in the space
-  useSync(spaceId, keys => {
+  useSync(spaceId, (keys) => {
     if (keys.includes("property")) refresh();
   });
 

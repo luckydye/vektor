@@ -1,15 +1,15 @@
-import Mention from '@tiptap/extension-mention';
+import Mention from "@tiptap/extension-mention";
 
-export interface MentionOptions {}
+export type MentionOptions = {};
 
 export const Mentions = Mention.extend<MentionOptions>({
   parseHTML() {
     return [
       {
-        tag: 'user-mention',
+        tag: "user-mention",
         getAttrs: (element: any) => {
-          const email = element.getAttribute('email');
-          const label = element.textContent?.replace('@', '') || email;
+          const email = element.getAttribute("email");
+          const label = element.textContent?.replace("@", "") || email;
           return {
             id: email,
             label: label,
@@ -21,7 +21,7 @@ export const Mentions = Mention.extend<MentionOptions>({
 
   renderHTML({ node }) {
     return [
-      'user-mention',
+      "user-mention",
       {
         email: node.attrs.id,
       },
@@ -33,7 +33,7 @@ export const Mentions = Mention.extend<MentionOptions>({
     return {
       ...this.parent?.(),
       HTMLAttributes: {
-        class: 'mention',
+        class: "mention",
       },
     };
   },

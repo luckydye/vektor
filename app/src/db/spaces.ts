@@ -3,7 +3,13 @@ import path, { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { slugify } from "../utils/utils.ts";
-import { countSpaceMembers, grantPermission, listUserPermissions, getUserGroups, ResourceType } from "./acl.ts";
+import {
+  countSpaceMembers,
+  grantPermission,
+  listUserPermissions,
+  getUserGroups,
+  ResourceType,
+} from "./acl.ts";
 import { closeSpaceDb, getSpaceDb } from "./db.ts";
 import { preference, spaceMetadata } from "./schema/space.ts";
 import { prepareSpaceDb } from "./init.ts";
@@ -111,7 +117,7 @@ export async function getSpace(id: string): Promise<Space | null> {
     return null;
   }
 
-  const spaceDb = getSpaceDb(id);
+  const spaceDb = await getSpaceDb(id);
 
   const result = await spaceDb
     .select()
@@ -210,10 +216,7 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
       if (spacePermission) {
         userSpaces.push({ ...space, userRole: spacePermission.permission });
       }
-    } catch (error) {
-      // Skip spaces where we can't check permissions
-      continue;
-    }
+    } catch (error) {}
   }
 
   return userSpaces;
@@ -239,7 +242,7 @@ export async function updateSpace(
   }
 
   const now = new Date();
-  const spaceDb = getSpaceDb(id);
+  const spaceDb = await getSpaceDb(id);
 
   await spaceDb
     .update(spaceMetadata)

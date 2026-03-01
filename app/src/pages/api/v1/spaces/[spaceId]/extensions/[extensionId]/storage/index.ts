@@ -4,8 +4,9 @@ import {
   requireParam,
   requireUser,
   verifyExtensionAccess,
-} from "../../../../../../../../db/api.ts";
-import { listStorageEntries } from "../../../../../../../../db/extensionStorage.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import { listStorageEntries } from "#db/extensionStorage.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId/storage
@@ -14,8 +15,8 @@ import { listStorageEntries } from "../../../../../../../../db/extensionStorage.
  * Query params:
  *   - prefix: Filter keys by prefix (optional)
  */
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const extensionId = requireParam(context.params, "extensionId");
@@ -35,9 +36,4 @@ export const GET: APIRoute = async (context) => {
         updatedAt: entry.updatedAt.toISOString(),
       })),
     );
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("List storage entries error:", error);
-    return jsonResponse({ error: "Failed to list storage entries" }, 500);
-  }
-};
+  }, "Failed to list storage entries");

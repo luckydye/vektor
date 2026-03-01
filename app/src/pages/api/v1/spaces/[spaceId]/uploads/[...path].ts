@@ -1,11 +1,13 @@
 import type { APIRoute } from "astro";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { resolve } from "node:path";
+import { requireParam, withApiErrorHandling } from "#db/api.ts";
 import {
-  requireParam,
-  requireUser,
-} from "../../../../../../db/api.js";
-import { verifySpaceRole } from "../../../../../../db/api.js";
+  getUploadsRoot,
+  isSafeUploadPath,
+  isWithinUploadsRoot,
+} from "../../../../../../utils/uploads.ts";
+import { authenticateJobTokenOrSpaceRole } from "../../../_auth.ts";
 
 const MIME_TYPES: Record<string, string> = {
   // Images
@@ -31,51 +33,57 @@ const MIME_TYPES: Record<string, string> = {
   zip: "application/zip",
 };
 
-export const GET: APIRoute = async (context) => {
-  try {
-    const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const path = requireParam(context.params, "path");
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(
+    async () => {
+      const spaceId = requireParam(context.params, "spaceId");
+      const path = requireParam(context.params, "path");
 
-    // Verify user has at least viewer access to the space
-    await verifySpaceRole(spaceId, user.id, "viewer");
+      await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
-    // Security: Validate path to prevent directory traversal
-    if (path.includes("..")) {
-      return new Response("Invalid path", { status: 400 });
-    }
-
-    // Get file extension from the path
-    const extension = path.split(".").pop()?.toLowerCase();
-    if (!extension) {
-      return new Response("Missing file extension", { status: 400 });
-    }
-
-    const mimeType = MIME_TYPES[extension] || "application/octet-stream";
-
-    // Read file from data/uploads/{spaceId}/{path}
-    // Path can be "{filename}" or "{documentId}/{filename}"
-    const filePath = join(process.cwd(), "data", "uploads", spaceId, path);
-
-    try {
-      const fileBuffer = await readFile(filePath);
-
-      return new Response(fileBuffer, {
-        status: 200,
-        headers: {
-          "Content-Type": mimeType,
-          "Cache-Control": "public, max-age=31536000, immutable",
-        },
-      });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return new Response("File not found", { status: 404 });
+      // Security: Validate path to prevent traversal and malformed paths
+      if (!isSafeUploadPath(path)) {
+        return new Response("Invalid path", { status: 400 });
       }
-      throw error;
-    }
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("File serve error:", error);
-    return new Response("Failed to serve file", { status: 500 });
-  }
-};
+
+      // Get file extension from the path
+      const extension = path.split(".").pop()?.toLowerCase();
+      if (!extension) {
+        return new Response("Missing file extension", { status: 400 });
+      }
+
+      const mimeType = MIME_TYPES[extension] || "application/octet-stream";
+
+      // Read file from data/uploads/{spaceId}/{path}
+      // Path can be "{filename}" or "{documentId}/{filename}"
+      const uploadsRoot = getUploadsRoot(spaceId);
+      const filePath = resolve(uploadsRoot, path);
+      if (!isWithinUploadsRoot(spaceId, filePath)) {
+        return new Response("Invalid path", { status: 400 });
+      }
+
+      try {
+        const fileBuffer = await readFile(filePath);
+
+        return new Response(fileBuffer, {
+          status: 200,
+          headers: {
+            "Content-Type": mimeType,
+            "Cache-Control": "public, max-age=31536000, immutable",
+          },
+        });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return new Response("File not found", { status: 404 });
+        }
+        throw error;
+      }
+    },
+    {
+      fallbackMessage: "Failed to serve file",
+      onError: (error) => {
+        console.error("File serve error:", error);
+        return new Response("Failed to serve file", { status: 500 });
+      },
+    },
+  );

@@ -1,25 +1,37 @@
 <template>
-  <div class="space-y-6">
-    <!-- General Settings Card -->
-    <section class="bg-background border border-neutral-200 rounded-lg overflow-hidden">
-      <div class="px-4 py-3 bg-neutral-50 border-b border-neutral-200">
-        <h3 class="text-sm font-semibold text-neutral-900">General Settings</h3>
-      </div>
-      <form class="p-4" @submit.prevent="handleSave">
+  <div class="flex flex-col lg:flex-row min-h-0 h-full">
+    <!-- Sidebar - Horizontal on mobile, vertical on desktop -->
+    <nav class="flex lg:flex-col lg:w-44 shrink-0 py-2 gap-0.5 lg:pr-1 overflow-x-auto lg:overflow-x-visible border-b lg:border-b-0 border-neutral-100 lg:border-none">
+      <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id"
+        :class="activeTab === tab.id
+          ? 'bg-neutral-100 text-neutral-900 font-medium'
+          : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800'"
+        class="whitespace-nowrap lg:w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors">
+        {{ tab.label }}
+      </button>
+    </nav>
+
+    <!-- Content -->
+    <div class="flex-1 min-w-0 lg:pl-6 py-1 overflow-y-auto">
+
+    <!-- General Settings -->
+    <section v-if="activeTab === 'general'">
+      <h2 class="text-sm font-semibold text-neutral-900 mb-4">General Settings</h2>
+      <form @submit.prevent="handleSave">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label for="settings-space-name" class="block text-xs font-medium text-neutral-700 mb-1">
               Space Name
             </label>
             <input id="settings-space-name" v-model="localName" type="text" required
-              class="w-full px-3 py-1.5 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label for="settings-space-slug" class="block text-xs font-medium text-neutral-700 mb-1">
               Slug
             </label>
             <input id="settings-space-slug" v-model="localSlug" type="text" required pattern="[a-z0-9-]+"
-              class="w-full px-3 py-1.5 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <p class="mt-0.5 text-xs text-neutral-500">lowercase letters, numbers, hyphens only</p>
           </div>
           <div class="md:col-span-2">
@@ -28,7 +40,7 @@
             </label>
             <input id="settings-space-description" v-model="localDescription" type="text"
               placeholder="e.g., Engineering / Documentation"
-              class="w-full px-3 py-1.5 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label for="settings-brand-color" class="block text-xs font-medium text-neutral-700 mb-1">
@@ -36,9 +48,9 @@
             </label>
             <div class="flex gap-2 items-center">
               <input id="settings-brand-color" v-model="localBrandColor" type="color"
-                class="h-8 w-12 border border-neutral-200 rounded cursor-pointer" />
+                class="h-8 w-12 border border-neutral-100 rounded cursor-pointer" />
               <input v-model="localBrandColor" type="text" placeholder="#1e293b" pattern="^#[0-9A-Fa-f]{6}$"
-                class="flex-1 px-3 py-1.5 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+                class="flex-1 px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
           </div>
           <div>
@@ -71,32 +83,94 @@
       </form>
     </section>
 
-    <!-- Members Card -->
-    <section class="bg-background border border-neutral-200 rounded-lg overflow-hidden">
-      <div class="px-4 py-3 bg-neutral-50 border-b border-neutral-200">
-        <h3 class="text-sm font-semibold text-neutral-900">Members</h3>
-      </div>
-      <div class="p-4">
-        <SpaceMembers />
-      </div>
+    <!-- Members -->
+    <section v-if="activeTab === 'members'">
+      <h2 class="text-sm font-semibold text-neutral-900 mb-4">Members</h2>
+      <SpaceMembers />
     </section>
 
-    <!-- Access Tokens Card -->
-    <section class="bg-background border border-neutral-200 rounded-lg overflow-hidden">
-      <div class="px-4 py-3 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-neutral-900">Access Tokens</h3>
-        <span class="text-xs text-neutral-500">Create via CLI: <code class="px-1 py-0.5 bg-neutral-200 rounded font-mono">bun run token</code></span>
+    <!-- Access Tokens -->
+    <section v-if="activeTab === 'api'">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-neutral-900">Access Tokens</h2>
+        <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
       </div>
-      <div class="p-4">
+      <div>
         <div v-if="tokenError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
           {{ tokenError }}
         </div>
+
+        <!-- Create Token Form -->
+        <div v-if="isCreatingToken" class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <form @submit.prevent="handleCreateToken" class="space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-neutral-700 mb-1">Name</label>
+                <input v-model="newTokenName" type="text" required placeholder="e.g. CI Deploy Token" autofocus
+                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-neutral-700 mb-1">Permission</label>
+                <select v-model="newTokenPermission"
+                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="extensions">Extensions</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-neutral-700 mb-1">Resource Type</label>
+                <select v-model="newTokenResourceType"
+                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="space">Space</option>
+                  <option value="document">Document</option>
+                  <option value="extension">Extension</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-neutral-700 mb-1">
+                  Resource ID
+                  <span v-if="newTokenResourceType === 'space'" class="text-neutral-400 font-normal">(space ID auto-filled)</span>
+                </label>
+                <input v-model="newTokenResourceId" type="text" required
+                  :disabled="newTokenResourceType === 'space'"
+                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-100 disabled:text-neutral-400" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-neutral-700 mb-1">Expires in days <span class="text-neutral-400 font-normal">(optional)</span></label>
+                <input v-model.number="newTokenExpiresInDays" type="number" min="1" placeholder="Never"
+                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button type="button" @click="handleCancelCreateToken" class="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-800">Cancel</button>
+              <button type="submit" :disabled="isSubmittingToken"
+                class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
+                {{ isSubmittingToken ? 'Creating...' : 'Create Token' }}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Created Token Display (shown once after creation) -->
+        <div v-if="createdTokenValue" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
+          <p class="text-xs font-medium text-green-800 mb-2">Token created — copy it now, it won't be shown again.</p>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 px-2 py-1.5 text-xs bg-background border border-green-200 rounded font-mono break-all select-all">{{ createdTokenValue }}</code>
+            <button type="button" @click="handleCopyToken"
+              class="shrink-0 px-2 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-300 rounded hover:bg-green-200">
+              {{ tokenCopied ? 'Copied!' : 'Copy' }}
+            </button>
+          </div>
+          <button type="button" @click="createdTokenValue = null; tokenCopied = false" class="mt-2 text-xs text-green-700 hover:text-green-900">Dismiss</button>
+        </div>
+
         <div v-if="isLoadingTokens" class="text-center py-6 text-sm text-neutral-500">Loading tokens...</div>
-        <div v-else-if="accessTokens.length === 0" class="text-center py-6 text-sm text-neutral-500">No access tokens created yet</div>
-        <div v-else class="overflow-x-auto">
+        <div v-else-if="accessTokens.length === 0 && !isCreatingToken" class="text-center py-6 text-sm text-neutral-500">No access tokens created yet</div>
+        <div v-else-if="accessTokens.length > 0" class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="border-b border-neutral-200">
+              <tr class="border-b border-neutral-100">
                 <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Name</th>
                 <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Status</th>
                 <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Resources</th>
@@ -135,13 +209,13 @@
       </div>
     </section>
 
-    <!-- Webhooks Card -->
-    <section class="bg-background border border-neutral-200 rounded-lg overflow-hidden">
-      <div class="px-4 py-3 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-neutral-900">Webhooks</h3>
+    <!-- Webhooks -->
+    <section v-if="activeTab === 'api'" class="mt-8 pt-6 border-t border-neutral-100">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-neutral-900">Webhooks</h2>
         <button v-if="!isAddingNewWebhook" @click="handleStartAddWebhook" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Webhook</button>
       </div>
-      <div class="p-4">
+      <div>
         <div v-if="webhookError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
           {{ webhookError }}
         </div>
@@ -151,7 +225,7 @@
           <div v-if="isAddingNewWebhook" class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
             <form @submit.prevent="handleAddWebhook" class="flex items-center gap-2">
               <input v-model="newWebhookUrl" type="url" required placeholder="https://example.com/webhook"
-                class="flex-1 px-3 py-1.5 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" autofocus />
+                class="flex-1 px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" autofocus />
               <button type="submit" :disabled="isAddingWebhook"
                 class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
                 {{ isAddingWebhook ? 'Adding...' : 'Add' }}
@@ -163,7 +237,7 @@
           <div v-if="webhooks.length === 0 && !isAddingNewWebhook" class="text-center py-6 text-sm text-neutral-500">No webhooks configured</div>
           <div v-else class="space-y-2">
             <div v-for="webhook in webhooks" :key="webhook.id"
-              class="border border-neutral-200 rounded-md overflow-hidden">
+              class="border border-neutral-100 rounded-md overflow-hidden">
               <div class="flex items-center gap-3 px-3 py-2 bg-neutral-50">
                 <span :class="webhook.enabled ? 'bg-green-500' : 'bg-neutral-300'" class="w-2 h-2 rounded-full shrink-0"></span>
                 <span class="flex-1 text-sm font-mono text-neutral-700 truncate">{{ webhook.url }}</span>
@@ -188,25 +262,25 @@
                 </div>
               </div>
               <!-- Edit Panel -->
-              <div v-if="editingWebhookId === webhook.id" class="px-3 py-3 border-t border-neutral-200 bg-background">
+              <div v-if="editingWebhookId === webhook.id" class="px-3 py-3 border-t border-neutral-100 bg-background">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label class="block text-xs font-medium text-neutral-700 mb-2">Events</label>
                     <div class="space-y-1">
                       <label class="flex items-center text-sm">
-                        <input type="checkbox" value="document.published" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-300 text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" value="document.published" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
                         Published
                       </label>
                       <label class="flex items-center text-sm">
-                        <input type="checkbox" value="document.unpublished" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-300 text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" value="document.unpublished" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
                         Unpublished
                       </label>
                       <label class="flex items-center text-sm">
-                        <input type="checkbox" value="document.deleted" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-300 text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" value="document.deleted" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
                         Deleted
                       </label>
                       <label class="flex items-center text-sm">
-                        <input type="checkbox" value="mention" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-300 text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" value="mention" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
                         Mention
                       </label>
                     </div>
@@ -214,9 +288,9 @@
                   <div>
                     <label class="block text-xs font-medium text-neutral-700 mb-2">Document Filter</label>
                     <input v-model="editingDocumentSearchQuery" type="text" placeholder="Search documents..."
-                      class="w-full px-2 py-1 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 mb-1" />
+                      class="w-full px-2 py-1 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 mb-1" />
                     <select v-model="editingWebhookDocumentId" size="3"
-                      class="w-full px-2 py-1 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      class="w-full px-2 py-1 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500">
                       <option :value="null">All documents</option>
                       <option v-for="doc in getFilteredDocumentsForEdit()" :key="doc.id" :value="doc.id">
                         {{ doc.properties?.title || doc.slug }}
@@ -238,22 +312,22 @@
       </div>
     </section>
 
-    <!-- Extensions Card -->
-    <section class="bg-background border border-neutral-200 rounded-lg overflow-hidden">
-      <div class="px-4 py-3 bg-neutral-50 border-b border-neutral-200">
-        <h3 class="text-sm font-semibold text-neutral-900">Extensions</h3>
-      </div>
-      <div class="p-4">
-        <ExtensionSettings />
-      </div>
+    <!-- Extensions -->
+    <section v-if="activeTab === 'extensions'">
+      <h2 class="text-sm font-semibold text-neutral-900 mb-4">Extensions</h2>
+      <ExtensionSettings />
     </section>
 
-    <!-- Danger Zone Card -->
-    <section class="bg-background border-2 border-red-200 rounded-lg overflow-hidden">
-      <div class="px-4 py-3 bg-red-50 border-b border-red-200">
-        <h3 class="text-sm font-semibold text-red-700">Danger Zone</h3>
-      </div>
-      <div class="p-4">
+    <!-- Archive -->
+    <section v-if="activeTab === 'archive'">
+      <h2 class="text-sm font-semibold text-neutral-900 mb-4">Archived Documents</h2>
+      <ArchivedDocuments v-if="currentSpace" :space-id="currentSpace.id" :space-slug="currentSpace.slug" />
+    </section>
+
+    <!-- Danger Zone -->
+    <section v-if="activeTab === 'general'" class="mt-8 pt-6 border-t border-red-200">
+      <h2 class="text-sm font-semibold text-red-700 mb-4">Danger Zone</h2>
+      <div class="border-2 border-red-200 rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm font-medium text-neutral-900">Delete this space</p>
@@ -266,6 +340,8 @@
         </div>
       </div>
     </section>
+
+    </div><!-- end content -->
   </div>
 
   <!-- Delete Confirmation Modal -->
@@ -279,7 +355,7 @@
         Type <code class="px-1.5 py-0.5 bg-neutral-100 rounded font-mono text-sm">{{ currentSpace?.slug }}</code> to confirm:
       </p>
       <input v-model="deleteConfirmText" type="text" placeholder="Type space slug"
-        class="w-full px-3 py-1.5 text-sm border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 mb-3" />
+        class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 mb-3" />
       <div v-if="deleteError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
         {{ deleteError }}
       </div>
@@ -299,10 +375,22 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from "vue";
+
+const tabs = [
+  { id: "general", label: "General" },
+  { id: "members", label: "Members" },
+  { id: "api", label: "API & Webhooks" },
+  { id: "extensions", label: "Extensions" },
+  { id: "archive", label: "Archive" },
+] as const;
+
+type TabId = (typeof tabs)[number]["id"];
+const activeTab = ref<TabId>("general");
 import { useSpace } from "../composeables/useSpace.ts";
 import { api, type WebhookEvent, type Webhook, type AccessToken } from "../api/client.ts";
 import SpaceMembers from "./SpaceMembers.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
+import ArchivedDocuments from "./ArchivedDocuments.vue";
 
 const emit = defineEmits(["saved"]);
 
@@ -323,7 +411,11 @@ const isAddingWebhook = ref(false);
 const isAddingNewWebhook = ref(false);
 const newWebhookUrl = ref("");
 const webhookError = ref<string | null>(null);
-interface SpaceDocument { id: string; slug: string; properties?: { title?: string } }
+interface SpaceDocument {
+  id: string;
+  slug: string;
+  properties?: { title?: string };
+}
 const documents = ref<SpaceDocument[]>([]);
 const editingWebhookId = ref<string | null>(null);
 const editingWebhookEvents = ref<WebhookEvent[]>([]);
@@ -334,6 +426,15 @@ const editingDocumentSearchQuery = ref("");
 const accessTokens = ref<AccessToken[]>([]);
 const isLoadingTokens = ref(false);
 const tokenError = ref<string | null>(null);
+const isCreatingToken = ref(false);
+const isSubmittingToken = ref(false);
+const newTokenName = ref("");
+const newTokenPermission = ref("editor");
+const newTokenResourceType = ref("space");
+const newTokenResourceId = ref("");
+const newTokenExpiresInDays = ref<number | null>(null);
+const createdTokenValue = ref<string | null>(null);
+const tokenCopied = ref(false);
 
 // Delete space state
 const showDeleteConfirm = ref(false);
@@ -354,22 +455,22 @@ watch(
     }
   },
   {
-    immediate: true
-  }
+    immediate: true,
+  },
 );
 
 async function handleLogoUpload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
-  const validTypes = ['image/svg+xml', 'image/png', 'image/jpeg'];
+  const validTypes = ["image/svg+xml", "image/png", "image/jpeg"];
   if (!validTypes.includes(file.type)) {
     error.value = "Only SVG, PNG, and JPG files are supported";
     return;
   }
 
   try {
-    if (file.type === 'image/svg+xml') {
+    if (file.type === "image/svg+xml") {
       let text = await file.text();
       text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
       text = text.replace(/on\w+="[^"]*"/g, "");
@@ -475,7 +576,9 @@ async function handleToggleWebhook(webhook: Webhook) {
   webhookError.value = null;
 
   try {
-    await api.webhooks.patch(currentSpace.value.id, webhook.id, { enabled: !webhook.enabled });
+    await api.webhooks.patch(currentSpace.value.id, webhook.id, {
+      enabled: !webhook.enabled,
+    });
     await loadWebhooks();
   } catch (err) {
     webhookError.value = err instanceof Error ? err.message : "Failed to toggle webhook";
@@ -500,7 +603,7 @@ function formatEventName(event: string): string {
     "document.published": "Published",
     "document.unpublished": "Unpublished",
     "document.deleted": "Deleted",
-    "mention": "Mention",
+    mention: "Mention",
   };
   return names[event] || event;
 }
@@ -570,7 +673,8 @@ async function handleSaveWebhook(webhookId: string) {
 }
 
 async function handleDeleteSpace() {
-  if (!currentSpace.value?.id || deleteConfirmText.value !== currentSpace.value.slug) return;
+  if (!currentSpace.value?.id || deleteConfirmText.value !== currentSpace.value.slug)
+    return;
   deleteError.value = null;
   isDeleting.value = true;
 
@@ -625,17 +729,77 @@ async function handleDeleteToken(tokenId: string) {
   }
 }
 
+function handleStartCreateToken() {
+  isCreatingToken.value = true;
+  newTokenName.value = "";
+  newTokenPermission.value = "editor";
+  newTokenResourceType.value = "space";
+  newTokenResourceId.value = currentSpace.value?.id ?? "";
+  newTokenExpiresInDays.value = null;
+  tokenError.value = null;
+}
+
+function handleCancelCreateToken() {
+  isCreatingToken.value = false;
+}
+
+async function handleCreateToken() {
+  if (!currentSpace.value?.id) return;
+  isSubmittingToken.value = true;
+  tokenError.value = null;
+
+  try {
+    const result = await api.accessTokens.create(currentSpace.value.id, {
+      name: newTokenName.value.trim(),
+      permission: newTokenPermission.value,
+      resourceType: newTokenResourceType.value,
+      resourceId:
+        newTokenResourceType.value === "space"
+          ? currentSpace.value.id
+          : newTokenResourceId.value.trim(),
+      ...(newTokenExpiresInDays.value
+        ? { expiresInDays: newTokenExpiresInDays.value }
+        : {}),
+    });
+    createdTokenValue.value = result.token;
+    tokenCopied.value = false;
+    isCreatingToken.value = false;
+    await loadAccessTokens();
+  } catch (err) {
+    tokenError.value = err instanceof Error ? err.message : "Failed to create token";
+  } finally {
+    isSubmittingToken.value = false;
+  }
+}
+
+async function handleCopyToken() {
+  if (!createdTokenValue.value) return;
+  await navigator.clipboard.writeText(createdTokenValue.value);
+  tokenCopied.value = true;
+}
+
 onMounted(() => {
   loadWebhooks();
   loadDocuments();
   loadAccessTokens();
 });
 
-watch(() => currentSpace.value?.id, () => {
-  if (currentSpace.value?.id) {
-    loadWebhooks();
-    loadDocuments();
-    loadAccessTokens();
+watch(
+  () => currentSpace.value?.id,
+  () => {
+    if (currentSpace.value?.id) {
+      loadWebhooks();
+      loadDocuments();
+      loadAccessTokens();
+    }
+  },
+);
+
+watch(newTokenResourceType, (type) => {
+  if (type === "space") {
+    newTokenResourceId.value = currentSpace.value?.id ?? "";
+  } else {
+    newTokenResourceId.value = "";
   }
 });
 </script>

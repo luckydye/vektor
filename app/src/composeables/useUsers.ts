@@ -1,9 +1,13 @@
 import { computed, toValue, type MaybeRef } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { api } from "../api/client.js";
+import { api } from "../api/client.ts";
 
 export function useUser(id: MaybeRef<string | undefined>) {
-  const { data, isPending: isLoading, error } = useQuery({
+  const {
+    data,
+    isPending: isLoading,
+    error,
+  } = useQuery({
     queryKey: computed(() => ["wiki_user", toValue(id)]),
     queryFn: async () => {
       const userId = toValue(id);

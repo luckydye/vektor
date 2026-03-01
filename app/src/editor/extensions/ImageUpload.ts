@@ -11,7 +11,11 @@ export interface ImageUploadOptions {
   uploadUrl?: string;
 }
 
-async function uploadImage(file: File, spaceId: string, documentId?: string): Promise<string> {
+async function uploadImage(
+  file: File,
+  spaceId: string,
+  documentId?: string,
+): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
   if (documentId) {
@@ -39,11 +43,7 @@ function isImageFile(file: File): boolean {
 class ResizableImageView extends ResizableNodeView {
   img: HTMLImageElement;
 
-  constructor(
-    node: ProseMirrorNode,
-    view: EditorView,
-    getPos: () => number | undefined,
-  ) {
+  constructor(node: ProseMirrorNode, view: EditorView, getPos: () => number | undefined) {
     super(node, view, getPos);
 
     this.dom.classList.add("image-wrapper");
@@ -115,9 +115,7 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
         props: {
           handlePaste(view, event) {
             const items = Array.from(event.clipboardData?.items || []);
-            const imageItems = items.filter(
-              (item) => item.type.indexOf("image") === 0,
-            );
+            const imageItems = items.filter((item) => item.type.indexOf("image") === 0);
 
             if (imageItems.length === 0) {
               return false;
@@ -183,9 +181,7 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
                         .chain()
                         .focus()
                         .deleteRange({ from: foundPos, to: foundPos + foundLength })
-                        .insertContent(
-                          `❌ Failed to upload image: ${error.message}`,
-                        )
+                        .insertContent(`❌ Failed to upload image: ${error.message}`)
                         .run();
                     }
                   });
@@ -277,9 +273,7 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
                       .chain()
                       .focus()
                       .deleteRange({ from: foundPos, to: foundPos + foundLength })
-                      .insertContent(
-                        `❌ Failed to upload image: ${error.message}`,
-                      )
+                      .insertContent(`❌ Failed to upload image: ${error.message}`)
                       .run();
                   }
                 });

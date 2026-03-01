@@ -14,4 +14,6 @@ export { default as Icon } from "./Icon.vue";
 export { default as SelectItem } from "./SelectItem.vue";
 export { default as SelectMenu, type SelectMenuItem } from "./SelectMenu.vue";
 export { default as DocumentOverlay } from "./DocumentOverlay.vue";
+export { default as DockedPanel } from "./DockedPanel.vue";
+export { default as DockedWindowLayout } from "./DockedWindowLayout.vue";
 export type { Property, PropertyType, SpaceProperty } from "./PropertyPopover.vue";

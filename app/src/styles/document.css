@@ -7,132 +7,132 @@
 @import "./tiptap.css";
 
 [contenteditable] {
-    outline: none;
+  outline: none;
 }
 
 :host {
-    display: block;
+  display: block;
 }
 
 .tiptap > *:not(table),
 [part="content"] > *:not(table) {
-    max-width: 1600px;
+  max-width: 1600px;
 }
 
 button {
-    appearance: none;
-    border: none;
-    background-color: transparent;
-    cursor: pointer;
+  appearance: none;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
 }
 
 img {
-    @apply max-w-full h-auto;
-    display: block;
+  @apply max-w-full h-auto;
+  display: block;
 }
 
 img[data-display="full"] {
-    width: 100% !important;
-    max-width: 100%;
+  width: 100% !important;
+  max-width: 100%;
 }
 
 img[width] {
-    height: auto;
+  height: auto;
 }
 
 /* Image wrapper styles */
 .image-wrapper {
-    display: inline-block;
-    position: relative;
-    max-width: 100%;
-    user-select: none;
+  display: inline-block;
+  position: relative;
+  max-width: 100%;
+  user-select: none;
 }
 
 .image-wrapper img {
-    display: block;
-    pointer-events: none;
+  display: block;
+  pointer-events: none;
 }
 
 /* Selected image outline */
 .image-wrapper.ProseMirror-selectednode img {
-    outline: 2px solid var(--color-primary, #3b82f6);
-    outline-offset: 2px;
-    border-radius: 2px;
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Resize handle */
 .resize-handle {
-    position: absolute;
-    right: -4px;
-    bottom: -4px;
-    width: 12px;
-    height: 12px;
-    background: #3b82f6;
-    border: 2px solid white;
-    border-radius: 2px;
-    cursor: nwse-resize;
-    z-index: 10;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+  background: #3b82f6;
+  border: 2px solid white;
+  border-radius: 2px;
+  cursor: nwse-resize;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .resize-handle:hover {
-    background: #2563eb;
-    transform: scale(1.1);
+  background: #2563eb;
+  transform: scale(1.1);
 }
 
 .resize-handle:active {
-    background: #1d4ed8;
+  background: #1d4ed8;
 }
 
 .ProseMirror-yjs-selection {
-    background: var(--color-primary-200, #3b82f6);
+  background: var(--color-primary-200, #3b82f6);
 }
 
 /* HTML Block styles */
 html-block {
-    @apply block my-4;
+  @apply block my-4;
 }
 
 code {
-    background-color: var(--color-neutral-100);
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.875rem;
-    font-family:
-        ui-monospace, SFMono-Regular, "SF Mono", Monaco, Inconsolata,
-        "Liberation Mono", "Courier New", monospace;
+  background-color: var(--color-neutral-100);
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Monaco, Inconsolata, "Liberation Mono",
+    "Courier New", monospace;
 }
 
 pre {
-    background-color: var(--color-neutral-100);
-    color: var(--color-forground);
-    padding: 1rem;
-    border-radius: 0.5rem;
-    max-width: 100%;
-    overflow-x: auto;
+  background-color: var(--color-neutral-100);
+  color: var(--color-forground);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 pre code {
-    color: var(--color-forground);
-    background-color: transparent;
-    border: none;
-    padding: 0;
-    border-radius: 0;
+  color: var(--color-forground);
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
 }
 
 blockquote {
-    border-left: 4px solid #d1d5db;
-    padding-left: 1rem;
-    font-style: italic;
-    color: #4b5563;
+  border-left: 4px solid #d1d5db;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #4b5563;
 }
 
 date-picker {
-    display: inline-flex;
-    padding: 0 0.5rem;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--color-neutral-200);
-    border-radius: 4px;
-    background-color: var(--color-neutral-50);
+  display: inline-flex;
+  padding: 0 0.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 4px;
+  background-color: var(--color-neutral-50);
 }

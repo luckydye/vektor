@@ -46,6 +46,8 @@
 }
 
 .custom-drag-handle {
+  z-index: 9999;
+
   &::after {
     display: flex;
     align-items: center;
@@ -53,41 +55,55 @@
     width: 1.25rem;
     height: 1.33rem;
     font-size: 1.25rem;
-    content: '⠿';
+    content: "⠿";
     font-weight: 700;
     cursor: grab;
     color: var(--color-forground);
     position: relative;
-    margin-right: 0.33em;
-    margin-top: 0.25em;
+    padding-right: 0.33em;
+    padding-top: 0.25em;
   }
+}
+
+.wiki-dropcursor {
+  pointer-events: none;
+  z-index: 9998 !important;
+  opacity: 1 !important;
+  background-color: var(--color-primary-500, #3b82f6) !important;
+  height: 1px !important;
+  border-radius: 999px;
+  box-shadow: none !important;
+}
+
+.wiki-dropcursor.prosemirror-dropcursor-inline {
+  min-width: 2px;
 }
 
 /* Trailing node plus button */
 .trailing-node-plus-button {
-    user-select: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    color: var(--color-neutral-500);
-    background-color: transparent;
-    border-radius: 0.5rem;
-    transition: all 0.15s ease;
-    font-size: 0.875rem;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-neutral-500);
+  background-color: transparent;
+  border-radius: 0.5rem;
+  transition: all 0.15s ease;
+  font-size: 0.875rem;
 }
 
 .trailing-node-plus-button:hover {
-    color: var(--color-neutral-700);
-    background-color: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  background-color: var(--color-neutral-100);
 }
 
 .trailing-node-plus-button:active {
-    background-color: var(--color-neutral-200);
+  background-color: var(--color-neutral-200);
 }
 
 .trailing-node-plus-button svg {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }

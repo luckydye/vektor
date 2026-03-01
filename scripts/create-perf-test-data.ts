@@ -169,7 +169,9 @@ function generateContent(index: number, type: string): string {
 `;
 
   if (type === "technical") {
-    return baseContent + `
+    return (
+      baseContent +
+      `
 <h2>Technical Specifications</h2>
 
 <pre><code class="language-javascript">function example${index}() {
@@ -202,14 +204,19 @@ function generateContent(index: number, type: string): string {
     </tr>
   </tbody>
 </table>
-`;
+`
+    );
   }
 
   if (type === "extensive") {
-    return baseContent + `
+    return (
+      baseContent +
+      `
 <h2>Extended Content</h2>
 
-${Array.from({ length: 10 }, (_, i) => `
+${Array.from(
+  { length: 10 },
+  (_, i) => `
 <h3>Section ${i + 1}</h3>
 
 <p>Paragraph ${i + 1}: Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
@@ -219,8 +226,10 @@ ${Array.from({ length: 10 }, (_, i) => `
   <li>List item 2</li>
   <li>List item 3</li>
 </ul>
-`).join("\n")}
-`;
+`,
+).join("\n")}
+`
+    );
   }
 
   return baseContent;
@@ -262,7 +271,7 @@ function generateProperties(index: number, type: string): Record<string, string>
 async function createDocument(
   spaceId: string,
   index: number,
-  parentId?: string
+  parentId?: string,
 ): Promise<{ id: string; slug: string } | null> {
   const type = getDocumentType(index);
   const properties = generateProperties(index, type);
@@ -296,8 +305,11 @@ async function createDocumentsBatch(
   spaceId: string,
   startIndex: number,
   count: number,
-  parentIds: string[] = []
-): Promise<{ documentIds: Array<{ id: string; slug: string; index: number }>; errors: number }> {
+  parentIds: string[] = [],
+): Promise<{
+  documentIds: Array<{ id: string; slug: string; index: number }>;
+  errors: number;
+}> {
   const documentIds: Array<{ id: string; slug: string; index: number }> = [];
   let errors = 0;
 
@@ -341,7 +353,7 @@ async function addRevision(spaceId: string, documentId: string, revNum: number) 
           html: revisionContent,
           message: `Revision ${revNum}`,
         }),
-      }
+      },
     );
 
     return response.ok;
@@ -352,7 +364,7 @@ async function addRevision(spaceId: string, documentId: string, revNum: number) 
 
 async function addRevisionsToRandomDocs(
   spaceId: string,
-  documents: Array<{ id: string; slug: string; index: number }>
+  documents: Array<{ id: string; slug: string; index: number }>,
 ) {
   const docsToRevise = documents.filter(() => Math.random() < REVISION_PROBABILITY);
 
@@ -378,7 +390,9 @@ async function addRevisionsToRandomDocs(
 
 async function main() {
   console.info("🚀 Starting performance test data generation...");
-  console.info(`📊 Target: ${TOTAL_DOCS} documents with ~${Math.floor(TOTAL_DOCS * REVISION_PROBABILITY)} having extra revisions\n`);
+  console.info(
+    `📊 Target: ${TOTAL_DOCS} documents with ~${Math.floor(TOTAL_DOCS * REVISION_PROBABILITY)} having extra revisions\n`,
+  );
 
   try {
     const { token, email } = await createTestUser();
@@ -398,32 +412,34 @@ async function main() {
       const totalBatches = Math.ceil(TOTAL_DOCS / BATCH_SIZE);
       const batchSize = Math.min(BATCH_SIZE, TOTAL_DOCS - i);
 
-      process.stdout.write(`\r📦 Processing batch ${batchNum}/${totalBatches} (${i}-${i + batchSize - 1})...`);
+      process.stdout.write(
+        `\r📦 Processing batch ${batchNum}/${totalBatches} (${i}-${i + batchSize - 1})...`,
+      );
 
       const { documentIds, errors } = await createDocumentsBatch(
         spaceId,
         i,
         batchSize,
-        allDocumentIds
+        allDocumentIds,
       );
 
       totalCreated += documentIds.length;
       totalErrors += errors;
-      allDocumentIds.push(...documentIds.map(d => d.id));
+      allDocumentIds.push(...documentIds.map((d) => d.id));
 
       if (documentIds.length > 0) {
         const revisionsAdded = await addRevisionsToRandomDocs(spaceId, documentIds);
         totalRevisions += revisionsAdded;
       }
 
-      const progress = ((i + batchSize) / TOTAL_DOCS * 100).toFixed(1);
+      const progress = (((i + batchSize) / TOTAL_DOCS) * 100).toFixed(1);
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       const rate = totalCreated / elapsed;
       const remaining = Math.floor((TOTAL_DOCS - totalCreated) / rate);
 
       process.stdout.write(
         ` [${progress}%] ${totalCreated}/${TOTAL_DOCS} created, ` +
-        `${rate.toFixed(1)} docs/sec, ~${remaining}s remaining`
+          `${rate.toFixed(1)} docs/sec, ~${remaining}s remaining`,
       );
     }
 
@@ -439,7 +455,6 @@ async function main() {
     console.info(`   - Average rate: ${(totalCreated / totalTime).toFixed(1)} docs/sec`);
     console.info(`\n🔗 Access the space at: ${BASE_URL}/s/${spaceId}`);
     console.info(`👤 Login with: ${email} / PerfTest123!`);
-
   } catch (error) {
     console.error("\n❌ Error during data generation:", error);
     process.exit(1);

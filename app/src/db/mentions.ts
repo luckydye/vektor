@@ -7,26 +7,26 @@ export interface ExtractedMention {
 
 /**
  * Extracts user mentions from HTML content by parsing for <user-mention> elements
- * 
+ *
  * This function is used to detect when users are mentioned in newly published documents,
  * triggering "mention" webhook events for each unique mentioned user.
- * 
+ *
  * The HTML is parsed using html5parser to create an AST (Abstract Syntax Tree),
  * which is then traversed to find all <user-mention> custom elements. These elements
  * are created by the TipTap editor's MentionExtension when users type @ followed by
  * a user's name.
- * 
+ *
  * Example HTML input:
  *   <p>Hey <user-mention email="john@example.com">@John Doe</user-mention>, check this out!</p>
- * 
+ *
  * Returns:
  *   [{ email: "john@example.com", label: "John Doe" }]
- * 
+ *
  * Integration:
  *   - Called in createRevision() when a document is published (auto-publish on save)
  *   - Called in publishRevision() when manually publishing a revision
  *   - Triggers webhook events with type "mention" for each unique user
- * 
+ *
  * Webhook payload example:
  *   {
  *     event: "mention",
@@ -42,28 +42,27 @@ export interface ExtractedMention {
  */
 export function extractMentionsFromHtml(html: string): ExtractedMention[] {
   const mentions: ExtractedMention[] = [];
-  
+
   try {
     const ast = html5parser.parse(html);
-    
+
     traverseNodes(ast, (node) => {
-      if (
-        node.type === html5parser.SyntaxKind.Tag &&
-        node.name === "user-mention"
-      ) {
+      if (node.type === html5parser.SyntaxKind.Tag && node.name === "user-mention") {
         const emailAttr = node.attributes?.find((attr) => attr.name.value === "email");
         const email = emailAttr?.value?.value;
-        
+
         if (email) {
           let label: string | undefined;
-          
+
           if (node.body && node.body.length > 0) {
-            const textNode = node.body.find((child) => child.type === html5parser.SyntaxKind.Text);
+            const textNode = node.body.find(
+              (child) => child.type === html5parser.SyntaxKind.Text,
+            );
             if (textNode && textNode.type === html5parser.SyntaxKind.Text) {
               label = textNode.value.replace(/^@/, "").trim();
             }
           }
-          
+
           mentions.push({
             email,
             label,
@@ -74,7 +73,7 @@ export function extractMentionsFromHtml(html: string): ExtractedMention[] {
   } catch (error) {
     console.error("Failed to parse HTML for mentions:", error);
   }
-  
+
   return mentions;
 }
 
@@ -87,7 +86,7 @@ function traverseNodes(
 ): void {
   for (const node of nodes) {
     callback(node);
-    
+
     if (node.type === html5parser.SyntaxKind.Tag && node.body) {
       traverseNodes(node.body, callback);
     }

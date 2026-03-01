@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { formatDate } from "../utils/utils.ts";
+import { api } from "../api/client.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -30,14 +31,17 @@ const loadArchivedDocuments = async () => {
 
     if (!response.ok) {
       throw new Error(
-        response.status === 403 ? "You don't have access to this space" : "Failed to load archived documents",
+        response.status === 403
+          ? "You don't have access to this space"
+          : "Failed to load archived documents",
       );
     }
 
     const data = await response.json();
     documents.value = data.documents;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Failed to load archived documents";
+    error.value =
+      err instanceof Error ? err.message : "Failed to load archived documents";
     documents.value = [];
   } finally {
     isLoading.value = false;
@@ -46,20 +50,7 @@ const loadArchivedDocuments = async () => {
 
 const handleRestore = async (documentId: string) => {
   try {
-    const response = await fetch(
-      `/api/v1/spaces/${props.spaceId}/documents/${documentId}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ restore: true }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to restore document");
-    }
+    await api.document.restore(props.spaceId, documentId);
 
     await loadArchivedDocuments();
   } catch (err) {
@@ -68,7 +59,11 @@ const handleRestore = async (documentId: string) => {
 };
 
 const handleDelete = async (documentId: string) => {
-  if (!confirm("Are you sure you want to permanently delete this document? This action cannot be undone.")) {
+  if (
+    !confirm(
+      "Are you sure you want to permanently delete this document? This action cannot be undone.",
+    )
+  ) {
     return;
   }
 
@@ -113,7 +108,7 @@ onMounted(() => {
       <div
         v-for="doc in documents"
         :key="doc.id"
-        class="flex items-center justify-between p-4 bg-background border border-neutral-200 rounded-lg hover:bg-neutral-200"
+        class="flex items-center justify-between p-4 bg-background border border-neutral-100 rounded-lg hover:bg-neutral-200"
       >
         <div class="flex-1">
           <a

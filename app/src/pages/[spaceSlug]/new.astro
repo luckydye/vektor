@@ -31,6 +31,7 @@ if (!space) {
 }
 
 const type = Astro.url.searchParams.get("type") || "document";
+const category = Astro.url.searchParams.get("category") || undefined;
 const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
 ---
 
@@ -56,7 +57,7 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
         </div>
 
         <div class="print:px-0 px-xs lg:px-xl mt-xs">
-          <DocumentProperties client:load documentId={undefined} initialProperties={{}} />
+          <DocumentProperties client:load documentId={undefined} initialProperties={category ? { category } : {}} />
         </div>
       </div>
 
@@ -80,11 +81,7 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
             client:only="vue"
                 spaceId={space.id}
          			/>
-      		) : (
-            <div>
-        		  <editor-content></editor-content>
-          		</div>
-            )}
+      		) : null}
 		</div>
       </div>
     </div>

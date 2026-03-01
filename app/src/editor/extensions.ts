@@ -37,14 +37,14 @@ export function contentExtensions(spaceId: string, documentId: string): Extensio
     Text,
     Link,
     Bold.extend({
-      addKeyboardShortcuts: () => ({})
+      addKeyboardShortcuts: () => ({}),
     }),
     Italic.extend({
-      addKeyboardShortcuts: () => ({})
+      addKeyboardShortcuts: () => ({}),
     }),
     Strike,
     Underline.extend({
-      addKeyboardShortcuts: () => ({})
+      addKeyboardShortcuts: () => ({}),
     }),
     Superscript,
     Subscript,
@@ -147,5 +147,5 @@ export function contentExtensions(spaceId: string, documentId: string): Extensio
     DatePicker,
     FigmaEmbed,
     Mentions,
-  ]
+  ];
 }

@@ -149,7 +149,8 @@ beforeAll(async () => {
       {
         method: "POST",
         body: JSON.stringify({
-          content: "# Features Test Document\n\nThis is a test document for feature permissions.",
+          content:
+            "# Features Test Document\n\nThis is a test document for feature permissions.",
           properties: {
             title: "Features Test Document",
           },
@@ -159,7 +160,6 @@ beforeAll(async () => {
 
     const docData = await docResponse.json();
     testDocumentId = docData.document.id;
-
   } catch (error) {
     console.error("Failed to setup feature permissions tests:", error);
     throw error;

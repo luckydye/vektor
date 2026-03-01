@@ -1,34 +1,40 @@
 <script setup lang="ts">
-import type { SearchResult, DocumentWithProperties } from '../api/client.ts'
-import { formatDate } from '../utils/utils.ts';
+import type { SearchResult, DocumentWithProperties } from "../api/client.ts";
+import { formatDate } from "../utils/utils.ts";
 
 const props = defineProps<{
-  document: SearchResult | DocumentWithProperties
-  spaceSlug: string
-  showRank?: boolean
-  showSnippet?: boolean
-  searchQuery?: string
-}>()
+  document: SearchResult | DocumentWithProperties;
+  spaceSlug: string;
+  showRank?: boolean;
+  showSnippet?: boolean;
+  searchQuery?: string;
+}>();
 
 const getDocumentTitle = (doc: SearchResult | DocumentWithProperties): string => {
-  if ('properties' in doc && doc.properties) {
-    return doc.properties.title || doc.properties.name || 'Untitled'
+  if ("properties" in doc && doc.properties) {
+    return doc.properties.title || doc.properties.name || "Untitled";
   }
-  return 'Untitled'
-}
+  return "Untitled";
+};
 
 const getVisibleProperties = (doc: SearchResult | DocumentWithProperties) => {
-  if (!('properties' in doc) || !doc.properties) return []
-  
-  const excludedKeys = ['title', 'name']
-  return Object.entries(doc.properties).filter(
-    ([key, value]) => !excludedKeys.includes(key) && value !== null && value !== undefined && value !== ''
-  )
-}
+  if (!("properties" in doc) || !doc.properties) return [];
 
-const isSearchResult = (doc: SearchResult | DocumentWithProperties): doc is SearchResult => {
-  return 'rank' in doc && 'snippet' in doc
-}
+  const excludedKeys = ["title", "name"];
+  return Object.entries(doc.properties).filter(
+    ([key, value]) =>
+      !excludedKeys.includes(key) &&
+      value !== null &&
+      value !== undefined &&
+      value !== "",
+  );
+};
+
+const isSearchResult = (
+  doc: SearchResult | DocumentWithProperties,
+): doc is SearchResult => {
+  return "rank" in doc && "snippet" in doc;
+};
 </script>
 
 <template>
@@ -38,7 +44,7 @@ const isSearchResult = (doc: SearchResult | DocumentWithProperties): doc is Sear
   >
     <a 
       :href="`/${spaceSlug}/doc/${document.slug}`" 
-      class="block py-4 px-2 border-b border-t border-neutral-200 bg-background hover:border-blue-500 transition-all"
+      class="block py-4 px-2 border-b border-t border-neutral-100 bg-background hover:border-blue-500 transition-all"
       :class="showSnippet ? 'hover:bg-blue-50/30' : 'hover:bg-neutral-50'"
     >
         

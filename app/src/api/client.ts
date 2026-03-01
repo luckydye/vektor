@@ -9,7 +9,7 @@ import { ApiClient } from "./ApiClient.ts";
  */
 export const api = new ApiClient({
   baseUrl: config().API_URL,
-  socketHost: config().COLLABORATION_HOST
+  socketHost: config().COLLABORATION_HOST,
 });
 
 // @ts-expect-error

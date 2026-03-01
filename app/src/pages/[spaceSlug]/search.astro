@@ -29,7 +29,13 @@ if (!user) {
 }
 
 const userGroups = await getUserGroups(user.id);
-const permission = await getPermission(space.id, ResourceType.SPACE, space.id, user.id, userGroups);
+const permission = await getPermission(
+  space.id,
+  ResourceType.SPACE,
+  space.id,
+  user.id,
+  userGroups,
+);
 
 if (!permission) {
   return new Response(null, {

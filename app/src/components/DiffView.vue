@@ -21,23 +21,23 @@ interface Props {
 const props = defineProps<Props>();
 
 const lines = computed(() => {
-  const result: Array<{ type: 'add' | 'remove' | 'context'; content: string }> = [];
-  
+  const result: Array<{ type: "add" | "remove" | "context"; content: string }> = [];
+
   try {
     const patches = parsePatch(props.patch);
-    
+
     for (const file of patches) {
       for (const hunk of file.hunks) {
         for (const line of hunk.lines) {
           const lineChar = line[0];
           const content = line.slice(1);
-          
-          if (lineChar === '+') {
-            result.push({ type: 'add', content });
-          } else if (lineChar === '-') {
-            result.push({ type: 'remove', content });
-          } else if (lineChar !== '\\') {
-            result.push({ type: 'context', content });
+
+          if (lineChar === "+") {
+            result.push({ type: "add", content });
+          } else if (lineChar === "-") {
+            result.push({ type: "remove", content });
+          } else if (lineChar !== "\\") {
+            result.push({ type: "context", content });
           }
         }
       }

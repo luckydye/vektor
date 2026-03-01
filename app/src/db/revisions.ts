@@ -41,12 +41,9 @@ function calculateChecksum(html: string): string {
   return createHash("sha256").update(html, "utf-8").digest("hex");
 }
 
-async function getDocumentSlug(
-  spaceId: string,
-  documentId: string,
-): Promise<string> {
-  const db = getSpaceDb(spaceId);
-  
+async function getDocumentSlug(spaceId: string, documentId: string): Promise<string> {
+  const db = await getSpaceDb(spaceId);
+
   const doc = await db
     .select({ slug: document.slug })
     .from(document)
@@ -67,7 +64,7 @@ export async function createRevision(
   userId: string,
   message?: string,
 ): Promise<Revision> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const checksum = calculateChecksum(html);
 
   const lastRevision = await db
@@ -126,10 +123,7 @@ export async function createRevision(
     updateFields.publishedRev = nextRev;
   }
 
-  await db
-    .update(document)
-    .set(updateFields)
-    .where(eq(document.id, documentId));
+  await db.update(document).set(updateFields).where(eq(document.id, documentId));
 
   await createAuditLog(db, {
     docId: documentId,
@@ -195,7 +189,7 @@ export async function publishRevision(
   documentId: string,
   rev: number,
 ): Promise<void> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const revisionRecord = await db
     .select()
@@ -258,7 +252,7 @@ export async function getRevision(
   documentId: string,
   rev: number,
 ): Promise<Revision | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const revisionRecord = await db
     .select()
@@ -308,7 +302,7 @@ export async function getPublishedContent(
   spaceId: string,
   documentId: string,
 ): Promise<string | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
 
@@ -323,7 +317,7 @@ export async function getCurrentContent(
   spaceId: string,
   documentId: string,
 ): Promise<string | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
 
@@ -338,7 +332,7 @@ export async function listRevisions(
   spaceId: string,
   documentId: string,
 ): Promise<Revision[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const revisions = await db
     .select()
@@ -375,7 +369,7 @@ export async function restoreRevision(
 
   const restoredMessage = message || `Restored from revision ${rev}`;
 
-  await createAuditLog(getSpaceDb(spaceId), {
+  await createAuditLog(await getSpaceDb(spaceId), {
     docId: documentId,
     revisionId: rev,
     userId,
@@ -391,7 +385,7 @@ export async function getRevisionMetadata(
   documentId: string,
   rev: number,
 ): Promise<Omit<Revision, "snapshot"> | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const revisionRecord = await db
     .select({
@@ -430,7 +424,7 @@ export async function listRevisionMetadata(
   spaceId: string,
   documentId: string,
 ): Promise<Omit<Revision, "snapshot">[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   const revisions = await db
     .select({

@@ -254,7 +254,11 @@ export async function getRecentAuditLogs(
   db: ReturnType<typeof getSpaceDb>,
   limit = 100,
 ): Promise<AuditLog[]> {
-  return db.select().from(auditLog).orderBy(desc(auditLog.createdAt), desc(auditLog.id)).limit(limit);
+  return db
+    .select()
+    .from(auditLog)
+    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+    .limit(limit);
 }
 
 export async function getAuditLogsForDocumentByEvent(

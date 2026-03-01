@@ -27,15 +27,20 @@ export function getAuthDb() {
 }
 
 const spaceDbCache = new Map<string, ReturnType<typeof drizzle>>();
+const spaceDbPreparation = new Map<string, Promise<void>>();
 
-export function getSpaceDb(spaceId: string) {
+export async function getSpaceDb(spaceId: string) {
   const cached = spaceDbCache.get(spaceId);
   if (cached) {
     return cached;
   }
 
-  // create missing tables if not exist
-  prepareSpaceDb(spaceId);
+  let preparation = spaceDbPreparation.get(spaceId);
+  if (!preparation) {
+    preparation = prepareSpaceDb(spaceId);
+    spaceDbPreparation.set(spaceId, preparation);
+  }
+  await preparation;
 
   const spaceDir = join(DATA_DIR, "spaces");
 

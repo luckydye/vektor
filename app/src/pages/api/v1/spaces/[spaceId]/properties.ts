@@ -4,11 +4,15 @@ import {
   requireParam,
   requireUser,
   verifySpaceRole,
-} from "../../../../../db/api.ts";
-import { getAllPropertiesWithValues, type PropertyInfo } from "../../../../../db/documents.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import {
+  getAllPropertiesWithValues,
+  type PropertyInfo,
+} from "#db/documents.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "viewer");
@@ -16,8 +20,4 @@ export const GET: APIRoute = async (context) => {
     const properties: PropertyInfo[] = await getAllPropertiesWithValues(spaceId);
 
     return jsonResponse({ properties });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    throw error;
-  }
-};
+  }, "Failed to list space properties");

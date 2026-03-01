@@ -20,13 +20,15 @@ const { data: availableProperties } = useQuery({
   queryKey: ["properties", props.spaceId],
   queryFn: async () => {
     const properties = await api.properties.get(props.spaceId);
-    return properties.filter(p => p.name !== "title");
+    return properties.filter((p) => p.name !== "title");
   },
 });
 
 const selectedProperty = () => {
   if (!selectedPropertyKey.value || !availableProperties.value) return null;
-  return availableProperties.value.find(p => p.name === selectedPropertyKey.value) || null;
+  return (
+    availableProperties.value.find((p) => p.name === selectedPropertyKey.value) || null
+  );
 };
 
 const addFilter = (key: string, value: string | null) => {
@@ -34,7 +36,7 @@ const addFilter = (key: string, value: string | null) => {
 
   // Check for duplicates
   const exists = props.modelValue.some(
-    f => f.key === filter.key && f.value === filter.value
+    (f) => f.key === filter.key && f.value === filter.value,
   );
 
   if (!exists) {
@@ -103,21 +105,21 @@ const addHasPropertyFilter = () => {
           :key="prop.name"
           @click="selectPropertyKey(prop.name)"
           class="px-3 py-1.5 text-sm rounded-lg border transition-colors"
-          :class="selectedPropertyKey === prop.name ? 'bg-blue-500 border-blue-500 text-white' : 'bg-background border-neutral-200 text-neutral-700 hover:border-neutral-400'"
+          :class="selectedPropertyKey === prop.name ? 'bg-blue-500 border-blue-500 text-white' : 'bg-background border-neutral-100 text-neutral-700 hover:border-neutral-400'"
         >
           {{ prop.name }}
         </button>
       </div>
 
       <!-- Value Selection (shown when property is selected) -->
-      <div v-if="selectedPropertyKey && selectedProperty()" class="mt-3 pt-3 border-t border-neutral-200">
+      <div v-if="selectedPropertyKey && selectedProperty()" class="mt-3 pt-3 border-t border-neutral-100">
         <div class="flex flex-wrap gap-1.5 items-center">
           <span class="text-sm text-neutral-500 mr-1">{{ selectedPropertyKey }} =</span>
           <button
             v-for="val in selectedProperty()!.values.slice(0, 20)"
             :key="val"
             @click="selectPropertyValue(val)"
-            class="px-2.5 py-1 text-sm rounded border bg-background border-neutral-200 text-neutral-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
+            class="px-2.5 py-1 text-sm rounded border bg-background border-neutral-100 text-neutral-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
           >
             {{ val }}
           </button>
@@ -126,7 +128,7 @@ const addHasPropertyFilter = () => {
           </span>
           <button
             @click="addHasPropertyFilter"
-            class="px-2.5 py-1 text-sm rounded border border-dashed border-neutral-300 text-neutral-500 hover:border-blue-400 hover:text-blue-600 transition-colors italic"
+            class="px-2.5 py-1 text-sm rounded border border-dashed border-neutral-100 text-neutral-500 hover:border-blue-400 hover:text-blue-600 transition-colors italic"
           >
             any value
           </button>

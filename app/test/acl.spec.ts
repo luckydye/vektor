@@ -209,10 +209,7 @@ describe("ACL API Tests - Space Members", () => {
 
   it("should allow newly added member to access the space directly", async () => {
     // User2 should be able to access space details
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}`,
-      session2Token,
-    );
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}`, session2Token);
 
     expect(response.status).toBe(200);
     const space = await response.json();
@@ -311,9 +308,7 @@ describe("ACL API Tests - Space Members", () => {
     expect(data.documents.length).toBeGreaterThan(0);
 
     // Verify the new user can see the document that was created before they were added
-    const previousDocument = data.documents.find(
-      (doc: any) => doc.id === testDocumentId,
-    );
+    const previousDocument = data.documents.find((doc: any) => doc.id === testDocumentId);
     expect(previousDocument).toBeDefined();
     expect(previousDocument.properties?.title).toBe("ACL Test Document");
 
@@ -439,10 +434,7 @@ describe("ACL API Tests - Space Members", () => {
 
   it("should deny removed member access to space details", async () => {
     // User3 should no longer be able to access the space
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}`,
-      session3Token,
-    );
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}`, session3Token);
 
     expect(response.status).toBe(403);
   });
@@ -495,12 +487,17 @@ describe("ACL API Tests - Document Members", () => {
   // with resourceType: "document" and resourceId equal to the document id.
 
   async function listDocumentMembers(spaceId: string, documentId: string, token: string) {
-    const resp = await apiRequest(`/api/v1/spaces/${spaceId}/permissions?type=role&resourceType=document&resourceId=${documentId}`, token);
+    const resp = await apiRequest(
+      `/api/v1/spaces/${spaceId}/permissions?type=role&resourceType=document&resourceId=${documentId}`,
+      token,
+    );
     expect(resp.status === 200 || resp.status === 403).toBe(true);
     // If caller lacks permissions to list, return empty array for further checks
     if (resp.status !== 200) return [];
     const body = await resp.json();
-    const perms = Array.isArray(body.permissions) ? body.permissions.map((p: any) => p.permission || p) : [];
+    const perms = Array.isArray(body.permissions)
+      ? body.permissions.map((p: any) => p.permission || p)
+      : [];
     return perms;
   }
 
@@ -516,10 +513,18 @@ describe("ACL API Tests - Document Members", () => {
       expect(owner.permission || owner.role).toBeDefined();
     } else {
       // Fallback: ensure space owner exists by listing space-level members
-      const spacePermsResp = await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions?type=role`, session1Token);
+      const spacePermsResp = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/permissions?type=role`,
+        session1Token,
+      );
       const spaceBody = await spacePermsResp.json();
-      const spacePerms = Array.isArray(spaceBody.permissions) ? spaceBody.permissions.map((p: any) => p.permission || p) : [];
-      const spaceOwner = spacePerms.find((p: any) => p.userId === testUser1.id && (p.permission === "owner" || p.role === "owner"));
+      const spacePerms = Array.isArray(spaceBody.permissions)
+        ? spaceBody.permissions.map((p: any) => p.permission || p)
+        : [];
+      const spaceOwner = spacePerms.find(
+        (p: any) =>
+          p.userId === testUser1.id && (p.permission === "owner" || p.role === "owner"),
+      );
       expect(spaceOwner).toBeDefined();
     }
   });
@@ -594,21 +599,17 @@ describe("ACL API Tests - Document Members", () => {
 
   it("should not allow viewer to add document members", async () => {
     // Ensure user2 is a viewer at document level
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          userId: testUser2.id,
-          resourceType: "document",
-          resourceId: testDocumentId,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: testUser2.id,
+        resourceType: "document",
+        resourceId: testDocumentId,
+        action: "grant",
+      }),
+    });
 
     const resp = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/permissions`,
@@ -768,51 +769,39 @@ describe("ACL API Tests - Access Control", () => {
 
     // Revoke any space-level access for user2 (owner must perform)
     // Remove user2 from space so they have no access
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "editor",
-          userId: testUser2.id,
-          action: "revoke",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: testUser2.id,
+        action: "revoke",
+      }),
+    });
 
     // Also revoke viewer just in case
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          userId: testUser2.id,
-          action: "revoke",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: testUser2.id,
+        action: "revoke",
+      }),
+    });
 
     // Ensure no document-level permission exists for user2
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: null,
-          userId: testUser2.id,
-          resourceType: "document",
-          resourceId: doc2Id,
-          action: "revoke",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: null,
+        userId: testUser2.id,
+        resourceType: "document",
+        resourceId: doc2Id,
+        action: "revoke",
+      }),
+    });
 
     // User2 should not be able to access the new document
     const response = await apiRequest(
@@ -843,21 +832,17 @@ describe("ACL API Tests - Access Control", () => {
     const docId = docData.document.id;
 
     // Grant user2 direct access to this specific document
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "editor",
-          userId: testUser2.id,
-          resourceType: "document",
-          resourceId: docId,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: testUser2.id,
+        resourceType: "document",
+        resourceId: docId,
+        action: "grant",
+      }),
+    });
 
     // User2 should be able to access this document even without space membership
     const response = await apiRequest(
@@ -1121,13 +1106,14 @@ describe("ACL API Tests - Properties Access Control", () => {
 
   it("should allow editor to update document property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}`,
       session2Token, // editor
       {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "status",
-          value: "published",
+          properties: {
+            status: { value: "published" },
+          },
         }),
       },
     );
@@ -1137,13 +1123,14 @@ describe("ACL API Tests - Properties Access Control", () => {
 
   it("should not allow viewer to update document property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}`,
       session3Token, // viewer
       {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "status",
-          value: "draft",
+          properties: {
+            status: { value: "draft" },
+          },
         }),
       },
     );
@@ -1153,12 +1140,14 @@ describe("ACL API Tests - Properties Access Control", () => {
 
   it("should allow editor to delete document property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}`,
       session2Token, // editor
       {
-        method: "DELETE",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "status",
+          properties: {
+            "status": null,
+          },
         }),
       },
     );
@@ -1168,12 +1157,14 @@ describe("ACL API Tests - Properties Access Control", () => {
 
   it("should not allow viewer to delete document property", async () => {
     const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}/property`,
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocForProps}`,
       session3Token, // viewer
       {
-        method: "DELETE",
+        method: "PATCH",
         body: JSON.stringify({
-          key: "title",
+          properties: {
+            "title": null,
+          },
         }),
       },
     );
@@ -1307,49 +1298,37 @@ describe("ACL API Tests - Permission Level Access", () => {
     adminToken = adminData.token;
 
     // Grant viewer permission
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceForLevels}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          userId: viewerUser.id,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceForLevels}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: viewerUser.id,
+        action: "grant",
+      }),
+    });
 
     // Grant editor permission
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceForLevels}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "editor",
-          userId: editorUser.id,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceForLevels}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: editorUser.id,
+        action: "grant",
+      }),
+    });
 
     // Grant editor permission
-    await apiRequest(
-      `/api/v1/spaces/${testSpaceForLevels}/permissions`,
-      session1Token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "editor",
-          userId: adminUser.id,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${testSpaceForLevels}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: adminUser.id,
+        action: "grant",
+      }),
+    });
   });
 
   it("should allow viewer to access space", async () => {
@@ -1437,10 +1416,7 @@ describe("ACL API Tests - Permission Level Access", () => {
   });
 
   it("should allow editor to access space", async () => {
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceForLevels}`,
-      adminToken,
-    );
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceForLevels}`, adminToken);
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.id).toBe(testSpaceForLevels);
@@ -1601,7 +1577,8 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          content: "# Test Markdown Export\n\nThis document tests .md endpoint access control.",
+          content:
+            "# Test Markdown Export\n\nThis document tests .md endpoint access control.",
           properties: {
             title: "Test Markdown Export",
           },
@@ -1620,14 +1597,11 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   });
 
   it("should allow space owner to access document as markdown", async () => {
-    const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`,
-      {
-        headers: {
-          Cookie: `better-auth.session_token=${mdOwnerToken}`,
-        },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: {
+        Cookie: `better-auth.session_token=${mdOwnerToken}`,
       },
-    );
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("text/markdown");
@@ -1638,70 +1612,53 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
 
   it("should allow space member with viewer role to access document as markdown", async () => {
     // Add viewer to space
-    await apiRequest(
-      `/api/v1/spaces/${mdTestSpaceId}/permissions`,
-      mdOwnerToken,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          userId: mdViewerUser.id,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${mdTestSpaceId}/permissions`, mdOwnerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: mdViewerUser.id,
+        action: "grant",
+      }),
+    });
 
-    const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`,
-      {
-        headers: {
-          Cookie: `better-auth.session_token=${mdViewerToken}`,
-        },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: {
+        Cookie: `better-auth.session_token=${mdViewerToken}`,
       },
-    );
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("text/markdown");
   });
 
   it("should deny non-member access to document as markdown", async () => {
-    const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`,
-      {
-        headers: {
-          Cookie: `better-auth.session_token=${mdNonMemberToken}`,
-        },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: {
+        Cookie: `better-auth.session_token=${mdNonMemberToken}`,
       },
-    );
+    });
 
     expect(response.status).toBe(403);
   });
 
   it("should deny access after member is removed from space", async () => {
     // Remove viewer from space
-    await apiRequest(
-      `/api/v1/spaces/${mdTestSpaceId}/permissions`,
-      mdOwnerToken,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          userId: mdViewerUser.id,
-          action: "revoke",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${mdTestSpaceId}/permissions`, mdOwnerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: mdViewerUser.id,
+        action: "revoke",
+      }),
+    });
 
-    const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`,
-      {
-        headers: {
-          Cookie: `better-auth.session_token=${mdViewerToken}`,
-        },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: {
+        Cookie: `better-auth.session_token=${mdViewerToken}`,
       },
-    );
+    });
 
     expect(response.status).toBe(403);
   });
@@ -1727,40 +1684,31 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
     const docId = docData.document.id;
 
     // Grant non-member direct access to this specific document
-    await apiRequest(
-      `/api/v1/spaces/${mdTestSpaceId}/permissions`,
-      mdOwnerToken,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          userId: mdNonMemberUser.id,
-          resourceType: "document",
-          resourceId: docId,
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${mdTestSpaceId}/permissions`, mdOwnerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: mdNonMemberUser.id,
+        resourceType: "document",
+        resourceId: docId,
+        action: "grant",
+      }),
+    });
 
     // Non-member should be able to access markdown export with document-level permission
-    const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}.md`,
-      {
-        headers: {
-          Cookie: `better-auth.session_token=${mdNonMemberToken}`,
-        },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}.md`, {
+      headers: {
+        Cookie: `better-auth.session_token=${mdNonMemberToken}`,
       },
-    );
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("text/markdown");
   });
 
   it("should deny unauthenticated access to markdown export", async () => {
-    const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`,
-    );
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`);
 
     expect(response.status).toBe(401);
   });
@@ -1779,14 +1727,11 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   });
 
   it("should return 404 for non-existent space slug", async () => {
-    const response = await fetch(
-      `${BASE_URL}/non-existent-space/doc/${testDocSlug}.md`,
-      {
-        headers: {
-          Cookie: `better-auth.session_token=${mdOwnerToken}`,
-        },
+    const response = await fetch(`${BASE_URL}/non-existent-space/doc/${testDocSlug}.md`, {
+      headers: {
+        Cookie: `better-auth.session_token=${mdOwnerToken}`,
       },
-    );
+    });
 
     expect(response.status).toBe(404);
   });
@@ -1839,19 +1784,15 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
     publicTestDocSlug = docData.document.slug;
 
     // Make the space publicly accessible (viewer permission)
-    await apiRequest(
-      `/api/v1/spaces/${publicTestSpaceId}/permissions`,
-      ownerUser.token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          type: "role",
-          roleOrFeature: "viewer",
-          groupId: "public",
-          action: "grant",
-        }),
-      },
-    );
+    await apiRequest(`/api/v1/spaces/${publicTestSpaceId}/permissions`, ownerUser.token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        groupId: "public",
+        action: "grant",
+      }),
+    });
   });
 
   it("should allow owner to access space settings despite public viewer access", async () => {

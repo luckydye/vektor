@@ -5,7 +5,7 @@ This is a proof-of-concept enterprise grade project documentation tool based on 
 Supports multiple spaces, space personalization, and real-time collaboration within the powerful and customizable [tiptap](https://tiptap.dev/) editor.
 Authenticate over generic OAuth2 or implement your own authentication system with [better-auth](https://www.better-auth.com/).
 
-![editor screenshot](./docs/editor.png) 
+![editor screenshot](./docs/featured.png) 
 
 ## Features
 

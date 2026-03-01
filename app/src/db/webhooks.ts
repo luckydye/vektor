@@ -11,6 +11,15 @@ export type WebhookEvent =
   | "document.restored"
   | "mention";
 
+export const SUPPORTED_WEBHOOK_EVENTS: readonly WebhookEvent[] = [
+  "document.published",
+  "document.unpublished",
+  "document.deleted",
+  "document.archived",
+  "document.restored",
+  "mention",
+];
+
 export interface WebhookPayload {
   event: WebhookEvent;
   spaceId: string;
@@ -245,4 +254,44 @@ export function parseWebhookEvents(wh: Webhook): WebhookEvent[] {
   } catch {
     return [];
   }
+}
+
+export function validateWebhookEventsInput(events: unknown):
+  | {
+      valid: true;
+      events: WebhookEvent[];
+    }
+  | {
+      valid: false;
+      message: string;
+    } {
+  if (!Array.isArray(events) || events.length === 0) {
+    return { valid: false, message: "Events must be a non-empty array" };
+  }
+
+  const normalized: WebhookEvent[] = [];
+  for (const event of events) {
+    if (
+      typeof event !== "string" ||
+      !SUPPORTED_WEBHOOK_EVENTS.includes(event as WebhookEvent)
+    ) {
+      return { valid: false, message: `Invalid event: ${String(event)}` };
+    }
+    normalized.push(event as WebhookEvent);
+  }
+
+  return { valid: true, events: normalized };
+}
+
+export function toWebhookDto(wh: Webhook) {
+  return {
+    id: wh.id,
+    url: wh.url,
+    events: parseWebhookEvents(wh),
+    documentId: wh.documentId,
+    enabled: wh.enabled,
+    createdAt: wh.createdAt,
+    updatedAt: wh.updatedAt,
+    createdBy: wh.createdBy,
+  };
 }

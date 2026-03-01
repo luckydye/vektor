@@ -19,59 +19,15 @@ interface ContentItem {
 function createContentItems(spaceId: string, documentId?: string): ContentItem[] {
   return [
     {
-      title: "Heading 2",
-      description: "Medium section heading",
-      icon: "H2",
-      command: (editor) => {
-        editor.chain().focus().setHeading({ level: 2 }).run();
-      },
-    },
-    {
-      title: "Heading 3",
-      description: "Small section heading",
-      icon: "H3",
-      command: (editor) => {
-        editor.chain().focus().setHeading({ level: 3 }).run();
-      },
-    },
-    {
-      title: "Heading 4",
-      description: "Small section heading",
-      icon: "H4",
-      command: (editor) => {
-        editor.chain().focus().setHeading({ level: 4 }).run();
-      },
-    },
-    {
-      title: "Bullet List",
-      description: "Create a simple bullet list",
-      icon: "•",
-      command: (editor) => {
-        editor.chain().focus().toggleBulletList().run();
-      },
-    },
-    {
-      title: "Numbered List",
-      description: "Create a list with numbering",
-      icon: "1.",
-      command: (editor) => {
-        editor.chain().focus().toggleOrderedList().run();
-      },
-    },
-    {
-      title: "Task List",
-      description: "Track tasks with a checkbox",
-      icon: "☐",
-      command: (editor) => {
-        editor.chain().focus().toggleTaskList().run();
-      },
-    },
-    {
       title: "Table",
       description: "Insert a table",
       icon: "⊞",
       command: (editor) => {
-        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+        editor
+          .chain()
+          .focus()
+          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+          .run();
       },
     },
     {
@@ -196,7 +152,10 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
         const { doc } = editor.state;
         const lastNode = doc.lastChild;
         const lastNodePos = doc.content.size - (lastNode?.nodeSize || 0);
-        editor.chain().focus(lastNodePos + 1).run();
+        editor
+          .chain()
+          .focus(lastNodePos + 1)
+          .run();
 
         // Execute the command
         item.command(editor);
@@ -211,7 +170,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       render(
         html`
           <div
-            class="w-80 bg-background border border-neutral-200 rounded-lg shadow-xl overflow-hidden text-sm"
+            class="w-80 bg-background border border-neutral-100 rounded-lg shadow-xl overflow-hidden text-sm"
             role="listbox"
             @mousedown=${(e: Event) => e.preventDefault()}
           >
@@ -241,12 +200,12 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                       <div class="text-xs text-neutral-900 mt-0.5">${item.description}</div>
                     </div>
                   </li>
-                `
+                `,
               )}
             </ul>
           </div>
         `,
-        popup
+        popup,
       );
     }
 
@@ -325,7 +284,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                   Decoration.widget(lastNodePos + 1, widget, {
                     side: 0,
                     key: "trailing-plus-button",
-                  })
+                  }),
                 );
               }
             }

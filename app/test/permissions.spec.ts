@@ -75,8 +75,6 @@ describe("Permission Utilities", () => {
     });
   });
 
-
-
   describe("isOwner", () => {
     it("should return true only for owner", () => {
       expect(isOwner("owner")).toBe(true);

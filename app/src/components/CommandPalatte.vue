@@ -2,9 +2,9 @@
 import { ref, computed, watch, nextTick, onMounted } from "vue";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useRoute } from "../composeables/useRoute.ts";
-import { Actions } from "../utils/actions";
-import { history } from "../utils/history";
-import { formatRelativeTime } from "../utils/utils";
+import { Actions } from "../utils/actions.ts";
+import { history } from "../utils/history.ts";
+import { formatRelativeTime } from "../utils/utils.ts";
 import { twMerge } from "tailwind-merge";
 
 const { documents } = useDocuments();
@@ -19,7 +19,7 @@ const historyEntries = ref([]);
 
 const getLastVisited = (doc) => {
   const url = `/${spaceSlug.value}/doc/${doc.slug}`;
-  const entry = historyEntries.value.find(h => h.url === url);
+  const entry = historyEntries.value.find((h) => h.url === url);
   return entry ? entry.lastVisited : null;
 };
 
@@ -42,8 +42,8 @@ const filteredResults = computed(() => {
   const sortedDocs = [...docs].sort((a, b) => {
     const aUrl = `/${spaceSlug.value}/doc/${a.slug}`;
     const bUrl = `/${spaceSlug.value}/doc/${b.slug}`;
-    const aHistory = historyEntries.value.find(entry => entry.url === aUrl);
-    const bHistory = historyEntries.value.find(entry => entry.url === bUrl);
+    const aHistory = historyEntries.value.find((entry) => entry.url === aUrl);
+    const bHistory = historyEntries.value.find((entry) => entry.url === bUrl);
     if (aHistory && bHistory) return bHistory.lastVisited - aHistory.lastVisited;
     if (aHistory) return -1;
     if (bHistory) return 1;
@@ -51,17 +51,17 @@ const filteredResults = computed(() => {
   });
 
   for (const doc of sortedDocs) {
-    results.push({ type: 'document', data: doc });
+    results.push({ type: "document", data: doc });
   }
 
   // Add matching actions
   for (const [id, action] of Actions.entries()) {
     // Skip the palette toggle action itself
-    if (id === 'ui:toggle:palatte') continue;
+    if (id === "ui:toggle:palatte") continue;
 
     const matchesQuery = !query || Actions.rank(id, query) > 0;
     if (matchesQuery) {
-      results.push({ type: 'action', id, data: action });
+      results.push({ type: "action", id, data: action });
     }
   }
 
@@ -109,9 +109,9 @@ const handleArrowUp = () => {
 const handleEnter = () => {
   const selected = filteredResults.value[selectedIndex.value];
   if (selected) {
-    if (selected.type === 'document') {
+    if (selected.type === "document") {
       navigateToDocument(selected.data);
-    } else if (selected.type === 'action') {
+    } else if (selected.type === "action") {
       executeAction(selected.id);
     }
   }
@@ -212,7 +212,7 @@ Actions.register("ui:toggle:palatte", {
                 @keydown="handleResultKeydown"
               />
               <kbd
-                class="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-neutral-900 neutral border border-neutral-200 rounded"
+                class="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-neutral-900 neutral border border-neutral-100 rounded"
               >
                 ESC
               </kbd>
@@ -310,7 +310,7 @@ Actions.register("ui:toggle:palatte", {
                 <kbd
                   v-for="shortcut in Actions.getShortcutsForAction(result.id)"
                   :key="shortcut"
-                  class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-200 rounded font-mono text-[10px] capitalize"
+                  class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded font-mono text-[10px] capitalize"
                 >
                   {{ shortcut }}
                 </kbd>
@@ -334,19 +334,19 @@ Actions.register("ui:toggle:palatte", {
             </button>
           </div>
 
-          <div class="px-4 py-3 bg-neutral-100 border-t border-neutral-200 flex items-center justify-between text-xs text-neutral">
+          <div class="px-4 py-3 bg-neutral-100 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral">
             <div class="flex items-center gap-4">
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-200 rounded font-mono">↑↓</kbd>
+                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded font-mono">↑↓</kbd>
                 Navigate
               </span>
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-200 rounded font-mono">Enter</kbd>
+                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded font-mono">Enter</kbd>
                 Select
               </span>
             </div>
             <span class="flex items-center gap-1">
-              <kbd class="px-1.5 py-0.5 bg-background border border-neutral-200 rounded font-mono">⌘K</kbd>
+              <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded font-mono">⌘K</kbd>
               Toggle
             </span>
           </div>

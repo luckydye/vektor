@@ -1,8 +1,8 @@
 ---
 import { eq } from "drizzle-orm";
-import { getSpaceDb } from "../../../db/db";
-import { revision, document } from "../../../db/schema";
-import { getSpaceBySlug } from "../../../db/spaces";
+import { getSpaceDb } from "../../../db/db.ts";
+import { revision, document } from "../../../db/schema.ts";
+import { getSpaceBySlug } from "../../../db/spaces.ts";
 
 const { spaceSlug, id } = Astro.params;
 
@@ -22,7 +22,7 @@ if (!space) {
   });
 }
 
-const db = getSpaceDb(space.id);
+const db = await getSpaceDb(space.id);
 
 // Find the revision by its UUID
 const rev = await db

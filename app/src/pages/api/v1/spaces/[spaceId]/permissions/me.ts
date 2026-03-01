@@ -4,17 +4,18 @@ import {
   requireParam,
   requireUser,
   verifySpaceAccess,
-} from "../../../../../../db/api.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
 import {
   Feature,
   hasFeature,
   getUserGroups,
   getPermission,
   ResourceType,
-} from "../../../../../../db/acl.ts";
+} from "#db/acl.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
@@ -23,7 +24,13 @@ export const GET: APIRoute = async (context) => {
     const userGroups = await getUserGroups(user.id);
 
     // Get user's space role
-    const spacePermission = await getPermission(spaceId, ResourceType.SPACE, spaceId, user.id, userGroups);
+    const spacePermission = await getPermission(
+      spaceId,
+      ResourceType.SPACE,
+      spaceId,
+      user.id,
+      userGroups,
+    );
     const role = spacePermission?.permission || null;
 
     // Check each feature
@@ -37,9 +44,4 @@ export const GET: APIRoute = async (context) => {
       features,
       groups: userGroups,
     });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to get permission summary");

@@ -11,21 +11,21 @@ export function useRoute() {
 
   const updatePath = () => {
     pathname.value = window.location.pathname;
-  }
+  };
 
   onMounted(() => {
     updatePath();
-    window.addEventListener('popstate', updatePath);
-    window.addEventListener('hashchange', updatePath);
+    window.addEventListener("popstate", updatePath);
+    window.addEventListener("hashchange", updatePath);
   });
   onUnmounted(() => {
-    window.removeEventListener('popstate', updatePath);
-    window.removeEventListener('hashchange', updatePath);
-  })
+    window.removeEventListener("popstate", updatePath);
+    window.removeEventListener("hashchange", updatePath);
+  });
 
   return {
     pathname,
     spaceSlug,
     documentSlug,
-  }
+  };
 }

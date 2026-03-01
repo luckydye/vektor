@@ -1,17 +1,6 @@
 node_modules
 temp
 
-xwiki-export.zip
-
-examples/test
-examples/gitlab-topics
-examples/placeholder-names
-examples/kanban-board
-examples/website
-examples/upcoming-events
-examples/bookings
-examples/calendar-view
-
 env
 .env
 .env.*
@@ -21,3 +10,6 @@ env
 .claude
 
 output
+
+dist
+*.zip

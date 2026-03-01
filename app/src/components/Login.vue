@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { ButtonPrimary, ButtonSecondary, Input, FormField } from "~/src/components";
+import {
+  ButtonPrimary,
+  ButtonSecondary,
+  Input,
+  FormField,
+} from "~/src/components/index.ts";
 import { authClient } from "../composeables/auth-client.ts";
 
 const email = ref("");

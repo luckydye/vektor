@@ -23,7 +23,7 @@
         v-for="category in sortedCategories"
         :key="category.id"
         :href="getCategoryUrl(category.slug)"
-        class="block p-6 bg-background rounded-lg border-2 border-neutral-200 hover:border-blue-500 hover:shadow-md transition-all"
+        class="block p-6 bg-background rounded-lg border-2 border-neutral-100 hover:border-blue-500 hover:shadow-md transition-all"
       >
         <div class="flex items-start gap-4">
           <div
@@ -57,9 +57,9 @@
 
 <script setup>
 import { computed, onMounted, ref } from "vue";
-import { useCategories } from "../composeables/useCategories.js";
-import { useSpace } from "../composeables/useSpace.js";
-import { getTextColor } from "../utils/utils.js";
+import { useCategories } from "../composeables/useCategories.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { getTextColor } from "../utils/utils.ts";
 
 const props = defineProps({
   documents: {

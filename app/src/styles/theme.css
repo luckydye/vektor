@@ -1,12 +1,12 @@
 @theme {
   /* text */
-  --font-sans: 'IBM Plex Sans', sans-serif;
+  --font-sans: "IBM Plex Sans", sans-serif;
 
-  --text-size-extra-small: 0.75rem; /* 12px */
-  --text-size-small: 0.875rem; /* 14px */
-  --text-size-base: 1rem; /* 16px */
-  --text-size-title-2: 1.375rem; /* 22px */
-  --text-size-title: 2.25rem; /* 36px */
+  --text-size-extra-small: 0.6rem; /* 9.6px */
+  --text-size-small: 0.7rem; /* 11.2px */
+  --text-size-base: 0.8rem; /* 12.8px */
+  --text-size-title-2: 1.1rem; /* 17.6px */
+  --text-size-title: 1.8rem; /* 28.8px */
 
   --container-xs: 120px;
   --container-sm: 180px;
@@ -49,7 +49,7 @@
   --color-primary-900: #33153e;
   --color-primary-950: #100613;
   --color-neutral-10: #ffffff;
-  --color-neutral-50: #f0f2f5;
+  --color-neutral-50: #f3f4f7;
   --color-neutral-100: #e2e5eb;
   --color-neutral-200: #c4cad7;
   --color-neutral-300: #a4adc2;
@@ -76,16 +76,16 @@
   --color-gray-950: #0b0c10;
 
   /* other */
-  --line-height-extra-smaller: 1rem;
-  --line-height-extra-small: 1.125rem;
-  --line-height-small: 1.25rem;
-  --line-height-base: 1.5rem;
-  --line-height-interactive: 2rem;
+  --line-height-extra-smaller: 0.8rem;
+  --line-height-extra-small: 0.9rem;
+  --line-height-small: 1rem;
+  --line-height-base: 1.2rem;
+  --line-height-interactive: 1.6rem;
 }
 
 /* Dark mode overrides */
 @media (prefers-color-scheme: dark) {
-  :root   {
+  :root {
     --color-primary-10: #0a060f;
     --color-primary-50: #1c122a;
     --color-primary-100: #2e1e45;
@@ -129,59 +129,59 @@
 
 /* Text Style Utilities */
 @utility text-link {
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.7rem; /* 11.2px */
   font-weight: 400;
-  line-height: 1.5rem; /* 24px */
+  line-height: 1.2rem; /* 19.2px */
   letter-spacing: 0em;
 }
 @utility text-label {
-  font-size: 0.75rem; /* 12px */
+  font-size: 0.6rem; /* 9.6px */
   font-weight: 400;
-  line-height: 1.125rem; /* 18px */
+  line-height: 0.9rem; /* 14.4px */
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 @utility text-interactive {
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.8rem;
   font-weight: 500;
-  line-height: 2rem; /* 32px */
+  line-height: 1.6rem; /* 25.6px */
   letter-spacing: 0em;
 }
 @utility text-base {
-  font-size: 1rem; /* 16px */
+  font-size: 0.8rem; /* 12.8px */
   font-weight: 400;
-  line-height: 1.5rem; /* 24px */
+  line-height: 1.2rem; /* 19.2px */
   letter-spacing: 0em;
 }
 @utility text-subtitle {
-  font-size: 0.75rem; /* 12px */
+  font-size: 0.6rem; /* 9.6px */
   font-weight: 500;
-  line-height: 1.125rem; /* 18px */
+  line-height: 0.9rem; /* 14.4px */
   letter-spacing: 0em;
 }
 @utility text-title {
-  font-size: 2.25rem; /* 36px */
+  font-size: 1.8rem; /* 28.8px */
   font-weight: 400;
-  line-height: 1.5rem; /* 24px */
+  line-height: 1.2rem; /* 19.2px */
   letter-spacing: 0em;
 }
 @utility text-title-2 {
-  font-size: 1.375rem; /* 22px */
+  font-size: 1.1rem; /* 17.6px */
   font-weight: 400;
-  line-height: 1.5rem; /* 24px */
+  line-height: 1.2rem; /* 19.2px */
   letter-spacing: 0em;
 }
 @utility text-footnote {
-  font-size: 0.75rem; /* 12px */
+  font-size: 0.6rem; /* 9.6px */
   font-weight: 500;
-  line-height: 1rem; /* 16px */
+  line-height: 0.8rem; /* 12.8px */
   letter-spacing: 0em;
 }
 
 /* Drop Shadow Utilities */
 @utility shadow-large {
-  filter: drop-shadow(-2px 2px 24px rgba(0, 0, 0, 0.10000000149011612));
+  filter: drop-shadow(-1.6px 1.6px 19.2px rgba(0, 0, 0, 0.10000000149011612));
 }
 @utility shadow-small {
-  filter: drop-shadow(0px 1px 8px rgba(0, 0, 0, 0.10000000149011612));
+  filter: drop-shadow(0px 0.8px 6.4px rgba(0, 0, 0, 0.10000000149011612));
 }

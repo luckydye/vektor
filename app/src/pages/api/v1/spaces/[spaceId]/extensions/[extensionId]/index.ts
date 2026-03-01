@@ -7,20 +7,18 @@ import {
   successResponse,
   verifyExtensionAccess,
   verifySpaceOwnership,
-} from "../../../../../../../db/api.ts";
-import { getSpace } from "../../../../../../../db/spaces.ts";
-import {
-  deleteExtension,
-  getExtension,
-} from "../../../../../../../db/extensions.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
+import { getSpace } from "#db/spaces.ts";
+import { deleteExtension, getExtension } from "#db/extensions.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId
  * Get a single extension's metadata.
  * Access is granted if user is an editor on the space OR has explicit ACL entry for the extension.
  */
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const extensionId = requireParam(context.params, "extensionId");
@@ -40,23 +38,20 @@ export const GET: APIRoute = async (context) => {
       description: ext.manifest.description,
       entries: ext.manifest.entries,
       routes: ext.manifest.routes,
+      jobs: ext.manifest.jobs,
+      dataSources: ext.manifest.dataSources,
       createdAt: ext.createdAt.toISOString(),
       updatedAt: ext.updatedAt.toISOString(),
       createdBy: ext.createdBy,
     });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("Get extension error:", error);
-    return jsonResponse({ error: "Failed to get extension" }, 500);
-  }
-};
+  }, "Failed to get extension");
 
 /**
  * DELETE /api/v1/spaces/:spaceId/extensions/:extensionId
  * Delete an extension (owners only)
  */
-export const DELETE: APIRoute = async (context) => {
-  try {
+export const DELETE: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const extensionId = requireParam(context.params, "extensionId");
@@ -70,9 +65,4 @@ export const DELETE: APIRoute = async (context) => {
     }
 
     return successResponse();
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error("Delete extension error:", error);
-    return jsonResponse({ error: "Failed to delete extension" }, 500);
-  }
-};
+  }, "Failed to delete extension");

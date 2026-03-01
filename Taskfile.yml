@@ -69,10 +69,6 @@ tasks:
     dir: ./app
     cmd: bunx drizzle-kit {{.CLI_ARGS}}
 
-  icons:
-    dir: ui/src/assets
-    cmd: python3 split-icons.py
-
   wif:convert:
     desc: Convert XWiki export to WIF and create ZIP archive
     cmds:
@@ -85,8 +81,36 @@ tasks:
 
   extension:create:
     desc: Scaffold a new extension package
-    cmd: bun x @wiki/extension create {{.CLI_ARGS}}
+    dir: extension-api
+    cmd: bun ./cli.ts create {{.CLI_ARGS}}
 
   extension:package:
     desc: Build and package an extension as a zip file
-    cmd: bun x @wiki/extension package {{.CLI_ARGS}}
+    dir: extension-api
+    cmd: bun ./cli.ts package {{.CLI_ARGS}}
+
+  extension:configure:
+    desc: Save wiki connection settings (URL, space ID, token) to extension-api/.env
+    cmd: |
+      WIKI_URL=$(gum input --header "Wiki URL" --placeholder "http://localhost:8080")
+      WIKI_SPACE_ID=$(gum input --header "Space ID" --placeholder "")
+      WIKI_TOKEN=$(gum input --password --header "API Token" --placeholder "at_...")
+      printf 'WIKI_URL=%s\nWIKI_SPACE_ID=%s\nWIKI_TOKEN=%s\n' "$WIKI_URL" "$WIKI_SPACE_ID" "$WIKI_TOKEN" > extension-api/.env
+      echo "Saved to extension-api/.env"
+
+  extension:upload:
+    desc: Upload a packaged extension (run extension:configure first to set connection details)
+    dotenv: ['extension-api/.env']
+    dir: extension-api
+    cmd: bun ./cli.ts upload {{.CLI_ARGS}}
+    
+  extension:publish:
+    desc: Build and package the calendar extension and upload it
+    dotenv: ['extension-api/.env']
+    cmd: task extension:package -- {{.CLI_ARGS}} && task extension:upload -- {{.CLI_ARGS}}
+    
+  extension:publish:prod:
+    desc: Build and package the calendar extension and upload it
+    dotenv: ['extension-api/.env.prod']
+    cmd: task extension:package -- {{.CLI_ARGS}} && task extension:upload -- {{.CLI_ARGS}}
+    

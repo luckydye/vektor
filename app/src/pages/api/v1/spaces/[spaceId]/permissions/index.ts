@@ -2,10 +2,12 @@ import type { APIRoute } from "astro";
 import {
   badRequestResponse,
   jsonResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   verifySpaceRole,
-} from "../../../../../../db/api.ts";
+  withApiErrorHandling,
+} from "#db/api.ts";
 import {
   Feature,
   grantPermission,
@@ -16,20 +18,22 @@ import {
   listPermissions,
   listFeaturePermissions,
   ResourceType,
-} from "../../../../../../db/acl.ts";
+} from "#db/acl.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
 // List all permissions (roles and feature overrides)
 // Query params: ?type=role|feature|all (default: all)
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
     await verifySpaceRole(spaceId, user.id, "owner");
 
     const typeFilter = context.url.searchParams.get("type") || "all";
-    const resourceType = (context.url.searchParams.get("resourceType") as ResourceType) || ResourceType.SPACE;
+    const resourceType =
+      (context.url.searchParams.get("resourceType") as ResourceType) ||
+      ResourceType.SPACE;
     const resourceId = context.url.searchParams.get("resourceId") || spaceId;
 
     const permissions: Array<{ type: string; permission: any }> = [];
@@ -57,12 +61,7 @@ export const GET: APIRoute = async (context) => {
     }
 
     return jsonResponse({ permissions });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to list permissions");
 
 // POST /api/v1/spaces/:spaceId/permissions
 // Grant, deny, or revoke permissions (roles or features)
@@ -73,15 +72,16 @@ export const GET: APIRoute = async (context) => {
 //   groupId?: string,
 //   action: "grant" | "deny" | "revoke"
 // }
-export const POST: APIRoute = async (context) => {
-  try {
+export const POST: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
     await verifySpaceRole(spaceId, user.id, "owner");
 
-    const body = await context.request.json();
-    const { type, roleOrFeature, userId, groupId, action, resourceType, resourceId } = body;
+    const body = await parseJsonBody(context.request);
+    const { type, roleOrFeature, userId, groupId, action, resourceType, resourceId } =
+      body;
 
     if (!type || !["role", "feature"].includes(type)) {
       throw badRequestResponse("type must be 'role' or 'feature'");
@@ -125,7 +125,13 @@ export const POST: APIRoute = async (context) => {
       }
 
       // action === "revoke"
-      await revokePermission(spaceId, targetResourceType, targetResourceId, userId, groupId);
+      await revokePermission(
+        spaceId,
+        targetResourceType,
+        targetResourceId,
+        userId,
+        groupId,
+      );
       return jsonResponse({ success: true });
     }
 
@@ -151,9 +157,4 @@ export const POST: APIRoute = async (context) => {
     // action === "revoke"
     await revokeFeature(spaceId, feature, userId, groupId);
     return jsonResponse({ success: true });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    console.error(error);
-    throw new Error("Unknown error", { cause: error });
-  }
-};
+  }, "Failed to update permissions");

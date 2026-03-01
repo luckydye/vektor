@@ -65,7 +65,7 @@ customElements.define(
             @change=${this.handleTextareaChange}
             @focus=${this.handleTextareaFocus}
             @blur=${this.handleTextareaBlur}
-            style="box-sizing: border-box; width: 100%; min-height: 200px; padding: 0.75rem; border: 1px solid ${this.state.isFocused ? '#3b82f6' : '#d1d5db'}; border-radius: 0.375rem; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace; font-size: 0.875rem; line-height: 1.5; resize: vertical; outline: none; transition: border-color 0.2s; box-shadow: ${this.state.isFocused ? '0 0 0 3px rgba(59, 130, 246, 0.1)' : 'none'};"
+            style="box-sizing: border-box; width: 100%; min-height: 200px; padding: 0.75rem; border: 1px solid ${this.state.isFocused ? "#3b82f6" : "#d1d5db"}; border-radius: 0.375rem; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace; font-size: 0.875rem; line-height: 1.5; resize: vertical; outline: none; transition: border-color 0.2s; box-shadow: ${this.state.isFocused ? "0 0 0 3px rgba(59, 130, 246, 0.1)" : "none"};"
           ></textarea>
 
           <div
@@ -86,21 +86,23 @@ customElements.define(
               type="button"
               ?disabled=${!this.state.isAvailable || this.state.isGenerating}
               @click=${this.handleGenerate}
-              style="padding: 0.5rem 1rem; background: ${this.state.isAvailable && !this.state.isGenerating ? '#3b82f6' : '#9ca3af'}; color: white; border: none; border-radius: 0.375rem; font-size: 0.875rem; cursor: ${this.state.isAvailable && !this.state.isGenerating ? 'pointer' : 'not-allowed'}; transition: bg-background 0.2s; white-space: nowrap;"
+              style="padding: 0.5rem 1rem; background: ${this.state.isAvailable && !this.state.isGenerating ? "#3b82f6" : "#9ca3af"}; color: white; border: none; border-radius: 0.375rem; font-size: 0.875rem; cursor: ${this.state.isAvailable && !this.state.isGenerating ? "pointer" : "not-allowed"}; transition: bg-background 0.2s; white-space: nowrap;"
               title=${this.state.isAvailable ? "Generate content with AI" : "AI language model is not available in this browser"}
             >
-              ${this.state.isGenerating
-                ? "⏳ Generating..."
-                : this.state.isAvailable
-                  ? "✨ Generate"
-                  : "❌ AI Unavailable"}
+              ${
+                this.state.isGenerating
+                  ? "⏳ Generating..."
+                  : this.state.isAvailable
+                    ? "✨ Generate"
+                    : "❌ AI Unavailable"
+              }
             </button>
           </div>
         </div>
       `;
 
       if (!this.shadowRoot) {
-        this.attachShadow({ mode: 'open' });
+        this.attachShadow({ mode: "open" });
       }
 
       render(template, this.shadowRoot);
@@ -163,8 +165,7 @@ customElements.define(
             initialPrompts: [
               {
                 role: "system",
-                content:
-                  `You are a professional web developer that knows the in and outs of HTML and CSS. You create layouts using HTML and CSS.
+                content: `You are a professional web developer that knows the in and outs of HTML and CSS. You create layouts using HTML and CSS.
                   1. Only respond with markup that belongs inside a body element.
                   2. Include the CSS in a style tag within the body.
                   3. Do not use markdown syntax, we want raw HTML.`,
@@ -205,7 +206,7 @@ customElements.define(
           new CustomEvent("ai-error", {
             bubbles: true,
             detail: { error: errorMessage },
-          })
+          }),
         );
 
         if (currentContent) {
@@ -247,5 +248,5 @@ customElements.define(
     focus() {
       this.querySelector("textarea")?.focus();
     }
-  }
+  },
 );

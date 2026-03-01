@@ -10,7 +10,19 @@ export interface FileAttachmentOptions {
 }
 
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
-const DOCUMENT_EXTENSIONS = ["docx", "doc", "pdf", "pptx", "ppt", "md", "txt", "xlsx", "xls", "csv", "zip"];
+const DOCUMENT_EXTENSIONS = [
+  "docx",
+  "doc",
+  "pdf",
+  "pptx",
+  "ppt",
+  "md",
+  "txt",
+  "xlsx",
+  "xls",
+  "csv",
+  "zip",
+];
 
 function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() || "";
@@ -43,7 +55,11 @@ function isSupportedDocumentFile(file: File): boolean {
   return supportedMimeTypes.includes(file.type);
 }
 
-async function uploadFile(file: File, spaceId: string, documentId?: string): Promise<string> {
+async function uploadFile(
+  file: File,
+  spaceId: string,
+  documentId?: string,
+): Promise<string> {
   const result = await api.uploads.post(spaceId, file, file.name, documentId);
   return result.url;
 }
@@ -173,7 +189,7 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
                     editor,
                     placeholderText,
                     url,
-                    file.name
+                    file.name,
                   );
                 })
                 .catch((error) => {
@@ -189,7 +205,7 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
             if (!hasFiles) return false;
 
             const files = Array.from(event.dataTransfer.files).filter(
-              (file) => isSupportedDocumentFile(file) && !isImageFile(file)
+              (file) => isSupportedDocumentFile(file) && !isImageFile(file),
             );
 
             if (files.length === 0) return false;
@@ -217,7 +233,7 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
                     editor,
                     placeholderText,
                     url,
-                    file.name
+                    file.name,
                   );
                 })
                 .catch((error) => {
@@ -235,7 +251,7 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
 
 function findPlaceholder(
   editor: Editor,
-  placeholderText: string
+  placeholderText: string,
 ): { pos: number; length: number } | null {
   let foundPos = -1;
   let foundLength = 0;
@@ -259,7 +275,7 @@ function replacePlaceholderWithAttachment(
   editor: Editor,
   placeholderText: string,
   url: string,
-  filename: string
+  filename: string,
 ): void {
   const placeholder = findPlaceholder(editor, placeholderText);
 
@@ -291,13 +307,12 @@ function replacePlaceholderWithAttachment(
 function replacePlaceholderWithError(
   editor: Editor,
   placeholderText: string,
-  error: unknown
+  error: unknown,
 ): void {
   const placeholder = findPlaceholder(editor, placeholderText);
 
   if (placeholder) {
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : "Unknown error";
     editor
       .chain()
       .focus()

@@ -1,11 +1,16 @@
 import type { APIRoute } from "astro";
 import { eq } from "drizzle-orm";
-import { errorResponse, jsonResponse, notFoundResponse, requireUser } from "../../../../db/api.ts";
-import { getAuthDb } from "../../../../db/db.ts";
-import { user } from "../../../../db/schema/auth.ts";
+import {
+  jsonResponse,
+  notFoundResponse,
+  requireUser,
+  withApiErrorHandling,
+} from "#db/api.ts";
+import { getAuthDb } from "#db/db.ts";
+import { user } from "#db/schema/auth.ts";
 
-export const GET: APIRoute = async (context) => {
-  try {
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
     requireUser(context);
 
     const db = getAuthDb();
@@ -40,10 +45,4 @@ export const GET: APIRoute = async (context) => {
       .from(user);
 
     return jsonResponse(users);
-  } catch (error) {
-    if (error instanceof Response) {
-      return error;
-    }
-    return errorResponse("Failed to list users", 500);
-  }
-};
+  }, "Failed to list users");

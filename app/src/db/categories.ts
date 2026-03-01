@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { getSpaceDb } from "./db.js";
-import { category } from "./schema/space.js";
-import { sendSyncEvent } from "./ws.js";
+import { getSpaceDb } from "./db.ts";
+import { category } from "./schema/space.ts";
+import { sendSyncEvent } from "./ws.ts";
 
 export interface Category {
   id: string;
@@ -23,7 +23,7 @@ export async function createCategory(
   color?: string,
   icon?: string,
 ): Promise<Category> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const id = crypto.randomUUID();
   const now = new Date();
 
@@ -58,7 +58,7 @@ export async function createCategory(
 }
 
 export async function getCategory(spaceId: string, id: string): Promise<Category | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const result = await db.select().from(category).where(eq(category.id, id)).get();
 
   if (!result) {
@@ -82,7 +82,7 @@ export async function getCategoryBySlug(
   spaceId: string,
   slug: string,
 ): Promise<Category | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const result = await db.select().from(category).where(eq(category.slug, slug)).get();
 
   if (!result) {
@@ -103,7 +103,7 @@ export async function getCategoryBySlug(
 }
 
 export async function listCategories(spaceId: string): Promise<Category[]> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const results = await db.select().from(category).all();
 
   return results
@@ -130,7 +130,7 @@ export async function updateCategory(
   color?: string,
   icon?: string,
 ): Promise<Category | null> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   const existing = await getCategory(spaceId, id);
 
   if (!existing) {
@@ -167,7 +167,7 @@ export async function updateCategory(
 }
 
 export async function deleteCategory(spaceId: string, id: string): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
   await db.delete(category).where(eq(category.id, id));
   sendSyncEvent("wiki_category");
   return true;
@@ -177,7 +177,7 @@ export async function reorderCategories(
   spaceId: string,
   categoryIds: string[],
 ): Promise<boolean> {
-  const db = getSpaceDb(spaceId);
+  const db = await getSpaceDb(spaceId);
 
   for (let i = 0; i < categoryIds.length; i++) {
     await db

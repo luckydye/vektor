@@ -3,7 +3,7 @@ import DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
 import { computed, ref, Teleport, onMounted, onUnmounted } from "vue";
 import { SpaceSelector, MenuLink } from "~/src/components/index.ts";
-import { homeIcon, searchIcon, folderIcon, puzzleIcon } from "~/src/assets/icons.ts";
+import { homeIcon, searchIcon, puzzleIcon, settingsIcon } from "~/src/assets/icons.ts";
 import { useSpace, type Space as ApiSpace } from "../composeables/useSpace.ts";
 import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
@@ -21,7 +21,13 @@ interface UiSpace {
 
 const { pathname, spaceSlug } = useRoute();
 
-const { currentSpace, spaces, setCurrentSpace, createSpace, isLoading: spaceIsLoading } = useSpace();
+const {
+  currentSpace,
+  spaces,
+  setCurrentSpace,
+  createSpace,
+  isLoading: spaceIsLoading,
+} = useSpace();
 
 const showCreateDialog = ref(false);
 
@@ -31,14 +37,12 @@ const activeRoute = computed(() => {
   // Determine active route
   if (pathname.value.includes("/search")) {
     activeRoute = "search";
-  } else if (pathname.value.includes("/drafts")) {
-    activeRoute = "drafts";
-  } else if (pathname.value.includes("/archive")) {
-    activeRoute = "archive";
   } else if (pathname.value.includes("/x/")) {
     // Extension route - extract the path after /x/
     const match = pathname.value.match(/\/x\/(.+)/);
     activeRoute = match ? `x/${match[1]}` : "";
+  } else if (pathname.value.includes("/settings")) {
+    activeRoute = "settings";
   } else if (pathname.value.split("/").filter(Boolean).length === 1) {
     activeRoute = "home";
   }
@@ -47,7 +51,9 @@ const activeRoute = computed(() => {
 });
 
 // Extension menu links (from routes with menuItem defined)
-const extensionMenuLinks = ref<Array<{ extensionId: string; route: string; title: string; icon?: string }>>([]);
+const extensionMenuLinks = ref<
+  Array<{ extensionId: string; route: string; title: string; icon?: string }>
+>([]);
 
 function updateExtensionMenuLinks() {
   extensionMenuLinks.value = extensions.getMenuLinks();
@@ -87,7 +93,7 @@ const userCanAccessSettings = computed(() => {
   return canAccessSettings(currentSpace.value?.userRole);
 });
 
-// Check if current user can edit (editors and owners can see drafts/archive)
+// Check if current user can edit
 const userCanEdit = computed(() => {
   return canEdit(currentSpace.value?.userRole);
 });
@@ -98,12 +104,6 @@ const handleSpaceSelect = (space: UiSpace) => {
     setCurrentSpace(fullSpace);
     // Navigate to the selected space
     window.location.href = `/${fullSpace.slug}`;
-  }
-};
-
-const handleSettings = () => {
-  if (currentSpace.value) {
-    window.location.href = `/${currentSpace.value.slug}/settings`;
   }
 };
 
@@ -155,35 +155,49 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 </script>
 
 <template>
-  <nav class="@container flex flex-col gap-4xs">
+  <nav class="@container flex flex-col gap-3xs">
+    <CreateSpaceDialog v-model:show="showCreateDialog" @create="handleCreateSpace" />
+    
     <!-- Space Selector -->
-    <div class="px-5xs py-4xs flex-none sticky top-0 bg-background z-10">
+    <div class="px-4xs py-4xs flex-none sticky top-0 bg-background z-10 border-b border-neutral-100 rounded-t-md">
       <SpaceSelector
         :spaces="uiSpaces"
-        :model-value="currentSpace?.id || null"
-        :can-access-settings="userCanAccessSettings"
+        :model-value="currentSpace?.id"
         :can-create-docs="userCanEdit"
+        :loading="isLoading"
         @select="handleSpaceSelect"
-        @settings="handleSettings"
         @create="handleCreateClick"
         @create-doc="handleCreateDoc"
       />
-
-      <Teleport to="#root">
-        <CreateSpaceDialog v-model:show="showCreateDialog" @create="handleCreateSpace" />
-      </Teleport>
     </div>
 
-    <div v-if="isLoading" class="px-3xs flex-none hidden lg:flex flex-col gap-1">
+    <div v-if="isLoading" class="px-4xs flex-none hidden lg:flex flex-col gap-0.5">
       <div v-for="i in 3" :key="`nav-skeleton-${i}`" class="h-9 bg-neutral-100 rounded-md animate-pulse" />
     </div>
 
-    <div v-if="!isLoading" class="px-3xs flex-none hidden lg:flex flex-col gap-1">
+    <!-- Mobile-only Settings Button -->
+    <div v-if="!isLoading && userCanAccessSettings" class="px-4xs flex-none flex lg:hidden flex-col gap-1">
+        <MenuLink
+            :icon="settingsIcon"
+            text="Settings"
+            :href="`/${spaceSlug}/settings`"
+            :is-active="activeRoute === 'settings'"
+        />
+    </div>
+
+    <div v-if="!isLoading" class="px-4xs flex-none hidden lg:flex flex-col gap-0.5">
         <MenuLink
             :icon="homeIcon"
             text="Home"
             :href="`/${spaceSlug}/`"
             :is-active="activeRoute === 'home'"
+        />
+        <MenuLink
+            v-if="userCanAccessSettings"
+            :icon="settingsIcon"
+            text="Settings"
+            :href="`/${spaceSlug}/settings`"
+            :is-active="activeRoute === 'settings'"
         />
         <MenuLink
             :icon="searchIcon"
@@ -193,17 +207,10 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         >
             <a-shortcut class="ml-6 flex-none @max-xs:hidden!" data-shortcut="cmd-shift-f"></a-shortcut>
         </MenuLink>
-        <MenuLink
-            v-if="userCanEdit"
-            :icon="folderIcon"
-            text="Archive"
-            :href="`/${spaceSlug}/archive`"
-            :is-active="activeRoute === 'archive'"
-        />
     </div>
 
     <!-- Extension Menu Links -->
-    <div v-if="extensionMenuLinks.length > 0 && !isLoading" class="px-3xs flex-none flex flex-col gap-1.5">
+    <div v-if="extensionMenuLinks.length > 0 && !isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
         <MenuLink
             v-for="link in extensionMenuLinks"
             :key="`${link.extensionId}-${link.route}`"
@@ -216,7 +223,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 
     <!-- Document Tree -->
     <div class="@max-xs:invisible px-5xs py-m">
-      <div v-if="isLoading" class="px-2 space-y-1 hidden lg:flex flex-col">
+      <div v-if="isLoading" class="px-5xs space-y-1 hidden lg:flex flex-col">
         <!-- Category skeleton -->
         <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
           <!-- Category header -->
@@ -226,7 +233,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
             <div class="h-4 bg-neutral-200 rounded w-24 animate-pulse" />
           </div>
           <!-- Documents under category -->
-          <div class="pl-4 space-y-1">
+          <div class="pl-3 space-y-1">
             <div v-for="j in 2" :key="`doc-skeleton-${i}-${j}`" class="flex items-center gap-2 p-2 rounded-md">
               <div class="w-4 h-4 bg-neutral-200 rounded animate-pulse flex-none" />
               <div class="h-3 bg-neutral-200 rounded w-32 animate-pulse flex-1" />

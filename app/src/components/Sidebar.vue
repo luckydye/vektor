@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watchEffect } from "vue";
+import { ref, nextTick, onMounted, onUnmounted, watchEffect } from "vue";
 import { Actions } from "../utils/actions.ts";
-import { Icon } from ".";
+import { Icon } from "./index.ts";
 import { twMerge } from "tailwind-merge";
 import Navigation from "./Navigation.vue";
 import UserProfile from "./UserProfile.vue";
@@ -13,7 +13,7 @@ const props = withDefaults(
     maxWidth?: number;
   }>(),
   {
-    defaultWidth: 288,
+    defaultWidth: 250,
     minWidth: 70,
     maxWidth: 500,
   },
@@ -22,6 +22,7 @@ const props = withDefaults(
 const sidebarRef = ref<HTMLElement | null>(null);
 const currentWidth = ref();
 const isResizing = ref(false);
+const hasDragged = ref(false);
 const displayWidth = ref();
 const isMobileOpen = ref(false);
 
@@ -43,6 +44,7 @@ const toggleCollapse = () => {
 
 const startResize = (e: MouseEvent) => {
   isResizing.value = true;
+  hasDragged.value = false;
   e.preventDefault();
 
   document.addEventListener("mousemove", handleResize);
@@ -51,8 +53,15 @@ const startResize = (e: MouseEvent) => {
   document.body.style.userSelect = "none";
 };
 
+function dispatchSidebarResize() {
+  window.dispatchEvent(
+    new CustomEvent("sidebar:resize", { detail: { width: currentWidth.value } }),
+  );
+}
+
 const handleResize = (e: MouseEvent) => {
   if (!isResizing.value || !sidebarRef.value) return;
+  hasDragged.value = true;
 
   const rect = sidebarRef.value.getBoundingClientRect();
   let newWidth = e.clientX - rect.left;
@@ -81,14 +90,21 @@ const handleResize = (e: MouseEvent) => {
   );
 
   currentWidth.value = clampedWidth;
+  dispatchSidebarResize();
 };
 
 const stopResize = () => {
+  const didDrag = hasDragged.value;
   isResizing.value = false;
   document.removeEventListener("mousemove", handleResize);
   document.removeEventListener("mouseup", stopResize);
   document.body.style.cursor = "";
   document.body.style.userSelect = "";
+
+  if (!didDrag) {
+    toggleCollapse();
+    return;
+  }
 
   const clampedWidth = Math.max(
     props.minWidth,
@@ -98,6 +114,7 @@ const stopResize = () => {
   displayWidth.value = clampedWidth;
 
   localStorage.setItem("sidebar-width", currentWidth.value.toString());
+  dispatchSidebarResize();
 };
 
 onMounted(() => {
@@ -106,10 +123,13 @@ onMounted(() => {
     description: "Open or close the sidebar menu",
     group: "navigation",
     run: async () => {
-      const targetWidth = currentWidth.value === props.minWidth ? props.defaultWidth : props.minWidth;
+      const targetWidth =
+        currentWidth.value === props.minWidth ? props.defaultWidth : props.minWidth;
       currentWidth.value = targetWidth;
       displayWidth.value = targetWidth;
       localStorage.setItem("sidebar-width", targetWidth.toString());
+      dispatchSidebarResize();
+      nextTick(() => window.dispatchEvent(new Event("resize")));
     },
   });
 
@@ -172,7 +192,7 @@ onUnmounted(() => {
         '--color-background': 'var(--color-neutral-50)'
       }"
       :class="[
-        '@container sidebar',
+        '@container sidebar m-1.5 rounded-md border border-neutral-100',
         'flex flex-col bg-background fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
         'z-40 lg:z-10',
         'lg:translate-x-0',
@@ -201,13 +221,9 @@ onUnmounted(() => {
         <Navigation />
       </wiki-scroll>
       
-      <div class="pl-4 text-neutral-300 @max-sm:hidden">
-          <a href="mailto:t.havlicek@s-v.de">Send feedback</a>
-      </div>
-
       <!-- Bottom Actions -->
       <div
-        class="px-1 py-3 bg-background relative flex items-center"
+        class="px-1 py-3 relative flex items-center"
       >
         <!-- User Profile -->
         <UserProfile />
@@ -216,8 +232,8 @@ onUnmounted(() => {
       <!-- Desktop Resize Handle -->
       <div
         :class="[
-          'hidden lg:block absolute top-0 bottom-0 right-0 w-px cursor-col-resize hover:bg-blue-500 transition-colors group z-20',
-          isResizing && 'bg-blue-500' || 'bg-neutral-100'
+          'hidden lg:block absolute top-0 bottom-0 -right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
+          isResizing && 'bg-primary-200/50' || ''
         ]"
         @mousedown="startResize"
       >
