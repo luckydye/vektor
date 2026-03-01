@@ -87,6 +87,18 @@ const publicEnvVars = () => {
 
     <ClientRouter />
 
+    <script is:inline>
+      (() => {
+        const key = "user-theme-preference";
+        const value = localStorage.getItem(key);
+        if (value === "light" || value === "dark") {
+          document.documentElement.setAttribute("data-theme", value);
+          return;
+        }
+        document.documentElement.removeAttribute("data-theme");
+      })();
+    </script>
+
     <script>
       import "../utils/elements.js";
 
@@ -147,10 +159,18 @@ const publicEnvVars = () => {
         ${paletteCss.light}
       }
       @media (prefers-color-scheme: dark) {
-        :root body {
+        :root:not([data-theme]) body {
           --color-primary: ${brandColor};
           ${paletteCss.dark}
         }
+      }
+      :root[data-theme="dark"] body {
+        --color-primary: ${brandColor};
+        ${paletteCss.dark}
+      }
+      :root[data-theme="light"] body {
+        --color-primary: ${brandColor};
+        ${paletteCss.light}
       }
     `}></style>
 

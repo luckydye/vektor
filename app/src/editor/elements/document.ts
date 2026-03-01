@@ -251,10 +251,6 @@ function createEditor(
   editor.view.dom.addEventListener("drop", hideBlockDropIndicator);
   window.addEventListener("dragend", hideBlockDropIndicator, { capture: true });
 
-  // api.connections.get(spaceId).then(connections => {
-  //   editor.storage.ticketLink.connections = connections;
-  // })
-
   return editor;
 }
 
