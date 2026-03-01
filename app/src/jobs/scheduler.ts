@@ -29,7 +29,12 @@ export async function runJob(
   inputs: Record<string, unknown>,
   spaceId: string,
   onLog?: (message: string) => void,
-  options?: { timeoutMs?: number; signal?: AbortSignal; cacheScopeId?: string },
+  options?: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    cacheScopeId?: string;
+    initiatedByUserId?: string | null;
+  },
 ): Promise<Record<string, unknown>> {
   const fileBuffer = extractFile(zipBuffer, entryPath);
   if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
@@ -43,7 +48,12 @@ export async function runJob(
 
   const timestamp = Date.now().toString();
 
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal, cacheScopeId } = options ?? {};
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    signal,
+    cacheScopeId,
+    initiatedByUserId,
+  } = options ?? {};
 
   const workerData = {
     openrouterApiKey: config().OPENROUTER_API_KEY,
@@ -52,7 +62,7 @@ export async function runJob(
     cacheScopeId: cacheScopeId ?? entryPath,
     spaceId,
     apiUrl: import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080",
-    jobToken: createJobToken(spaceId, timestamp),
+    jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
   };
 
   try {

@@ -136,5 +136,19 @@ globalThis.searchDocuments = async (query, limit) => {
   return (await res.json()).results;
 };
 
+globalThis.getSecret = async (name) => {
+  const res = await fetch(
+    __a + "/api/v1/spaces/" + __s + "/secrets/" + encodeURIComponent(String(name)),
+    {
+      headers: { "X-Job-Token": __t },
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => String(res.status));
+    throw new Error("getSecret failed (" + res.status + "): " + text);
+  }
+  return (await res.json()).value;
+};
+
 await import(${JSON.stringify(jobFileUrl)});`;
 }

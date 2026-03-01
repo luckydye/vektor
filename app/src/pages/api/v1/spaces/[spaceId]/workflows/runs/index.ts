@@ -174,7 +174,7 @@ export const POST: APIRoute = (context) =>
         }
       }
 
-      const runId = createRun(spaceId, documentId, Object.keys(definition));
+      const runId = createRun(spaceId, documentId, Object.keys(definition), user.id);
 
       // Fire and forget — errors are recorded in run state
       executeWorkflow(spaceId, runId, definition, preSeeded).catch(() => {});

@@ -20,6 +20,7 @@ export const ResourceType = {
   DOCUMENT: "document",
   CATEGORY: "category",
   EXTENSION: "extension",
+  SECRET: "secret",
   FEATURE: "feature",
 } as const;
 

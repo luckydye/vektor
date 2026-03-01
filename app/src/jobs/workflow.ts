@@ -143,7 +143,11 @@ export async function executeWorkflow(
         resolvedInputs,
         spaceId,
         (message) => appendNodeLog(runId, nodeId, message),
-        { signal: controller.signal, cacheScopeId: nodeDef.jobId },
+        {
+          signal: controller.signal,
+          cacheScopeId: nodeDef.jobId,
+          initiatedByUserId: run.initiatedByUserId,
+        },
       );
 
       nodeOutputs.set(nodeId, outputs);

@@ -15,7 +15,7 @@ import {
   isSafeUploadIdPart,
   isWithinUploadsRoot,
 } from "../../../../../../utils/uploads.ts";
-import { authenticateJobTokenOrSpaceRole } from "../../../_auth.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 const ALLOWED_TYPES = [
   // Images

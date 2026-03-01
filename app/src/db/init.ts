@@ -79,6 +79,9 @@ export async function prepareSpaceDb(spaceId: string) {
   const accessTokenSQL = generateCreateTableSQL(spaceSchema.accessToken);
   await spaceDb.run(sql.raw(accessTokenSQL));
 
+  const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
+  await spaceDb.run(sql.raw(spaceSecretSQL));
+
   await spaceDb.run(
     sql.raw(`
 			CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(

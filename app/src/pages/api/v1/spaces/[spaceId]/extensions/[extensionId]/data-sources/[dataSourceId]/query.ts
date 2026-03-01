@@ -10,10 +10,7 @@ import {
   verifyExtensionAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  getExtension,
-  getExtensionPackage,
-} from "#db/extensions.ts";
+import { getExtension, getExtensionPackage } from "#db/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
 
 /**
@@ -61,7 +58,7 @@ export const POST: APIRoute = (context) =>
         inputs,
         spaceId,
         (message) => logs.push(message),
-        { cacheScopeId: jobDef.id },
+        { cacheScopeId: jobDef.id, initiatedByUserId: user.id },
       );
 
       return jsonResponse({ outputs, logs });

@@ -25,7 +25,7 @@ import {
 } from "#db/api.ts";
 import { listExtensions, getExtensionPackage } from "#db/extensions.ts";
 import { runJob } from "../../../../../../jobs/scheduler.ts";
-import { authenticateJobTokenOrSpaceRole } from "../../../_auth.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -33,7 +33,8 @@ export const POST: APIRoute = (context) =>
       const spaceId = requireParam(context.params, "spaceId");
 
       // Auth: job token OR user session
-      await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+      const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+      const initiatedByUserId = auth.type === "user" ? auth.user.id : auth.userId;
 
       const body = await parseJsonBody<{
         jobId?: string;
@@ -78,7 +79,11 @@ export const POST: APIRoute = (context) =>
                 inputs,
                 spaceId,
                 (message) => send({ type: "log", message }),
-                { signal: context.request.signal, cacheScopeId: jobId },
+                {
+                  signal: context.request.signal,
+                  cacheScopeId: jobId,
+                  initiatedByUserId,
+                },
               );
               send({ type: "output", outputs });
             } catch (err) {
@@ -108,7 +113,7 @@ export const POST: APIRoute = (context) =>
         inputs,
         spaceId,
         (msg) => logs.push(msg),
-        { cacheScopeId: jobId },
+        { cacheScopeId: jobId, initiatedByUserId },
       );
 
       return jsonResponse({ outputs, logs });

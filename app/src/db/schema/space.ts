@@ -1,4 +1,11 @@
-import { blob, integer, sqliteTable, text, primaryKey } from "drizzle-orm/sqlite-core";
+import {
+  blob,
+  integer,
+  sqliteTable,
+  text,
+  primaryKey,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const spaceMetadata = sqliteTable("space_metadata", {
   id: text("id").primaryKey(),
@@ -140,6 +147,25 @@ export const connection = sqliteTable("connection", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
+
+export const spaceSecret = sqliteTable(
+  "space_secret",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    ciphertext: text("ciphertext").notNull(),
+    iv: text("iv").notNull(),
+    authTag: text("auth_tag").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+  },
+  (table) => ({
+    secretNameUnique: uniqueIndex("space_secret_name_unique").on(table.name),
+  }),
+);
 
 export const auditLog = sqliteTable("audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),

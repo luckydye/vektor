@@ -64,6 +64,7 @@ export function config() {
     OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
 
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    SECRETS_ENCRYPTION_KEY: process.env.WIKI_SECRETS_ENCRYPTION_KEY,
   } as const;
 }
 

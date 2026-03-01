@@ -21,6 +21,7 @@ export type RunState = {
   nodes: Map<string, NodeState>;
   spaceId: string;
   documentId: string;
+  initiatedByUserId: string | null;
   abort?: () => void;
 };
 
@@ -31,6 +32,7 @@ export function createRun(
   spaceId: string,
   documentId: string,
   nodeIds: string[],
+  initiatedByUserId: string | null = null,
 ): string {
   const runId = crypto.randomUUID();
   const nodes = new Map<string, NodeState>();
@@ -45,7 +47,7 @@ export function createRun(
       completedAt: null,
     });
   }
-  runs.set(runId, { status: "pending", nodes, spaceId, documentId });
+  runs.set(runId, { status: "pending", nodes, spaceId, documentId, initiatedByUserId });
   latestRunByDoc.set(documentId, runId);
   return runId;
 }
