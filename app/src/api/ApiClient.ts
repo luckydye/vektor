@@ -217,6 +217,15 @@ export interface AccessToken {
   }>;
 }
 
+export interface SpaceSecret {
+  name: string;
+  description: string | null;
+  createdBy: string;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  lastUsedAt: Date | string | null;
+}
+
 export type AuditEvent =
   | "view"
   | "save"
@@ -574,11 +583,20 @@ export class ApiClient {
     /**
      * List all permissions in space (roles + features)
      */
-    list: async (spaceId: string, type?: "role" | "feature" | "all") => {
-      const url =
-        type && type !== "all"
-          ? `/api/v1/spaces/${spaceId}/permissions?type=${type}`
-          : `/api/v1/spaces/${spaceId}/permissions`;
+    list: async (
+      spaceId: string,
+      type?: "role" | "feature" | "all",
+      options?: {
+        resourceType?: string;
+        resourceId?: string;
+      },
+    ) => {
+      const query = new URLSearchParams();
+      if (type && type !== "all") query.set("type", type);
+      if (options?.resourceType) query.set("resourceType", options.resourceType);
+      if (options?.resourceId) query.set("resourceId", options.resourceId);
+      const queryString = query.toString();
+      const url = `/api/v1/spaces/${spaceId}/permissions${queryString ? `?${queryString}` : ""}`;
       return await this.apiGet<{
         permissions: Array<{
           type: "role" | "feature";
@@ -597,6 +615,8 @@ export class ApiClient {
         roleOrFeature: string;
         userId?: string;
         groupId?: string;
+        resourceType?: string;
+        resourceId?: string;
       },
     ) => {
       return await this.apiPost(this.baseUrl, `/api/v1/spaces/${spaceId}/permissions`, {
@@ -633,6 +653,8 @@ export class ApiClient {
         roleOrFeature: string;
         userId?: string;
         groupId?: string;
+        resourceType?: string;
+        resourceId?: string;
       },
     ) => {
       return await this.apiPost(this.baseUrl, `/api/v1/spaces/${spaceId}/permissions`, {
@@ -1203,6 +1225,67 @@ export class ApiClient {
     },
   };
 
+  secrets = {
+    /**
+     * List secrets in a space (owner only)
+     */
+    get: async (spaceId: string) => {
+      return await this.apiGet<{ secrets: SpaceSecret[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/secrets`,
+      );
+    },
+
+    /**
+     * Read one secret value by name
+     */
+    getByName: async (spaceId: string, name: string) => {
+      return await this.apiGet<{ name: string; value: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/secrets/${encodeURIComponent(name)}`,
+      );
+    },
+
+    /**
+     * Create or upsert a secret by name
+     */
+    create: async (
+      spaceId: string,
+      body: { name: string; value: string; description?: string | null },
+    ) => {
+      return await this.apiPost<{ secret: SpaceSecret }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/secrets`,
+        body,
+      );
+    },
+
+    /**
+     * Rotate/update secret value by name
+     */
+    update: async (
+      spaceId: string,
+      name: string,
+      body: { value: string; description?: string | null },
+    ) => {
+      return await this.apiPut<{ secret: SpaceSecret }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/secrets/${encodeURIComponent(name)}`,
+        body,
+      );
+    },
+
+    /**
+     * Delete secret by name
+     */
+    delete: async (spaceId: string, name: string) => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/secrets/${encodeURIComponent(name)}`,
+      );
+    },
+  };
+
   webhooks = {
     /**
      * List webhooks in a space
@@ -1280,10 +1363,7 @@ export class ApiClient {
       const response = await this.apiGet<{
         extensions: ExtensionInfo[];
         errors?: ExtensionManifestError[];
-      }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/extensions`,
-      );
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/extensions`);
 
       return {
         extensions: response.extensions ?? [],
