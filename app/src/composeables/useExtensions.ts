@@ -1,10 +1,11 @@
-import { ref, computed, toValue } from "vue";
+import { ref, computed } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
 import {
   api,
   type ExtensionInfo,
   type ExtensionRoute,
   type ExtensionRouteMenuItem,
+  type ExtensionManifestError,
 } from "../api/client.ts";
 import { useSpace } from "./useSpace.ts";
 import { extensions } from "../utils/extensions.ts";
@@ -34,7 +35,7 @@ export function useExtensions() {
     queryKey: computed(() => ["extensions", currentSpaceId.value]),
     queryFn: async () => {
       if (!currentSpaceId.value) {
-        return [];
+        return { extensions: [], errors: [] };
       }
       return await api.extensions.get(currentSpaceId.value);
     },
@@ -89,7 +90,10 @@ export function useExtensions() {
   };
 
   return {
-    extensions: extensionList,
+    extensions: computed<ExtensionInfo[]>(() => extensionList.value?.extensions ?? []),
+    extensionErrors: computed<ExtensionManifestError[]>(
+      () => extensionList.value?.errors ?? [],
+    ),
     isLoading,
     error,
     uploadError,

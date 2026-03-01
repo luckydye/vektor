@@ -197,6 +197,11 @@ export interface ExtensionInfo {
   createdBy: string;
 }
 
+export interface ExtensionManifestError {
+  id: string;
+  error: string;
+}
+
 export interface AccessToken {
   id: string;
   name: string;
@@ -1269,11 +1274,21 @@ export class ApiClient {
     /**
      * List all extensions in a space
      */
-    get: async (spaceId: string): Promise<ExtensionInfo[]> => {
-      return await this.apiGet<ExtensionInfo[]>(
+    get: async (
+      spaceId: string,
+    ): Promise<{ extensions: ExtensionInfo[]; errors: ExtensionManifestError[] }> => {
+      const response = await this.apiGet<{
+        extensions: ExtensionInfo[];
+        errors?: ExtensionManifestError[];
+      }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/extensions`,
       );
+
+      return {
+        extensions: response.extensions ?? [],
+        errors: response.errors ?? [],
+      };
     },
 
     /**

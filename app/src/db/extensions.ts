@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { inflateRawSync } from "node:zlib";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
-import { clearExtensionStorage } from "./extensionStorage.ts";
 
 export interface ExtensionRouteMenuItem {
   title: string;
@@ -64,20 +63,43 @@ export interface Extension {
   createdBy: string;
 }
 
+export interface ExtensionManifestLoadError {
+  id: string;
+  error: string;
+}
+
 export async function listExtensions(spaceId: string): Promise<Extension[]> {
+  const { extensions } = await listExtensionsWithErrors(spaceId);
+  return extensions;
+}
+
+export async function listExtensionsWithErrors(
+  spaceId: string,
+): Promise<{ extensions: Extension[]; errors: ExtensionManifestLoadError[] }> {
   const db = await getSpaceDb(spaceId);
   const rows = await db.select().from(extension);
 
-  return rows.map((row) => {
-    const manifest = extractManifest(row.package);
-    return {
+  const extensions: Extension[] = [];
+  const errors: ExtensionManifestLoadError[] = [];
+  for (const row of rows) {
+    const result = safeExtractManifest(row.package, row.id);
+    if (!result.manifest) {
+      errors.push({
+        id: row.id,
+        error: result.error ?? "Invalid extension package",
+      });
+      continue;
+    }
+    extensions.push({
       id: row.id,
-      manifest,
+      manifest: result.manifest,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       createdBy: row.createdBy,
-    };
-  });
+    });
+  }
+
+  return { extensions, errors };
 }
 
 export async function getExtension(
@@ -92,10 +114,13 @@ export async function getExtension(
   }
 
   const row = rows[0];
-  const manifest = extractManifest(row.package);
+  const result = safeExtractManifest(row.package, row.id);
+  if (!result.manifest) {
+    return null;
+  }
   return {
     id: row.id,
-    manifest,
+    manifest: result.manifest,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     createdBy: row.createdBy,
@@ -154,7 +179,16 @@ export async function updateExtension(
   const db = await getSpaceDb(spaceId);
   const now = new Date();
 
-  const existing = await getExtension(spaceId, extensionId);
+  const existingRows = await db
+    .select({
+      id: extension.id,
+      createdAt: extension.createdAt,
+      createdBy: extension.createdBy,
+    })
+    .from(extension)
+    .where(eq(extension.id, extensionId));
+
+  const existing = existingRows[0];
   if (!existing) {
     return null;
   }
@@ -175,6 +209,22 @@ export async function updateExtension(
     updatedAt: now,
     createdBy: existing.createdBy,
   };
+}
+
+function safeExtractManifest(
+  zipBuffer: Buffer,
+  extensionIdForLog?: string,
+): { manifest: ExtensionManifest | null; error?: string } {
+  try {
+    return { manifest: extractManifest(zipBuffer) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid extension package";
+    console.warn(
+      `Skipping invalid extension manifest${extensionIdForLog ? ` for '${extensionIdForLog}'` : ""}:`,
+      err,
+    );
+    return { manifest: null, error: message };
+  }
 }
 
 export async function deleteExtension(
@@ -235,6 +285,28 @@ function extractManifest(zipBuffer: Buffer): ExtensionManifest {
   }
   if (!manifest.entries || typeof manifest.entries !== "object") {
     throw new Error("Extension manifest missing required 'entries' field");
+  }
+
+  if (manifest.routes !== undefined) {
+    if (!Array.isArray(manifest.routes)) {
+      throw new Error("Extension manifest 'routes' must be an array");
+    }
+    for (const [index, route] of manifest.routes.entries()) {
+      if (!route || typeof route !== "object") {
+        throw new Error(`Extension manifest route at index ${index} is invalid`);
+      }
+      if (!route.path || typeof route.path !== "string") {
+        throw new Error(
+          `Extension manifest route at index ${index} is missing required 'path' field`,
+        );
+      }
+      if (route.menuItem?.icon && typeof route.menuItem.icon === "string") {
+        route.menuItem.icon = resolveMenuIcon(route.menuItem.icon, files);
+        if (!route.menuItem.icon) {
+          delete route.menuItem.icon;
+        }
+      }
+    }
   }
 
   const jobIds = new Set<string>();
@@ -301,15 +373,50 @@ function extractManifest(zipBuffer: Buffer): ExtensionManifest {
   return manifest;
 }
 
+function resolveMenuIcon(icon: string, files: ZipEntry[]): string {
+  try {
+    const trimmedIcon = icon.trim();
+
+    // Backward compatible: allow inline SVG in manifest.
+    if (trimmedIcon.startsWith("<svg")) {
+      return trimmedIcon;
+    }
+
+    const normalisedPath = normaliseZipPath(trimmedIcon);
+    if (!normalisedPath.toLowerCase().endsWith(".svg")) {
+      console.warn(
+        `Ignoring extension menu icon '${trimmedIcon}': icon must be inline SVG or a .svg asset path`,
+      );
+      return "";
+    }
+
+    const iconFile = findZipEntry(files, normalisedPath);
+    if (!iconFile) {
+      console.warn(
+        `Ignoring extension menu icon '${trimmedIcon}': referenced file was not found in package`,
+      );
+      return "";
+    }
+
+    const svgContent = iconFile.data.toString("utf-8").trim();
+    if (!svgContent.startsWith("<svg")) {
+      console.warn(
+        `Ignoring extension menu icon '${trimmedIcon}': file content is not SVG`,
+      );
+      return "";
+    }
+
+    return svgContent;
+  } catch (err) {
+    console.warn(`Ignoring extension menu icon '${icon}':`, err);
+    return "";
+  }
+}
+
 // Extract a specific file from zip buffer
 export function extractFile(zipBuffer: Buffer, filePath: string): Buffer | null {
   const files = parseZip(zipBuffer);
-  // Normalise path - remove leading ./ or /
-  const normalised = filePath.replace(/^\.?\//, "");
-  const file = files.find((f) => {
-    const normalisedName = f.name.replace(/^\.?\//, "");
-    return normalisedName === normalised;
-  });
+  const file = findZipEntry(files, filePath);
 
   return file?.data ?? null;
 }
@@ -317,6 +424,19 @@ export function extractFile(zipBuffer: Buffer, filePath: string): Buffer | null 
 interface ZipEntry {
   name: string;
   data: Buffer;
+}
+
+function normaliseZipPath(filePath: string): string {
+  const normalised = filePath.replace(/^\.?\//, "").trim();
+  if (!normalised || normalised.includes("..")) {
+    throw new Error(`Invalid extension asset path: '${filePath}'`);
+  }
+  return normalised;
+}
+
+function findZipEntry(files: ZipEntry[], filePath: string): ZipEntry | undefined {
+  const normalisedPath = normaliseZipPath(filePath);
+  return files.find((file) => normaliseZipPath(file.name) === normalisedPath);
 }
 
 // Minimal zip parser for reading uncompressed and deflate-compressed entries

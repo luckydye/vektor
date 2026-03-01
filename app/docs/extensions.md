@@ -22,7 +22,7 @@ An extension requires a `manifest.json` and at least one entry point:
       "title": "My Dashboard",
       "menuItem": {
         "title": "Dashboard",
-        "icon": "<svg>...</svg>"
+        "icon": "assets/dashboard.svg"
       }
     }
   ]
@@ -66,7 +66,7 @@ Add a `menuItem` to a route to show it in the sidebar navigation:
       "title": "Analytics Dashboard",
       "menuItem": {
         "title": "Analytics",
-        "icon": "<svg xmlns=\"http://www.w3.org/2000/svg\" ...></svg>"
+        "icon": "assets/analytics.svg"
       }
     },
     {
@@ -77,7 +77,7 @@ Add a `menuItem` to a route to show it in the sidebar navigation:
 }
 ```
 
-Only routes with `menuItem` defined appear in the navigation. The `icon` field is optional and accepts an SVG string.
+Only routes with `menuItem` defined appear in the navigation. The `icon` field is optional and accepts either inline SVG markup or a `.svg` file path within the extension package.
 
 ## Entry Point
 

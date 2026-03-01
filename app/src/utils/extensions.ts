@@ -170,7 +170,20 @@ export class Extensions {
       throw new Error(`Failed to fetch extensions: ${response.status}`);
     }
 
-    return response.json();
+    const payload = (await response.json()) as {
+      extensions?: ExtensionInfo[];
+      errors?: Array<{ id: string; error: string }>;
+    };
+
+    if (payload.errors?.length) {
+      for (const err of payload.errors) {
+        console.warn(
+          `Extension '${err.id}' could not be loaded from manifest: ${err.error}`,
+        );
+      }
+    }
+
+    return payload.extensions ?? [];
   }
 
   /**

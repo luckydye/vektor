@@ -12,12 +12,11 @@ import {
   verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getTokenUserId } from "#db/accessTokens.ts";
 import { ResourceType } from "#db/acl.ts";
 import { getSpace } from "#db/spaces.ts";
 import {
   createExtension,
-  listExtensions,
+  listExtensionsWithErrors,
   getExtension,
   updateExtension,
   type ExtensionManifest,
@@ -33,7 +32,10 @@ export const GET: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
-    const allExtensions = await listExtensions(spaceId);
+    const {
+      extensions: allExtensions,
+      errors: manifestErrors,
+    } = await listExtensionsWithErrors(spaceId);
 
     // Filter extensions based on user access
     const accessibleExtensions = await Promise.all(
@@ -45,8 +47,8 @@ export const GET: APIRoute = (context) =>
 
     const extensions = accessibleExtensions.filter((ext) => ext !== null);
 
-    return jsonResponse(
-      extensions.map((ext) => ({
+    return jsonResponse({
+      extensions: extensions.map((ext) => ({
         id: ext.id,
         name: ext.manifest.name,
         version: ext.manifest.version,
@@ -59,7 +61,8 @@ export const GET: APIRoute = (context) =>
         updatedAt: ext.updatedAt.toISOString(),
         createdBy: ext.createdBy,
       })),
-    );
+      errors: manifestErrors,
+    });
   }, "Failed to list extensions");
 
 /**
@@ -127,9 +130,16 @@ export const POST: APIRoute = (context) =>
       // Check if extension already exists - update it if so
       const existing = await getExtension(spaceId, extensionId);
 
-      const ext = existing
-        ? await updateExtension(spaceId, extensionId, buffer)
-        : await createExtension(spaceId, extensionId, buffer, createdBy);
+      let ext = null;
+      try {
+        ext = existing
+          ? await updateExtension(spaceId, extensionId, buffer)
+          : await createExtension(spaceId, extensionId, buffer, createdBy);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Invalid extension package";
+        return badRequestResponse(`Invalid extension package: ${message}`);
+      }
 
       if (!ext) {
         return badRequestResponse("Failed to save extension");

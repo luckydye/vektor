@@ -807,7 +807,7 @@ async function executeToolCall(
         args.limit ? { limit: args.limit as number } : undefined,
       );
     case "listExtensions":
-      return api.extensions.get(args.spaceId as string);
+      return (await api.extensions.get(args.spaceId as string)).extensions;
     case "getExtension":
       return api.extensions.getById(args.spaceId as string, args.extensionId as string);
     case "listWebhooks":

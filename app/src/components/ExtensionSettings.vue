@@ -29,6 +29,20 @@
         <p class="text-sm text-red-600">{{ uploadError }}</p>
       </div>
 
+      <div
+        v-if="extensionErrors.length > 0"
+        class="p-3 bg-amber-50 border border-amber-200 rounded-md"
+      >
+        <p class="text-sm text-amber-800 font-medium mb-1">
+          Some installed extensions could not be loaded:
+        </p>
+        <ul class="text-xs text-amber-800 space-y-0.5">
+          <li v-for="item in extensionErrors" :key="`${item.id}:${item.error}`">
+            <span class="font-mono">{{ item.id }}</span>: {{ item.error }}
+          </li>
+        </ul>
+      </div>
+
       <!-- Loading State -->
       <div v-if="isLoading" class="text-center py-8 text-sm text-neutral">
         Loading extensions...
@@ -128,6 +142,7 @@ import { useExtensions } from "../composeables/useExtensions.ts";
 
 const {
   extensions,
+  extensionErrors,
   isLoading,
   uploadError,
   isUploading,

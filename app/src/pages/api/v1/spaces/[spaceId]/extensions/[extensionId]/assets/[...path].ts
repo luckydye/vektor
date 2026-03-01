@@ -1,6 +1,5 @@
 import type { APIRoute } from "astro";
 import {
-  jsonResponse,
   notFoundResponse,
   requireParam,
   requireUser,
@@ -61,7 +60,16 @@ export const GET: APIRoute = (context) =>
       return notFoundResponse("Extension");
     }
 
-    const fileData = extractFile(packageBuffer, assetPath);
+    let fileData: Buffer | null = null;
+    try {
+      fileData = extractFile(packageBuffer, assetPath);
+    } catch (err) {
+      console.warn(
+        `Failed to extract extension asset '${assetPath}' for '${extensionId}':`,
+        err,
+      );
+      return notFoundResponse("Asset");
+    }
     if (!fileData) {
       return notFoundResponse("Asset");
     }
