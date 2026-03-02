@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 
-type ThemePreference = "system" | "light" | "dark";
+type ThemePreference = "system" | "light" | "dark" | "github";
 
 const THEME_STORAGE_KEY = "user-theme-preference";
 const themePreference = ref<ThemePreference>("system");
@@ -11,7 +11,7 @@ const emit = defineEmits<{
 }>();
 
 const isThemePreference = (value: string | null): value is ThemePreference => {
-  return value === "system" || value === "light" || value === "dark";
+  return value === "system" || value === "light" || value === "dark" || value === "github";
 };
 
 const applyThemePreference = (preference: ThemePreference) => {
@@ -75,6 +75,7 @@ onMounted(() => {
       <option value="system">System</option>
       <option value="light">Light</option>
       <option value="dark">Dark</option>
+      <option value="github">GitHub</option>
     </select>
   </div>
 </template>

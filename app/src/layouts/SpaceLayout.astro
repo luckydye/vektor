@@ -91,7 +91,7 @@ const publicEnvVars = () => {
       (() => {
         const key = "user-theme-preference";
         const value = localStorage.getItem(key);
-        if (value === "light" || value === "dark") {
+        if (value === "light" || value === "dark" || value === "github") {
           document.documentElement.setAttribute("data-theme", value);
           return;
         }
@@ -169,6 +169,10 @@ const publicEnvVars = () => {
         ${paletteCss.dark}
       }
       :root[data-theme="light"] body {
+        --color-primary: ${brandColor};
+        ${paletteCss.light}
+      }
+      :root[data-theme="github"] body {
         --color-primary: ${brandColor};
         ${paletteCss.light}
       }

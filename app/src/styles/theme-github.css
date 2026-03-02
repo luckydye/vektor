@@ -1,4 +1,6 @@
-@theme {
+/* GitHub Theme - Selectable via data-theme="github" */
+
+:root[data-theme="github"] {
   /* GitHub System Font Stack */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
@@ -143,269 +145,69 @@
   --line-height-interactive: 1.75rem;
 }
 
-/* Dark mode - GitHub Dark Dimmed inspired */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    /* Primary Blue - Dark */
-    --color-primary-10: #0c1d33;
-    --color-primary-50: #15284a;
-    --color-primary-100: #1e3a6b;
-    --color-primary-200: #274c8c;
-    --color-primary-300: #305ead;
-    --color-primary-400: #3870ce;
-    --color-primary-500: #4182ef;
-    --color-primary-600: #5c94f5;
-    --color-primary-700: #7da6f8;
-    --color-primary-800: #a1bcfb;
-    --color-primary-900: #c7d3fe;
-    --color-primary-950: #e6ebff;
-
-    /* Success Green - Dark */
-    --color-success-10: #0d2014;
-    --color-success-50: #14331f;
-    --color-success-100: #1b462a;
-    --color-success-200: #225935;
-    --color-success-300: #296c40;
-    --color-success-400: #307f4b;
-    --color-success-500: #379256;
-    --color-success-600: #4da36a;
-    --color-success-700: #6bb584;
-    --color-success-800: #8cc7a1;
-    --color-success-900: #b2d9c2;
-    --color-success-950: #d9ebe5;
-
-    /* Warning Yellow - Dark */
-    --color-warning-10: #28200a;
-    --color-warning-50: #40330f;
-    --color-warning-100: #594715;
-    --color-warning-200: #715b1a;
-    --color-warning-300: #8a6f1f;
-    --color-warning-400: #a28325;
-    --color-warning-500: #bb972a;
-    --color-warning-600: #c9a742;
-    --color-warning-700: #d7b85e;
-    --color-warning-800: #e5c97e;
-    --color-warning-900: #f3daa3;
-    --color-warning-950: #fcecc9;
-
-    /* Danger Red - Dark */
-    --color-danger-10: #280d11;
-    --color-danger-50: #40141a;
-    --color-danger-100: #591b23;
-    --color-danger-200: #71222c;
-    --color-danger-300: #8a2935;
-    --color-danger-400: #a2303e;
-    --color-danger-500: #bb3747;
-    --color-danger-600: #c94f5d;
-    --color-danger-700: #d76b77;
-    --color-danger-800: #e58b94;
-    --color-danger-900: #f3afb5;
-    --color-danger-950: #fcd4d7;
-
-    /* Accent Purple - Dark */
-    --color-accent-10: #1f0f33;
-    --color-accent-50: #331a4a;
-    --color-accent-100: #47256b;
-    --color-accent-200: #5b308c;
-    --color-accent-300: #6f3bad;
-    --color-accent-400: #8346ce;
-    --color-accent-500: #9751ef;
-    --color-accent-600: #a96cf5;
-    --color-accent-700: #bc8af8;
-    --color-accent-800: #d1aafb;
-    --color-accent-900: #e7cdfe;
-    --color-accent-950: #f5e6ff;
-
-    /* Neutral Grays - Dark */
-    --color-neutral-10: #0d1117;
-    --color-neutral-50: #161b22;
-    --color-neutral-100: #21262d;
-    --color-neutral-200: #30363d;
-    --color-neutral-300: #484f58;
-    --color-neutral-400: #6e7681;
-    --color-neutral-500: #8b949e;
-    --color-neutral-600: #a8b3cf;
-    --color-neutral-700: #c9d1d9;
-    --color-neutral-800: #e6edf3;
-    --color-neutral-900: #f0f6fc;
-    --color-neutral-950: #ffffff;
-
-    /* Base colors - Dark */
-    --color-background: #0d1117;
-    --color-forground: #c9d1d9;
-    --color-gray-10: #0d1117;
-    --color-gray-50: #161b22;
-    --color-gray-100: #21262d;
-    --color-gray-200: #30363d;
-    --color-gray-300: #484f58;
-    --color-gray-400: #6e7681;
-    --color-gray-500: #8b949e;
-    --color-gray-600: #a8b3cf;
-    --color-gray-700: #c9d1d9;
-    --color-gray-800: #e6edf3;
-    --color-gray-900: #f0f6fc;
-    --color-gray-950: #ffffff;
-  }
-}
-
-/* Explicit dark theme */
-:root[data-theme="dark"] {
-  /* Primary Blue - Dark */
-  --color-primary-10: #0c1d33;
-  --color-primary-50: #15284a;
-  --color-primary-100: #1e3a6b;
-  --color-primary-200: #274c8c;
-  --color-primary-300: #305ead;
-  --color-primary-400: #3870ce;
-  --color-primary-500: #4182ef;
-  --color-primary-600: #5c94f5;
-  --color-primary-700: #7da6f8;
-  --color-primary-800: #a1bcfb;
-  --color-primary-900: #c7d3fe;
-  --color-primary-950: #e6ebff;
-
-  /* Success Green - Dark */
-  --color-success-10: #0d2014;
-  --color-success-50: #14331f;
-  --color-success-100: #1b462a;
-  --color-success-200: #225935;
-  --color-success-300: #296c40;
-  --color-success-400: #307f4b;
-  --color-success-500: #379256;
-  --color-success-600: #4da36a;
-  --color-success-700: #6bb584;
-  --color-success-800: #8cc7a1;
-  --color-success-900: #b2d9c2;
-  --color-success-950: #d9ebe5;
-
-  /* Warning Yellow - Dark */
-  --color-warning-10: #28200a;
-  --color-warning-50: #40330f;
-  --color-warning-100: #594715;
-  --color-warning-200: #715b1a;
-  --color-warning-300: #8a6f1f;
-  --color-warning-400: #a28325;
-  --color-warning-500: #bb972a;
-  --color-warning-600: #c9a742;
-  --color-warning-700: #d7b85e;
-  --color-warning-800: #e5c97e;
-  --color-warning-900: #f3daa3;
-  --color-warning-950: #fcecc9;
-
-  /* Danger Red - Dark */
-  --color-danger-10: #280d11;
-  --color-danger-50: #40141a;
-  --color-danger-100: #591b23;
-  --color-danger-200: #71222c;
-  --color-danger-300: #8a2935;
-  --color-danger-400: #a2303e;
-  --color-danger-500: #bb3747;
-  --color-danger-600: #c94f5d;
-  --color-danger-700: #d76b77;
-  --color-danger-800: #e58b94;
-  --color-danger-900: #f3afb5;
-  --color-danger-950: #fcd4d7;
-
-  /* Accent Purple - Dark */
-  --color-accent-10: #1f0f33;
-  --color-accent-50: #331a4a;
-  --color-accent-100: #47256b;
-  --color-accent-200: #5b308c;
-  --color-accent-300: #6f3bad;
-  --color-accent-400: #8346ce;
-  --color-accent-500: #9751ef;
-  --color-accent-600: #a96cf5;
-  --color-accent-700: #bc8af8;
-  --color-accent-800: #d1aafb;
-  --color-accent-900: #e7cdfe;
-  --color-accent-950: #f5e6ff;
-
-  /* Neutral Grays - Dark */
-  --color-neutral-10: #0d1117;
-  --color-neutral-50: #161b22;
-  --color-neutral-100: #21262d;
-  --color-neutral-200: #30363d;
-  --color-neutral-300: #484f58;
-  --color-neutral-400: #6e7681;
-  --color-neutral-500: #8b949e;
-  --color-neutral-600: #a8b3cf;
-  --color-neutral-700: #c9d1d9;
-  --color-neutral-800: #e6edf3;
-  --color-neutral-900: #f0f6fc;
-  --color-neutral-950: #ffffff;
-
-  /* Base colors - Dark */
-  --color-background: #0d1117;
-  --color-forground: #c9d1d9;
-  --color-gray-10: #0d1117;
-  --color-gray-50: #161b22;
-  --color-gray-100: #21262d;
-  --color-gray-200: #30363d;
-  --color-gray-300: #484f58;
-  --color-gray-400: #6e7681;
-  --color-gray-500: #8b949e;
-  --color-gray-600: #a8b3cf;
-  --color-gray-700: #c9d1d9;
-  --color-gray-800: #e6edf3;
-  --color-gray-900: #f0f6fc;
-  --color-gray-950: #ffffff;
-}
-
-/* Text Style Utilities */
-@utility text-link {
+/* Text Style Utilities for GitHub Theme */
+:root[data-theme="github"] .text-link,
+:root[data-theme="github"] .text-link * {
   font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.5rem;
   letter-spacing: 0;
 }
-@utility text-label {
+:root[data-theme="github"] .text-label,
+:root[data-theme="github"] .text-label * {
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1rem;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
-@utility text-interactive {
+:root[data-theme="github"] .text-interactive,
+:root[data-theme="github"] .text-interactive * {
   font-size: 1rem;
   font-weight: 500;
   line-height: 1.75rem;
   letter-spacing: 0;
 }
-@utility text-base {
+:root[data-theme="github"] .text-base,
+:root[data-theme="github"] .text-base * {
   font-size: 1rem;
   font-weight: 400;
   line-height: 1.5rem;
   letter-spacing: 0;
 }
-@utility text-subtitle {
+:root[data-theme="github"] .text-subtitle,
+:root[data-theme="github"] .text-subtitle * {
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1rem;
   letter-spacing: 0;
 }
-@utility text-title {
+:root[data-theme="github"] .text-title,
+:root[data-theme="github"] .text-title * {
   font-size: 2rem;
   font-weight: 600;
   line-height: 2.5rem;
   letter-spacing: -0.02em;
 }
-@utility text-title-2 {
+:root[data-theme="github"] .text-title-2,
+:root[data-theme="github"] .text-title-2 * {
   font-size: 1.25rem;
   font-weight: 600;
   line-height: 1.75rem;
   letter-spacing: 0;
 }
-@utility text-footnote {
+:root[data-theme="github"] .text-footnote,
+:root[data-theme="github"] .text-footnote * {
   font-size: 0.75rem;
   font-weight: 400;
   line-height: 1rem;
   letter-spacing: 0;
 }
 
-/* Drop Shadow Utilities */
-@utility shadow-large {
+/* Drop Shadow Utilities for GitHub Theme */
+:root[data-theme="github"] .shadow-large {
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
 }
-@utility shadow-small {
+:root[data-theme="github"] .shadow-small {
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.12));
 }

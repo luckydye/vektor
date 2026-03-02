@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "./theme-github.css";
 @import "./utils.css";
 @import "./elements.css";
 @import "./print.css";
