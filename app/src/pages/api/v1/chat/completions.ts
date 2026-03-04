@@ -21,9 +21,10 @@ export const POST: APIRoute = (context) =>
 
       const apiKey = config().OPENROUTER_API_KEY;
       if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+      const model = config().OPENROUTER_MODEL || "qwen/qwen3.5-397b-a17b";
 
       const bodyJson = await parseJsonBody(context.request);
-      bodyJson.model = "qwen/qwen3.5-397b-a17b";
+      bodyJson.model = model;
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",

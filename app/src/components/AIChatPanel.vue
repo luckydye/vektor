@@ -1086,7 +1086,7 @@ async function fetchStreamingCompletion(
     ? `${ollamaBaseUrl.value.replace(/\/$/, "")}/v1/chat/completions`
     : "/api/v1/chat/completions";
 
-  const model = isOllama ? ollamaModel.value : "qwen/qwen3.5-397b-a17b";
+  const model = isOllama ? ollamaModel.value : "openrouter-configured-model";
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
