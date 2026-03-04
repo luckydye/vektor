@@ -31,6 +31,10 @@ const isCreatingToken = ref(false);
 const editorSaveFunction = ref<(() => Promise<void>) | null>(null);
 
 function startEditing() {
+  if (props.readonly || !userCanEdit.value) {
+    return;
+  }
+
   isEditing.value = true;
   window.dispatchEvent(new CustomEvent("edit-mode-start"));
 

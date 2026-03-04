@@ -15,6 +15,7 @@ import { slugify } from "../utils/utils.ts";
 import { triggerWebhooks } from "./webhooks.ts";
 import { extractMentionsFromHtml } from "./mentions.ts";
 import { decompressHtml } from "./revisions.ts";
+import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
 
 async function generateUniqueSlug(
   spaceId: string,
@@ -135,6 +136,7 @@ export async function createDocument(
   const now = new Date();
   const documentCreatedAt = createdAt || now;
   const documentUpdatedAt = updatedAt || now;
+  const isReadonly = readOnlyDocumentTypes.includes(type ?? "");
 
   // Generate a unique slug if the provided slug already exists
   const uniqueSlug = await generateUniqueSlug(spaceId, slug);
@@ -149,7 +151,7 @@ export async function createDocument(
     createdBy: createdBy,
     parentId: parentId || null,
     archived: false,
-    readonly: false,
+    readonly: isReadonly,
     createdAt: documentCreatedAt,
     updatedAt: documentUpdatedAt,
   });
@@ -193,7 +195,7 @@ export async function createDocument(
     updatedAt: documentUpdatedAt,
     createdBy: createdBy,
     parentId: parentId || null,
-    readonly: false,
+    readonly: isReadonly,
     archived: false,
   };
 }

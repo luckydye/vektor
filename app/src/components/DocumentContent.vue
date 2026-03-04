@@ -70,7 +70,7 @@ const { saveRevision } = useRevisions(props.documentId);
 const AppView = defineAsyncComponent(() => import("./AppView.vue"));
 
 function handleEditModeStart() {
-  if (!viewingRevision.value) {
+  if (!viewingRevision.value && !props.readonly) {
     isEditing.value = true;
   }
 }
@@ -182,7 +182,7 @@ async function handleRevisionDiff(event) {
 }
 
 onMounted(() => {
-  if (props.documentType !== "canvas" && props.documentType !== "app") {
+  if (!props.readonly && props.documentType !== "canvas" && props.documentType !== "app") {
     window.addEventListener("edit-mode-start", handleEditModeStart);
   }
 
@@ -353,7 +353,7 @@ useSync(currentSpaceId, (scopes) => {
   </div>
 
   <!-- Editor -->
-  <div v-if="isEditing && !viewingRevision" :class="['h-full', !isEditingReady && 'opacity-0']">
+  <div v-if="isEditing && !viewingRevision && !props.readonly" :class="['h-full', !isEditingReady && 'opacity-0']">
     <document-view ref="editorViewEl"></document-view>
   </div>
   

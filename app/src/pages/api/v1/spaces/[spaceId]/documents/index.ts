@@ -19,6 +19,7 @@ import {
 } from "#db/documents.ts";
 import { ResourceType } from "~/src/db/acl.ts";
 import {
+  CSV_TYPES,
   getMimeType,
   toHtmlIfMarkdown,
 } from "../../../../../../utils/documentContent.ts";
@@ -129,6 +130,7 @@ export const POST: APIRoute = (context) =>
       properties = jsonProperties;
       parentId = jsonParentId;
       type = jsonType;
+      content = toHtmlIfMarkdown(content, contentType, type);
     } else {
       const rawContent = await context.request.text();
       if (!rawContent) {
@@ -136,6 +138,9 @@ export const POST: APIRoute = (context) =>
       }
 
       content = toHtmlIfMarkdown(rawContent, contentType);
+      if (contentType && CSV_TYPES.includes(contentType)) {
+        type = "csv";
+      }
     }
 
     if (!content || typeof content !== "string") {

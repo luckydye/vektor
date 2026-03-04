@@ -42,6 +42,7 @@ import {
   getMimeType,
   toHtmlIfMarkdown,
 } from "../../../../../../../utils/documentContent.ts";
+import { readOnlyDocumentTypes } from "../../../../../../../utils/documentTypes.ts";
 import { getSpaceDb } from "#db/db.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { eq } from "drizzle-orm";
@@ -344,7 +345,7 @@ export const PUT: APIRoute = (context) =>
         return jsonResponse({ success: true });
       }
 
-      if (existingDoc.readonly) {
+      if (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? "")) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
@@ -352,9 +353,9 @@ export const PUT: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      content = jsonContent;
+      content = toHtmlIfMarkdown(jsonContent, contentType, existingDoc.type);
     } else {
-      if (existingDoc.readonly) {
+      if (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? "")) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
@@ -363,7 +364,7 @@ export const PUT: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      content = toHtmlIfMarkdown(rawContent, contentType);
+      content = toHtmlIfMarkdown(rawContent, contentType, existingDoc.type);
     }
 
     // TODO: propper sanitization needed, parse html doc and only use allowed elements and attributes.
@@ -378,6 +379,10 @@ export const PATCH: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "documentId");
+    const existingDoc = await getDocument(spaceId, id);
+    if (!existingDoc) {
+      throw notFoundResponse("Document");
+    }
 
     const body = await parseJsonBody(context.request);
     const { properties, parentId, publishedRev, readonly } = body;
@@ -421,6 +426,9 @@ export const PATCH: APIRoute = (context) =>
     }
 
     if (readonly !== undefined) {
+      if (readOnlyDocumentTypes.includes(existingDoc.type ?? "") && readonly !== true) {
+        throw badRequestResponse("CSV documents are readonly");
+      }
       await handleReadonlyPatch(spaceId, id, user.id, readonly);
     }
 
@@ -460,7 +468,7 @@ export const POST: APIRoute = (context) =>
       throw badRequestResponse("Document not found");
     }
 
-    if (document.readonly) {
+    if (document.readonly || readOnlyDocumentTypes.includes(document.type ?? "")) {
       throw forbiddenResponse("Cannot save readonly document");
     }
 
@@ -476,7 +484,7 @@ export const POST: APIRoute = (context) =>
         throw badRequestResponse("HTML content is required and must be a string");
       }
 
-      html = jsonHtml;
+      html = toHtmlIfMarkdown(jsonHtml, contentType, document.type);
       message = typeof jsonMessage === "string" ? jsonMessage : undefined;
     } else {
       const rawContent = await context.request.text();
@@ -484,7 +492,7 @@ export const POST: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      html = toHtmlIfMarkdown(rawContent, contentType);
+      html = toHtmlIfMarkdown(rawContent, contentType, document.type);
     }
 
     const revision = await createRevision(spaceId, documentId, html, user.id, message);

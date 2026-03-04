@@ -11,6 +11,7 @@ import {
 import { getPublishedContent } from "../../../db/revisions.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
 import { getCategoryBySlug } from "../../../db/categories.ts";
+import { readOnlyDocumentTypes } from "../../../utils/documentTypes.ts";
 import Canvas from "~/src/canvas/Canvas.vue";
 import Breadcrumbs from "~/src/components/Breadcrumbs.vue";
 import { twMerge } from "tailwind-merge";
@@ -81,7 +82,8 @@ const isReadonly =
   document.readonly ||
   document.archived ||
   document.type === "canvas" ||
-  document.type === "app";
+  document.type === "app" ||
+  readOnlyDocumentTypes.includes(document.type ?? "");
 
 let htmlContent = document.content;
 if (document.publishedRev !== null) {
