@@ -22,6 +22,44 @@ import { buildJobWrapper } from "./jobRuntime.ts";
  *   { success: false, error: "..." }      on failure
  */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_CONCURRENT_JOBS = 3;
+
+let activeJobs = 0;
+const waitQueue: Array<() => void> = [];
+
+function releaseJobSlot(): void {
+  activeJobs = Math.max(0, activeJobs - 1);
+  const next = waitQueue.shift();
+  if (next) {
+    activeJobs += 1;
+    next();
+  }
+}
+
+function acquireJobSlot(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new Error("Job cancelled"));
+
+  if (activeJobs < MAX_CONCURRENT_JOBS) {
+    activeJobs += 1;
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const start = () => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+
+    const onAbort = () => {
+      const idx = waitQueue.indexOf(start);
+      if (idx >= 0) waitQueue.splice(idx, 1);
+      reject(new Error("Job cancelled"));
+    };
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+    waitQueue.push(start);
+  });
+}
 
 export async function runJob(
   zipBuffer: Buffer,
@@ -36,18 +74,6 @@ export async function runJob(
     initiatedByUserId?: string | null;
   },
 ): Promise<Record<string, unknown>> {
-  const fileBuffer = extractFile(zipBuffer, entryPath);
-  if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
-
-  const jobId = crypto.randomUUID();
-  const jobPath = join(tmpdir(), `wiki-job-${jobId}.mjs`);
-  const wrapperPath = join(tmpdir(), `wiki-wrapper-${jobId}.mjs`);
-
-  await writeFile(jobPath, fileBuffer);
-  await writeFile(wrapperPath, buildJobWrapper(pathToFileURL(jobPath).href));
-
-  const timestamp = Date.now().toString();
-
   const {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     signal,
@@ -55,19 +81,38 @@ export async function runJob(
     initiatedByUserId,
   } = options ?? {};
 
-  const workerData = {
-    openrouterApiKey: config().OPENROUTER_API_KEY,
-    ...inputs,
-    jobId,
-    cacheScopeId: cacheScopeId ?? entryPath,
-    spaceId,
-    apiUrl: import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080",
-    jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
-  };
+  await acquireJobSlot(signal);
+
+  let jobPath: string | null = null;
+  let wrapperPath: string | null = null;
 
   try {
+    const fileBuffer = extractFile(zipBuffer, entryPath);
+    if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
+
+    const jobId = crypto.randomUUID();
+    jobPath = join(tmpdir(), `wiki-job-${jobId}.mjs`);
+    wrapperPath = join(tmpdir(), `wiki-wrapper-${jobId}.mjs`);
+
+    await writeFile(jobPath, fileBuffer);
+    await writeFile(wrapperPath, buildJobWrapper(pathToFileURL(jobPath).href));
+    if (!wrapperPath) throw new Error("Failed to create worker wrapper path");
+
+    const timestamp = Date.now().toString();
+
+    const workerData = {
+      openrouterApiKey: config().OPENROUTER_API_KEY,
+      ...inputs,
+      jobId,
+      cacheScopeId: cacheScopeId ?? entryPath,
+      spaceId,
+      apiUrl: import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080",
+      jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
+    };
+    const resolvedWrapperPath = wrapperPath;
+
     return await new Promise<Record<string, unknown>>((resolve, reject) => {
-      const worker = new Worker(wrapperPath, { workerData });
+      const worker = new Worker(resolvedWrapperPath, { workerData });
 
       let timer = setTimeout(() => {
         worker.terminate();
@@ -119,9 +164,10 @@ export async function runJob(
       });
     });
   } finally {
+    releaseJobSlot();
     await Promise.all([
-      unlink(jobPath).catch(() => {}),
-      unlink(wrapperPath).catch(() => {}),
+      jobPath ? unlink(jobPath).catch(() => {}) : Promise.resolve(),
+      wrapperPath ? unlink(wrapperPath).catch(() => {}) : Promise.resolve(),
     ]);
   }
 }
