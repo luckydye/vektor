@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from "vue";
+import { ref, onMounted, onUnmounted, computed, nextTick } from "vue";
 import { marked } from "marked";
 import { Actions } from "../utils/actions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
+import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
@@ -95,6 +96,12 @@ type PendingAttachment = {
   previewUrl?: string;
 };
 
+type MentionSuggestion = {
+  id: string;
+  slug: string;
+  title: string;
+};
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const { currentSpaceId } = useSpace();
@@ -104,10 +111,23 @@ const messageInput = ref("");
 const messages = ref<UIMessage[]>([]);
 const messagesContainer = ref<HTMLElement | null>(null);
 const isGenerating = ref(false);
+const messageInputEl = ref<HTMLTextAreaElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const pendingAttachments = ref<PendingAttachment[]>([]);
 const isUploadingFiles = ref(false);
 const uploadError = ref("");
+const mentionOpen = ref(false);
+const mentionQuery = ref("");
+const mentionSuggestions = ref<MentionSuggestion[]>([]);
+const mentionActiveIndex = ref(0);
+const mentionLoading = ref(false);
+const mentionStart = ref(-1);
+const mentionEnd = ref(-1);
+const mentionDocsSpaceId = ref("");
+const mentionDocsCache = ref<DocumentWithProperties[]>([]);
+const mentionAnchorEl = ref<HTMLElement | null>(null);
+const mentionOverlayStyle = ref<Record<string, string>>({});
+let mentionReqSeq = 0;
 
 // Provider selection
 const selectedProvider = ref<Provider>("openrouter");
@@ -265,6 +285,187 @@ function buildMessageWithAttachments(
   });
   const fileContext = `Attached files:\n${fileLines.join("\n")}\nUse these files when relevant.`;
   return message ? `${message}\n\n${fileContext}` : fileContext;
+}
+
+function getDocumentTitle(doc: DocumentWithProperties): string {
+  return doc.properties?.title?.trim() || doc.slug;
+}
+
+function closeMentionSuggestions() {
+  mentionOpen.value = false;
+  mentionSuggestions.value = [];
+  mentionActiveIndex.value = 0;
+  mentionLoading.value = false;
+  mentionStart.value = -1;
+  mentionEnd.value = -1;
+}
+
+function updateMentionOverlayPosition() {
+  const anchor = mentionAnchorEl.value;
+  if (!anchor || !mentionOpen.value) return;
+  const rect = anchor.getBoundingClientRect();
+  mentionOverlayStyle.value = {
+    position: "fixed",
+    left: `${Math.max(8, rect.left)}px`,
+    top: `${Math.max(8, rect.top - 8)}px`,
+    width: `${Math.max(260, rect.width)}px`,
+    transform: "translateY(-100%)",
+    zIndex: "80",
+  };
+}
+
+async function ensureMentionDocs(): Promise<DocumentWithProperties[]> {
+  if (!currentSpaceId.value) return [];
+  if (mentionDocsSpaceId.value === currentSpaceId.value && mentionDocsCache.value.length > 0) {
+    return mentionDocsCache.value;
+  }
+  const response = await api.documents.get(currentSpaceId.value, { limit: 1000, offset: 0 });
+  mentionDocsSpaceId.value = currentSpaceId.value;
+  mentionDocsCache.value = response.documents || [];
+  return mentionDocsCache.value;
+}
+
+async function updateMentionSuggestions() {
+  const textarea = messageInputEl.value;
+  if (!textarea) {
+    closeMentionSuggestions();
+    return;
+  }
+
+  const caret = textarea.selectionStart ?? messageInput.value.length;
+  const beforeCaret = messageInput.value.slice(0, caret);
+  const match = beforeCaret.match(/(?:^|\s)@([a-zA-Z0-9._/-]*)$/);
+  if (!match) {
+    closeMentionSuggestions();
+    return;
+  }
+
+  mentionQuery.value = match[1] || "";
+  mentionStart.value = caret - mentionQuery.value.length - 1;
+  mentionEnd.value = caret;
+  mentionOpen.value = true;
+  mentionLoading.value = true;
+  updateMentionOverlayPosition();
+  const seq = ++mentionReqSeq;
+
+  try {
+    const docs = await ensureMentionDocs();
+    if (seq !== mentionReqSeq) return;
+    const query = mentionQuery.value.trim().toLowerCase();
+    const filtered = [...docs]
+      .filter((doc) => {
+        const title = getDocumentTitle(doc).toLowerCase();
+        const slug = doc.slug.toLowerCase();
+        if (!query) return true;
+        return title.includes(query) || slug.includes(query);
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.updatedAt).getTime();
+        const bTime = new Date(b.updatedAt).getTime();
+        return bTime - aTime;
+      })
+      .slice(0, 8)
+      .map((doc) => ({ id: doc.id, slug: doc.slug, title: getDocumentTitle(doc) }));
+
+    mentionSuggestions.value = filtered;
+    mentionActiveIndex.value = 0;
+    if (filtered.length === 0) {
+      mentionOpen.value = false;
+    }
+  } catch {
+    if (seq === mentionReqSeq) {
+      closeMentionSuggestions();
+    }
+  } finally {
+    if (seq === mentionReqSeq) {
+      mentionLoading.value = false;
+    }
+  }
+}
+
+function onMessageInput() {
+  updateMentionSuggestions();
+  nextTick(updateMentionOverlayPosition);
+}
+
+function selectMention(suggestion: MentionSuggestion) {
+  const start = mentionStart.value;
+  const end = mentionEnd.value;
+  if (start < 0 || end < 0) return;
+  const token = `@[${suggestion.title}](doc:${suggestion.id}) `;
+  const before = messageInput.value.slice(0, start);
+  const after = messageInput.value.slice(end);
+  messageInput.value = `${before}${token}${after}`;
+  closeMentionSuggestions();
+
+  nextTick(() => {
+    const textarea = messageInputEl.value;
+    if (!textarea) return;
+    const nextPos = before.length + token.length;
+    textarea.focus();
+    textarea.setSelectionRange(nextPos, nextPos);
+  });
+}
+
+function onMessageKeydown(event: KeyboardEvent) {
+  nextTick(updateMentionOverlayPosition);
+  if (mentionOpen.value && mentionSuggestions.value.length > 0) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      mentionActiveIndex.value = (mentionActiveIndex.value + 1) % mentionSuggestions.value.length;
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      mentionActiveIndex.value =
+        (mentionActiveIndex.value - 1 + mentionSuggestions.value.length) %
+        mentionSuggestions.value.length;
+      return;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      const active = mentionSuggestions.value[mentionActiveIndex.value];
+      if (active) selectMention(active);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMentionSuggestions();
+      return;
+    }
+  }
+
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    sendMessage();
+  }
+}
+
+function parseReferencedDocuments(message: string): MentionSuggestion[] {
+  const references: MentionSuggestion[] = [];
+  const seen = new Set<string>();
+  const regex = /@\[([^\]]+)\]\(doc:([^)]+)\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(message)) !== null) {
+    const title = match[1]?.trim();
+    const id = match[2]?.trim();
+    if (!title || !id || seen.has(id)) continue;
+    seen.add(id);
+    references.push({ id, title, slug: "" });
+  }
+  return references;
+}
+
+function buildMessageWithDocumentReferences(message: string): string {
+  const refs = parseReferencedDocuments(message);
+  if (refs.length === 0) return message;
+  const lines = refs.map((doc) => `- ${doc.title} (documentId: ${doc.id})`);
+  const context = `Referenced documents:\n${lines.join("\n")}\nUse these document IDs with tools when relevant.`;
+  return `${message}\n\n${context}`;
+}
+
+function formatUserMessageForDisplay(message: string): string {
+  return message.replace(/@\[([^\]]+)\]\(doc:[^)]+\)/g, "@$1");
 }
 
 // ── Tool execution ────────────────────────────────────────────────────────────
@@ -1431,6 +1632,7 @@ function startNewChat() {
   conversationHistory.value = [];
   uploadError.value = "";
   clearPendingAttachments();
+  closeMentionSuggestions();
   showSessionPicker.value = false;
   messages.value.push({
     role: "assistant",
@@ -1443,6 +1645,7 @@ function resumeSession(session: ChatSession) {
   currentSessionId.value = session.id;
   uploadError.value = "";
   clearPendingAttachments();
+  closeMentionSuggestions();
   messages.value = session.messages as UIMessage[];
   conversationHistory.value = session.conversationHistory as ChatMessage[];
   showSessionPicker.value = false;
@@ -1485,6 +1688,7 @@ async function sendMessage() {
   if (!canSend.value) return;
 
   const message = messageInput.value.trim();
+  closeMentionSuggestions();
   const attachmentsToUpload = [...pendingAttachments.value];
   uploadError.value = "";
 
@@ -1541,9 +1745,11 @@ async function sendMessage() {
     }
   }
 
-  const modelMessage = buildMessageWithAttachments(message, uploadedAttachments);
+  const enrichedMessage = buildMessageWithDocumentReferences(message);
+  const modelMessage = buildMessageWithAttachments(enrichedMessage, uploadedAttachments);
   const userDisplayText =
-    message || `Uploaded ${uploadedAttachments.length} attachment${uploadedAttachments.length > 1 ? "s" : ""}`;
+    formatUserMessageForDisplay(message) ||
+    `Uploaded ${uploadedAttachments.length} attachment${uploadedAttachments.length > 1 ? "s" : ""}`;
 
   messages.value.push({
     role: "user",
@@ -1621,6 +1827,8 @@ onMounted(async () => {
   loadUIState();
   loadProviderConfig();
   await loadSessions();
+  window.addEventListener("resize", updateMentionOverlayPosition);
+  window.addEventListener("scroll", updateMentionOverlayPosition, true);
 
   if (sessions.value.length > 0) {
     showSessionPicker.value = true;
@@ -1634,6 +1842,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener("resize", updateMentionOverlayPosition);
+  window.removeEventListener("scroll", updateMentionOverlayPosition, true);
   clearPendingAttachments();
   for (const resolve of pendingToolApprovalResolvers.values()) {
     resolve(false);
@@ -1781,7 +1991,7 @@ onUnmounted(() => {
         v-else
         ref="messagesContainer"
         class="flex-1 overflow-y-auto px-3 py-4 space-y-3"
-        @click="showProviderDropdown = false"
+        @click="showProviderDropdown = false; closeMentionSuggestions()"
         @dragover.prevent
         @drop="onDropFiles"
       >
@@ -1934,6 +2144,7 @@ onUnmounted(() => {
       <!-- Input bar -->
       <div class="px-3 pb-3 pt-2 bg-neutral-10 border-t border-neutral-100 shrink-0">
         <div
+          ref="mentionAnchorEl"
           class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-xl"
           @dragover.prevent
           @drop="onDropFiles"
@@ -2000,9 +2211,12 @@ onUnmounted(() => {
             </svg>
           </button>
           <textarea
+            ref="messageInputEl"
             v-model="messageInput"
-            @keydown.meta.enter.prevent="sendMessage"
-            @keydown.ctrl.enter.prevent="sendMessage"
+            @input="onMessageInput"
+            @click="updateMentionSuggestions"
+            @keyup="updateMentionSuggestions"
+            @keydown="onMessageKeydown"
             @paste="onPasteFiles"
             rows="1"
             placeholder="Ask anything..."
@@ -2038,6 +2252,28 @@ onUnmounted(() => {
 
     </div>
   </DockedPanel>
+  <Teleport to="body">
+    <div
+      v-if="mentionOpen"
+      class="max-h-56 overflow-y-auto rounded-lg border border-neutral-200 bg-neutral-10 shadow-lg"
+      :style="mentionOverlayStyle"
+    >
+      <div v-if="mentionLoading" class="px-2.5 py-2 text-xs text-neutral-500">
+        Loading documents...
+      </div>
+      <button
+        v-for="(suggestion, idx) in mentionSuggestions"
+        :key="suggestion.id"
+        type="button"
+        class="flex w-full items-center justify-between px-2.5 py-2 text-left text-sm transition-colors"
+        :class="idx === mentionActiveIndex ? 'bg-primary-50 text-primary-700' : 'hover:bg-neutral-50 text-neutral-700'"
+        @mousedown.prevent="selectMention(suggestion)"
+      >
+        <span class="truncate font-medium">{{ suggestion.title }}</span>
+        <span class="ml-2 truncate text-xs opacity-70">{{ suggestion.slug }}</span>
+      </button>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
