@@ -53,11 +53,20 @@ const store = new IndexedDBStore<ChatSession>({
 
 export async function getSessionsForSpace(spaceId: string): Promise<ChatSession[]> {
   const results = await store.getByIndex("spaceId", spaceId, "prev");
-  return results.sort((a, b) => b.updatedAt - a.updatedAt);
+  const normalized = results.map((session) => ({
+    ...session,
+    messages: Array.isArray(session.messages) ? session.messages : [],
+    conversationHistory: Array.isArray(session.conversationHistory)
+      ? session.conversationHistory
+      : [],
+  }));
+  return normalized.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function saveSession(session: ChatSession): Promise<void> {
-  await store.put(session);
+  // Persist a plain JSON copy so Vue reactive proxies never reach IndexedDB.
+  const plainSession = JSON.parse(JSON.stringify(session)) as ChatSession;
+  await store.put(plainSession);
 }
 
 export async function deleteSession(id: string): Promise<void> {
