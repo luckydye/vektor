@@ -72,8 +72,27 @@ type UIMessage = {
   content: string;
   reasoning?: string;
   timestamp: number;
+  attachments?: UploadedAttachment[];
   toolApproval?: ToolApproval;
   subAgent?: SubAgentState;
+};
+
+type UploadedAttachment = {
+  key: string;
+  url: string;
+  name: string;
+  type: string;
+  size: number;
+  isImage: boolean;
+};
+
+type PendingAttachment = {
+  id: string;
+  file: File;
+  name: string;
+  type: string;
+  size: number;
+  previewUrl?: string;
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -85,6 +104,10 @@ const messageInput = ref("");
 const messages = ref<UIMessage[]>([]);
 const messagesContainer = ref<HTMLElement | null>(null);
 const isGenerating = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
+const pendingAttachments = ref<PendingAttachment[]>([]);
+const isUploadingFiles = ref(false);
+const uploadError = ref("");
 
 // Provider selection
 const selectedProvider = ref<Provider>("openrouter");
@@ -161,8 +184,88 @@ const providerLabel = computed(() => {
 });
 
 const canSend = computed(() => {
-  return !!(messageInput.value.trim() && !isGenerating.value);
+  return !!(
+    !isGenerating.value &&
+    !isUploadingFiles.value &&
+    (messageInput.value.trim() || pendingAttachments.value.length > 0)
+  );
 });
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function openFilePicker() {
+  fileInput.value?.click();
+}
+
+function revokePreviewUrl(url?: string) {
+  if (!url) return;
+  URL.revokeObjectURL(url);
+}
+
+function clearPendingAttachments() {
+  for (const attachment of pendingAttachments.value) {
+    revokePreviewUrl(attachment.previewUrl);
+  }
+  pendingAttachments.value = [];
+}
+
+function removePendingAttachment(id: string) {
+  const index = pendingAttachments.value.findIndex((file) => file.id === id);
+  if (index < 0) return;
+  const [removed] = pendingAttachments.value.splice(index, 1);
+  revokePreviewUrl(removed.previewUrl);
+}
+
+function onFilesSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (!input.files?.length) return;
+  addPendingFiles(input.files);
+  input.value = "";
+}
+
+function onDropFiles(event: DragEvent) {
+  if (!event.dataTransfer?.files?.length || isGenerating.value) return;
+  event.preventDefault();
+  addPendingFiles(event.dataTransfer.files);
+}
+
+function onPasteFiles(event: ClipboardEvent) {
+  if (!event.clipboardData?.files?.length || isGenerating.value) return;
+  addPendingFiles(event.clipboardData.files);
+}
+
+function addPendingFiles(fileList: FileList) {
+  uploadError.value = "";
+  const next: PendingAttachment[] = [];
+  for (const file of Array.from(fileList)) {
+    const isImage = file.type.startsWith("image/");
+    next.push({
+      id: crypto.randomUUID(),
+      file,
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      size: file.size,
+      previewUrl: isImage ? URL.createObjectURL(file) : undefined,
+    });
+  }
+  pendingAttachments.value = [...pendingAttachments.value, ...next];
+}
+
+function buildMessageWithAttachments(
+  message: string,
+  attachments: UploadedAttachment[],
+): string {
+  if (attachments.length === 0) return message;
+  const fileLines = attachments.map((file) => {
+    return `- ${file.name} (${file.type || "unknown"}, ${formatFileSize(file.size)}): ${file.url}`;
+  });
+  const fileContext = `Attached files:\n${fileLines.join("\n")}\nUse these files when relevant.`;
+  return message ? `${message}\n\n${fileContext}` : fileContext;
+}
 
 // ── Tool execution ────────────────────────────────────────────────────────────
 
@@ -1326,6 +1429,8 @@ function startNewChat() {
   currentSessionId.value = null;
   messages.value = [];
   conversationHistory.value = [];
+  uploadError.value = "";
+  clearPendingAttachments();
   showSessionPicker.value = false;
   messages.value.push({
     role: "assistant",
@@ -1336,6 +1441,8 @@ function startNewChat() {
 
 function resumeSession(session: ChatSession) {
   currentSessionId.value = session.id;
+  uploadError.value = "";
+  clearPendingAttachments();
   messages.value = session.messages as UIMessage[];
   conversationHistory.value = session.conversationHistory as ChatMessage[];
   showSessionPicker.value = false;
@@ -1378,13 +1485,15 @@ async function sendMessage() {
   if (!canSend.value) return;
 
   const message = messageInput.value.trim();
+  const attachmentsToUpload = [...pendingAttachments.value];
+  uploadError.value = "";
 
   showSessionPicker.value = false;
 
   if (!currentSessionId.value) {
     const newSession: ChatSession = {
       id: crypto.randomUUID(),
-      title: message.slice(0, 60),
+      title: (message || attachmentsToUpload[0]?.name || "New chat").slice(0, 60),
       spaceId: currentSpaceId.value,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -1396,8 +1505,54 @@ async function sendMessage() {
     await saveSession(newSession);
   }
 
-  messages.value.push({ role: "user", content: message, timestamp: Date.now() });
+  let uploadedAttachments: UploadedAttachment[] = [];
+  if (attachmentsToUpload.length > 0) {
+    if (!currentSpaceId.value) {
+      uploadError.value = "No active space selected";
+      return;
+    }
+    isUploadingFiles.value = true;
+    try {
+      uploadedAttachments = await Promise.all(
+        attachmentsToUpload.map(async (attachment) => {
+          const result = await api.uploads.post(
+            currentSpaceId.value,
+            attachment.file,
+            attachment.name,
+            props.documentId || undefined,
+          );
+          return {
+            key: result.key as string,
+            url: result.url as string,
+            name: attachment.name,
+            type: attachment.type,
+            size: attachment.size,
+            isImage: attachment.type.startsWith("image/"),
+          };
+        }),
+      );
+    } catch (error) {
+      uploadError.value =
+        error instanceof Error ? error.message : "Failed to upload attachments";
+      isUploadingFiles.value = false;
+      return;
+    } finally {
+      isUploadingFiles.value = false;
+    }
+  }
+
+  const modelMessage = buildMessageWithAttachments(message, uploadedAttachments);
+  const userDisplayText =
+    message || `Uploaded ${uploadedAttachments.length} attachment${uploadedAttachments.length > 1 ? "s" : ""}`;
+
+  messages.value.push({
+    role: "user",
+    content: userDisplayText,
+    timestamp: Date.now(),
+    attachments: uploadedAttachments,
+  });
   messageInput.value = "";
+  clearPendingAttachments();
   scrollToBottom();
 
   isGenerating.value = true;
@@ -1406,7 +1561,7 @@ async function sendMessage() {
   messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
 
   try {
-    await sendWithFetch(message, assistantMessageIndex);
+    await sendWithFetch(modelMessage, assistantMessageIndex);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       // Keep whatever content was streamed so far
@@ -1479,6 +1634,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  clearPendingAttachments();
   for (const resolve of pendingToolApprovalResolvers.values()) {
     resolve(false);
   }
@@ -1626,6 +1782,8 @@ onUnmounted(() => {
         ref="messagesContainer"
         class="flex-1 overflow-y-auto px-3 py-4 space-y-3"
         @click="showProviderDropdown = false"
+        @dragover.prevent
+        @drop="onDropFiles"
       >
         <div
           v-for="(message, index) in messages"
@@ -1744,6 +1902,19 @@ onUnmounted(() => {
             class="max-w-[80%] bg-primary-600 text-white rounded-xl px-3.5 py-2.5 ml-auto"
           >
             <p class="text-sm whitespace-pre-wrap leading-relaxed">{{ message.content }}</p>
+            <div v-if="message.attachments?.length" class="mt-2 space-y-1.5">
+              <a
+                v-for="attachment in message.attachments"
+                :key="attachment.key"
+                :href="attachment.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block rounded-lg border border-white/20 bg-white/10 px-2 py-1.5 text-xs hover:bg-white/15 transition-colors"
+              >
+                <span class="font-medium">{{ attachment.name }}</span>
+                <span class="opacity-80 ml-1">({{ formatFileSize(attachment.size) }})</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -1762,7 +1933,52 @@ onUnmounted(() => {
 
       <!-- Input bar -->
       <div class="px-3 pb-3 pt-2 bg-neutral-10 border-t border-neutral-100 shrink-0">
-        <div class="flex items-end gap-2 px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-xl">
+        <div
+          class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-xl"
+          @dragover.prevent
+          @drop="onDropFiles"
+        >
+          <input
+            ref="fileInput"
+            type="file"
+            multiple
+            class="hidden"
+            @change="onFilesSelected"
+          />
+          <div
+            v-if="pendingAttachments.length > 0"
+            class="mb-2 flex flex-wrap gap-1.5"
+          >
+            <div
+              v-for="attachment in pendingAttachments"
+              :key="attachment.id"
+              class="group flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-10 px-1.5 py-1"
+            >
+              <img
+                v-if="attachment.previewUrl"
+                :src="attachment.previewUrl"
+                :alt="attachment.name"
+                class="h-8 w-8 rounded object-cover"
+              />
+              <div v-else class="h-8 w-8 rounded bg-neutral-200 text-neutral-500 flex items-center justify-center text-[10px] font-semibold">
+                FILE
+              </div>
+              <div class="min-w-0 max-w-36">
+                <p class="truncate text-xs text-neutral-700">{{ attachment.name }}</p>
+                <p class="text-[10px] text-neutral-500">{{ formatFileSize(attachment.size) }}</p>
+              </div>
+              <button
+                type="button"
+                class="text-neutral-400 hover:text-red-500 transition-colors"
+                @click="removePendingAttachment(attachment.id)"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="flex items-end gap-2">
           <button
             v-if="sessions.length > 0"
             @click="showSessionPicker = true"
@@ -1773,10 +1989,21 @@ onUnmounted(() => {
               <circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 6v6l4 2"/>
             </svg>
           </button>
+          <button
+            type="button"
+            @click="openFilePicker"
+            title="Attach files"
+            class="shrink-0 text-neutral-400 hover:text-neutral-700 transition-colors mb-0.5"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21.44 11.05l-8.49 8.49a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 014.95 4.95l-8.5 8.49a2 2 0 01-2.82-2.82l7.78-7.78"/>
+            </svg>
+          </button>
           <textarea
             v-model="messageInput"
             @keydown.meta.enter.prevent="sendMessage"
             @keydown.ctrl.enter.prevent="sendMessage"
+            @paste="onPasteFiles"
             rows="1"
             placeholder="Ask anything..."
             class="flex-1 bg-transparent text-sm text-neutral-800 placeholder-neutral-400 focus:outline-none resize-none max-h-40 leading-5"
@@ -1803,6 +2030,9 @@ onUnmounted(() => {
               <path stroke-linecap="round" stroke-linejoin="round" d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/>
             </svg>
           </button>
+        </div>
+          <p v-if="isUploadingFiles" class="mt-2 text-xs text-neutral-500">Uploading files...</p>
+          <p v-if="uploadError" class="mt-2 text-xs text-red-600">{{ uploadError }}</p>
         </div>
       </div>
 
