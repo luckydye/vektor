@@ -1,5 +1,6 @@
 import type { APIContext } from "astro";
 import type { Attributes, Span } from "@opentelemetry/api";
+import { appLogger } from "#observability/logger.ts";
 import {
   hasPermission,
   hasFeature,
@@ -97,7 +98,9 @@ export async function withApiErrorHandling(
         return mapped;
       }
     }
-    console.error(error);
+    appLogger.error("Unhandled API error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return errorResponse(options.fallbackMessage ?? "Internal server error", 500);
   }
 }

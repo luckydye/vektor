@@ -24,6 +24,7 @@ import {
   type WorkflowDefinition,
 } from "../../../../../../../jobs/workflow.ts";
 import { activeTraceHeaders } from "#observability/otel.ts";
+import { appLogger } from "#observability/logger.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
@@ -207,7 +208,9 @@ export const POST: APIRoute = (context) =>
         },
       },
       onError: (error) => {
-        console.error("Start workflow run error:", error);
+        appLogger.error("Start workflow run error", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         return errorResponse("Failed to start workflow run", 500);
       },
     },

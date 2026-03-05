@@ -12,6 +12,7 @@ import {
 } from "#db/api.ts";
 import { getExtension, getExtensionPackage } from "#db/extensions.ts";
 import { runJob } from "#jobs/scheduler.ts";
+import { appLogger } from "#observability/logger.ts";
 
 /**
  * POST /api/v1/spaces/:spaceId/extensions/:extensionId/data-sources/:dataSourceId/query
@@ -78,7 +79,9 @@ export const POST: APIRoute = (context) =>
         },
       },
       onError: (error) => {
-        console.error("Query data source error:", error);
+        appLogger.error("Query data source error", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         return errorResponse("Failed to query data source", 500);
       },
     },

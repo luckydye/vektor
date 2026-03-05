@@ -11,8 +11,10 @@ import {
   type Context,
   type Span,
 } from "@opentelemetry/api";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import {
@@ -27,6 +29,7 @@ import { config } from "../config.ts";
 const INSTRUMENTATION_SCOPE = "wiki.observability";
 const DEFAULT_OTLP_HTTP_ENDPOINT = "http://127.0.0.1:4318";
 const DEFAULT_METRICS_EXPORT_INTERVAL_MS = 10_000;
+const DEFAULT_LOGS_EXPORT_INTERVAL_MS = 10_000;
 const GLOBAL_OTEL_INIT_KEY = "__wikiOtelInitialized";
 const GLOBAL_OTEL_SDK_KEY = "__wikiOtelSdk";
 
@@ -122,10 +125,19 @@ export function initTelemetry(): void {
       appConfig.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ||
       otlpUrl(appConfig.OTEL_EXPORTER_OTLP_ENDPOINT, "/v1/metrics"),
   });
+  const logExporter = new OTLPLogExporter({
+    url:
+      appConfig.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ||
+      otlpUrl(appConfig.OTEL_EXPORTER_OTLP_ENDPOINT, "/v1/logs"),
+  });
 
   const metricsExportInterval = toInt(
     appConfig.OTEL_METRICS_EXPORT_INTERVAL_MS,
     DEFAULT_METRICS_EXPORT_INTERVAL_MS,
+  );
+  const logsExportInterval = toInt(
+    appConfig.OTEL_LOGS_EXPORT_INTERVAL_MS,
+    DEFAULT_LOGS_EXPORT_INTERVAL_MS,
   );
 
   const metricReader = new PeriodicExportingMetricReader({
@@ -133,9 +145,14 @@ export function initTelemetry(): void {
     exportIntervalMillis: metricsExportInterval,
     exportTimeoutMillis: metricsExportInterval,
   });
+  const logRecordProcessor = new BatchLogRecordProcessor(logExporter, {
+    scheduledDelayMillis: logsExportInterval,
+    exportTimeoutMillis: logsExportInterval,
+  });
 
   const sdk = new NodeSDK({
     traceExporter,
+    logRecordProcessors: [logRecordProcessor],
     metricReaders: [metricReader],
     sampler: samplerFromConfig(
       appConfig.OTEL_TRACES_SAMPLER,

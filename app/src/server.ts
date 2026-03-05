@@ -1,6 +1,7 @@
 import "./observability/bootstrap.ts";
 import express from "express";
 import expressWebsockets from "express-ws";
+import { appLogger } from "./observability/logger.ts";
 
 import { getDocument } from "./db/documents.ts";
 import { auth } from "./auth.ts";
@@ -84,7 +85,12 @@ const { app } = expressWebsockets(express());
 // Logging
 app.use((req, res, next) => {
   req.time = new Date(Date.now()).toString();
-  console.log(req.method, req.hostname, req.path, req.time);
+  appLogger.info("HTTP request", {
+    method: req.method,
+    host: req.hostname,
+    path: req.path,
+    time: req.time,
+  });
   next();
 });
 
@@ -116,7 +122,7 @@ function sync(onSyncEvent: (ev: any) => () => void) {
     ws.on("close", () => {
       off();
       spaceConnections.delete(ws);
-      console.log("Connection closed");
+      appLogger.info("WebSocket connection closed", { spaceId });
     });
   };
 }

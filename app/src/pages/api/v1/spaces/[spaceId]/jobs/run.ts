@@ -24,6 +24,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { listExtensions, getExtensionPackage } from "#db/extensions.ts";
+import { appLogger } from "#observability/logger.ts";
 import { runJob } from "../../../../../../jobs/scheduler.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
@@ -130,7 +131,9 @@ export const POST: APIRoute = (context) =>
         },
       },
       onError: (error) => {
-        console.error("Job run error:", error);
+        appLogger.error("Job run error", {
+          error: error instanceof Error ? error.message : String(error),
+        });
         return errorResponse("Job run failed", 500);
       },
     },
