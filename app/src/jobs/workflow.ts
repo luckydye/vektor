@@ -200,6 +200,8 @@ export async function executeWorkflow(
                   signal: controller.signal,
                   cacheScopeId: nodeDef.jobId,
                   initiatedByUserId: run.initiatedByUserId,
+                  jobType: "workflow_node",
+                  jobId: nodeDef.jobId,
                 },
               );
             },

@@ -39,6 +39,21 @@ const jobQueueWaitMs = meter.createHistogram("wiki_job_queue_wait_ms", {
 });
 const activeJobsGauge = meter.createUpDownCounter("wiki_jobs_active");
 const queuedJobsGauge = meter.createUpDownCounter("wiki_jobs_queued");
+const MAX_SPAN_JSON_CHARS = 4_000;
+
+function toSpanJson(value: unknown, maxChars = MAX_SPAN_JSON_CHARS): string {
+  try {
+    const raw = JSON.stringify(value);
+    if (!raw) return "null";
+    if (raw.length <= maxChars) return raw;
+    return `${raw.slice(0, maxChars)}…(truncated ${raw.length - maxChars} chars)`;
+  } catch (error) {
+    return JSON.stringify({
+      error: "serialization_failed",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 function releaseJobSlot(): void {
   activeJobs = Math.max(0, activeJobs - 1);
@@ -93,6 +108,8 @@ export async function runJob(
     signal?: AbortSignal;
     cacheScopeId?: string;
     initiatedByUserId?: string | null;
+    jobType?: string;
+    jobId?: string;
   },
 ): Promise<Record<string, unknown>> {
   const {
@@ -100,6 +117,8 @@ export async function runJob(
     signal,
     cacheScopeId,
     initiatedByUserId,
+    jobType,
+    jobId: logicalJobId,
   } = options ?? {};
 
   const queuedAt = Date.now();
@@ -121,16 +140,19 @@ export async function runJob(
           "wiki.space.id": spaceId,
           "wiki.job.entry_path": entryPath,
           "wiki.job.queue_wait_ms": queueWait,
+          "wiki.job.type": jobType ?? "unknown",
+          "wiki.job.id": logicalJobId ?? cacheScopeId ?? entryPath,
         },
       },
       async (span) => {
+        span.setAttribute("wiki.job.inputs_json", toSpanJson(inputs));
         const fileBuffer = extractFile(zipBuffer, entryPath);
         if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
 
-        const jobId = crypto.randomUUID();
-        span.setAttribute("wiki.job.id", jobId);
-        jobPath = join(tmpdir(), `wiki-job-${jobId}.mjs`);
-        wrapperPath = join(tmpdir(), `wiki-wrapper-${jobId}.mjs`);
+        const executionId = crypto.randomUUID();
+        span.setAttribute("wiki.job.execution_id", executionId);
+        jobPath = join(tmpdir(), `wiki-job-${executionId}.mjs`);
+        wrapperPath = join(tmpdir(), `wiki-wrapper-${executionId}.mjs`);
 
         await writeFile(jobPath, fileBuffer);
         await writeFile(wrapperPath, buildJobWrapper(pathToFileURL(jobPath).href));
@@ -142,7 +164,7 @@ export async function runJob(
         const workerData = {
           openrouterApiKey: config().OPENROUTER_API_KEY,
           ...inputs,
-          jobId,
+          jobId: executionId,
           cacheScopeId: cacheScopeId ?? entryPath,
           spaceId,
           apiUrl: import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080",
@@ -196,8 +218,11 @@ export async function runJob(
                 onLog?.(message);
               } else if (msg.type === "result") {
                 clearTimeout(timer);
-                if (msg.success) resolve(msg.outputs ?? {});
-                else reject(new Error(msg.error ?? "Job failed without error message"));
+                if (msg.success) {
+                  const outputs = msg.outputs ?? {};
+                  span.setAttribute("wiki.job.outputs_json", toSpanJson(outputs));
+                  resolve(outputs);
+                } else reject(new Error(msg.error ?? "Job failed without error message"));
               }
             },
           );

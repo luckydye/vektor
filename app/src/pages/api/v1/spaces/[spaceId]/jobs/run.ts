@@ -85,6 +85,8 @@ export const POST: APIRoute = (context) =>
                   signal: context.request.signal,
                   cacheScopeId: jobId,
                   initiatedByUserId,
+                  jobType: "single_job",
+                  jobId,
                 },
               );
               send({ type: "output", outputs });
@@ -115,7 +117,12 @@ export const POST: APIRoute = (context) =>
         inputs,
         spaceId,
         (msg) => logs.push(msg),
-        { cacheScopeId: jobId, initiatedByUserId },
+        {
+          cacheScopeId: jobId,
+          initiatedByUserId,
+          jobType: "single_job",
+          jobId,
+        },
       );
 
       return jsonResponse({ outputs, logs });
