@@ -52,6 +52,7 @@ const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
 const readViewEl = ref(null);
 const editorViewEl = ref(null);
+const tableViewEl = ref(null);
 const getEditor = () => globalThis.__editor;
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
@@ -182,7 +183,7 @@ async function handleRevisionDiff(event) {
 }
 
 onMounted(() => {
-  if (!props.readonly && props.documentType !== "canvas" && props.documentType !== "app") {
+  if (!props.readonly && props.documentType !== "canvas" && props.documentType !== "app" && props.documentType !== "csv") {
     window.addEventListener("edit-mode-start", handleEditModeStart);
   }
 
@@ -196,6 +197,10 @@ onMounted(() => {
   }
 
   renderReadView();
+
+  if (props.documentType === "csv") {
+    import("../editor/elements/table-view.ts").then(renderTableView);
+  }
 
   if (props.initialEditMode) {
     requestAnimationFrame(initEditor);
@@ -240,6 +245,11 @@ watch(documentData, (doc) => {
   }
 });
 
+function renderTableView() {
+  if (!tableViewEl.value) return;
+  tableViewEl.value.setContent(renderedHtml.value);
+}
+
 function renderReadView() {
   if (!readViewEl.value) return;
   if (isEditing.value || viewingRevision.value) return;
@@ -271,7 +281,9 @@ function renderReadView() {
 
 watch([renderedHtml, isEditing, viewingRevision], () => {
   renderReadView();
+  renderTableView();
 });
+
 
 useSync(currentSpaceId, (scopes) => {
   if (!props.documentId) return;
@@ -337,7 +349,7 @@ useSync(currentSpaceId, (scopes) => {
     </div>
 
     <!-- Read View -->
-    <div v-if="!isEditing && !viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app'">
+    <div v-if="!isEditing && !viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'">
       <document-view ref="readViewEl"></document-view>
     </div>
 
@@ -352,6 +364,13 @@ useSync(currentSpaceId, (scopes) => {
     </div>
   </div>
 
+  <!-- CSV Spreadsheet View — fragment root so it inherits height from the flex parent directly -->
+  <table-view
+    v-if="!isEditing && !viewingRevision && props.documentType === 'csv'"
+    ref="tableViewEl"
+    class="block flex-1 min-h-0"
+  ></table-view>
+
   <!-- Editor -->
   <div v-if="isEditing && !viewingRevision && !props.readonly" :class="['h-full', !isEditingReady && 'opacity-0']">
     <document-view ref="editorViewEl"></document-view>
@@ -360,7 +379,7 @@ useSync(currentSpaceId, (scopes) => {
   <document-statusbar class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
 
   <CommentManager
-    v-if="props.documentId && props.documentType !== 'canvas' && props.documentType !== 'app'"
+    v-if="props.documentId && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
     :spaceId="props.spaceId"
     :documentId="props.documentId"
     :currentRev="documentData?.currentRev"

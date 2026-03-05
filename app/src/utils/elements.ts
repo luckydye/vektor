@@ -7,3 +7,4 @@ import "../editor/elements/category-target.ts";
 import "../editor/elements/drawer.ts";
 import "../editor/elements/shortcut.ts";
 import "../editor/elements/statusbar.ts";
+import "../editor/elements/table-view.ts";

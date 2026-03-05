@@ -159,7 +159,7 @@ if (diffMins >= 1 && diffMins < 60) {
       data-layout={document.properties.layout || 'document'}
       class={twMerge(
         "space-y-6 mx-auto h-full flex flex-col relative w-full",
-        (document.properties.layout || 'document') === 'full' ? 'max-w-full' : 'max-w-(--document-width)'
+        (document.type === 'csv' || (document.properties.layout || 'document') === 'full') ? 'max-w-full' : 'max-w-(--document-width)'
       )}
      >
       <!-- Archived Document Disclaimer -->
@@ -216,8 +216,9 @@ if (diffMins >= 1 && diffMins < 60) {
       <!-- Main Content -->
       <div
         class={twMerge(
-          'max-w-none text-neutral-700 h-full',
-          document.type !== 'canvas' && document.type !== 'app' && "print:px-0 px-xs lg:px-xl"
+          'max-w-none text-neutral-700',
+          document.type === 'csv' ? 'flex-1 min-h-0 overflow-hidden flex flex-col' : 'h-full',
+          document.type !== 'canvas' && document.type !== 'app' && document.type !== 'csv' && "print:px-0 px-xs lg:px-xl"
         )}
       >
           <DocumentContent
