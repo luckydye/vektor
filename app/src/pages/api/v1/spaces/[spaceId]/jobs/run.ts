@@ -29,7 +29,7 @@ import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
-    async () => {
+    async (span) => {
       const spaceId = requireParam(context.params, "spaceId");
 
       // Auth: job token OR user session
@@ -42,6 +42,7 @@ export const POST: APIRoute = (context) =>
         stream?: boolean;
       }>(context.request);
       const { jobId, inputs = {} } = body;
+      if (jobId) span?.setAttribute("wiki.job.id", jobId);
 
       if (!jobId) return badRequestResponse("jobId is required");
 
@@ -120,6 +121,14 @@ export const POST: APIRoute = (context) =>
     },
     {
       fallbackMessage: "Job run failed",
+      telemetry: {
+        context,
+        spanName: "api.jobs.run",
+        attributes: {
+          "http.method": "POST",
+          "http.route": "/api/v1/spaces/:spaceId/jobs/run",
+        },
+      },
       onError: (error) => {
         console.error("Job run error:", error);
         return errorResponse("Job run failed", 500);

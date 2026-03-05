@@ -1,6 +1,6 @@
 @theme {
   /* text */
-  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-sans: system-ui, sans-serif;
 
   --text-size-extra-small: 0.6rem; /* 9.6px */
   --text-size-small: 0.7rem; /* 11.2px */

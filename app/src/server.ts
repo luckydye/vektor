@@ -1,3 +1,4 @@
+import "./observability/bootstrap.ts";
 import express from "express";
 import expressWebsockets from "express-ws";
 

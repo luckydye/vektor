@@ -1,3 +1,4 @@
+import "./observability/bootstrap.ts";
 import { defineMiddleware } from "astro:middleware";
 import { auth } from "./auth.ts";
 

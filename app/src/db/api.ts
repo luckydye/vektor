@@ -1,4 +1,5 @@
 import type { APIContext } from "astro";
+import type { Attributes, Span } from "@opentelemetry/api";
 import {
   hasPermission,
   hasFeature,
@@ -9,6 +10,7 @@ import {
 import { getSpace } from "./spaces.ts";
 import { validateAccessToken, getTokenUserId } from "./accessTokens.ts";
 import type { ValidateTokenResult } from "./accessTokens.ts";
+import { withSpan } from "#observability/otel.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
   const body = JSON.stringify(data);
@@ -50,7 +52,7 @@ export function createdResponse(data: unknown): Response {
 }
 
 export async function withApiErrorHandling(
-  handler: () => Promise<Response> | Response,
+  handler: (span?: Span) => Promise<Response> | Response,
   optionsOrMessage:
     | string
     | {
@@ -58,6 +60,11 @@ export async function withApiErrorHandling(
         onError?: (
           error: unknown,
         ) => Response | undefined | Promise<Response | undefined>;
+        telemetry?: {
+          context: APIContext;
+          spanName: string;
+          attributes?: Attributes;
+        };
       } = "Internal server error",
 ): Promise<Response> {
   const options =
@@ -66,6 +73,19 @@ export async function withApiErrorHandling(
       : optionsOrMessage;
 
   try {
+    if (options.telemetry) {
+      const { context, spanName, attributes } = options.telemetry;
+      return await withSpan(
+        spanName,
+        {
+          traceparent: context.request.headers.get("traceparent"),
+          tracestate: context.request.headers.get("tracestate"),
+          attributes,
+        },
+        async (span) => handler(span),
+      );
+    }
+
     return await handler();
   } catch (error) {
     if (error instanceof Response) {

@@ -22,11 +22,13 @@ import { runJob } from "#jobs/scheduler.ts";
  */
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
-    async () => {
+    async (span) => {
       const user = requireUser(context);
       const spaceId = requireParam(context.params, "spaceId");
       const extensionId = requireParam(context.params, "extensionId");
       const dataSourceId = requireParam(context.params, "dataSourceId");
+      span?.setAttribute("wiki.extension.id", extensionId);
+      span?.setAttribute("wiki.data_source.id", dataSourceId);
 
       await verifyExtensionAccess(spaceId, extensionId, user.id);
 
@@ -35,6 +37,7 @@ export const POST: APIRoute = (context) =>
 
       const dataSource = ext.manifest.dataSources?.find((ds) => ds.id === dataSourceId);
       if (!dataSource) return notFoundResponse("Data source");
+      span?.setAttribute("wiki.job.id", dataSource.jobId);
 
       const jobDef = ext.manifest.jobs?.find((job) => job.id === dataSource.jobId);
       if (!jobDef) {
@@ -65,6 +68,15 @@ export const POST: APIRoute = (context) =>
     },
     {
       fallbackMessage: "Failed to query data source",
+      telemetry: {
+        context,
+        spanName: "api.extensions.data_source.query",
+        attributes: {
+          "http.method": "POST",
+          "http.route":
+            "/api/v1/spaces/:spaceId/extensions/:extensionId/data-sources/:dataSourceId/query",
+        },
+      },
       onError: (error) => {
         console.error("Query data source error:", error);
         return errorResponse("Failed to query data source", 500);

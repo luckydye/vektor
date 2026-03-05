@@ -23,6 +23,7 @@ import {
   executeWorkflow,
   type WorkflowDefinition,
 } from "../../../../../../../jobs/workflow.ts";
+import { activeTraceHeaders } from "#observability/otel.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
@@ -75,7 +76,7 @@ export const GET: APIRoute = (context) =>
  */
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
-    async () => {
+    async (span) => {
       const user = requireUser(context);
       const spaceId = requireParam(context.params, "spaceId");
       await verifySpaceRole(spaceId, user.id, "editor");
@@ -86,13 +87,15 @@ export const POST: APIRoute = (context) =>
         fromNodeId?: string;
       }>(context.request);
       const { documentId, fromRunId, fromNodeId } = body;
+      if (documentId) span?.setAttribute("wiki.document.id", documentId);
 
       if (!documentId) return badRequestResponse("documentId is required");
 
       const doc = await getDocument(spaceId, documentId);
       if (!doc) return notFoundResponse("Document");
-      if (doc.type !== "workflow")
+      if (doc.type !== "workflow") {
         return badRequestResponse("Document type must be 'workflow'");
+      }
 
       const content =
         doc.publishedRev !== null
@@ -127,8 +130,9 @@ export const POST: APIRoute = (context) =>
       if (fromRunId && fromNodeId) {
         const prevRun = getRun(fromRunId);
         if (!prevRun) return notFoundResponse("Previous run");
-        if (!definition[fromNodeId])
+        if (!definition[fromNodeId]) {
           return badRequestResponse(`Node "${fromNodeId}" not in workflow`);
+        }
 
         // Topological order to find nodes that come before fromNodeId
         const inDegree = new Map<string, number>();
@@ -138,7 +142,10 @@ export const POST: APIRoute = (context) =>
           adj.set(nid, []);
         }
         for (const [nid, node] of Object.entries(definition)) {
-          for (const dep of node.depends) adj.get(dep)!.push(nid);
+          for (const dep of node.depends) {
+            const dependents = adj.get(dep);
+            if (dependents) dependents.push(nid);
+          }
         }
         const queue: string[] = [];
         for (const [nid, deg] of inDegree) {
@@ -146,10 +153,13 @@ export const POST: APIRoute = (context) =>
         }
         const order: string[] = [];
         while (queue.length > 0) {
-          const nid = queue.shift()!;
+          const nid = queue.shift();
+          if (!nid) break;
           order.push(nid);
-          for (const dep of adj.get(nid)!) {
-            const nd = inDegree.get(dep)! - 1;
+          for (const dep of adj.get(nid) ?? []) {
+            const currentDegree = inDegree.get(dep);
+            if (currentDegree === undefined) continue;
+            const nd = currentDegree - 1;
             inDegree.set(dep, nd);
             if (nd === 0) queue.push(dep);
           }
@@ -159,7 +169,8 @@ export const POST: APIRoute = (context) =>
         const ancestors = new Set<string>();
         const stack = [...definition[fromNodeId].depends];
         while (stack.length > 0) {
-          const nid = stack.pop()!;
+          const nid = stack.pop();
+          if (!nid) break;
           if (ancestors.has(nid)) continue;
           ancestors.add(nid);
           stack.push(...definition[nid].depends);
@@ -175,14 +186,26 @@ export const POST: APIRoute = (context) =>
       }
 
       const runId = createRun(spaceId, documentId, Object.keys(definition), user.id);
+      const traceHeaders = activeTraceHeaders();
 
       // Fire and forget — errors are recorded in run state
-      executeWorkflow(spaceId, runId, definition, preSeeded).catch(() => {});
+      executeWorkflow(spaceId, runId, definition, preSeeded, {
+        traceparent: traceHeaders.traceparent,
+        tracestate: traceHeaders.tracestate,
+      }).catch(() => {});
 
       return jsonResponse({ runId }, 202);
     },
     {
       fallbackMessage: "Failed to start workflow run",
+      telemetry: {
+        context,
+        spanName: "api.workflows.runs.start",
+        attributes: {
+          "http.method": "POST",
+          "http.route": "/api/v1/spaces/:spaceId/workflows/runs",
+        },
+      },
       onError: (error) => {
         console.error("Start workflow run error:", error);
         return errorResponse("Failed to start workflow run", 500);
