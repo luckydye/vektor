@@ -123,17 +123,20 @@ export function initTelemetry(): void {
       otlpUrl(appConfig.OTEL_EXPORTER_OTLP_ENDPOINT, "/v1/metrics"),
   });
 
+  const metricsExportInterval = toInt(
+    appConfig.OTEL_METRICS_EXPORT_INTERVAL_MS,
+    DEFAULT_METRICS_EXPORT_INTERVAL_MS,
+  );
+
   const metricReader = new PeriodicExportingMetricReader({
     exporter: metricExporter,
-    exportIntervalMillis: toInt(
-      appConfig.OTEL_METRICS_EXPORT_INTERVAL_MS,
-      DEFAULT_METRICS_EXPORT_INTERVAL_MS,
-    ),
+    exportIntervalMillis: metricsExportInterval,
+    exportTimeoutMillis: metricsExportInterval,
   });
 
   const sdk = new NodeSDK({
     traceExporter,
-    metricReader,
+    metricReaders: [metricReader],
     sampler: samplerFromConfig(
       appConfig.OTEL_TRACES_SAMPLER,
       appConfig.OTEL_TRACES_SAMPLER_ARG,
