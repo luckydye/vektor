@@ -83,13 +83,46 @@ const { app, getWss } = expressWebsockets(express());
 
 // Logging
 app.use((req, res, next) => {
-  req.time = new Date(Date.now()).toString();
+  const startTime = Date.now();
+  req.time = new Date(startTime).toString();
   appLogger.info("HTTP request", {
     method: req.method,
     host: req.hostname,
     path: req.path,
     time: req.time,
   });
+
+  res.on("finish", () => {
+    const durationMs = Date.now() - startTime;
+    const attributes = {
+      method: req.method,
+      host: req.hostname,
+      path: req.path,
+      statusCode: res.statusCode,
+      durationMs,
+    };
+    if (res.statusCode >= 500) {
+      appLogger.error("HTTP response", attributes);
+      return;
+    }
+    if (res.statusCode >= 400) {
+      appLogger.warn("HTTP response", attributes);
+      return;
+    }
+    appLogger.info("HTTP response", attributes);
+  });
+
+  res.on("close", () => {
+    if (res.writableEnded) {
+      return;
+    }
+    appLogger.warn("HTTP connection closed before response completed", {
+      method: req.method,
+      host: req.hostname,
+      path: req.path,
+    });
+  });
+
   next();
 });
 
@@ -191,7 +224,7 @@ async function shutdown(reason: string, exitCode = 0) {
       }
     });
 
-    await hocuspocus.destroy();
+    hocuspocus.closeConnections();
 
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
