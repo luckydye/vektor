@@ -11,7 +11,6 @@ import { Hocuspocus } from "@hocuspocus/server";
 import { TiptapTransformer } from "@hocuspocus/transformer";
 import { contentExtensions } from "./editor/extensions.ts";
 import { generateJSON } from "@tiptap/html";
-import * as Y from "yjs";
 import { Canvas } from "./canvas/Canvas.ts";
 
 const hocuspocus = new Hocuspocus({
@@ -80,7 +79,7 @@ const hocuspocus = new Hocuspocus({
   },
 });
 
-const { app } = expressWebsockets(express());
+const { app, getWss } = expressWebsockets(express());
 
 // Logging
 app.use((req, res, next) => {
@@ -161,4 +160,74 @@ import("../dist/server/entry.mjs").then(({ handler }) => {
   app.use(handler);
 });
 
-app.listen(8080);
+const port = Number.parseInt(process.env.PORT ?? "8080", 10);
+const server = app.listen(port, () => {
+  appLogger.info("Server listening", { port });
+});
+
+let isShuttingDown = false;
+let forcedShutdownTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function shutdown(reason: string, exitCode = 0) {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
+  appLogger.info("Shutdown initiated", { reason, exitCode });
+
+  forcedShutdownTimer = setTimeout(() => {
+    appLogger.error("Forced shutdown timeout reached", { reason, timeoutMs: 10_000 });
+    process.exit(1);
+  }, 10_000);
+  forcedShutdownTimer.unref();
+
+  try {
+    getWss().clients.forEach((client) => {
+      try {
+        client.close();
+      } catch (error) {
+        appLogger.warn("Failed to close WebSocket client", { error });
+      }
+    });
+
+    await hocuspocus.destroy();
+
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    if (forcedShutdownTimer) {
+      clearTimeout(forcedShutdownTimer);
+    }
+    appLogger.info("Shutdown completed", { reason });
+    process.exit(exitCode);
+  } catch (error) {
+    appLogger.error("Shutdown failed", { reason, error });
+    process.exit(1);
+  }
+}
+
+process.once("SIGINT", () => {
+  void shutdown("SIGINT", 0);
+});
+
+process.once("SIGTERM", () => {
+  void shutdown("SIGTERM", 0);
+});
+
+process.once("uncaughtException", (error) => {
+  appLogger.error("Uncaught exception", { error });
+  void shutdown("uncaughtException", 1);
+});
+
+process.once("unhandledRejection", (reason) => {
+  appLogger.error("Unhandled rejection", { reason });
+  void shutdown("unhandledRejection", 1);
+});
