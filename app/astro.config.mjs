@@ -11,6 +11,7 @@ const appConfig = config();
 // https://astro.build/config
 export default defineConfig({
   output: "server",
+  logLevel: "silent",
 
   site: appConfig.SITE_URL,
 

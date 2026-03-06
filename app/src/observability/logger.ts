@@ -3,6 +3,36 @@ import { logs, SeverityNumber, type LogAttributes } from "@opentelemetry/api-log
 
 const logger = logs.getLogger("wiki.app");
 
+function formatConsoleMessage(
+  message: string,
+  attributes?: Record<string, unknown>,
+): string {
+  if (!attributes || Object.keys(attributes).length === 0) {
+    return message;
+  }
+
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(attributes)) {
+    if (
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      parts.push(`${key}=${JSON.stringify(value)}`);
+      continue;
+    }
+
+    try {
+      parts.push(`${key}=${JSON.stringify(value)}`);
+    } catch {
+      parts.push(`${key}=${JSON.stringify(String(value))}`);
+    }
+  }
+
+  return `${message} ${parts.join(" ")}`;
+}
+
 function toLogAttributes(
   attributes?: Record<string, unknown>,
 ): LogAttributes | undefined {
@@ -53,19 +83,19 @@ function emit(
 
 export const appLogger = {
   debug(message: string, attributes?: Record<string, unknown>) {
-    console.debug(message, attributes ?? "");
+    console.debug(formatConsoleMessage(message, attributes));
     emit(SeverityNumber.DEBUG, "DEBUG", message, attributes);
   },
   info(message: string, attributes?: Record<string, unknown>) {
-    console.info(message, attributes ?? "");
+    console.info(formatConsoleMessage(message, attributes));
     emit(SeverityNumber.INFO, "INFO", message, attributes);
   },
   warn(message: string, attributes?: Record<string, unknown>) {
-    console.warn(message, attributes ?? "");
+    console.warn(formatConsoleMessage(message, attributes));
     emit(SeverityNumber.WARN, "WARN", message, attributes);
   },
   error(message: string, attributes?: Record<string, unknown>) {
-    console.error(message, attributes ?? "");
+    console.error(formatConsoleMessage(message, attributes));
     emit(SeverityNumber.ERROR, "ERROR", message, attributes);
   },
 };
