@@ -292,6 +292,7 @@ export const PUT: APIRoute = (context) =>
     let userId: string | undefined;
 
     const jobToken = context.request.headers.get("X-Job-Token");
+    const isJobRequest = Boolean(jobToken);
     if (jobToken) {
       if (!verifyJobToken(jobToken, spaceId)) {
         throw forbiddenResponse("Invalid job token");
@@ -347,7 +348,10 @@ export const PUT: APIRoute = (context) =>
         return jsonResponse({ success: true });
       }
 
-      if (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? "")) {
+      if (
+        !isJobRequest &&
+        (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? ""))
+      ) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
@@ -358,7 +362,10 @@ export const PUT: APIRoute = (context) =>
       content = toHtmlIfMarkdown(jsonContent, contentType, existingDoc.type);
       nextType = existingDoc.type;
     } else {
-      if (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? "")) {
+      if (
+        !isJobRequest &&
+        (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? ""))
+      ) {
         throw forbiddenResponse("Cannot update readonly document");
       }
 
