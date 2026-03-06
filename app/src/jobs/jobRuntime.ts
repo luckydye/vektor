@@ -103,12 +103,18 @@ globalThis.readDocument = async (documentId) => {
   return (await res.json()).document.content;
 };
 
-globalThis.writeDocument = async (documentId, content) => {
+globalThis.writeDocument = async (documentId, content, type) => {
+  const contentType =
+    type === "csv"
+      ? "text/csv; charset=utf-8"
+      : type === "app"
+        ? "application/vnd.wiki.app+html; charset=utf-8"
+        : "text/markdown; charset=utf-8";
   log("PUT " + __a + "/api/v1/spaces/" + __s + "/documents/" + documentId);
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/documents/" + documentId, {
     method: "PUT",
     headers: __headersWithTrace({
-      "Content-Type": "text/markdown; charset=utf-8",
+      "Content-Type": contentType,
       "X-Job-Token": __t,
     }),
     body: String(content ?? ""),

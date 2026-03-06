@@ -14,6 +14,15 @@ export const CSV_TYPES: readonly string[] = [
   "application/vnd.ms-excel",
 ] as const;
 const CSV_TYPE_SET = new Set<string>(CSV_TYPES);
+const APP_TYPES = new Set<string>(["application/vnd.wiki.app+html"]);
+
+export function getDocumentTypeForContentType(contentType: string | null): string | undefined {
+  const mimeType = getMimeType(contentType);
+  if (!mimeType) return undefined;
+  if (CSV_TYPE_SET.has(mimeType)) return "csv";
+  if (APP_TYPES.has(mimeType)) return "app";
+  return undefined;
+}
 
 export function getMimeType(contentType: string | null): string | null {
   if (!contentType) return null;

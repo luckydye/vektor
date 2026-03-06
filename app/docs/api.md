@@ -546,6 +546,9 @@ Most errors are JSON:
 - or `restore: true` (user/token path only, no `content`) to unarchive document
 - Non-JSON mode:
 - raw text/markdown/html content
+- document type may be inferred from `Content-Type` for specialized raw uploads:
+- `text/csv` => `csv`
+- `application/vnd.wiki.app+html` => `app`
 - Notes:
 - blocked for readonly docs (except restore flow).
 - content is sanitized (script tags removed).

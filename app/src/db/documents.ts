@@ -279,6 +279,7 @@ export async function updateDocument(
   id: string,
   content: string,
   userId?: string,
+  type?: string | null,
 ): Promise<DocumentWithProperties | null> {
   const db = await getSpaceDb(spaceId);
   const existing = await getDocument(spaceId, id);
@@ -287,8 +288,13 @@ export async function updateDocument(
   }
 
   const now = new Date();
+  const nextType = type === undefined ? existing.type : type;
+  const nextReadonly = readOnlyDocumentTypes.includes(nextType ?? "");
 
-  await db.update(document).set({ content, updatedAt: now }).where(eq(document.id, id));
+  await db
+    .update(document)
+    .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
+    .where(eq(document.id, id));
 
   const title = existing.properties.title || "";
   const propsText = Object.entries(existing.properties)
@@ -334,8 +340,8 @@ export async function updateDocument(
     updatedAt: now,
     createdBy: existing.createdBy,
     parentId: existing.parentId,
-    readonly: existing.readonly,
-    type: existing.type,
+    readonly: nextReadonly,
+    type: nextType,
     archived: existing.archived,
   };
 }

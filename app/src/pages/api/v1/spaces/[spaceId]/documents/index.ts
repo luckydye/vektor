@@ -19,7 +19,7 @@ import {
 } from "#db/documents.ts";
 import { ResourceType } from "~/src/db/acl.ts";
 import {
-  CSV_TYPES,
+  getDocumentTypeForContentType,
   getMimeType,
   toHtmlIfMarkdown,
 } from "../../../../../../utils/documentContent.ts";
@@ -137,10 +137,8 @@ export const POST: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      content = toHtmlIfMarkdown(rawContent, contentType);
-      if (contentType && CSV_TYPES.includes(contentType)) {
-        type = "csv";
-      }
+      type = getDocumentTypeForContentType(contentType);
+      content = toHtmlIfMarkdown(rawContent, contentType, type);
     }
 
     if (!content || typeof content !== "string") {

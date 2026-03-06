@@ -39,6 +39,7 @@ import { createRevision } from "#db/revisions.ts";
 import { getUniqueMentionedEmails } from "#db/mentions.ts";
 import { sendSyncEvent } from "~/src/db/ws.ts";
 import {
+  getDocumentTypeForContentType,
   getMimeType,
   toHtmlIfMarkdown,
 } from "../../../../../../../utils/documentContent.ts";
@@ -315,6 +316,7 @@ export const PUT: APIRoute = (context) =>
 
     const contentType = getMimeType(context.request.headers.get("Content-Type"));
     let content: string;
+    let nextType: string | null | undefined;
 
     if (contentType === "application/json") {
       const body = await parseJsonBody(context.request);
@@ -354,6 +356,7 @@ export const PUT: APIRoute = (context) =>
       }
 
       content = toHtmlIfMarkdown(jsonContent, contentType, existingDoc.type);
+      nextType = existingDoc.type;
     } else {
       if (existingDoc.readonly || readOnlyDocumentTypes.includes(existingDoc.type ?? "")) {
         throw forbiddenResponse("Cannot update readonly document");
@@ -364,13 +367,14 @@ export const PUT: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      content = toHtmlIfMarkdown(rawContent, contentType, existingDoc.type);
+      nextType = getDocumentTypeForContentType(contentType) ?? existingDoc.type;
+      content = toHtmlIfMarkdown(rawContent, contentType, nextType);
     }
 
     // TODO: propper sanitization needed, parse html doc and only use allowed elements and attributes.
     const contentSanitized = stripScriptTags(content);
 
-    const document = await updateDocument(spaceId, id, contentSanitized, userId);
+    const document = await updateDocument(spaceId, id, contentSanitized, userId, nextType);
     return jsonResponse({ document });
   }, "Failed to update document");
 
