@@ -21,16 +21,12 @@ tasks:
 
   dev:
     deps: [setup]
+    dir: ./app
     aliases: [d]
-    cmd: task --parallel app server
-  app:
-    dir: ./app
+    env:
+      DEV: true
     cmds:
-      - bunx --bun astro dev --host
-  server:
-    dir: ./app
-    cmds:
-      - bun ./src/server.ts
+      - bun --watch ./src/server.ts
 
   preview:
     deps: [setup]

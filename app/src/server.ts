@@ -13,6 +13,8 @@ import { contentExtensions } from "./editor/extensions.ts";
 import { generateJSON } from "@tiptap/html";
 import { Canvas } from "./canvas/Canvas.ts";
 
+import type { dev } from "astro";
+
 const hocuspocus = new Hocuspocus({
   async onAuthenticate(data) {
     const headers = data.requestHeaders;
@@ -189,9 +191,23 @@ app.ws("/sync/:space", sync(syncCallback));
 //  which could be bundled into single executable.
 app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
 
-import("../dist/server/entry.mjs").then(({ handler }) => {
-  app.use(handler);
-});
+let devServer: Awaited<ReturnType<typeof dev>> | undefined;
+
+if (import.meta.env.DEV) {
+  const { dev } = await import("astro");
+
+  devServer = await dev({
+    root: "./",
+    logLevel: "error",
+    server: {
+      host: true
+    }
+  });
+} else {
+  import("../dist/server/entry.mjs").then(({ handler }) => {
+    app.use(handler);
+  });
+}
 
 const port = Number.parseInt(process.env.PORT ?? "8080", 10);
 const server = app.listen(port, () => {
@@ -215,14 +231,18 @@ async function shutdown(reason: string, exitCode = 0) {
   }, 10_000);
   forcedShutdownTimer.unref();
 
+  if (devServer) {
+    await devServer.stop();
+  }
+
   try {
-    getWss().clients.forEach((client) => {
+    for (const client of getWss().clients) {
       try {
         client.close();
       } catch (error) {
         appLogger.warn("Failed to close WebSocket client", { error });
       }
-    });
+    }
 
     hocuspocus.closeConnections();
 
