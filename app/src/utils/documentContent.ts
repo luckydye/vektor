@@ -21,6 +21,7 @@ export function getDocumentTypeForContentType(contentType: string | null): strin
   if (!mimeType) return undefined;
   if (CSV_TYPE_SET.has(mimeType)) return "csv";
   if (APP_TYPES.has(mimeType)) return "app";
+  if (mimeType === "text/html" || MARKDOWN_TYPES.has(mimeType)) return "document";
   return undefined;
 }
 
