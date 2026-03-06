@@ -144,11 +144,19 @@ async function pollRun(
   spaceId: string,
   runId: string,
   timeoutMs = 15_000,
-): Promise<{ status: string; nodes: Record<string, unknown> }> {
+): Promise<{
+  status: string;
+  nodes: Record<string, unknown>;
+  output: Record<string, unknown> | null;
+}> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const res = await api(`/api/v1/spaces/${spaceId}/workflows/runs/${runId}`);
-    const body = (await res.json()) as { status: string; nodes: Record<string, unknown> };
+    const body = (await res.json()) as {
+      status: string;
+      nodes: Record<string, unknown>;
+      output: Record<string, unknown> | null;
+    };
     if (body.status === "completed" || body.status === "failed") return body;
     await Bun.sleep(25);
   }
@@ -282,6 +290,7 @@ describe("Workflow runs — single node", () => {
     const node = run.nodes["node1"] as { status: string; outputs: { message: string } };
     expect(node.status).toBe("completed");
     expect(node.outputs.message).toBe("hello world");
+    expect(run.output).toEqual({ message: "hello world" });
   });
 });
 
@@ -312,6 +321,7 @@ describe("Workflow runs — two-node dependency", () => {
     expect(n2.status).toBe("completed");
     // node1 outputs { message: "hi world" }; node2 appends suffix "!!"
     expect(n2.outputs.result).toBe("hi world !!");
+    expect(run.output).toEqual({ result: "hi world !!" });
   });
 
   it("explicit inputs override inherited outputs on key conflict", async () => {
@@ -342,6 +352,7 @@ describe("Workflow runs — two-node dependency", () => {
     expect(run.status).toBe("completed");
     const n2 = run.nodes["node2"] as { outputs: { result: string } };
     expect(n2.outputs.result).toBe("overridden !");
+    expect(run.output).toEqual({ result: "overridden !" });
   });
 });
 

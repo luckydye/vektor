@@ -478,7 +478,8 @@ Most errors are JSON:
 
 - Auth: session + `viewer`.
 - Returns:
-- `200` `{ status, nodes }` with node inputs/outputs/logs/timestamps.
+- `200` `{ status, nodes, output }` with node inputs/outputs/logs/timestamps and
+  merged outputs from the workflow's terminal node(s).
 
 ## `DELETE /spaces/:spaceId/workflows/runs/:runId`
 

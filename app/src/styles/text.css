@@ -104,11 +104,11 @@ input[type="checkbox"]:checked::before {
 /* paragraph */
 
 p {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 p:not(:first-child) {
-  margin-top: 1.5rem;
+  margin-top: 1rem;
 }
 
 /* Highlight */

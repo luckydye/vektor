@@ -143,6 +143,7 @@ export interface WorkflowNodeState {
 export interface WorkflowRunStatus {
   status: WorkflowNodeStatus;
   nodes: Record<string, WorkflowNodeState>;
+  output: Record<string, unknown> | null;
 }
 
 export interface ExtensionRouteMenuItem {
