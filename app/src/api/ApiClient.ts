@@ -1,4 +1,11 @@
 import {
+  type PresenceJoinPayload,
+  type PresenceLeaveMessage,
+  type PresenceMessage,
+  type PresenceSnapshotMessage,
+  type PresenceUpdateMessage,
+  type PresenceUpdatePayload,
+  type PresenceUser,
   realtimeTopics,
   WsMsgType,
   wsEncode,
@@ -348,6 +355,13 @@ interface RealtimeConnection {
   ready: Promise<void>;
   topicRefCounts: Map<RealtimeTopic, number>;
   subscriptions: Set<RealtimeSubscription>;
+  presenceRoomRefCounts: Map<string, number>;
+  presenceSubscriptions: Set<PresenceSubscription<any>>;
+}
+
+interface PresenceSubscription<TState = unknown> {
+  room: string;
+  callback: (event: PresenceMessage<TState>) => void;
 }
 
 /**
@@ -1641,18 +1655,50 @@ export class ApiClient {
       }),
       topicRefCounts: new Map(),
       subscriptions: new Set(),
+      presenceRoomRefCounts: new Map(),
+      presenceSubscriptions: new Set(),
     };
 
     socket.addEventListener("message", (event) => {
       if (!(event.data instanceof ArrayBuffer)) return;
       const { type, payload } = wsDecode(new Uint8Array(event.data));
 
-      if (type !== WsMsgType.Event) return;
+      if (type === WsMsgType.Event) {
+        const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
+        for (const subscription of connection.subscriptions) {
+          if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
+          subscription.callback({ type: "event", ...msg });
+        }
+        return;
+      }
 
-      const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
-      for (const subscription of connection.subscriptions) {
-        if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
-        subscription.callback({ type: "event", ...msg });
+      if (
+        type === WsMsgType.PresenceSnapshot ||
+        type === WsMsgType.PresenceUpdate ||
+        type === WsMsgType.PresenceLeave
+      ) {
+        const msg =
+          type === WsMsgType.PresenceSnapshot
+            ? ({
+                type: "presence-snapshot",
+                ...wsDecodeJson<Omit<PresenceSnapshotMessage, "type">>(payload),
+              } satisfies PresenceSnapshotMessage)
+            : type === WsMsgType.PresenceUpdate
+              ? ({
+                  type: "presence-update",
+                  ...wsDecodeJson<Omit<PresenceUpdateMessage, "type">>(payload),
+                } satisfies PresenceUpdateMessage)
+              : ({
+                  type: "presence-leave",
+                  ...wsDecodeJson<Omit<PresenceLeaveMessage, "type">>(payload),
+                } satisfies PresenceLeaveMessage);
+
+        for (const subscription of connection.presenceSubscriptions) {
+          const targetRoom =
+            msg.type === "presence-update" ? msg.presence.room : msg.room;
+          if (targetRoom !== subscription.room) continue;
+          subscription.callback(msg);
+        }
       }
     });
 
@@ -1703,7 +1749,7 @@ export class ApiClient {
         subscribeTopics.push(topic);
       }
     }
-    this.sendRealtimeMessage(connection, "subscribe", subscribeTopics);
+    this.sendRealtimeMessage(connection, WsMsgType.Subscribe, subscribeTopics);
 
     return () => {
       connection.subscriptions.delete(subscription);
@@ -1724,9 +1770,12 @@ export class ApiClient {
         connection.topicRefCounts.set(topic, currentCount - 1);
       }
 
-      this.sendRealtimeMessage(connection, "unsubscribe", unsubscribeTopics);
+      this.sendRealtimeMessage(connection, WsMsgType.Unsubscribe, unsubscribeTopics);
 
-      if (connection.subscriptions.size === 0) {
+      if (
+        connection.subscriptions.size === 0 &&
+        connection.presenceSubscriptions.size === 0
+      ) {
         connection.socket.close();
         this.realtimeConnections.delete(spaceId);
       }
@@ -1787,5 +1836,74 @@ export class ApiClient {
       ydoc.off("update", handleUpdate);
       connection.socket.removeEventListener("message", handleMessage);
     };
+  }
+
+  joinPresenceRoom<TState>(
+    spaceId: string,
+    room: string,
+    clientId: string,
+    user: PresenceUser,
+    callback: (event: PresenceMessage<TState>) => void,
+    initialState?: TState,
+  ): { update: (state: TState) => void; leave: () => void } {
+    const connection = this.getRealtimeConnection(spaceId);
+    const subscription: PresenceSubscription<TState> = {
+      room,
+      callback,
+    };
+    connection.presenceSubscriptions.add(subscription);
+
+    const roomRefCount = (connection.presenceRoomRefCounts.get(room) ?? 0) + 1;
+    connection.presenceRoomRefCounts.set(room, roomRefCount);
+
+    if (roomRefCount === 1) {
+      void connection.ready.then(() => {
+        const joinPayload: PresenceJoinPayload<TState> = {
+          room,
+          clientId,
+          user,
+          state: initialState,
+        };
+        connection.socket.send(wsEncode(WsMsgType.PresenceJoin, joinPayload));
+      }).catch(() => {});
+    }
+
+    const update = (state: TState) => {
+      const updatePayload: PresenceUpdatePayload<TState> = {
+        room,
+        clientId,
+        state,
+      };
+      void connection.ready.then(() => {
+        connection.socket.send(wsEncode(WsMsgType.PresenceUpdate, updatePayload));
+      }).catch(() => {});
+    };
+
+    const leave = () => {
+      connection.presenceSubscriptions.delete(subscription);
+
+      const currentCount = connection.presenceRoomRefCounts.get(room) ?? 0;
+      if (currentCount <= 1) {
+        connection.presenceRoomRefCounts.delete(room);
+        void connection.ready.then(() => {
+          connection.socket.send(wsEncode(WsMsgType.PresenceLeave, {
+            room,
+            clientId,
+          }));
+        }).catch(() => {});
+      } else {
+        connection.presenceRoomRefCounts.set(room, currentCount - 1);
+      }
+
+      if (
+        connection.subscriptions.size === 0 &&
+        connection.presenceSubscriptions.size === 0
+      ) {
+        connection.socket.close();
+        this.realtimeConnections.delete(spaceId);
+      }
+    };
+
+    return { update, leave };
   }
 }

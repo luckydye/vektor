@@ -8,6 +8,7 @@ import ImageNode from "./nodes/ImageNode.ts";
 import Pen from "./tools/Pen.ts";
 import Select from "./tools/Select.ts";
 import { DataHandler } from "../files/Handlers.ts";
+import type { PresenceEnvelope } from "../../utils/realtime.ts";
 
 function dragElement(ele, callback) {
   let lastEvent = null;
@@ -97,9 +98,31 @@ const TOOLS_MAP = {
 
 export default class CanvasElement extends HTMLElement {
   canvas: Canvas;
+  remotePresences = new Map();
 
   setCanvas(canvas) {
     this.canvas = canvas;
+  }
+
+  setRemotePresences(presences: Map<string, PresenceEnvelope>) {
+    this.remotePresences = presences;
+  }
+
+  getPresenceState() {
+    return {
+      kind: "canvas",
+      pointer: Number.isFinite(this.pointer.canvasX) && Number.isFinite(this.pointer.canvasY)
+        ? { x: this.pointer.canvasX, y: this.pointer.canvasY }
+        : null,
+      view: {
+        x: this.canvas.canvas.view[0],
+        y: this.canvas.canvas.view[1],
+        scale: this.canvas.canvas.scale,
+      },
+      selectionIds: this.selection.map((node) => node.id),
+      focusedNodeId: this.pointer.focusedElement?.id ?? null,
+      activeTool: TOOLS[this.activeTool]?.name?.toLowerCase?.() ?? null,
+    };
   }
 
   async handleDataItems(items) {
@@ -868,6 +891,33 @@ export default class CanvasElement extends HTMLElement {
     ctxt.fill();
   }
 
+  _drawRemotePresences(ctxt) {
+    for (const presence of this.remotePresences.values()) {
+      const state = presence.state;
+      if (state?.kind !== "canvas" || !state.pointer) {
+        continue;
+      }
+
+      const color = presence.user.color ?? "#3b82f6";
+      const [x, y] = this.canvasToView(state.pointer.x, state.pointer.y);
+
+      ctxt.save();
+      ctxt.fillStyle = color;
+      ctxt.beginPath();
+      ctxt.arc(x, y, 6, 0, Math.PI * 2);
+      ctxt.fill();
+
+      ctxt.font = "12px sans-serif";
+      ctxt.textBaseline = "top";
+      const label = presence.user.name;
+      const width = ctxt.measureText(label).width + 12;
+      ctxt.fillRect(x + 10, y - 8, width, 22);
+      ctxt.fillStyle = "#111";
+      ctxt.fillText(label, x + 16, y - 3);
+      ctxt.restore();
+    }
+  }
+
   _drawResolutionPreview(ctxt) {
     ctxt.globalAlpha = 0.25;
     ctxt.strokeStyle = "white";
@@ -906,6 +956,8 @@ export default class CanvasElement extends HTMLElement {
     }
 
     ctxt.restore();
+
+    this._drawRemotePresences(ctxt);
 
     // draw pointer selection
     this._drawPointer(ctxt);

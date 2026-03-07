@@ -21,6 +21,8 @@ import {
 import { ResourceType, Feature } from "#db/acl.ts";
 import { getAuthDb } from "#db/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
+import { sendSyncEvent } from "#db/ws.ts";
+import { realtimeTopics } from "../../../../../../../utils/realtime.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -86,6 +88,14 @@ export const POST: APIRoute = (context) =>
       throw badRequestResponse("Parent ID must be a string");
     }
 
+    if (reference !== undefined && reference !== null && typeof reference !== "string") {
+      throw badRequestResponse("Reference must be a string");
+    }
+
+    if (!parentId && (!reference || typeof reference !== "string" || !reference.trim())) {
+      throw badRequestResponse("Reference is required for top-level comments");
+    }
+
     const comment = await createComment(
       spaceId,
       ResourceType.DOCUMENT,
@@ -96,6 +106,17 @@ export const POST: APIRoute = (context) =>
       type,
       reference,
     );
+
+    sendSyncEvent(spaceId, {
+      topic: realtimeTopics.document(documentId),
+      data: {
+        kind: "comment_created",
+        commentId: comment.id,
+        documentId,
+        parentId: comment.parentId,
+        reference: comment.reference ?? null,
+      },
+    });
 
     return jsonResponse({ comment });
   }, "Failed to create comment");
@@ -127,5 +148,17 @@ export const DELETE: APIRoute = (context) =>
     }
 
     await archiveComment(spaceId, commentId);
+
+    sendSyncEvent(spaceId, {
+      topic: realtimeTopics.document(documentId),
+      data: {
+        kind: "comment_deleted",
+        commentId,
+        documentId,
+        parentId: comment.parentId,
+        reference: comment.reference ?? null,
+      },
+    });
+
     return jsonResponse({ success: true });
   }, "Failed to delete comment");

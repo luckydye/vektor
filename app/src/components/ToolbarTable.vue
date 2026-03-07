@@ -110,14 +110,20 @@ function updatePosition() {
   };
 }
 
+function handleEditModeEnd() {
+  shouldShow.value = false;
+}
+
 onMounted(() => {
   window.addEventListener("editor-update", checkVisibility);
+  window.addEventListener("edit-mode-cancel", handleEditModeEnd);
   document.addEventListener("scroll", updatePosition, { passive: true, capture: true });
   window.addEventListener("resize", updatePosition, { passive: true });
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("editor-update", checkVisibility);
+  window.removeEventListener("edit-mode-cancel", handleEditModeEnd);
   document.removeEventListener("scroll", updatePosition);
   window.removeEventListener("resize", updatePosition);
 });

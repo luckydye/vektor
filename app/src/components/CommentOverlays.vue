@@ -98,6 +98,7 @@ onUnmounted(() => {
     <template v-for="overlay in overlays" :key="overlay.reference">
       <button
         @click.stop="openSidebar(overlay.reference)"
+        data-comment-overlay-bubble="true"
         class="absolute right-0 pointer-events-auto cursor-pointer
                flex items-center justify-center min-w-[40px] h-[40px] px-1.5 rounded-full
                bg-primary-200 border border-neutral-100

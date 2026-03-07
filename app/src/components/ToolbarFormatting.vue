@@ -337,6 +337,10 @@ function handleEditModeEnd() {
     isEditMode.value = false;
     unregisterFormattingActions();
   }
+  shouldShow.value = false;
+  headingDropdownOpen.value = false;
+  isInteractingWithMenu.value = false;
+  isImageActive.value = false;
 }
 
 onMounted(() => {
@@ -355,6 +359,7 @@ onMounted(() => {
   // Listen for edit mode events
   window.addEventListener("edit-mode-start", handleEditModeStart);
   window.addEventListener("editor-ready", handleEditModeStart);
+  window.addEventListener("edit-mode-cancel", handleEditModeEnd);
 
   // Subscribe to color picker events
   Actions.subscribe("format:color:text:open", handleTextColorOpen);
@@ -369,6 +374,7 @@ onBeforeUnmount(() => {
 
   window.removeEventListener("edit-mode-start", handleEditModeStart);
   window.removeEventListener("editor-ready", handleEditModeStart);
+  window.removeEventListener("edit-mode-cancel", handleEditModeEnd);
 
   window.removeEventListener("editor-update", checkVisibility);
 

@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, onUnmounted, ref, computed, watch } from "vue";
+import {
+  defineAsyncComponent,
+  onMounted,
+  onUnmounted,
+  ref,
+  computed,
+  watch,
+  nextTick,
+} from "vue";
 import ToolbarFormatting from "./ToolbarFormatting.vue";
 import ToolbarTable from "./ToolbarTable.vue";
 import DiffView from "./DiffView.vue";
@@ -81,6 +89,20 @@ function handleEditModeStart() {
   }
 }
 
+async function handleEditModeCancel() {
+  cancelDebounce();
+  isEditingReady.value = false;
+  isEditing.value = false;
+
+  if (typeof documentData.value?.content === "string") {
+    renderedHtml.value = documentData.value.content;
+  }
+
+  await nextTick();
+  renderReadView();
+  await reloadIfReady();
+}
+
 watch(isEditingReady, (ready) => {
   document.body.dataset.editing = !!isEditingReady.value;
 });
@@ -122,7 +144,12 @@ function initEditor() {
   isEditingReady.value = true;
   window.dispatchEvent(new CustomEvent("document:edit"));
 
-  editorViewEl.value.init(props.spaceId, props.documentId, user.value, renderedHtml.value);
+  editorViewEl.value.init(
+    props.spaceId,
+    props.documentId,
+    user.value,
+    renderedHtml.value,
+  );
 }
 
 watch(isEditing, (editing) => {
@@ -188,9 +215,15 @@ async function handleRevisionDiff(event) {
 }
 
 onMounted(() => {
-  if (!props.readonly && props.documentType !== "canvas" && props.documentType !== "app" && props.documentType !== "csv") {
+  if (
+    !props.readonly &&
+    props.documentType !== "canvas" &&
+    props.documentType !== "app" &&
+    props.documentType !== "csv"
+  ) {
     window.addEventListener("edit-mode-start", handleEditModeStart);
   }
+  window.addEventListener("edit-mode-cancel", handleEditModeCancel);
 
   window.addEventListener("revision:view", handleRevisionView);
   window.addEventListener("revision:close", handleRevisionClose);
@@ -215,6 +248,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener("edit-mode-start", handleEditModeStart);
+  window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
   window.removeEventListener("revision:view", handleRevisionView);
   window.removeEventListener("revision:close", handleRevisionClose);
   window.removeEventListener("revisions:toggled", handleSidebarToggle);
@@ -300,11 +334,10 @@ function renderReadView() {
   root.appendChild(content);
 }
 
-watch([renderedHtml, isEditing, viewingRevision], () => {
+watch([renderedHtml, isEditing, viewingRevision, readViewEl], () => {
   renderReadView();
   renderTableView();
 });
-
 
 useSync(
   currentSpaceId,

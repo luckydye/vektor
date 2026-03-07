@@ -234,6 +234,7 @@ describe("Permissions API - Comments Feature", () => {
         method: "POST",
         body: JSON.stringify({
           content: "Owner comment test",
+          reference: "120",
         }),
       },
     );
@@ -252,6 +253,7 @@ describe("Permissions API - Comments Feature", () => {
         method: "POST",
         body: JSON.stringify({
           content: "Editor comment test",
+          reference: "240",
         }),
       },
     );
@@ -270,6 +272,7 @@ describe("Permissions API - Comments Feature", () => {
         method: "POST",
         body: JSON.stringify({
           content: "Viewer comment test - should fail",
+          reference: "360",
         }),
       },
     );
@@ -288,6 +291,24 @@ describe("Permissions API - Comments Feature", () => {
     const data = await response.json();
     expect(data.comments).toBeDefined();
     expect(Array.isArray(data.comments)).toBe(true);
+  });
+
+  it("should require reference for top-level comments", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}/comments`,
+      ownerToken,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "Missing reference",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("Reference is required");
   });
 });
 
@@ -478,6 +499,7 @@ describe("Permissions API - Grant/Deny/Revoke Features", () => {
         method: "POST",
         body: JSON.stringify({
           content: "Viewer comment after grant",
+          reference: "480",
         }),
       },
     );

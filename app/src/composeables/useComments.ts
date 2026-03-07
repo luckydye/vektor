@@ -2,6 +2,8 @@ import { computed, ref, type Ref } from "vue";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
 import { api } from "../api/client.ts";
 import type { Comment } from "../api/ApiClient.ts";
+import { useSync } from "./useSync.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 export function useComments(options: {
   spaceId: Ref<string | undefined>;
@@ -36,6 +38,23 @@ export function useComments(options: {
   });
 
   const comments = computed(() => commentsData.value || []);
+
+  useSync(
+    computed(() => options.spaceId.value ?? null),
+    () =>
+      options.documentId.value ? [realtimeTopics.document(options.documentId.value)] : [],
+    (_, event) => {
+      const hasCommentEvent = event.events.some(
+        ({ data }) =>
+          typeof data?.kind === "string" &&
+          (data.kind === "comment_created" || data.kind === "comment_deleted"),
+      );
+
+      if (hasCommentEvent) {
+        void refetch();
+      }
+    },
+  );
 
   const submitCommentMutation = useMutation({
     mutationFn: async ({

@@ -108,12 +108,19 @@ function handleEditModeStart() {
   isEditing.value = true;
 }
 
+function handleEditModeCancel() {
+  localTitle.value = props.title;
+  isEditing.value = false;
+}
+
 onMounted(() => {
   window.addEventListener("edit-mode-start", handleEditModeStart);
+  window.addEventListener("edit-mode-cancel", handleEditModeCancel);
 });
 
 onUnmounted(() => {
   window.removeEventListener("edit-mode-start", handleEditModeStart);
+  window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
 });
 
 const status = ref("idle");

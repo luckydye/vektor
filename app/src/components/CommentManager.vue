@@ -33,6 +33,10 @@ const {
 const showAddBubble = ref(false);
 const bubbleY = ref(0);
 const addingCommentY = ref<number | null>(null);
+const fadeAddBubble = ref(false);
+
+const EDGE_THRESHOLD_PX = 60;
+const COMMENT_BUBBLE_PROXIMITY_PX = 20;
 
 const commentsForOverlays = computed(() =>
   comments.value.map(
@@ -62,19 +66,38 @@ const commentsForThread = computed(() =>
 function handleMouseMove(e: MouseEvent) {
   if (activeReference.value || addingCommentY.value !== null) {
     showAddBubble.value = false;
+    fadeAddBubble.value = false;
     return;
   }
-  if (e.clientX > window.innerWidth - 60) {
+
+  if (e.clientX > window.innerWidth - EDGE_THRESHOLD_PX) {
     showAddBubble.value = true;
     bubbleY.value = e.clientY;
+    fadeAddBubble.value = isNearCommentBubble(e.clientX, e.clientY);
   } else {
     showAddBubble.value = false;
+    fadeAddBubble.value = false;
   }
+}
+
+function isNearCommentBubble(cursorX: number, cursorY: number) {
+  const bubbles = document.querySelectorAll<HTMLElement>("[data-comment-overlay-bubble='true']");
+
+  return Array.from(bubbles).some((bubble) => {
+    const rect = bubble.getBoundingClientRect();
+    return (
+      cursorX >= rect.left - COMMENT_BUBBLE_PROXIMITY_PX &&
+      cursorX <= rect.right + COMMENT_BUBBLE_PROXIMITY_PX &&
+      cursorY >= rect.top - COMMENT_BUBBLE_PROXIMITY_PX &&
+      cursorY <= rect.bottom + COMMENT_BUBBLE_PROXIMITY_PX
+    );
+  });
 }
 
 function handleAddComment() {
   addingCommentY.value = bubbleY.value;
   showAddBubble.value = false;
+  fadeAddBubble.value = false;
 }
 
 async function handleSubmit(payload: { content: string; reference: string | null }) {
@@ -82,7 +105,7 @@ async function handleSubmit(payload: { content: string; reference: string | null
 }
 
 async function handleSubmitNew(payload: { content: string; reference: string | null }) {
-  await submitComment(payload.content, null);
+  await submitComment(payload.content, payload.reference);
   addingCommentY.value = null;
 }
 
@@ -92,6 +115,7 @@ async function handleDeleteComment(commentId: string) {
 
 function handleMouseLeave() {
   showAddBubble.value = false;
+  fadeAddBubble.value = false;
 }
 
 onMounted(() => {
@@ -114,7 +138,8 @@ onUnmounted(() => {
     <!-- Add comment bubble — appears near right viewport edge -->
     <div
       v-if="showAddBubble"
-      class="fixed right-4 z-50 -translate-y-1/2 pointer-events-auto"
+      class="fixed right-4 z-50 -translate-y-1/2 transition-opacity duration-200"
+      :class="fadeAddBubble ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'"
       :style="{ top: `${bubbleY}px` }"
     >
       <button
@@ -153,7 +178,7 @@ onUnmounted(() => {
     >
       <CommentThread
         :comments="[]"
-        :activeReference="null"
+        :activeReference="String(addingCommentY)"
         :isSubmitting="isSubmitting"
         :isDeletingComment="isDeletingComment"
         @submit="handleSubmitNew"

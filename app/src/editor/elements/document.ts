@@ -14,8 +14,15 @@ import Collaboration from "@tiptap/extension-collaboration";
 import { contentExtensions } from "../extensions.ts";
 import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
 import type { IndexedDBStore } from "../../utils/storage.ts";
-import { joinYjsRoom } from "../../utils/sync.ts";
+import { joinPresenceRoom, joinYjsRoom } from "../../utils/sync.ts";
 import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import {
+  absolutePositionToRelativePosition,
+  relativePositionToAbsolutePosition,
+} from "y-prosemirror";
+import type { PresenceEnvelope, PresenceUser } from "../../utils/realtime.ts";
 
 declare global {
   interface Window {
@@ -29,6 +36,167 @@ type EditorStoreEntry = {
   createdAt: number;
 };
 
+type EditorPresenceState = {
+  kind: "editor";
+  focused: boolean;
+  selection: {
+    anchor: Record<string, unknown>;
+    head: Record<string, unknown>;
+  } | null;
+};
+
+const editorPresencePluginKey = new PluginKey("wiki-editor-presence");
+
+function getYSyncState(state: Editor["state"]) {
+  const plugin = state.plugins.find((candidate) => candidate.key === "y-sync$");
+  return plugin?.getState(state) as
+    | {
+        binding?: { mapping?: Map<unknown, { nodeSize: number }> };
+      }
+    | undefined;
+}
+
+function getPresenceColor(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+
+  return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
+}
+
+function serializeRelativePosition(position: unknown) {
+  return JSON.parse(JSON.stringify(position)) as Record<string, unknown>;
+}
+
+function toPresenceUser(user: User): PresenceUser {
+  return {
+    id: user.id,
+    name: user.name,
+    image: user.image,
+    color: getPresenceColor(user.id),
+  };
+}
+
+function createPresencePlugin(
+  ydoc: Y.Doc,
+  localClientId: string,
+  getPresences: () => Map<string, PresenceEnvelope<EditorPresenceState>>,
+) {
+  const docType = ydoc.getXmlFragment("default");
+
+  return new Plugin({
+    key: editorPresencePluginKey,
+    state: {
+      init: () => 0,
+      apply(tr, value) {
+        return tr.getMeta(editorPresencePluginKey) === "refresh" ? value + 1 : value;
+      },
+    },
+    props: {
+      decorations(state) {
+        const syncState = getYSyncState(state);
+        const mapping = syncState?.binding?.mapping;
+        if (!mapping) {
+          return DecorationSet.empty;
+        }
+
+        const decorations: Decoration[] = [];
+        for (const presence of getPresences().values()) {
+          if (presence.clientId === localClientId) {
+            continue;
+          }
+
+          const remoteState = presence.state;
+          if (remoteState?.kind !== "editor" || !remoteState.selection) {
+            continue;
+          }
+
+          const anchor = relativePositionToAbsolutePosition(
+            ydoc,
+            docType,
+            Y.createRelativePositionFromJSON(remoteState.selection.anchor),
+            mapping as any,
+          );
+          const head = relativePositionToAbsolutePosition(
+            ydoc,
+            docType,
+            Y.createRelativePositionFromJSON(remoteState.selection.head),
+            mapping as any,
+          );
+
+          if (anchor === null || head === null) {
+            continue;
+          }
+
+          const from = Math.min(anchor, head);
+          const to = Math.max(anchor, head);
+          const color = presence.user.color ?? getPresenceColor(presence.user.id);
+
+          if (from !== to) {
+            decorations.push(
+              Decoration.inline(from, to, {
+                class: "ProseMirror-yjs-selection",
+                style: `background-color: color-mix(in srgb, ${color} 24%, transparent);`,
+              }),
+            );
+          }
+
+          decorations.push(
+            Decoration.widget(head, () => {
+              const caret = document.createElement("span");
+              caret.className = "collaboration-carets__caret";
+              Object.assign(caret.style, {
+                borderLeft: `2px solid ${color}`,
+                marginLeft: "-1px",
+                marginRight: "-1px",
+                pointerEvents: "none",
+                position: "relative",
+                display: "inline-block",
+                height: "1.1em",
+                verticalAlign: "text-top",
+              });
+              if (!remoteState.focused) {
+                caret.style.opacity = "0.65";
+              }
+
+              const label = document.createElement("span");
+              label.className = "collaboration-carets__label";
+              Object.assign(label.style, {
+                position: "absolute",
+                left: "-1px",
+                top: "-1.45em",
+                backgroundColor: color,
+                color: "#111",
+                fontSize: "12px",
+                fontWeight: "600",
+                lineHeight: "1",
+                whiteSpace: "nowrap",
+                borderRadius: "3px 3px 3px 0",
+                padding: "0.15rem 0.35rem",
+                boxShadow: "0 1px 2px rgb(0 0 0 / 0.18)",
+              });
+              label.textContent = presence.user.name;
+              if (!remoteState.focused) {
+                label.style.opacity = "0.75";
+              }
+
+              caret.appendChild(label);
+              return caret;
+            }, {
+              key: `${presence.clientId}:${presence.updatedAt}`,
+              side: -1,
+            }),
+          );
+        }
+
+        return DecorationSet.create(state.doc, decorations);
+      },
+    },
+  });
+}
+
 function createEditor(
   editorElement: HTMLElement,
   spaceId: string,
@@ -41,7 +209,9 @@ function createEditor(
   }
 
   const ydoc = new Y.Doc();
-
+  const presenceClientId = crypto.randomUUID();
+  const presenceUser = toPresenceUser(user);
+  const remotePresences = new Map<string, PresenceEnvelope<EditorPresenceState>>();
   const leaveYjsRoom = joinYjsRoom(spaceId, documentId || crypto.randomUUID(), ydoc);
 
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
@@ -51,6 +221,45 @@ function createEditor(
   let blockDropIndicator: HTMLDivElement | null = null;
 
   let editor: Editor;
+  const presencePlugin = createPresencePlugin(ydoc, presenceClientId, () => remotePresences);
+  let leavePresenceRoom = () => {};
+  let presenceHandle: { update: (state: EditorPresenceState) => void; leave: () => void } | null = null;
+
+  const refreshPresenceDecorations = () => {
+    if (!editor?.view) return;
+    editor.view.dispatch(editor.state.tr.setMeta(editorPresencePluginKey, "refresh"));
+  };
+
+  const buildPresenceState = (): EditorPresenceState => {
+    const selection = editor?.state.selection;
+    const syncState = editor ? getYSyncState(editor.state) : undefined;
+    const mapping = syncState?.binding?.mapping;
+
+    if (!editor || !selection || !mapping) {
+      return {
+        kind: "editor",
+        focused: editor?.isFocused ?? false,
+        selection: null,
+      };
+    }
+
+    return {
+      kind: "editor",
+      focused: editor.isFocused,
+      selection: {
+        anchor: serializeRelativePosition(absolutePositionToRelativePosition(
+          selection.anchor,
+          ydoc.getXmlFragment("default"),
+          mapping as any,
+        )),
+        head: serializeRelativePosition(absolutePositionToRelativePosition(
+          selection.head,
+          ydoc.getXmlFragment("default"),
+          mapping as any,
+        )),
+      },
+    };
+  };
 
   const handlePointerMove = (event: PointerEvent) => {
     lastPointerX = event.clientX;
@@ -195,12 +404,41 @@ function createEditor(
       disableCollaboration();
     },
     onCreate: async ({ editor: currentEditor }) => {
+      currentEditor.registerPlugin(presencePlugin);
+      const presence = joinPresenceRoom<EditorPresenceState>(
+        spaceId,
+        documentId,
+        presenceClientId,
+        presenceUser,
+        (event) => {
+          if (event.type === "presence-snapshot") {
+            remotePresences.clear();
+            for (const presence of event.presences) {
+              if (presence.clientId === presenceClientId) continue;
+              remotePresences.set(presence.clientId, presence);
+            }
+          } else if (event.type === "presence-update") {
+            if (event.presence.clientId === presenceClientId) {
+              return;
+            }
+            remotePresences.set(event.presence.clientId, event.presence);
+          } else {
+            remotePresences.delete(event.clientId);
+          }
+          refreshPresenceDecorations();
+        },
+        buildPresenceState(),
+      );
+      presenceHandle = presence;
+      leavePresenceRoom = presence.leave;
       currentEditor.commands.focus();
+      presence.update(buildPresenceState());
     },
     onUpdate: () => {},
     onDestroy: () => {
       cleanupDragHandleSync();
       cleanupBlockDropIndicator();
+      leavePresenceRoom();
       leaveYjsRoom();
     },
     extensions: [
@@ -237,6 +475,16 @@ function createEditor(
         document: ydoc,
       }),
     ],
+  });
+
+  editor.on("selectionUpdate", () => {
+    presenceHandle?.update(buildPresenceState());
+  });
+  editor.on("focus", () => {
+    presenceHandle?.update(buildPresenceState());
+  });
+  editor.on("blur", () => {
+    presenceHandle?.update(buildPresenceState());
   });
 
   editor.view.dom.addEventListener("dragover", handleEditorDragOver);

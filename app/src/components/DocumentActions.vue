@@ -30,6 +30,15 @@ const isSaving = ref(false);
 const isCreatingToken = ref(false);
 const editorSaveFunction = ref<(() => Promise<void>) | null>(null);
 
+function registerEditAction() {
+  Actions.register("document:edit", {
+    title: "Edit Document",
+    description: "Start editing mode for current document",
+    group: "edit",
+    run: async () => startEditing(),
+  });
+}
+
 function startEditing() {
   if (props.readonly || !userCanEdit.value) {
     return;
@@ -48,12 +57,7 @@ function startEditing() {
   Actions.unregister("document:edit");
 }
 
-Actions.register("document:edit", {
-  title: "Edit Document",
-  description: "Start editing mode for current document",
-  group: "edit",
-  run: async () => startEditing(),
-});
+registerEditAction();
 
 Actions.register("document:print", {
   title: "Print",
@@ -152,7 +156,9 @@ async function stopEditing() {
 function cancelEditing() {
   isEditing.value = false;
   if (props.documentId) {
-    window.location.reload();
+    window.dispatchEvent(new CustomEvent("edit-mode-cancel"));
+    Actions.unregister("document:save");
+    registerEditAction();
   } else {
     window.history.back();
   }

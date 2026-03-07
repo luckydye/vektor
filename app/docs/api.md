@@ -616,7 +616,8 @@ Most errors are JSON:
 - Auth: session + document access + `COMMENT` feature.
 - Body:
 - `content` required
-- optional `parentId`, `type`, `reference`
+- `reference` required for top-level comments
+- optional `parentId`, `type`
 - Returns:
 - `200` `{ comment }`.
 

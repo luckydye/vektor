@@ -25,6 +25,62 @@ export interface RealtimeEventMessage {
   timestamp: string;
 }
 
+export interface PresenceUser {
+  id: string;
+  name: string;
+  image?: string | null;
+  color?: string | null;
+}
+
+export interface PresenceJoinPayload<TState = unknown> {
+  room: string;
+  clientId: string;
+  user: PresenceUser;
+  state?: TState;
+}
+
+export interface PresenceUpdatePayload<TState = unknown> {
+  room: string;
+  clientId: string;
+  state: TState;
+}
+
+export interface PresenceLeavePayload {
+  room: string;
+  clientId: string;
+}
+
+export interface PresenceEnvelope<TState = unknown> {
+  room: string;
+  clientId: string;
+  user: PresenceUser;
+  state: TState | null;
+  updatedAt: string;
+}
+
+export interface PresenceSnapshotMessage<TState = unknown> {
+  type: "presence-snapshot";
+  room: string;
+  presences: PresenceEnvelope<TState>[];
+}
+
+export interface PresenceUpdateMessage<TState = unknown> {
+  type: "presence-update";
+  presence: PresenceEnvelope<TState>;
+}
+
+export interface PresenceLeaveMessage {
+  type: "presence-leave";
+  room: string;
+  clientId: string;
+  timestamp: string;
+}
+
+export type PresenceMessage<TState = unknown> =
+  | PresenceSnapshotMessage<TState>
+  | PresenceUpdateMessage<TState>
+  | PresenceLeaveMessage;
+
 export function isDocumentRealtimeTopic(topic: string): topic is `document:${string}` {
   return topic.startsWith("document:") && topic.length > "document:".length;
 }
@@ -45,6 +101,10 @@ export const WsMsgType = {
   Error: 3,
   YjsJoin: 4,
   YjsUpdate: 5,
+  PresenceJoin: 6,
+  PresenceUpdate: 7,
+  PresenceLeave: 8,
+  PresenceSnapshot: 9,
 } as const;
 
 export type WsMsgType = typeof WsMsgType[keyof typeof WsMsgType];

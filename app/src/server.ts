@@ -9,6 +9,10 @@ import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
 import {
   isDocumentRealtimeTopic,
   realtimeTopics,
+  type PresenceEnvelope,
+  type PresenceJoinPayload,
+  type PresenceLeavePayload,
+  type PresenceUpdatePayload,
   WsMsgType,
   wsEncode,
   wsEncodeYjsUpdate,
@@ -28,8 +32,9 @@ import { getDocument } from "./db/documents.ts";
 import type { dev } from "astro";
 
 interface YRoom {
-  doc: Y.Doc;
-  clients: Set<{ ws: any; documentId: string }>;
+  doc?: Y.Doc;
+  clients: Set<any>;
+  presences: Map<string, PresenceEnvelope>;
 }
 
 const yRooms = new Map<string, YRoom>();
@@ -43,6 +48,29 @@ async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
   const schema = getSchema(extensions);
   const pmDoc = Node.fromJSON(schema, json);
   return prosemirrorToYDoc(pmDoc, "default");
+}
+
+function getRoom(spaceId: string, documentId: string): YRoom {
+  const roomKey = `${spaceId}:${documentId}`;
+  let room = yRooms.get(roomKey);
+  if (!room) {
+    room = {
+      clients: new Set(),
+      presences: new Map(),
+    };
+    yRooms.set(roomKey, room);
+  }
+  return room;
+}
+
+function broadcastPresence(room: YRoom, sender: any, type: WsMsgType, payload: object) {
+  const frame = wsEncode(type, payload);
+  for (const client of room.clients) {
+    if (client === sender || client.readyState !== 1) {
+      continue;
+    }
+    client.send(frame);
+  }
 }
 
 const { app, getWss } = expressWebsockets(express());
@@ -147,6 +175,7 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
 
   const subscriptions = new Set<string>();
   const yjsRooms = new Set<string>();
+  const joinedPresence = new Map<string, Set<string>>();
   const off = subscribeToSyncEvents((event) => {
     if (event.spaceId !== spaceId) return;
 
@@ -168,14 +197,14 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
         const { documentId, update } = wsDecodeYjsUpdate(payload);
         const roomKey = `${spaceId}:${documentId}`;
         const room = yRooms.get(roomKey);
-        if (!room) return;
+        if (!room?.doc) return;
 
         Y.applyUpdate(room.doc, update, websocket);
 
         const frame = wsEncodeYjsUpdate(documentId, update);
         for (const client of room.clients) {
-          if (client.ws !== websocket && client.ws.readyState === 1) {
-            client.ws.send(frame);
+          if (client !== websocket && client.readyState === 1) {
+            client.send(frame);
           }
         }
         return;
@@ -191,17 +220,98 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
         }
 
         const roomKey = `${spaceId}:${documentId}`;
-        let room = yRooms.get(roomKey);
-        if (!room) {
-          const doc = await loadYDoc(spaceId, documentId);
-          room = { doc, clients: new Set() };
-          yRooms.set(roomKey, room);
+        const room = getRoom(spaceId, documentId);
+        if (!room.doc) {
+          room.doc = await loadYDoc(spaceId, documentId);
         }
 
-        room.clients.add({ ws: websocket, documentId });
+        room.clients.add(websocket);
         yjsRooms.add(roomKey);
 
         websocket.send(wsEncodeYjsUpdate(documentId, Y.encodeStateAsUpdate(room.doc)));
+        return;
+      }
+
+      if (type === WsMsgType.PresenceJoin) {
+        const join = wsDecodeJson<PresenceJoinPayload>(payload);
+        try {
+          await verifyDocumentRole(spaceId, join.room, session.user.id, "viewer");
+        } catch {
+          websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+          return;
+        }
+
+        const roomKey = `${spaceId}:${join.room}`;
+        const room = getRoom(spaceId, join.room);
+        room.clients.add(websocket);
+        const presence: PresenceEnvelope = {
+          room: join.room,
+          clientId: join.clientId,
+          user: join.user,
+          state: join.state ?? null,
+          updatedAt: new Date().toISOString(),
+        };
+        room.presences.set(join.clientId, presence);
+
+        const roomPresence = joinedPresence.get(roomKey) ?? new Set<string>();
+        roomPresence.add(join.clientId);
+        joinedPresence.set(roomKey, roomPresence);
+
+        websocket.send(wsEncode(WsMsgType.PresenceSnapshot, {
+          room: join.room,
+          presences: [...room.presences.values()],
+        }));
+        broadcastPresence(room, websocket, WsMsgType.PresenceUpdate, {
+          presence,
+        });
+        return;
+      }
+
+      if (type === WsMsgType.PresenceUpdate) {
+        const update = wsDecodeJson<PresenceUpdatePayload>(payload);
+        try {
+          await verifyDocumentRole(spaceId, update.room, session.user.id, "viewer");
+        } catch {
+          websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+          return;
+        }
+
+        const room = yRooms.get(`${spaceId}:${update.room}`);
+        const existingPresence = room?.presences.get(update.clientId);
+        if (!room || !existingPresence) {
+          return;
+        }
+
+        const presence: PresenceEnvelope = {
+          ...existingPresence,
+          state: update.state,
+          updatedAt: new Date().toISOString(),
+        };
+        room.presences.set(update.clientId, presence);
+        broadcastPresence(room, websocket, WsMsgType.PresenceUpdate, {
+          presence,
+        });
+        return;
+      }
+
+      if (type === WsMsgType.PresenceLeave) {
+        const leave = wsDecodeJson<PresenceLeavePayload>(payload);
+        const roomKey = `${spaceId}:${leave.room}`;
+        const room = yRooms.get(roomKey);
+        if (!room) {
+          return;
+        }
+        room.presences.delete(leave.clientId);
+        joinedPresence.get(roomKey)?.delete(leave.clientId);
+        broadcastPresence(room, websocket, WsMsgType.PresenceLeave, {
+          room: leave.room,
+          clientId: leave.clientId,
+          timestamp: new Date().toISOString(),
+        });
+
+        if (room.clients.size === 0 && room.presences.size === 0) {
+          yRooms.delete(roomKey);
+        }
         return;
       }
 
@@ -238,13 +348,29 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
     for (const roomKey of yjsRooms) {
       const room = yRooms.get(roomKey);
       if (!room) continue;
-      for (const client of room.clients) {
-        if (client.ws === websocket) {
-          room.clients.delete(client);
-          break;
-        }
+      room.clients.delete(websocket);
+      if (room.clients.size === 0 && room.presences.size === 0) {
+        yRooms.delete(roomKey);
       }
-      if (room.clients.size === 0) {
+    }
+
+    for (const [roomKey, clientIds] of joinedPresence.entries()) {
+      const room = yRooms.get(roomKey);
+      if (!room) {
+        continue;
+      }
+
+      for (const clientId of clientIds) {
+        room.presences.delete(clientId);
+        broadcastPresence(room, websocket, WsMsgType.PresenceLeave, {
+          room: roomKey.slice(spaceId.length + 1),
+          clientId,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      room.clients.delete(websocket);
+      if (room.clients.size === 0 && room.presences.size === 0) {
         yRooms.delete(roomKey);
       }
     }
