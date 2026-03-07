@@ -9,6 +9,14 @@ export const realtimeTopics = {
 } as const;
 
 export type RealtimeTopic = string;
+export type RealtimeEventData = Record<string, unknown> | null;
+
+export interface RealtimeTopicEvent {
+  topic: RealtimeTopic;
+  data?: RealtimeEventData;
+}
+
+export type RealtimeEventInput = RealtimeTopic | RealtimeTopicEvent;
 
 export interface RealtimeSubscribeMessage {
   type: "subscribe" | "unsubscribe";
@@ -18,6 +26,7 @@ export interface RealtimeSubscribeMessage {
 export interface RealtimeEventMessage {
   type: "event";
   topics: RealtimeTopic[];
+  events: RealtimeTopicEvent[];
   timestamp: string;
 }
 
@@ -31,4 +40,8 @@ export type RealtimeServerMessage = RealtimeEventMessage | RealtimeErrorMessage;
 
 export function isDocumentRealtimeTopic(topic: string): topic is `document:${string}` {
   return topic.startsWith("document:") && topic.length > "document:".length;
+}
+
+export function toRealtimeTopicEvent(input: RealtimeEventInput): RealtimeTopicEvent {
+  return typeof input === "string" ? { topic: input } : input;
 }

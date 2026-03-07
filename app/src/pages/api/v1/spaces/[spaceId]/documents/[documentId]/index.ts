@@ -443,7 +443,29 @@ export const PATCH: APIRoute = (context) =>
         await verifyDocumentAccess(spaceId, parentId, user.id);
       }
 
-      await setDocumentParent(spaceId, id, parentId);
+      const parentChange = await setDocumentParent(spaceId, id, parentId);
+      const parentChangeData = {
+        kind: "document_parent_changed",
+        documentId: id,
+        previousParentId: parentChange.previousParentId,
+        parentId: parentChange.parentId,
+      };
+
+      sendSyncEvent(
+        spaceId,
+        {
+          topic: realtimeTopics.documentTree,
+          data: parentChangeData,
+        },
+        {
+          topic: realtimeTopics.categoryDocuments,
+          data: parentChangeData,
+        },
+        {
+          topic: realtimeTopics.document(id),
+          data: parentChangeData,
+        },
+      );
     }
 
     if (publishedRev !== undefined) {
@@ -456,8 +478,6 @@ export const PATCH: APIRoute = (context) =>
       }
       await handleReadonlyPatch(spaceId, id, user.id, readonly);
     }
-
-    sendSyncEvent(spaceId, realtimeTopics.categoryDocuments, realtimeTopics.documentTree);
 
     return jsonResponse({ success: true });
   }, "Failed to patch document");

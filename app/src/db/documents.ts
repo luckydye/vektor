@@ -803,7 +803,40 @@ export async function updateDocumentProperty(
   }
 
   await updateDocumentFts(spaceId, documentId);
-  sendSyncEvent(spaceId, realtimeTopics.categoryDocuments);
+  const propertyChangeData = {
+    kind: "document_property_changed",
+    documentId,
+    propertyKey: key,
+    propertyType: type ?? existing?.type ?? null,
+    previousValue: previousValue ?? null,
+    value,
+    slug: payload.slug ?? null,
+  };
+  const treeRelevantProperty = ["title", "category", "collection"].includes(key);
+
+  sendSyncEvent(
+    spaceId,
+    {
+      topic: realtimeTopics.properties,
+      data: propertyChangeData,
+    },
+    {
+      topic: realtimeTopics.document(documentId),
+      data: propertyChangeData,
+    },
+    ...(treeRelevantProperty
+      ? [
+          {
+            topic: realtimeTopics.documentTree,
+            data: propertyChangeData,
+          },
+          {
+            topic: realtimeTopics.categoryDocuments,
+            data: propertyChangeData,
+          },
+        ]
+      : []),
+  );
 
   return payload;
 }
@@ -847,7 +880,38 @@ export async function deleteDocumentProperty(
   await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
 
   await updateDocumentFts(spaceId, documentId);
-  sendSyncEvent(spaceId, realtimeTopics.categoryDocuments);
+  const propertyDeleteData = {
+    kind: "document_property_deleted",
+    documentId,
+    propertyKey: key,
+    propertyType: existing?.type ?? null,
+    previousValue: existing?.value ?? null,
+  };
+  const treeRelevantProperty = ["title", "category", "collection"].includes(key);
+
+  sendSyncEvent(
+    spaceId,
+    {
+      topic: realtimeTopics.properties,
+      data: propertyDeleteData,
+    },
+    {
+      topic: realtimeTopics.document(documentId),
+      data: propertyDeleteData,
+    },
+    ...(treeRelevantProperty
+      ? [
+          {
+            topic: realtimeTopics.documentTree,
+            data: propertyDeleteData,
+          },
+          {
+            topic: realtimeTopics.categoryDocuments,
+            data: propertyDeleteData,
+          },
+        ]
+      : []),
+  );
 }
 
 /**
@@ -1084,9 +1148,14 @@ export async function setDocumentParent(
   spaceId: string,
   documentId: string,
   parentId: string | null,
-): Promise<void> {
+): Promise<{ documentId: string; previousParentId: string | null; parentId: string | null }> {
   const db = await getSpaceDb(spaceId);
   const now = new Date();
+  const existing = await db
+    .select({ parentId: document.parentId })
+    .from(document)
+    .where(eq(document.id, documentId))
+    .get();
 
   if (parentId === documentId) {
     throw new Error("Cannot set parent: a child cant be a parent");
@@ -1096,6 +1165,12 @@ export async function setDocumentParent(
     .update(document)
     .set({ parentId, updatedAt: now })
     .where(eq(document.id, documentId));
+
+  return {
+    documentId,
+    previousParentId: existing?.parentId ?? null,
+    parentId,
+  };
 }
 
 export async function getDocumentChildren(

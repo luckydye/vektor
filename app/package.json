@@ -18,7 +18,7 @@
     "@opentelemetry/sdk-metrics": "^2.1.0",
     "@opentelemetry/sdk-node": "^0.205.0",
     "@opentelemetry/sdk-trace-base": "^2.1.0",
-    "@sv/elements": "^4.4.0",
+    "@sv/elements": "^4.8.0",
     "@tailwindcss/vite": "^4.1.16",
     "@tanstack/vue-query": "^5.91.1",
     "@tiptap/core": "3.9.1",

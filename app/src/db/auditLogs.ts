@@ -175,16 +175,6 @@ const EVENT_TO_SYNC_TOPICS: Partial<Record<AuditEvent, (docId: string) => string
   unlock: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
   acl_grant: () => [realtimeTopics.acl],
   acl_revoke: () => [realtimeTopics.acl],
-  property_update: (docId) => [
-    realtimeTopics.properties,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
-  property_delete: (docId) => [
-    realtimeTopics.properties,
-    realtimeTopics.documentTree,
-    realtimeTopics.document(docId),
-  ],
 };
 
 /**

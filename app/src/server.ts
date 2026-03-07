@@ -6,7 +6,7 @@ import { appLogger } from "./observability/logger.ts";
 import { getDocument } from "./db/documents.ts";
 import { auth } from "./auth.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
-import { subscribeToSyncEvents } from "./db/ws.ts";
+import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
 import {
   isDocumentRealtimeTopic,
   realtimeTopics,
@@ -174,6 +174,12 @@ app.ws("/collaboration", (websocket: any, request: any) => {
 });
 
 app.use(express.json({ limit: "100mb" }));
+app.post("/sync", (req: any, res: any) => {
+  const events = Array.isArray(req.body) ? req.body : [req.body];
+  publishSyncEvents(events);
+  res.status(200).end();
+});
+
 app.ws("/events/:spaceId", async (websocket: any, request: any) => {
   const spaceId = request.params.spaceId;
   const session = await auth.api.getSession({
@@ -206,14 +212,15 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
       return;
     }
 
-    const topics = event.topics.filter((topic) => subscriptions.has(topic));
-    if (topics.length === 0) {
+    const matchedEvents = event.events.filter(({ topic }) => subscriptions.has(topic));
+    if (matchedEvents.length === 0) {
       return;
     }
 
     sendRealtimeMessage(websocket, {
       type: "event",
-      topics,
+      topics: matchedEvents.map(({ topic }) => topic),
+      events: matchedEvents,
       timestamp: event.timestamp,
     });
   });

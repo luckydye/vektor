@@ -1648,7 +1648,7 @@ export class ApiClient {
       }
 
       for (const subscription of connection.subscriptions) {
-        if (!payload.topics.some((topic) => subscription.topics.has(topic))) {
+        if (!payload.events.some(({ topic }) => subscription.topics.has(topic))) {
           continue;
         }
         subscription.callback(payload);

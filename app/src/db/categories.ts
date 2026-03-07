@@ -43,7 +43,17 @@ export async function createCategory(
     updatedAt: now,
   });
 
-  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
+  sendSyncEvent(
+    spaceId,
+    {
+      topic: realtimeTopics.categories,
+      data: { kind: "category_created", categoryId: id, name, slug, order },
+    },
+    {
+      topic: realtimeTopics.documentTree,
+      data: { kind: "category_created", categoryId: id, name, slug, order },
+    },
+  );
 
   return {
     id,
@@ -152,7 +162,31 @@ export async function updateCategory(
     })
     .where(eq(category.id, id));
 
-  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
+  sendSyncEvent(
+    spaceId,
+    {
+      topic: realtimeTopics.categories,
+      data: {
+        kind: "category_updated",
+        categoryId: id,
+        previousSlug: existing.slug,
+        slug,
+        name,
+        order: existing.order,
+      },
+    },
+    {
+      topic: realtimeTopics.documentTree,
+      data: {
+        kind: "category_updated",
+        categoryId: id,
+        previousSlug: existing.slug,
+        slug,
+        name,
+        order: existing.order,
+      },
+    },
+  );
 
   return {
     id,
@@ -169,8 +203,19 @@ export async function updateCategory(
 
 export async function deleteCategory(spaceId: string, id: string): Promise<boolean> {
   const db = await getSpaceDb(spaceId);
+  const existing = await getCategory(spaceId, id);
   await db.delete(category).where(eq(category.id, id));
-  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
+  sendSyncEvent(
+    spaceId,
+    {
+      topic: realtimeTopics.categories,
+      data: { kind: "category_deleted", categoryId: id, slug: existing?.slug ?? null },
+    },
+    {
+      topic: realtimeTopics.documentTree,
+      data: { kind: "category_deleted", categoryId: id, slug: existing?.slug ?? null },
+    },
+  );
   return true;
 }
 
@@ -187,6 +232,16 @@ export async function reorderCategories(
       .where(eq(category.id, categoryIds[i]));
   }
 
-  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
+  sendSyncEvent(
+    spaceId,
+    {
+      topic: realtimeTopics.categories,
+      data: { kind: "categories_reordered", categoryIds },
+    },
+    {
+      topic: realtimeTopics.documentTree,
+      data: { kind: "categories_reordered", categoryIds },
+    },
+  );
   return true;
 }
