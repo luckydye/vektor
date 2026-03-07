@@ -432,7 +432,10 @@ useSync(
     <document-view ref="editorViewEl"></document-view>
   </div>
   
-  <document-statusbar class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
+  <document-statusbar
+    v-if="isEditing && !viewingRevision && !props.readonly && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
+    class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"
+  ></document-statusbar>
 
   <CommentManager
     v-if="props.documentId && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
