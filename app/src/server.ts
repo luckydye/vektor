@@ -5,7 +5,14 @@ import { appLogger } from "./observability/logger.ts";
 
 import { getDocument } from "./db/documents.ts";
 import { auth } from "./auth.ts";
-import { verifyDocumentRole } from "./db/api.ts";
+import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
+import { subscribeToSyncEvents } from "./db/ws.ts";
+import {
+  isDocumentRealtimeTopic,
+  realtimeTopics,
+  type RealtimeClientMessage,
+  type RealtimeServerMessage,
+} from "./utils/realtime.ts";
 
 import { Hocuspocus } from "@hocuspocus/server";
 import { TiptapTransformer } from "@hocuspocus/transformer";
@@ -84,7 +91,7 @@ const hocuspocus = new Hocuspocus({
 const { app, getWss } = expressWebsockets(express());
 
 // Logging
-app.use((req, res, next) => {
+app.use((req: any, res: any, next: any) => {
   const startTime = Date.now();
   req.time = new Date(startTime).toString();
   appLogger.info("HTTP request", {
@@ -128,64 +135,134 @@ app.use((req, res, next) => {
   next();
 });
 
-const connections = new Map<string, Set<any>>();
+const realtimeSpaceTopics = new Set<string>([
+  realtimeTopics.acl,
+  realtimeTopics.categories,
+  realtimeTopics.categoryDocuments,
+  realtimeTopics.documentTree,
+  realtimeTopics.documents,
+  realtimeTopics.properties,
+]);
 
-function sync(onSyncEvent: (ev: any) => () => void) {
-  return (ws, request) => {
-    const spaceId = request.params.space;
-
-    if (!connections.has(spaceId)) {
-      connections.set(spaceId, new Set());
-    }
-
-    const spaceConnections = connections.get(spaceId);
-    if (!spaceConnections) {
-      throw new Error("Space connections dont exist");
-    }
-
-    spaceConnections.add(ws);
-
-    ws.on("message", (msg) => {
-      ws.send(msg);
-    });
-
-    const off = onSyncEvent((ev) => {
-      ws.send(JSON.stringify({ scope: ev }));
-    });
-
-    ws.on("close", () => {
-      off();
-      spaceConnections.delete(ws);
-      appLogger.info("WebSocket connection closed", { spaceId });
-    });
-  };
+function sendRealtimeMessage(
+  websocket: { send: (payload: string) => void },
+  message: RealtimeServerMessage,
+) {
+  websocket.send(JSON.stringify(message));
 }
 
-app.ws("/collaboration", (websocket, request) => {
+async function authorizeRealtimeTopic(
+  spaceId: string,
+  userId: string,
+  topic: string,
+): Promise<boolean> {
+  if (realtimeSpaceTopics.has(topic)) {
+    return true;
+  }
+
+  if (isDocumentRealtimeTopic(topic)) {
+    await verifyDocumentRole(spaceId, topic.slice("document:".length), userId, "viewer");
+    return true;
+  }
+
+  return false;
+}
+
+app.ws("/collaboration", (websocket: any, request: any) => {
   const context = {};
   hocuspocus.handleConnection(websocket, request, context);
 });
 
-const syncCallbacks = new Set();
-const syncCallback = (callback) => {
-  syncCallbacks.add(callback);
-  return () => {
-    syncCallbacks.delete(callback);
-  };
-};
-
 app.use(express.json({ limit: "100mb" }));
-app.post("/sync", async (req, res, next) => {
-  const scopes = Array.isArray(req.body) ? req.body : [req.body];
-  for (const scope of scopes) {
-    for (const callback of syncCallbacks) {
-      callback(scope);
-    }
-  }
-  res.status(200).end();
-});
+app.ws("/events/:spaceId", async (websocket: any, request: any) => {
+  const spaceId = request.params.spaceId;
+  const session = await auth.api.getSession({
+    headers: request.headers as any,
+  });
 
-app.ws("/sync/:space", sync(syncCallback));
+  if (!spaceId || !session?.user?.id) {
+    sendRealtimeMessage(websocket, {
+      type: "error",
+      message: "Unauthorized",
+    });
+    websocket.close();
+    return;
+  }
+
+  try {
+    await verifySpaceRole(spaceId, session.user.id, "viewer");
+  } catch {
+    sendRealtimeMessage(websocket, {
+      type: "error",
+      message: "Forbidden",
+    });
+    websocket.close();
+    return;
+  }
+
+  const subscriptions = new Set<string>();
+  const off = subscribeToSyncEvents((event) => {
+    if (event.spaceId !== spaceId) {
+      return;
+    }
+
+    const topics = event.topics.filter((topic) => subscriptions.has(topic));
+    if (topics.length === 0) {
+      return;
+    }
+
+    sendRealtimeMessage(websocket, {
+      type: "event",
+      topics,
+      timestamp: event.timestamp,
+    });
+  });
+
+  websocket.on("message", async (rawMessage: unknown) => {
+    try {
+      const message = JSON.parse(String(rawMessage)) as RealtimeClientMessage;
+      if (message.type !== "subscribe" && message.type !== "unsubscribe") {
+        throw new Error("Unsupported realtime message");
+      }
+
+      const authorizedTopics = new Set<string>();
+      for (const topic of message.topics) {
+        if (await authorizeRealtimeTopic(spaceId, session.user.id, topic)) {
+          authorizedTopics.add(topic);
+        }
+      }
+
+      if (authorizedTopics.size !== message.topics.length) {
+        sendRealtimeMessage(websocket, {
+          type: "error",
+          message: "One or more realtime topics are forbidden",
+        });
+      }
+
+      if (message.type === "subscribe") {
+        for (const topic of authorizedTopics) {
+          subscriptions.add(topic);
+        }
+        return;
+      }
+
+      for (const topic of authorizedTopics) {
+        subscriptions.delete(topic);
+      }
+    } catch (error) {
+      appLogger.warn("Failed to handle realtime message", { error, spaceId });
+      sendRealtimeMessage(websocket, {
+        type: "error",
+        message: "Invalid realtime message",
+      });
+    }
+  });
+
+  websocket.on("close", () => {
+    off();
+    appLogger.info("Realtime WebSocket connection closed", { spaceId });
+  });
+});
 
 // TODO: we could bundle client asssets into a zip and load them into memory on init,
 //  which could be bundled into single executable.
@@ -247,7 +324,7 @@ async function shutdown(reason: string, exitCode = 0) {
     hocuspocus.closeConnections();
 
     await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
+      server.close((error: unknown) => {
         if (error) {
           reject(error);
           return;

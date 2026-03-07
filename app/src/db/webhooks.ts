@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { webhook, type Webhook, type WebhookInsert } from "./schema/space.ts";
 import type { getSpaceDb } from "./db.ts";
 import { createAuditLog } from "./auditLogs.ts";
@@ -30,7 +30,7 @@ export interface WebhookPayload {
 }
 
 export async function createWebhook(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   params: {
     url: string;
     events: WebhookEvent[];
@@ -65,7 +65,7 @@ export async function createWebhook(
 }
 
 export async function getWebhook(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   id: string,
 ): Promise<Webhook | null> {
   const result = await db.select().from(webhook).where(eq(webhook.id, id)).get();
@@ -74,13 +74,13 @@ export async function getWebhook(
 }
 
 export async function listWebhooks(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
 ): Promise<Webhook[]> {
   return db.select().from(webhook).all();
 }
 
 export async function updateWebhook(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   id: string,
   params: {
     url?: string;
@@ -114,14 +114,14 @@ export async function updateWebhook(
 }
 
 export async function deleteWebhook(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   id: string,
 ): Promise<void> {
   await db.delete(webhook).where(eq(webhook.id, id));
 }
 
 export async function getWebhooksForEvent(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   event: WebhookEvent,
   documentId?: string,
 ): Promise<Webhook[]> {
@@ -150,7 +150,7 @@ export async function getWebhooksForEvent(
 }
 
 export async function triggerWebhooks(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   payload: WebhookPayload,
 ): Promise<void> {
   const webhooks = await getWebhooksForEvent(db, payload.event, payload.documentId);

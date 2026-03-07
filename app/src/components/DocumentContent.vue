@@ -6,6 +6,7 @@ import DiffView from "./DiffView.vue";
 import CommentManager from "./CommentManager.vue";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
@@ -285,18 +286,20 @@ watch([renderedHtml, isEditing, viewingRevision], () => {
 });
 
 
-useSync(currentSpaceId, (scopes) => {
-  if (!props.documentId) return;
-  const matchesDocument =
-    scopes.includes("document") || scopes.includes(`document:${props.documentId}`);
-  if (!matchesDocument) return;
+useSync(
+  currentSpaceId,
+  () => (props.documentId ? [realtimeTopics.document(props.documentId)] : []),
+  (scopes) => {
+    if (!props.documentId) return;
+    if (!scopes.includes(realtimeTopics.document(props.documentId))) return;
 
-  if (document.visibilityState === "visible") {
-    reloadIfReady();
-  } else {
-    pendingReload.value = true;
-  }
-});
+    if (document.visibilityState === "visible") {
+      reloadIfReady();
+    } else {
+      pendingReload.value = true;
+    }
+  },
+);
 </script>
 
 <template>

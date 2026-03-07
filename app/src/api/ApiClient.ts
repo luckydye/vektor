@@ -1,3 +1,10 @@
+import {
+  realtimeTopics,
+  type RealtimeEventMessage,
+  type RealtimeServerMessage,
+  type RealtimeTopic,
+} from "../utils/realtime.ts";
+
 export interface User {
   id: string;
   name: string;
@@ -325,6 +332,18 @@ export interface Comment {
   } | null;
 }
 
+interface RealtimeSubscription {
+  topics: Set<RealtimeTopic>;
+  callback: (event: RealtimeEventMessage) => void;
+}
+
+interface RealtimeConnection {
+  socket: WebSocket;
+  ready: Promise<void>;
+  topicRefCounts: Map<RealtimeTopic, number>;
+  subscriptions: Set<RealtimeSubscription>;
+}
+
 /**
  * Main API client class with fluent interface
  * @example
@@ -336,6 +355,7 @@ export class ApiClient {
   baseUrl: string;
   accessToken?: string;
   socketHost?: string;
+  realtimeConnections = new Map<string, RealtimeConnection>();
 
   constructor(options: {
     baseUrl: string;
@@ -1590,20 +1610,142 @@ export class ApiClient {
     },
   };
 
-  socket!: WebSocket;
-
-  async connectToSocket(host: string, spaceId: string) {
-    if (!this.socket) {
-      this.socket = new WebSocket(
-        `ws${!import.meta.env.DEV ? "s" : ""}://${host}/sync/${spaceId}`,
-      );
-      return new Promise<WebSocket>((resolve) => {
-        this.socket.addEventListener("open", () => {
-          resolve(this.socket);
-        });
-      });
-    } else {
-      return this.socket;
+  private getRealtimeConnection(spaceId: string): RealtimeConnection {
+    const existingConnection = this.realtimeConnections.get(spaceId);
+    if (existingConnection) {
+      return existingConnection;
     }
+
+    if (!this.socketHost) {
+      throw new Error("provide a socketHost in options");
+    }
+
+    const socket = new WebSocket(
+      `ws${!import.meta.env.DEV ? "s" : ""}://${this.socketHost}/events/${spaceId}`,
+    );
+    const connection: RealtimeConnection = {
+      socket,
+      ready: new Promise<void>((resolve, reject) => {
+        socket.addEventListener("open", () => resolve(), { once: true });
+        socket.addEventListener("error", () => reject(new Error("Realtime socket failed")), {
+          once: true,
+        });
+      }),
+      topicRefCounts: new Map(),
+      subscriptions: new Set(),
+    };
+
+    socket.addEventListener("message", (event) => {
+      let payload: RealtimeServerMessage;
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+
+      if (payload.type !== "event") {
+        return;
+      }
+
+      for (const subscription of connection.subscriptions) {
+        if (!payload.topics.some((topic) => subscription.topics.has(topic))) {
+          continue;
+        }
+        subscription.callback(payload);
+      }
+    });
+
+    const destroyConnection = () => {
+      if (this.realtimeConnections.get(spaceId) === connection) {
+        this.realtimeConnections.delete(spaceId);
+      }
+    };
+
+    socket.addEventListener("close", destroyConnection, { once: true });
+    socket.addEventListener("error", destroyConnection);
+
+    this.realtimeConnections.set(spaceId, connection);
+    return connection;
+  }
+
+  private sendRealtimeMessage(
+    connection: RealtimeConnection,
+    type: "subscribe" | "unsubscribe",
+    topics: RealtimeTopic[],
+  ) {
+    if (topics.length === 0) {
+      return;
+    }
+
+    void connection.ready.then(() => {
+      connection.socket.send(JSON.stringify({ type, topics }));
+    }).catch(() => {});
+  }
+
+  subscribeToTopics(
+    spaceId: string,
+    topics: RealtimeTopic[],
+    callback: (event: RealtimeEventMessage) => void,
+  ): () => void {
+    const normalizedTopics = [...new Set(topics.filter(Boolean))];
+    const connection = this.getRealtimeConnection(spaceId);
+    const subscription: RealtimeSubscription = {
+      topics: new Set(normalizedTopics),
+      callback,
+    };
+
+    connection.subscriptions.add(subscription);
+
+    const subscribeTopics: RealtimeTopic[] = [];
+    for (const topic of normalizedTopics) {
+      const nextCount = (connection.topicRefCounts.get(topic) ?? 0) + 1;
+      connection.topicRefCounts.set(topic, nextCount);
+      if (nextCount === 1) {
+        subscribeTopics.push(topic);
+      }
+    }
+    this.sendRealtimeMessage(connection, "subscribe", subscribeTopics);
+
+    return () => {
+      connection.subscriptions.delete(subscription);
+
+      const unsubscribeTopics: RealtimeTopic[] = [];
+      for (const topic of normalizedTopics) {
+        const currentCount = connection.topicRefCounts.get(topic);
+        if (!currentCount) {
+          continue;
+        }
+
+        if (currentCount === 1) {
+          connection.topicRefCounts.delete(topic);
+          unsubscribeTopics.push(topic);
+          continue;
+        }
+
+        connection.topicRefCounts.set(topic, currentCount - 1);
+      }
+
+      this.sendRealtimeMessage(connection, "unsubscribe", unsubscribeTopics);
+
+      if (connection.subscriptions.size === 0) {
+        connection.socket.close();
+        this.realtimeConnections.delete(spaceId);
+      }
+    };
+  }
+
+  subscribeToDocument(
+    spaceId: string,
+    documentId: string,
+    callback: (event: RealtimeEventMessage) => void,
+  ): () => void {
+    return this.subscribeToTopics(spaceId, [realtimeTopics.document(documentId)], callback);
+  }
+
+  subscribeToDocumentTree(
+    spaceId: string,
+    callback: (event: RealtimeEventMessage) => void,
+  ): () => void {
+    return this.subscribeToTopics(spaceId, [realtimeTopics.documentTree], callback);
   }
 }

@@ -126,6 +126,7 @@ export async function createRevision(
   await db.update(document).set(updateFields).where(eq(document.id, documentId));
 
   await createAuditLog(db, {
+    spaceId,
     docId: documentId,
     revisionId: nextRev,
     userId,
@@ -137,6 +138,7 @@ export async function createRevision(
     invalidateMentionCache(documentId);
 
     await createAuditLog(db, {
+      spaceId,
       docId: documentId,
       revisionId: nextRev,
       userId,
@@ -215,6 +217,7 @@ export async function publishRevision(
   invalidateMentionCache(documentId);
 
   await createAuditLog(db, {
+    spaceId,
     docId: documentId,
     revisionId: rev,
     userId: undefined,
@@ -370,6 +373,7 @@ export async function restoreRevision(
   const restoredMessage = message || `Restored from revision ${rev}`;
 
   await createAuditLog(await getSpaceDb(spaceId), {
+    spaceId,
     docId: documentId,
     revisionId: rev,
     userId,

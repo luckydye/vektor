@@ -16,6 +16,7 @@ import { triggerWebhooks } from "./webhooks.ts";
 import { extractMentionsFromHtml } from "./mentions.ts";
 import { decompressHtml } from "./revisions.ts";
 import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 async function generateUniqueSlug(
   spaceId: string,
@@ -176,6 +177,7 @@ export async function createDocument(
   await createRevision(spaceId, id, content, createdBy, "Initial revision");
 
   await createAuditLog(await getSpaceDb(spaceId), {
+    spaceId,
     docId: id,
     revisionId: 1,
     userId: createdBy,
@@ -318,16 +320,13 @@ export async function updateDocument(
 
   if (userId) {
     await createAuditLog(db, {
+      spaceId,
       docId: id,
       userId,
       event: "save",
       details: { message: "Document updated" },
     });
   }
-
-  // Always notify clients that the document content changed
-  sendSyncEvent("document");
-  sendSyncEvent(`document:${id}`);
 
   return {
     id,
@@ -355,6 +354,7 @@ export async function archiveDocument(
 
   if (userId) {
     await createAuditLog(db, {
+      spaceId,
       docId: id,
       userId,
       event: "archive",
@@ -386,6 +386,7 @@ export async function restoreDocument(
 
   if (userId) {
     await createAuditLog(db, {
+      spaceId,
       docId: id,
       userId,
       event: "restore",
@@ -417,6 +418,7 @@ export async function deleteDocument(
 
   if (userId) {
     await createAuditLog(db, {
+      spaceId,
       docId: id,
       userId,
       event: "delete",
@@ -773,6 +775,7 @@ export async function updateDocumentProperty(
 
   // Create audit log for property update
   await createAuditLog(db, {
+    spaceId,
     docId: documentId,
     userId,
     event: "property_update",
@@ -800,6 +803,7 @@ export async function updateDocumentProperty(
   }
 
   await updateDocumentFts(spaceId, documentId);
+  sendSyncEvent(spaceId, realtimeTopics.categoryDocuments);
 
   return payload;
 }
@@ -827,6 +831,7 @@ export async function deleteDocumentProperty(
   // Create audit log for property deletion
   if (existing) {
     await createAuditLog(db, {
+      spaceId,
       docId: documentId,
       userId,
       event: "property_delete",
@@ -842,6 +847,7 @@ export async function deleteDocumentProperty(
   await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
 
   await updateDocumentFts(spaceId, documentId);
+  sendSyncEvent(spaceId, realtimeTopics.categoryDocuments);
 }
 
 /**

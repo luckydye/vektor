@@ -2,6 +2,7 @@ import { eq, desc, and } from "drizzle-orm";
 import { auditLog, type AuditLog } from "./schema.ts";
 import type { getSpaceDb } from "./db.ts";
 import { sendSyncEvent } from "./ws.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 /**
  * Types of audit events that can be logged
@@ -120,6 +121,7 @@ export interface AuditDetails {
 }
 
 export interface CreateAuditLogParams {
+  spaceId?: string;
   docId: string;
   revisionId?: number;
   userId?: string;
@@ -137,20 +139,52 @@ export interface CreateAuditLogParams {
  * - documents: Document changes (content, properties, state)
  * - acl: Access control changes
  */
-const EVENT_TO_SYNC_SCOPE: Partial<Record<AuditEvent, string>> = {
-  save: "document",
-  publish: "document",
-  unpublish: "document",
-  restore: "document",
-  archive: "document",
-  delete: "document",
-  create: "document",
-  lock: "document",
-  unlock: "document",
-  acl_grant: "acl",
-  acl_revoke: "acl",
-  property_update: "property",
-  property_delete: "property",
+const EVENT_TO_SYNC_TOPICS: Partial<Record<AuditEvent, (docId: string) => string[]>> = {
+  save: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
+  publish: (docId) => [
+    realtimeTopics.documents,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
+  unpublish: (docId) => [
+    realtimeTopics.documents,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
+  restore: (docId) => [
+    realtimeTopics.documents,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
+  archive: (docId) => [
+    realtimeTopics.documents,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
+  delete: (docId) => [
+    realtimeTopics.documents,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
+  create: (docId) => [
+    realtimeTopics.documents,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
+  lock: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
+  unlock: (docId) => [realtimeTopics.documents, realtimeTopics.document(docId)],
+  acl_grant: () => [realtimeTopics.acl],
+  acl_revoke: () => [realtimeTopics.acl],
+  property_update: (docId) => [
+    realtimeTopics.properties,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
+  property_delete: (docId) => [
+    realtimeTopics.properties,
+    realtimeTopics.documentTree,
+    realtimeTopics.document(docId),
+  ],
 };
 
 /**
@@ -186,7 +220,7 @@ const EVENT_TO_SYNC_SCOPE: Partial<Record<AuditEvent, string>> = {
  * ```
  */
 export async function createAuditLog(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   params: CreateAuditLogParams,
 ): Promise<AuditLog> {
   const result = await db
@@ -205,14 +239,16 @@ export async function createAuditLog(
   }
 
   // Automatically trigger sync events for relevant audit events
-  const syncScope = EVENT_TO_SYNC_SCOPE[params.event];
-  if (syncScope) sendSyncEvent(syncScope);
+  const syncTopics = EVENT_TO_SYNC_TOPICS[params.event]?.(params.docId);
+  if (params.spaceId && syncTopics?.length) {
+    sendSyncEvent(params.spaceId, ...syncTopics);
+  }
 
   return result[0];
 }
 
 export async function getAuditLogsForDocument(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   docId: string,
   limit = 100,
 ): Promise<AuditLog[]> {
@@ -225,7 +261,7 @@ export async function getAuditLogsForDocument(
 }
 
 export async function getAuditLogsByUser(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   userId: string,
   limit = 100,
 ): Promise<AuditLog[]> {
@@ -238,7 +274,7 @@ export async function getAuditLogsByUser(
 }
 
 export async function getAuditLogsByEvent(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   event: AuditEvent,
   limit = 100,
 ): Promise<AuditLog[]> {
@@ -251,7 +287,7 @@ export async function getAuditLogsByEvent(
 }
 
 export async function getRecentAuditLogs(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   limit = 100,
 ): Promise<AuditLog[]> {
   return db
@@ -262,7 +298,7 @@ export async function getRecentAuditLogs(
 }
 
 export async function getAuditLogsForDocumentByEvent(
-  db: ReturnType<typeof getSpaceDb>,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   docId: string,
   event: AuditEvent,
   limit = 100,

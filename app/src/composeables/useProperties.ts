@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
 import { useSpace } from "./useSpace.ts";
 import { api } from "../api/client.ts";
 import { useSync } from "./useSync.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 export interface PropertyInfo {
   name: string;
@@ -116,8 +117,8 @@ export function useProperties() {
 
   // TODO: syncs are not scopped to documents,
   // one prop updates will send a sync event to all users anywhere in the space
-  useSync(spaceId, (keys) => {
-    if (keys.includes("property")) refresh();
+  useSync(spaceId, [realtimeTopics.properties], (keys) => {
+    if (keys.includes(realtimeTopics.properties)) refresh();
   });
 
   return {

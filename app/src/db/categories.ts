@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
 import { category } from "./schema/space.ts";
 import { sendSyncEvent } from "./ws.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 export interface Category {
   id: string;
@@ -42,7 +43,7 @@ export async function createCategory(
     updatedAt: now,
   });
 
-  sendSyncEvent("wiki_category");
+  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
 
   return {
     id,
@@ -151,7 +152,7 @@ export async function updateCategory(
     })
     .where(eq(category.id, id));
 
-  sendSyncEvent("wiki_category");
+  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
 
   return {
     id,
@@ -169,7 +170,7 @@ export async function updateCategory(
 export async function deleteCategory(spaceId: string, id: string): Promise<boolean> {
   const db = await getSpaceDb(spaceId);
   await db.delete(category).where(eq(category.id, id));
-  sendSyncEvent("wiki_category");
+  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
   return true;
 }
 
@@ -186,6 +187,6 @@ export async function reorderCategories(
       .where(eq(category.id, categoryIds[i]));
   }
 
-  sendSyncEvent("wiki_category");
+  sendSyncEvent(spaceId, realtimeTopics.categories, realtimeTopics.documentTree);
   return true;
 }

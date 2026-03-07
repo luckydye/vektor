@@ -4,6 +4,7 @@ import { useSpace } from "./useSpace.ts";
 import { api } from "../api/client.ts";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { useSync } from "./useSync.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 export function useCategoryDocuments(categorySlugs: Ref<string[]>) {
   const { currentSpaceId } = useSpace();
@@ -53,15 +54,23 @@ export function useCategoryDocuments(categorySlugs: Ref<string[]>) {
 
   // TODO: syncs are not scopped to documents,
   // one prop updates will send a sync event to all users anywhere in the space
-  useSync(currentSpaceId, (keys) => {
-    if (
-      keys.includes("document") ||
-      keys.includes("property") ||
-      keys.includes("wiki_category_documents")
-    ) {
-      refetch();
-    }
-  });
+  useSync(
+    currentSpaceId,
+    [
+      realtimeTopics.documentTree,
+      realtimeTopics.categoryDocuments,
+      realtimeTopics.properties,
+    ],
+    (keys) => {
+      if (
+        keys.includes(realtimeTopics.documentTree) ||
+        keys.includes(realtimeTopics.properties) ||
+        keys.includes(realtimeTopics.categoryDocuments)
+      ) {
+        refetch();
+      }
+    },
+  );
 
   return {
     documentsBySlug,

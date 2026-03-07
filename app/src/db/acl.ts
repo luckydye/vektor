@@ -138,6 +138,7 @@ export async function grantPermission(
 
   if (resourceType === ResourceType.DOCUMENT) {
     await createAuditLog(db, {
+      spaceId,
       docId: resourceId,
       userId: undefined,
       event: "acl_grant",
@@ -181,6 +182,7 @@ export async function revokePermission(
 
   if (resourceType === ResourceType.DOCUMENT) {
     await createAuditLog(db, {
+      spaceId,
       docId: resourceId,
       userId: undefined,
       event: "acl_revoke",

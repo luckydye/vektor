@@ -48,6 +48,7 @@ import { getSpaceDb } from "#db/db.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { eq } from "drizzle-orm";
 import { createAuditLog } from "#db/auditLogs.ts";
+import { realtimeTopics } from "../../../../../../../utils/realtime.ts";
 
 type PropertyPatchValue =
   | null
@@ -58,6 +59,13 @@ type PropertyPatchValue =
       value: unknown;
       type?: string | null;
     };
+
+type DocumentPatchBody = {
+  properties?: Record<string, PropertyPatchValue>;
+  parentId?: string | null;
+  publishedRev?: number | null;
+  readonly?: boolean;
+};
 
 async function handlePropertiesPatch(
   spaceId: string,
@@ -143,6 +151,7 @@ async function handlePublishedRevisionPatch(
     .where(eq(documentTable.id, documentId));
 
   await createAuditLog(db, {
+    spaceId,
     docId: documentId,
     revisionId: publishedRev || undefined,
     userId,
@@ -163,6 +172,10 @@ async function handlePublishedRevisionPatch(
     timestamp: new Date().toISOString(),
   });
 
+  if (publishedRev === null) {
+    return;
+  }
+
   const revisionContent = await getRevisionContent(spaceId, documentId, publishedRev);
   if (!revisionContent) {
     return;
@@ -178,7 +191,7 @@ async function handlePublishedRevisionPatch(
       event: "mention",
       spaceId,
       documentId,
-      revisionId: publishedRev,
+      revisionId: publishedRev || undefined,
       timestamp: new Date().toISOString(),
       data: {
         mentionedUser: email,
@@ -205,6 +218,7 @@ async function handleReadonlyPatch(
     .where(eq(documentTable.id, documentId));
 
   await createAuditLog(db, {
+    spaceId,
     docId: documentId,
     userId,
     event: readonly ? "lock" : "unlock",
@@ -344,7 +358,7 @@ export const PUT: APIRoute = (context) =>
         }
 
         await restoreDocument(spaceId, id, userId);
-        sendSyncEvent("wiki_category_documents");
+        sendSyncEvent(spaceId, realtimeTopics.categoryDocuments, realtimeTopics.documentTree);
         return jsonResponse({ success: true });
       }
 
@@ -395,7 +409,7 @@ export const PATCH: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody<DocumentPatchBody>(context.request);
     const { properties, parentId, publishedRev, readonly } = body;
 
     await verifyDocumentRole(spaceId, id, user.id, "editor");
@@ -443,7 +457,7 @@ export const PATCH: APIRoute = (context) =>
       await handleReadonlyPatch(spaceId, id, user.id, readonly);
     }
 
-    sendSyncEvent("wiki_category_documents");
+    sendSyncEvent(spaceId, realtimeTopics.categoryDocuments, realtimeTopics.documentTree);
 
     return jsonResponse({ success: true });
   }, "Failed to patch document");
