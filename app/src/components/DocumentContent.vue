@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { defineAsyncComponent, onMounted, onUnmounted, ref, computed, watch } from "vue";
 import ToolbarFormatting from "./ToolbarFormatting.vue";
 import ToolbarTable from "./ToolbarTable.vue";
@@ -21,6 +21,10 @@ const props = defineProps({
   initialHtml: {
     type: String,
     default: "",
+  },
+  initialLayout: {
+    type: String,
+    default: "document",
   },
   spaceId: {
     type: String,
@@ -197,6 +201,7 @@ onMounted(() => {
     window.addEventListener("visibilitychange", handleVisibilityChange);
   }
 
+  applyLayout(props.initialLayout);
   renderReadView();
 
   if (props.documentType === "csv") {
@@ -240,10 +245,25 @@ const { data: documentData, refetch: refreshDocument } = useQuery({
   enabled: computed(() => !!currentSpaceId.value && !!props.documentId),
 });
 
+function applyLayout(layoutMode: string) {
+  const container = document.querySelector("[data-layout]") as HTMLElement | null;
+  if (!container) return;
+  container.setAttribute("data-layout", layoutMode);
+  if (layoutMode === "full") {
+    container.classList.remove("max-w-(--document-width)");
+    container.classList.add("max-w-full");
+  } else {
+    container.classList.remove("max-w-full");
+    container.classList.add("max-w-(--document-width)");
+  }
+}
+
 watch(documentData, (doc) => {
-  if (doc && typeof doc.content === "string") {
+  if (!doc) return;
+  if (typeof doc.content === "string") {
     renderedHtml.value = doc.content;
   }
+  applyLayout(doc.properties?.layout || "document");
 });
 
 function renderTableView() {

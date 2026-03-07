@@ -127,30 +127,6 @@ if (diffMins >= 1 && diffMins < 60) {
   title: `${title}`,
   description: document.properties.description || '',
 }}>
-    <script>
-      // TODO: this needs to be in a vue component with hydration
-      
-      // Handle dynamic layout mode changes
-      if (typeof window !== 'undefined') {
-        const documentContainer = document.querySelector('[data-layout]');
-        
-        window.addEventListener('document:property', (event) => {
-          const customEvent = event as CustomEvent;
-          if (customEvent.detail?.propertyName === 'layout' && documentContainer) {
-            const layoutMode = customEvent.detail.value || 'document';
-            documentContainer.setAttribute('data-layout', layoutMode);
-            
-            if (layoutMode === 'full') {
-              documentContainer.classList.remove('max-w-(--document-width)');
-              documentContainer.classList.add('max-w-full');
-            } else {
-              documentContainer.classList.remove('max-w-full');
-              documentContainer.classList.add('max-w-(--document-width)');
-            }
-          }
-        });
-      }
-    </script>
 
     <div
       data-type={document.type}
@@ -225,6 +201,7 @@ if (diffMins >= 1 && diffMins < 60) {
          		client:load
          		documentId={document.id}
             initialHtml={htmlContent}
+            initialLayout={document.properties.layout || "document"}
          		spaceId={space.id}
          		documentType={document.type ?? "document"}
          		readonly={isReadonly}
