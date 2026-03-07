@@ -1,20 +1,27 @@
-import { HocuspocusProvider } from "@hocuspocus/provider";
-import type { Doc } from "yjs";
-import { config } from "../config.ts";
+import { watchEffect, type ComputedRef, type Ref } from "vue";
+import { api } from "../api/client.ts";
+import type { RealtimeEventMessage, RealtimeTopic } from "../utils/realtime.ts";
+import type { Doc as YDoc } from "yjs";
 
-const appConfig = config();
+export function useSync(
+  spaceId: Ref<string | null> | ComputedRef<string | null>,
+  topics: RealtimeTopic[] | (() => RealtimeTopic[]),
+  callback: (keys: string[], event: RealtimeEventMessage) => void,
+) {
+  watchEffect((onCleanup) => {
+    if (!spaceId.value) {
+      return;
+    }
 
-export function createYProvider(roomName: string, ydoc: Doc) {
-  const provider = new HocuspocusProvider({
-    url: `ws${!import.meta.env.DEV ? "s" : ""}://${appConfig.COLLABORATION_HOST}/collaboration`,
-    name: roomName,
-    document: ydoc,
+    const resolvedTopics = typeof topics === "function" ? topics() : topics;
+    const unsub = api.subscribeToTopics(spaceId.value, resolvedTopics, (event) => {
+      callback(event.topics, event);
+    });
+    onCleanup(unsub);
   });
-  provider.on("error", (err: unknown) => {
-    console.error("[HocuspocusProvider Error]:", err);
-  });
+}
 
-  console.debug(ydoc);
-
-  return provider;
+// Returns a cleanup function that disconnects from the Y.js room.
+export function joinYjsRoom(spaceId: string, documentId: string, ydoc: YDoc): () => void {
+  return api.joinYjsRoom(spaceId, documentId, ydoc);
 }

@@ -3,90 +3,47 @@ import express from "express";
 import expressWebsockets from "express-ws";
 import { appLogger } from "./observability/logger.ts";
 
-import { getDocument } from "./db/documents.ts";
 import { auth } from "./auth.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
 import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
 import {
   isDocumentRealtimeTopic,
   realtimeTopics,
-  type RealtimeClientMessage,
-  type RealtimeServerMessage,
+  WsMsgType,
+  wsEncode,
+  wsEncodeYjsUpdate,
+  wsDecode,
+  wsDecodeJson,
+  wsDecodeYjsUpdate,
 } from "./utils/realtime.ts";
 
-import { Hocuspocus } from "@hocuspocus/server";
-import { TiptapTransformer } from "@hocuspocus/transformer";
-import { contentExtensions } from "./editor/extensions.ts";
+import * as Y from "yjs";
+import { prosemirrorToYDoc } from "y-prosemirror";
+import { getSchema } from "@tiptap/core";
+import { Node } from "@tiptap/pm/model";
 import { generateJSON } from "@tiptap/html";
-import { Canvas } from "./canvas/Canvas.ts";
+import { contentExtensions } from "./editor/extensions.ts";
+import { getDocument } from "./db/documents.ts";
 
 import type { dev } from "astro";
 
-const hocuspocus = new Hocuspocus({
-  async onAuthenticate(data) {
-    const headers = data.requestHeaders;
-    const documentName = data.documentName;
+interface YRoom {
+  doc: Y.Doc;
+  clients: Set<{ ws: any; documentId: string }>;
+}
 
-    // Parse documentName format: "spaceId:documentId"
-    const [spaceId, documentId] = documentName.split(":");
+const yRooms = new Map<string, YRoom>();
 
-    if (!spaceId || !documentId) {
-      throw new Error("Invalid document name format. Expected 'spaceId:documentId'");
-    }
+async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
+  const dbDoc = await getDocument(spaceId, documentId);
+  if (!dbDoc?.content) return new Y.Doc();
 
-    // Get user session from request headers
-    const session = await auth.api.getSession({
-      headers: headers as any,
-    });
-
-    if (!session?.user) {
-      throw new Error("Unauthorized: No valid session found");
-    }
-
-    // Return user data for connection context
-    return {
-      userId: session.user.id,
-      spaceId,
-      documentId,
-    };
-  },
-
-  async onLoadDocument(data) {
-    const { context } = data;
-    const { spaceId, userId, documentId } = context;
-
-    // Verify user has at least editor access to the document
-    try {
-      await verifyDocumentRole(spaceId, documentId, userId, "editor");
-    } catch (error) {
-      if (error instanceof Response) {
-        const errorData = await error.json();
-        throw new Error(`Forbidden: ${errorData.error || "Access denied"}`);
-      }
-      throw new Error("Failed to verify document access");
-    }
-
-    const doc = await getDocument(spaceId, documentId);
-
-    if (doc?.type === "canvas") {
-      return Canvas.fromString(doc.content || "").doc;
-    } else {
-      const extensions = contentExtensions(spaceId, documentId);
-
-      const json = generateJSON(doc?.content || "", extensions);
-      const ydoc = TiptapTransformer.toYdoc(
-        // the actual JSON
-        json,
-        // the `field` you’re using in Tiptap. If you don’t know what that is, use 'default'.
-        "default",
-        // The Tiptap extensions you’re using. Those are important to create a valid schema.
-        extensions,
-      );
-
-      return ydoc;
-    }
-  },
-});
+  const extensions = contentExtensions(spaceId, documentId);
+  const json = generateJSON(dbDoc.content, extensions);
+  const schema = getSchema(extensions);
+  const pmDoc = Node.fromJSON(schema, json);
+  return prosemirrorToYDoc(pmDoc, "default");
+}
 
 const { app, getWss } = expressWebsockets(express());
 
@@ -144,13 +101,6 @@ const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.properties,
 ]);
 
-function sendRealtimeMessage(
-  websocket: { send: (payload: string) => void },
-  message: RealtimeServerMessage,
-) {
-  websocket.send(JSON.stringify(message));
-}
-
 async function authorizeRealtimeTopic(
   spaceId: string,
   userId: string,
@@ -168,11 +118,6 @@ async function authorizeRealtimeTopic(
   return false;
 }
 
-app.ws("/collaboration", (websocket: any, request: any) => {
-  const context = {};
-  hocuspocus.handleConnection(websocket, request, context);
-});
-
 app.use(express.json({ limit: "100mb" }));
 app.post("/sync", (req: any, res: any) => {
   const events = Array.isArray(req.body) ? req.body : [req.body];
@@ -187,10 +132,7 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
   });
 
   if (!spaceId || !session?.user?.id) {
-    sendRealtimeMessage(websocket, {
-      type: "error",
-      message: "Unauthorized",
-    });
+    websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
     websocket.close();
     return;
   }
@@ -198,75 +140,115 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
   try {
     await verifySpaceRole(spaceId, session.user.id, "viewer");
   } catch {
-    sendRealtimeMessage(websocket, {
-      type: "error",
-      message: "Forbidden",
-    });
+    websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
     websocket.close();
     return;
   }
 
   const subscriptions = new Set<string>();
+  const yjsRooms = new Set<string>();
   const off = subscribeToSyncEvents((event) => {
-    if (event.spaceId !== spaceId) {
-      return;
-    }
+    if (event.spaceId !== spaceId) return;
 
     const matchedEvents = event.events.filter(({ topic }) => subscriptions.has(topic));
-    if (matchedEvents.length === 0) {
-      return;
-    }
+    if (matchedEvents.length === 0) return;
 
-    sendRealtimeMessage(websocket, {
-      type: "event",
+    websocket.send(wsEncode(WsMsgType.Event, {
       topics: matchedEvents.map(({ topic }) => topic),
       events: matchedEvents,
       timestamp: event.timestamp,
-    });
+    }));
   });
 
-  websocket.on("message", async (rawMessage: unknown) => {
+  websocket.on("message", async (rawMessage: Buffer) => {
     try {
-      const message = JSON.parse(String(rawMessage)) as RealtimeClientMessage;
-      if (message.type !== "subscribe" && message.type !== "unsubscribe") {
-        throw new Error("Unsupported realtime message");
+      const { type, payload } = wsDecode(rawMessage);
+
+      if (type === WsMsgType.YjsUpdate) {
+        const { documentId, update } = wsDecodeYjsUpdate(payload);
+        const roomKey = `${spaceId}:${documentId}`;
+        const room = yRooms.get(roomKey);
+        if (!room) return;
+
+        Y.applyUpdate(room.doc, update, websocket);
+
+        const frame = wsEncodeYjsUpdate(documentId, update);
+        for (const client of room.clients) {
+          if (client.ws !== websocket && client.ws.readyState === 1) {
+            client.ws.send(frame);
+          }
+        }
+        return;
       }
 
+      if (type === WsMsgType.YjsJoin) {
+        const { documentId } = wsDecodeJson<{ documentId: string }>(payload);
+        try {
+          await verifyDocumentRole(spaceId, documentId, session.user.id, "editor");
+        } catch {
+          websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+          return;
+        }
+
+        const roomKey = `${spaceId}:${documentId}`;
+        let room = yRooms.get(roomKey);
+        if (!room) {
+          const doc = await loadYDoc(spaceId, documentId);
+          room = { doc, clients: new Set() };
+          yRooms.set(roomKey, room);
+        }
+
+        room.clients.add({ ws: websocket, documentId });
+        yjsRooms.add(roomKey);
+
+        websocket.send(wsEncodeYjsUpdate(documentId, Y.encodeStateAsUpdate(room.doc)));
+        return;
+      }
+
+      if (type !== WsMsgType.Subscribe && type !== WsMsgType.Unsubscribe) {
+        throw new Error("Unsupported message type");
+      }
+
+      const { topics } = wsDecodeJson<{ topics: string[] }>(payload);
       const authorizedTopics = new Set<string>();
-      for (const topic of message.topics) {
+      for (const topic of topics) {
         if (await authorizeRealtimeTopic(spaceId, session.user.id, topic)) {
           authorizedTopics.add(topic);
         }
       }
 
-      if (authorizedTopics.size !== message.topics.length) {
-        sendRealtimeMessage(websocket, {
-          type: "error",
-          message: "One or more realtime topics are forbidden",
-        });
+      if (authorizedTopics.size !== topics.length) {
+        websocket.send(wsEncode(WsMsgType.Error, { message: "One or more realtime topics are forbidden" }));
       }
 
-      if (message.type === "subscribe") {
-        for (const topic of authorizedTopics) {
-          subscriptions.add(topic);
-        }
-        return;
-      }
-
-      for (const topic of authorizedTopics) {
-        subscriptions.delete(topic);
+      if (type === WsMsgType.Subscribe) {
+        for (const topic of authorizedTopics) subscriptions.add(topic);
+      } else {
+        for (const topic of authorizedTopics) subscriptions.delete(topic);
       }
     } catch (error) {
       appLogger.warn("Failed to handle realtime message", { error, spaceId });
-      sendRealtimeMessage(websocket, {
-        type: "error",
-        message: "Invalid realtime message",
-      });
+      websocket.send(wsEncode(WsMsgType.Error, { message: "Invalid message" }));
     }
   });
 
   websocket.on("close", () => {
     off();
+
+    for (const roomKey of yjsRooms) {
+      const room = yRooms.get(roomKey);
+      if (!room) continue;
+      for (const client of room.clients) {
+        if (client.ws === websocket) {
+          room.clients.delete(client);
+          break;
+        }
+      }
+      if (room.clients.size === 0) {
+        yRooms.delete(roomKey);
+      }
+    }
+
     appLogger.info("Realtime WebSocket connection closed", { spaceId });
   });
 });
@@ -327,8 +309,6 @@ async function shutdown(reason: string, exitCode = 0) {
         appLogger.warn("Failed to close WebSocket client", { error });
       }
     }
-
-    hocuspocus.closeConnections();
 
     await new Promise<void>((resolve, reject) => {
       server.close((error: unknown) => {

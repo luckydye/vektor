@@ -122,7 +122,7 @@ function initEditor() {
   isEditingReady.value = true;
   window.dispatchEvent(new CustomEvent("document:edit"));
 
-  editorViewEl.value.init(props.spaceId, props.documentId, user.value);
+  editorViewEl.value.init(props.spaceId, props.documentId, user.value, renderedHtml.value);
 }
 
 watch(isEditing, (editing) => {

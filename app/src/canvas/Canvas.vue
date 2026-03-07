@@ -2,7 +2,7 @@
 import "./components/CanvasElement.ts";
 import type CanvasElement from "./components/CanvasElement.ts";
 import { onMounted, ref } from "vue";
-import { createYProvider } from "../utils/sync.ts";
+import { joinYjsRoom } from "../utils/sync.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 
 const canvasRef = ref<CanvasElement>();
@@ -27,8 +27,7 @@ onMounted(() => {
   const canvas = canvasRef.value?.canvas;
 
   if (canvas) {
-    const roomName = `${props.spaceId}:${props.documentId || crypto.randomUUID()}`;
-    const provider = createYProvider(roomName, canvas.doc);
+    joinYjsRoom(props.spaceId, props.documentId || crypto.randomUUID(), canvas.doc);
   }
 
   setInterval(() => manualSave(), 5000);

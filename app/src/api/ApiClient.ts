@@ -1,9 +1,15 @@
 import {
   realtimeTopics,
+  WsMsgType,
+  wsEncode,
+  wsEncodeYjsUpdate,
+  wsDecode,
+  wsDecodeJson,
+  wsDecodeYjsUpdate,
   type RealtimeEventMessage,
-  type RealtimeServerMessage,
   type RealtimeTopic,
 } from "../utils/realtime.ts";
+import { applyUpdate, type Doc as YDoc } from "yjs";
 
 export interface User {
   id: string;
@@ -1623,6 +1629,8 @@ export class ApiClient {
     const socket = new WebSocket(
       `ws${!import.meta.env.DEV ? "s" : ""}://${this.socketHost}/events/${spaceId}`,
     );
+    socket.binaryType = "arraybuffer";
+
     const connection: RealtimeConnection = {
       socket,
       ready: new Promise<void>((resolve, reject) => {
@@ -1636,22 +1644,15 @@ export class ApiClient {
     };
 
     socket.addEventListener("message", (event) => {
-      let payload: RealtimeServerMessage;
-      try {
-        payload = JSON.parse(event.data);
-      } catch {
-        return;
-      }
+      if (!(event.data instanceof ArrayBuffer)) return;
+      const { type, payload } = wsDecode(new Uint8Array(event.data));
 
-      if (payload.type !== "event") {
-        return;
-      }
+      if (type !== WsMsgType.Event) return;
 
+      const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
       for (const subscription of connection.subscriptions) {
-        if (!payload.events.some(({ topic }) => subscription.topics.has(topic))) {
-          continue;
-        }
-        subscription.callback(payload);
+        if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
+        subscription.callback({ type: "event", ...msg });
       }
     });
 
@@ -1670,15 +1671,13 @@ export class ApiClient {
 
   private sendRealtimeMessage(
     connection: RealtimeConnection,
-    type: "subscribe" | "unsubscribe",
+    type: typeof WsMsgType.Subscribe | typeof WsMsgType.Unsubscribe,
     topics: RealtimeTopic[],
   ) {
-    if (topics.length === 0) {
-      return;
-    }
+    if (topics.length === 0) return;
 
     void connection.ready.then(() => {
-      connection.socket.send(JSON.stringify({ type, topics }));
+      connection.socket.send(wsEncode(type, { topics }));
     }).catch(() => {});
   }
 
@@ -1747,5 +1746,46 @@ export class ApiClient {
     callback: (event: RealtimeEventMessage) => void,
   ): () => void {
     return this.subscribeToTopics(spaceId, [realtimeTopics.documentTree], callback);
+  }
+
+  joinYjsRoom(
+    spaceId: string,
+    documentId: string,
+    ydoc: YDoc,
+  ): () => void {
+    const connection = this.getRealtimeConnection(spaceId);
+    connection.socket.binaryType = "arraybuffer";
+
+    void connection.ready.then(() => {
+      connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+    }).catch(() => {});
+
+    const handleMessage = (event: MessageEvent) => {
+      if (!(event.data instanceof ArrayBuffer)) return;
+      const { type, payload } = wsDecode(new Uint8Array(event.data));
+      if (type !== WsMsgType.YjsUpdate) return;
+
+      const { documentId: incomingDocId, update } = wsDecodeYjsUpdate(payload);
+      if (incomingDocId !== documentId) return;
+
+      applyUpdate(ydoc, update, "remote");
+    };
+
+    connection.socket.addEventListener("message", handleMessage);
+
+    const handleUpdate = (update: Uint8Array, origin: unknown) => {
+      if (origin === "remote") return;
+
+      void connection.ready.then(() => {
+        connection.socket.send(wsEncodeYjsUpdate(documentId, update));
+      }).catch(() => {});
+    };
+
+    ydoc.on("update", handleUpdate);
+
+    return () => {
+      ydoc.off("update", handleUpdate);
+      connection.socket.removeEventListener("message", handleMessage);
+    };
   }
 }

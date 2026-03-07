@@ -9,14 +9,12 @@ import { ExtensionSuggestions } from "../extensions/ExtensionSuggestions.ts";
 import * as Y from "yjs";
 import { Dropcursor } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
-import { api, type User } from "../../api/client.ts";
-import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import type { User } from "../../api/client.ts";
 import Collaboration from "@tiptap/extension-collaboration";
-import { getUserColor } from "../../composeables/useUserProfile.ts";
 import { contentExtensions } from "../extensions.ts";
 import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
 import type { IndexedDBStore } from "../../utils/storage.ts";
-import { createYProvider } from "../../utils/sync.ts";
+import { joinYjsRoom } from "../../utils/sync.ts";
 import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
 
 declare global {
@@ -36,6 +34,7 @@ function createEditor(
   spaceId: string,
   documentId: string,
   user: User,
+  html?: string,
 ) {
   if (!documentId || !spaceId) {
     console.warn("Missing documentId or spaceId");
@@ -43,9 +42,7 @@ function createEditor(
 
   const ydoc = new Y.Doc();
 
-  const roomName = `${spaceId}:${documentId || crypto.randomUUID()}`;
-
-  const provider = createYProvider(roomName, ydoc);
+  const leaveYjsRoom = joinYjsRoom(spaceId, documentId || crypto.randomUUID(), ydoc);
 
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
   let lastPointerX = 0;
@@ -192,6 +189,7 @@ function createEditor(
 
   editor = new Editor({
     element: editorElement,
+    content: html,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
       disableCollaboration();
@@ -203,6 +201,7 @@ function createEditor(
     onDestroy: () => {
       cleanupDragHandleSync();
       cleanupBlockDropIndicator();
+      leaveYjsRoom();
     },
     extensions: [
       ...contentExtensions(spaceId, documentId),
@@ -236,13 +235,6 @@ function createEditor(
 
       Collaboration.configure({
         document: ydoc,
-      }),
-      CollaborationCaret.configure({
-        provider: provider,
-        user: {
-          name: user?.name,
-          color: getUserColor(user?.email),
-        },
       }),
     ],
   });
@@ -301,7 +293,7 @@ export class DocumentView extends HTMLElement {
     this.attachListeners();
   }
 
-  init(spaceId: string, documentId: string, user: User) {
+  init(spaceId: string, documentId: string, user: User, html?: string) {
     // init is called from the outside, will overwrite shadow innerHTML
     const shadow = this.root;
     if (!shadow) {
@@ -312,7 +304,7 @@ export class DocumentView extends HTMLElement {
     shadow.append(this.element);
 
     this.element.className = "tiptap";
-    this.editor = createEditor(this.element, spaceId, documentId, user);
+    this.editor = createEditor(this.element, spaceId, documentId, user, html);
 
     const handleUpdate = () => {
       window.dispatchEvent(new Event("editor-update"));
