@@ -219,7 +219,7 @@ watch(
         :key="provider"
         class="border border-neutral-100 rounded-md p-2.5"
       >
-        <div class="flex items-start justify-between gap-2">
+        <div class="items-start justify-between">
           <div>
             <p class="text-sm font-medium text-foreground">
               {{ getIntegrationConnection(provider)?.label || provider }}
@@ -258,7 +258,7 @@ watch(
               Connected instance: {{ getIntegrationConnection(provider)?.instanceUrl }}
             </p>
           </div>
-          <div>
+          <div class="mt-4"> 
             <button
               v-if="getIntegrationConnection(provider)?.connected"
               type="button"
