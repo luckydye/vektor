@@ -58,21 +58,20 @@ const categoriesWithDocs = computed(() => {
   return categories.value.map((category) => {
     const categoryDocs = documentsBySlug.value.get(category.slug) || [];
 
-    // Root docs are docs whose parent is not rendered in this category's tree.
-    // DocumentTreeItem renders a child when: !childCategory || childCategory === parentCategory
-    // So a doc is a root only when it would NOT be rendered as a child of its parent.
+    // Root docs are docs that belong to this category and whose parent is not in this
+    // category's doc list (so they can't be rendered as a nested child).
     const rootDocs = categoryDocs.filter((doc) => {
+      const docCategory = doc.properties?.category || doc.properties?.collection;
+
+      // A doc with an explicit different category belongs only to that category's tree,
+      // never as a root (or child) here — it was included only for descendant traversal.
+      if (docCategory && docCategory !== category.slug) return false;
+
       if (!doc.parentId) return true;
 
       const parent = categoryDocs.find((d) => d.id === doc.parentId);
-      if (!parent) return true;
-
-      const parentCategory = parent.properties?.category || parent.properties?.collection;
-      const docCategory = doc.properties?.category || doc.properties?.collection;
-
-      // doc would be rendered as child when !docCategory || docCategory === parentCategory
-      // so it's a root only when it has an explicit category that differs from parent's
-      return !!docCategory && docCategory !== parentCategory;
+      // If parent is in this category's docs, this doc will be rendered as a child there.
+      return !parent;
     });
 
     return {
