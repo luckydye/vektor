@@ -671,9 +671,11 @@ Most errors are JSON:
 
 ## `GET /spaces/:spaceId/extensions`
 
-- Auth: session.
+- Auth:
+- Session OR valid `X-Job-Token`.
 - Access:
-- returns only extensions user can access (space editor or explicit extension ACL).
+- session path returns only extensions the user can access (space editor or explicit extension ACL).
+- job path returns all extensions in the space.
 - Returns:
 - `200` extension metadata list.
 
@@ -690,7 +692,8 @@ Most errors are JSON:
 
 ## `GET /spaces/:spaceId/extensions/:extensionId`
 
-- Auth: session + extension access.
+- Auth:
+- Session + extension access OR valid `X-Job-Token`.
 - Returns:
 - `200` extension metadata.
 

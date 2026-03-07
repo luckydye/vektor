@@ -11,20 +11,22 @@ import {
 } from "#db/api.ts";
 import { getSpace } from "#db/spaces.ts";
 import { deleteExtension, getExtension } from "#db/extensions.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId
  * Get a single extension's metadata.
- * Access is granted if user is an editor on the space OR has explicit ACL entry for the extension.
+ * Jobs may read any extension metadata in the same space; user sessions still require extension access.
  */
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const extensionId = requireParam(context.params, "extensionId");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
-    // Check ACL-based access
-    await verifyExtensionAccess(spaceId, extensionId, user.id);
+    if (auth.type === "user") {
+      await verifyExtensionAccess(spaceId, extensionId, auth.user.id);
+    }
 
     const ext = await getExtension(spaceId, extensionId);
     if (!ext) {

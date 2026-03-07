@@ -13,6 +13,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { ResourceType } from "#db/acl.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getSpace } from "#db/spaces.ts";
 import {
   createExtension,
@@ -24,28 +25,30 @@ import {
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions
- * List all extensions in a space that the user has access to.
- * Access is granted if user is an editor on the space OR has explicit ACL entry for the extension.
+ * List extension metadata in a space.
+ * Jobs may list all extensions in the space; user sessions only see extensions they can access.
  */
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     const {
       extensions: allExtensions,
       errors: manifestErrors,
     } = await listExtensionsWithErrors(spaceId);
 
-    // Filter extensions based on user access
-    const accessibleExtensions = await Promise.all(
-      allExtensions.map(async (ext) => {
-        const hasAccess = await canAccessExtension(spaceId, ext.id, user.id);
-        return hasAccess ? ext : null;
-      }),
-    );
-
-    const extensions = accessibleExtensions.filter((ext) => ext !== null);
+    const extensions =
+      auth.type === "job"
+        ? allExtensions
+        : (
+            await Promise.all(
+              allExtensions.map(async (ext) => {
+                const hasAccess = await canAccessExtension(spaceId, ext.id, auth.user.id);
+                return hasAccess ? ext : null;
+              }),
+            )
+          ).filter((ext) => ext !== null);
 
     return jsonResponse({
       extensions: extensions.map((ext) => ({

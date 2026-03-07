@@ -105,6 +105,7 @@ input[type="checkbox"]:checked::before {
 
 p {
   margin-bottom: 1rem;
+  min-height: 1rem;
 }
 
 p:not(:first-child) {
