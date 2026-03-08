@@ -146,7 +146,7 @@ beforeAll(async () => {
 
     console.log(`Created ${testDocIds.length} test documents`);
 
-    // Give the FTS index a moment to catch up
+    // Give the search embeddings a moment to finish writing
     await new Promise((resolve) => setTimeout(resolve, 100));
   } catch (error) {
     console.error("Failed to set up test environment:", error);
@@ -542,8 +542,8 @@ describe("Search Property Filters", () => {
   });
 });
 
-describe("Search Index Rebuild", () => {
-  it("should rebuild search index successfully", async () => {
+describe("Search Embedding Rebuild", () => {
+  it("should rebuild search embeddings successfully", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/search/rebuild`, {
       method: "POST",
     });

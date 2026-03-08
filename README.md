@@ -22,7 +22,7 @@ Authenticate over generic OAuth2 or implement your own authentication system wit
 - Basic Table formulas
 - Imports of various formats with [pandoc](https://pandoc.org/)
 - Mentions
-- Full-text search
+- Vector-based document search
 
 **Possible Extensions**
 

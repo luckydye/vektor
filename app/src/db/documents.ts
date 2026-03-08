@@ -17,6 +17,15 @@ import { extractMentionsFromHtml } from "./mentions.ts";
 import { decompressHtml } from "./revisions.ts";
 import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
+import {
+  buildDocumentSearchText,
+  buildSearchSnippet,
+  cosineSimilarity,
+  embedText,
+  parseEmbedding,
+  scoreKeywordOverlap,
+  serializeEmbedding,
+} from "./searchEmbeddings.ts";
 
 async function generateUniqueSlug(
   spaceId: string,
@@ -57,7 +66,7 @@ async function generateUniqueSlug(
   return slug;
 }
 
-async function updateDocumentFts(spaceId: string, documentId: string): Promise<void> {
+async function updateDocumentEmbedding(spaceId: string, documentId: string): Promise<void> {
   const db = await getSpaceDb(spaceId);
 
   const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
@@ -72,23 +81,18 @@ async function updateDocumentFts(spaceId: string, documentId: string): Promise<v
     .where(eq(property.documentId, documentId))
     .all();
 
-  const titleProp = props.find((p) => p.key === "title");
-  const propsText = props.map((p) => `${p.key}: ${p.value}`).join(" ");
+  const properties = Object.fromEntries(props.map((item) => [item.key, item.value]));
+  const searchText = buildDocumentSearchText(doc.content, properties);
+  const searchEmbedding = serializeEmbedding(await embedText(searchText));
 
-  await db.run(sql`
-		DELETE FROM document_fts
-		WHERE rowid = (SELECT rowid FROM document WHERE id = ${documentId})
-	`);
-
-  await db.run(sql`
-		INSERT INTO document_fts(rowid, title, properties, content)
-		VALUES (
-			(SELECT rowid FROM document WHERE id = ${documentId}),
-			${titleProp?.value || ""},
-			${propsText},
-			${doc.content}
-		)
-	`);
+  await db
+    .update(document)
+    .set({
+      searchText,
+      searchEmbedding,
+      searchUpdatedAt: new Date(),
+    })
+    .where(eq(document.id, documentId));
 }
 
 export interface DocumentWithProperties {
@@ -172,7 +176,7 @@ export async function createDocument(
 
   await grantPermission(spaceId, ResourceType.DOCUMENT, id, createdBy, Permission.OWNER);
 
-  await updateDocumentFts(spaceId, id);
+  await updateDocumentEmbedding(spaceId, id);
 
   await createRevision(spaceId, id, content, createdBy, "Initial revision");
 
@@ -298,25 +302,7 @@ export async function updateDocument(
     .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
     .where(eq(document.id, id));
 
-  const title = existing.properties.title || "";
-  const propsText = Object.entries(existing.properties)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(" ");
-
-  await db.run(sql`
-		DELETE FROM document_fts
-		WHERE rowid = (SELECT rowid FROM document WHERE id = ${id})
-	`);
-
-  await db.run(sql`
-		INSERT INTO document_fts(rowid, title, properties, content)
-		VALUES (
-			(SELECT rowid FROM document WHERE id = ${id}),
-			${title},
-			${propsText},
-			${content}
-		)
-	`);
+  await updateDocumentEmbedding(spaceId, id);
 
   if (userId) {
     await createAuditLog(db, {
@@ -425,11 +411,6 @@ export async function deleteDocument(
       details: { message: "Document deleted" },
     });
   }
-
-  await db.run(sql`
-		DELETE FROM document_fts
-		WHERE rowid = (SELECT rowid FROM document WHERE id = ${id})
-	`);
 
   await db.delete(document).where(eq(document.id, id));
 
@@ -802,7 +783,7 @@ export async function updateDocumentProperty(
     await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
   }
 
-  await updateDocumentFts(spaceId, documentId);
+  await updateDocumentEmbedding(spaceId, documentId);
   const propertyChangeData = {
     kind: "document_property_changed",
     documentId,
@@ -879,7 +860,7 @@ export async function deleteDocumentProperty(
   // Update the document's updatedAt timestamp
   await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
 
-  await updateDocumentFts(spaceId, documentId);
+  await updateDocumentEmbedding(spaceId, documentId);
   const propertyDeleteData = {
     kind: "document_property_deleted",
     documentId,
@@ -1244,6 +1225,22 @@ export async function searchDocuments(
     }
   }
 
+  if (hasQuery) {
+    const missingEmbeddings = await db
+      .select({ id: document.id })
+      .from(document)
+      .where(
+        sql`(search_embedding IS NULL OR search_text IS NULL)
+          AND (archived = 0 OR archived = '0' OR archived = '0.0' OR archived IS NULL OR archived = FALSE)
+          AND (type = 'document' OR type IS NULL)`,
+      )
+      .all();
+
+    for (const row of missingEmbeddings) {
+      await updateDocumentEmbedding(spaceId, row.id);
+    }
+  }
+
   // Helper to check if a document matches property filters
   const matchesFilters = (properties: Record<string, string>): boolean => {
     for (const filter of filters) {
@@ -1278,94 +1275,77 @@ export async function searchDocuments(
   }[];
 
   if (hasQuery) {
-    // Sanitize query for FTS5 by removing all operators and special characters
-    // Security: FTS5 operators (AND, OR, NOT, etc.) are word characters, so we must
-    // quote all tokens to prevent operator injection. For example, "test OR password"
-    // would be split into ["test", "OR", "password"] which are all valid tokens.
-    // By quoting each token as "test" OR "OR" OR "password", FTS5 treats "OR" as a
-    // literal string, not an operator.
-    let sanitizedQuery = query.trim().toLowerCase();
+    const queryEmbedding = await embedText(query.trim());
+    const candidates = await db.all<{
+      id: string;
+      slug: string;
+      type: string | null;
+      content: string;
+      searchText: string | null;
+      searchEmbedding: string | null;
+      userId: string;
+      parentId: string | null;
+      currentRev: number;
+      publishedRev: number | null;
+      readonly: boolean;
+      archived: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+    }>(sql`
+      SELECT
+        d.id,
+        d.slug,
+        d.type,
+        d.content,
+        d.search_text as searchText,
+        d.search_embedding as searchEmbedding,
+        d.created_by as userId,
+        d.parent_id as parentId,
+        d.current_rev as currentRev,
+        d.published_rev as publishedRev,
+        d.readonly as readonly,
+        d.archived as archived,
+        d.created_at as createdAt,
+        d.updated_at as updatedAt
+      FROM document d
+      WHERE (d.archived = 0 OR d.archived = '0' OR d.archived = '0.0' OR d.archived IS NULL OR d.archived = FALSE)
+      AND (d.type = 'document' OR d.type IS NULL)
+      AND d.search_embedding IS NOT NULL
+    `);
 
-    // Handle quoted phrases - keep them intact
-    const quotedPhrases: string[] = [];
-    sanitizedQuery = sanitizedQuery.replace(/"([^"]+)"/g, (_match, phrase) => {
-      quotedPhrases.push(phrase);
-      return `__QUOTED_${quotedPhrases.length - 1}__`;
-    });
-
-    // Split into tokens and clean each
-    const tokens = sanitizedQuery.split(/\s+/).filter((t) => t.length > 0);
-    const cleanedTokens = tokens
-      .map((token) => {
-        // Restore quoted phrases
-        if (token.startsWith("__QUOTED_")) {
-          const index = Number.parseInt(token.replace("__QUOTED_", "").replace("__", ""));
-          const phrase = quotedPhrases[index];
-          // Remove all non-word characters from phrase for safety
-          const cleaned = phrase.replace(/[^\w\s-]/g, "");
-          if (!cleaned) return "";
-          // Escape internal double quotes and wrap in quotes for FTS5 phrase matching
-          return `"${cleaned.replace(/"/g, '""')}"`;
+    const ranked = candidates
+      .map((candidate) => {
+        const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
+        if (!documentEmbedding || !candidate.searchText) {
+          return null;
         }
 
-        // Remove all special characters except asterisks (needed for prefix matching in quotes)
-        // This prevents FTS5 operator injection while keeping * for prefix matching
-        token = token.replace(/[^\w*-]/g, "");
+        const semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);
+        const keywordScore = scoreKeywordOverlap(query, candidate.searchText);
+        const combinedScore = semanticScore * 0.7 + keywordScore * 0.3;
 
-        // Skip empty tokens after cleaning
-        if (!token) return "";
-
-        // Add wildcard for prefix matching if token doesn't have one and is long enough
-        if (!token.endsWith("*") && token.length > 2) {
-          token = token + "*";
+        if (combinedScore < 0.12 && keywordScore === 0) {
+          return null;
         }
 
-        // Wrap in double quotes to prevent FTS5 operator interpretation
-        // Note: wildcards work inside quotes in FTS5 for prefix matching
-        return `"${token.replace(/"/g, '""')}"`;
+        return {
+          id: candidate.id,
+          content: candidate.content,
+          userId: candidate.userId,
+          parentId: candidate.parentId,
+          createdAt: candidate.createdAt,
+          updatedAt: candidate.updatedAt,
+          rank: Math.max(0, 1 - combinedScore),
+          snippet: buildSearchSnippet(query, candidate.searchText),
+        };
       })
-      .filter((t) => t.length > 0);
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      .sort((left, right) => left.rank - right.rank);
 
-    // If no valid tokens but we have filters, do filter-only search
-    if (cleanedTokens.length === 0 && !hasFilters) {
+    if (ranked.length === 0 && !hasFilters) {
       return { results: [], total: 0 };
     }
-
-    if (cleanedTokens.length > 0) {
-      // Join with OR for broader matching - all tokens are quoted, so operators are safe
-      const ftsQuery = cleanedTokens.join(" OR ");
-
-      // Query FTS table directly, then join with document table
-      allRawResults = await db.all<{
-        id: string;
-        content: string;
-        userId: string;
-        parentId: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        rank: number;
-        snippet: string;
-      }>(sql`
-        SELECT
-          d.id,
-          d.content,
-          d.created_by as userId,
-          d.parent_id as parentId,
-          d.created_at as createdAt,
-          d.updated_at as updatedAt,
-          rank,
-          snippet(document_fts, 2, '<mark>', '</mark>', '...', 32) as snippet
-        FROM document_fts
-        JOIN document d ON d.rowid = document_fts.rowid
-        WHERE document_fts MATCH ${ftsQuery}
-        AND (d.archived = 0 OR d.archived = '0' OR d.archived = '0.0' OR d.archived IS NULL OR d.archived = FALSE)
-        AND (d.type = 'document' OR d.type IS NULL)
-        ORDER BY rank
-      `);
-    } else {
-      // No valid query tokens, fall through to filter-only
-      allRawResults = [];
-    }
+    allRawResults = ranked;
   } else {
     // Filter-only search (no text query) - get all non-archived documents
     allRawResults = await db.all<{
@@ -1472,29 +1452,10 @@ export async function searchDocuments(
 export async function rebuildSearchIndex(spaceId: string): Promise<void> {
   const db = await getSpaceDb(spaceId);
 
-  await db.run(sql`DELETE FROM document_fts`);
-
   const docs = await db.select().from(document).all();
 
   for (const doc of docs) {
-    const props = await db
-      .select()
-      .from(property)
-      .where(eq(property.documentId, doc.id))
-      .all();
-
-    const titleProp = props.find((p) => p.key === "title");
-    const propsText = props.map((p) => `${p.key}: ${p.value}`).join(" ");
-
-    await db.run(sql`
-			INSERT INTO document_fts(rowid, title, properties, content)
-			VALUES (
-				(SELECT rowid FROM document WHERE id = ${doc.id}),
-				${titleProp?.value || ""},
-				${propsText},
-				${doc.content}
-			)
-		`);
+    await updateDocumentEmbedding(spaceId, doc.id);
   }
 }
 

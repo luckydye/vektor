@@ -18,7 +18,7 @@ export const POST: APIRoute = (context) =>
 
       await rebuildSearchIndex(spaceId);
 
-      return successResponse("Search index rebuilt successfully");
+      return successResponse("Search embeddings rebuilt successfully");
     },
-    { fallbackMessage: "Failed to rebuild search index" },
+    { fallbackMessage: "Failed to rebuild search embeddings" },
   );

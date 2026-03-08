@@ -45,7 +45,7 @@ Most errors are JSON:
 | POST | `/spaces/:spaceId/permissions` | Grants/denies/revokes role or feature permissions. |
 | GET | `/spaces/:spaceId/permissions/me` | Returns caller’s effective role/features/groups in the space. |
 | GET | `/spaces/:spaceId/search` | Searches documents with optional pagination and property filters. |
-| POST | `/spaces/:spaceId/search/rebuild` | Rebuilds the space search index. |
+| POST | `/spaces/:spaceId/search/rebuild` | Rebuilds the space search embeddings. |
 | GET | `/spaces/:spaceId/uploads` | Lists uploaded files in a space. |
 | POST | `/spaces/:spaceId/uploads` | Uploads a file and returns its API URL/key. |
 | GET | `/spaces/:spaceId/uploads/*` | Serves an uploaded file by path. |
@@ -304,7 +304,7 @@ Most errors are JSON:
 ## `POST /spaces/:spaceId/search/rebuild`
 
 - Auth: session + `owner`.
-- Returns: `200` success message.
+- Returns: `200` success message after regenerating document embeddings.
 
 ---
 

@@ -242,7 +242,7 @@ const canSearch = computed(() => {
     <div class="mb-8">
       <h1 class="text-3xl font-bold text-neutral-900">Find Documents</h1>
       <p class="mt-2 text-sm text-neutral-600">
-        Search across all documents you have access to in this space
+        Search across all documents you have access to in this space with semantic ranking
       </p>
     </div>
 
@@ -256,7 +256,7 @@ const canSearch = computed(() => {
           v-model="searchQuery"
           type="text"
           autofocus
-          placeholder="Find documents... (e.g., 'typescript', &quot;exact phrase&quot;, java*)"
+          placeholder="Find documents... (e.g., 'typescript', 'database design', 'react ui')"
           class="w-full py-3 pl-12 pr-12 border-2 border-neutral-100 rounded-lg text-base bg-neutral-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-neutral-200 disabled:cursor-not-allowed"
           @keydown="handleKeydown"
           :disabled="isLoading"
@@ -379,9 +379,9 @@ const canSearch = computed(() => {
       <div class="max-w-md mx-auto p-6 bg-neutral-50 border border-neutral-100 rounded-lg text-left">
         <p class="font-semibold text-neutral-700 mb-3">💡 Search tips:</p>
         <ul class="list-disc pl-6 space-y-2 text-sm text-neutral-600">
-          <li>Use quotes for exact phrases: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">"full text search"</code></li>
-          <li>Use boolean operators: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">typescript AND react</code></li>
-          <li>Use asterisk for prefix search: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">java*</code></li>
+          <li>Use natural language for broader matches: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">database design basics</code></li>
+          <li>Exact phrases still help when you know the wording: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">"programming language"</code></li>
+          <li>Short prefixes can still work for common terms: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">java</code></li>
           <li>Use property filters to narrow down by metadata</li>
           <li>Make sure you have access to the documents you're searching for</li>
         </ul>

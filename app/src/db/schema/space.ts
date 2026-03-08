@@ -57,6 +57,9 @@ export const document = sqliteTable("document", {
   archived: integer("archived", { mode: "boolean" }).default(false).notNull(),
   readonly: integer("readonly", { mode: "boolean" }).default(false).notNull(),
   content: text("content").notNull(),
+  searchText: text("search_text"),
+  searchEmbedding: text("search_embedding"),
+  searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
   currentRev: integer("current_rev").default(0).notNull(),
   publishedRev: integer("published_rev"),
   parentId: text("parent_id").references((): any => document.id, {

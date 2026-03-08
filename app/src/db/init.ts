@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 
 import * as authSchema from "./schema/auth.ts";
@@ -92,151 +92,21 @@ export async function prepareSpaceDb(spaceId: string) {
     sql.raw("ALTER TABLE oauth_integration_state ADD COLUMN instance_url TEXT"),
   ).catch(() => {});
 
-  await spaceDb.run(
-    sql.raw(`
-			CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(
-				title,
-				properties,
-				content
-			)
-		`),
+  await spaceDb.run(sql.raw("ALTER TABLE document ADD COLUMN search_text TEXT")).catch(() => {});
+  await spaceDb.run(sql.raw("ALTER TABLE document ADD COLUMN search_embedding TEXT")).catch(
+    () => {},
   );
-
   await spaceDb.run(
-    sql.raw(`
-			CREATE TRIGGER IF NOT EXISTS document_ai AFTER INSERT ON document BEGIN
-				INSERT INTO document_fts(rowid, title, properties, content)
-				VALUES (
-					new.rowid,
-					COALESCE((SELECT value FROM property WHERE document_id = new.id AND key = 'title'), ''),
-					COALESCE((SELECT GROUP_CONCAT(key || ': ' || value, ' ') FROM property WHERE document_id = new.id), ''),
-					new.content
-				);
-			END
-		`),
-  );
+    sql.raw("ALTER TABLE document ADD COLUMN search_updated_at INTEGER"),
+  ).catch(() => {});
 
-  await spaceDb.run(
-    sql.raw(`
-			CREATE TRIGGER IF NOT EXISTS document_ad AFTER DELETE ON document BEGIN
-				DELETE FROM document_fts WHERE rowid = old.rowid;
-			END
-		`),
-  );
-
-  await spaceDb.run(
-    sql.raw(`
-			CREATE TRIGGER IF NOT EXISTS document_au AFTER UPDATE ON document BEGIN
-				DELETE FROM document_fts WHERE rowid = old.rowid;
-				INSERT INTO document_fts(rowid, title, properties, content)
-				VALUES (
-					new.rowid,
-					COALESCE((SELECT value FROM property WHERE document_id = new.id AND key = 'title'), ''),
-					COALESCE((SELECT GROUP_CONCAT(key || ': ' || value, ' ') FROM property WHERE document_id = new.id), ''),
-					new.content
-				);
-			END
-		`),
-  );
-
-  // Ensure FTS5 virtual table exists (migration for existing spaces)
   try {
-    await spaceDb.run(
-      sql.raw(`
-				CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(
-					title,
-					properties,
-					content
-				)
-			`),
-    );
-
-    await spaceDb.run(
-      sql.raw(`
-				CREATE TRIGGER IF NOT EXISTS document_ai AFTER INSERT ON document BEGIN
-					INSERT INTO document_fts(rowid, title, properties, content)
-					VALUES (
-						new.rowid,
-						COALESCE((SELECT value FROM property WHERE document_id = new.id AND key = 'title'), ''),
-						COALESCE((SELECT GROUP_CONCAT(key || ': ' || value, ' ') FROM property WHERE document_id = new.id), ''),
-						new.content
-					);
-				END
-			`),
-    );
-
-    await spaceDb.run(
-      sql.raw(`
-				CREATE TRIGGER IF NOT EXISTS document_ad AFTER DELETE ON document BEGIN
-					DELETE FROM document_fts WHERE rowid = old.rowid;
-				END
-			`),
-    );
-
-    await spaceDb.run(
-      sql.raw(`
-				CREATE TRIGGER IF NOT EXISTS document_au AFTER UPDATE ON document BEGIN
-					DELETE FROM document_fts WHERE rowid = old.rowid;
-					INSERT INTO document_fts(rowid, title, properties, content)
-					VALUES (
-						new.rowid,
-						COALESCE((SELECT value FROM property WHERE document_id = new.id AND key = 'title'), ''),
-						COALESCE((SELECT GROUP_CONCAT(key || ': ' || value, ' ') FROM property WHERE document_id = new.id), ''),
-						new.content
-					);
-				END
-			`),
-    );
-
-    // Check if we need to populate the FTS table (only if not migrated above)
-    let ftsCount = 0;
-    let docCount = 0;
-
-    try {
-      const ftsResult = await spaceDb.get<{ count: number }>(
-        sql.raw("SELECT COUNT(*) as count FROM document_fts"),
-      );
-      ftsCount = ftsResult?.count ?? 0;
-    } catch {
-      // FTS table might not exist yet
-      ftsCount = 0;
-    }
-
-    const docResult = await spaceDb.get<{ count: number }>(
-      sql.raw("SELECT COUNT(*) as count FROM document"),
-    );
-    docCount = docResult?.count ?? 0;
-
-    if (docCount > 0 && ftsCount === 0) {
-      console.log(`Populating FTS table for space ${spaceId} (${docCount} documents)...`);
-
-      const docs = await spaceDb.select().from(spaceSchema.document).all();
-
-      for (const doc of docs) {
-        const props = await spaceDb
-          .select()
-          .from(spaceSchema.property)
-          .where(eq(spaceSchema.property.documentId, doc.id))
-          .all();
-
-        const titleProp = props.find((p) => p.key === "title");
-        const propsText = props.map((p) => `${p.key}: ${p.value}`).join(" ");
-
-        await spaceDb.run(sql`
-						INSERT INTO document_fts(rowid, title, properties, content)
-						VALUES (
-							(SELECT rowid FROM document WHERE id = ${doc.id}),
-							${titleProp?.value || ""},
-							${propsText},
-							${doc.content}
-						)
-					`);
-      }
-
-      console.log(`FTS population complete for space ${spaceId}`);
-    }
+    await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ai"));
+    await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ad"));
+    await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_au"));
+    await spaceDb.run(sql.raw("DROP TABLE IF EXISTS document_fts"));
   } catch (err) {
-    console.error("Failed to create FTS5 table:", err);
+    console.error("Failed to prepare vector search schema:", err);
   }
 
   console.log("Space database initialized at:", spacePath);
