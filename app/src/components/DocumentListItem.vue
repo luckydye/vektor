@@ -44,8 +44,7 @@ const isSearchResult = (
   >
     <a 
       :href="`/${spaceSlug}/doc/${document.slug}`" 
-      class="block py-4 px-2 border-b border-t border-neutral-100 bg-background hover:border-blue-500 transition-all"
-      :class="showSnippet ? 'hover:bg-blue-50/30' : 'hover:bg-neutral-50'"
+      class="group block py-4 transition-all"
     >
         
         <div class="flex items-center gap-4 flex-wrap text-xs text-neutral-500 mb-3">
@@ -67,7 +66,7 @@ const isSearchResult = (
         </div>
         
       <div class="flex justify-between items-start gap-4 mb-2">
-        <h3 class="text-lg font-semibold text-neutral-900 leading-tight">
+        <h3 class="text-lg font-semibold group-hover:text-neutral-900 text-neutral-500 leading-tight">
           {{ getDocumentTitle(document) }}
         </h3>
       </div>
