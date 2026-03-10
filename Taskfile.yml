@@ -19,6 +19,10 @@ tasks:
     cmds:
       - ./extension-api/cli-client.ts {{.CLI_ARGS}}
 
+  workflow:run:
+    cmds:
+      - bun ./cli/src/workflow.ts {{.CLI_ARGS}}
+
   dev:
     deps: [setup]
     dir: ./app

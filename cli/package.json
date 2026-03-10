@@ -1,0 +1,5 @@
+{
+  "name": "@wiki/cli",
+  "type": "module",
+  "private": true
+}
