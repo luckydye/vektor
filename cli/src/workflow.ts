@@ -527,59 +527,59 @@ export async function runWorkflowLocally(options: CliOptions): Promise<{
   ) as Record<string, NodeRunState>;
 
   const nodeOutputs = new Map<string, Record<string, unknown>>();
-  const runtimeRoot = await mkdtemp(join(tmpdir(), "wiki-workflow-runtime-"));
+  const runtimeRoot = join(
+    process.cwd(),
+    "output",
+    `workflow-runtime-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
   const runtimePaths = {
     rootDir: runtimeRoot,
     documentsDir: join(runtimeRoot, "documents"),
     artifactsDir: join(runtimeRoot, "artifacts"),
   } satisfies LocalRuntimePaths;
 
-  try {
-    await mkdir(runtimePaths.documentsDir, { recursive: true });
-    await mkdir(runtimePaths.artifactsDir, { recursive: true });
+  await mkdir(runtimePaths.documentsDir, { recursive: true });
+  await mkdir(runtimePaths.artifactsDir, { recursive: true });
 
-    for (const nodeId of order) {
-      const node = definition[nodeId];
-      const state = nodes[nodeId];
+  for (const nodeId of order) {
+    const node = definition[nodeId];
+    const state = nodes[nodeId];
 
-      if (node.disabled) {
-        state.status = "skipped";
-        nodeOutputs.set(nodeId, {});
-        continue;
-      }
-
-      const extension = loadedExtensions.get(node.extensionId);
-      assert(extension, `Extension "${node.extensionId}" required by node "${nodeId}" was not provided`);
-      const job = extension.manifest.jobs?.find((item) => item.id === node.jobId);
-      assert(job, `Job "${node.jobId}" not found in extension "${node.extensionId}"`);
-
-      const resolvedInputs = resolveNodeInputs(definition, nodeOutputs, nodeId);
-      state.inputs = resolvedInputs;
-      state.status = "running";
-
-      try {
-        const outputs = await runLocalJob(
-          extension,
-          job,
-          resolvedInputs,
-          options.timeoutMs,
-          runtimePaths,
-          (message) => {
-            state.logs.push(message);
-            if (!options.json) process.stderr.write(`[${nodeId}] ${message}\n`);
-          },
-        );
-        state.outputs = outputs;
-        state.status = "completed";
-        nodeOutputs.set(nodeId, outputs);
-      } catch (error) {
-        state.status = "failed";
-        state.error = error instanceof Error ? error.message : String(error);
-        throw new Error(`Node "${nodeId}" failed: ${state.error}`);
-      }
+    if (node.disabled) {
+      state.status = "skipped";
+      nodeOutputs.set(nodeId, {});
+      continue;
     }
-  } finally {
-    await rm(runtimePaths.rootDir, { recursive: true, force: true });
+
+    const extension = loadedExtensions.get(node.extensionId);
+    assert(extension, `Extension "${node.extensionId}" required by node "${nodeId}" was not provided`);
+    const job = extension.manifest.jobs?.find((item) => item.id === node.jobId);
+    assert(job, `Job "${node.jobId}" not found in extension "${node.extensionId}"`);
+
+    const resolvedInputs = resolveNodeInputs(definition, nodeOutputs, nodeId);
+    state.inputs = resolvedInputs;
+    state.status = "running";
+
+    try {
+      const outputs = await runLocalJob(
+        extension,
+        job,
+        resolvedInputs,
+        options.timeoutMs,
+        runtimePaths,
+        (message) => {
+          state.logs.push(message);
+          if (!options.json) process.stderr.write(`[${nodeId}] ${message}\n`);
+        },
+      );
+      state.outputs = outputs;
+      state.status = "completed";
+      nodeOutputs.set(nodeId, outputs);
+    } catch (error) {
+      state.status = "failed";
+      state.error = error instanceof Error ? error.message : String(error);
+      throw new Error(`Node "${nodeId}" failed: ${state.error}`);
+    }
   }
 
   const terminalNodeIds = order.filter(
