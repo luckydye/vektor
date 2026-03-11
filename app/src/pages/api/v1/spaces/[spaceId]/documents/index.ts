@@ -3,11 +3,11 @@ import {
   authenticateRequest,
   badRequestResponse,
   createdResponse,
+  forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   parseQueryInt,
   requireParam,
-  requireUser,
   verifySpaceRole,
   verifyTokenPermission,
   withApiErrorHandling,
@@ -23,6 +23,7 @@ import {
   getMimeType,
   toHtmlIfMarkdown,
 } from "../../../../../../utils/documentContent.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -103,9 +104,12 @@ export const GET: APIRoute = (context) =>
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "editor");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+    const userId = auth.type === "user" ? auth.user.id : auth.userId;
+    if (!userId) {
+      throw forbiddenResponse("Job token is missing user context");
+    }
 
     const contentType = getMimeType(context.request.headers.get("Content-Type"));
     let content: string;
@@ -150,7 +154,7 @@ export const POST: APIRoute = (context) =>
     // createDocument now handles slug uniqueness internally
     const document = await createDocument(
       spaceId,
-      user.id,
+      userId,
       title,
       content,
       properties,
