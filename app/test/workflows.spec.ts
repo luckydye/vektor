@@ -174,6 +174,7 @@ async function createWorkflowDoc(definition: object): Promise<string> {
   });
   if (!res.ok) throw new Error(`Failed to create workflow doc: ${await res.text()}`);
   const data = (await res.json()) as { document: { id: string } };
+  expect(data.document.id).toStartWith("doc_");
   return data.document.id;
 }
 
@@ -269,6 +270,7 @@ describe("Workflow runs — single node", () => {
     expect(res.status).toBe(202);
     const body = (await res.json()) as { runId: string };
     expect(typeof body.runId).toBe("string");
+    expect(body.runId).toStartWith("run_");
   });
 
   it("run completes with correct job output", async () => {

@@ -1,5 +1,6 @@
 import { eq, and, isNull } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
 import { accessToken } from "./schema/space.ts";
 import type { AccessToken, AccessTokenInsert } from "./schema/space.ts";
 import {
@@ -102,7 +103,7 @@ export async function createAccessToken(
 
   const token = generateToken();
   const hashedToken = hashToken(token);
-  const id = crypto.randomUUID();
+  const id = createId("accessToken");
 
   const tokenData: AccessTokenInsert = {
     id,

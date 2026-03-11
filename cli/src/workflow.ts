@@ -362,7 +362,7 @@ globalThis.writeDocument = async (documentId, content) => {
 
 globalThis.createDocument = async (content) => {
   await mkdir(__documentsDir, { recursive: true });
-  const id = crypto.randomUUID();
+  const id = "doc_" + crypto.randomUUID();
   const path = __documentPath(id);
   await writeFile(path, String(content ?? ""), "utf-8");
   return { id };

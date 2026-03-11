@@ -74,7 +74,9 @@ beforeAll(async () => {
     }),
   });
   if (!spaceResp.ok) throw new Error(`Failed to create space: ${spaceResp.statusText}`);
-  testSpaceId = (await spaceResp.json()).space.id;
+  const spaceBody = await spaceResp.json();
+  expect(spaceBody.space.id).toStartWith("space_");
+  testSpaceId = spaceBody.space.id;
 
   const tokenResp = await apiRequest(`/api/v1/spaces/${testSpaceId}/access-tokens`, {
     method: "POST",
@@ -87,7 +89,9 @@ beforeAll(async () => {
   });
   if (!tokenResp.ok)
     throw new Error(`Failed to create access token: ${tokenResp.statusText}`);
-  testAccessToken = (await tokenResp.json()).token;
+  const tokenBody = await tokenResp.json();
+  expect(tokenBody.id).toStartWith("token_");
+  testAccessToken = tokenBody.token;
 
   const doc1 = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
     method: "POST",

@@ -1,5 +1,6 @@
 import { and, eq, lt } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
 import { encryptSecret } from "./secretsCrypto.ts";
 import { oauthIntegration, oauthIntegrationState } from "./schema/space.ts";
 
@@ -140,7 +141,7 @@ export async function upsertOAuthIntegrationForUser(
     };
   }
 
-  const id = crypto.randomUUID();
+  const id = createId("oauthIntegration");
   await db.insert(oauthIntegration).values({
     id,
     provider,
@@ -208,7 +209,7 @@ export async function createOAuthIntegrationState(
   await db.delete(oauthIntegrationState).where(lt(oauthIntegrationState.expiresAt, now));
 
   await db.insert(oauthIntegrationState).values({
-    id: crypto.randomUUID(),
+    id: createId("oauthIntegrationState"),
     state,
     provider,
     userId,

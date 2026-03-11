@@ -1,3 +1,5 @@
+import { createId } from "../db/ids.ts";
+
 export type NodeStatus =
   | "pending"
   | "running"
@@ -34,7 +36,7 @@ export function createRun(
   nodeIds: string[],
   initiatedByUserId: string | null = null,
 ): string {
-  const runId = crypto.randomUUID();
+  const runId = createId("run");
   const nodes = new Map<string, NodeState>();
   for (const id of nodeIds) {
     nodes.set(id, {

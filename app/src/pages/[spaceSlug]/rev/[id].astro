@@ -24,7 +24,7 @@ if (!space) {
 
 const db = await getSpaceDb(space.id);
 
-// Find the revision by its UUID
+// Find the revision by its ID
 const rev = await db
   .select({
     rev: revision.rev,

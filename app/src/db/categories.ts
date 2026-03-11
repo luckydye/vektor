@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
 import { category } from "./schema/space.ts";
 import { sendSyncEvent } from "./ws.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
@@ -25,7 +26,7 @@ export async function createCategory(
   icon?: string,
 ): Promise<Category> {
   const db = await getSpaceDb(spaceId);
-  const id = crypto.randomUUID();
+  const id = createId("category");
   const now = new Date();
 
   const results = await db.select().from(category).all();

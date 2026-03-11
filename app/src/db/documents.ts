@@ -26,6 +26,7 @@ import {
   scoreKeywordOverlap,
   serializeEmbedding,
 } from "./searchEmbeddings.ts";
+import { createId } from "./ids.ts";
 
 async function generateUniqueSlug(
   spaceId: string,
@@ -137,7 +138,7 @@ export async function createDocument(
   updatedAt?: Date,
 ): Promise<DocumentWithProperties> {
   const db = await getSpaceDb(spaceId);
-  const id = crypto.randomUUID();
+  const id = createId("document");
   const now = new Date();
   const documentCreatedAt = createdAt || now;
   const documentUpdatedAt = updatedAt || now;
@@ -165,7 +166,7 @@ export async function createDocument(
 
   for (const [key, value] of Object.entries(properties)) {
     await db.insert(property).values({
-      id: crypto.randomUUID(),
+      id: createId("property"),
       documentId: id,
       key,
       value,
@@ -744,7 +745,7 @@ export async function updateDocumentProperty(
     await db.update(property).set(updateData).where(eq(property.id, existing.id));
   } else {
     await db.insert(property).values({
-      id: crypto.randomUUID(),
+      id: createId("property"),
       documentId,
       key,
       value,

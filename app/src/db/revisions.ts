@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { notFoundResponse } from "../db/api.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
 import { document, revision } from "./schema/space.ts";
 import { triggerWebhooks } from "./webhooks.ts";
 import { getUniqueMentionedEmails } from "./mentions.ts";
@@ -92,7 +93,7 @@ export async function createRevision(
 
   const nextRev = lastRevision ? lastRevision.rev + 1 : 1;
   const compressed = compressHtml(html);
-  const id = crypto.randomUUID();
+  const id = createId("revision");
   const now = new Date();
   const slug = await getDocumentSlug(spaceId, documentId);
 

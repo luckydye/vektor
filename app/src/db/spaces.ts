@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import path, { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
@@ -11,6 +11,7 @@ import {
   ResourceType,
 } from "./acl.ts";
 import { closeSpaceDb, getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
 import { preference, spaceMetadata } from "./schema/space.ts";
 import { prepareSpaceDb } from "./init.ts";
 
@@ -37,7 +38,7 @@ export async function createSpace(
   slug: string,
   preferences?: Record<string, string>,
 ): Promise<Space> {
-  const id = crypto.randomUUID();
+  const id = createId("space");
   const now = new Date();
 
   // Sanitize slug to contain only URL-compatible characters
@@ -88,7 +89,7 @@ export async function createSpace(
 
   for (const [key, value] of Object.entries(defaultPreferences)) {
     await spaceDb.insert(preference).values({
-      id: crypto.randomUUID(),
+      id: createId("preference"),
       key,
       value,
       createdAt: now,
@@ -141,7 +142,7 @@ export async function getSpace(id: string): Promise<Space | null> {
   if (Object.keys(preferences).length === 0) {
     const now = new Date();
     await spaceDb.insert(preference).values({
-      id: crypto.randomUUID(),
+      id: createId("preference"),
       key: "brandColor",
       value: "#1e293b",
       createdAt: now,
@@ -269,7 +270,7 @@ export async function updateSpace(
       } else {
         // Insert new preference
         await spaceDb.insert(preference).values({
-          id: crypto.randomUUID(),
+          id: createId("preference"),
           key,
           value,
           createdAt: now,

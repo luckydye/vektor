@@ -121,6 +121,7 @@ describe("API Tests - Spaces", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.space.id).toBeDefined();
+    expect(data.space.id).toStartWith("space_");
     expect(data.space.name).toBe("Test Space");
     expect(data.space.slug).toBe("test-space");
 
@@ -159,6 +160,7 @@ describe("API Tests - Spaces", () => {
     const docData = await docResponse.json();
     expect(docData.document).toBeDefined();
     expect(docData.document.id).toBeDefined();
+    expect(docData.document.id).toStartWith("doc_");
     expect(docData.document.slug).toBeDefined();
     expect(docData.document.properties.title).toBe("Test Document");
 
@@ -231,6 +233,7 @@ describe("API Tests - Documents", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.document.id).toBeDefined();
+    expect(data.document.id).toStartWith("doc_");
     expect(data.document.content).toBe("# Test Document\n\nThis is the content.");
     expect(data.document.properties.title).toBe("Test Document");
 
@@ -657,6 +660,7 @@ describe("API Tests - Categories", () => {
     expect(response.status).toBe(201);
     const data = await response.json();
     expect(data.category.id).toBeDefined();
+    expect(data.category.id).toStartWith("category_");
     expect(data.category.name).toBe("Getting Started");
     expect(data.category.slug).toBe("getting-started");
     expect(data.category.color).toBe("#3b82f6");

@@ -1,5 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
 import { comment } from "./schema/space.ts";
 
 export type Comment = typeof comment.$inferSelect;
@@ -15,7 +16,7 @@ export async function createComment(
   reference?: string,
 ): Promise<Comment> {
   const db = await getSpaceDb(spaceId);
-  const id = crypto.randomUUID();
+  const id = createId("comment");
   const now = new Date();
 
   const [newComment] = await db

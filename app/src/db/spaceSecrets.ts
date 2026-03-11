@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Permission, ResourceType, getUserGroups, hasPermission } from "./acl.ts";
 import { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
 import { spaceSecret } from "./schema/space.ts";
 import { decryptSecret, encryptSecret } from "./secretsCrypto.ts";
 import { getSpace } from "./spaces.ts";
@@ -85,7 +86,7 @@ export async function upsertSpaceSecret(
   }
 
   await db.insert(spaceSecret).values({
-    id: crypto.randomUUID(),
+    id: createId("secret"),
     name,
     description: description ?? null,
     ciphertext: encrypted.ciphertext,

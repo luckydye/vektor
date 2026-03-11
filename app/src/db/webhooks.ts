@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { webhook, type Webhook, type WebhookInsert } from "./schema/space.ts";
 import type { getSpaceDb } from "./db.ts";
 import { createAuditLog } from "./auditLogs.ts";
+import { createId } from "./ids.ts";
 
 export type WebhookEvent =
   | "document.published"
@@ -39,7 +40,7 @@ export async function createWebhook(
     createdBy: string;
   },
 ): Promise<Webhook> {
-  const id = crypto.randomUUID();
+  const id = createId("webhook");
   const now = new Date();
 
   const result = await db
