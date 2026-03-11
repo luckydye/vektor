@@ -1,8 +1,9 @@
 import { Worker } from "node:worker_threads";
-import { writeFile, unlink } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 import { extractFile } from "../db/extensions.ts";
 import { config } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
@@ -40,6 +41,64 @@ const jobQueueWaitMs = meter.createHistogram("wiki_job_queue_wait_ms", {
 const activeJobsGauge = meter.createUpDownCounter("wiki_jobs_active");
 const queuedJobsGauge = meter.createUpDownCounter("wiki_jobs_queued");
 const MAX_SPAN_JSON_CHARS = 4_000;
+
+function stableStringify(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(`Unsupported cache number: ${value}`);
+    return JSON.stringify(value);
+  }
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  if (typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+      .join(",")}}`;
+  }
+  throw new Error(`Unsupported cache value type: ${typeof value}`);
+}
+
+async function getCacheFilePath(scope: string, key: string): Promise<string> {
+  const dir = join(tmpdir(), "wiki-job-cache", scope);
+  await mkdir(dir, { recursive: true });
+  return join(dir, `${createHash("sha256").update(key).digest("hex")}.json`);
+}
+
+async function readCachedOutputs(
+  scope: string,
+  key: string,
+): Promise<Record<string, unknown> | null> {
+  const file = await getCacheFilePath(scope, key);
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  const parsed = JSON.parse(raw) as {
+    expiresAt: number | null;
+    value: Record<string, unknown>;
+  };
+  if (parsed.expiresAt !== null && Date.now() >= parsed.expiresAt) {
+    await rm(file, { force: true });
+    return null;
+  }
+  return parsed.value;
+}
+
+async function writeCachedOutputs(
+  scope: string,
+  key: string,
+  value: Record<string, unknown>,
+  ttlMs?: number,
+): Promise<void> {
+  const file = await getCacheFilePath(scope, key);
+  const expiresAt = typeof ttlMs === "number" && ttlMs > 0 ? Date.now() + ttlMs : null;
+  await writeFile(file, JSON.stringify({ expiresAt, value }), "utf-8");
+}
 
 function toSpanJson(value: unknown, maxChars = MAX_SPAN_JSON_CHARS): string {
   try {
@@ -107,6 +166,7 @@ export async function runJob(
     timeoutMs?: number;
     signal?: AbortSignal;
     cacheScopeId?: string;
+    cacheTtlMs?: number;
     initiatedByUserId?: string | null;
     jobType?: string;
     jobId?: string;
@@ -116,10 +176,24 @@ export async function runJob(
     timeoutMs = DEFAULT_TIMEOUT_MS,
     signal,
     cacheScopeId,
+    cacheTtlMs,
     initiatedByUserId,
     jobType,
     jobId: logicalJobId,
   } = options ?? {};
+
+  if (signal?.aborted) throw new Error("Job cancelled");
+
+  const fileBuffer = extractFile(zipBuffer, entryPath);
+  if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
+
+  const resolvedCacheScope = cacheScopeId ?? entryPath;
+  const cacheKey = stableStringify({
+    entryHash: createHash("sha256").update(fileBuffer).digest("hex"),
+    inputs,
+  });
+  const cachedOutputs = await readCachedOutputs(resolvedCacheScope, cacheKey);
+  if (cachedOutputs) return cachedOutputs;
 
   const queuedAt = Date.now();
   await acquireJobSlot(signal);
@@ -146,9 +220,6 @@ export async function runJob(
       },
       async (span) => {
         span.setAttribute("wiki.job.inputs_json", toSpanJson(inputs));
-        const fileBuffer = extractFile(zipBuffer, entryPath);
-        if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
-
         const executionId = crypto.randomUUID();
         span.setAttribute("wiki.job.execution_id", executionId);
         jobPath = join(tmpdir(), `wiki-job-${executionId}.mjs`);
@@ -233,6 +304,7 @@ export async function runJob(
         });
       },
     );
+    await writeCachedOutputs(resolvedCacheScope, cacheKey, outputs, cacheTtlMs);
     completed = true;
     return outputs;
   } catch (error) {

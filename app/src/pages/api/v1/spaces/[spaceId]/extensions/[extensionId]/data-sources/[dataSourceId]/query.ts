@@ -63,7 +63,8 @@ export const POST: APIRoute = (context) =>
         spaceId,
         (message) => logs.push(message),
         {
-          cacheScopeId: jobDef.id,
+          cacheScopeId: `${spaceId}:${extensionId}:${jobDef.id}`,
+          cacheTtlMs: dataSource.cacheTtlMs,
           initiatedByUserId: user.id,
           jobType: "data_source",
           jobId: jobDef.id,

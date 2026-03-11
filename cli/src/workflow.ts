@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import { pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 
 type WorkflowInput = { key: string; value: unknown };
@@ -59,6 +60,24 @@ type LocalRuntimePaths = {
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    assert(Number.isFinite(value), `Unsupported cache number: ${value}`);
+    return JSON.stringify(value);
+  }
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  if (typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+      .join(",")}}`;
+  }
+  throw new Error(`Unsupported cache value type: ${typeof value}`);
 }
 
 function usage(): string {
@@ -425,6 +444,29 @@ async function runLocalJob(
   const entryPath = normaliseZipPath(job.entry);
   const entryBuffer = extension.files.get(entryPath);
   assert(entryBuffer, `Job entry "${entryPath}" not found in extension "${extension.manifest.id}"`);
+  const cacheScopeId = `${extension.manifest.id}:${job.id}`;
+  const cacheDir = join(tmpdir(), "wiki-job-cache", cacheScopeId);
+  const cacheKey = stableStringify({
+    entryHash: createHash("sha256").update(entryBuffer).digest("hex"),
+    inputs,
+  });
+  const cacheFile = join(
+    cacheDir,
+    `${createHash("sha256").update(cacheKey).digest("hex")}.json`,
+  );
+
+  try {
+    const cached = JSON.parse(await readFile(cacheFile, "utf-8")) as {
+      expiresAt: number | null;
+      value: Record<string, unknown>;
+    };
+    if (cached.expiresAt === null || Date.now() < cached.expiresAt) {
+      return cached.value;
+    }
+    await rm(cacheFile, { force: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
 
   const tempRoot = await mkdtemp(join(tmpdir(), "wiki-workflow-cli-"));
   const jobPath = join(tempRoot, entryPath);
@@ -439,7 +481,7 @@ async function runLocalJob(
       const worker = new Worker(wrapperPath, {
         workerData: {
           ...inputs,
-          cacheScopeId: `${extension.manifest.id}:${job.id}`,
+          cacheScopeId,
           documentsDir: runtimePaths.documentsDir,
           artifactsDir: runtimePaths.artifactsDir,
           env: process.env,
@@ -479,7 +521,23 @@ async function runLocalJob(
         if (message?.type === "result" || typeof message?.success === "boolean") {
           void worker.terminate();
           if (message.success) {
-            succeed((message.outputs ?? {}) as Record<string, unknown>);
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            void (async () => {
+              try {
+                const outputs = (message.outputs ?? {}) as Record<string, unknown>;
+                await mkdir(cacheDir, { recursive: true });
+                await writeFile(
+                  cacheFile,
+                  JSON.stringify({ expiresAt: null, value: outputs }),
+                  "utf-8",
+                );
+                resolve(outputs);
+              } catch (error) {
+                reject(error instanceof Error ? error : new Error(String(error)));
+              }
+            })();
             return;
           }
           fail(new Error(String(message.error ?? `Job "${job.id}" failed`)));

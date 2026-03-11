@@ -157,8 +157,55 @@ async function createRuntimeWorkflowFile(): Promise<string> {
   return workflowPath;
 }
 
+async function createCachedExtensionDir(): Promise<{ extensionPath: string; extensionId: string }> {
+  const dir = await createTempDir("wiki-workflow-cached-ext-");
+  const extensionId = `cached-test-ext-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await mkdir(join(dir, "jobs"), { recursive: true });
+  await writeFile(
+    join(dir, "manifest.json"),
+    JSON.stringify({
+      id: extensionId,
+      name: "Cached Test Extension",
+      version: "1.0.0",
+      entries: {},
+      jobs: [{ id: "cached", entry: "jobs/cached.mjs" }],
+    }),
+  );
+  await writeFile(
+    join(dir, "jobs/cached.mjs"),
+    `
+import { parentPort } from "node:worker_threads";
+globalThis.log("computed");
+parentPort.postMessage({
+  type: "result",
+  success: true,
+  outputs: { token: crypto.randomUUID() },
+});
+`.trim(),
+  );
+  return { extensionPath: dir, extensionId };
+}
+
+async function createCachedWorkflowFile(extensionId: string): Promise<string> {
+  const dir = await createTempDir("wiki-workflow-cached-def-");
+  const workflowPath = join(dir, "workflow.json");
+  await writeFile(
+    workflowPath,
+    JSON.stringify({
+      only: {
+        extensionId,
+        jobId: "cached",
+        inputs: [{ key: "stable", value: "same-inputs" }],
+        depends: [],
+      },
+    }),
+  );
+  return workflowPath;
+}
+
 afterEach(async () => {
   await Promise.all(tempPaths.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await rm(join(tmpdir(), "wiki-job-cache"), { recursive: true, force: true });
 });
 
 describe("workflow cli", () => {
@@ -220,5 +267,29 @@ describe("workflow cli", () => {
       if (previous === undefined) delete process.env.WORKFLOW_SECRET;
       else process.env.WORKFLOW_SECRET = previous;
     }
+  });
+
+  it("reuses cached job outputs when inputs do not change", async () => {
+    const { extensionPath, extensionId } = await createCachedExtensionDir();
+    const workflowPath = await createCachedWorkflowFile(extensionId);
+
+    const first = await runWorkflowLocally({
+      workflowPath,
+      extensionPaths: [extensionPath],
+      json: true,
+      timeoutMs: 5_000,
+    });
+    const second = await runWorkflowLocally({
+      workflowPath,
+      extensionPaths: [extensionPath],
+      json: true,
+      timeoutMs: 5_000,
+    });
+
+    expect(first.nodes.only.status).toBe("completed");
+    expect(first.nodes.only.logs).toEqual(["computed"]);
+    expect(second.nodes.only.status).toBe("completed");
+    expect(second.nodes.only.logs).toEqual([]);
+    expect(second.output).toEqual(first.output);
   });
 });

@@ -108,6 +108,12 @@ import { workerData, parentPort } from 'worker_threads';
 parentPort.postMessage({ success: false, error: 'intentional failure' });
 `.trim();
 
+const CACHED_JOB = `
+import { parentPort } from 'worker_threads';
+globalThis.log('computed');
+parentPort.postMessage({ success: true, outputs: { token: crypto.randomUUID() } });
+`.trim();
+
 function buildTestExtensionZip(): Buffer {
   const manifest = {
     id: "test-workflow-ext",
@@ -118,6 +124,7 @@ function buildTestExtensionZip(): Buffer {
       { id: "greet", name: "Greet", entry: "jobs/greet.mjs" },
       { id: "append", name: "Append", entry: "jobs/append.mjs" },
       { id: "fail", name: "Fail", entry: "jobs/fail.mjs" },
+      { id: "cached", name: "Cached", entry: "jobs/cached.mjs" },
     ],
   };
   return buildZip([
@@ -125,6 +132,7 @@ function buildTestExtensionZip(): Buffer {
     { name: "jobs/greet.mjs", data: Buffer.from(GREET_JOB) },
     { name: "jobs/append.mjs", data: Buffer.from(APPEND_JOB) },
     { name: "jobs/fail.mjs", data: Buffer.from(FAIL_JOB) },
+    { name: "jobs/cached.mjs", data: Buffer.from(CACHED_JOB) },
   ]);
 }
 
@@ -355,6 +363,48 @@ describe("Workflow runs — two-node dependency", () => {
     const n2 = run.nodes["node2"] as { outputs: { result: string } };
     expect(n2.outputs.result).toBe("overridden !");
     expect(run.output).toEqual({ result: "overridden !" });
+  });
+});
+
+describe("Workflow runs — cached reruns", () => {
+  it("reuses job outputs when rerun with unchanged inputs", async () => {
+    const docId = await createWorkflowDoc({
+      node1: {
+        extensionId: "test-workflow-ext",
+        jobId: "cached",
+        inputs: [{ key: "stable", value: "same-inputs" }],
+        depends: [],
+      },
+    });
+
+    const firstRunId = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({ documentId: docId }),
+    }).then((r) => r.json() as Promise<{ runId: string }>);
+    const firstRun = await pollRun(testSpaceId, firstRunId.runId);
+
+    const secondRunId = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({ documentId: docId }),
+    }).then((r) => r.json() as Promise<{ runId: string }>);
+    const secondRun = await pollRun(testSpaceId, secondRunId.runId);
+
+    const firstNode = firstRun.nodes["node1"] as {
+      status: string;
+      outputs: { token: string };
+      logs: string[];
+    };
+    const secondNode = secondRun.nodes["node1"] as {
+      status: string;
+      outputs: { token: string };
+      logs: string[];
+    };
+
+    expect(firstNode.status).toBe("completed");
+    expect(firstNode.logs).toEqual(["computed"]);
+    expect(secondNode.status).toBe("completed");
+    expect(secondNode.logs).toEqual([]);
+    expect(secondNode.outputs).toEqual(firstNode.outputs);
   });
 });
 

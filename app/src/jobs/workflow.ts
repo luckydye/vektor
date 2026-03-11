@@ -198,7 +198,7 @@ export async function executeWorkflow(
                 (message) => appendNodeLog(runId, nodeId, message),
                 {
                   signal: controller.signal,
-                  cacheScopeId: nodeDef.jobId,
+                  cacheScopeId: `${spaceId}:${nodeDef.extensionId}:${nodeDef.jobId}`,
                   initiatedByUserId: run.initiatedByUserId,
                   jobType: "workflow_node",
                   jobId: nodeDef.jobId,
