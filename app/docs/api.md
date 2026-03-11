@@ -66,6 +66,7 @@ Most errors are JSON:
 | POST | `/spaces/:spaceId/workflows/runs` | Starts a workflow run asynchronously. |
 | GET | `/spaces/:spaceId/workflows/runs/:runId` | Returns status and node state for one run. |
 | DELETE | `/spaces/:spaceId/workflows/runs/:runId` | Cancels a run. |
+| DELETE | `/spaces/:spaceId/workflows/cache` | Clears cached outputs for all jobs referenced by a workflow document. |
 | GET | `/spaces/:spaceId/documents` | Lists documents (optionally by categories). |
 | POST | `/spaces/:spaceId/documents` | Creates a document from JSON or raw content. |
 | GET | `/spaces/:spaceId/documents/archived` | Lists archived documents visible to the caller. |
@@ -488,6 +489,16 @@ Most errors are JSON:
 - Cancels run.
 - Returns:
 - `200` `{ ok: true }`.
+
+## `DELETE /spaces/:spaceId/workflows/cache`
+
+- Auth: session + `editor`.
+- Body:
+- `documentId` (required; must be workflow doc)
+- Behavior:
+- Parses the workflow document and clears cached outputs for each unique job scope in that workflow.
+- Returns:
+- `200` `{ clearedScopes }`
 
 ---
 

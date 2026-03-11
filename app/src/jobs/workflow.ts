@@ -16,6 +16,17 @@ export type WorkflowDefinition = Record<
   }
 >;
 
+export function getWorkflowCacheScopeIds(
+  spaceId: string,
+  definition: WorkflowDefinition,
+): string[] {
+  return [
+    ...new Set(
+      Object.values(definition).map((node) => `${spaceId}:${node.extensionId}:${node.jobId}`),
+    ),
+  ];
+}
+
 const meter = otelMetrics.getMeter("wiki.workflows");
 const workflowRunsCounter = meter.createCounter("wiki_workflow_runs_total");
 const workflowRunDurationMs = meter.createHistogram("wiki_workflow_run_duration_ms", {

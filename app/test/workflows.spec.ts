@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { rmSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 import { createHmac } from "node:crypto";
@@ -207,6 +208,8 @@ function readAuthSecret(): string {
 // --- Setup / teardown ---
 
 beforeAll(async () => {
+  rmSync(join(tmpdir(), "wiki-job-cache"), { recursive: true, force: true });
+
   // Pick the most recently updated session that hasn't expired yet
   const db = new Database(join(DATA_DIR, "auth.db"));
   const row = db
@@ -372,7 +375,7 @@ describe("Workflow runs — cached reruns", () => {
       node1: {
         extensionId: "test-workflow-ext",
         jobId: "cached",
-        inputs: [{ key: "stable", value: "same-inputs" }],
+        inputs: [{ key: "stable", value: "clear-cache-inputs" }],
         depends: [],
       },
     });
@@ -405,6 +408,49 @@ describe("Workflow runs — cached reruns", () => {
     expect(secondNode.status).toBe("completed");
     expect(secondNode.logs).toEqual([]);
     expect(secondNode.outputs).toEqual(firstNode.outputs);
+  });
+
+  it("clears all cached job outputs for a workflow", async () => {
+    const docId = await createWorkflowDoc({
+      node1: {
+        extensionId: "test-workflow-ext",
+        jobId: "cached",
+        inputs: [{ key: "stable", value: "same-inputs" }],
+        depends: [],
+      },
+    });
+
+    const firstRunId = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({ documentId: docId }),
+    }).then((r) => r.json() as Promise<{ runId: string }>);
+    const firstRun = await pollRun(testSpaceId, firstRunId.runId);
+    const firstNode = firstRun.nodes["node1"] as {
+      outputs: { token: string };
+      logs: string[];
+    };
+
+    const clearRes = await api(`/api/v1/spaces/${testSpaceId}/workflows/cache`, {
+      method: "DELETE",
+      body: JSON.stringify({ documentId: docId }),
+    });
+    expect(clearRes.status).toBe(200);
+    const clearBody = (await clearRes.json()) as { clearedScopes: number };
+    expect(clearBody.clearedScopes).toBe(1);
+
+    const secondRunId = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({ documentId: docId }),
+    }).then((r) => r.json() as Promise<{ runId: string }>);
+    const secondRun = await pollRun(testSpaceId, secondRunId.runId);
+    const secondNode = secondRun.nodes["node1"] as {
+      outputs: { token: string };
+      logs: string[];
+    };
+
+    expect(firstNode.logs).toEqual(["computed"]);
+    expect(secondNode.logs).toEqual(["computed"]);
+    expect(secondNode.outputs.token).not.toBe(firstNode.outputs.token);
   });
 });
 

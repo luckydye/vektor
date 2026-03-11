@@ -66,6 +66,10 @@ async function getCacheFilePath(scope: string, key: string): Promise<string> {
   return join(dir, `${createHash("sha256").update(key).digest("hex")}.json`);
 }
 
+export async function clearJobCache(scope: string): Promise<void> {
+  await rm(join(tmpdir(), "wiki-job-cache", scope), { recursive: true, force: true });
+}
+
 async function readCachedOutputs(
   scope: string,
   key: string,

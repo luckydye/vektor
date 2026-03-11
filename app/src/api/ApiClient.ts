@@ -1653,6 +1653,23 @@ export class ApiClient {
       );
     },
 
+    clearCache: async (
+      spaceId: string,
+      documentId: string,
+    ): Promise<{ clearedScopes: number }> => {
+      return await this.apiFetch<{ clearedScopes: number }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/cache`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ documentId }),
+        },
+      );
+    },
+
     listRunning: async (spaceId: string) => {
       const response = await this.apiGet<{
         runs: {
