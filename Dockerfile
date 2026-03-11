@@ -1,9 +1,16 @@
 FROM debian:12-slim
 
-RUN apt-get update  \
-    && apt-get -y --no-install-recommends install  \
-        # install any other dependencies you might need
-        sudo curl git ca-certificates build-essential pandoc jq zstd librsvg2-bin \
+RUN apt-get update \
+    && apt-get -y --no-install-recommends install \
+        curl \
+        git \
+        ca-certificates \
+        build-essential \
+        pandoc \
+        jq \
+        zstd \
+        librsvg2-bin \
+    && command -v rsvg-convert \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and install htmlq
