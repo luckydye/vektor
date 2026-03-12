@@ -90,6 +90,7 @@ export interface Revision {
   slug: string;
   checksum: string;
   parentRev: number | null;
+  status: "open" | "applied" | "dismissed" | null;
   message: string | null;
   createdAt: Date | string;
   createdBy: string;
@@ -106,6 +107,7 @@ export interface RevisionMetadata {
   slug: string;
   checksum: string;
   parentRev: number | null;
+  status: "open" | "applied" | "dismissed" | null;
   message: string | null;
   createdAt: Date | string;
   createdBy: string;
@@ -954,7 +956,7 @@ export class ApiClient {
     post: async (
       spaceId: string,
       documentId: string,
-      body: { html: string; message?: string },
+      body: { html: string; message?: string; mode?: "revision" | "suggestion" },
     ) => {
       const response = await this.apiPost<{ revision: Revision }>(
         this.baseUrl,

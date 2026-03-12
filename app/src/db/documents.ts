@@ -179,7 +179,9 @@ export async function createDocument(
 
   await updateDocumentEmbedding(spaceId, id);
 
-  await createRevision(spaceId, id, content, createdBy, "Initial revision");
+  await createRevision(spaceId, id, content, createdBy, {
+    message: "Initial revision",
+  });
 
   await createAuditLog(await getSpaceDb(spaceId), {
     spaceId,

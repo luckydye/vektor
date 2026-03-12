@@ -26,7 +26,7 @@ const resolvedUser = computed(() => {
 });
 
 const sizeMap = {
-  small: 24,
+  small: 32,
   medium: 36,
   large: 48,
 };
@@ -62,7 +62,7 @@ const userInitials = computed(() => {
     />
     <div
         v-else
-        class="bg-linear-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg w-full h-full"
+        class="bg-linear-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm w-full h-full"
     >
         {{ userInitials }}
     </div>

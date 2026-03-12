@@ -14,6 +14,7 @@ export function useRevisions(documentId: string | undefined) {
   async function saveRevision(
     html: string,
     message?: string,
+    mode: "revision" | "suggestion" = "revision",
   ): Promise<RevisionMetadata | null> {
     if (!currentSpaceId.value) {
       throw new Error("No space selected");
@@ -30,6 +31,7 @@ export function useRevisions(documentId: string | undefined) {
       const revision = await api.document.post(currentSpaceId.value, documentId, {
         html,
         message,
+        mode,
       });
 
       saveStatus.value = "saved";

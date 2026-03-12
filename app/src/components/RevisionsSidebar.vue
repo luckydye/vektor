@@ -20,8 +20,10 @@ const props = defineProps({
 });
 
 const {
+  revisions,
   getRevision,
   publishRevision,
+  fetchHistory,
   isLoading: isLoadingHistory,
 } = useRevisions(props.documentId);
 
@@ -50,6 +52,10 @@ const combinedActivity = computed(() => {
   });
 });
 
+const revisionsByNumber = computed(() => {
+  return new Map(revisions.value.map((revision) => [revision.rev, revision]));
+});
+
 const { members } = useMembers();
 
 const activityEvents = computed(() => {
@@ -60,6 +66,8 @@ const activityEvents = computed(() => {
         "Unknown user"
       : "Unknown user";
     const description = formatEventName(userName, item.event);
+    const revision = item.revisionId ? revisionsByNumber.value.get(item.revisionId) : null;
+    const isSuggestion = revision?.status !== null;
 
     return {
       variant: (item.revisionId ? "default" : "no-action") as "default" | "no-action",
@@ -72,6 +80,8 @@ const activityEvents = computed(() => {
       revisionNumber: item.revisionId ?? undefined,
       id: item.id,
       isPublished,
+      isSuggestion,
+      revisionStatus: revision?.status ?? null,
       icon: item.event,
     };
   });
@@ -84,6 +94,8 @@ function getEventIcon(iconType: string) {
     view: '<svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>',
     publish:
       '<svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>',
+    suggest:
+      '<svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8M8 14h5m5 7H6a2 2 0 01-2-2V5a2 2 0 012-2h8l6 6v10a2 2 0 01-2 2z" /></svg>',
     restore:
       '<svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>',
     delete:
@@ -129,7 +141,7 @@ async function fetchPublishedRev() {
 }
 
 async function refresh() {
-  await Promise.all([fetchAuditLogs(), fetchPublishedRev()]);
+  await Promise.all([fetchAuditLogs(), fetchPublishedRev(), fetchHistory()]);
 }
 
 async function viewRevision(rev: number | undefined) {
@@ -143,7 +155,7 @@ async function viewRevision(rev: number | undefined) {
     window.history.replaceState({}, "", url);
 
     const event = new CustomEvent("revision:view", {
-      detail: { revision: rev, content: revision.content },
+      detail: { revision: rev, content: revision.content, isSuggestion: revision.status !== null },
       bubbles: true,
       composed: true,
     });
@@ -178,6 +190,7 @@ function formatEventName(userName: string, event: string): string {
   const eventNames: Record<string, string> = {
     view: `${userName} - Document viewed`,
     save: `${userName} - Document saved`,
+    suggest: `${userName} - Suggested changes`,
     publish: `${userName} - Document published`,
     unpublish: `${userName} - Document unpublished`,
     restore: `${userName} - Revision restored`,
@@ -213,8 +226,10 @@ function copyRevisionLink(revisionId?: string) {
 function showDiff(revisionNumber: number | undefined) {
   if (!revisionNumber) return;
 
+  const revision = revisionsByNumber.value.get(revisionNumber);
+
   const event = new CustomEvent("revision:diff", {
-    detail: { revision: revisionNumber },
+    detail: { revision: revisionNumber, isSuggestion: revision?.status !== null },
     bubbles: true,
     composed: true,
   });
@@ -356,6 +371,11 @@ function exitPopover(e: Event) {
               <template v-if="event.isPublished" #badge>
                 <span class="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700 uppercase">Published</span>
               </template>
+              <template v-else-if="event.isSuggestion" #badge>
+                <span class="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 text-amber-700 uppercase">
+                  {{ event.revisionStatus === "applied" ? "Applied Suggestion" : "Suggestion" }}
+                </span>
+              </template>
               <template #icon>
                 <div v-html="getEventIcon(event.icon)" class="flex-none"></div>
               </template>
@@ -404,7 +424,7 @@ function exitPopover(e: Event) {
                           Copy Link
                         </button>
                         <button
-                          v-if="!event.isPublished"
+                          v-if="!event.isPublished && !event.isSuggestion"
                           @click="e => { exitPopover(e); handlePublishRevision(event.revisionNumber); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           :disabled="isPublishing"

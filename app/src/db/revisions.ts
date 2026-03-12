@@ -18,9 +18,16 @@ export interface Revision {
   snapshot: Buffer;
   checksum: string;
   parentRev: number | null;
+  status: "open" | "applied" | "dismissed" | null;
   message: string | null;
   createdAt: Date;
   createdBy: string;
+}
+
+export interface CreateRevisionOptions {
+  message?: string;
+  status?: Revision["status"];
+  parentRev?: number | null;
 }
 
 function compressHtml(html: string): Buffer {
@@ -63,10 +70,11 @@ export async function createRevision(
   documentId: string,
   html: string,
   userId: string,
-  message?: string,
+  options: CreateRevisionOptions = {},
 ): Promise<Revision> {
   const db = await getSpaceDb(spaceId);
   const checksum = calculateChecksum(html);
+  const status = options.status ?? null;
 
   const lastRevision = await db
     .select()
@@ -76,7 +84,12 @@ export async function createRevision(
     .limit(1)
     .get();
 
-  if (lastRevision && lastRevision.checksum === checksum) {
+  if (
+    lastRevision &&
+    lastRevision.checksum === checksum &&
+    (lastRevision.status ?? null) === status &&
+    (lastRevision.parentRev ?? null) === (options.parentRev ?? null)
+  ) {
     return {
       id: lastRevision.id,
       documentId: lastRevision.documentId,
@@ -85,6 +98,7 @@ export async function createRevision(
       snapshot: lastRevision.snapshot,
       checksum: lastRevision.checksum,
       parentRev: lastRevision.parentRev,
+      status: (lastRevision.status as Revision["status"] | null) ?? null,
       message: lastRevision.message,
       createdAt: new Date(lastRevision.createdAt),
       createdBy: lastRevision.createdBy,
@@ -104,38 +118,48 @@ export async function createRevision(
     slug,
     snapshot: compressed,
     checksum,
-    parentRev: lastRevision ? lastRevision.rev : null,
-    message: message || null,
+    parentRev: options.parentRev ?? (lastRevision ? lastRevision.rev : null),
+    status,
+    message: options.message || null,
     createdAt: now,
     createdBy: userId,
   });
 
-  const doc = await db
-    .select({ publishedRev: document.publishedRev })
-    .from(document)
-    .where(eq(document.id, documentId))
-    .get();
+  let shouldPublish = false;
+  if (status === null) {
+    const doc = await db
+      .select({ publishedRev: document.publishedRev })
+      .from(document)
+      .where(eq(document.id, documentId))
+      .get();
 
-  const updateFields: { currentRev: number; publishedRev?: number } = {
-    currentRev: nextRev,
-  };
+    const updateFields: { currentRev: number; publishedRev?: number } = {
+      currentRev: nextRev,
+    };
 
-  if (doc?.publishedRev !== null && doc?.publishedRev !== undefined) {
-    updateFields.publishedRev = nextRev;
+    if (doc?.publishedRev !== null && doc?.publishedRev !== undefined) {
+      updateFields.publishedRev = nextRev;
+      shouldPublish = true;
+    }
+
+    await db.update(document).set(updateFields).where(eq(document.id, documentId));
   }
-
-  await db.update(document).set(updateFields).where(eq(document.id, documentId));
 
   await createAuditLog(db, {
     spaceId,
     docId: documentId,
     revisionId: nextRev,
     userId,
-    event: "save",
-    details: { message: message || "Revision created" },
+    event: status !== null ? "suggest" : "save",
+    details: {
+      message:
+        options.message || (status !== null ? "Suggestion created" : "Revision created"),
+      parentRev: options.parentRev ?? (lastRevision ? lastRevision.rev : null),
+      status,
+    },
   });
 
-  if (updateFields.publishedRev) {
+  if (shouldPublish) {
     invalidateMentionCache(documentId);
 
     await createAuditLog(db, {
@@ -180,8 +204,9 @@ export async function createRevision(
     slug,
     snapshot: compressed,
     checksum,
-    parentRev: lastRevision ? lastRevision.rev : null,
-    message: message || null,
+    parentRev: options.parentRev ?? (lastRevision ? lastRevision.rev : null),
+    status,
+    message: options.message || null,
     createdAt: now,
     createdBy: userId,
   };
@@ -276,6 +301,7 @@ export async function getRevision(
     snapshot: revisionRecord.snapshot,
     checksum: revisionRecord.checksum,
     parentRev: revisionRecord.parentRev,
+    status: (revisionRecord.status as Revision["status"] | null) ?? null,
     message: revisionRecord.message,
     createdAt: new Date(revisionRecord.createdAt),
     createdBy: revisionRecord.createdBy,
@@ -353,6 +379,7 @@ export async function listRevisions(
     snapshot: r.snapshot,
     checksum: r.checksum,
     parentRev: r.parentRev,
+    status: (r.status as Revision["status"] | null) ?? null,
     message: r.message,
     createdAt: new Date(r.createdAt),
     createdBy: r.createdBy,
@@ -382,7 +409,9 @@ export async function restoreRevision(
     details: { message: restoredMessage },
   });
 
-  return createRevision(spaceId, documentId, content, userId, restoredMessage);
+  return createRevision(spaceId, documentId, content, userId, {
+    message: restoredMessage,
+  });
 }
 
 export async function getRevisionMetadata(
@@ -400,6 +429,7 @@ export async function getRevisionMetadata(
       slug: revision.slug,
       checksum: revision.checksum,
       parentRev: revision.parentRev,
+      status: revision.status,
       message: revision.message,
       createdAt: revision.createdAt,
       createdBy: revision.createdBy,
@@ -419,6 +449,7 @@ export async function getRevisionMetadata(
     slug: revisionRecord.slug,
     checksum: revisionRecord.checksum,
     parentRev: revisionRecord.parentRev,
+    status: (revisionRecord.status as Revision["status"] | null) ?? null,
     message: revisionRecord.message,
     createdAt: new Date(revisionRecord.createdAt),
     createdBy: revisionRecord.createdBy,
@@ -439,6 +470,7 @@ export async function listRevisionMetadata(
       slug: revision.slug,
       checksum: revision.checksum,
       parentRev: revision.parentRev,
+      status: revision.status,
       message: revision.message,
       createdAt: revision.createdAt,
       createdBy: revision.createdBy,
@@ -455,8 +487,53 @@ export async function listRevisionMetadata(
     slug: r.slug,
     checksum: r.checksum,
     parentRev: r.parentRev,
+    status: (r.status as Revision["status"] | null) ?? null,
     message: r.message,
     createdAt: new Date(r.createdAt),
     createdBy: r.createdBy,
   }));
+}
+
+export async function createSuggestion(
+  spaceId: string,
+  documentId: string,
+  html: string,
+  userId: string,
+  message?: string,
+): Promise<Revision> {
+  const db = await getSpaceDb(spaceId);
+  const doc = await db
+    .select({ publishedRev: document.publishedRev })
+    .from(document)
+    .where(eq(document.id, documentId))
+    .get();
+
+  if (!doc) {
+    throw notFoundResponse("Document");
+  }
+
+  const parentRev = doc.publishedRev;
+  if (!parentRev) {
+    throw new Error("Cannot create suggestion without a published revision");
+  }
+
+  return createRevision(spaceId, documentId, html, userId, {
+    message,
+    status: "open",
+    parentRev,
+  });
+}
+
+export async function updateRevisionStatus(
+  spaceId: string,
+  documentId: string,
+  rev: number,
+  status: NonNullable<Revision["status"]>,
+): Promise<void> {
+  const db = await getSpaceDb(spaceId);
+
+  await db
+    .update(revision)
+    .set({ status })
+    .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)));
 }

@@ -99,6 +99,7 @@ export async function prepareSpaceDb(spaceId: string) {
   await spaceDb.run(
     sql.raw("ALTER TABLE document ADD COLUMN search_updated_at INTEGER"),
   ).catch(() => {});
+  await spaceDb.run(sql.raw("ALTER TABLE revision ADD COLUMN status TEXT")).catch(() => {});
 
   try {
     await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ai"));

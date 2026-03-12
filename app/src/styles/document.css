@@ -136,3 +136,105 @@ date-picker {
   border-radius: 4px;
   background-color: var(--color-neutral-50);
 }
+
+.wiki-inline-suggestion {
+  margin: 0.75rem 0 1rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.875rem;
+  background: color-mix(in srgb, var(--color-neutral-10) 92%, white);
+  overflow: hidden;
+  user-select: none;
+}
+
+.wiki-inline-suggestion-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  background: color-mix(in srgb, var(--color-amber-50, #fffbeb) 55%, white);
+}
+
+.wiki-inline-suggestion-heading {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-neutral-900);
+}
+
+.wiki-inline-suggestion-message {
+  font-size: 0.75rem;
+  color: var(--color-neutral-600);
+}
+
+.wiki-inline-suggestion-accept {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-neutral-300);
+  background: white;
+  color: var(--color-neutral-900);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wiki-inline-suggestion-lines {
+  display: flex;
+  flex-direction: column;
+}
+
+.wiki-inline-suggestion-line {
+  min-height: 2rem;
+  padding: 0.45rem 0.75rem;
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--color-neutral-900);
+}
+
+.wiki-inline-suggestion-marker {
+  opacity: 0.75;
+  font-weight: 700;
+  text-align: center;
+}
+
+.wiki-inline-suggestion-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wiki-inline-suggestion-content > * {
+  margin-block: 0.25rem;
+}
+
+.wiki-inline-suggestion-content > :first-child {
+  margin-top: 0;
+}
+
+.wiki-inline-suggestion-content > :last-child {
+  margin-bottom: 0;
+}
+
+.wiki-inline-suggestion-line + .wiki-inline-suggestion-line {
+  border-top: 1px solid var(--color-neutral-100);
+}
+
+.wiki-inline-suggestion-line[data-kind="remove"] {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.wiki-inline-suggestion-line[data-kind="add"] {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.wiki-inline-suggestion-line[data-kind="empty"] {
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-300);
+  text-align: center;
+  letter-spacing: 0.08em;
+}

@@ -80,6 +80,7 @@ export const revision = sqliteTable("revision", {
   snapshot: blob("snapshot", { mode: "buffer" }).notNull(),
   checksum: text("checksum").notNull(),
   parentRev: integer("parent_rev"),
+  status: text("status"),
   message: text("message"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   createdBy: text("created_by").notNull(),

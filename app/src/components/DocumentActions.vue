@@ -3,7 +3,6 @@ import {
   Icon,
   ContextMenu,
   ContextMenuItem,
-  ButtonPrimary,
   ButtonSecondary,
 } from "~/src/components/index.ts";
 import Contributors from "./Contributors.vue";
@@ -28,7 +27,12 @@ const userCanEdit = computed(() => {
 const isEditing = ref(!props.documentId);
 const isSaving = ref(false);
 const isCreatingToken = ref(false);
-const editorSaveFunction = ref<(() => Promise<void>) | null>(null);
+const saveMode = ref<"revision" | "suggestion">("revision");
+const showSaveMenu = ref(false);
+const actionMenuRef = ref<HTMLElement | null>(null);
+const editorSaveFunction = ref<
+  ((mode: "revision" | "suggestion") => Promise<void>) | null
+>(null);
 
 function registerEditAction() {
   Actions.register("document:edit", {
@@ -48,10 +52,10 @@ function startEditing() {
   window.dispatchEvent(new CustomEvent("edit-mode-start"));
 
   Actions.register("document:save", {
-    title: "Save Document",
-    description: "Save current document and exit edit mode",
+    title: "Publish Document",
+    description: "Publish current document and exit edit mode",
     group: "edit",
-    run: async () => stopEditing(),
+    run: async () => stopEditing("revision"),
   });
 
   Actions.unregister("document:edit");
@@ -133,28 +137,38 @@ Actions.register("document:accesstoken", {
 const actions = ref<[string, ActionOptions][]>([]);
 const actionsDanger = ref<[string, ActionOptions][]>([]);
 
-async function stopEditing() {
+async function stopEditing(mode: "revision" | "suggestion" = "revision") {
   if (!isEditing.value) return;
+
+  saveMode.value = mode;
+  showSaveMenu.value = false;
 
   if (editorSaveFunction.value) {
     isSaving.value = true;
     try {
-      await editorSaveFunction.value();
+      await editorSaveFunction.value(mode);
       await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (error) {
       console.error("Failed to save:", error);
+    } finally {
+      isSaving.value = false;
+      saveMode.value = "revision";
     }
   }
+
   isEditing.value = false;
-  if (props.documentId) {
-    window.location.reload();
-  }
 
   Actions.unregister("document:save");
+  registerEditAction();
+
+  if (props.documentId && mode === "revision") {
+    window.location.reload();
+  }
 }
 
 function cancelEditing() {
   isEditing.value = false;
+  showSaveMenu.value = false;
   if (props.documentId) {
     window.dispatchEvent(new CustomEvent("edit-mode-cancel"));
     Actions.unregister("document:save");
@@ -164,13 +178,33 @@ function cancelEditing() {
   }
 }
 
-function handleEditorReady(event: CustomEvent<{ saveFunction: () => Promise<void> }>) {
+function handleEditorReady(
+  event: CustomEvent<{
+    saveFunction: (mode: "revision" | "suggestion") => Promise<void>;
+  }>,
+) {
   editorSaveFunction.value = event.detail.saveFunction;
   isEditing.value = true;
 }
 
+function toggleSaveMenu(event: MouseEvent) {
+  event.stopPropagation();
+  showSaveMenu.value = !showSaveMenu.value;
+}
+
+function saveAsSuggestion() {
+  void stopEditing("suggestion");
+}
+
+function handleClickOutside(event: MouseEvent) {
+  if (actionMenuRef.value && !actionMenuRef.value.contains(event.target as Node)) {
+    showSaveMenu.value = false;
+  }
+}
+
 onMounted(async () => {
   window.addEventListener("editor-ready", handleEditorReady as EventListener);
+  document.addEventListener("click", handleClickOutside);
 
   Actions.subscribe("actions:register", () => {
     actions.value = Actions.group("document");
@@ -187,6 +221,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener("editor-ready", handleEditorReady as EventListener);
+  document.removeEventListener("click", handleClickOutside);
 });
 
 function runContextMenuAction(e: Event, name: string) {
@@ -278,19 +313,65 @@ watchEffect(() => {
       <Contributors v-if="documentId" :documentId="documentId" />
     </div>
 
-    <ButtonPrimary
+    <button
       v-if="!isEditing && !readonly && userCanEdit"
+      type="button"
+      class="button-primary px-3"
       @click="startEditing"
     >
       <Icon name="edit" />
       <span>Edit</span>
-    </ButtonPrimary>
+    </button>
 
     <div v-if="isEditing" class="flex items-center gap-2">
-      <ButtonPrimary @click="stopEditing">
-        <Icon name="check" />
-        <span>{{isSaving ? 'Saving...' : 'Done'}}</span>
-      </ButtonPrimary>
+      <div ref="actionMenuRef" class="relative">
+        <div class="button-primary-base button-with-icon overflow-hidden">
+          <button
+            type="button"
+            class="inline-flex justify-center items-center px-3xs button-primary-pointer"
+            :disabled="isSaving"
+            @click="stopEditing('revision')"
+          >
+            <Icon name="check" />
+            <span>{{
+              isSaving
+                ? saveMode === "suggestion"
+                  ? "Saving suggestion..."
+                  : "Publishing..."
+                : "Publish"
+            }}</span>
+          </button>
+          <button
+            v-if="documentId"
+            type="button"
+            class="flex items-center justify-center border-l border-primary-700 px-4xs button-primary-pointer"
+            :disabled="isSaving"
+            @click="toggleSaveMenu"
+          >
+            <Icon name="chevron-down" />
+          </button>
+        </div>
+
+        <div
+          v-if="showSaveMenu && documentId"
+          class="absolute top-[calc(100%+4px)] right-0 bg-background border border-neutral-100 rounded-lg p-[4px] flex flex-col gap-[4px] min-w-[220px] z-50"
+          style="box-shadow: -2px 2px 24px 0px rgba(0, 0, 0, 0.1)"
+        >
+          <button
+            type="button"
+            class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
+            :disabled="isSaving"
+            @click="saveAsSuggestion"
+          >
+            <div class="font-medium text-size-small leading-[1.4285714285714286em]">
+              Save as suggestion
+            </div>
+            <div class="text-size-extra-small text-neutral-500">
+              Create an open suggestion instead of publishing
+            </div>
+          </button>
+        </div>
+      </div>
 
       <ButtonSecondary @click="cancelEditing">
         <Icon name="close" />

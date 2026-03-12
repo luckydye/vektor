@@ -31,6 +31,7 @@ import {
 import { triggerWebhooks } from "#db/webhooks.ts";
 import { stripScriptTags } from "../../../../../../../utils/utils.ts";
 import {
+  createSuggestion,
   getPublishedContent,
   getRevisionContent,
   getRevisionMetadata,
@@ -523,14 +524,39 @@ export const POST: APIRoute = (context) =>
 
     if (contentType === "application/json") {
       const body = await parseJsonBody(context.request);
-      const { html: jsonHtml, message: jsonMessage } = body;
+      const { html: jsonHtml, message: jsonMessage, mode } = body;
 
       if (!jsonHtml || typeof jsonHtml !== "string") {
         throw badRequestResponse("HTML content is required and must be a string");
       }
 
+      if (mode !== undefined && mode !== "revision" && mode !== "suggestion") {
+        throw badRequestResponse('Mode must be "revision" or "suggestion"');
+      }
+
       html = toHtmlIfMarkdown(jsonHtml, contentType, document.type);
       message = typeof jsonMessage === "string" ? jsonMessage : undefined;
+
+      const revision =
+        mode === "suggestion"
+          ? await createSuggestion(spaceId, documentId, html, user.id, message)
+          : await createRevision(spaceId, documentId, html, user.id, {
+              message,
+            });
+
+      return jsonResponse({
+        revision: {
+          id: revision.id,
+          documentId: revision.documentId,
+          rev: revision.rev,
+          checksum: revision.checksum,
+          parentRev: revision.parentRev,
+          status: revision.status,
+          message: revision.message,
+          createdAt: revision.createdAt,
+          createdBy: revision.createdBy,
+        },
+      });
     } else {
       const rawContent = await context.request.text();
       if (!rawContent) {
@@ -540,7 +566,9 @@ export const POST: APIRoute = (context) =>
       html = toHtmlIfMarkdown(rawContent, contentType, document.type);
     }
 
-    const revision = await createRevision(spaceId, documentId, html, user.id, message);
+    const revision = await createRevision(spaceId, documentId, html, user.id, {
+      message,
+    });
 
     return jsonResponse({
       revision: {
@@ -549,6 +577,7 @@ export const POST: APIRoute = (context) =>
         rev: revision.rev,
         checksum: revision.checksum,
         parentRev: revision.parentRev,
+        status: revision.status,
         message: revision.message,
         createdAt: revision.createdAt,
         createdBy: revision.createdBy,

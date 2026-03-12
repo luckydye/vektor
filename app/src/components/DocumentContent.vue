@@ -12,6 +12,8 @@ import ToolbarFormatting from "./ToolbarFormatting.vue";
 import ToolbarTable from "./ToolbarTable.vue";
 import DiffView from "./DiffView.vue";
 import CommentManager from "./CommentManager.vue";
+import { applyPatch, parsePatch } from "diff";
+import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
@@ -55,8 +57,9 @@ const props = defineProps({
 const isEditing = ref(props.initialEditMode);
 const isEditingReady = ref(false);
 const viewingRevision = ref(false);
-const revisionNumber = ref(null);
+const revisionNumber = ref<number | null>(null);
 const revisionContent = ref("");
+const viewingSuggestion = ref(false);
 const sidebarOpen = ref(false);
 const showingDiff = ref(false);
 const diffPatch = ref("");
@@ -79,7 +82,8 @@ const { saveStatus, saveError, saveDocument, cancelDebounce } = useDocument(
   props.documentId,
   props.documentType,
 );
-const { saveRevision } = useRevisions(props.documentId);
+const { revisions, saveRevision, fetchHistory } = useRevisions(props.documentId);
+const suggestionPatches = ref<Record<number, string>>({});
 
 const AppView = defineAsyncComponent(() => import("./AppView.vue"));
 
@@ -107,10 +111,17 @@ watch(isEditingReady, (ready) => {
   document.body.dataset.editing = !!isEditingReady.value;
 });
 
-async function manualSave() {
+async function manualSave(mode: "revision" | "suggestion" = "revision") {
   const editor = getEditor();
   if (editor) {
     const content = editor.getHTML();
+    if (mode === "suggestion") {
+      await saveRevision(content, "Suggested changes", "suggestion");
+      isEditingReady.value = false;
+      isEditing.value = false;
+      await refreshDocument();
+      return;
+    }
     await saveRevisionSnapshot();
     await saveDocument(content);
   }
@@ -152,6 +163,116 @@ function initEditor() {
   );
 }
 
+function syncInlineSuggestions() {
+  const editor = getEditor();
+  if (!editor?.commands) {
+    return;
+  }
+
+  editor.commands.setInlineSuggestions(
+    openSuggestions.value
+      .filter((suggestion) => suggestionPatches.value[suggestion.rev])
+      .map((suggestion) => ({
+        rev: suggestion.rev,
+        message: suggestion.message,
+        patch: suggestionPatches.value[suggestion.rev],
+      })),
+  );
+}
+
+const openSuggestions = computed(() => {
+  return revisions.value.filter(
+    (revision) => revision.status === "open",
+  );
+});
+
+async function loadSuggestionPatches() {
+  if (!currentSpaceId.value || !props.documentId) {
+    return;
+  }
+
+  await fetchHistory();
+
+  const patches = await Promise.all(
+    openSuggestions.value.map(async (suggestion) => {
+      const response = await fetch(
+        `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}/diff?rev=${suggestion.rev}`,
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch diff for suggestion ${suggestion.rev}`);
+      }
+
+      return [suggestion.rev, await response.text()] as const;
+    }),
+  );
+
+  suggestionPatches.value = Object.fromEntries(patches);
+}
+
+function buildSingleHunkPatch(patch: string, hunkIndex: number): string {
+  const parsed = parsePatch(patch);
+  const file = parsed[0];
+  if (!file) {
+    throw new Error("Patch is empty");
+  }
+
+  const hunk = file.hunks[hunkIndex];
+  if (!hunk) {
+    throw new Error(`Hunk ${hunkIndex} not found`);
+  }
+
+  const oldHeader = file.oldHeader ? `\t${file.oldHeader}` : "";
+  const newHeader = file.newHeader ? `\t${file.newHeader}` : "";
+
+  return [
+    `Index: ${file.index || props.documentId || "document"}`,
+    "===================================================================",
+    `--- ${file.oldFileName}${oldHeader}`,
+    `+++ ${file.newFileName}${newHeader}`,
+    hunk.content,
+    ...hunk.lines,
+    "",
+  ].join("\n");
+}
+
+function setEditorHtml(html: string) {
+  const editor = getEditor();
+  if (!editor) {
+    throw new Error("Editor is not ready");
+  }
+
+  editor.commands.setContent(html);
+}
+
+function acceptSuggestionHunk(revisionRev: number, hunkIndex: number) {
+  const patch = suggestionPatches.value[revisionRev];
+  if (!patch) {
+    throw new Error(`Suggestion patch ${revisionRev} not loaded`);
+  }
+
+  const editor = getEditor();
+  if (!editor) {
+    throw new Error("Editor is not ready");
+  }
+
+  const currentHtml = prettyPrintHtml(editor.getHTML());
+  const nextHtml = applyPatch(currentHtml, buildSingleHunkPatch(patch, hunkIndex));
+  if (nextHtml === false) {
+    throw new Error(
+      `Failed to apply suggestion hunk ${hunkIndex + 1} from suggestion ${revisionRev}`,
+    );
+  }
+
+  setEditorHtml(nextHtml);
+}
+
+function handleInlineSuggestionAccept(
+  event: CustomEvent<{ revisionRev: number; hunkIndex: number }>,
+) {
+  acceptSuggestionHunk(event.detail.revisionRev, event.detail.hunkIndex);
+}
+
 watch(isEditing, (editing) => {
   if (editing && !viewingRevision.value) {
     // Wait for the v-if to render the document-view element
@@ -159,11 +280,30 @@ watch(isEditing, (editing) => {
   }
 });
 
+watch(isEditing, async (editing) => {
+  if (!editing || !props.documentId) {
+    suggestionPatches.value = {};
+    getEditor()?.commands.clearInlineSuggestions();
+    return;
+  }
+
+  await loadSuggestionPatches();
+}, { immediate: true });
+
+watch([suggestionPatches, isEditingReady], () => {
+  if (!isEditingReady.value) {
+    return;
+  }
+
+  syncInlineSuggestions();
+}, { deep: true });
+
 function handleRevisionView(event) {
   viewingRevision.value = true;
   document.body.dataset.revision = true;
   revisionNumber.value = event.detail.revision;
   revisionContent.value = event.detail.content;
+  viewingSuggestion.value = Boolean(event.detail.isSuggestion);
   isEditing.value = false;
   isEditingReady.value = false;
 }
@@ -173,6 +313,7 @@ function handleRevisionClose() {
   document.body.removeAttribute("data-revision");
   revisionNumber.value = null;
   revisionContent.value = "";
+  viewingSuggestion.value = false;
 
   const params = new URLSearchParams(location.search);
   params.delete("revision");
@@ -207,6 +348,7 @@ async function handleRevisionDiff(event) {
     viewingRevision.value = true;
     document.body.dataset.revision = true;
     revisionNumber.value = event.detail.revision;
+    viewingSuggestion.value = Boolean(event.detail.isSuggestion);
     isEditing.value = false;
     isEditingReady.value = false;
   } catch (error) {
@@ -224,6 +366,10 @@ onMounted(() => {
     window.addEventListener("edit-mode-start", handleEditModeStart);
   }
   window.addEventListener("edit-mode-cancel", handleEditModeCancel);
+  window.addEventListener(
+    "inline-suggestion:accept",
+    handleInlineSuggestionAccept as EventListener,
+  );
 
   window.addEventListener("revision:view", handleRevisionView);
   window.addEventListener("revision:close", handleRevisionClose);
@@ -249,6 +395,10 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("edit-mode-start", handleEditModeStart);
   window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
+  window.removeEventListener(
+    "inline-suggestion:accept",
+    handleInlineSuggestionAccept as EventListener,
+  );
   window.removeEventListener("revision:view", handleRevisionView);
   window.removeEventListener("revision:close", handleRevisionClose);
   window.removeEventListener("revisions:toggled", handleSidebarToggle);
@@ -372,11 +522,15 @@ useSync(
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div>
-          <p class="text-sm font-semibold text-amber-900">
-            Viewing Revision {{ revisionNumber }}
+            <p class="text-sm font-semibold text-amber-900">
+            Viewing {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
           </p>
           <p class="my-0! text-xs text-amber-700">
-            This is a historical version of the document. Changes cannot be made.
+            {{
+              viewingSuggestion
+                ? "This suggestion is read-only until it is applied."
+                : "This is a historical version of the document. Changes cannot be made."
+            }}
           </p>
         </div>
       </div>
@@ -428,7 +582,10 @@ useSync(
   ></table-view>
 
   <!-- Editor -->
-  <div v-if="isEditing && !viewingRevision && !props.readonly" :class="['h-full', !isEditingReady && 'opacity-0']">
+  <div
+    v-if="isEditing && !viewingRevision && !props.readonly"
+    :class="['h-full', !isEditingReady && 'opacity-0']"
+  >
     <document-view ref="editorViewEl"></document-view>
   </div>
   

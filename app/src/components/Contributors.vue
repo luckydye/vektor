@@ -32,13 +32,13 @@ const remainingCount = computed(() => {
           marginLeft: index > 0 ? `-18px` : '0',
           zIndex: displayContributors.length - index
         }" :title="contributor.name">
-          <Avatar :user="contributor" />
+          <Avatar size="small" :user="contributor" />
         </div>
         <div v-if="remainingCount > 0"
           class="relative flex items-center justify-center rounded-full bg-primary-100 text-label text-primary-400 font-medium border-2 border-background"
           :style="{
-            width: `36px`,
-            height: `36px`,
+            width: `32px`,
+            height: `32px`,
             marginLeft: `-18px`,
             zIndex: 0
           }">

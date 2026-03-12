@@ -11,7 +11,10 @@ import {
   verifyDocumentRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { listRevisionMetadata, restoreRevision } from "#db/revisions.ts";
+import {
+  listRevisionMetadata,
+  restoreRevision,
+} from "#db/revisions.ts";
 import { Feature } from "#db/acl.ts";
 
 export const GET: APIRoute = (context) =>
@@ -47,7 +50,6 @@ export const POST: APIRoute = (context) =>
 
     const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.request);
     const message = typeof body.message === "string" ? body.message : undefined;
-
     const revision = await restoreRevision(spaceId, documentId, rev, user.id, message);
 
     return jsonResponse({
@@ -57,6 +59,7 @@ export const POST: APIRoute = (context) =>
         rev: revision.rev,
         checksum: revision.checksum,
         parentRev: revision.parentRev,
+        status: revision.status,
         message: revision.message,
         createdAt: revision.createdAt,
         createdBy: revision.createdBy,

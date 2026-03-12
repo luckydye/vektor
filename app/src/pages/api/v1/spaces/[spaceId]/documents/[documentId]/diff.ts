@@ -17,6 +17,7 @@ import {
   getRevisionContent,
   getRevisionMetadata,
 } from "#db/revisions.ts";
+import { prettyPrintHtml } from "#utils/prettyHtml.ts";
 
 async function getRevision(rev: number, spaceId: string, id: string) {
   const metadata = await getRevisionMetadata(spaceId, id, rev);
@@ -63,17 +64,32 @@ export const GET: APIRoute = (context) =>
     }
 
     const revisionContent = await getRevision(rev, spaceId, id);
+    const revisionMetadata = await getRevisionMetadata(spaceId, id, rev);
+    if (!revisionMetadata) {
+      throw notFoundResponse("Revision");
+    }
 
     const document = await getDocument(spaceId, id);
     if (!document) {
       throw notFoundResponse("Document");
     }
 
-    const publishedContent = await getPublishedContent(spaceId, id);
-
-    if (!publishedContent) {
-      throw badRequestResponse("Document has no published content");
+    const compareBaseRev =
+      revisionMetadata.status !== null ? revisionMetadata.parentRev : document.publishedRev;
+    if (!compareBaseRev) {
+      throw badRequestResponse("Document has no comparable base revision");
     }
 
-    return new Response(createPatch(id, revisionContent, publishedContent));
+    const baseContent = await getRevisionContent(spaceId, id, compareBaseRev);
+    if (!baseContent) {
+      throw badRequestResponse("Document has no comparable base content");
+    }
+
+    return new Response(
+      createPatch(
+        id,
+        prettyPrintHtml(baseContent),
+        prettyPrintHtml(revisionContent),
+      ),
+    );
   }, "Failed to compute revision diff");

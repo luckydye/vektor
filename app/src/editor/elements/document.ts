@@ -13,6 +13,7 @@ import type { User } from "../../api/client.ts";
 import Collaboration from "@tiptap/extension-collaboration";
 import { contentExtensions } from "../extensions.ts";
 import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
+import { InlineSuggestions } from "../extensions/InlineSuggestions.ts";
 import type { IndexedDBStore } from "../../utils/storage.ts";
 import { joinPresenceRoom, joinYjsRoom } from "../../utils/sync.ts";
 import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
@@ -290,6 +291,10 @@ function createEditor(
     window.removeEventListener("resize", syncDragHandlePosition, true);
   };
 
+  const isInlineSuggestionElement = (target: EventTarget | null) => {
+    return target instanceof HTMLElement && target.closest(".wiki-inline-suggestion");
+  };
+
   const ensureBlockDropIndicator = () => {
     if (blockDropIndicator) return blockDropIndicator;
 
@@ -330,6 +335,7 @@ function createEditor(
     for (const element of elements) {
       if (!(element instanceof HTMLElement)) continue;
       if (!editor.view.dom.contains(element)) continue;
+      if (element.closest(".wiki-inline-suggestion")) continue;
 
       let current: HTMLElement | null = element;
       while (
@@ -368,11 +374,26 @@ function createEditor(
     indicator.style.opacity = "1";
   };
 
+  const handleEditorMouseMove = (event: MouseEvent) => {
+    if (!isInlineSuggestionElement(event.target)) {
+      return;
+    }
+
+    editor.commands.setMeta("hideDragHandle", true);
+    hideBlockDropIndicator();
+  };
+
   const handleEditorDragOver = (event: DragEvent) => {
+    if (isInlineSuggestionElement(event.target)) {
+      hideBlockDropIndicator();
+      return;
+    }
+
     updateBlockDropIndicator(event);
   };
 
   const cleanupBlockDropIndicator = () => {
+    editor?.view?.dom?.removeEventListener("mousemove", handleEditorMouseMove);
     editor?.view?.dom?.removeEventListener("dragover", handleEditorDragOver);
     editor?.view?.dom?.removeEventListener("drop", hideBlockDropIndicator);
     window.removeEventListener("dragend", hideBlockDropIndicator, true);
@@ -470,6 +491,7 @@ function createEditor(
       }),
 
       ExtensionSuggestions,
+      InlineSuggestions,
 
       Collaboration.configure({
         document: ydoc,
@@ -487,6 +509,7 @@ function createEditor(
     presenceHandle?.update(buildPresenceState());
   });
 
+  editor.view.dom.addEventListener("mousemove", handleEditorMouseMove);
   editor.view.dom.addEventListener("dragover", handleEditorDragOver);
   editor.view.dom.addEventListener("drop", hideBlockDropIndicator);
   window.addEventListener("dragend", hideBlockDropIndicator, { capture: true });
