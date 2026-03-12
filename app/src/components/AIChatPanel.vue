@@ -4,7 +4,10 @@ import { marked } from "marked";
 import { Actions } from "../utils/actions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
-import type { DocumentWithProperties } from "../api/ApiClient.ts";
+import type {
+  DocumentWithProperties,
+  ExtensionJobInfo,
+} from "../api/ApiClient.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
@@ -45,6 +48,19 @@ type ToolCall = {
   id: string;
   type: string;
   function: { name: string; arguments: string };
+};
+
+type OpenRouterTool = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+  };
 };
 
 type ChatMessage = {
@@ -974,6 +990,66 @@ const OPENROUTER_TOOLS = [
   },
 ] as const;
 
+function assertCurrentSpaceId(): string {
+  if (!currentSpaceId.value) throw new Error("No space selected");
+  return currentSpaceId.value;
+}
+
+function getJobToolName(jobId: string): string {
+  if (!/^[a-zA-Z0-9_-]+$/.test(jobId)) {
+    throw new Error(`Unsupported job id for AI tool: ${jobId}`);
+  }
+  return `job_${jobId}`;
+}
+
+function getJobToolInputType(type: string): string {
+  if (type === "file") return "string";
+  if (
+    type === "string" ||
+    type === "number" ||
+    type === "boolean" ||
+    type === "object" ||
+    type === "array" ||
+    type === "integer"
+  ) {
+    return type;
+  }
+  throw new Error(`Unsupported job input type: ${type}`);
+}
+
+function buildJobTool(extensionId: string, extensionName: string, job: ExtensionJobInfo): OpenRouterTool {
+  return {
+    type: "function",
+    function: {
+      name: getJobToolName(job.id),
+      description: `Run the "${job.name}" job from the "${extensionName}" extension (${extensionId}).`,
+      parameters: {
+        type: "object",
+        properties: Object.fromEntries(
+          Object.entries(job.inputs ?? {}).map(([name, field]) => [
+            name,
+            { type: getJobToolInputType(field.type) },
+          ]),
+        ),
+        required: Object.entries(job.inputs ?? {})
+          .filter(([, field]) => field.required)
+          .map(([name]) => name),
+      },
+    },
+  };
+}
+
+async function getOpenRouterTools(): Promise<OpenRouterTool[]> {
+  const spaceId = assertCurrentSpaceId();
+  const { extensions } = await api.extensions.get(spaceId);
+  return [
+    ...OPENROUTER_TOOLS,
+    ...extensions.flatMap((extension) =>
+      (extension.jobs ?? []).map((job) => buildJobTool(extension.id, extension.name, job)),
+    ),
+  ];
+}
+
 async function spawnAndPollAgent(
   prompt: string,
   content: string,
@@ -1157,7 +1233,8 @@ async function executeToolCall(
         args.allowedTools as string[] | undefined,
       );
     default:
-      throw new Error(`Unknown tool: ${name}`);
+      if (!name.startsWith("job_")) throw new Error(`Unknown tool: ${name}`);
+      return api.jobs.run(assertCurrentSpaceId(), name.slice(4), args);
   }
 }
 
@@ -1279,7 +1356,7 @@ async function* parseSSEStream(
 async function fetchStreamingCompletion(
   history: ChatMessage[],
   onDelta: (text: string) => void,
-  tools?: typeof OPENROUTER_TOOLS,
+  tools?: readonly OpenRouterTool[],
   signal?: AbortSignal,
 ): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
   const isOllama = selectedProvider.value === "ollama";
@@ -1491,6 +1568,7 @@ async function sendWithFetch(message: string, assistantMessageIndex: number) {
     return;
   }
 
+  const openRouterTools = await getOpenRouterTools();
   let completed = false;
   let currentAssistantIdx = assistantMessageIndex;
   for (let i = 0; i < MAX_AGENT_STEPS; i++) {
@@ -1498,7 +1576,7 @@ async function sendWithFetch(message: string, assistantMessageIndex: number) {
     const { content, reasoning, toolCalls } = await fetchStreamingCompletion(
       conversationHistory.value,
       streamTo(currentAssistantIdx),
-      OPENROUTER_TOOLS,
+      openRouterTools,
       abortController?.signal,
     );
 
