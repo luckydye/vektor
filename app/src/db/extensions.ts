@@ -30,17 +30,6 @@ export interface JobDefinition {
   outputs?: Record<string, JobIOField>;
 }
 
-export interface DataSourceDefinition {
-  id: string;
-  name: string;
-  description?: string;
-  /** Job id defined in manifest.jobs */
-  jobId: string;
-  inputs?: Record<string, JobIOField>;
-  /** Optional default cache TTL hint for consumers */
-  cacheTtlMs?: number;
-}
-
 export interface ExtensionManifest {
   id: string;
   name: string;
@@ -52,7 +41,6 @@ export interface ExtensionManifest {
   };
   routes?: ExtensionRoute[];
   jobs?: JobDefinition[];
-  dataSources?: DataSourceDefinition[];
 }
 
 export interface Extension {
@@ -309,7 +297,6 @@ function extractManifest(zipBuffer: Buffer): ExtensionManifest {
     }
   }
 
-  const jobIds = new Set<string>();
   if (manifest.jobs !== undefined) {
     if (!Array.isArray(manifest.jobs)) {
       throw new Error("Extension manifest 'jobs' must be an array");
@@ -325,47 +312,6 @@ function extractManifest(zipBuffer: Buffer): ExtensionManifest {
         throw new Error(
           `Extension manifest job '${job.id}' is missing required 'entry' field`,
         );
-      }
-      jobIds.add(job.id);
-    }
-  }
-
-  if (manifest.dataSources !== undefined) {
-    if (!Array.isArray(manifest.dataSources)) {
-      throw new Error("Extension manifest 'dataSources' must be an array");
-    }
-    const ids = new Set<string>();
-    for (const ds of manifest.dataSources) {
-      if (!ds || typeof ds !== "object") {
-        throw new Error("Extension manifest contains invalid data source definition");
-      }
-      if (!ds.id || typeof ds.id !== "string") {
-        throw new Error("Extension data source is missing required 'id' field");
-      }
-      if (ids.has(ds.id)) {
-        throw new Error(`Extension data source id '${ds.id}' is duplicated`);
-      }
-      ids.add(ds.id);
-      if (!ds.name || typeof ds.name !== "string") {
-        throw new Error(
-          `Extension data source '${ds.id}' is missing required 'name' field`,
-        );
-      }
-      if (!ds.jobId || typeof ds.jobId !== "string") {
-        throw new Error(
-          `Extension data source '${ds.id}' is missing required 'jobId' field`,
-        );
-      }
-      if (!jobIds.has(ds.jobId)) {
-        throw new Error(
-          `Extension data source '${ds.id}' references unknown jobId '${ds.jobId}'`,
-        );
-      }
-      if (
-        ds.cacheTtlMs !== undefined &&
-        (typeof ds.cacheTtlMs !== "number" || ds.cacheTtlMs < 0)
-      ) {
-        throw new Error(`Extension data source '${ds.id}' has invalid 'cacheTtlMs'`);
       }
     }
   }

@@ -89,7 +89,6 @@ Most errors are JSON:
 | GET | `/spaces/:spaceId/extensions/:extensionId` | Returns extension metadata. |
 | DELETE | `/spaces/:spaceId/extensions/:extensionId` | Deletes an extension. |
 | GET | `/spaces/:spaceId/extensions/:extensionId/assets/*` | Serves extension asset files from package zip. |
-| POST | `/spaces/:spaceId/extensions/:extensionId/data-sources/:dataSourceId/query` | Runs a data-source job and returns outputs/logs. |
 
 ---
 
@@ -719,13 +718,3 @@ Most errors are JSON:
 - Auth: session + extension access.
 - Returns:
 - Raw asset file from extension package zip with inferred MIME type.
-
-## `POST /spaces/:spaceId/extensions/:extensionId/data-sources/:dataSourceId/query`
-
-- Auth: session + extension access.
-- Body:
-- optional `{ inputs: Record<string, unknown> }`.
-- Behavior:
-- resolves `dataSourceId` -> job and runs it.
-- Returns:
-- `200` `{ outputs, logs }`.

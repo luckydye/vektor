@@ -41,7 +41,6 @@ export const GET: APIRoute = (context) =>
       entries: ext.manifest.entries,
       routes: ext.manifest.routes,
       jobs: ext.manifest.jobs,
-      dataSources: ext.manifest.dataSources,
       createdAt: ext.createdAt.toISOString(),
       updatedAt: ext.updatedAt.toISOString(),
       createdBy: ext.createdBy,

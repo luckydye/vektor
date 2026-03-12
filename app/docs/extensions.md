@@ -453,41 +453,6 @@ Create a ZIP file containing:
 
 Upload via the Wiki extensions management UI.
 
-## External Data Sources
-
-Extensions can expose queryable external data sources in `manifest.json` and back them with jobs.
-
-```json
-{
-  "jobs": [
-    {
-      "id": "gitlab-project-issues",
-      "name": "GitLab Project Issues",
-      "entry": "dist/jobs/gitlab-project-issues.js"
-    }
-  ],
-  "dataSources": [
-    {
-      "id": "project-issues",
-      "name": "Project Issues",
-      "jobId": "gitlab-project-issues",
-      "cacheTtlMs": 300000
-    }
-  ]
-}
-```
-
-Query a data source from extension code:
-
-```ts
-const result = await ctx.api.extensions.dataSources.query(
-  ctx.spaceId,
-  ctx.extensionId,
-  "project-issues",
-  { projectId: "gitlab-org/gitlab" },
-);
-```
-
 ## Job Disk Cache
 
 Jobs now have optional disk cache helpers available as a runtime global:

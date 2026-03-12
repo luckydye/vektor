@@ -192,15 +192,6 @@ export interface ExtensionJobInfo {
   outputs?: Record<string, ExtensionJobField>;
 }
 
-export interface ExtensionDataSourceInfo {
-  id: string;
-  name: string;
-  description?: string;
-  jobId: string;
-  inputs?: Record<string, ExtensionJobField>;
-  cacheTtlMs?: number;
-}
-
 export interface ExtensionInfo {
   id: string;
   name: string;
@@ -212,7 +203,6 @@ export interface ExtensionInfo {
   };
   routes?: ExtensionRoute[];
   jobs?: ExtensionJobInfo[];
-  dataSources?: ExtensionDataSourceInfo[];
   createdAt: Date | string;
   updatedAt: Date | string;
   createdBy: string;
@@ -1515,21 +1505,6 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}`,
       );
-    },
-
-    dataSources: {
-      query: async (
-        spaceId: string,
-        extensionId: string,
-        dataSourceId: string,
-        inputs: Record<string, unknown> = {},
-      ): Promise<{ outputs: Record<string, unknown>; logs: string[] }> => {
-        return await this.apiPost<{ outputs: Record<string, unknown>; logs: string[] }>(
-          this.baseUrl,
-          `/api/v1/spaces/${spaceId}/extensions/${extensionId}/data-sources/${dataSourceId}/query`,
-          { inputs },
-        );
-      },
     },
   };
 

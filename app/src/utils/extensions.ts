@@ -79,14 +79,6 @@ export type ExtensionInfo = {
     inputs?: Record<string, { type: string; required?: boolean }>;
     outputs?: Record<string, { type: string; required?: boolean }>;
   }>;
-  dataSources?: Array<{
-    id: string;
-    name: string;
-    description?: string;
-    jobId: string;
-    inputs?: Record<string, { type: string; required?: boolean }>;
-    cacheTtlMs?: number;
-  }>;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
