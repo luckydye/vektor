@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { readFile } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { requireParam, withApiErrorHandling } from "#db/api.ts";
 import {
@@ -84,6 +84,44 @@ export const GET: APIRoute = (context) =>
       onError: (error) => {
         console.error("File serve error:", error);
         return new Response("Failed to serve file", { status: 500 });
+      },
+    },
+  );
+
+export const DELETE: APIRoute = (context) =>
+  withApiErrorHandling(
+    async () => {
+      const spaceId = requireParam(context.params, "spaceId");
+      const path = requireParam(context.params, "path");
+
+      await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+
+      if (!isSafeUploadPath(path)) {
+        return new Response("Invalid path", { status: 400 });
+      }
+
+      const uploadsRoot = getUploadsRoot(spaceId);
+      const filePath = resolve(uploadsRoot, path);
+      if (!isWithinUploadsRoot(spaceId, filePath)) {
+        return new Response("Invalid path", { status: 400 });
+      }
+
+      try {
+        await unlink(filePath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return new Response("File not found", { status: 404 });
+        }
+        throw error;
+      }
+
+      return new Response(null, { status: 204 });
+    },
+    {
+      fallbackMessage: "Failed to delete file",
+      onError: (error) => {
+        console.error("File delete error:", error);
+        return new Response("Failed to delete file", { status: 500 });
       },
     },
   );
