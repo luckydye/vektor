@@ -47,14 +47,10 @@ export const GET: APIRoute = (context) =>
       return jsonResponse({ runId, status: run.status });
     }
 
-    // List all active (pending/running) runs for this space
-    const activeRuns = await Promise.all(
+    // List all runs for this space, newest first
+    const allRuns = await Promise.all(
       [...runs.entries()]
-        .filter(
-          ([, run]) =>
-            run.spaceId === spaceId &&
-            (run.status === "pending" || run.status === "running"),
-        )
+        .filter(([, run]) => run.spaceId === spaceId)
         .map(async ([runId, run]) => {
           const doc = await getDocument(spaceId, run.documentId);
           return {
@@ -67,7 +63,7 @@ export const GET: APIRoute = (context) =>
         }),
     );
 
-    return jsonResponse({ runs: activeRuns });
+    return jsonResponse({ runs: allRuns });
   }, "Failed to get runs");
 
 /**
