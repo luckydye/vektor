@@ -49,6 +49,7 @@ export async function executeWorkflow(
   options?: {
     traceparent?: string | null;
     tracestate?: string | null;
+    runtimeInputs?: Record<string, unknown>;
   },
 ): Promise<void> {
   const workflowStart = Date.now();
@@ -154,9 +155,10 @@ export async function executeWorkflow(
           continue;
         }
 
-        // Build resolved inputs: inherited outputs from depends nodes, then explicit inputs override.
+        // Build resolved inputs: runtime inputs as baseline, then inherited dependency outputs,
+        // then explicit node inputs (highest priority).
         // JobOutputValue typed objects are unwrapped to their raw scalar before passing to the next job.
-        const resolvedInputs: Record<string, unknown> = {};
+        const resolvedInputs: Record<string, unknown> = { ...(options?.runtimeInputs ?? {}) };
         for (const depId of nodeDef.depends) {
           for (const [key, val] of Object.entries(nodeOutputs.get(depId) ?? {})) {
             const typed = val as { type?: string; url?: string; value?: unknown };

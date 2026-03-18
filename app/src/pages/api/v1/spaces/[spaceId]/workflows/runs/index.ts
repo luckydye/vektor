@@ -86,8 +86,9 @@ export const POST: APIRoute = (context) =>
         documentId?: string;
         fromRunId?: string;
         fromNodeId?: string;
+        inputs?: Record<string, unknown>;
       }>(context.request);
-      const { documentId, fromRunId, fromNodeId } = body;
+      const { documentId, fromRunId, fromNodeId, inputs } = body;
       if (documentId) span?.setAttribute("wiki.document.id", documentId);
 
       if (!documentId) return badRequestResponse("documentId is required");
@@ -193,6 +194,7 @@ export const POST: APIRoute = (context) =>
       executeWorkflow(spaceId, runId, definition, preSeeded, {
         traceparent: traceHeaders.traceparent,
         tracestate: traceHeaders.tracestate,
+        runtimeInputs: inputs,
       }).catch(() => {});
 
       return jsonResponse({ runId }, 202);

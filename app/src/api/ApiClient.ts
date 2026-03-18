@@ -1588,11 +1588,15 @@ export class ApiClient {
     /**
      * Start a workflow run for a workflow document
      */
-    startRun: async (spaceId: string, documentId: string): Promise<{ runId: string }> => {
+    startRun: async (
+      spaceId: string,
+      documentId: string,
+      inputs?: Record<string, unknown>,
+    ): Promise<{ runId: string }> => {
       return await this.apiPost<{ runId: string }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/workflows/runs`,
-        { documentId },
+        { documentId, inputs },
       );
     },
 
