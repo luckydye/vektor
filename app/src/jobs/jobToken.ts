@@ -21,7 +21,7 @@ function safeSigEquals(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
-/** Create an HMAC job token scoped to a spaceId and userId. Valid for 1 hour. */
+/** Create an HMAC job token scoped to a spaceId and userId. Valid for 24 hours. */
 export function createJobToken(
   spaceId: string,
   timestamp: string,
@@ -45,7 +45,7 @@ export function parseJobToken(token: string, spaceId: string): ParsedJobToken | 
   const ts = parseInt(timestamp, 10);
   if (!Number.isFinite(ts)) return null;
   const age = Date.now() - ts;
-  if (age < 0 || age > 3_600_000) return null;
+  if (age < 0 || age > 86_400_000) return null;
 
   // Legacy token format: <timestamp>.<sig>
   if (parts.length === 2) {
