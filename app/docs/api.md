@@ -324,7 +324,7 @@ Most errors are JSON:
 - `filename` (optional)
 - `documentId` (optional)
 - Rules:
-- Max 100MB.
+- Max 250MB.
 - User auth: allowlist file types/extensions enforced.
 - Job auth: type allowlist bypassed.
 - Returns:
