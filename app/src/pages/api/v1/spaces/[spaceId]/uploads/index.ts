@@ -60,7 +60,7 @@ const ALLOWED_EXTENSIONS = [
   "txt",
   "json",
 ];
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB for documents
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB for documents
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(
