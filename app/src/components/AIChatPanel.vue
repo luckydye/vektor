@@ -2379,18 +2379,19 @@ onUnmounted(() => {
 
 details[open] .details-chevron { transform: rotate(90deg); }
 
-.markdown-content p { margin: 0.25rem 0; }
-.markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4 { margin: 0.5rem 0; font-weight: 600; }
-.markdown-content ul, .markdown-content ol { margin: 0.25rem 0; padding-left: 1.25rem; }
-.markdown-content li { margin: 0.125rem 0; }
-.markdown-content code {
+.markdown-content :deep(p) { margin: 0.25rem 0; }
+.markdown-content :deep(h1), .markdown-content :deep(h2), .markdown-content :deep(h3), .markdown-content :deep(h4) { margin: 0.5rem 0; font-weight: 600; }
+.markdown-content :deep(ul) { margin: 0.25rem 0; padding-left: 1.25rem; list-style-type: disc; }
+.markdown-content :deep(ol) { margin: 0.25rem 0; padding-left: 1.25rem; list-style-type: decimal; }
+.markdown-content :deep(li) { margin: 0.125rem 0; }
+.markdown-content :deep(code) {
   background: var(--color-primary-50);
   color: var(--color-primary-700);
   padding: 0.125rem 0.25rem;
   border-radius: 0.25rem;
   font-size: 0.875em;
 }
-.markdown-content pre {
+.markdown-content :deep(pre) {
   background: var(--color-neutral-900);
   color: var(--color-neutral-100);
   padding: 0.75rem;
@@ -2398,9 +2399,9 @@ details[open] .details-chevron { transform: rotate(90deg); }
   overflow-x: auto;
   margin: 0.5rem 0;
 }
-.markdown-content pre code { background: transparent; color: inherit; padding: 0; }
-.markdown-content a { color: var(--color-primary-600); text-decoration: underline; }
-.markdown-content blockquote { border-left: 3px solid var(--color-neutral-200); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-neutral-500); }
-.markdown-content strong { font-weight: 600; }
-.markdown-content hr { margin: 0.75rem 0; border-color: var(--color-neutral-200); }
+.markdown-content :deep(pre) :deep(code) { background: transparent; color: inherit; padding: 0; }
+.markdown-content :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
+.markdown-content :deep(blockquote) { border-left: 3px solid var(--color-neutral-200); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-neutral-500); }
+.markdown-content :deep(strong) { font-weight: 600; }
+.markdown-content :deep(hr) { margin: 0.75rem 0; border-color: var(--color-neutral-200); }
 </style>

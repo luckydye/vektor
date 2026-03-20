@@ -148,6 +148,7 @@ watch([saveStatus, saveError], () => {
 
 function initEditor() {
   if (!editorViewEl.value) return;
+  if (!user.value) return;
 
   window.dispatchEvent(
     new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }),
@@ -276,6 +277,12 @@ function handleInlineSuggestionAccept(
 watch(isEditing, (editing) => {
   if (editing && !viewingRevision.value) {
     // Wait for the v-if to render the document-view element
+    requestAnimationFrame(initEditor);
+  }
+});
+
+watch(user, (newUser) => {
+  if (newUser && isEditing.value && !isEditingReady.value && editorViewEl.value) {
     requestAnimationFrame(initEditor);
   }
 });
