@@ -1,5 +1,8 @@
 {
   "name": "@wiki/cli",
   "type": "module",
-  "private": true
+  "private": true,
+  "bin": {
+    "vektor": "./src/index.ts"
+  }
 }

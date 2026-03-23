@@ -1,0 +1,11 @@
+{
+  "agent": {
+    "extensionId": "workflow-builder",
+    "jobId": "agent",
+    "inputs": [
+      { "key": "prompt", "value": "You are a helpful assistant. Answer clearly and concisely." },
+      { "key": "content", "value": "What is the capital of France?" }
+    ],
+    "depends": []
+  }
+}
