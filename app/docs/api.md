@@ -22,6 +22,7 @@ Most errors are JSON:
 
 | Method | Path | What it does |
 |---|---|---|
+| POST | `/chat/acp` | Runs one prompt turn through a configured ACP agent and returns a chat-completion-like JSON response. |
 | GET | `/url-metadata` | Returns link preview metadata for internal docs or external URLs. |
 | POST | `/chat/completions` | Proxies chat-completion requests to OpenRouter with a fixed model. |
 | GET | `/users` | Lists users or fetches a single user by `id` query param. |
@@ -126,6 +127,26 @@ Most errors are JSON:
 - Server forces `model = "qwen/qwen3.5-397b-a17b"`.
 - Returns:
 - Proxied upstream status/body (supports streaming).
+
+---
+
+## `POST /chat/acp`
+
+- Auth:
+- User session OR job headers `X-Job-Token` + `X-Space-Id`.
+- Config:
+- Requires `WIKI_ACP_COMMAND` to be set, for example `opencode acp`.
+- Body:
+- Chat-completions-like JSON with:
+- `messages` (required): array of `{ role, content }`
+- `content` must be a string or an array of text parts only
+- `stream` must be omitted or `false`
+- Behavior:
+- Flattens the provided messages into a single prompt transcript.
+- Runs one ACP session/prompt turn against the configured agent subprocess.
+- Automatically selects an `allow_once` ACP permission option when offered.
+- Returns:
+- `200` with an OpenAI-style chat completion envelope and an extra `acp.stopReason` field.
 
 ---
 
