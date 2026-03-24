@@ -129,6 +129,7 @@ export const POST: APIRoute = (context) =>
     },
     {
       fallbackMessage: "ACP request failed",
-      onError: () => errorResponse("ACP request failed", 500),
+      onError: (error) =>
+        errorResponse(error instanceof Error ? error.message : "ACP request failed", 500),
     },
   );

@@ -1,5 +1,9 @@
 import { once } from "node:events";
 import { spawn } from "node:child_process";
+import { access, copyFile, mkdir } from "node:fs/promises";
+import { constants } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 type JsonRpcId = number;
 
@@ -77,6 +81,43 @@ function getPreferredPermissionOptionId(options: AcpPermissionOption[]): string 
   throw new Error("ACP agent requested permission without an allow option");
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function prepareAcpRuntimeHome(cwd: string): Promise<string> {
+  const dataHome = join(cwd, ".opencode-runtime");
+  const opencodeHome = join(dataHome, "opencode");
+  await mkdir(opencodeHome, { recursive: true });
+
+  const globalAuthPath = join(homedir(), ".local", "share", "opencode", "auth.json");
+  const runtimeAuthPath = join(opencodeHome, "auth.json");
+  if ((await pathExists(globalAuthPath)) && !(await pathExists(runtimeAuthPath))) {
+    await copyFile(globalAuthPath, runtimeAuthPath);
+  }
+
+  return dataHome;
+}
+
+function normalizeAcpStartupError(message: string): Error {
+  if (message.includes("attempt to write a readonly database")) {
+    return new Error(
+      "OpenCode ACP could not write its runtime database. Set a writable runtime home or check sandbox permissions.",
+    );
+  }
+  if (message.includes("Failed to start server on port")) {
+    return new Error(
+      "OpenCode ACP could not start its local server. This environment likely blocks local listen() calls.",
+    );
+  }
+  return new Error(message);
+}
+
 export async function runAcpPrompt(options: {
   command: string;
   cwd: string;
@@ -85,9 +126,17 @@ export async function runAcpPrompt(options: {
 }): Promise<AcpPromptResult> {
   const { command, cwd, prompt, signal } = options;
   const { bin, args } = parseAcpCommand(command);
+  const dataHome = await prepareAcpRuntimeHome(cwd);
   const child = spawn(bin, args, {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      XDG_DATA_HOME: dataHome,
+      OPENCODE_DISABLE_MODELS_FETCH: "1",
+      OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: "1",
+      OPENCODE_CLIENT: "vektor-api",
+    },
   });
 
   const pending = new Map<
@@ -246,7 +295,9 @@ export async function runAcpPrompt(options: {
     closed = true;
     const stderrText = stderr.join("").trim();
     const suffix = stderrText ? `: ${stderrText}` : "";
-    failPending(new Error(`ACP process exited with code ${code ?? "unknown"}${suffix}`));
+    failPending(
+      normalizeAcpStartupError(`ACP process exited with code ${code ?? "unknown"}${suffix}`),
+    );
   });
 
   const abort = () => {
