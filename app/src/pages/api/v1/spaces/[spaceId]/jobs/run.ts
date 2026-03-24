@@ -138,10 +138,9 @@ export const POST: APIRoute = (context) =>
         },
       },
       onError: (error) => {
-        appLogger.error("Job run error", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return errorResponse("Job run failed", 500);
+        const message = error instanceof Error ? error.message : String(error);
+        appLogger.error("Job run error", { error: message });
+        return errorResponse(message, 500);
       },
     },
   );
