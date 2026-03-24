@@ -9,8 +9,6 @@ import {
   notFoundResponse,
   parseJsonBody,
   requireParam,
-  requireUser,
-  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
@@ -34,9 +32,8 @@ import { appLogger } from "#observability/logger.ts";
  */
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
     const documentId = context.url.searchParams.get("documentId");
 
