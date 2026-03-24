@@ -249,3 +249,13 @@ export const accessToken = sqliteTable("access_token", {
 
 export type AccessToken = typeof accessToken.$inferSelect;
 export type AccessTokenInsert = typeof accessToken.$inferInsert;
+
+export const aiChatSession = sqliteTable("ai_chat_session", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  messages: text("messages").notNull(),
+  conversationHistory: text("conversation_history").notNull(),
+});

@@ -1,5 +1,3 @@
-import { IndexedDBStore } from "../utils/storage.ts";
-
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content?: string | null;
@@ -40,35 +38,43 @@ export type ChatSession = {
   conversationHistory: ChatMessage[];
 };
 
-const store = new IndexedDBStore<ChatSession>({
-  dbName: "wiki-chat",
-  storeName: "sessions",
-  keyPath: "id",
-  version: 1,
-  indexes: [
-    { name: "spaceId", keyPath: "spaceId" },
-    { name: "updatedAt", keyPath: "updatedAt" },
-  ],
-});
+function getSessionPath(spaceId: string, sessionId?: string): string {
+  const encodedSpaceId = encodeURIComponent(spaceId);
+  if (!sessionId) {
+    return `/api/v1/spaces/${encodedSpaceId}/ai-chat/sessions`;
+  }
+  return `/api/v1/spaces/${encodedSpaceId}/ai-chat/sessions/${encodeURIComponent(sessionId)}`;
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    throw new Error(`AI chat sessions request failed: ${await response.text()}`);
+  }
+  return (await response.json()) as T;
+}
 
 export async function getSessionsForSpace(spaceId: string): Promise<ChatSession[]> {
-  const results = await store.getByIndex("spaceId", spaceId, "prev");
-  const normalized = results.map((session) => ({
-    ...session,
-    messages: Array.isArray(session.messages) ? session.messages : [],
-    conversationHistory: Array.isArray(session.conversationHistory)
-      ? session.conversationHistory
-      : [],
-  }));
-  return normalized.sort((a, b) => b.updatedAt - a.updatedAt);
+  const response = await fetch(getSessionPath(spaceId), {
+    credentials: "same-origin",
+  });
+  const { sessions } = await parseResponse<{ sessions: ChatSession[] }>(response);
+  return sessions;
 }
 
 export async function saveSession(session: ChatSession): Promise<void> {
-  // Persist a plain JSON copy so Vue reactive proxies never reach IndexedDB.
-  const plainSession = JSON.parse(JSON.stringify(session)) as ChatSession;
-  await store.put(plainSession);
+  const response = await fetch(getSessionPath(session.spaceId, session.id), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(session),
+  });
+  await parseResponse<{ session: ChatSession }>(response);
 }
 
-export async function deleteSession(id: string): Promise<void> {
-  await store.delete(id);
+export async function deleteSession(spaceId: string, id: string): Promise<void> {
+  const response = await fetch(getSessionPath(spaceId, id), {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  await parseResponse<{ success: true }>(response);
 }

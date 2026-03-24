@@ -1366,14 +1366,16 @@ async function persistSession() {
   if (!currentSessionId.value) return;
   const session = sessions.value.find((s) => s.id === currentSessionId.value);
   if (!session) return;
-  (session as any).messages = messages.value;
-  (session as any).conversationHistory = conversationHistory.value;
+  session.messages = messages.value;
+  session.conversationHistory = conversationHistory.value;
   session.updatedAt = Date.now();
   await saveSession(session);
 }
 
 async function removeSession(id: string) {
-  await deleteSession(id);
+  const session = sessions.value.find((item) => item.id === id);
+  if (!session) return;
+  await deleteSession(session.spaceId, id);
   sessions.value = sessions.value.filter((s) => s.id !== id);
   if (currentSessionId.value === id) {
     if (sessions.value.length > 0) {

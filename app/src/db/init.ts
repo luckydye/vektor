@@ -77,6 +77,9 @@ export async function prepareSpaceDb(spaceId: string) {
   const accessTokenSQL = generateCreateTableSQL(spaceSchema.accessToken);
   await spaceDb.run(sql.raw(accessTokenSQL));
 
+  const aiChatSessionSQL = generateCreateTableSQL(spaceSchema.aiChatSession);
+  await spaceDb.run(sql.raw(aiChatSessionSQL));
+
   const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
   await spaceDb.run(sql.raw(spaceSecretSQL));
   const oauthIntegrationSQL = generateCreateTableSQL(spaceSchema.oauthIntegration);
