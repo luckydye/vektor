@@ -10,6 +10,7 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getRun, cancelRun } from "../../../../../../../jobs/runStore.ts";
 import type { WorkflowDefinition } from "../../../../../../../jobs/workflow.ts";
 
@@ -64,11 +65,10 @@ async function getWorkflowOutput(spaceId: string, documentId: string, nodes: Rec
  */
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const runId = requireParam(context.params, "runId");
 
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
     const run = getRun(runId);
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
