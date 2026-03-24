@@ -9,10 +9,9 @@ import {
   notFoundResponse,
   parseJsonBody,
   requireParam,
-  requireUser,
-  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import {
   createRun,
   getRun,
@@ -74,9 +73,9 @@ export const GET: APIRoute = (context) =>
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async (span) => {
-      const user = requireUser(context);
       const spaceId = requireParam(context.params, "spaceId");
-      await verifySpaceRole(spaceId, user.id, "editor");
+      const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+      const initiatedByUserId = auth.type === "user" ? auth.user.id : auth.userId;
 
       const body = await parseJsonBody<{
         documentId?: string;
@@ -183,7 +182,7 @@ export const POST: APIRoute = (context) =>
         }
       }
 
-      const runId = createRun(spaceId, documentId, Object.keys(definition), user.id);
+      const runId = createRun(spaceId, documentId, Object.keys(definition), initiatedByUserId);
       const traceHeaders = activeTraceHeaders();
 
       // Fire and forget — errors are recorded in run state
