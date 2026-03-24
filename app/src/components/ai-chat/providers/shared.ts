@@ -66,6 +66,11 @@ export async function fetchStreamingCompletion(options: {
   const toolCallsMap = new Map<number, ToolCall>();
 
   for await (const chunk of parseSSEStream(response.body)) {
+    const error = chunk.error;
+    if (typeof error === "string" && error) {
+      throw new Error(error);
+    }
+
     const delta = (chunk as any).choices?.[0]?.delta;
     if (!delta) continue;
 

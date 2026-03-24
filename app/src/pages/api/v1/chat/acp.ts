@@ -89,6 +89,117 @@ function createCompletionResponse(content: string, stopReason: string): Response
   });
 }
 
+function createChunkPayload(options: {
+  id: string;
+  created: number;
+  content?: string;
+  finishReason?: string | null;
+  stopReason?: string;
+  role?: "assistant";
+}): Record<string, unknown> {
+  const delta: Record<string, string> = {};
+  if (options.role) {
+    delta.role = options.role;
+  }
+  if (options.content) {
+    delta.content = options.content;
+  }
+
+  const payload: Record<string, unknown> = {
+    id: options.id,
+    object: "chat.completion.chunk",
+    created: options.created,
+    model: "acp-configured-agent",
+    choices: [
+      {
+        index: 0,
+        delta,
+        finish_reason: options.finishReason ?? null,
+      },
+    ],
+  };
+
+  if (options.stopReason) {
+    payload.acp = {
+      stopReason: options.stopReason,
+    };
+  }
+
+  return payload;
+}
+
+function createStreamingResponse(options: {
+  command: string;
+  cwd: string;
+  prompt: string;
+  signal?: AbortSignal;
+}): Response {
+  const encoder = new TextEncoder();
+  const id = `chatcmpl_${crypto.randomUUID()}`;
+  const created = Math.floor(Date.now() / 1000);
+
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        const send = (payload: Record<string, unknown> | "[DONE]") => {
+          const data =
+            payload === "[DONE]"
+              ? "data: [DONE]\n\n"
+              : `data: ${JSON.stringify(payload)}\n\n`;
+          controller.enqueue(encoder.encode(data));
+        };
+
+        try {
+          send(
+            createChunkPayload({
+              id,
+              created,
+              role: "assistant",
+            }),
+          );
+
+          const result = await runAcpPrompt({
+            ...options,
+            onChunk: (content) => {
+              send(
+                createChunkPayload({
+                  id,
+                  created,
+                  content,
+                }),
+              );
+            },
+          });
+
+          send(
+            createChunkPayload({
+              id,
+              created,
+              finishReason: "stop",
+              stopReason: result.stopReason,
+            }),
+          );
+          send("[DONE]");
+        } catch (error) {
+          send({
+            error: error instanceof Error ? error.message : "ACP request failed",
+          });
+          send("[DONE]");
+        } finally {
+          controller.close();
+        }
+      },
+    }),
+    {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    },
+  );
+}
+
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
@@ -110,14 +221,20 @@ export const POST: APIRoute = (context) =>
         stream?: boolean;
       }>(context.request);
 
-      if (body.stream) {
-        return badRequestResponse("ACP streaming is not implemented");
-      }
       if (!Array.isArray(body.messages)) {
         return badRequestResponse("messages is required");
       }
 
       const prompt = buildPrompt(body.messages);
+      if (body.stream) {
+        return createStreamingResponse({
+          command: acpCommand,
+          cwd: getRepoRoot(),
+          prompt,
+          signal: context.request.signal,
+        });
+      }
+
       const result = await runAcpPrompt({
         command: acpCommand,
         cwd: getRepoRoot(),

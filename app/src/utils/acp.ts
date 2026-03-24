@@ -123,8 +123,9 @@ export async function runAcpPrompt(options: {
   cwd: string;
   prompt: string;
   signal?: AbortSignal;
+  onChunk?: (chunk: string) => void | Promise<void>;
 }): Promise<AcpPromptResult> {
-  const { command, cwd, prompt, signal } = options;
+  const { command, cwd, prompt, signal, onChunk } = options;
   const { bin, args } = parseAcpCommand(command);
   const dataHome = await prepareAcpRuntimeHome(cwd);
   const child = spawn(bin, args, {
@@ -151,6 +152,7 @@ export async function runAcpPrompt(options: {
   let nextId = 0;
   let stdoutBuffer = "";
   let closed = false;
+  let outputQueue = Promise.resolve();
 
   const failPending = (error: Error) => {
     for (const { reject } of pending.values()) {
@@ -206,6 +208,7 @@ export async function runAcpPrompt(options: {
           typeof update.content.text === "string"
         ) {
           agentChunks.push(update.content.text);
+          await onChunk?.(update.content.text);
         }
         return;
       }
@@ -257,27 +260,32 @@ export async function runAcpPrompt(options: {
     stdoutBuffer += chunk;
     const lines = stdoutBuffer.split("\n");
     stdoutBuffer = lines.pop() ?? "";
-    void (async () => {
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(trimmed);
-        } catch {
-          failPending(new Error("ACP process emitted invalid JSON"));
-          closeChild();
-          return;
+    outputQueue = outputQueue
+      .then(async () => {
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(trimmed);
+          } catch {
+            failPending(new Error("ACP process emitted invalid JSON"));
+            closeChild();
+            return;
+          }
+          try {
+            await handleMessage(parsed);
+          } catch (error) {
+            failPending(error instanceof Error ? error : new Error(String(error)));
+            closeChild();
+            return;
+          }
         }
-        try {
-          await handleMessage(parsed);
-        } catch (error) {
-          failPending(error instanceof Error ? error : new Error(String(error)));
-          closeChild();
-          return;
-        }
-      }
-    })();
+      })
+      .catch((error) => {
+        failPending(error instanceof Error ? error : new Error(String(error)));
+        closeChild();
+      });
   });
 
   child.stderr.setEncoding("utf8");
@@ -330,6 +338,7 @@ export async function runAcpPrompt(options: {
       sessionId,
       prompt: [{ type: "text", text: prompt }],
     })) as { stopReason?: string } | null;
+    await outputQueue;
 
     const stopReason = promptResult?.stopReason;
     if (!stopReason) {
