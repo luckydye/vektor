@@ -1,29 +1,5 @@
 import type { ChatMessage, OpenRouterTool, ToolCall } from "../types.ts";
 
-const TOOL_REGEX = /```tool\n([\s\S]*?)\n```/g;
-
-export function extractToolCalls(
-  content: string,
-): Array<{ name: string; args: Record<string, unknown> }> {
-  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
-  const matches = content.matchAll(TOOL_REGEX);
-  for (const match of matches) {
-    try {
-      const parsed = JSON.parse(match[1]);
-      if (parsed.name && parsed.args) {
-        calls.push(parsed);
-      }
-    } catch {
-      // Invalid JSON, skip
-    }
-  }
-  return calls;
-}
-
-export function removeToolCalls(content: string): string {
-  return content.replace(TOOL_REGEX, "").trim();
-}
-
 export async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,
 ): AsyncGenerator<Record<string, unknown>> {

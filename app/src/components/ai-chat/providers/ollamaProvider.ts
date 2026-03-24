@@ -1,4 +1,4 @@
-import { extractToolCalls, fetchStreamingCompletion, removeToolCalls } from "./shared.ts";
+import { fetchStreamingCompletion } from "./shared.ts";
 import type { AIChatAppProvider, ProviderConfig } from "../types.ts";
 
 function getLabel(config: ProviderConfig) {
@@ -14,73 +14,90 @@ export const ollamaProvider: AIChatAppProvider = {
   },
   getLabel,
   buildSystemPrompt: (context) =>
-    `${context.systemPrompt}\n\nCurrent context:\n- spaceId: ${context.spaceId}\n- documentId: ${context.documentId}\n\n${context.currentDocumentSystemPrompt}`,
+    `${context.systemPrompt}\n\nIMPORTANT: Use native function tool calls via the API tool_calls field. Do not emit \`\`\`tool blocks.\n\nCurrent context:\n- spaceId: ${context.spaceId}\n- documentId: ${context.documentId}\n\n${context.currentDocumentSystemPrompt}`,
   send: async (context) => {
+    const tools = await context.getOpenRouterTools();
     let completed = false;
+    let currentAssistantIdx = context.assistantMessageIndex;
 
     for (let i = 0; i < context.maxAgentSteps; i++) {
-      context.setAssistantContent(context.assistantMessageIndex, "");
-      const { content, reasoning } = await fetchStreamingCompletion({
+      context.setAssistantContent(currentAssistantIdx, "");
+      const { content, reasoning, toolCalls } = await fetchStreamingCompletion({
         url: `${context.config.ollamaBaseUrl.replace(/\/$/, "")}/v1/chat/completions`,
         model: context.config.ollamaModel,
         history: context.history,
-        onDelta: (text) => context.appendAssistantText(context.assistantMessageIndex, text),
+        onDelta: (text) => context.appendAssistantText(currentAssistantIdx, text),
+        tools,
         signal: context.signal,
       });
 
-      const toolCalls = extractToolCalls(content);
-      if (toolCalls.length > 0) {
-        context.setAssistantContent(context.assistantMessageIndex, removeToolCalls(content));
-        context.setAssistantReasoning(context.assistantMessageIndex, reasoning);
+      if (!toolCalls || toolCalls.length === 0) {
+        context.setAssistantReasoning(currentAssistantIdx, reasoning);
         context.pushConversationMessage({ role: "assistant", content });
-
-        for (const toolCall of toolCalls) {
-          const allowed = await context.requestToolPermission(toolCall.name, toolCall.args);
-          if (!allowed) {
-            context.pushStatusMessage(`🛑 Tool denied: ${toolCall.name}`);
-            context.pushConversationMessage({
-              role: "user",
-              content: `[TOOL_ERROR]\nUser denied permission for ${toolCall.name}`,
-            });
-            continue;
-          }
-
-          try {
-            const result = await context.executeToolCall(toolCall.name, toolCall.args);
-            context.pushStatusMessage(`🔧 Tool result: ${toolCall.name}`);
-            context.pushConversationMessage({
-              role: "user",
-              content: `[TOOL_RESULT]\n${JSON.stringify(result, null, 2)}\n\nNow answer the user's question using this data.`,
-            });
-          } catch (toolError) {
-            const errorMsg =
-              toolError instanceof Error ? toolError.message : "Tool execution failed";
-            context.pushStatusMessage(`❌ Tool error: ${toolCall.name} - ${errorMsg}`);
-            context.pushConversationMessage({
-              role: "user",
-              content: `[TOOL_ERROR]\n${errorMsg}`,
-            });
-          }
-        }
-
-        const followUpIdx = context.createAssistantPlaceholder();
-        const followUp = await fetchStreamingCompletion({
-          url: `${context.config.ollamaBaseUrl.replace(/\/$/, "")}/v1/chat/completions`,
-          model: context.config.ollamaModel,
-          history: context.history,
-          onDelta: (text) => context.appendAssistantText(followUpIdx, text),
-          signal: context.signal,
-        });
-        context.setAssistantReasoning(followUpIdx, followUp.reasoning);
-        context.pushConversationMessage({ role: "assistant", content: followUp.content });
         completed = true;
         break;
       }
 
-      context.setAssistantReasoning(context.assistantMessageIndex, reasoning);
-      context.pushConversationMessage({ role: "assistant", content });
-      completed = true;
-      break;
+      context.setAssistantReasoning(currentAssistantIdx, reasoning);
+      context.pushConversationMessage({
+        role: "assistant",
+        content: content || null,
+        tool_calls: toolCalls,
+      });
+
+      for (const toolCall of toolCalls) {
+        const name = toolCall.function?.name || "unknown";
+        let args: Record<string, unknown> = {};
+
+        try {
+          args = JSON.parse(toolCall.function?.arguments || "{}") as Record<
+            string,
+            unknown
+          >;
+        } catch {
+          const error = `Invalid tool arguments for ${name}`;
+          context.pushStatusMessage(`❌ Tool error: ${error}`);
+          context.pushConversationMessage({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error }),
+          });
+          continue;
+        }
+
+        const allowed = await context.requestToolPermission(name, args);
+        if (!allowed) {
+          const denied = { error: `User denied permission for ${name}` };
+          context.pushStatusMessage(`🛑 Tool denied: ${name}`);
+          context.pushConversationMessage({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(denied),
+          });
+          continue;
+        }
+
+        try {
+          const result = await context.executeToolCall(name, args);
+          context.pushStatusMessage(`🔧 Tool result: ${name}`);
+          context.pushConversationMessage({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(result),
+          });
+        } catch (toolError) {
+          const errorMsg =
+            toolError instanceof Error ? toolError.message : "Tool execution failed";
+          context.pushStatusMessage(`❌ Tool error: ${name} - ${errorMsg}`);
+          context.pushConversationMessage({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: errorMsg }),
+          });
+        }
+      }
+
+      currentAssistantIdx = context.createAssistantPlaceholder();
     }
 
     if (!completed) {
