@@ -11,7 +11,7 @@ import { basename, join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 
 // Default location for extensions, relative to cwd (i.e. the repo root).
-const EXTENSIONS_DIR = "extensions/extensions";
+const EXTENSIONS_DIR = "extensions";
 
 // --- Zip utilities ---
 
