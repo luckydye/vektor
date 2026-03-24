@@ -33,12 +33,7 @@ Documents with type "app" render their HTML content in a sandboxed iframe. Use t
 
 You have a special tool called "runAgent" that spawns an autonomous sub-agent. The sub-agent runs in the background with its own tool loop and can perform multi-step tasks independently. Use it when a task requires several chained actions — for example researching across multiple documents, fetching external content and writing a summary, or any workflow that would need many sequential tool calls. Provide a clear system prompt telling the sub-agent its goal and constraints, and a content message with the specific task. The sub-agent's progress logs and final result will be streamed back to the user automatically. Prefer runAgent over doing many tool calls yourself when the work is self-contained and can be delegated.`;
 
-const CURRENT_DOCUMENT_SYSTEM_PROMPT = `IMPORTANT: You have access to a tool to get the current document content. When a user asks questions about "this document", "the page", "the current content", or anything that requires seeing the document, you MUST use the tool.
-
-To request the document content, include in your response:
-[REQUEST_DOCUMENT_CONTENT]
-
-When you see [DOCUMENT_CONTENT] in the conversation, that's the document content provided to you.`;
+const CURRENT_DOCUMENT_SYSTEM_PROMPT = `IMPORTANT: You have access to a tool to get the current document content. When a user asks questions about "this document", "the page", "the current content", or anything that requires seeing the document, you MUST use the tool.`;
 
 // ── Provider types ────────────────────────────────────────────────────────────
 
@@ -1468,28 +1463,6 @@ async function sendWithFetch(message: string, assistantMessageIndex: number) {
         abortController?.signal,
       );
 
-      if (content.includes("[REQUEST_DOCUMENT_CONTENT]")) {
-        messages.value[assistantMessageIndex].content = content
-          .replace("[REQUEST_DOCUMENT_CONTENT]", "")
-          .trim();
-        messages.value[assistantMessageIndex].reasoning = reasoning;
-        conversationHistory.value.push({ role: "assistant", content });
-
-        const docContent = getDocumentContent();
-        messages.value.push({
-          role: "assistant",
-          content: "📄 Document content provided",
-          timestamp: Date.now(),
-        });
-        scrollToBottom();
-
-        conversationHistory.value.push({
-          role: "user",
-          content: `[DOCUMENT_CONTENT]\n${docContent}\n\nNow answer the user's question based on this document content.`,
-        });
-        continue;
-      }
-
       const toolCalls = extractToolCalls(content);
       if (toolCalls.length > 0) {
         messages.value[assistantMessageIndex].content = removeToolCalls(content);
@@ -1579,30 +1552,6 @@ async function sendWithFetch(message: string, assistantMessageIndex: number) {
       openRouterTools,
       abortController?.signal,
     );
-
-    if (content.includes("[REQUEST_DOCUMENT_CONTENT]")) {
-      messages.value[currentAssistantIdx].content = content
-        .replace("[REQUEST_DOCUMENT_CONTENT]", "")
-        .trim();
-      messages.value[currentAssistantIdx].reasoning = reasoning;
-      conversationHistory.value.push({ role: "assistant", content });
-
-      const docContent = getDocumentContent();
-      messages.value.push({
-        role: "assistant",
-        content: "📄 Document content provided",
-        timestamp: Date.now(),
-      });
-      scrollToBottom();
-
-      conversationHistory.value.push({
-        role: "user",
-        content: `[DOCUMENT_CONTENT]\n${docContent}\n\nNow answer the user's question based on this document content.`,
-      });
-      currentAssistantIdx = messages.value.length;
-      messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
-      continue;
-    }
 
     if (!toolCalls || toolCalls.length === 0) {
       messages.value[currentAssistantIdx].reasoning = reasoning;
