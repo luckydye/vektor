@@ -8,6 +8,17 @@ import type {
   DocumentWithProperties,
   ExtensionJobInfo,
 } from "../api/ApiClient.ts";
+import {
+  AI_CHAT_PROVIDERS,
+  getAIChatProvider,
+} from "./ai-chat/providers/index.ts";
+import { parseSSEStream } from "./ai-chat/providers/shared.ts";
+import type {
+  ChatMessage,
+  OpenRouterTool,
+  Provider,
+  ToolCall,
+} from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
@@ -34,36 +45,6 @@ Documents with type "app" render their HTML content in a sandboxed iframe. Use t
 You have a special tool called "runAgent" that spawns an autonomous sub-agent. The sub-agent runs in the background with its own tool loop and can perform multi-step tasks independently. Use it when a task requires several chained actions — for example researching across multiple documents, fetching external content and writing a summary, or any workflow that would need many sequential tool calls. Provide a clear system prompt telling the sub-agent its goal and constraints, and a content message with the specific task. The sub-agent's progress logs and final result will be streamed back to the user automatically. Prefer runAgent over doing many tool calls yourself when the work is self-contained and can be delegated.`;
 
 const CURRENT_DOCUMENT_SYSTEM_PROMPT = `IMPORTANT: You have access to a tool to get the current document content. When a user asks questions about "this document", "the page", "the current content", or anything that requires seeing the document, you MUST use the tool.`;
-
-// ── Provider types ────────────────────────────────────────────────────────────
-
-type Provider = "ollama" | "openrouter";
-
-type ToolCall = {
-  id: string;
-  type: string;
-  function: { name: string; arguments: string };
-};
-
-type OpenRouterTool = {
-  type: "function";
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: "object";
-      properties: Record<string, unknown>;
-      required: string[];
-    };
-  };
-};
-
-type ChatMessage = {
-  role: "system" | "user" | "assistant" | "tool";
-  content?: string | null;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
-};
 
 type ToolApproval = {
   id: string;
@@ -201,17 +182,17 @@ function saveProviderConfig() {
 function selectProvider(provider: Provider) {
   selectedProvider.value = provider;
   showProviderDropdown.value = false;
-  showProviderConfig.value = provider === "ollama";
+  showProviderConfig.value = getAIChatProvider(provider).option.configurable === true;
   conversationHistory.value = [];
 }
 
+const selectedProviderDefinition = computed(() => getAIChatProvider(selectedProvider.value));
+
 const providerLabel = computed(() => {
-  switch (selectedProvider.value) {
-    case "ollama":
-      return { name: ollamaModel.value || "Ollama", sub: "Local" };
-    case "openrouter":
-      return { name: "openrouter.ai", sub: "Cloud" };
-  }
+  return selectedProviderDefinition.value.getLabel({
+    ollamaBaseUrl: ollamaBaseUrl.value,
+    ollamaModel: ollamaModel.value,
+  });
 });
 
 const canSend = computed(() => {
@@ -481,7 +462,6 @@ function formatUserMessageForDisplay(message: string): string {
 
 // ── Tool execution ────────────────────────────────────────────────────────────
 
-const TOOL_REGEX = /```tool\n([\s\S]*?)\n```/g;
 const MAX_AGENT_STEPS = 10;
 
 const OPENROUTER_TOOLS = [
@@ -1277,28 +1257,6 @@ function denyToolPermission(id: string) {
   resolveToolPermission(id, false);
 }
 
-function extractToolCalls(
-  content: string,
-): Array<{ name: string; args: Record<string, unknown> }> {
-  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
-  const matches = content.matchAll(TOOL_REGEX);
-  for (const match of matches) {
-    try {
-      const parsed = JSON.parse(match[1]);
-      if (parsed.name && parsed.args) {
-        calls.push(parsed);
-      }
-    } catch {
-      // Invalid JSON, skip
-    }
-  }
-  return calls;
-}
-
-function removeToolCalls(content: string): string {
-  return content.replace(TOOL_REGEX, "").trim();
-}
-
 function getDocumentContent(): string {
   const documentView = document.querySelector("document-view") as any;
   if (documentView?.editor) {
@@ -1311,340 +1269,65 @@ function getDocumentContent(): string {
   return "";
 }
 
-// ── Fetch-based providers (Ollama / OpenRouter) ───────────────────────────────
-
-async function* parseSSEStream(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<Record<string, unknown>> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop()!;
-
-      for (const part of parts) {
-        for (const line of part.split("\n")) {
-          if (line.startsWith("data: ")) {
-            const payload = line.slice(6);
-            if (payload === "[DONE]") return;
-            try {
-              yield JSON.parse(payload) as Record<string, unknown>;
-            } catch {
-              // skip malformed JSON
-            }
-          }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-async function fetchStreamingCompletion(
-  history: ChatMessage[],
-  onDelta: (text: string) => void,
-  tools?: readonly OpenRouterTool[],
-  signal?: AbortSignal,
-): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
-  const isOllama = selectedProvider.value === "ollama";
-  const url = isOllama
-    ? `${ollamaBaseUrl.value.replace(/\/$/, "")}/v1/chat/completions`
-    : "/api/v1/chat/completions";
-
-  const model = isOllama ? ollamaModel.value : "openrouter-configured-model";
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages: history,
-      tools,
-      stream: true,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`API error ${response.status}: ${await response.text()}`);
-  }
-
-  if (!response.body) throw new Error("No response body");
-
-  let content = "";
-  let reasoning = "";
-  const toolCallsMap = new Map<number, ToolCall>();
-
-  for await (const chunk of parseSSEStream(response.body)) {
-    const delta = (chunk as any).choices?.[0]?.delta;
-    if (!delta) continue;
-
-    if (delta.content) {
-      content += delta.content;
-      onDelta(delta.content);
-    }
-    if (delta.reasoning) {
-      reasoning += delta.reasoning;
-    }
-
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls as any[]) {
-        const idx = tc.index as number;
-        const existing = toolCallsMap.get(idx);
-        if (!existing) {
-          toolCallsMap.set(idx, {
-            id: tc.id ?? "",
-            type: tc.type ?? "function",
-            function: {
-              name: tc.function?.name ?? "",
-              arguments: tc.function?.arguments ?? "",
-            },
-          });
-        } else {
-          if (tc.function?.arguments) {
-            existing.function.arguments += tc.function.arguments;
-          }
-        }
-      }
-    }
-  }
-
-  const toolCalls =
-    toolCallsMap.size > 0
-      ? [...toolCallsMap.entries()].sort(([a], [b]) => a - b).map(([, v]) => v)
-      : [];
-
-  return {
-    content: content || reasoning,
-    reasoning: content ? reasoning || undefined : undefined,
-    toolCalls,
-  };
-}
-
-async function sendWithFetch(message: string, assistantMessageIndex: number) {
+async function sendWithProvider(message: string, assistantMessageIndex: number) {
+  const provider = getAIChatProvider(selectedProvider.value);
   if (conversationHistory.value.length === 0) {
     if (!currentSpaceId.value) throw new Error("No space selected");
-    const openRouterToolPrompt =
-      selectedProvider.value === "openrouter"
-        ? "\n\nIMPORTANT: Use native function tool calls via the API tool_calls field. Do not emit ```tool blocks."
-        : "";
     conversationHistory.value = [
       {
         role: "system",
-        content: `${SYSTEM_PROMPT}${openRouterToolPrompt}\n\nCurrent context:\n- spaceId: ${currentSpaceId.value}\n- documentId: ${props.documentId}\n\n${CURRENT_DOCUMENT_SYSTEM_PROMPT}`,
+        content: provider.buildSystemPrompt({
+          systemPrompt: SYSTEM_PROMPT,
+          currentDocumentSystemPrompt: CURRENT_DOCUMENT_SYSTEM_PROMPT,
+          spaceId: currentSpaceId.value,
+          documentId: props.documentId,
+        }),
       },
     ];
   }
 
   conversationHistory.value.push({ role: "user", content: message });
-
-  function streamTo(idx: number) {
-    return (text: string) => {
-      messages.value[idx].content += text;
+  await provider.send({
+    history: conversationHistory.value,
+    assistantMessageIndex,
+    config: {
+      ollamaBaseUrl: ollamaBaseUrl.value,
+      ollamaModel: ollamaModel.value,
+    },
+    maxAgentSteps: MAX_AGENT_STEPS,
+    signal: abortController?.signal,
+    appendAssistantText: (messageIndex, text) => {
+      messages.value[messageIndex].content += text;
       scrollToBottom();
-    };
-  }
-
-  if (selectedProvider.value !== "openrouter") {
-    let completed = false;
-    for (let i = 0; i < MAX_AGENT_STEPS; i++) {
-      messages.value[assistantMessageIndex].content = "";
-      const { content, reasoning } = await fetchStreamingCompletion(
-        conversationHistory.value,
-        streamTo(assistantMessageIndex),
-        undefined,
-        abortController?.signal,
-      );
-
-      const toolCalls = extractToolCalls(content);
-      if (toolCalls.length > 0) {
-        messages.value[assistantMessageIndex].content = removeToolCalls(content);
-        messages.value[assistantMessageIndex].reasoning = reasoning;
-        conversationHistory.value.push({ role: "assistant", content });
-
-        for (const toolCall of toolCalls) {
-          const allowed = await requestToolPermission(toolCall.name, toolCall.args);
-          if (!allowed) {
-            messages.value.push({
-              role: "assistant",
-              content: `🛑 Tool denied: ${toolCall.name}`,
-              timestamp: Date.now(),
-            });
-            scrollToBottom();
-            conversationHistory.value.push({
-              role: "user",
-              content: `[TOOL_ERROR]\nUser denied permission for ${toolCall.name}`,
-            });
-            continue;
-          }
-
-          try {
-            const result = await executeToolCall(toolCall.name, toolCall.args);
-            messages.value.push({
-              role: "assistant",
-              content: `🔧 Tool result: ${toolCall.name}`,
-              timestamp: Date.now(),
-            });
-            scrollToBottom();
-            conversationHistory.value.push({
-              role: "user",
-              content: `[TOOL_RESULT]\n${JSON.stringify(result, null, 2)}\n\nNow answer the user's question using this data.`,
-            });
-          } catch (toolError) {
-            const errorMsg =
-              toolError instanceof Error ? toolError.message : "Tool execution failed";
-            messages.value.push({
-              role: "assistant",
-              content: `❌ Tool error: ${toolCall.name} - ${errorMsg}`,
-              timestamp: Date.now(),
-            });
-            scrollToBottom();
-            conversationHistory.value.push({
-              role: "user",
-              content: `[TOOL_ERROR]\n${errorMsg}`,
-            });
-          }
-        }
-
-        const followUpIdx = messages.value.length;
-        messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
-        const followUp = await fetchStreamingCompletion(
-          conversationHistory.value,
-          streamTo(followUpIdx),
-          undefined,
-          abortController?.signal,
-        );
-        messages.value[followUpIdx].reasoning = followUp.reasoning;
-        conversationHistory.value.push({ role: "assistant", content: followUp.content });
-        scrollToBottom();
-        completed = true;
-        break;
-      }
-
-      messages.value[assistantMessageIndex].reasoning = reasoning;
-      conversationHistory.value.push({ role: "assistant", content });
-      completed = true;
-      break;
-    }
-    if (!completed) {
-      throw new Error(
-        `Agent loop ended without a final response after ${MAX_AGENT_STEPS} steps`,
-      );
-    }
-    return;
-  }
-
-  const openRouterTools = await getOpenRouterTools();
-  let completed = false;
-  let currentAssistantIdx = assistantMessageIndex;
-  for (let i = 0; i < MAX_AGENT_STEPS; i++) {
-    messages.value[currentAssistantIdx].content = "";
-    const { content, reasoning, toolCalls } = await fetchStreamingCompletion(
-      conversationHistory.value,
-      streamTo(currentAssistantIdx),
-      openRouterTools,
-      abortController?.signal,
-    );
-
-    if (!toolCalls || toolCalls.length === 0) {
-      messages.value[currentAssistantIdx].reasoning = reasoning;
-      conversationHistory.value.push({ role: "assistant", content });
-      completed = true;
-      break;
-    }
-
-    messages.value[currentAssistantIdx].reasoning = reasoning;
-    conversationHistory.value.push({
-      role: "assistant",
-      content: content || null,
-      tool_calls: toolCalls,
-    });
-
-    for (const toolCall of toolCalls) {
-      const name = toolCall.function?.name || "unknown";
-      let args: Record<string, unknown> = {};
-
-      try {
-        args = JSON.parse(toolCall.function?.arguments || "{}") as Record<
-          string,
-          unknown
-        >;
-      } catch {
-        const error = `Invalid tool arguments for ${name}`;
-        messages.value.push({
-          role: "assistant",
-          content: `❌ Tool error: ${error}`,
-          timestamp: Date.now(),
-        });
-        conversationHistory.value.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify({ error }),
-        });
-        continue;
-      }
-
-      const allowed = await requestToolPermission(name, args);
-      if (!allowed) {
-        const denied = { error: `User denied permission for ${name}` };
-        messages.value.push({
-          role: "assistant",
-          content: `🛑 Tool denied: ${name}`,
-          timestamp: Date.now(),
-        });
-        conversationHistory.value.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(denied),
-        });
-        continue;
-      }
-
-      try {
-        const result = await executeToolCall(name, args);
-        messages.value.push({
-          role: "assistant",
-          content: `🔧 Tool result: ${name}`,
-          timestamp: Date.now(),
-        });
-        conversationHistory.value.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result),
-        });
-      } catch (toolError) {
-        const errorMsg =
-          toolError instanceof Error ? toolError.message : "Tool execution failed";
-        messages.value.push({
-          role: "assistant",
-          content: `❌ Tool error: ${name} - ${errorMsg}`,
-          timestamp: Date.now(),
-        });
-        conversationHistory.value.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify({ error: errorMsg }),
-        });
-      }
+    },
+    setAssistantContent: (messageIndex, text) => {
+      messages.value[messageIndex].content = text;
       scrollToBottom();
-    }
-
-    currentAssistantIdx = messages.value.length;
-    messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
-  }
-
-  if (!completed) {
-    throw new Error(
-      `Agent loop ended without a final response after ${MAX_AGENT_STEPS} steps`,
-    );
-  }
+    },
+    setAssistantReasoning: (messageIndex, reasoning) => {
+      messages.value[messageIndex].reasoning = reasoning;
+    },
+    pushConversationMessage: (conversationMessage) => {
+      conversationHistory.value.push(conversationMessage);
+    },
+    pushStatusMessage: (content) => {
+      messages.value.push({
+        role: "assistant",
+        content,
+        timestamp: Date.now(),
+      });
+      scrollToBottom();
+    },
+    createAssistantPlaceholder: () => {
+      const nextIndex = messages.value.length;
+      messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
+      scrollToBottom();
+      return nextIndex;
+    },
+    getOpenRouterTools,
+    requestToolPermission,
+    executeToolCall,
+  });
 }
 
 // ── Session management ────────────────────────────────────────────────────────
@@ -1794,7 +1477,7 @@ async function sendMessage() {
   messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
 
   try {
-    await sendWithFetch(modelMessage, assistantMessageIndex);
+    await sendWithProvider(modelMessage, assistantMessageIndex);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       // Keep whatever content was streamed so far
@@ -1904,7 +1587,7 @@ onUnmounted(() => {
           <div class="flex items-center gap-1.5">
             <!-- Settings icon for configurable providers -->
             <button
-              v-if="selectedProvider === 'ollama'"
+              v-if="selectedProviderDefinition.option.configurable"
               class="p-0.5 text-neutral-500 hover:text-neutral-700 transition-colors"
               @click.stop="showProviderConfig = !showProviderConfig; showProviderDropdown = false"
               title="Configure provider"
@@ -1925,20 +1608,17 @@ onUnmounted(() => {
           class="absolute top-full left-3 right-3 mt-1 bg-neutral-10 border border-neutral-100 rounded-lg shadow-lg z-20 overflow-hidden"
         >
           <button
-            v-for="option in [
-              { value: 'openrouter', name: 'OpenRouter', sub: 'Cloud' },
-              { value: 'ollama', name: 'Ollama', sub: 'Local' },
-            ]"
-            :key="option.value"
+            v-for="provider in AI_CHAT_PROVIDERS"
+            :key="provider.option.value"
             class="w-full flex items-center justify-between px-3 py-2.5 text-sm hover:bg-neutral-50 transition-colors text-left"
-            :class="selectedProvider === option.value ? 'bg-primary-50' : ''"
-            @click="selectProvider(option.value as Provider)"
+            :class="selectedProvider === provider.option.value ? 'bg-primary-50' : ''"
+            @click="selectProvider(provider.option.value)"
           >
             <div class="flex items-center gap-2">
-              <span class="font-medium text-neutral-800">{{ option.name }}</span>
-              <span class="text-xs text-neutral-500">{{ option.sub }}</span>
+              <span class="font-medium text-neutral-800">{{ provider.option.name }}</span>
+              <span class="text-xs text-neutral-500">{{ provider.option.sub }}</span>
             </div>
-            <svg v-if="selectedProvider === option.value" class="w-3.5 h-3.5 text-primary-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <svg v-if="selectedProvider === provider.option.value" class="w-3.5 h-3.5 text-primary-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
             </svg>
           </button>
