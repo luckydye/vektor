@@ -9,6 +9,8 @@ import {
   notFoundResponse,
   parseJsonBody,
   requireParam,
+  requireUser,
+  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
