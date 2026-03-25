@@ -4,20 +4,20 @@
  * Wiki CLI
  *
  * Usage:
- *   bun cli/src/index.ts workflow <workflow.json> --extension <path> [--extension <path>...] [--json] [--timeout-ms <ms>]
+ *   bun cli/src/index.ts workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
  *   bun cli/src/index.ts extension create <id>
  *   bun cli/src/index.ts extension package [id]
  *   bun cli/src/index.ts extension upload [id] --url <wiki-url> --space <space-id> --token <api-token>
  *
  * Examples:
- *   bun cli/src/index.ts workflow ./my-workflow.json --extension extensions/extensions/workflow-builder
+ *   bun cli/src/index.ts workflow abc123 --input file=https://example.com/data.xlsx
  *   bun cli/src/index.ts extension create my-extension
  *   bun cli/src/index.ts extension package my-extension
  *   bun cli/src/index.ts extension upload my-extension --url http://localhost:3000 --space my-space --token abc123
  *   cd extensions/extensions/my-extension && bun ../../../cli/src/index.ts extension package
  */
 
-import { parseArgs, runWorkflowLocally } from "./workflow.ts";
+import { parseArgs, runWorkflow } from "./workflow.ts";
 import { commandCreate, commandPackage, commandUpload } from "./extension.ts";
 import {
   commandCat,
@@ -47,7 +47,7 @@ function parseFlags(args: string[]): { positional: string[]; flags: Record<strin
 function printUsage(): void {
   console.log(`
 Usage:
-  vektor workflow <workflow.json> --extension <path> [--extension <path>...] [--json] [--timeout-ms <ms>]
+  vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
   vektor extension create <id>
   vektor extension package [id]
   vektor extension upload [id] --url <wiki-url> --space <space-id> --token <api-token>
@@ -72,21 +72,20 @@ async function main(): Promise<void> {
 
   if (command === "workflow") {
     const options = parseArgs(rest);
-    const result = await runWorkflowLocally(options);
+    const result = await runWorkflow(options);
 
     if (options.json) {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return;
     }
 
-    process.stdout.write(`Workflow: ${options.workflowPath}\n`);
-    process.stdout.write(`Order: ${result.order.join(" -> ")}\n`);
-    for (const nodeId of result.order) {
-      const node = result.nodes[nodeId];
-      process.stdout.write(`${nodeId}: ${node.status}\n`);
-      if (node.outputs) process.stdout.write(`${JSON.stringify(node.outputs)}\n`);
+    for (const [nodeId, node] of Object.entries(result.nodes)) {
+      process.stdout.write(`${nodeId}: ${node.status}${node.error ? ` — ${node.error}` : ""}\n`);
     }
-    process.stdout.write(`Output: ${JSON.stringify(result.output, null, 2)}\n`);
+    if (result.output) {
+      process.stdout.write(`Output: ${JSON.stringify(result.output, null, 2)}\n`);
+    }
+    if (result.status === "failed") process.exit(1);
     return;
   }
 
