@@ -167,7 +167,7 @@ export async function getSpace(id: string): Promise<Space | null> {
 
 export async function getSpaceBySlug(slug: string): Promise<Space | null> {
   const spaces = await listAllSpaces();
-  return spaces.find((s) => s.slug === slug) || null;
+  return spaces.find((s) => s.slug === slug || s.id === slug) || null;
 }
 
 export async function listAllSpaces(): Promise<Space[]> {
