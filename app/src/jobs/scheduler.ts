@@ -22,7 +22,7 @@ import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel
  *   { success: true, outputs: { ... } }  on success
  *   { success: false, error: "..." }      on failure
  */
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_CONCURRENT_JOBS = 3;
 
 let activeJobs = 0;
