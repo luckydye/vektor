@@ -379,7 +379,7 @@ globalThis.writeDocument = async (documentId, content) => {
   await writeFile(resolvedPath, String(content ?? ""), "utf-8");
 };
 
-globalThis.createDocument = async (content) => {
+globalThis.createDocument = async (content, options) => {
   await mkdir(__documentsDir, { recursive: true });
   const id = "doc_" + crypto.randomUUID();
   const path = __documentPath(id);

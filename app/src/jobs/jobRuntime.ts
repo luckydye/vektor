@@ -125,14 +125,16 @@ globalThis.writeDocument = async (documentId, content, type) => {
   }
 };
 
-globalThis.createDocument = async (content) => {
+globalThis.createDocument = async (content, options) => {
   log("POST " + __a + "/api/v1/spaces/" + __s + "/documents");
+  const headers = __headersWithTrace({
+    "Content-Type": "text/markdown; charset=utf-8",
+    "X-Job-Token": __t,
+  });
+  if (options?.title) headers.set("X-Document-Title", String(options.title));
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/documents", {
     method: "POST",
-    headers: __headersWithTrace({
-      "Content-Type": "text/markdown; charset=utf-8",
-      "X-Job-Token": __t,
-    }),
+    headers,
     body: String(content ?? ""),
   });
   if (!res.ok) {

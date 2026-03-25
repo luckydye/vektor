@@ -143,6 +143,8 @@ export const POST: APIRoute = (context) =>
 
       type = getDocumentTypeForContentType(contentType);
       content = toHtmlIfMarkdown(rawContent, contentType, type);
+      const titleHeader = context.request.headers.get("X-Document-Title");
+      if (titleHeader) properties = { title: titleHeader };
     }
 
     if (!content || typeof content !== "string") {
