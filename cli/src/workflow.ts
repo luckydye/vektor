@@ -7,10 +7,11 @@
  *   WIKI_ACCESS_TOKEN API token                    (or --token, optional for public spaces)
  *
  * Usage:
- *   vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
+ *   vektor workflow <docId> [--input key=value ...] [--file key=/path ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
  *
  * Examples:
  *   vektor workflow abc123 --input file=https://example.com/data.xlsx
+ *   vektor workflow abc123 --file file=/path/to/data.xlsx --input title=MyRun
  *   vektor workflow abc123 --json
  */
 
@@ -30,6 +31,7 @@ type RunResponse = {
 export type CliOptions = {
   documentId: string;
   inputs: Record<string, unknown>;
+  filePaths: Record<string, string>;
   json: boolean;
   url: string;
   spaceId: string;
@@ -59,6 +61,7 @@ export function parseArgs(argv: string[]): CliOptions {
   assert(!documentId.startsWith("--"), `Expected a document ID, got: ${documentId}\n\n${usage()}`);
 
   const inputs: Record<string, unknown> = {};
+  const filePaths: Record<string, string> = {};
   let json = false;
   let urlFlag: string | undefined;
   let spaceFlag: string | undefined;
@@ -75,6 +78,15 @@ export function parseArgs(argv: string[]): CliOptions {
       i++;
       continue;
     }
+    if (arg === "--file") {
+      const pair = argv[i + 1];
+      assert(pair, "--file requires a key=/path argument");
+      const eq = pair.indexOf("=");
+      assert(eq > 0, `--file value must be key=/path, got: ${pair}`);
+      filePaths[pair.slice(0, eq)] = pair.slice(eq + 1);
+      i++;
+      continue;
+    }
     if (arg === "--json") { json = true; continue; }
     if (arg === "--url") { urlFlag = argv[++i]; assert(urlFlag, "--url requires a value"); continue; }
     if (arg === "--space") { spaceFlag = argv[++i]; assert(spaceFlag, "--space requires a value"); continue; }
@@ -87,7 +99,7 @@ export function parseArgs(argv: string[]): CliOptions {
   assert(url, "--url is required (or set WIKI_HOST)");
   assert(spaceId, "--space is required (or set WIKI_SPACE_ID)");
 
-  return { documentId, inputs, json, url, spaceId, token: tokenFlag ?? process.env.WIKI_ACCESS_TOKEN };
+  return { documentId, inputs, filePaths, json, url, spaceId, token: tokenFlag ?? process.env.WIKI_ACCESS_TOKEN };
 }
 
 async function apiFetch(url: string, token: string | undefined, path: string, init?: RequestInit): Promise<unknown> {
@@ -105,8 +117,32 @@ async function apiFetch(url: string, token: string | undefined, path: string, in
   return res.json();
 }
 
+async function uploadFile(url: string, spaceId: string, token: string | undefined, filePath: string): Promise<string> {
+  const file = Bun.file(filePath);
+  const name = filePath.split("/").pop() ?? "upload";
+  const form = new FormData();
+  form.append("file", new Blob([await file.arrayBuffer()], { type: file.type || "application/octet-stream" }), name);
+  const res = await fetch(`${url.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads`, {
+    method: "POST",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), Origin: new URL(url).origin },
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => String(res.status));
+    throw new Error(`File upload failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as { url: string };
+  return data.url;
+}
+
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
-  const { url, spaceId, token, documentId, inputs, json } = options;
+  const { url, spaceId, token, documentId, inputs, filePaths, json } = options;
+
+  for (const [key, filePath] of Object.entries(filePaths)) {
+    if (!json) process.stderr.write(`Uploading ${filePath}…\n`);
+    inputs[key] = await uploadFile(url, spaceId, token, filePath);
+    if (!json) process.stderr.write(`Uploaded: ${inputs[key]}\n`);
+  }
 
   const { runId } = (await apiFetch(url, token, `/api/v1/spaces/${spaceId}/workflows/runs`, {
     method: "POST",
