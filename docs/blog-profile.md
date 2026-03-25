@@ -75,6 +75,30 @@ The command palette (`/`) gives access to all editor actions, extensions, and im
 
 ---
 
+## Built for Organizations
+
+Several features are aimed squarely at teams that need more than a personal notes app.
+
+**SSO with group sync** — Authentication is handled via a generic OAuth2 plugin, so it plugs into whatever your company already uses: Keycloak, Okta, Azure AD, or a self-hosted provider. Groups from the identity provider are synced into Vektor and used for access control, so you don't have to manage permissions twice. GitLab and YouTrack have dedicated OAuth integrations as well.
+
+**Space-level access control** — Each space has its own member list. You can keep engineering docs separate from HR docs, with no overlap, on the same instance.
+
+**REST API + Webhooks** — Every core operation is available over a versioned REST API. Webhooks let external systems react to document changes, making it straightforward to wire Vektor into existing CI pipelines, notification systems, or data warehouses.
+
+**Vector search** — Full-text search is backed by configurable embeddings (any OpenAI-compatible provider or local model). This means search understands meaning, not just keywords — useful when your docs grow large enough that exact-match search starts failing people.
+
+**Version history** — Every document change is tracked. You can diff any two versions and restore previous states.
+
+**Encrypted secrets** — Workflow inputs and extension credentials are stored encrypted at rest, configured via a server-side encryption key.
+
+**OpenTelemetry observability** — Traces, metrics, and logs ship over OTLP to whatever backend you run (Grafana, Jaeger, Datadog, etc.). Sampling and export intervals are configurable without code changes.
+
+**CalDAV** — The calendar extension exposes a CalDAV endpoint, so calendar data from Vektor can be consumed by standard calendar clients.
+
+**Self-hosted, single binary** — Ships as a Docker image with a Compose file. No external services required beyond an optional S3-compatible store for file uploads. The database is libSQL (SQLite-compatible), so ops overhead is minimal.
+
+---
+
 ## Tech Stack at a Glance
 
 | Layer | Choice |
