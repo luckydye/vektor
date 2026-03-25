@@ -36,6 +36,10 @@ if (!space) {
   });
 }
 
+if (spaceSlug !== space.slug) {
+  return Astro.redirect(`/${space.slug}/doc/${slug}`);
+}
+
 const document = await getDocumentBySlug(space.id, slug);
 
 if (!document) {
