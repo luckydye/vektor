@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import { pathToFileURL } from "node:url";
-import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 
 type WorkflowInput = { key: string; value: unknown };
@@ -60,24 +59,6 @@ type LocalRuntimePaths = {
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
-}
-
-function stableStringify(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return JSON.stringify(value);
-  if (typeof value === "number") {
-    assert(Number.isFinite(value), `Unsupported cache number: ${value}`);
-    return JSON.stringify(value);
-  }
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-  if (typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
-      .join(",")}}`;
-  }
-  throw new Error(`Unsupported cache value type: ${typeof value}`);
 }
 
 function usage(): string {
@@ -266,27 +247,17 @@ function resolveNodeInputs(
 
 function buildLocalJobWrapper(jobFileUrl: string): string {
   return `const { workerData: __wd, parentPort: __pp } = await import("node:worker_threads");
-const { mkdir, readFile, readdir, rm, stat, writeFile } = await import("node:fs/promises");
-const { tmpdir } = await import("node:os");
+const { mkdir, readFile, readdir, writeFile } = await import("node:fs/promises");
 const { basename, join } = await import("node:path");
-const { createHash } = await import("node:crypto");
 const { pathToFileURL, fileURLToPath } = await import("node:url");
 const { execFile } = await import("node:child_process");
 const { promisify } = await import("node:util");
 
 const __execFile = promisify(execFile);
 
-const __cacheScope = String(__wd.cacheScopeId ?? "unknown-job");
-const __cacheDir = join(tmpdir(), "wiki-job-cache", __cacheScope);
 const __documentsDir = String(__wd.documentsDir);
 const __artifactsDir = String(__wd.artifactsDir);
 const __env = __wd.env ?? {};
-
-const __cacheFileForKey = async (key) => {
-  const hash = createHash("sha256").update(String(key)).digest("hex");
-  await mkdir(__cacheDir, { recursive: true });
-  return join(__cacheDir, hash + ".json");
-};
 
 const __documentPath = (documentId) => {
   const id = String(documentId ?? "").trim();
@@ -317,40 +288,6 @@ const __searchSnippet = (content, query) => {
 
 globalThis.log = (message) => {
   __pp.postMessage({ type: "log", message: String(message) });
-};
-
-globalThis.jobCache = {
-  get: async (key) => {
-    const file = await __cacheFileForKey(key);
-    try {
-      const raw = await readFile(file, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (parsed.expiresAt != null && Date.now() >= Number(parsed.expiresAt)) {
-        await rm(file, { force: true });
-        return { hit: false, value: null };
-      }
-      return { hit: true, value: parsed.value ?? null };
-    } catch {
-      return { hit: false, value: null };
-    }
-  },
-  set: async (key, value, options) => {
-    const file = await __cacheFileForKey(key);
-    const ttlMs = options?.ttlMs;
-    const expiresAt = typeof ttlMs === "number" && ttlMs > 0 ? Date.now() + ttlMs : null;
-    await writeFile(file, JSON.stringify({ expiresAt, value }), "utf-8");
-  },
-  delete: async (key) => {
-    const file = await __cacheFileForKey(key);
-    await rm(file, { force: true });
-  },
-  remember: async (key, produce, options) => {
-    const cached = await globalThis.jobCache.get(key);
-    if (cached.hit) return cached.value;
-    const value = await produce();
-    await globalThis.jobCache.set(key, value, options);
-    return value;
-  },
 };
 
 globalThis.uploadArtifact = async (filename, content) => {
@@ -444,29 +381,6 @@ async function runLocalJob(
   const entryPath = normaliseZipPath(job.entry);
   const entryBuffer = extension.files.get(entryPath);
   assert(entryBuffer, `Job entry "${entryPath}" not found in extension "${extension.manifest.id}"`);
-  const cacheScopeId = `${extension.manifest.id}:${job.id}`;
-  const cacheDir = join(tmpdir(), "wiki-job-cache", cacheScopeId);
-  const cacheKey = stableStringify({
-    entryHash: createHash("sha256").update(entryBuffer).digest("hex"),
-    inputs,
-  });
-  const cacheFile = join(
-    cacheDir,
-    `${createHash("sha256").update(cacheKey).digest("hex")}.json`,
-  );
-
-  try {
-    const cached = JSON.parse(await readFile(cacheFile, "utf-8")) as {
-      expiresAt: number | null;
-      value: Record<string, unknown>;
-    };
-    if (cached.expiresAt === null || Date.now() < cached.expiresAt) {
-      return cached.value;
-    }
-    await rm(cacheFile, { force: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
 
   const tempRoot = await mkdtemp(join(tmpdir(), "wiki-workflow-cli-"));
   const jobPath = join(tempRoot, entryPath);
@@ -481,7 +395,6 @@ async function runLocalJob(
       const worker = new Worker(wrapperPath, {
         workerData: {
           ...inputs,
-          cacheScopeId,
           documentsDir: runtimePaths.documentsDir,
           artifactsDir: runtimePaths.artifactsDir,
           env: process.env,
@@ -521,23 +434,7 @@ async function runLocalJob(
         if (message?.type === "result" || typeof message?.success === "boolean") {
           void worker.terminate();
           if (message.success) {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            void (async () => {
-              try {
-                const outputs = (message.outputs ?? {}) as Record<string, unknown>;
-                await mkdir(cacheDir, { recursive: true });
-                await writeFile(
-                  cacheFile,
-                  JSON.stringify({ expiresAt: null, value: outputs }),
-                  "utf-8",
-                );
-                resolve(outputs);
-              } catch (error) {
-                reject(error instanceof Error ? error : new Error(String(error)));
-              }
-            })();
+            succeed((message.outputs ?? {}) as Record<string, unknown>);
             return;
           }
           fail(new Error(String(message.error ?? `Job "${job.id}" failed`)));

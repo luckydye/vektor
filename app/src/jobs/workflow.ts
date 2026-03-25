@@ -16,16 +16,6 @@ export type WorkflowDefinition = Record<
   }
 >;
 
-export function getWorkflowCacheScopeIds(
-  spaceId: string,
-  definition: WorkflowDefinition,
-): string[] {
-  return [
-    ...new Set(
-      Object.values(definition).map((node) => `${spaceId}:${node.extensionId}:${node.jobId}`),
-    ),
-  ];
-}
 
 const meter = otelMetrics.getMeter("wiki.workflows");
 const workflowRunsCounter = meter.createCounter("wiki_workflow_runs_total");
@@ -211,7 +201,6 @@ export async function executeWorkflow(
                 (message) => appendNodeLog(runId, nodeId, message),
                 {
                   signal: controller.signal,
-                  cacheScopeId: `${spaceId}:${nodeDef.extensionId}:${nodeDef.jobId}`,
                   initiatedByUserId: run.initiatedByUserId,
                   jobType: "workflow_node",
                   jobId: nodeDef.jobId,

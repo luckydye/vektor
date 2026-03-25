@@ -83,7 +83,6 @@ export const POST: APIRoute = (context) =>
                 (message) => send({ type: "log", message }),
                 {
                   signal: context.request.signal,
-                  cacheScopeId: `${spaceId}:${extensionId}:${jobId}`,
                   initiatedByUserId,
                   jobType: "single_job",
                   jobId,
@@ -118,7 +117,6 @@ export const POST: APIRoute = (context) =>
         spaceId,
         (msg) => logs.push(msg),
         {
-          cacheScopeId: `${spaceId}:${extensionId}:${jobId}`,
           initiatedByUserId,
           jobType: "single_job",
           jobId,

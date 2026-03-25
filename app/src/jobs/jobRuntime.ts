@@ -13,19 +13,6 @@
 export function buildJobWrapper(jobFileUrl: string): string {
   return `const { workerData: __wd, parentPort: __pp } = await import("node:worker_threads");
 const { spaceId: __s, apiUrl: __a, jobToken: __t } = __wd;
-const { mkdir, readFile, rm, writeFile } = await import("node:fs/promises");
-const { tmpdir } = await import("node:os");
-const { join } = await import("node:path");
-const { createHash } = await import("node:crypto");
-
-const __cacheScope = String(__wd.cacheScopeId ?? "unknown-job");
-const __cacheDir = join(tmpdir(), "wiki-job-cache", __cacheScope);
-
-const __cacheFileForKey = async (key) => {
-  const hash = createHash("sha256").update(String(key)).digest("hex");
-  await mkdir(__cacheDir, { recursive: true });
-  return join(__cacheDir, hash + ".json");
-};
 
 const __headersWithTrace = (headers) => {
   const merged = new Headers(headers ?? {});
@@ -36,40 +23,6 @@ const __headersWithTrace = (headers) => {
 
 globalThis.log = (message) => {
   __pp.postMessage({ type: "log", message: String(message) });
-};
-
-globalThis.jobCache = {
-  get: async (key) => {
-    const file = await __cacheFileForKey(key);
-    try {
-      const raw = await readFile(file, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (parsed.expiresAt != null && Date.now() >= Number(parsed.expiresAt)) {
-        await rm(file, { force: true });
-        return { hit: false, value: null };
-      }
-      return { hit: true, value: parsed.value ?? null };
-    } catch {
-      return { hit: false, value: null };
-    }
-  },
-  set: async (key, value, options) => {
-    const file = await __cacheFileForKey(key);
-    const ttlMs = options?.ttlMs;
-    const expiresAt = typeof ttlMs === "number" && ttlMs > 0 ? Date.now() + ttlMs : null;
-    await writeFile(file, JSON.stringify({ expiresAt, value }), "utf-8");
-  },
-  delete: async (key) => {
-    const file = await __cacheFileForKey(key);
-    await rm(file, { force: true });
-  },
-  remember: async (key, produce, options) => {
-    const cached = await globalThis.jobCache.get(key);
-    if (cached.hit) return cached.value;
-    const value = await produce();
-    await globalThis.jobCache.set(key, value, options);
-    return value;
-  },
 };
 
 globalThis.uploadArtifact = async (filename, content, mimeType) => {
