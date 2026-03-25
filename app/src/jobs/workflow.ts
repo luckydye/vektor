@@ -145,10 +145,16 @@ export async function executeWorkflow(
           continue;
         }
 
-        // Build resolved inputs: runtime inputs as baseline, then inherited dependency outputs,
-        // then explicit node inputs (highest priority).
+        // Build resolved inputs:
+        // 1. Node-configured inputs (static defaults from workflow builder, lowest priority)
+        // 2. Runtime inputs from caller (e.g. form submissions — override node config)
+        // 3. Dependency outputs (actual computed values, highest priority)
         // JobOutputValue typed objects are unwrapped to their raw scalar before passing to the next job.
-        const resolvedInputs: Record<string, unknown> = { ...(options?.runtimeInputs ?? {}) };
+        const resolvedInputs: Record<string, unknown> = {};
+        for (const { key, value } of nodeDef.inputs) {
+          if (value !== "") resolvedInputs[key] = value;
+        }
+        Object.assign(resolvedInputs, options?.runtimeInputs ?? {});
         for (const depId of nodeDef.depends) {
           for (const [key, val] of Object.entries(nodeOutputs.get(depId) ?? {})) {
             const typed = val as { type?: string; url?: string; value?: unknown };
@@ -156,9 +162,6 @@ export async function executeWorkflow(
             else if (typed.type === "text") resolvedInputs[key] = typed.value;
             else resolvedInputs[key] = val;
           }
-        }
-        for (const { key, value } of nodeDef.inputs) {
-          if (value !== "") resolvedInputs[key] = value;
         }
 
         setNodeStatus(runId, nodeId, {
