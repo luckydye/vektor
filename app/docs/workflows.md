@@ -228,6 +228,7 @@ Source: `/Users/tihav/source/wiki-extensions/extensions/workflow-builder/manifes
 - `file` (`file`, required): ZIP artifact URL
 - `subJobId` (`string`, required): job to run for each file
 - `inputKey` (`string`, required): input key on the sub-job to receive file text
+- `resultsKey` (`string`, optional): output key name for the outer table output; defaults to `result`
 - Any additional keys are passed through to each sub-job invocation.
 - Outputs:
 - `file` (`file`): ZIP of per-file results
