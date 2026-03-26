@@ -11,14 +11,6 @@ tasks:
       - bun i
       - cd app && bun i
 
-  cli:
-    env:
-      WIKI_HOST: https://wiki.luckydye.de/
-      WIKI_ACCESS_TOKEN: "at_74b848a7243e397c73c50ca3779105ce2d41f203212b5eacc43b4b401e97556c"
-      WIKI_SPACEID: "46e85327-5520-4122-99c6-d5f6360233a5"
-    cmds:
-      - ./extension-api/cli-client.ts {{.CLI_ARGS}}
-
   workflow:run:
     cmds:
       - bun ./cli/src/workflow.ts {{.CLI_ARGS}}
