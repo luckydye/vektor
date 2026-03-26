@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick } from "vue";
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { marked } from "marked";
 import { Actions } from "../utils/actions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
@@ -1333,8 +1333,13 @@ async function sendWithProvider(message: string, assistantMessageIndex: number) 
 // ── Session management ────────────────────────────────────────────────────────
 
 async function loadSessions() {
+  if (!currentSpaceId.value) return;
   sessions.value = await getSessionsForSpace(currentSpaceId.value);
 }
+
+watch(currentSpaceId, (id) => {
+  if (id) loadSessions();
+});
 
 function startNewChat() {
   currentSessionId.value = null;
