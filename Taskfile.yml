@@ -28,12 +28,13 @@ tasks:
     deps: [setup]
     dir: ./app
     dotenv:
-      - .env.preview
+      - ../.env.preview
     env:
       HOST: 0.0.0.0
     cmds:
       - task: compile
-      - ./vektor-server --no-env-file
+      - printenv
+      - ./vektor-server
       
   prod:
     deps: [setup]
@@ -45,7 +46,7 @@ tasks:
     cmds:
       - bunx --bun astro build
       - bun run ./scripts/generate-client-assets.ts
-      - ./vektor-server --no-env-file
+      - ./vektor-server
   build:
     deps: [setup]
     dir: ./app
@@ -70,7 +71,7 @@ tasks:
     env:
       HOST: 0.0.0.0
     cmds:
-      - ./vektor-server --no-env-file
+      - ./vektor-server
 
   test:
     dir: ./app
