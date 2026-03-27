@@ -33,7 +33,6 @@ tasks:
       HOST: 0.0.0.0
     cmds:
       - task: compile
-      - printenv
       - ./vektor-server
       
   prod:
