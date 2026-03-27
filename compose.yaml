@@ -8,7 +8,7 @@ services:
     ports:
       - "8081:8080"
     volumes:
-      - wiki_data:/app/app/data
+      - wiki_data:/app/data
 
 volumes:
   wiki_data:
