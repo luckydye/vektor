@@ -13,7 +13,7 @@ if (!authDb) {
 }
 
 export const auth = betterAuth({
-  baseURL: appConfig.SITE_URL,
+  baseURL: appConfig.SITE_URL || "http://localhost:8080",
 
   secret: appConfig.AUTH_SECRET,
 
@@ -37,14 +37,25 @@ export const auth = betterAuth({
     enabled: !!import.meta.env.DEV,
   },
 
-  trustedOrigins: [
-    //
-    config().SITE_URL,
-    "http://127.0.0.1:8080",
-    "http://localhost:8080",
-    "http://127.0.0.1:4321",
-    "http://localhost:4321",
-  ],
+  trustedOrigins: async (request) => {
+    const trustedOrigins = new Set<string>([
+      "http://127.0.0.1:*",
+      "http://localhost:*",
+      "http://127.0.0.1:4321",
+      "http://localhost:4321",
+    ]);
+
+    if (appConfig.SITE_URL) {
+      trustedOrigins.add(appConfig.SITE_URL);
+    }
+
+    const origin = request?.headers.get("origin");
+    if (origin) {
+      trustedOrigins.add(origin);
+    }
+
+    return [...trustedOrigins];
+  },
 
   plugins: [
     genericOAuth({
