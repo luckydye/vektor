@@ -35,17 +35,6 @@ tasks:
       - task: compile
       - ./vektor-server
       
-  prod:
-    deps: [setup]
-    dir: ./app
-    dotenv:
-      - ../.env.prod
-    env:
-      HOST: 0.0.0.0
-    cmds:
-      - bunx --bun astro build
-      - bun run ./scripts/generate-client-assets.ts
-      - ./vektor-server
   build:
     deps: [setup]
     dir: ./app
