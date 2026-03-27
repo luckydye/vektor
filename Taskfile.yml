@@ -27,12 +27,10 @@ tasks:
   preview:
     deps: [setup]
     dir: ./app
-    dotenv:
-      - ../.env.preview
     cmds:
-      - bunx --bun astro build
-      - bun run ./scripts/generate-client-assets.ts
-      - bun ./src/server.ts
+      - task: compile
+      - ./vektor-server
+      
   prod:
     deps: [setup]
     dir: ./app
