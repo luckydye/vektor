@@ -29,6 +29,7 @@ WORKDIR /src
 COPY . ./
 
 RUN mise trust && mise install
+RUN task setup
 RUN task compile
 
 FROM debian:12-slim AS runtime
