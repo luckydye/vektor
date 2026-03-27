@@ -9,6 +9,32 @@ import { generateCreateTableSQL } from "./schemaUtils.ts";
 
 const DATA_DIR = "./data";
 
+export async function getExistingColumnNames(
+  db: BunSQLiteDatabase,
+  tableName: string,
+) {
+  const rows = await db.all<{ name: string }>(
+    sql.raw(`SELECT name FROM pragma_table_info('${tableName}')`),
+  );
+  return new Set(rows.map(({ name }) => name));
+}
+
+export async function ensureColumnExists(
+  db: BunSQLiteDatabase,
+  tableName: string,
+  columnName: string,
+  columnDefinition: string,
+) {
+  const existingColumns = await getExistingColumnNames(db, tableName);
+  if (existingColumns.has(columnName)) {
+    return;
+  }
+
+  await db.run(
+    sql.raw(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`),
+  );
+}
+
 export async function prepateAuthDb(authDb: BunSQLiteDatabase) {
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
@@ -90,30 +116,17 @@ export async function prepareSpaceDb(spaceId: string) {
     spaceSchema.oauthIntegrationState,
   );
   await spaceDb.run(sql.raw(oauthIntegrationStateSQL));
-  await spaceDb.run(
-    sql.raw("ALTER TABLE oauth_integration ADD COLUMN instance_url TEXT"),
-  ).catch(() => {});
-  await spaceDb.run(
-    sql.raw("ALTER TABLE oauth_integration_state ADD COLUMN instance_url TEXT"),
-  ).catch(() => {});
+  await ensureColumnExists(spaceDb, "oauth_integration", "instance_url", "TEXT");
+  await ensureColumnExists(spaceDb, "oauth_integration_state", "instance_url", "TEXT");
+  await ensureColumnExists(spaceDb, "document", "search_text", "TEXT");
+  await ensureColumnExists(spaceDb, "document", "search_embedding", "TEXT");
+  await ensureColumnExists(spaceDb, "document", "search_updated_at", "INTEGER");
+  await ensureColumnExists(spaceDb, "revision", "status", "TEXT");
 
-  await spaceDb.run(sql.raw("ALTER TABLE document ADD COLUMN search_text TEXT")).catch(() => {});
-  await spaceDb.run(sql.raw("ALTER TABLE document ADD COLUMN search_embedding TEXT")).catch(
-    () => {},
-  );
-  await spaceDb.run(
-    sql.raw("ALTER TABLE document ADD COLUMN search_updated_at INTEGER"),
-  ).catch(() => {});
-  await spaceDb.run(sql.raw("ALTER TABLE revision ADD COLUMN status TEXT")).catch(() => {});
-
-  try {
-    await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ai"));
-    await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ad"));
-    await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_au"));
-    await spaceDb.run(sql.raw("DROP TABLE IF EXISTS document_fts"));
-  } catch (err) {
-    console.error("Failed to prepare vector search schema:", err);
-  }
+  await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ai"));
+  await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ad"));
+  await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_au"));
+  await spaceDb.run(sql.raw("DROP TABLE IF EXISTS document_fts"));
 
   console.log("Space database initialized at:", spacePath);
 }

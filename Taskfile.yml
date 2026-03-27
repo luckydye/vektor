@@ -27,6 +27,8 @@ tasks:
   preview:
     deps: [setup]
     dir: ./app
+    dotenv:
+      - .env.preview
     cmds:
       - task: compile
       - ./vektor-server

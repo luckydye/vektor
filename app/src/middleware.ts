@@ -9,6 +9,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const { request } = context;
   const url = new URL(request.url);
 
+  context.locals.publicEnv = {
+    WIKI_FEATURE_CANVAS: process.env.WIKI_FEATURE_CANVAS,
+    WIKI_SITE_URL: process.env.WIKI_SITE_URL,
+    WIKI_API_URL: process.env.WIKI_API_URL,
+    WIKI_COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
+    WIKI_DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
+  };
+
   appLogger.info("HTTP request", {
     method: request.method,
     host: url.hostname,

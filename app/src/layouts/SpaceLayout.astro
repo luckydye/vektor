@@ -45,15 +45,7 @@ if (Astro.locals.user) {
 // Generate color palette from brand color
 const paletteCss = generatePaletteCss(brandColor);
 
-const publicEnvVars = () => {
-  return {
-    WIKI_FEATURE_CANVAS: process.env.WIKI_FEATURE_CANVAS,
-    WIKI_SITE_URL: process.env.WIKI_SITE_URL,
-    WIKI_API_URL: process.env.WIKI_API_URL,
-    WIKI_COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
-    WIKI_DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
-  };
-};
+const publicEnvVars = () => Astro.locals.publicEnv;
 ---
 
 <!doctype html>
