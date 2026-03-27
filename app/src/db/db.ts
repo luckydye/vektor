@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
-import { drizzle } from "drizzle-orm/libsql";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "./schema.ts";
 import { prepateAuthDb, prepareSpaceDb } from "./init.ts";
 
@@ -13,7 +13,9 @@ if (!existsSync(DATA_DIR)) {
 
 const authDb = drizzle({
   connection: {
-    url: `file:${path.resolve(AUTH_DB_PATH)}`,
+    source: path.resolve(AUTH_DB_PATH),
+    create: true,
+    readwrite: true,
   },
 });
 
@@ -50,7 +52,9 @@ export async function getSpaceDb(spaceId: string) {
 
   const spaceDb = drizzle({
     connection: {
-      url: `file:${path.resolve(spaceDir, `${spaceId}.db`)}`,
+      source: path.resolve(spaceDir, `${spaceId}.db`),
+      create: true,
+      readwrite: true,
     },
   });
 

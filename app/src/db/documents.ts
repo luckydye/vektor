@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-import type { drizzle } from "drizzle-orm/libsql";
+import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import {
   grantPermission,
   listAccessibleResources,
@@ -941,7 +941,7 @@ export function getMentionCacheStats() {
  * Results are cached in memory to avoid recomputing on every request
  */
 async function countMentionsForUser(
-  db: ReturnType<typeof drizzle>,
+  db: BunSQLiteDatabase,
   documentId: string,
   userEmail: string,
 ): Promise<number> {

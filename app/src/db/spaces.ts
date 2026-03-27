@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import path, { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/libsql";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { slugify } from "../utils/utils.ts";
 import {
   countSpaceMembers,
@@ -68,7 +68,9 @@ export async function createSpace(
 
   const spaceDb = drizzle({
     connection: {
-      url: `file:${path.resolve(spacePath)}`,
+      source: path.resolve(spacePath),
+      create: true,
+      readwrite: true,
     },
   });
 

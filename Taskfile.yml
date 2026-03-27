@@ -54,7 +54,7 @@ tasks:
     cmds:
       - bunx --bun astro build
       - bun run ./scripts/generate-client-assets.ts
-      - bun build ./src/server.ts --compile --external lightningcss --outfile ./wiki
+      - bun build ./src/server.ts --compile --external lightningcss --outfile ./vektor-server
 
   test:
     dir: ./app

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
 import { sql } from "drizzle-orm";
-import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
+import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 
 import * as authSchema from "./schema/auth.ts";
 import * as spaceSchema from "./schema/space.ts";
@@ -9,7 +9,7 @@ import { generateCreateTableSQL } from "./schemaUtils.ts";
 
 const DATA_DIR = "./data";
 
-export async function prepateAuthDb(authDb: LibSQLDatabase) {
+export async function prepateAuthDb(authDb: BunSQLiteDatabase) {
   if (!existsSync(DATA_DIR)) {
     mkdirSync(DATA_DIR, { recursive: true });
   }
@@ -39,7 +39,9 @@ export async function prepareSpaceDb(spaceId: string) {
 
   const spaceDb = drizzle({
     connection: {
-      url: `file:${path.resolve(spacePath)}`,
+      source: path.resolve(spacePath),
+      create: true,
+      readwrite: true,
     },
   });
 
