@@ -31,6 +31,7 @@ tasks:
       - ../.env.preview
     cmds:
       - bunx --bun astro build
+      - bun run ./scripts/generate-client-assets.ts
       - bun ./src/server.ts
   prod:
     deps: [setup]
@@ -39,6 +40,7 @@ tasks:
       - ../.env.prod
     cmds:
       - bunx --bun astro build
+      - bun run ./scripts/generate-client-assets.ts
       - bun ./src/server.ts
   build:
     deps: [setup]
@@ -50,7 +52,9 @@ tasks:
     dir: ./app
     desc: Compile full app with server into a single executable using bun.
     cmds:
-      - bun build ./src/server.ts --compile --outfile ./wiki
+      - bunx --bun astro build
+      - bun run ./scripts/generate-client-assets.ts
+      - bun build ./src/server.ts --compile --external lightningcss --outfile ./wiki
 
   test:
     dir: ./app

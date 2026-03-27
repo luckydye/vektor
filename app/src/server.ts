@@ -2,6 +2,7 @@ import "./observability/bootstrap.ts";
 import express from "express";
 import expressWebsockets from "express-ws";
 import { appLogger } from "./observability/logger.ts";
+import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
 
 import { auth } from "./auth.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
@@ -379,9 +380,12 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
   });
 });
 
-// TODO: we could bundle client asssets into a zip and load them into memory on init,
-//  which could be bundled into single executable.
-app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
+if (import.meta.env.DEV) {
+  app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
+} else {
+  const { embeddedClientAssets } = await import("./generated/client-assets.ts");
+  app.use("/", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
+}
 
 let devServer: Awaited<ReturnType<typeof dev>> | undefined;
 
