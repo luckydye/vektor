@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { getTextColor } from "../utils/utils.ts";
+import { getTextColor, normalizeTimestamp } from "../utils/utils.ts";
 import { api, type Category } from "../api/client.ts";
 
 const props = defineProps<{
@@ -25,7 +25,9 @@ onMounted(async () => {
         });
         const docs = response.documents;
         const mostRecent = docs.sort(
-          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+          (a, b) =>
+            normalizeTimestamp(b.updatedAt).getTime() -
+            normalizeTimestamp(a.updatedAt).getTime(),
         )[0];
         return [cat.slug, mostRecent?.slug ?? null] as const;
       }),

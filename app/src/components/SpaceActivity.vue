@@ -23,6 +23,7 @@ Usage:
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { normalizeTimestamp } from "../utils/utils.ts";
 
 interface AuditLogEntry {
   id: number;
@@ -186,7 +187,7 @@ function getEventColor(event: string): string {
 
 function formatTime(dateString: string): string {
   try {
-    const date = new Date(dateString);
+    const date = normalizeTimestamp(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -210,7 +211,7 @@ const groupedActivities = computed(() => {
   let currentGroup: AuditLogEntry[] = [];
 
   for (const activity of activities.value) {
-    const activityDate = new Date(activity.createdAt).toLocaleDateString("en-US", {
+    const activityDate = normalizeTimestamp(activity.createdAt).toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
       month: "long",

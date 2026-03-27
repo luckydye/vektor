@@ -4,7 +4,7 @@ import { useRevisions } from "../composeables/useRevisions.ts";
 import { useAuditLogs } from "../composeables/useAuditLogs.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useRoute } from "../composeables/useRoute.ts";
-import { formatDate } from "../utils/utils.ts";
+import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import { Actions } from "../utils/actions.ts";
 import ActivityEvent from "./ActivityEvent.vue";
 import "@sv/elements/popover";
@@ -46,8 +46,8 @@ const isOpen = computed(() => windows.value.get("revisions")?.open ?? false);
 
 const combinedActivity = computed(() => {
   return auditLogs.value.sort((a, b) => {
-    const dateA = new Date(a.createdAt).getTime();
-    const dateB = new Date(b.createdAt).getTime();
+    const dateA = normalizeTimestamp(a.createdAt).getTime();
+    const dateB = normalizeTimestamp(b.createdAt).getTime();
     return dateB - dateA;
   });
 });
@@ -72,9 +72,7 @@ const activityEvents = computed(() => {
     return {
       variant: (item.revisionId ? "default" : "no-action") as "default" | "no-action",
       date: formatDate(
-        typeof item.createdAt === "string"
-          ? item.createdAt
-          : item.createdAt.toISOString(),
+        item.createdAt,
       ),
       description,
       revisionNumber: item.revisionId ?? undefined,

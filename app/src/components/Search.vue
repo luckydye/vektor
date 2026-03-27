@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useInfiniteQuery } from "@tanstack/vue-query";
-import { formatDate } from "../utils/utils.ts";
+import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import {
   api,
   type DocumentWithProperties,
@@ -89,7 +89,7 @@ const groupedDocuments = computed(() => {
   };
 
   for (const doc of allDocuments.value) {
-    const updatedAt = new Date(doc.updatedAt);
+    const updatedAt = normalizeTimestamp(doc.updatedAt);
     if (updatedAt >= todayStart) {
       groups.today.push(doc);
     } else if (updatedAt >= weekStart) {
@@ -103,7 +103,8 @@ const groupedDocuments = computed(() => {
 
   for (const key of Object.keys(groups)) {
     groups[key as keyof typeof groups].sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      (a, b) =>
+        normalizeTimestamp(b.updatedAt).getTime() - normalizeTimestamp(a.updatedAt).getTime(),
     );
   }
 

@@ -118,7 +118,7 @@ onMounted(() => {
             {{ doc.properties.title || "Untitled" }}
           </a>
           <div class="text-sm text-neutral-900 mt-1">
-            Archived {{ formatDate(new Date(doc.updatedAt)) }}
+            Archived {{ formatDate(doc.updatedAt) }}
           </div>
         </div>
         <div class="flex items-center gap-2">

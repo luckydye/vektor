@@ -27,6 +27,7 @@ import {
   deleteSession,
   type ChatSession,
 } from "../composeables/useChatSessions.ts";
+import { normalizeTimestamp } from "../utils/utils.ts";
 
 const props = defineProps({
   documentId: {
@@ -344,7 +345,7 @@ async function updateMentionSuggestions() {
     const docs = await ensureMentionDocs();
     if (seq !== mentionReqSeq) return;
     const query = mentionQuery.value.trim().toLowerCase();
-    const filtered = [...docs]
+      const filtered = [...docs]
       .filter((doc) => {
         const title = getDocumentTitle(doc).toLowerCase();
         const slug = doc.slug.toLowerCase();
@@ -352,8 +353,8 @@ async function updateMentionSuggestions() {
         return title.includes(query) || slug.includes(query);
       })
       .sort((a, b) => {
-        const aTime = new Date(a.updatedAt).getTime();
-        const bTime = new Date(b.updatedAt).getTime();
+        const aTime = normalizeTimestamp(a.updatedAt).getTime();
+        const bTime = normalizeTimestamp(b.updatedAt).getTime();
         return bTime - aTime;
       })
       .slice(0, 8)
@@ -378,6 +379,14 @@ async function updateMentionSuggestions() {
 function onMessageInput() {
   updateMentionSuggestions();
   nextTick(updateMentionOverlayPosition);
+}
+
+function formatSessionDate(date: string | number | Date): string {
+  return normalizeTimestamp(date).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function selectMention(suggestion: MentionSuggestion) {
@@ -1685,7 +1694,7 @@ onUnmounted(() => {
           >
             <div class="flex-1 min-w-0">
               <p class="text-sm text-neutral-800 truncate">{{ session.title }}</p>
-              <p class="text-xs text-neutral-400 mt-0.5">{{ new Date(session.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) }}</p>
+              <p class="text-xs text-neutral-400 mt-0.5">{{ formatSessionDate(session.updatedAt) }}</p>
             </div>
             <button
               @click.stop="removeSession(session.id)"

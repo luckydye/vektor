@@ -168,8 +168,8 @@ export function getTextColor(bgColor: string) {
   return brightness > 155 ? "#1F2937" : "#FFFFFF";
 }
 
-export function formatDate(dateString: string) {
-  const date = new Date(dateString);
+export function formatDate(dateString: string | number | Date) {
+  const date = normalizeTimestamp(dateString);
   const now = new Date();
   const diffInMs = now.getTime() - date.getTime();
   const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
@@ -187,7 +187,7 @@ export function formatDate(dateString: string) {
 
 export function formatRelativeTime(timestamp: number) {
   const now = Date.now();
-  const diff = now - timestamp;
+  const diff = now - normalizeTimestamp(timestamp).getTime();
 
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -202,6 +202,31 @@ export function formatRelativeTime(timestamp: number) {
 
 export function getUserInitials(userId: string) {
   return userId.slice(0, 2).toUpperCase();
+}
+
+export function normalizeTimestamp(value: string | number | Date): Date {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return new Date(value < 1e12 ? value * 1000 : value);
+  }
+
+  const trimmed = value.trim();
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) {
+      throw new Error(`Invalid numeric timestamp: ${value}`);
+    }
+    return new Date(numeric < 1e12 ? numeric * 1000 : numeric);
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid timestamp: ${value}`);
+  }
+  return parsed;
 }
 
 export function slugify(text: string) {

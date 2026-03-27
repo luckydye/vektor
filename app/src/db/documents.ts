@@ -28,6 +28,25 @@ import {
 } from "./searchEmbeddings.ts";
 import { createId } from "./ids.ts";
 
+const nonArchivedDocumentCondition = sql`
+  (
+    ${document.archived} = 0
+    OR ${document.archived} = '0'
+    OR ${document.archived} = '0.0'
+    OR ${document.archived} IS NULL
+    OR ${document.archived} = FALSE
+  )
+`;
+
+const archivedDocumentCondition = sql`
+  (
+    ${document.archived} = 1
+    OR ${document.archived} = '1'
+    OR ${document.archived} = '1.0'
+    OR ${document.archived} = TRUE
+  )
+`;
+
 async function generateUniqueSlug(
   spaceId: string,
   baseTitle: string,
@@ -438,7 +457,7 @@ export async function listDocuments(
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(document)
-    .where(eq(document.archived, false))
+    .where(nonArchivedDocumentCondition)
     .get();
 
   const total = countResult?.count || 0;
@@ -459,7 +478,7 @@ export async function listDocuments(
       archived: document.archived,
     })
     .from(document)
-    .where(eq(document.archived, false))
+    .where(nonArchivedDocumentCondition)
     .orderBy(desc(document.updatedAt));
 
   // Apply pagination if provided
@@ -538,7 +557,7 @@ export async function listArchivedDocuments(
       archived: document.archived,
     })
     .from(document)
-    .where(eq(document.archived, true))
+    .where(archivedDocumentCondition)
     .all();
 
   const allProps = await db.select().from(property).all();
@@ -585,7 +604,7 @@ export async function getDocumentCountsByCategory(
       slug: document.slug,
     })
     .from(document)
-    .where(eq(document.archived, false))
+    .where(nonArchivedDocumentCondition)
     .all();
 
   if (docs.length === 0) {
@@ -629,7 +648,7 @@ export async function countDocuments(spaceId: string): Promise<number> {
   const result = await db
     .select({ count: sql<number>`count(*)` })
     .from(document)
-    .where(eq(document.archived, false))
+    .where(nonArchivedDocumentCondition)
     .get();
 
   return result?.count || 0;
@@ -658,7 +677,7 @@ export async function listDraftDocuments(
       archived: document.archived,
     })
     .from(document)
-    .where(eq(document.archived, false))
+    .where(nonArchivedDocumentCondition)
     .orderBy(desc(document.updatedAt))
     .all();
 
@@ -1021,7 +1040,7 @@ export async function listAllDocumentsByCategories(
       archived: document.archived,
     })
     .from(document)
-    .where(eq(document.archived, false))
+    .where(nonArchivedDocumentCondition)
     .orderBy(desc(document.updatedAt))
     .all();
 
@@ -1165,7 +1184,7 @@ export async function getDocumentChildren(
   const docs = await db
     .select()
     .from(document)
-    .where(and(eq(document.parentId, parentId), eq(document.archived, false)))
+    .where(and(eq(document.parentId, parentId), nonArchivedDocumentCondition))
     .all();
 
   const results: DocumentWithProperties[] = [];
@@ -1234,7 +1253,7 @@ export async function searchDocuments(
       .from(document)
       .where(
         sql`(search_embedding IS NULL OR search_text IS NULL)
-          AND (archived = 0 OR archived = '0' OR archived = '0.0' OR archived IS NULL OR archived = FALSE)
+          AND ${nonArchivedDocumentCondition}
           AND (type = 'document' OR type IS NULL)`,
       )
       .all();
@@ -1311,7 +1330,7 @@ export async function searchDocuments(
         d.created_at as createdAt,
         d.updated_at as updatedAt
       FROM document d
-      WHERE (d.archived = 0 OR d.archived = '0' OR d.archived = '0.0' OR d.archived IS NULL OR d.archived = FALSE)
+      WHERE ${nonArchivedDocumentCondition}
       AND (d.type = 'document' OR d.type IS NULL)
       AND d.search_embedding IS NOT NULL
     `);
@@ -1371,7 +1390,7 @@ export async function searchDocuments(
         0 as rank,
         substr(d.content, 1, 200) as snippet
       FROM document d
-      WHERE (d.archived = 0 OR d.archived = '0' OR d.archived = '0.0' OR d.archived IS NULL OR d.archived = FALSE)
+      WHERE ${nonArchivedDocumentCondition}
       AND (d.type = 'document' OR d.type IS NULL)
       ORDER BY d.updated_at DESC
     `);
