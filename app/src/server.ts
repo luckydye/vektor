@@ -1,6 +1,7 @@
 import "./observability/bootstrap.ts";
 import express from "express";
-import expressWebsockets from "express-ws";
+import { WebSocketServer, type WebSocket } from "ws";
+import type { IncomingMessage } from "node:http";
 import { appLogger } from "./observability/logger.ts";
 import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
 
@@ -74,7 +75,9 @@ function broadcastPresence(room: YRoom, sender: any, type: WsMsgType, payload: o
   }
 }
 
-const { app, getWss } = expressWebsockets(express());
+const app = express();
+const realtimeWebSocketServer = new WebSocketServer({ noServer: true });
+const getWss = () => realtimeWebSocketServer;
 
 // Logging
 app.use((req: any, res: any, next: any) => {
@@ -147,20 +150,16 @@ async function authorizeRealtimeTopic(
   return false;
 }
 
-app.use(express.json({ limit: "100mb" }));
-app.post("/sync", (req: any, res: any) => {
-  const events = Array.isArray(req.body) ? req.body : [req.body];
-  publishSyncEvents(events);
-  res.status(200).end();
-});
-
-app.ws("/events/:spaceId", async (websocket: any, request: any) => {
-  const spaceId = request.params.spaceId;
+async function handleRealtimeWebSocket(
+  websocket: WebSocket,
+  request: IncomingMessage,
+  spaceId: string,
+) {
   const session = await auth.api.getSession({
     headers: request.headers as any,
   });
 
-  if (!spaceId || !session?.user?.id) {
+  if (!session?.user?.id) {
     websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
     websocket.close();
     return;
@@ -183,16 +182,23 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
     const matchedEvents = event.events.filter(({ topic }) => subscriptions.has(topic));
     if (matchedEvents.length === 0) return;
 
-    websocket.send(wsEncode(WsMsgType.Event, {
-      topics: matchedEvents.map(({ topic }) => topic),
-      events: matchedEvents,
-      timestamp: event.timestamp,
-    }));
+    websocket.send(
+      wsEncode(WsMsgType.Event, {
+        topics: matchedEvents.map(({ topic }) => topic),
+        events: matchedEvents,
+        timestamp: event.timestamp,
+      }),
+    );
   });
 
-  websocket.on("message", async (rawMessage: Buffer) => {
+  websocket.on("message", async (rawMessage: Buffer | ArrayBuffer | Buffer[]) => {
     try {
-      const { type, payload } = wsDecode(rawMessage);
+      const messageBuffer = Array.isArray(rawMessage)
+        ? Buffer.concat(rawMessage)
+        : Buffer.isBuffer(rawMessage)
+          ? rawMessage
+          : Buffer.from(rawMessage);
+      const { type, payload } = wsDecode(messageBuffer);
 
       if (type === WsMsgType.YjsUpdate) {
         const { documentId, update } = wsDecodeYjsUpdate(payload);
@@ -258,10 +264,12 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
         roomPresence.add(join.clientId);
         joinedPresence.set(roomKey, roomPresence);
 
-        websocket.send(wsEncode(WsMsgType.PresenceSnapshot, {
-          room: join.room,
-          presences: [...room.presences.values()],
-        }));
+        websocket.send(
+          wsEncode(WsMsgType.PresenceSnapshot, {
+            room: join.room,
+            presences: [...room.presences.values()],
+          }),
+        );
         broadcastPresence(room, websocket, WsMsgType.PresenceUpdate, {
           presence,
         });
@@ -329,7 +337,9 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
       }
 
       if (authorizedTopics.size !== topics.length) {
-        websocket.send(wsEncode(WsMsgType.Error, { message: "One or more realtime topics are forbidden" }));
+        websocket.send(
+          wsEncode(WsMsgType.Error, { message: "One or more realtime topics are forbidden" }),
+        );
       }
 
       if (type === WsMsgType.Subscribe) {
@@ -378,6 +388,13 @@ app.ws("/events/:spaceId", async (websocket: any, request: any) => {
 
     appLogger.info("Realtime WebSocket connection closed", { spaceId });
   });
+}
+
+app.use(express.json({ limit: "100mb" }));
+app.post("/sync", (req: any, res: any) => {
+  const events = Array.isArray(req.body) ? req.body : [req.body];
+  publishSyncEvents(events);
+  res.status(200).end();
 });
 
 if (import.meta.env.DEV) {
@@ -405,9 +422,29 @@ if (import.meta.env.DEV) {
   });
 }
 
-const port = Number.parseInt(process.env.PORT ?? "8080", 10);
-const server = app.listen(port, () => {
-  appLogger.info("Server listening", { port });
+const runtimeArgv = globalThis.process?.argv ?? [];
+const portArgIndex = runtimeArgv.findIndex((arg) => arg === "--port");
+const portArg =
+  portArgIndex >= 0
+    ? runtimeArgv[portArgIndex + 1]
+    : runtimeArgv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
+const port = Number.parseInt(portArg ?? "8080", 10);
+const host = globalThis.process?.env.HOST ?? "0.0.0.0";
+const server = app.listen(port, host, () => {
+  appLogger.info("Server listening", { host, port });
+});
+
+server.on("upgrade", (request, socket, head) => {
+  const url = new URL(request.url ?? "/", "http://localhost");
+  const match = url.pathname.match(/^\/events\/([^/]+)$/);
+  if (!match) {
+    socket.destroy();
+    return;
+  }
+
+  realtimeWebSocketServer.handleUpgrade(request, socket, head, (websocket) => {
+    void handleRealtimeWebSocket(websocket, request, match[1]);
+  });
 });
 
 let isShuttingDown = false;
@@ -432,6 +469,7 @@ async function shutdown(reason: string, exitCode = 0) {
   }
 
   try {
+    realtimeWebSocketServer.close();
     for (const client of getWss().clients) {
       try {
         client.close();

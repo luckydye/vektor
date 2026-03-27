@@ -6,6 +6,7 @@ export interface Props {
 }
 
 const { title = "Wiki" } = Astro.props;
+const publicEnv = Astro.locals.publicEnv;
 ---
 
 <!doctype html>
@@ -16,6 +17,7 @@ const { title = "Wiki" } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+    <script type="application/json" id="env" set:html={JSON.stringify(publicEnv)}></script>
   </head>
 
   <body class="bg-background font-sans">

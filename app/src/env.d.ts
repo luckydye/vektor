@@ -18,4 +18,3 @@ declare namespace App {
 }
 
 declare module "express";
-declare module "express-ws";

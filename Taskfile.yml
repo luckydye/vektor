@@ -2,9 +2,6 @@
 
 version: "3"
 
-dotenv:
-  - .env
-
 tasks:
   setup:
     cmds:
@@ -19,8 +16,11 @@ tasks:
     deps: [setup]
     dir: ./app
     aliases: [d]
+    dotenv:
+      - .env
     env:
       DEV: true
+      HOST: 0.0.0.0
     cmds:
       - bun --watch ./src/server.ts
 
@@ -29,40 +29,60 @@ tasks:
     dir: ./app
     dotenv:
       - .env.preview
+    env:
+      HOST: 0.0.0.0
     cmds:
       - task: compile
-      - ./vektor-server
+      - ./vektor-server --no-env-file
       
   prod:
     deps: [setup]
     dir: ./app
     dotenv:
       - ../.env.prod
+    env:
+      HOST: 0.0.0.0
     cmds:
       - bunx --bun astro build
       - bun run ./scripts/generate-client-assets.ts
-      - bun ./src/server.ts
+      - ./vektor-server --no-env-file
   build:
     deps: [setup]
     dir: ./app
+    dotenv:
+      - .env
     cmds:
       - bunx --bun astro build
 
   compile:
     dir: ./app
     desc: Compile full app with server into a single executable using bun.
+    dotenv:
+      - .env
     cmds:
       - bunx --bun astro build
       - bun run ./scripts/generate-client-assets.ts
       - bun build ./src/server.ts --compile --external lightningcss --outfile ./vektor-server
 
+  start:
+    dir: ./app
+    desc: Start the compiled binary with the current runtime environment.
+    env:
+      HOST: 0.0.0.0
+    cmds:
+      - ./vektor-server --no-env-file
+
   test:
     dir: ./app
+    dotenv:
+      - .env
     cmds:
       - bun test {{.CLI_ARGS}}
 
   drizzle:
     dir: ./app
+    dotenv:
+      - .env
     cmd: bunx drizzle-kit {{.CLI_ARGS}}
 
   wif:convert:
