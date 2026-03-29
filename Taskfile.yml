@@ -50,7 +50,7 @@ tasks:
       - .env
     cmds:
       - bunx --bun astro build
-      - bun run ./scripts/generate-client-assets.ts
+      - bun run ./build.ts
       - bun build ./vektor.ts --compile --external lightningcss --outfile ./vektor
 
   start:

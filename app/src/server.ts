@@ -409,7 +409,7 @@ app.post("/sync", (req: any, res: any) => {
 if (import.meta.env.DEV) {
   app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
 } else {
-  const { embeddedClientAssets } = await import("./generated/client-assets.ts");
+  const { embeddedClientAssets } = await import("../generated/client-assets.ts");
   app.use("/", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
 }
 
