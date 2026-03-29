@@ -2,6 +2,7 @@ import "./observability/bootstrap.ts";
 import { defineMiddleware } from "astro:middleware";
 import { auth } from "./auth.ts";
 import { appLogger } from "./observability/logger.ts";
+import { isNoAuthMode, LOCAL_USER, LOCAL_SESSION } from "./noAuth.ts";
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const startTime = Date.now();
@@ -24,15 +25,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
     time: requestTime,
   });
 
-  const isAuthed = await auth.api.getSession({
-    headers: request.headers,
-  });
-  if (isAuthed) {
-    context.locals.user = isAuthed.user;
-    context.locals.session = isAuthed.session;
+  if (isNoAuthMode()) {
+    context.locals.user = LOCAL_USER as any;
+    context.locals.session = LOCAL_SESSION as any;
   } else {
-    context.locals.user = null;
-    context.locals.session = null;
+    const isAuthed = await auth.api.getSession({
+      headers: request.headers,
+    });
+    if (isAuthed) {
+      context.locals.user = isAuthed.user;
+      context.locals.session = isAuthed.session;
+    } else {
+      context.locals.user = null;
+      context.locals.session = null;
+    }
   }
   try {
     const response = await next();

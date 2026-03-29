@@ -3,6 +3,7 @@ import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb, getAuthDb } from "./db.ts";
 import { acl } from "./schema/space.ts";
 import { document, spaceMetadata } from "./schema/space.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
 import { user } from "./schema/auth.ts";
 
 export interface AclEntry {
@@ -353,6 +354,10 @@ export async function hasPermission(
   requiredPermission: string,
   userGroups?: string[],
 ): Promise<boolean> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return true;
+  }
+
   const userPermission = await getPermission(
     spaceId,
     resourceType,

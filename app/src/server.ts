@@ -32,6 +32,7 @@ import { contentExtensions } from "./editor/extensions.ts";
 import { getDocument } from "./db/documents.ts";
 
 import type { dev } from "astro";
+import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
 
 interface YRoom {
   doc?: Y.Doc;
@@ -155,22 +156,30 @@ async function handleRealtimeWebSocket(
   request: IncomingMessage,
   spaceId: string,
 ) {
-  const session = await auth.api.getSession({
-    headers: request.headers as any,
-  });
+  let userId: string;
 
-  if (!session?.user?.id) {
-    websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
-    websocket.close();
-    return;
-  }
+  if (isNoAuthMode()) {
+    userId = LOCAL_USER_ID;
+  } else {
+    const session = await auth.api.getSession({
+      headers: request.headers as any,
+    });
 
-  try {
-    await verifySpaceRole(spaceId, session.user.id, "viewer");
-  } catch {
-    websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-    websocket.close();
-    return;
+    if (!session?.user?.id) {
+      websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
+      websocket.close();
+      return;
+    }
+
+    try {
+      await verifySpaceRole(spaceId, session.user.id, "viewer");
+    } catch {
+      websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+      websocket.close();
+      return;
+    }
+
+    userId = session.user.id;
   }
 
   const subscriptions = new Set<string>();
@@ -220,7 +229,7 @@ async function handleRealtimeWebSocket(
       if (type === WsMsgType.YjsJoin) {
         const { documentId } = wsDecodeJson<{ documentId: string }>(payload);
         try {
-          await verifyDocumentRole(spaceId, documentId, session.user.id, "editor");
+          await verifyDocumentRole(spaceId, documentId, userId, "editor");
         } catch {
           websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
           return;
@@ -242,7 +251,7 @@ async function handleRealtimeWebSocket(
       if (type === WsMsgType.PresenceJoin) {
         const join = wsDecodeJson<PresenceJoinPayload>(payload);
         try {
-          await verifyDocumentRole(spaceId, join.room, session.user.id, "viewer");
+          await verifyDocumentRole(spaceId, join.room, userId, "viewer");
         } catch {
           websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
           return;
@@ -279,7 +288,7 @@ async function handleRealtimeWebSocket(
       if (type === WsMsgType.PresenceUpdate) {
         const update = wsDecodeJson<PresenceUpdatePayload>(payload);
         try {
-          await verifyDocumentRole(spaceId, update.room, session.user.id, "viewer");
+          await verifyDocumentRole(spaceId, update.room, userId, "viewer");
         } catch {
           websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
           return;
@@ -331,7 +340,7 @@ async function handleRealtimeWebSocket(
       const { topics } = wsDecodeJson<{ topics: string[] }>(payload);
       const authorizedTopics = new Set<string>();
       for (const topic of topics) {
-        if (await authorizeRealtimeTopic(spaceId, session.user.id, topic)) {
+        if (await authorizeRealtimeTopic(spaceId, userId, topic)) {
           authorizedTopics.add(topic);
         }
       }

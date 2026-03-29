@@ -50,10 +50,10 @@ RUN curl -L https://github.com/mgdm/htmlq/releases/download/v0.4.0/htmlq-x86_64-
 
 WORKDIR /app
 
-COPY --from=builder /src/app/vektor-server ./vektor-server
+COPY --from=builder /src/app/vektor ./vektor
 
 RUN mkdir -p /app/data
 
 EXPOSE 8080
 
-ENTRYPOINT ["./vektor-server"]
+ENTRYPOINT ["./vektor", "serve"]

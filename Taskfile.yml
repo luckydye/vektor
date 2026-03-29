@@ -33,7 +33,7 @@ tasks:
       HOST: 0.0.0.0
     cmds:
       - task: compile
-      - ./vektor-server
+      - ./vektor serve
       
   build:
     deps: [setup]
@@ -51,7 +51,7 @@ tasks:
     cmds:
       - bunx --bun astro build
       - bun run ./scripts/generate-client-assets.ts
-      - bun build ./src/server.ts --compile --external lightningcss --outfile ./vektor-server
+      - bun build ./vektor.ts --compile --external lightningcss --outfile ./vektor
 
   start:
     dir: ./app
@@ -59,7 +59,7 @@ tasks:
     env:
       HOST: 0.0.0.0
     cmds:
-      - ./vektor-server
+      - ./vektor serve
 
   test:
     dir: ./app
