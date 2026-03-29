@@ -1,10 +1,11 @@
 /**
  * Document commands — thin fetch wrappers over the wiki REST API.
  *
- * Required env vars:
- *   WIKI_HOST        e.g. http://localhost:3000
- *   WIKI_SPACE_ID    space identifier
- *   WIKI_ACCESS_TOKEN  API token (optional for public spaces)
+ * Defaults to http://localhost:8080 and auto-discovers the first space
+ * from a running vektor instance. Override with env vars:
+ *   WIKI_HOST          e.g. http://localhost:3000
+ *   WIKI_SPACE_ID      space identifier
+ *   WIKI_ACCESS_TOKEN  API token (optional)
  *
  * Commands:
  *   document cat <docId>                       print document content to stdout
@@ -13,6 +14,8 @@
  *   document ls [--limit <n>]                  list documents (id, slug, title)
  *   document search <query>                    full-text search, prints matching docs
  */
+
+import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 function apiUrl(host: string, path: string): string {
   return `${host.replace(/\/$/, "")}${path}`;
@@ -39,16 +42,15 @@ async function apiFetch(
   return res.json();
 }
 
-function env(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} environment variable is not set`);
-  return value;
+async function resolveConnection() {
+  const host = resolveHost();
+  const token = process.env.WIKI_ACCESS_TOKEN;
+  const spaceId = await resolveSpaceId(host, token);
+  return { host, token, spaceId };
 }
 
 export async function commandCat(docId: string): Promise<void> {
-  const host = env("WIKI_HOST");
-  const spaceId = env("WIKI_SPACE_ID");
-  const token = process.env.WIKI_ACCESS_TOKEN;
+  const { host, token, spaceId } = await resolveConnection();
 
   const data = (await apiFetch(
     host,
@@ -60,9 +62,7 @@ export async function commandCat(docId: string): Promise<void> {
 }
 
 export async function commandWrite(docId: string): Promise<void> {
-  const host = env("WIKI_HOST");
-  const spaceId = env("WIKI_SPACE_ID");
-  const token = process.env.WIKI_ACCESS_TOKEN;
+  const { host, token, spaceId } = await resolveConnection();
 
   const content = await Bun.stdin.text();
 
@@ -74,9 +74,7 @@ export async function commandWrite(docId: string): Promise<void> {
 }
 
 export async function commandCreate(flags: { slug?: string; type?: string }): Promise<void> {
-  const host = env("WIKI_HOST");
-  const spaceId = env("WIKI_SPACE_ID");
-  const token = process.env.WIKI_ACCESS_TOKEN;
+  const { host, token, spaceId } = await resolveConnection();
 
   const content = await Bun.stdin.text();
 
@@ -90,9 +88,7 @@ export async function commandCreate(flags: { slug?: string; type?: string }): Pr
 }
 
 export async function commandLs(flags: { limit?: string }): Promise<void> {
-  const host = env("WIKI_HOST");
-  const spaceId = env("WIKI_SPACE_ID");
-  const token = process.env.WIKI_ACCESS_TOKEN;
+  const { host, token, spaceId } = await resolveConnection();
 
   const limit = flags.limit ? `?limit=${flags.limit}` : "";
   const data = (await apiFetch(
@@ -107,9 +103,7 @@ export async function commandLs(flags: { limit?: string }): Promise<void> {
 }
 
 export async function commandSearch(query: string): Promise<void> {
-  const host = env("WIKI_HOST");
-  const spaceId = env("WIKI_SPACE_ID");
-  const token = process.env.WIKI_ACCESS_TOKEN;
+  const { host, token, spaceId } = await resolveConnection();
 
   const data = (await apiFetch(
     host,

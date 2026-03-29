@@ -14,6 +14,7 @@ import { closeSpaceDb, getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import { preference, spaceMetadata } from "./schema/space.ts";
 import { prepareSpaceDb } from "./init.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
 
 const DATA_DIR = "./data";
 const SPACES_DIR = join(DATA_DIR, "spaces");
@@ -195,6 +196,11 @@ export async function listAllSpaces(): Promise<Space[]> {
 
 export async function listUserSpaces(userId: string): Promise<Space[]> {
   const allSpaces = await listAllSpaces();
+
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return allSpaces.map((s) => ({ ...s, userRole: "owner" }));
+  }
+
   const userSpaces: Space[] = [];
 
   for (const space of allSpaces) {

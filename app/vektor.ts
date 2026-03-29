@@ -25,6 +25,7 @@ import {
   commandLs,
   commandSearch,
 } from "../cli/src/document.ts";
+import { resolveHost, resolveSpaceId } from "../cli/src/resolve.ts";
 
 function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string> } {
   const positional: string[] = [];
@@ -60,7 +61,8 @@ Usage:
   vektor document ls [--limit <n>]
   vektor document search <query>
 
-Document commands require: WIKI_HOST, WIKI_SPACE_ID, WIKI_ACCESS_TOKEN (optional)
+Defaults to http://localhost:8080 and auto-discovers the first space.
+Override with WIKI_HOST, WIKI_SPACE_ID, WIKI_ACCESS_TOKEN.
 `);
 }
 
@@ -118,13 +120,10 @@ async function main(): Promise<void> {
 
     if (subcommand === "upload") {
       const { flags } = parseFlags(rest.slice(extensionId?.startsWith("--") ? 0 : 1));
-      const url = flags.url ?? process.env.WIKI_URL;
-      const space = flags.space ?? process.env.WIKI_SPACE_ID;
+      const url = flags.url ?? process.env.WIKI_URL ?? resolveHost();
       const token = flags.token ?? process.env.WIKI_TOKEN;
-      if (!url) throw new Error("--url is required (or set WIKI_URL)");
-      if (!space) throw new Error("--space is required (or set WIKI_SPACE_ID)");
-      if (!token) throw new Error("--token is required (or set WIKI_TOKEN)");
-      await commandUpload(extensionId?.startsWith("--") ? undefined : extensionId, url, space, token);
+      const space = flags.space ?? await resolveSpaceId(url, token);
+      await commandUpload(extensionId?.startsWith("--") ? undefined : extensionId, url, space, token!);
       return;
     }
 

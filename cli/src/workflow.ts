@@ -1,10 +1,11 @@
 /**
  * Workflow command — runs a workflow document via the host API and streams logs.
  *
- * Required env vars (or flags):
+ * Defaults to http://localhost:8080 and auto-discovers the first space
+ * from a running vektor instance. Override with flags or env vars:
  *   WIKI_HOST         e.g. http://localhost:3000   (or --url)
  *   WIKI_SPACE_ID     space identifier             (or --space)
- *   WIKI_ACCESS_TOKEN API token                    (or --token, optional for public spaces)
+ *   WIKI_ACCESS_TOKEN API token                    (or --token, optional)
  *
  * Usage:
  *   vektor workflow <docId> [--input key=value ...] [--file key=/path ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
@@ -14,6 +15,8 @@
  *   vektor workflow abc123 --file file=/path/to/data.xlsx --input title=MyRun
  *   vektor workflow abc123 --json
  */
+
+import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 type NodeState = {
   status: string;
@@ -34,7 +37,7 @@ export type CliOptions = {
   filePaths: Record<string, string>;
   json: boolean;
   url: string;
-  spaceId: string;
+  spaceId?: string;
   token: string | undefined;
 };
 
@@ -94,12 +97,10 @@ export function parseArgs(argv: string[]): CliOptions {
     throw new Error(`Unknown argument: ${arg}\n\n${usage()}`);
   }
 
-  const url = urlFlag ?? process.env.WIKI_HOST;
+  const url = urlFlag ?? resolveHost();
   const spaceId = spaceFlag ?? process.env.WIKI_SPACE_ID;
-  assert(url, "--url is required (or set WIKI_HOST)");
-  assert(spaceId, "--space is required (or set WIKI_SPACE_ID)");
 
-  return { documentId, inputs, filePaths, json, url, spaceId, token: tokenFlag ?? process.env.WIKI_ACCESS_TOKEN };
+  return { documentId, inputs, filePaths, json, url, spaceId: spaceId || undefined, token: tokenFlag ?? process.env.WIKI_ACCESS_TOKEN };
 }
 
 async function apiFetch(url: string, token: string | undefined, path: string, init?: RequestInit): Promise<unknown> {
@@ -136,7 +137,8 @@ async function uploadFile(url: string, spaceId: string, token: string | undefine
 }
 
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
-  const { url, spaceId, token, documentId, inputs, filePaths, json } = options;
+  const { url, token, documentId, inputs, filePaths, json } = options;
+  const spaceId = options.spaceId ?? await resolveSpaceId(url, token);
 
   for (const [key, filePath] of Object.entries(filePaths)) {
     if (!json) process.stderr.write(`Uploading ${filePath}…\n`);
