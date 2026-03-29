@@ -388,11 +388,11 @@ export class ApiClient {
   realtimeConnections = new Map<string, RealtimeConnection>();
 
   constructor(options: {
-    baseUrl: string;
+    baseUrl?: string;
     accessToken?: string;
     socketHost?: string;
   }) {
-    this.baseUrl = options.baseUrl;
+    this.baseUrl = options.baseUrl ?? "";
     this.accessToken = options.accessToken;
     this.socketHost = options?.socketHost;
   }
