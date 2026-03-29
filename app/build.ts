@@ -1,7 +1,7 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 
-const appDir = join(import.meta.dir, "..");
+const appDir = join(import.meta.dir);
 const clientDir = join(appDir, "dist/client");
 const outputFile = join(appDir, "generated/client-assets.ts");
 
