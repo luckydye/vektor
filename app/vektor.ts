@@ -4,7 +4,7 @@
  * Vektor CLI
  *
  * Usage:
- *   vektor serve [--port <port>] [--host <host>] [--no-auth]
+ *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--email-auth]
  *   vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
  *   vektor extension create <id>
  *   vektor extension package [id]
@@ -49,7 +49,7 @@ function parseFlags(args: string[]): { positional: string[]; flags: Record<strin
 function printUsage(): void {
   console.log(`
 Usage:
-  vektor serve [--port <port>] [--host <host>] [--no-auth]
+  vektor serve [--port <port>] [--host <host>] [--no-auth] [--email-auth]
   vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
   vektor extension create <id>
   vektor extension package [id]
@@ -78,6 +78,7 @@ async function main(): Promise<void> {
     if (flags.port) process.argv.push("--port", flags.port);
     if (flags.host) process.env.HOST = flags.host;
     if ("no-auth" in flags) process.env.VEKTOR_NO_AUTH = "1";
+    if ("email-auth" in flags) process.env.VEKTOR_EMAIL_AUTH = "1";
     await import("./src/server.ts");
     return;
   }

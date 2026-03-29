@@ -42,7 +42,7 @@ export const auth = betterAuth({
   },
 
   emailAndPassword: {
-    enabled: !!import.meta.env.DEV,
+    enabled: !!import.meta.env.DEV || process.env.VEKTOR_EMAIL_AUTH === "1",
   },
 
   trustedOrigins: authTrustedOrigins,

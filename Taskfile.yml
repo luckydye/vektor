@@ -66,6 +66,10 @@ tasks:
     dotenv:
       - .env
     cmds:
+      - ./vektor serve --email-auth --port 4321 --host 127.0.0.1 &
+        echo $! > /tmp/vektor-test-server.pid
+      - defer: kill $(cat /tmp/vektor-test-server.pid) 2>/dev/null || true
+      - until curl -sf http://127.0.0.1:4321/ > /dev/null 2>&1; do sleep 0.1; done
       - bun test {{.CLI_ARGS}}
 
   drizzle:
