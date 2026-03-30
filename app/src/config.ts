@@ -87,6 +87,7 @@ export function config() {
       SEARCH_EMBEDDINGS_BASE_URL: process.env.WIKI_SEARCH_EMBEDDINGS_BASE_URL,
       SEARCH_EMBEDDINGS_API_KEY: process.env.WIKI_SEARCH_EMBEDDINGS_API_KEY,
       SECRETS_ENCRYPTION_KEY: process.env.WIKI_SECRETS_ENCRYPTION_KEY,
+      JOB_SANDBOX: process.env.WIKI_JOB_SANDBOX,
 
       // OpenTelemetry
       OTEL_ENABLED: process.env.WIKI_OTEL_ENABLED,

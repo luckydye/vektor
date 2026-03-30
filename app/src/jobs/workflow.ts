@@ -2,6 +2,8 @@ import { getExtension, getExtensionPackage } from "../db/extensions.ts";
 import { otelMetrics, withSpan } from "../observability/otel.ts";
 import { runJob } from "./scheduler.ts";
 import { getRun, setNodeStatus, appendNodeLog, finalizeRun } from "./runStore.ts";
+import { config } from "../config.ts";
+import { createSandbox } from "./sandbox.ts";
 
 export type WorkflowInput = { key: string; value: unknown };
 
@@ -112,7 +114,10 @@ export async function executeWorkflow(
       run.abort = () => controller.abort();
 
       const nodeOutputs = new Map<string, Record<string, unknown>>();
+      const sandbox =
+        config().JOB_SANDBOX === "openshell" ? await createSandbox() : null;
 
+      try {
       for (const nodeId of order) {
         if (controller.signal.aborted) break;
         const nodeDef = definition[nodeId];
@@ -207,6 +212,7 @@ export async function executeWorkflow(
                   initiatedByUserId: run.initiatedByUserId,
                   jobType: "workflow_node",
                   jobId: nodeDef.jobId,
+                  sandbox,
                 },
               );
             },
@@ -246,6 +252,9 @@ export async function executeWorkflow(
       finalizeRun(runId);
       workflowRunsCounter.add(1, { status: run.status });
       workflowRunDurationMs.record(Date.now() - workflowStart, { status: run.status });
+      } finally {
+        await sandbox?.destroy();
+      }
     },
   );
 }

@@ -27,6 +27,8 @@ import { listExtensions, getExtensionPackage } from "#db/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { runJob } from "../../../../../../jobs/scheduler.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { config } from "../../../../../../config.ts";
+import { createSandbox } from "../../../../../../jobs/sandbox.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -66,6 +68,9 @@ export const POST: APIRoute = (context) =>
       if (!zipBuffer)
         return badRequestResponse(`Extension package not found for job "${jobId}"`);
 
+      const useSandbox = config().JOB_SANDBOX === "openshell";
+      const sandbox = useSandbox ? await createSandbox() : null;
+
       if (body.stream) {
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
@@ -86,12 +91,15 @@ export const POST: APIRoute = (context) =>
                   initiatedByUserId,
                   jobType: "single_job",
                   jobId,
+                  sandbox,
                 },
               );
               send({ type: "output", outputs });
             } catch (err) {
               const error = err instanceof Error ? err.message : "Job run failed";
               send({ type: "error", error });
+            } finally {
+              await sandbox?.destroy();
             }
 
             controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -110,20 +118,25 @@ export const POST: APIRoute = (context) =>
 
       // Sync mode: run inline and return outputs
       const logs: string[] = [];
-      const outputs = await runJob(
-        zipBuffer,
-        entry,
-        inputs,
-        spaceId,
-        (msg) => logs.push(msg),
-        {
-          initiatedByUserId,
-          jobType: "single_job",
-          jobId,
-        },
-      );
+      try {
+        const outputs = await runJob(
+          zipBuffer,
+          entry,
+          inputs,
+          spaceId,
+          (msg) => logs.push(msg),
+          {
+            initiatedByUserId,
+            jobType: "single_job",
+            jobId,
+            sandbox,
+          },
+        );
 
-      return jsonResponse({ outputs, logs });
+        return jsonResponse({ outputs, logs });
+      } finally {
+        await sandbox?.destroy();
+      }
     },
     {
       fallbackMessage: "Job run failed",

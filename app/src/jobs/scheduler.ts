@@ -8,6 +8,7 @@ import { config } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildJobWrapper } from "./jobRuntime.ts";
 import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
+import type { Sandbox } from "./sandbox.ts";
 
 /**
  * Extract a job entry file from a zip Buffer, run it as a worker thread,
@@ -109,6 +110,7 @@ export async function runJob(
     initiatedByUserId?: string | null;
     jobType?: string;
     jobId?: string;
+    sandbox?: Sandbox | null;
   },
 ): Promise<Record<string, unknown>> {
   const {
@@ -117,7 +119,16 @@ export async function runJob(
     initiatedByUserId,
     jobType,
     jobId: logicalJobId,
+    sandbox,
   } = options ?? {};
+
+  if (sandbox) {
+    return sandbox.runJob(zipBuffer, entryPath, inputs, spaceId, onLog, {
+      timeoutMs,
+      signal,
+      initiatedByUserId,
+    });
+  }
 
   if (signal?.aborted) throw new Error("Job cancelled");
 
@@ -166,7 +177,7 @@ export async function runJob(
           ...inputs,
           jobId: executionId,
           spaceId,
-          apiUrl: import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080",
+          apiUrl: config().API_URL || (import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080"),
           jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
           traceparent: traceHeaders.traceparent ?? null,
           tracestate: traceHeaders.tracestate ?? null,
