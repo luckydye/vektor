@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { inflateRawSync } from "node:zlib";
+import { getLocalExtension, getLocalExtensionPackage } from "../jobs/localJobs.ts";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
 
@@ -87,6 +88,9 @@ export async function listExtensionsWithErrors(
     });
   }
 
+  const local = getLocalExtension();
+  if (local) extensions.push(local);
+
   return { extensions, errors };
 }
 
@@ -94,6 +98,9 @@ export async function getExtension(
   spaceId: string,
   extensionId: string,
 ): Promise<Extension | null> {
+  const local = getLocalExtension();
+  if (local && extensionId === local.id) return local;
+
   const db = await getSpaceDb(spaceId);
   const rows = await db.select().from(extension).where(eq(extension.id, extensionId));
 
@@ -119,6 +126,9 @@ export async function getExtensionPackage(
   spaceId: string,
   extensionId: string,
 ): Promise<Buffer | null> {
+  const local = getLocalExtension();
+  if (local && extensionId === local.id) return getLocalExtensionPackage();
+
   const db = await getSpaceDb(spaceId);
   const rows = await db
     .select({ package: extension.package })
