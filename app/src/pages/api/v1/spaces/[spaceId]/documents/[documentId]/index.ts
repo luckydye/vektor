@@ -15,7 +15,6 @@ import {
   verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { verifyJobToken } from "../../../../../../../jobs/jobToken.ts";
 import { ResourceType } from "#db/acl.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import {
@@ -50,6 +49,7 @@ import { document as documentTable } from "#db/schema/space.ts";
 import { eq } from "drizzle-orm";
 import { createAuditLog } from "#db/auditLogs.ts";
 import { realtimeTopics } from "../../../../../../../utils/realtime.ts";
+import { extractVerifiedJobToken } from "#jobs/jobToken.ts";
 
 type PropertyPatchValue =
   | null
@@ -235,11 +235,8 @@ export const GET: APIRoute = (context) =>
     const id = requireParam(context.params, "documentId");
     const revParam = context.url.searchParams.get("rev");
 
-    const jobToken = context.request.headers.get("X-Job-Token");
-    if (jobToken) {
-      if (!verifyJobToken(jobToken, spaceId))
-        throw forbiddenResponse("Invalid job token");
-    } else {
+    const jobToken = extractVerifiedJobToken(context.request.headers, spaceId);
+    if (!jobToken) {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
       if (auth.type === "token") {
@@ -306,13 +303,9 @@ export const PUT: APIRoute = (context) =>
 
     let userId: string | undefined;
 
-    const jobToken = context.request.headers.get("X-Job-Token");
+    const jobToken = extractVerifiedJobToken(context.request.headers, spaceId);
     const isJobRequest = Boolean(jobToken);
-    if (jobToken) {
-      if (!verifyJobToken(jobToken, spaceId)) {
-        throw forbiddenResponse("Invalid job token");
-      }
-    } else {
+    if (!jobToken) {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
       if (auth.type === "token") {

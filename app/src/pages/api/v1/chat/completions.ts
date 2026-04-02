@@ -5,16 +5,18 @@ import {
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { verifyJobToken } from "../../../../jobs/jobToken.ts";
+import { extractVerifiedJobToken } from "../../../../jobs/jobToken.ts";
 import { config } from "../../../../config.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
       if (!context.locals.user) {
-        const jobToken = context.request.headers.get("X-Job-Token");
         const spaceId = context.request.headers.get("X-Space-Id");
-        if (!jobToken || !spaceId || !verifyJobToken(jobToken, spaceId)) {
+        const jobToken = spaceId
+          ? extractVerifiedJobToken(context.request.headers, spaceId)
+          : null;
+        if (!jobToken || !spaceId) {
           throw unauthorizedResponse();
         }
       }

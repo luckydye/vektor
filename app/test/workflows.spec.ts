@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 import { createHmac } from "node:crypto";
+import { createJobToken } from "../src/jobs/jobToken.ts";
 
 const DATA_DIR = "./data";
 const BASE_URL = "http://127.0.0.1:4321";
@@ -478,6 +479,32 @@ describe("Workflow runs — failure handling", () => {
 });
 
 describe("Workflow runs — validation errors", () => {
+  it("reads documents with a bearer job token when X-Job-Token is missing", async () => {
+    const createRes = await api(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Bearer Job Token Doc",
+        content: "<p>hello</p>",
+      }),
+    });
+    expect(createRes.status).toBe(200);
+    const {
+      document: { id, content },
+    } = (await createRes.json()) as { document: { id: string; content: string } };
+
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), null);
+    const res = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${id}`, {
+      headers: {
+        Authorization: `Bearer ${jobToken}`,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { document: { id: string; content: string } };
+    expect(body.document.id).toBe(id);
+    expect(body.document.content).toBe(content);
+  });
+
   it("GET unknown runId returns 404", async () => {
     const res = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs/does-not-exist`);
     expect(res.status).toBe(404);
