@@ -177,7 +177,8 @@ export async function runJob(
           ...inputs,
           jobId: executionId,
           spaceId,
-          apiUrl: config().API_URL || (import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080"),
+          // Job-side API calls must stay on the internal backend origin.
+          apiUrl: import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080",
           jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
           traceparent: traceHeaders.traceparent ?? null,
           tracestate: traceHeaders.tracestate ?? null,

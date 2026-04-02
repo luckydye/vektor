@@ -1,7 +1,7 @@
 import type { APIContext } from "astro";
 import { forbiddenResponse, requireUser, verifySpaceRole, authenticateWithToken } from "#db/api.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
-import { extractVerifiedJobToken, parseJobToken } from "#jobs/jobToken.ts";
+import { parseJobToken } from "#jobs/jobToken.ts";
 
 export async function authenticateJobTokenOrSpaceRole(
   context: APIContext,
@@ -11,7 +11,7 @@ export async function authenticateJobTokenOrSpaceRole(
   | { type: "job"; userId: string | null }
   | { type: "user"; user: NonNullable<APIContext["locals"]["user"]> }
 > {
-  const jobToken = extractVerifiedJobToken(context.request.headers, spaceId);
+  const jobToken = context.request.headers.get("X-Job-Token");
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");

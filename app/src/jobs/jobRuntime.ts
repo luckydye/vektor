@@ -33,7 +33,6 @@ globalThis.uploadArtifact = async (filename, content, mimeType) => {
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/uploads", {
     method: "POST",
     headers: __headersWithTrace({
-      "Authorization": "Bearer " + __t,
       "X-Job-Token": __t,
       "Origin": __a,
     }),
@@ -48,10 +47,7 @@ globalThis.uploadArtifact = async (filename, content, mimeType) => {
 
 globalThis.readDocument = async (documentId) => {
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/documents/" + documentId, {
-    headers: __headersWithTrace({
-      "Authorization": "Bearer " + __t,
-      "X-Job-Token": __t,
-    }),
+    headers: __headersWithTrace({ "X-Job-Token": __t }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
@@ -72,7 +68,6 @@ globalThis.writeDocument = async (documentId, content, type) => {
     method: "PUT",
     headers: __headersWithTrace({
       "Content-Type": contentType,
-      "Authorization": "Bearer " + __t,
       "X-Job-Token": __t,
     }),
     body: String(content ?? ""),
@@ -87,7 +82,6 @@ globalThis.createDocument = async (content, options) => {
   log("POST " + __a + "/api/v1/spaces/" + __s + "/documents");
   const headers = __headersWithTrace({
     "Content-Type": "text/markdown; charset=utf-8",
-    "Authorization": "Bearer " + __t,
     "X-Job-Token": __t,
   });
   if (options?.title) headers.set("X-Document-Title", String(options.title));
@@ -107,10 +101,7 @@ globalThis.searchDocuments = async (query, limit) => {
   const params = new URLSearchParams({ q: query });
   if (limit != null) params.set("limit", String(limit));
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/search?" + params.toString(), {
-    headers: __headersWithTrace({
-      "Authorization": "Bearer " + __t,
-      "X-Job-Token": __t,
-    }),
+    headers: __headersWithTrace({ "X-Job-Token": __t }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
@@ -123,10 +114,7 @@ globalThis.getSecret = async (name) => {
   const res = await fetch(
     __a + "/api/v1/spaces/" + __s + "/secrets/" + encodeURIComponent(String(name)),
     {
-      headers: __headersWithTrace({
-        "Authorization": "Bearer " + __t,
-        "X-Job-Token": __t,
-      }),
+      headers: __headersWithTrace({ "X-Job-Token": __t }),
     },
   );
   if (!res.ok) {
