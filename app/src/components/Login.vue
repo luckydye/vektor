@@ -17,7 +17,7 @@ const loading = ref(false);
 
 async function onOAuthLogin() {
   await authClient.signIn.oauth2({
-    providerId: "s-v",
+    providerId: "sso",
     callbackURL: "/",
     errorCallbackURL: "/error",
     newUserCallbackURL: "/",

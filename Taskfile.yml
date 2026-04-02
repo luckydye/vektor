@@ -17,7 +17,7 @@ tasks:
     dir: ./app
     aliases: [d]
     dotenv:
-      - .env
+      - ../.env
     env:
       DEV: true
       HOST: 0.0.0.0
@@ -39,7 +39,7 @@ tasks:
     deps: [setup]
     dir: ./app
     dotenv:
-      - .env
+      - ../.env
     cmds:
       - bunx --bun astro build
 
@@ -47,7 +47,7 @@ tasks:
     dir: ./app
     desc: Compile full app with server into a single executable using bun.
     dotenv:
-      - .env
+      - ../.env
     cmds:
       - bunx --bun astro build
       - bun run ./build.ts
@@ -64,7 +64,7 @@ tasks:
   test:
     dir: ./app
     dotenv:
-      - .env
+      - ../.env
     cmds:
       - ./vektor serve --email-auth --port 4321 --host 127.0.0.1 &
         echo $! > /tmp/vektor-test-server.pid
@@ -75,7 +75,7 @@ tasks:
   drizzle:
     dir: ./app
     dotenv:
-      - .env
+      - ../.env
     cmd: bunx drizzle-kit {{.CLI_ARGS}}
 
   wif:convert:
