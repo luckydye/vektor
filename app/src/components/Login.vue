@@ -7,6 +7,7 @@ import {
   FormField,
 } from "~/src/components/index.ts";
 import { authClient } from "../composeables/auth-client.ts";
+import { config } from "#config";
 
 const conf = config();
 
@@ -18,8 +19,12 @@ const error = ref("");
 const loading = ref(false);
 
 async function onOAuthLogin() {
+  if (!conf.OAUTH_PROVIDER_ID) {
+    throw new Error("OAUTH_PROVIDER_ID is not configured");
+  }
+  
   await authClient.signIn.oauth2({
-    providerId: conf.OAUTH_PROVIDER_ID || "sso",
+    providerId: conf.OAUTH_PROVIDER_ID,
     callbackURL: "/",
     errorCallbackURL: "/error",
     newUserCallbackURL: "/",
