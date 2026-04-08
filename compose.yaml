@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: registry.s-v.de/tihav/wiki-runtime
+    image: registry.s-v.de/tihav/wiki
     restart: unless-stopped
     env_file: env
     ports:
