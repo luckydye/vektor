@@ -8,6 +8,8 @@ import {
 } from "~/src/components/index.ts";
 import { authClient } from "../composeables/auth-client.ts";
 
+const conf = config();
+
 const email = ref("");
 const password = ref("");
 const name = ref("");
@@ -17,7 +19,7 @@ const loading = ref(false);
 
 async function onOAuthLogin() {
   await authClient.signIn.oauth2({
-    providerId: "sso",
+    providerId: conf.OAUTH_PROVIDER_ID || "sso",
     callbackURL: "/",
     errorCallbackURL: "/error",
     newUserCallbackURL: "/",
