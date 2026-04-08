@@ -2,12 +2,13 @@ version: '3.8'
 
 services:
   app:
-    image: registry.s-v.de/tihav/wiki
+    image: registry.s-v.de/tihav/wiki-runtime
     restart: unless-stopped
     env_file: env
     ports:
       - "8081:8080"
     volumes:
+      - ./bin:/app
       - wiki_data:/app/data
 
 volumes:

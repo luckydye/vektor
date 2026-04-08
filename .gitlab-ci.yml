@@ -6,6 +6,17 @@ stages:
   - deploy
 
 build:
+  stage: build
+  script:
+    - task setup
+    - task compile
+  artifacts:
+    paths:
+      - app/vektor
+    expire_in: 1 week
+
+# Only needed when system dependencies (pandoc, jq, etc.) change.
+build-runtime:
   image: docker:latest
   stage: build
   when: manual
@@ -15,12 +26,12 @@ build:
     - echo noop
   script:
     - docker login --username gitlab-ci-token --password $CI_JOB_TOKEN registry.s-v.de
-    - docker build . --tag registry.s-v.de/tihav/wiki --platform linux/amd64
-    - docker push registry.s-v.de/tihav/wiki
+    - docker build . --tag registry.s-v.de/tihav/wiki-runtime --platform linux/amd64
+    - docker push registry.s-v.de/tihav/wiki-runtime
 
 deploy:
   stage: deploy
-  when: manual
+  needs: [build]
   script: task -t ./Deploy.yml deploy
 
 shutdown:
