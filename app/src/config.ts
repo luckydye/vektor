@@ -116,6 +116,7 @@ export function config() {
     API_URL: publicEnv.WIKI_API_URL,
     COLLABORATION_HOST: publicEnv.WIKI_COLLABORATION_HOST,
     DEFAULT_SPACE: publicEnv.WIKI_DEFAULT_SPACE,
+    OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
   } as const;
 }
 

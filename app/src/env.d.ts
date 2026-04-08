@@ -8,6 +8,7 @@ declare namespace App {
     WIKI_API_URL?: string;
     WIKI_COLLABORATION_HOST?: string;
     WIKI_DEFAULT_SPACE?: string;
+    OAUTH_PROVIDER_ID?: string;
   };
 
   interface Locals {
