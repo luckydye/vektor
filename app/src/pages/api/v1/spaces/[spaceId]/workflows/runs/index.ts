@@ -126,8 +126,14 @@ export const POST: APIRoute = (context) =>
       if (fromRunId && fromNodeId) {
         const prevRun = getRun(fromRunId);
         if (!prevRun) return notFoundResponse("Previous run");
+        if (prevRun.spaceId !== spaceId || prevRun.documentId !== documentId) {
+          return badRequestResponse("Previous run does not belong to this workflow");
+        }
         if (!definition[fromNodeId]) {
           return badRequestResponse(`Node "${fromNodeId}" not in workflow`);
+        }
+        if (prevRun.nodes.get(fromNodeId)?.status !== "failed") {
+          return badRequestResponse(`Node "${fromNodeId}" did not fail in previous run`);
         }
 
         // Topological order to find nodes that come before fromNodeId
