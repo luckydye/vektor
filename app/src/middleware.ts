@@ -17,6 +17,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     WIKI_COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
     WIKI_DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
     OAUTH_PROVIDER_ID: process.env.OAUTH_PROVIDER_ID,
+    VEKTOR_NO_AUTH: process.env.VEKTOR_NO_AUTH,
   };
 
   appLogger.info("HTTP request", {

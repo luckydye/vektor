@@ -45,6 +45,7 @@ export function config() {
        * The default space to redirect to from root "/"
        */
       DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
+      NO_AUTH: process.env.VEKTOR_NO_AUTH,
 
       /**
        * better-auth secret token
@@ -116,6 +117,7 @@ export function config() {
     API_URL: publicEnv.WIKI_API_URL,
     COLLABORATION_HOST: publicEnv.WIKI_COLLABORATION_HOST,
     DEFAULT_SPACE: publicEnv.WIKI_DEFAULT_SPACE,
+    NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
   } as const;
 }

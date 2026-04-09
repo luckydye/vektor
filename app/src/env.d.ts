@@ -9,6 +9,7 @@ declare namespace App {
     WIKI_COLLABORATION_HOST?: string;
     WIKI_DEFAULT_SPACE?: string;
     OAUTH_PROVIDER_ID?: string;
+    VEKTOR_NO_AUTH?: string;
   };
 
   interface Locals {
