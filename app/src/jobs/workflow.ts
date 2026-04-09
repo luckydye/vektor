@@ -1,7 +1,14 @@
 import { getExtension, getExtensionPackage } from "../db/extensions.ts";
 import { otelMetrics, withSpan } from "../observability/otel.ts";
 import { runJob } from "./scheduler.ts";
-import { getRun, setNodeStatus, appendNodeLog, finalizeRun } from "./runStore.ts";
+import {
+  appendNodeLog,
+  finalizeRun,
+  getRun,
+  setNodeStatus,
+  setRunAbort,
+  setRunStatus,
+} from "./runStore.ts";
 import { config } from "../config.ts";
 import { createSandbox } from "./sandbox.ts";
 
@@ -108,10 +115,10 @@ export async function executeWorkflow(
 
       const run = getRun(runId);
       if (!run) throw new Error(`Run not found: ${runId}`);
-      run.status = "running";
+      setRunStatus(runId, "running");
 
       const controller = new AbortController();
-      run.abort = () => controller.abort();
+      setRunAbort(runId, () => controller.abort());
 
       const nodeOutputs = new Map<string, Record<string, unknown>>();
       const sandbox =
@@ -241,7 +248,7 @@ export async function executeWorkflow(
             job_id: nodeDef.jobId,
             status: "failed",
           });
-          run.status = "failed";
+          setRunStatus(runId, "failed");
           finalizeRun(runId);
           workflowRunsCounter.add(1, { status: "failed" });
           workflowRunDurationMs.record(Date.now() - workflowStart, { status: "failed" });
