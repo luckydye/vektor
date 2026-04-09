@@ -26,7 +26,7 @@
   @apply button-primary-base button-primary-pointer disabled:button-disabled button-with-icon flex-none;
 }
 @utility button-secondary {
-  @apply flex-none whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center bg-background border border-primary-200 rounded-lg font-medium text-interactive min-h-[2rem] text-primary-600 transition-colors px-3xs;
+  @apply flex-none cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center bg-background border border-primary-200 rounded-lg font-medium text-interactive min-h-[2rem] text-primary-600 transition-colors px-3xs;
   @apply enabled:hover:bg-primary-10 enabled:active:bg-primary-50;
   @apply disabled:opacity-50 disabled:cursor-not-allowed;
   @apply button-with-icon;

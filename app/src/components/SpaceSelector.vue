@@ -108,9 +108,9 @@ const handleCreateDoc = (event: Event) => {
         <!-- Action Buttons -->
         <div class="@max-sm:hidden flex items-center gap-2xs flex-none">
           <ButtonSecondary v-if="props.canAccessSettings" @click="handleSettings" :icon="settingsIcon" />
-          <ButtonPrimary v-if="props.canCreateDocs" @click="handleCreateDoc">
-            <Icon name="plus" />
-          </ButtonPrimary>
+          <ButtonSecondary v-if="props.canCreateDocs" @click="handleCreateDoc">
+            <Icon name="plus" class="-mx-1" />
+          </ButtonSecondary>
         </div>
       </div>
     </button>
