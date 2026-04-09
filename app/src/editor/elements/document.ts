@@ -220,6 +220,7 @@ function createEditor(
   let lastPointerY = 0;
   let hasPointerPosition = false;
   let blockDropIndicator: HTMLDivElement | null = null;
+  let dragHandleElement: HTMLElement | null = null;
 
   let editor: Editor;
   const presencePlugin = createPresencePlugin(ydoc, presenceClientId, () => remotePresences);
@@ -262,14 +263,61 @@ function createEditor(
     };
   };
 
-  const handlePointerMove = (event: PointerEvent) => {
-    lastPointerX = event.clientX;
-    lastPointerY = event.clientY;
+  const trackPointerPosition = (clientX: number, clientY: number) => {
+    lastPointerX = clientX;
+    lastPointerY = clientY;
     hasPointerPosition = true;
+  };
+
+  const handleTrackedPointerMove = (event: MouseEvent | PointerEvent) => {
+    trackPointerPosition(event.clientX, event.clientY);
+  };
+
+  const isPointInsideRect = (
+    clientX: number,
+    clientY: number,
+    rect: DOMRect,
+  ) => {
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
+  };
+
+  const clearTrackedPointerPosition = (event?: MouseEvent | PointerEvent) => {
+    const nextTarget = event?.relatedTarget;
+    if (
+      nextTarget instanceof Node &&
+      (editor?.view?.dom?.contains(nextTarget) || dragHandleElement?.contains(nextTarget))
+    ) {
+      return;
+    }
+
+    hasPointerPosition = false;
+    editor?.commands.setMeta("hideDragHandle", true);
   };
 
   const syncDragHandlePosition = () => {
     if (!hasPointerPosition || !editor?.view?.dom) return;
+    const pointerInsideEditor = isPointInsideRect(
+      lastPointerX,
+      lastPointerY,
+      editor.view.dom.getBoundingClientRect(),
+    );
+    const pointerInsideHandle =
+      !!dragHandleElement &&
+      isPointInsideRect(
+        lastPointerX,
+        lastPointerY,
+        dragHandleElement.getBoundingClientRect(),
+      );
+
+    if (!pointerInsideEditor && !pointerInsideHandle) {
+      clearTrackedPointerPosition();
+      return;
+    }
 
     // Force drag-handle plugin to forget current node so same-node scroll updates reposition.
     editor.commands.setMeta("hideDragHandle", true);
@@ -286,7 +334,10 @@ function createEditor(
   };
 
   const cleanupDragHandleSync = () => {
-    window.removeEventListener("pointermove", handlePointerMove, true);
+    editor?.view?.dom?.removeEventListener("mousemove", handleTrackedPointerMove);
+    editor?.view?.dom?.removeEventListener("mouseleave", clearTrackedPointerPosition);
+    dragHandleElement?.removeEventListener("pointermove", handleTrackedPointerMove);
+    dragHandleElement?.removeEventListener("pointerleave", clearTrackedPointerPosition);
     window.removeEventListener("scroll", syncDragHandlePosition, true);
     window.removeEventListener("resize", syncDragHandlePosition, true);
   };
@@ -404,10 +455,6 @@ function createEditor(
     }
   };
 
-  window.addEventListener("pointermove", handlePointerMove, {
-    capture: true,
-    passive: true,
-  });
   window.addEventListener("scroll", syncDragHandlePosition, {
     capture: true,
     passive: true,
@@ -474,6 +521,7 @@ function createEditor(
         render: () => {
           const element = document.createElement("div");
           element.classList.add("custom-drag-handle");
+          dragHandleElement = element;
           return element;
         },
         onElementDragEnd: () => {
@@ -510,9 +558,16 @@ function createEditor(
   });
 
   editor.view.dom.addEventListener("mousemove", handleEditorMouseMove);
+  editor.view.dom.addEventListener("mousemove", handleTrackedPointerMove, { passive: true });
+  editor.view.dom.addEventListener("mouseleave", clearTrackedPointerPosition);
   editor.view.dom.addEventListener("dragover", handleEditorDragOver);
   editor.view.dom.addEventListener("drop", hideBlockDropIndicator);
+  dragHandleElement?.addEventListener("pointermove", handleTrackedPointerMove, {
+    passive: true,
+  });
+  dragHandleElement?.addEventListener("pointerleave", clearTrackedPointerPosition);
   window.addEventListener("dragend", hideBlockDropIndicator, { capture: true });
+  editor.commands.setMeta("hideDragHandle", true);
 
   return editor;
 }
