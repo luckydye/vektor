@@ -423,6 +423,10 @@ export async function hasFeature(
   userId: string,
   userGroups?: string[],
 ): Promise<boolean> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return true;
+  }
+
   const db = await getSpaceDb(spaceId);
 
   // Check for explicit feature ACL entry (user-specific)

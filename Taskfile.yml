@@ -8,10 +8,6 @@ tasks:
       - bun i
       - cd app && bun i
 
-  workflow:run:
-    cmds:
-      - bun ./cli/src/workflow.ts {{.CLI_ARGS}}
-
   dev:
     deps: [setup]
     dir: ./app
@@ -21,6 +17,7 @@ tasks:
     env:
       DEV: true
       HOST: 0.0.0.0
+      VEKTOR_NO_AUTH: "1"
     cmds:
       - bun --watch ./src/server.ts
 
@@ -56,10 +53,8 @@ tasks:
   start:
     dir: ./app
     desc: Start the compiled binary with the current runtime environment.
-    env:
-      HOST: 0.0.0.0
     cmds:
-      - ./vektor serve
+      - ./vektor serve --no-auth
 
   test:
     dir: ./app
@@ -71,12 +66,6 @@ tasks:
       - defer: kill $(cat /tmp/vektor-test-server.pid) 2>/dev/null || true
       - until curl -sf http://127.0.0.1:4321/ > /dev/null 2>&1; do sleep 0.1; done
       - bun test {{.CLI_ARGS}}
-
-  drizzle:
-    dir: ./app
-    dotenv:
-      - ../.env
-    cmd: bunx drizzle-kit {{.CLI_ARGS}}
 
   wif:convert:
     desc: Convert XWiki export to WIF and create ZIP archive
