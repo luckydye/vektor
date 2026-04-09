@@ -91,8 +91,8 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ status: run.status, nodes, output });
   }, "Failed to get run");
 
-export const DELETE: APIRoute = (context) =>
-  withApiErrorHandling(
+function cancelWorkflowRun(context: Parameters<APIRoute>[0]) {
+  return withApiErrorHandling(
     async () => {
       const user = requireUser(context);
       const spaceId = requireParam(context.params, "spaceId");
@@ -105,9 +105,11 @@ export const DELETE: APIRoute = (context) =>
     },
     {
       fallbackMessage: "Failed to cancel run",
-      onError: (error) => {
-        console.error("Cancel workflow run error:", error);
-        return errorResponse("Failed to cancel run", 500);
-      },
+      onError: () => errorResponse("Failed to cancel run", 500),
     },
   );
+}
+
+export const POST: APIRoute = (context) => cancelWorkflowRun(context);
+
+export const DELETE: APIRoute = (context) => cancelWorkflowRun(context);
