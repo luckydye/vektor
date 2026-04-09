@@ -1,6 +1,6 @@
 ---
 import SearchComponent from "../../components/Search.vue";
-import { getPermission, ResourceType, getUserGroups } from "../../db/acl.ts";
+import { verifySpaceAccess } from "../../db/api.ts";
 import { getSpaceBySlug } from "../../db/spaces.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
 
@@ -28,21 +28,7 @@ if (!user) {
   return Astro.redirect("/login");
 }
 
-const userGroups = await getUserGroups(user.id);
-const permission = await getPermission(
-  space.id,
-  ResourceType.SPACE,
-  space.id,
-  user.id,
-  userGroups,
-);
-
-if (!permission) {
-  return new Response(null, {
-    status: 403,
-    statusText: "Forbidden",
-  });
-}
+await verifySpaceAccess(space.id, user.id);
 ---
 
 <SpaceLayout title={`Search - ${space.name} - Wiki`}>
