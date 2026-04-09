@@ -22,7 +22,7 @@ import { useDocument } from "../composeables/useDocument.ts";
 import { useMembers } from "../composeables/useMembers.ts";
 
 const props = defineProps<{
-  documentId: string;
+  documentId?: string;
   initialProperties: Record<string, string | null | undefined> | undefined;
 }>();
 
@@ -35,17 +35,24 @@ const documentProperties = computed(
   () => document.value?.properties || props.initialProperties || {},
 );
 
+function requireDocumentId(): string {
+  if (!props.documentId) {
+    throw new Error("Cannot update properties before the document exists");
+  }
+  return props.documentId;
+}
+
 const handleUpdateProperty = async (property: Property & { search: string }) => {
   let value = property.value;
   if (property.value === "__new__") {
     value = property.search;
   }
 
-  await updateProperty(props.documentId, property.id, value);
+  await updateProperty(requireDocumentId(), property.id, value);
 };
 
 const handleDeleteProperty = (propertyId: string) => {
-  deleteProperty(props.documentId, propertyId);
+  deleteProperty(requireDocumentId(), propertyId);
 };
 
 const isCreatePopoverOpen = ref(false);
@@ -56,7 +63,7 @@ const toggleCreatePopover = () => {
 
 const handleCreate = async (property: { name: string; type: string; value?: string }) => {
   await updateProperty(
-    props.documentId,
+    requireDocumentId(),
     property.name,
     property.value || "",
     property.type,
