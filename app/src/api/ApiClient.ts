@@ -1637,7 +1637,7 @@ export class ApiClient {
     },
 
     cancelRun: async (spaceId: string, runId: string): Promise<void> => {
-      await this.apiDelete(
+      await this.apiPost<{ ok: true }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
       );
