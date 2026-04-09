@@ -1592,11 +1592,20 @@ export class ApiClient {
       spaceId: string,
       documentId: string,
       inputs?: Record<string, unknown>,
+      options?: {
+        fromRunId?: string;
+        fromNodeId?: string;
+      },
     ): Promise<{ runId: string }> => {
       return await this.apiPost<{ runId: string }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/workflows/runs`,
-        { documentId, inputs },
+        {
+          documentId,
+          inputs,
+          fromRunId: options?.fromRunId,
+          fromNodeId: options?.fromNodeId,
+        },
       );
     },
 
