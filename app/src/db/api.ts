@@ -12,6 +12,7 @@ import { getSpace } from "./spaces.ts";
 import { validateAccessToken, getTokenUserId } from "./accessTokens.ts";
 import type { ValidateTokenResult } from "./accessTokens.ts";
 import { withSpan } from "#observability/otel.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
   const body = JSON.stringify(data);
@@ -189,6 +190,14 @@ export async function verifySpaceOwnership(
   userId: string,
   getSpace: (id: string) => Promise<{ createdBy: string } | null>,
 ) {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    const space = await getSpace(spaceId);
+    if (!space) {
+      throw notFoundResponse("Space");
+    }
+    return space;
+  }
+
   const space = await getSpace(spaceId);
   if (!space) {
     throw notFoundResponse("Space");
@@ -200,6 +209,10 @@ export async function verifySpaceOwnership(
 }
 
 export async function verifySpaceAccess(spaceId: string, userId: string): Promise<void> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return;
+  }
+
   const space = await getSpace(spaceId);
   if (!space) {
     throw notFoundResponse("Space");
@@ -228,6 +241,10 @@ export async function verifySpaceRole(
   userId: string,
   requiredRole: string,
 ): Promise<void> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return;
+  }
+
   const space = await getSpace(spaceId);
   if (!space) {
     throw notFoundResponse("Space");
