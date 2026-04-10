@@ -30,7 +30,7 @@ import { DatePicker } from "./extensions/DatePicker.ts";
 import type { Extensions } from "@tiptap/core";
 import { Mentions } from "./extensions/Mentions.ts";
 
-export function contentExtensions(spaceId: string, documentId: string): Extensions {
+export function contentExtensions(spaceId: string, documentId?: string): Extensions {
   return [
     Document,
     Paragraph,

@@ -201,19 +201,15 @@ function createPresencePlugin(
 function createEditor(
   editorElement: HTMLElement,
   spaceId: string,
-  documentId: string,
+  documentId: string | undefined,
   user: User,
   html?: string,
 ) {
-  if (!documentId || !spaceId) {
-    console.warn("Missing documentId or spaceId");
-  }
-
   const ydoc = new Y.Doc();
   const presenceClientId = crypto.randomUUID();
   const presenceUser = toPresenceUser(user);
   const remotePresences = new Map<string, PresenceEnvelope<EditorPresenceState>>();
-  const leaveYjsRoom = joinYjsRoom(spaceId, documentId || crypto.randomUUID(), ydoc);
+  const leaveYjsRoom = documentId ? joinYjsRoom(spaceId, documentId, ydoc) : () => {};
 
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
   let lastPointerX = 0;
@@ -473,6 +469,10 @@ function createEditor(
     },
     onCreate: async ({ editor: currentEditor }) => {
       currentEditor.registerPlugin(presencePlugin);
+      currentEditor.commands.focus();
+      if (!documentId) {
+        return;
+      }
       const presence = joinPresenceRoom<EditorPresenceState>(
         spaceId,
         documentId,
@@ -499,7 +499,6 @@ function createEditor(
       );
       presenceHandle = presence;
       leavePresenceRoom = presence.leave;
-      currentEditor.commands.focus();
       presence.update(buildPresenceState());
     },
     onUpdate: () => {},
@@ -619,7 +618,7 @@ export class DocumentView extends HTMLElement {
     this.attachListeners();
   }
 
-  init(spaceId: string, documentId: string, user: User, html?: string) {
+  init(spaceId: string, documentId: string | undefined, user: User, html?: string) {
     // init is called from the outside, will overwrite shadow innerHTML
     const shadow = this.root;
     if (!shadow) {

@@ -284,6 +284,9 @@ watchEffect(() => {
         if (!currentSpaceId.value) {
           throw new Error("No space selected");
         }
+        if (!currentSpace.value) {
+          throw new Error("No space loaded");
+        }
 
         if (!props.documentId) {
           return;
@@ -300,7 +303,7 @@ watchEffect(() => {
           throw new Error(`Archive failed: ${response.statusText}`);
         }
 
-        window.location.href = `/`;
+        window.location.href = `/${currentSpace.value.slug}`;
       },
     });
   }
@@ -346,6 +349,7 @@ watchEffect(() => {
             type="button"
             class="flex items-center justify-center border-l border-primary-700 px-4xs button-primary-pointer"
             :disabled="isSaving"
+            aria-label="Publish options"
             @click="toggleSaveMenu"
           >
             <Icon name="chevron-down" />
