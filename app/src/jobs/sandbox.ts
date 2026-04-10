@@ -4,7 +4,7 @@ import { writeFile, unlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractFile } from "../db/extensions.ts";
-import { config } from "../config.ts";
+import { config, getConfiguredOpenRouterModel } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildSandboxWrapper } from "./sandboxRuntime.ts";
 import { activeTraceHeaders } from "../observability/otel.ts";
@@ -60,6 +60,7 @@ export async function createSandbox(): Promise<Sandbox> {
 
       const workerData = {
         openrouterApiKey: config().OPENROUTER_API_KEY,
+        openrouterModel: getConfiguredOpenRouterModel(),
         ...inputs,
         jobId: executionId,
         spaceId,

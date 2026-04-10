@@ -6,7 +6,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { verifyJobToken } from "../../../../jobs/jobToken.ts";
-import { config } from "../../../../config.ts";
+import { config, getConfiguredOpenRouterModel } from "../../../../config.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -21,7 +21,7 @@ export const POST: APIRoute = (context) =>
 
       const apiKey = config().OPENROUTER_API_KEY;
       if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-      const model = config().OPENROUTER_MODEL || "qwen/qwen3.5-397b-a17b";
+      const model = getConfiguredOpenRouterModel();
 
       const bodyJson = await parseJsonBody(context.request);
       bodyJson.model = model;

@@ -1,5 +1,7 @@
 let _publicEnvVars: Record<string, string> | undefined;
 
+export const DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.5-397b-a17b";
+
 const publicEnvVars = () => {
   if (_publicEnvVars) {
     return _publicEnvVars;
@@ -120,6 +122,10 @@ export function config() {
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
   } as const;
+}
+
+export function getConfiguredOpenRouterModel(): string {
+  return config().OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
 }
 
 globalThis.config = config;
