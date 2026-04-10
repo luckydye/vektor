@@ -1714,9 +1714,8 @@ export class ApiClient {
       throw new Error("provide a socketHost in options");
     }
 
-    const socket = new WebSocket(
-      `ws${!import.meta.env.DEV ? "s" : ""}://${this.socketHost}/events/${spaceId}`,
-    );
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${this.socketHost}/events/${spaceId}`);
     socket.binaryType = "arraybuffer";
 
     const connection: RealtimeConnection = {

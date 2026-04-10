@@ -256,7 +256,7 @@ const availableNewProperties = computed(() => {
       />
 
       <div class="relative">
-        <ButtonIconSmall :icon="plusIcon" @click="toggleCreatePopover" />
+        <ButtonIconSmall :icon="plusIcon" aria-label="New property" @click="toggleCreatePopover" />
 
         <PropertyPopover
           :is-open="isCreatePopoverOpen"
