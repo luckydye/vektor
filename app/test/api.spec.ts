@@ -217,6 +217,7 @@ describe("API Tests - Spaces", () => {
 describe("API Tests - Documents", () => {
   let testDocumentId: string;
   let childDocumentId: string;
+  let workflowDocumentId: string;
 
   it("should create a document", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
@@ -248,6 +249,41 @@ describe("API Tests - Documents", () => {
     expect(data.documents).toBeDefined();
     expect(Array.isArray(data.documents)).toBe(true);
     expect(data.documents.length).toBeGreaterThan(0);
+  });
+
+  it("should filter documents by type", async () => {
+    const workflowResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "workflow",
+        content: "{\"node1\":{\"extensionId\":\"test\",\"jobId\":\"noop\",\"inputs\":[],\"depends\":[]}}",
+        properties: {
+          title: "Workflow Filter Test",
+        },
+      }),
+    });
+
+    expect(workflowResponse.status).toBe(201);
+    const workflowData = await workflowResponse.json();
+    workflowDocumentId = workflowData.document.id;
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents?type=workflow`,
+    );
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(Array.isArray(data.documents)).toBe(true);
+    expect(data.documents.length).toBeGreaterThan(0);
+    expect(data.documents.some((doc: { id: string }) => doc.id === workflowDocumentId)).toBe(
+      true,
+    );
+    expect(data.documents.some((doc: { id: string }) => doc.id === testDocumentId)).toBe(
+      false,
+    );
+    expect(
+      data.documents.every((doc: { type?: string | null }) => doc.type === "workflow"),
+    ).toBe(true);
   });
 
   it("should get a specific document", async () => {

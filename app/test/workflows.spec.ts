@@ -115,6 +115,12 @@ globalThis.log('computed');
 parentPort.postMessage({ success: true, outputs: { token: crypto.randomUUID() } });
 `.trim();
 
+const CREATE_DOCUMENT_WITH_STRING_TITLE_JOB = `
+import { parentPort } from 'worker_threads';
+const document = await globalThis.createDocument('# Report', 'Workflow Created Title');
+parentPort.postMessage({ success: true, outputs: { documentId: document.id } });
+`.trim();
+
 function buildTestExtensionZip(): Buffer {
   const manifest = {
     id: "test-workflow-ext",
@@ -126,6 +132,11 @@ function buildTestExtensionZip(): Buffer {
       { id: "append", name: "Append", entry: "jobs/append.mjs" },
       { id: "fail", name: "Fail", entry: "jobs/fail.mjs" },
       { id: "cached", name: "Cached", entry: "jobs/cached.mjs" },
+      {
+        id: "create-document-string-title",
+        name: "Create Document String Title",
+        entry: "jobs/create-document-string-title.mjs",
+      },
     ],
   };
   return buildZip([
@@ -134,6 +145,7 @@ function buildTestExtensionZip(): Buffer {
     { name: "jobs/append.mjs", data: Buffer.from(APPEND_JOB) },
     { name: "jobs/fail.mjs", data: Buffer.from(FAIL_JOB) },
     { name: "jobs/cached.mjs", data: Buffer.from(CACHED_JOB) },
+    { name: "jobs/create-document-string-title.mjs", data: Buffer.from(CREATE_DOCUMENT_WITH_STRING_TITLE_JOB) },
   ]);
 }
 
@@ -366,6 +378,37 @@ describe("Workflow runs — two-node dependency", () => {
     const n2 = run.nodes["node2"] as { outputs: { result: string } };
     expect(n2.outputs.result).toBe("overridden !");
     expect(run.output).toEqual({ result: "overridden !" });
+  });
+});
+
+describe("Workflow runs — document creation", () => {
+  it("preserves string titles passed to createDocument helpers", async () => {
+    const docId = await createWorkflowDoc({
+      node1: {
+        extensionId: "test-workflow-ext",
+        jobId: "create-document-string-title",
+        inputs: [],
+        depends: [],
+      },
+    });
+
+    const { runId } = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({ documentId: docId }),
+    }).then((r) => r.json() as Promise<{ runId: string }>);
+
+    const run = await pollRun(testSpaceId, runId);
+    expect(run.status).toBe("completed");
+    const node = run.nodes["node1"] as { outputs: { documentId: string } };
+
+    const createdRes = await api(
+      `/api/v1/spaces/${testSpaceId}/documents/${node.outputs.documentId}`,
+    );
+    expect(createdRes.status).toBe(200);
+    const created = (await createdRes.json()) as {
+      document: { properties: { title?: string } };
+    };
+    expect(created.document.properties.title).toBe("Workflow Created Title");
   });
 });
 

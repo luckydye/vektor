@@ -55,6 +55,7 @@ export const GET: APIRoute = (context) =>
       defaultValue: 0,
       min: 0,
     });
+    const typeParam = context.url.searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = context.url.searchParams.get("categorySlugs");
     const grouped = context.url.searchParams.get("grouped") === "true";
 
@@ -72,16 +73,24 @@ export const GET: APIRoute = (context) =>
         categorySlugs,
         userEmail,
       );
+      const filteredDocumentsByCategory = typeParam
+        ? Object.fromEntries(
+            Object.entries(documentsByCategory).map(([slug, docs]) => [
+              slug,
+              docs.filter((doc) => doc.type === typeParam),
+            ]),
+          )
+        : documentsByCategory;
 
       if (grouped) {
-        return jsonResponse({ documentsByCategory, categorySlugs });
+        return jsonResponse({ documentsByCategory: filteredDocumentsByCategory, categorySlugs });
       }
 
       const seen = new Set<string>();
       const documents = [];
 
       for (const slug of categorySlugs) {
-        const bucket = documentsByCategory[slug] || [];
+        const bucket = filteredDocumentsByCategory[slug] || [];
         for (const doc of bucket) {
           if (seen.has(doc.id)) continue;
           seen.add(doc.id);
@@ -98,7 +107,7 @@ export const GET: APIRoute = (context) =>
     }
 
     // Always return documents without content (content fetched separately when viewing)
-    const { documents, total } = await listDocuments(spaceId, limit, offset);
+    const { documents, total } = await listDocuments(spaceId, limit, offset, typeParam);
     return jsonResponse({ documents, total, limit, offset });
   }, "Failed to list documents");
 

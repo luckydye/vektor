@@ -85,7 +85,13 @@ globalThis.createDocument = async (content, options) => {
     "Content-Type": "text/markdown; charset=utf-8",
     "X-Job-Token": __t,
   });
-  if (options?.title) headers.set("X-Document-Title", String(options.title));
+  const title =
+    typeof options === "string"
+      ? options
+      : options && typeof options === "object"
+        ? options.title
+        : undefined;
+  if (title) headers.set("X-Document-Title", String(title));
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/documents", {
     method: "POST",
     headers,

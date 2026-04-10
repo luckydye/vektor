@@ -47,6 +47,12 @@ const archivedDocumentCondition = sql`
   )
 `;
 
+function nonArchivedColumnCondition(column: string) {
+  return sql.raw(
+    `(${column} = 0 OR ${column} = '0' OR ${column} = '0.0' OR ${column} IS NULL OR ${column} = FALSE)`,
+  );
+}
+
 async function generateUniqueSlug(
   spaceId: string,
   baseTitle: string,
@@ -450,14 +456,18 @@ export async function listDocuments(
   spaceId: string,
   limit?: number,
   offset?: number,
+  type?: string,
 ): Promise<{ documents: DocumentWithProperties[]; total: number }> {
   const db = await getSpaceDb(spaceId);
+  const whereCondition = type
+    ? and(nonArchivedDocumentCondition, eq(document.type, type))
+    : nonArchivedDocumentCondition;
 
   // Get total count first
   const countResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(document)
-    .where(nonArchivedDocumentCondition)
+    .where(whereCondition)
     .get();
 
   const total = countResult?.count || 0;
@@ -478,7 +488,7 @@ export async function listDocuments(
       archived: document.archived,
     })
     .from(document)
-    .where(nonArchivedDocumentCondition)
+    .where(whereCondition)
     .orderBy(desc(document.updatedAt));
 
   // Apply pagination if provided
@@ -1330,7 +1340,7 @@ export async function searchDocuments(
         d.created_at as createdAt,
         d.updated_at as updatedAt
       FROM document d
-      WHERE ${nonArchivedDocumentCondition}
+      WHERE ${nonArchivedColumnCondition("d.archived")}
       AND (d.type = 'document' OR d.type IS NULL)
       AND d.search_embedding IS NOT NULL
     `);
@@ -1390,7 +1400,7 @@ export async function searchDocuments(
         0 as rank,
         substr(d.content, 1, 200) as snippet
       FROM document d
-      WHERE ${nonArchivedDocumentCondition}
+      WHERE ${nonArchivedColumnCondition("d.archived")}
       AND (d.type = 'document' OR d.type IS NULL)
       ORDER BY d.updated_at DESC
     `);

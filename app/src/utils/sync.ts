@@ -14,6 +14,10 @@ export function useSync(
   callback: (keys: string[], event: RealtimeEventMessage) => void,
 ) {
   watchEffect((onCleanup) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     if (!spaceId.value) {
       return;
     }
