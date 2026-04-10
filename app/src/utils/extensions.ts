@@ -94,6 +94,15 @@ type LoadedExtension = {
   viewCleanup: (() => void) | null;
 };
 
+function getExtensionAssetUrl(
+  spaceId: string,
+  extensionId: string,
+  assetPath: string,
+  version: string,
+): string {
+  return `/api/v1/spaces/${spaceId}/extensions/${extensionId}/assets/${assetPath}?v=${encodeURIComponent(version)}`;
+}
+
 type ExtensionModule = {
   activate?: (ctx: ExtensionContext) => void | Promise<void>;
   deactivate?: (ctx: ExtensionContext) => void | Promise<void>;
@@ -202,7 +211,12 @@ export class Extensions {
       return;
     }
 
-    const assetUrl = `/api/v1/spaces/${this.spaceId}/extensions/${info.id}/assets/${info.entries.frontend}`;
+    const assetUrl = getExtensionAssetUrl(
+      this.spaceId,
+      info.id,
+      info.entries.frontend,
+      info.updatedAt,
+    );
 
     try {
       const module = (await import(/* @vite-ignore */ assetUrl)) as ExtensionModule;
@@ -433,7 +447,12 @@ export class Extensions {
 
     // Load view module if not loaded yet (separate from frontend module)
     if (!loaded.viewModule && loaded.info.entries.view && this.spaceId) {
-      const assetUrl = `/api/v1/spaces/${this.spaceId}/extensions/${extensionId}/assets/${loaded.info.entries.view}`;
+      const assetUrl = getExtensionAssetUrl(
+        this.spaceId,
+        extensionId,
+        loaded.info.entries.view,
+        loaded.info.updatedAt,
+      );
       try {
         const module = (await import(/* @vite-ignore */ assetUrl)) as ExtensionModule;
         loaded.viewModule = module;

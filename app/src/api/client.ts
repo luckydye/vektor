@@ -39,6 +39,29 @@ function resolveBrowserBaseUrl(apiUrl: string | undefined): string {
   }
 }
 
+function resolveBrowserSocketHost(
+  socketHost: string | undefined,
+  apiUrl: string | undefined,
+): string {
+  if (socketHost) {
+    return socketHost;
+  }
+
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  if (apiUrl) {
+    try {
+      return new URL(apiUrl, window.location.origin).host;
+    } catch {
+      return window.location.host;
+    }
+  }
+
+  return window.location.host;
+}
+
 /**
  * Default API client instance
  * @example
@@ -47,7 +70,10 @@ function resolveBrowserBaseUrl(apiUrl: string | undefined): string {
  */
 export const api = new ApiClient({
   baseUrl: resolveBrowserBaseUrl(config().API_URL),
-  socketHost: config().COLLABORATION_HOST,
+  socketHost: resolveBrowserSocketHost(
+    config().COLLABORATION_HOST,
+    config().API_URL,
+  ),
 });
 
 // @ts-expect-error

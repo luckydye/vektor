@@ -24,8 +24,8 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 
-data/
-
 /vektor
 
 generated
+
+data/**/*
