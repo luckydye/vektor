@@ -53,6 +53,8 @@ tasks:
   start:
     dir: ./app
     desc: Start the compiled binary with the current runtime environment.
+    dotenv:
+      - ../.env
     cmds:
       - ./vektor serve --no-auth
 
