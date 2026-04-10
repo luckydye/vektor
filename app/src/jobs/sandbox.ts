@@ -59,9 +59,9 @@ export async function createSandbox(): Promise<Sandbox> {
       const traceHeaders = activeTraceHeaders();
 
       const workerData = {
+        ...inputs,
         openrouterApiKey: config().OPENROUTER_API_KEY,
         openrouterModel: getConfiguredOpenRouterModel(),
-        ...inputs,
         jobId: executionId,
         spaceId,
         apiUrl,

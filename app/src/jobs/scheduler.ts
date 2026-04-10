@@ -173,9 +173,9 @@ export async function runJob(
         const traceHeaders = activeTraceHeaders();
 
         const workerData = {
+          ...inputs,
           openrouterApiKey: config().OPENROUTER_API_KEY,
           openrouterModel: getConfiguredOpenRouterModel(),
-          ...inputs,
           jobId: executionId,
           spaceId,
           // Job-side API calls must stay on the internal backend origin.
