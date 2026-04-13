@@ -7,8 +7,8 @@ type WorkerInput = Parameters<typeof runAgentPrompt>[0] & { signal?: never };
 
 runAgentPrompt({
   ...(workerData as WorkerInput),
-  onChunk: (chunk) => {
-    parentPort!.postMessage({ type: "chunk", text: chunk });
+  onEvent: (event) => {
+    parentPort!.postMessage({ type: "event", event });
   },
 })
   .then((result) => {

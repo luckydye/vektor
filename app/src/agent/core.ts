@@ -19,6 +19,22 @@ export type AgentResult = {
   stopReason: string;
 };
 
+export type AgentEvent =
+  | { type: "text"; text: string }
+  | {
+      type: "tool_call";
+      toolCallId: string;
+      toolName: string;
+      toolArguments: string;
+    }
+  | {
+      type: "tool_result";
+      toolCallId: string;
+      toolName: string;
+      content: string;
+      isError: boolean;
+    };
+
 async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -145,8 +161,18 @@ export async function runAgentPrompt(options: {
   jobToken: string;
   signal?: AbortSignal;
   onChunk?: (chunk: string) => void | Promise<void>;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
 }): Promise<AgentResult> {
-  const { messages, spaceId, documentId, jobToken, apiUrl, signal, onChunk } = options;
+  const {
+    messages,
+    spaceId,
+    documentId,
+    jobToken,
+    apiUrl,
+    signal,
+    onChunk,
+    onEvent,
+  } = options;
 
   const apiKey = config().OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
@@ -192,6 +218,7 @@ export async function runAgentPrompt(options: {
       signal,
       onText: async (text) => {
         allChunks.push(text);
+        await onEvent?.({ type: "text", text });
         await onChunk?.(text);
       },
     });
@@ -203,7 +230,15 @@ export async function runAgentPrompt(options: {
     }
 
     for (const toolCall of message.tool_calls) {
+      await onEvent?.({
+        type: "tool_call",
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        toolArguments: toolCall.function.arguments,
+      });
+
       let result: unknown;
+      let isError = false;
       try {
         const args = JSON.parse(toolCall.function.arguments) as unknown;
         if (toolCall.function.name === "bash") {
@@ -211,21 +246,33 @@ export async function runAgentPrompt(options: {
           const res = await bash.exec(cmd);
           result = res.stdout + (res.stderr ? `\nstderr: ${res.stderr}` : "");
           if (res.exitCode !== 0) result = `exit ${res.exitCode}\n${result}`;
+          isError = res.exitCode !== 0;
         } else {
           result = await callVektorTool(mcpConfig, toolCall.function.name, args);
         }
       } catch (error) {
+        isError = true;
         result = error instanceof Error ? error.message : String(error);
       }
+
+      const content =
+        typeof result === "string" ? result : JSON.stringify(result, null, 2);
+
+      await onEvent?.({
+        type: "tool_result",
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        content,
+        isError,
+      });
 
       agentMessages.push({
         role: "tool",
         tool_call_id: toolCall.id,
-        content: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+        content,
       });
     }
   }
 
   throw new Error("Agent exceeded maximum steps");
 }
-

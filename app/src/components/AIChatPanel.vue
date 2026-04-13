@@ -6,7 +6,7 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
-import type { ChatMessage } from "./ai-chat/types.ts";
+import type { ChatMessage, ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
@@ -85,6 +85,7 @@ const mentionDocsSpaceId = ref("");
 const mentionDocsCache = ref<DocumentWithProperties[]>([]);
 const mentionAnchorEl = ref<HTMLElement | null>(null);
 const mentionOverlayStyle = ref<Record<string, string>>({});
+const expandedToolMessages = ref<Set<string>>(new Set());
 let mentionReqSeq = 0;
 
 // Conversation history
@@ -403,9 +404,143 @@ function formatUserMessageForDisplay(message: string): string {
   return message.replace(/@\[([^\]]+)\]\(doc:[^)]+\)/g, "@$1");
 }
 
+function appendAssistantMessageChunk(
+  text: string,
+  assistantMessageIndex: { value: number | null },
+) {
+  if (!text) return;
+  const existing =
+    assistantMessageIndex.value === null
+      ? null
+      : messages.value[assistantMessageIndex.value];
+  if (!existing || existing.role !== "assistant") {
+    messages.value.push({
+      role: "assistant",
+      content: text,
+      timestamp: Date.now(),
+    });
+    assistantMessageIndex.value = messages.value.length - 1;
+    return;
+  }
+  existing.content += text;
+}
+
+function appendToolEventMessage(event: Exclude<ChatStreamEvent, { type: "text" }>) {
+  messages.value.push({
+    role: "tool",
+    content: event.type === "tool_call" ? event.toolArguments : event.content,
+    timestamp: Date.now(),
+    toolName: event.toolName,
+    toolCallId: event.toolCallId,
+    toolPhase: event.type === "tool_call" ? "call" : "result",
+    isError: event.type === "tool_result" ? event.isError : false,
+  });
+}
+
+function applyStreamEvent(
+  event: ChatStreamEvent,
+  assistantMessageIndex: { value: number | null },
+) {
+  if (event.type === "text") {
+    appendAssistantMessageChunk(event.text, assistantMessageIndex);
+  } else {
+    assistantMessageIndex.value = null;
+    appendToolEventMessage(event);
+  }
+  scrollToBottom();
+}
+
+function normalizeSavedMessage(message: UIMessage): UIMessage {
+  return {
+    role: message.role,
+    content: typeof message.content === "string" ? message.content : "",
+    timestamp: Number.isFinite(message.timestamp) ? message.timestamp : Date.now(),
+    attachments: message.attachments,
+    toolName: message.toolName,
+    toolCallId: message.toolCallId,
+    toolPhase: message.toolPhase,
+    isError: message.isError,
+  };
+}
+
+function collectAssistantText(startIndex: number): string {
+  return messages.value
+    .slice(startIndex)
+    .filter((message) => message.role === "assistant")
+    .map((message) => message.content)
+    .join("");
+}
+
+function parseToolArguments(content: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Tool arguments must be object");
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function formatToolCallPreview(message: UIMessage): string {
+  if (message.toolPhase !== "call") {
+    return message.content;
+  }
+
+  const args = parseToolArguments(message.content);
+  if (!args) {
+    return message.content;
+  }
+
+  if (message.toolName === "bash") {
+    const command = args.command;
+    if (typeof command === "string" && command.trim()) {
+      return command;
+    }
+  }
+
+  const previewEntries = Object.entries(args)
+    .filter(([, value]) => value !== undefined)
+    .slice(0, 4)
+    .map(([key, value]) => {
+      if (typeof value === "string") {
+        return `${key}: ${value}`;
+      }
+      return `${key}: ${JSON.stringify(value)}`;
+    });
+
+  if (previewEntries.length === 0) {
+    return message.toolName ? `${message.toolName}()` : message.content;
+  }
+
+  return previewEntries.join("\n");
+}
+
+function getToolMessageKey(message: UIMessage, index: number): string {
+  return message.toolCallId
+    ? `${message.toolCallId}:${message.toolPhase ?? "unknown"}`
+    : `tool:${index}:${message.timestamp}`;
+}
+
+function isToolMessageExpanded(message: UIMessage, index: number): boolean {
+  return expandedToolMessages.value.has(getToolMessageKey(message, index));
+}
+
+function toggleToolMessageExpanded(message: UIMessage, index: number) {
+  const key = getToolMessageKey(message, index);
+  const next = new Set(expandedToolMessages.value);
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+  expandedToolMessages.value = next;
+}
+
 // ── Send to agent ─────────────────────────────────────────────────────────────
 
-async function sendWithProvider(message: string, assistantMessageIndex: number) {
+async function sendWithProvider(message: string) {
   if (conversationHistory.value.length === 0) {
     if (!currentSpaceId.value) throw new Error("No space selected");
     conversationHistory.value = [
@@ -417,6 +552,7 @@ async function sendWithProvider(message: string, assistantMessageIndex: number) 
   }
 
   conversationHistory.value.push({ role: "user", content: message });
+  const assistantMessageIndex = { value: null as number | null };
 
   const { content } = await fetchStreamingCompletion({
     url: "/api/v1/chat/acp",
@@ -428,9 +564,10 @@ async function sendWithProvider(message: string, assistantMessageIndex: number) 
       documentId: props.documentId || undefined,
     },
     onDelta: (text) => {
-      messages.value[assistantMessageIndex].content += text;
+      appendAssistantMessageChunk(text, assistantMessageIndex);
       scrollToBottom();
     },
+    onEvent: (event) => applyStreamEvent(event, assistantMessageIndex),
     signal: abortController?.signal,
   });
 
@@ -468,7 +605,7 @@ function resumeSession(session: ChatSession) {
   uploadError.value = "";
   clearPendingAttachments();
   closeMentionSuggestions();
-  messages.value = session.messages as UIMessage[];
+  messages.value = (session.messages as UIMessage[]).map(normalizeSavedMessage);
   conversationHistory.value = session.conversationHistory as ChatMessage[];
   showSessionPicker.value = false;
   scrollToBottom();
@@ -587,23 +724,24 @@ async function sendMessage() {
 
   isGenerating.value = true;
   abortController = new AbortController();
-  const assistantMessageIndex = messages.value.length;
-  messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
+  const responseStartIndex = messages.value.length;
 
   try {
-    await sendWithProvider(modelMessage, assistantMessageIndex);
+    await sendWithProvider(modelMessage);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      // Keep whatever content was streamed so far
       conversationHistory.value.push({
         role: "assistant",
-        content: messages.value[assistantMessageIndex].content || "(cancelled)",
+        content: collectAssistantText(responseStartIndex) || "(cancelled)",
       });
     } else {
       const errorMessage =
         error instanceof Error ? error.message : "AI generation failed";
-      messages.value[assistantMessageIndex].content =
-        `Sorry, I encountered an error: ${errorMessage}`;
+      messages.value.push({
+        role: "assistant",
+        content: `Sorry, I encountered an error: ${errorMessage}`,
+        timestamp: Date.now(),
+      });
     }
   } finally {
     abortController = null;
@@ -756,6 +894,47 @@ onUnmounted(() => {
                     </svg>
                   </button>
                 </div>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="message.role === 'tool'">
+            <div class="w-7 h-7 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-4 h-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 010 1.4l-1 1a4 4 0 005.7 5.6l1-1a1 1 0 011.4 1.5l-1 1a6 6 0 01-8.5-8.5l1-1a1 1 0 011.4 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.3 17.7a1 1 0 010-1.4l1-1a4 4 0 00-5.7-5.6l-1 1a1 1 0 01-1.4-1.5l1-1a6 6 0 018.5 8.5l-1 1a1 1 0 01-1.4 0z"/>
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <button
+                type="button"
+                class="w-full text-left bg-amber-50 border border-amber-100 rounded-xl overflow-hidden shadow-sm cursor-pointer"
+                @click="toggleToolMessageExpanded(message, index)"
+              >
+                <div class="px-3.5 py-2 border-b border-amber-100/80 text-[11px] font-medium uppercase tracking-wide text-amber-700">
+                  {{ message.toolPhase === 'call' ? 'Tool call' : 'Tool result' }}
+                  <span v-if="message.toolName" class="normal-case tracking-normal font-semibold text-amber-800 ml-1">
+                    {{ message.toolName }}
+                  </span>
+                  <span
+                    v-if="message.toolPhase === 'result'"
+                    class="normal-case tracking-normal font-medium text-neutral-500 ml-2"
+                  >
+                    {{ isToolMessageExpanded(message, index) ? 'Collapse' : 'Expand' }}
+                  </span>
+                </div>
+                <pre
+                  class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
+                  :style="
+                    message.toolPhase === 'result' && !isToolMessageExpanded(message, index)
+                      ? { maxHeight: '12rem' }
+                      : undefined
+                  "
+                  :class="message.isError ? 'text-red-700 bg-red-50/40' : 'text-neutral-700'"
+                >{{ formatToolCallPreview(message) }}</pre>
+              </button>
+              <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
+                {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+                &nbsp;·&nbsp; ACP
               </div>
             </div>
           </template>

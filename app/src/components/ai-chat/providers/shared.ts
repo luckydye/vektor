@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../types.ts";
+import type { ChatMessage, ChatStreamEvent } from "../types.ts";
 
 export async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,
@@ -40,6 +40,7 @@ export async function fetchStreamingCompletion(options: {
   model: string;
   history: ChatMessage[];
   onDelta: (text: string) => void;
+  onEvent?: (event: ChatStreamEvent) => void;
   body?: Record<string, unknown>;
   signal?: AbortSignal;
 }): Promise<{ content: string }> {
@@ -70,6 +71,15 @@ export async function fetchStreamingCompletion(options: {
     }
 
     const delta = (chunk as any).choices?.[0]?.delta;
+    const event = (chunk as { acp?: { event?: ChatStreamEvent } }).acp?.event;
+    if (event) {
+      options.onEvent?.(event);
+      if (event.type === "text") {
+        content += event.text;
+      }
+      continue;
+    }
+
     if (delta?.content) {
       content += delta.content;
       options.onDelta(delta.content);

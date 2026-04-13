@@ -14,7 +14,7 @@ import {
   verifyJobToken,
 } from "../../../../jobs/jobToken.ts";
 import { config } from "../../../../config.ts";
-import { runAgentInWorker } from "../../../../agent/agent.ts";
+import { runAgentInWorker, type AgentEvent } from "../../../../agent/agent.ts";
 
 type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -63,6 +63,7 @@ function createChunkPayload(options: {
   finishReason?: string | null;
   stopReason?: string;
   role?: "assistant";
+  event?: AgentEvent;
 }): Record<string, unknown> {
   const delta: Record<string, string> = {};
   if (options.role) delta.role = options.role;
@@ -78,6 +79,9 @@ function createChunkPayload(options: {
 
   if (options.stopReason) {
     payload.acp = { stopReason: options.stopReason };
+  }
+  if (options.event) {
+    payload.acp = { ...(payload.acp as Record<string, unknown> | undefined), event: options.event };
   }
 
   return payload;
@@ -111,8 +115,15 @@ function createStreamingResponse(options: {
 
           const result = await runAgentInWorker({
             ...options,
-            onChunk: (content) => {
-              send(createChunkPayload({ id, created, content }));
+            onEvent: (event) => {
+              send(
+                createChunkPayload({
+                  id,
+                  created,
+                  content: event.type === "text" ? event.text : undefined,
+                  event,
+                }),
+              );
             },
           });
 

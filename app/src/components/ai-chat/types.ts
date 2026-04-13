@@ -8,3 +8,19 @@ export type ChatMessage = {
   }>;
   tool_call_id?: string;
 };
+
+export type ChatStreamEvent =
+  | { type: "text"; text: string }
+  | {
+      type: "tool_call";
+      toolCallId: string;
+      toolName: string;
+      toolArguments: string;
+    }
+  | {
+      type: "tool_result";
+      toolCallId: string;
+      toolName: string;
+      content: string;
+      isError: boolean;
+    };
