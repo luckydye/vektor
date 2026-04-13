@@ -25,16 +25,7 @@ const props = defineProps({
   },
 });
 
-const SYSTEM_PROMPT = `You are a helpful AI assistant integrated into a wiki/documentation system.
-You help users understand and work with their documents. Be concise, accurate, and helpful.
-Use tools when they help produce a better answer. Always explain what information you're looking up before making a tool call.
-
-## App Documents
-Documents with type "app" render their HTML content in a sandboxed iframe. Use them to build interactive client-side apps with HTML + JavaScript. To create one, call createDocument with the full HTML as content and type set to "app". To update the running app, call updateDocument with the new HTML. The iframe allows scripts but has no access to the parent wiki page.
-
-You have a special tool called "runAgent" that spawns an autonomous sub-agent. The sub-agent runs in the background with its own tool loop and can perform multi-step tasks independently. Use it when a task requires several chained actions — for example researching across multiple documents, fetching external content and writing a summary, or any workflow that would need many sequential tool calls. Provide a clear system prompt telling the sub-agent its goal and constraints, and a content message with the specific task. The sub-agent's progress logs and final result will be streamed back to the user automatically. Prefer runAgent over doing many tool calls yourself when the work is self-contained and can be delegated.`;
-
-const CURRENT_DOCUMENT_SYSTEM_PROMPT = `IMPORTANT: When a user asks about "this document", "the page", or current content, you MUST inspect it first with \`vektor current\` from the bash tool.`;
+const SYSTEM_PROMPT = `You are a helpful AI assistant integrated into a wiki/documentation system.`;
 
 type UploadedAttachment = {
   key: string;
@@ -679,7 +670,7 @@ async function sendWithProvider(message: string) {
     conversationHistory.value = [
       {
         role: "system",
-        content: `${SYSTEM_PROMPT}\n\nCurrent context:\n- spaceId: ${currentSpaceId.value}\n- documentId: ${props.documentId}\n\nUse the bash tool with the \`vektor\` command for document access and shell workflows.\n\n${CURRENT_DOCUMENT_SYSTEM_PROMPT}`,
+        content: `${SYSTEM_PROMPT}\n\nCurrent context:\n- spaceId: ${currentSpaceId.value}\n- documentId: ${props.documentId}`,
       },
     ];
   }
