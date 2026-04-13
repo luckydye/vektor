@@ -1,6 +1,9 @@
-import { Bash } from "just-bash";
+import AdmZip from "adm-zip";
+import { Bash, defineCommand } from "just-bash";
+import * as html5parser from "html5parser";
+import { dirname, posix } from "node:path";
 import { config, getConfiguredOpenRouterModel } from "../config.ts";
-import { listTools as listVektorTools, callTool as callVektorTool } from "../utils/vektorMcp.ts";
+import { callTool as callVektorTool } from "../utils/vektorMcp.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
 
 export type ChatMessage = {
@@ -38,8 +41,281 @@ export type AgentEvent =
 const CORE_AGENT_SYSTEM_PROMPT = `## Bash Tool Runtime
 The bash tool runs inside just-bash, not full system shell.
 - Do not assume node, npm, npx, pnpm, bun, pip, python, or js-exec exist.
+- zip and unzip are available and operate on virtual filesystem.
+- vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
+- pandoc command is available for focused conversions in virtual filesystem: html-table -> csv.
+- To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
+- Use \`vektor current\` only for current chat document context.
+- To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
 - Prefer direct shell utilities already available in just-bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.`;
+
+async function addPathToZip(
+  zip: AdmZip,
+  sourcePath: string,
+  archivePath: string,
+  fs: Parameters<typeof defineCommand>[1] extends (
+    args: string[],
+    ctx: infer Ctx,
+  ) => Promise<unknown>
+    ? Ctx["fs"]
+    : never,
+) {
+  const stat = await fs.stat(sourcePath);
+  if (stat.isDirectory) {
+    const normalizedArchivePath = archivePath.endsWith("/")
+      ? archivePath
+      : `${archivePath}/`;
+    zip.addFile(normalizedArchivePath, Buffer.alloc(0));
+    for (const entry of await fs.readdir(sourcePath)) {
+      await addPathToZip(
+        zip,
+        fs.resolvePath(sourcePath, entry),
+        posix.join(archivePath, entry),
+        fs,
+      );
+    }
+    return;
+  }
+
+  zip.addFile(archivePath, Buffer.from(await fs.readFileBuffer(sourcePath)));
+}
+
+const zipCommand = defineCommand("zip", async (args, ctx) => {
+  if (args.length < 2) {
+    return {
+      stdout: "",
+      stderr: "usage: zip archive.zip <path...>\n",
+      exitCode: 2,
+    };
+  }
+
+  const [archiveArg, ...inputArgs] = args;
+  const archivePath = ctx.fs.resolvePath(ctx.cwd, archiveArg);
+  const zip = new AdmZip();
+
+  for (const inputArg of inputArgs) {
+    const inputPath = ctx.fs.resolvePath(ctx.cwd, inputArg);
+    if (!(await ctx.fs.exists(inputPath))) {
+      return {
+        stdout: "",
+        stderr: `zip: ${inputArg}: No such file or directory\n`,
+        exitCode: 1,
+      };
+    }
+    await addPathToZip(zip, inputPath, posix.basename(inputArg), ctx.fs);
+  }
+
+  await ctx.fs.writeFile(archivePath, new Uint8Array(zip.toBuffer()), "binary");
+  return {
+    stdout: `created ${archiveArg}\n`,
+    stderr: "",
+    exitCode: 0,
+  };
+});
+
+const unzipCommand = defineCommand("unzip", async (args, ctx) => {
+  if (args.length === 0) {
+    return {
+      stdout: "",
+      stderr: "usage: unzip archive.zip [-d destination]\n",
+      exitCode: 2,
+    };
+  }
+
+  const archiveArg = args[0];
+  let destinationArg = ".";
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "-d") {
+      destinationArg = args[index + 1] ?? ".";
+      index++;
+      continue;
+    }
+    return {
+      stdout: "",
+      stderr: `unzip: unsupported argument '${arg}'\n`,
+      exitCode: 2,
+    };
+  }
+
+  const archivePath = ctx.fs.resolvePath(ctx.cwd, archiveArg);
+  if (!(await ctx.fs.exists(archivePath))) {
+    return {
+      stdout: "",
+      stderr: `unzip: ${archiveArg}: No such file or directory\n`,
+      exitCode: 1,
+    };
+  }
+
+  const destinationPath = ctx.fs.resolvePath(ctx.cwd, destinationArg);
+  await ctx.fs.mkdir(destinationPath, { recursive: true });
+
+  const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
+  for (const entry of zip.getEntries()) {
+    const outputPath = ctx.fs.resolvePath(destinationPath, entry.entryName);
+    if (entry.isDirectory) {
+      await ctx.fs.mkdir(outputPath, { recursive: true });
+      continue;
+    }
+    await ctx.fs.mkdir(dirname(outputPath), { recursive: true });
+    await ctx.fs.writeFile(outputPath, new Uint8Array(entry.getData()), "binary");
+  }
+
+  return {
+    stdout: `extracted ${archiveArg} to ${destinationArg}\n`,
+    stderr: "",
+    exitCode: 0,
+  };
+});
+
+function formatVektorValue(value: unknown, json: boolean): string {
+  if (json || typeof value === "string") {
+    return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => formatVektorValue(item, false)).join("\n\n");
+  }
+
+  if (!value || typeof value !== "object") {
+    return String(value);
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (Array.isArray(record.documents)) {
+    return record.documents
+      .map((item, index) => {
+        const doc = item as Record<string, unknown>;
+        const title =
+          typeof doc.title === "string"
+            ? doc.title
+            : typeof doc.slug === "string"
+              ? doc.slug
+              : `document-${index + 1}`;
+        const lines = [title];
+        if (typeof doc.id === "string") lines.push(`id: ${doc.id}`);
+        if (typeof doc.slug === "string") lines.push(`slug: ${doc.slug}`);
+        if (typeof doc.type === "string") lines.push(`type: ${doc.type}`);
+        return lines.join("\n");
+      })
+      .join("\n\n");
+  }
+
+  const title =
+    typeof record.title === "string"
+      ? record.title
+      : typeof record.slug === "string"
+        ? record.slug
+        : null;
+  const lines: string[] = [];
+  if (title) lines.push(title);
+  if (typeof record.id === "string") lines.push(`id: ${record.id}`);
+  if (typeof record.slug === "string") lines.push(`slug: ${record.slug}`);
+  if (typeof record.type === "string") lines.push(`type: ${record.type}`);
+  if (typeof record.content === "string") {
+    lines.push("");
+    lines.push(record.content);
+  }
+  if (lines.length > 0) {
+    return lines.join("\n");
+  }
+
+  return JSON.stringify(record, null, 2);
+}
+
+type HtmlTagNode = html5parser.ITag;
+type HtmlNode = html5parser.INode;
+
+function isTag(node: HtmlNode, name?: string): node is HtmlTagNode {
+  return (
+    node.type === html5parser.SyntaxKind.Tag &&
+    (name ? node.name.toLowerCase() === name : true)
+  );
+}
+
+function getNodeText(node: HtmlNode): string {
+  if (node.type === html5parser.SyntaxKind.Text) {
+    return node.value;
+  }
+  if (!isTag(node) || !node.body) {
+    return "";
+  }
+  return node.body.map(getNodeText).join("");
+}
+
+function normalizeHtmlText(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findFirstTag(nodes: HtmlNode[], name: string): HtmlTagNode | null {
+  for (const node of nodes) {
+    if (isTag(node, name)) {
+      return node;
+    }
+    if (isTag(node) && node.body) {
+      const nested = findFirstTag(node.body, name);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return null;
+}
+
+function collectChildTags(node: HtmlTagNode, names: string[]): HtmlTagNode[] {
+  const result: HtmlTagNode[] = [];
+  const allowed = new Set(names.map((name) => name.toLowerCase()));
+  for (const child of node.body ?? []) {
+    if (isTag(child) && allowed.has(child.name.toLowerCase())) {
+      result.push(child);
+    }
+  }
+  return result;
+}
+
+function escapeCsvCell(value: string): string {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, "\"\"")}"`;
+  }
+  return value;
+}
+
+function convertHtmlTableToCsv(html: string): string {
+  const ast = html5parser.parse(html);
+  const table = findFirstTag(ast, "table");
+  if (!table) {
+    throw new Error("No <table> found in HTML input");
+  }
+
+  const rows = (table.body ?? []).flatMap((child) => {
+    if (isTag(child, "thead") || isTag(child, "tbody") || isTag(child, "tfoot")) {
+      return collectChildTags(child, ["tr"]);
+    }
+    return isTag(child, "tr") ? [child] : [];
+  });
+
+  if (rows.length === 0) {
+    throw new Error("HTML table contains no rows");
+  }
+
+  return rows
+    .map((row) =>
+      collectChildTags(row, ["th", "td"])
+        .map((cell) => escapeCsvCell(normalizeHtmlText(getNodeText(cell))))
+        .join(","),
+    )
+    .join("\n");
+}
 
 async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
   const reader = body.getReader();
@@ -185,9 +461,126 @@ export async function runAgentPrompt(options: {
   const model = getConfiguredOpenRouterModel();
 
   const mcpConfig: VektorMcpConfig = { apiUrl, spaceId, jobToken, documentId };
-  const bash = new Bash();
+  const vektorCommand = defineCommand("vektor", async (args, _ctx) => {
+    const json = args.includes("--json");
+    const commandArgs = args.filter((arg) => arg !== "--json");
+    const [subcommand, ...rest] = commandArgs;
 
-  const vektorTools = await listVektorTools(mcpConfig);
+    if (!subcommand) {
+      return {
+        stdout: "",
+        stderr:
+          "usage: vektor <list|read|current|search> [args] [--json]\n" +
+          "fetch other docs: vektor search \"query\" --json -> take id -> vektor read <id>\n" +
+          "fetch current doc: vektor current\n" +
+          "save to file: vektor read <id> > doc.md\n",
+        exitCode: 2,
+      };
+    }
+
+    let result: unknown;
+    switch (subcommand) {
+      case "list":
+        result = await callVektorTool(mcpConfig, "list_documents", {});
+        break;
+      case "read":
+        if (!rest[0]) {
+          return {
+            stdout: "",
+            stderr: "usage: vektor read <document-id> [--json]\n",
+            exitCode: 2,
+          };
+        }
+        result = await callVektorTool(mcpConfig, "get_document", {
+          documentId: rest[0],
+        });
+        break;
+      case "current":
+        result = await callVektorTool(mcpConfig, "get_current_document", {});
+        break;
+      case "search":
+        if (!rest.length) {
+          return {
+            stdout: "",
+            stderr: "usage: vektor search <query> [--json]\n",
+            exitCode: 2,
+          };
+        }
+        result = await callVektorTool(mcpConfig, "search_documents", {
+          q: rest.join(" "),
+        });
+        break;
+      default:
+        return {
+          stdout: "",
+          stderr: `vektor: unknown subcommand '${subcommand}'\n`,
+          exitCode: 2,
+        };
+    }
+
+    return {
+      stdout: `${formatVektorValue(result, json)}\n`,
+      stderr: "",
+      exitCode: 0,
+    };
+  });
+
+  const pandocCommand = defineCommand("pandoc", async (args, ctx) => {
+    const usage =
+      "usage: pandoc -f html-table -t csv [input-file] [-o output-file]\n" +
+      "examples:\n" +
+      "  pandoc -f html-table -t csv table.html > table.csv\n";
+
+    let from: string | null = null;
+    let to: string | null = null;
+    let outputFile: string | null = null;
+    const positional: string[] = [];
+
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index];
+      if (arg === "-f" || arg === "--from") {
+        from = args[++index] ?? null;
+        continue;
+      }
+      if (arg === "-t" || arg === "--to") {
+        to = args[++index] ?? null;
+        continue;
+      }
+      if (arg === "-o" || arg === "--output") {
+        outputFile = args[++index] ?? null;
+        continue;
+      }
+      positional.push(arg);
+    }
+
+    if (!from || !to) {
+      return { stdout: "", stderr: `${usage}`, exitCode: 2 };
+    }
+
+    const inputPath = positional[0]
+      ? ctx.fs.resolvePath(ctx.cwd, positional[0])
+      : null;
+    const inputBytes = inputPath
+      ? await ctx.fs.readFileBuffer(inputPath)
+      : new TextEncoder().encode(ctx.stdin);
+
+    if (from === "html-table" && to === "csv") {
+      const csv = convertHtmlTableToCsv(Buffer.from(inputBytes).toString("utf-8"));
+      if (outputFile) {
+        const outputPath = ctx.fs.resolvePath(ctx.cwd, outputFile);
+        await ctx.fs.writeFile(outputPath, csv, "utf8");
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      return { stdout: `${csv}\n`, stderr: "", exitCode: 0 };
+    }
+
+    throw new Error(`Unsupported conversion: ${from} -> ${to}`);
+  });
+
+  const bash = new Bash({
+    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand],
+  });
+
   const tools = [
     {
       type: "function",
@@ -201,14 +594,6 @@ export async function runAgentPrompt(options: {
         },
       },
     },
-    ...vektorTools.map((tool) => ({
-      type: "function",
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema,
-      },
-    })),
   ];
 
   const agentMessages: ChatMessage[] = [
@@ -266,7 +651,7 @@ export async function runAgentPrompt(options: {
           }
           isError = res.exitCode !== 0;
         } else {
-          result = await callVektorTool(mcpConfig, toolCall.function.name, args);
+          throw new Error(`Unknown tool: ${toolCall.function.name}`);
         }
       } catch (error) {
         isError = true;
