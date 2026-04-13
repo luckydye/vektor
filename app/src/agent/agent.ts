@@ -9,9 +9,6 @@ type WorkerMessage =
   | { type: "done"; result: AgentResult }
   | { type: "error"; message: string };
 
-// Worker URL at module scope so Bun's bundler statically detects it
-const WORKER_URL = new URL("./worker.ts", import.meta.url);
-
 export async function runAgentInWorker(options: {
   messages: ChatMessage[];
   apiUrl: string;
@@ -24,7 +21,7 @@ export async function runAgentInWorker(options: {
   const { signal, onChunk, ...workerInput } = options;
 
   return new Promise((resolve, reject) => {
-    const worker = new Worker(WORKER_URL, { workerData: workerInput });
+    const worker = new Worker("./src/agent/agentWorker.ts", { workerData: workerInput });
 
     const abort = () => {
       worker.terminate();
