@@ -20,6 +20,12 @@ export type ChatMessage = {
 export type AgentResult = {
   content: string;
   stopReason: string;
+  shellSnapshot?: string | null;
+};
+
+export type AgentShellBootstrap = {
+  cwd?: string;
+  env?: Record<string, string>;
 };
 
 export type AgentEvent =
@@ -574,7 +580,10 @@ export async function runAgentPrompt(options: {
   }
 }
 
-export function createAgentShell(mcpConfigRef: { current: VektorMcpConfig }): Bash {
+export function createAgentShell(
+  mcpConfigRef: { current: VektorMcpConfig },
+  bootstrap?: AgentShellBootstrap,
+): Bash {
   const vektorCommand = defineCommand("vektor", async (args, _ctx) => {
     const json = args.includes("--json");
     const commandArgs = args.filter((arg) => arg !== "--json");
@@ -693,6 +702,8 @@ export function createAgentShell(mcpConfigRef: { current: VektorMcpConfig }): Ba
   });
 
   return new Bash({
+    cwd: bootstrap?.cwd,
+    env: bootstrap?.env,
     customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand],
   });
 }

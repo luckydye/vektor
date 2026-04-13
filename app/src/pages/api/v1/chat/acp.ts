@@ -15,6 +15,10 @@ import {
 } from "../../../../jobs/jobToken.ts";
 import { config } from "../../../../config.ts";
 import { runAgentInWorker, type AgentEvent } from "../../../../agent/agent.ts";
+import {
+  getAIChatSession,
+  updateAIChatSessionShellSnapshot,
+} from "#db/aiChatSessions.ts";
 
 type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -94,6 +98,8 @@ function createStreamingResponse(options: {
   spaceId: string;
   documentId?: string;
   jobToken: string;
+  shellSnapshot?: string | null;
+  onResult?: (result: Awaited<ReturnType<typeof runAgentInWorker>>) => Promise<void>;
   signal?: AbortSignal;
 }): Response {
   const encoder = new TextEncoder();
@@ -114,8 +120,9 @@ function createStreamingResponse(options: {
         try {
           send(createChunkPayload({ id, created, role: "assistant" }));
 
+          const { onResult, ...agentOptions } = options;
           const result = await runAgentInWorker({
-            ...options,
+            ...agentOptions,
             onEvent: (event) => {
               send(
                 createChunkPayload({
@@ -127,6 +134,7 @@ function createStreamingResponse(options: {
               );
             },
           });
+          await onResult?.(result);
 
           send(
             createChunkPayload({
@@ -174,6 +182,7 @@ export const POST: APIRoute = (context) =>
       }
 
       let jobToken: string;
+      let userId: string | null = null;
       if (!context.locals.user) {
         const providedJobToken = context.request.headers.get("X-Job-Token");
         const headerSpaceId = context.request.headers.get("X-Space-Id");
@@ -195,10 +204,15 @@ export const POST: APIRoute = (context) =>
       } else {
         const user = requireUser(context);
         await verifySpaceRole(body.spaceId, user.id, "viewer");
+        userId = user.id;
         jobToken = createJobToken(body.spaceId, Date.now().toString(), user.id);
       }
 
       const messages = normalizeMessages(body.messages);
+      const persistedSession =
+        userId === null
+          ? null
+          : await getAIChatSession(body.spaceId, body.chatId, userId);
       const sharedOptions = {
         chatId: body.chatId,
         messages,
@@ -206,14 +220,36 @@ export const POST: APIRoute = (context) =>
         spaceId: body.spaceId,
         documentId: body.documentId,
         jobToken,
+        shellSnapshot: persistedSession?.shellSnapshot ?? null,
         signal: context.request.signal,
       };
 
       if (body.stream) {
-        return createStreamingResponse(sharedOptions);
+        return createStreamingResponse({
+          ...sharedOptions,
+          onResult:
+            userId === null
+              ? undefined
+              : async (result) => {
+                  await updateAIChatSessionShellSnapshot(
+                    body.spaceId,
+                    body.chatId,
+                    userId,
+                    result.shellSnapshot ?? null,
+                  );
+                },
+        });
       }
 
       const result = await runAgentInWorker(sharedOptions);
+      if (userId !== null) {
+        await updateAIChatSessionShellSnapshot(
+          body.spaceId,
+          body.chatId,
+          userId,
+          result.shellSnapshot ?? null,
+        );
+      }
       return Response.json({
         id: `chatcmpl_${crypto.randomUUID()}`,
         object: "chat.completion",

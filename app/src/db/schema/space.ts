@@ -258,4 +258,5 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   messages: text("messages").notNull(),
   conversationHistory: text("conversation_history").notNull(),
+  shellSnapshot: text("shell_snapshot"),
 });

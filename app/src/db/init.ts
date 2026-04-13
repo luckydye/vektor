@@ -107,6 +107,7 @@ export async function prepareSpaceDb(spaceId: string) {
 
   const aiChatSessionSQL = generateCreateTableSQL(spaceSchema.aiChatSession);
   await spaceDb.run(sql.raw(aiChatSessionSQL));
+  await ensureColumnExists(spaceDb, "ai_chat_session", "shell_snapshot", "TEXT");
 
   const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
   await spaceDb.run(sql.raw(spaceSecretSQL));
