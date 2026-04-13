@@ -1,5 +1,3 @@
-import { listExtensions, type JobDefinition } from "../db/extensions.ts";
-
 export type JsonRpcId = string | number | null;
 
 export type JsonRpcRequest = {
@@ -57,6 +55,21 @@ function assertObject(value: unknown, label: string): Record<string, unknown> {
     throw new Error(`${label} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function parseLooseObject(value: unknown, label: string): Record<string, unknown> {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return {};
+    }
+    const parsed = JSON.parse(trimmed) as unknown;
+    return assertObject(parsed, label);
+  }
+  return assertObject(value, label);
 }
 
 function expectString(
@@ -160,48 +173,7 @@ async function apiRequest(
   return text;
 }
 
-function getJobInputType(type: string): string {
-  if (type === "file") return "string";
-  if (
-    type === "string" ||
-    type === "number" ||
-    type === "boolean" ||
-    type === "object" ||
-    type === "array" ||
-    type === "integer"
-  ) {
-    return type;
-  }
-  throw new Error(`Unsupported job input type: ${type}`);
-}
-
-function createJobTool(job: JobDefinition, extensionName: string): McpTool {
-  return {
-    name: `job_${job.id}`,
-    description: `Run "${job.name}" from extension "${extensionName}".`,
-    inputSchema: {
-      type: "object",
-      properties: Object.fromEntries(
-        Object.entries(job.inputs ?? {}).map(([name, field]) => [
-          name,
-          { type: getJobInputType(field.type) },
-        ]),
-      ),
-      required: Object.entries(job.inputs ?? {})
-        .filter(([, field]) => field.required)
-        .map(([name]) => name),
-    },
-  };
-}
-
 async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
-  const extensions = await listExtensions(config.spaceId);
-  const jobTools = extensions.flatMap((extension) =>
-    (extension.manifest.jobs ?? []).map((job) =>
-      createJobTool(job, extension.manifest.name),
-    ),
-  );
-
   return [
     {
       name: "list_documents",
@@ -241,58 +213,6 @@ async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["documentId"],
       },
     },
-    ...(config.documentId
-      ? [
-          {
-            name: "get_current_document",
-            description: "Get current document from AI chat context.",
-            inputSchema: {
-              type: "object",
-              properties: {},
-            },
-          } satisfies McpTool,
-        ]
-      : []),
-    {
-      name: "create_document",
-      description: "Create document in current Vektor space.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          content: { type: "string" },
-          type: { type: "string" },
-          parentId: { type: "string" },
-          categoryId: { type: "string" },
-          properties: { type: "object" },
-        },
-        required: ["content"],
-      },
-    },
-    {
-      name: "update_document",
-      description: "Replace content of existing document.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          documentId: { type: "string" },
-          content: { type: "string" },
-        },
-        required: ["documentId", "content"],
-      },
-    },
-    {
-      name: "save_revision",
-      description: "Save revision for existing document.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          documentId: { type: "string" },
-          html: { type: "string" },
-          message: { type: "string" },
-        },
-        required: ["documentId", "html"],
-      },
-    },
     {
       name: "upload_artifact",
       description: "Upload text content as file artifact to current Vektor space.",
@@ -307,37 +227,19 @@ async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["filename", "content"],
       },
     },
-    {
-      name: "run_job",
-      description: "Run extension job in current Vektor space by job ID.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          jobId: { type: "string" },
-          inputs: { type: "object" },
-        },
-        required: ["jobId"],
-      },
-    },
-    ...jobTools,
+    ...(config.documentId
+      ? [
+          {
+            name: "get_current_document",
+            description: "Get current document from AI chat context.",
+            inputSchema: {
+              type: "object",
+              properties: {},
+            },
+          } satisfies McpTool,
+        ]
+      : []),
   ];
-}
-
-async function runJob(
-  config: VektorMcpConfig,
-  jobId: string,
-  inputs: Record<string, unknown>,
-) {
-  return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/jobs/run`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jobId,
-      inputs,
-    }),
-  });
 }
 
 async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown) {
@@ -382,53 +284,6 @@ async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown)
         config,
         `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(config.documentId)}`,
       );
-    case "create_document":
-      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/documents`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          content: expectString(args, "content")!,
-          type: expectString(args, "type", { optional: true }),
-          parentId: expectString(args, "parentId", { optional: true }),
-          categoryId: expectString(args, "categoryId", { optional: true }),
-          properties: expectObject(args, "properties", { optional: true }),
-        }),
-      });
-    case "update_document": {
-      const documentId = expectString(args, "documentId")!;
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            content: expectString(args, "content")!,
-          }),
-        },
-      );
-    }
-    case "save_revision": {
-      const documentId = expectString(args, "documentId")!;
-      return await apiRequest(
-        config,
-        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            html: expectString(args, "html")!,
-            message: expectString(args, "message", { optional: true }),
-          }),
-        },
-      );
-    }
     case "upload_artifact": {
       const form = new FormData();
       const filename = expectString(args, "filename")!;
@@ -446,17 +301,8 @@ async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown)
         body: form,
       });
     }
-    case "run_job":
-      return await runJob(
-        config,
-        expectString(args, "jobId")!,
-        expectObject(args, "inputs", { optional: true }) ?? {},
-      );
     default:
-      if (!name.startsWith("job_")) {
-        throw new Error(`Unknown tool: ${name}`);
-      }
-      return await runJob(config, name.slice(4), args);
+      throw new Error(`Unknown tool: ${name}`);
   }
 }
 
@@ -505,8 +351,21 @@ export async function handleMcpRequest(
         return createResult(request.id, { tools: await listTools(config) });
       case "tools/call": {
         const params = assertObject(request.params, "tools/call params");
-        const name = expectString(params, "name")!;
-        const result = await callTool(config, name, params.arguments);
+        const name =
+          expectString(params, "name", { optional: true }) ??
+          expectString(params, "tool", { optional: true }) ??
+          expectString(params, "toolName", { optional: true });
+        if (!name) {
+          throw new Error("Tool name is required");
+        }
+        const result = await callTool(
+          config,
+          name,
+          parseLooseObject(
+            params.arguments ?? params.input ?? params.params ?? params.args,
+            "tool arguments",
+          ),
+        );
         return createResult(request.id, formatToolResult(result));
       }
       default:
