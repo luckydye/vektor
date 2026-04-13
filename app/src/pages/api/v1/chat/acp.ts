@@ -88,6 +88,7 @@ function createChunkPayload(options: {
 }
 
 function createStreamingResponse(options: {
+  chatId: string;
   messages: Array<{ role: ChatRole; content: string | null }>;
   apiUrl: string;
   spaceId: string;
@@ -199,6 +200,7 @@ export const POST: APIRoute = (context) =>
 
       const messages = normalizeMessages(body.messages);
       const sharedOptions = {
+        chatId: body.chatId,
         messages,
         apiUrl: getApiOrigin(context.request),
         spaceId: body.spaceId,

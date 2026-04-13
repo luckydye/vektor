@@ -24,6 +24,7 @@ export type AgentResult = {
 
 export type AgentEvent =
   | { type: "text"; text: string }
+  | { type: "status"; text: string }
   | {
       type: "tool_call";
       toolCallId: string;
@@ -43,7 +44,7 @@ The bash tool runs inside just-bash, not full system shell.
 - Do not assume node, npm, npx, pnpm, bun, pip, python, or js-exec exist.
 - zip and unzip are available and operate on virtual filesystem.
 - vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
-- pandoc command is available for focused conversions in virtual filesystem: html-table -> csv.
+- pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv.
 - To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
 - Use \`vektor current\` only for current chat document context.
 - To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
@@ -441,6 +442,7 @@ export async function runAgentPrompt(options: {
   spaceId: string;
   documentId?: string;
   jobToken: string;
+  bash?: Bash;
   signal?: AbortSignal;
   onChunk?: (chunk: string) => void | Promise<void>;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
@@ -450,6 +452,7 @@ export async function runAgentPrompt(options: {
     spaceId,
     documentId,
     jobToken,
+    bash: providedBash,
     apiUrl,
     signal,
     onChunk,
@@ -461,126 +464,7 @@ export async function runAgentPrompt(options: {
   const model = getConfiguredOpenRouterModel();
 
   const mcpConfig: VektorMcpConfig = { apiUrl, spaceId, jobToken, documentId };
-  const vektorCommand = defineCommand("vektor", async (args, _ctx) => {
-    const json = args.includes("--json");
-    const commandArgs = args.filter((arg) => arg !== "--json");
-    const [subcommand, ...rest] = commandArgs;
-
-    if (!subcommand) {
-      return {
-        stdout: "",
-        stderr:
-          "usage: vektor <list|read|current|search> [args] [--json]\n" +
-          "fetch other docs: vektor search \"query\" --json -> take id -> vektor read <id>\n" +
-          "fetch current doc: vektor current\n" +
-          "save to file: vektor read <id> > doc.md\n",
-        exitCode: 2,
-      };
-    }
-
-    let result: unknown;
-    switch (subcommand) {
-      case "list":
-        result = await callVektorTool(mcpConfig, "list_documents", {});
-        break;
-      case "read":
-        if (!rest[0]) {
-          return {
-            stdout: "",
-            stderr: "usage: vektor read <document-id> [--json]\n",
-            exitCode: 2,
-          };
-        }
-        result = await callVektorTool(mcpConfig, "get_document", {
-          documentId: rest[0],
-        });
-        break;
-      case "current":
-        result = await callVektorTool(mcpConfig, "get_current_document", {});
-        break;
-      case "search":
-        if (!rest.length) {
-          return {
-            stdout: "",
-            stderr: "usage: vektor search <query> [--json]\n",
-            exitCode: 2,
-          };
-        }
-        result = await callVektorTool(mcpConfig, "search_documents", {
-          q: rest.join(" "),
-        });
-        break;
-      default:
-        return {
-          stdout: "",
-          stderr: `vektor: unknown subcommand '${subcommand}'\n`,
-          exitCode: 2,
-        };
-    }
-
-    return {
-      stdout: `${formatVektorValue(result, json)}\n`,
-      stderr: "",
-      exitCode: 0,
-    };
-  });
-
-  const pandocCommand = defineCommand("pandoc", async (args, ctx) => {
-    const usage =
-      "usage: pandoc -f html-table -t csv [input-file] [-o output-file]\n" +
-      "examples:\n" +
-      "  pandoc -f html-table -t csv table.html > table.csv\n";
-
-    let from: string | null = null;
-    let to: string | null = null;
-    let outputFile: string | null = null;
-    const positional: string[] = [];
-
-    for (let index = 0; index < args.length; index++) {
-      const arg = args[index];
-      if (arg === "-f" || arg === "--from") {
-        from = args[++index] ?? null;
-        continue;
-      }
-      if (arg === "-t" || arg === "--to") {
-        to = args[++index] ?? null;
-        continue;
-      }
-      if (arg === "-o" || arg === "--output") {
-        outputFile = args[++index] ?? null;
-        continue;
-      }
-      positional.push(arg);
-    }
-
-    if (!from || !to) {
-      return { stdout: "", stderr: `${usage}`, exitCode: 2 };
-    }
-
-    const inputPath = positional[0]
-      ? ctx.fs.resolvePath(ctx.cwd, positional[0])
-      : null;
-    const inputBytes = inputPath
-      ? await ctx.fs.readFileBuffer(inputPath)
-      : new TextEncoder().encode(ctx.stdin);
-
-    if (from === "html-table" && to === "csv") {
-      const csv = convertHtmlTableToCsv(Buffer.from(inputBytes).toString("utf-8"));
-      if (outputFile) {
-        const outputPath = ctx.fs.resolvePath(ctx.cwd, outputFile);
-        await ctx.fs.writeFile(outputPath, csv, "utf8");
-        return { stdout: "", stderr: "", exitCode: 0 };
-      }
-      return { stdout: `${csv}\n`, stderr: "", exitCode: 0 };
-    }
-
-    throw new Error(`Unsupported conversion: ${from} -> ${to}`);
-  });
-
-  const bash = new Bash({
-    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand],
-  });
-
+  const bash = providedBash ?? createAgentShell({ current: mcpConfig });
   const tools = [
     {
       type: "function",
@@ -603,6 +487,7 @@ export async function runAgentPrompt(options: {
   const allChunks: string[] = [];
 
   while (true) {
+    await onEvent?.({ type: "status", text: "Thinking..." });
     const { message, finishReason } = await callModel({
       apiKey,
       model,
@@ -619,10 +504,15 @@ export async function runAgentPrompt(options: {
     agentMessages.push(message);
 
     if (!message.tool_calls?.length) {
+      await onEvent?.({ type: "status", text: "Writing response..." });
       return { content: allChunks.join(""), stopReason: finishReason };
     }
 
     for (const toolCall of message.tool_calls) {
+      await onEvent?.({
+        type: "status",
+        text: `Running ${toolCall.function.name}...`,
+      });
       await onEvent?.({
         type: "tool_call",
         toolCallId: toolCall.id,
@@ -668,6 +558,12 @@ export async function runAgentPrompt(options: {
         content,
         isError,
       });
+      await onEvent?.({
+        type: "status",
+        text: isError
+          ? `${toolCall.function.name} failed`
+          : `${toolCall.function.name} finished`,
+      });
 
       agentMessages.push({
         role: "tool",
@@ -676,4 +572,127 @@ export async function runAgentPrompt(options: {
       });
     }
   }
+}
+
+export function createAgentShell(mcpConfigRef: { current: VektorMcpConfig }): Bash {
+  const vektorCommand = defineCommand("vektor", async (args, _ctx) => {
+    const json = args.includes("--json");
+    const commandArgs = args.filter((arg) => arg !== "--json");
+    const [subcommand, ...rest] = commandArgs;
+
+    if (!subcommand) {
+      return {
+        stdout: "",
+        stderr:
+          "usage: vektor <list|read|current|search> [args] [--json]\n" +
+          "fetch other docs: vektor search \"query\" --json -> take id -> vektor read <id>\n" +
+          "fetch current doc: vektor current\n" +
+          "save to file: vektor read <id> > doc.md\n",
+        exitCode: 2,
+      };
+    }
+
+    let result: unknown;
+    switch (subcommand) {
+      case "list":
+        result = await callVektorTool(mcpConfigRef.current, "list_documents", {});
+        break;
+      case "read":
+        if (!rest[0]) {
+          return {
+            stdout: "",
+            stderr: "usage: vektor read <document-id> [--json]\n",
+            exitCode: 2,
+          };
+        }
+        result = await callVektorTool(mcpConfigRef.current, "get_document", {
+          documentId: rest[0],
+        });
+        break;
+      case "current":
+        result = await callVektorTool(mcpConfigRef.current, "get_current_document", {});
+        break;
+      case "search":
+        if (!rest.length) {
+          return {
+            stdout: "",
+            stderr: "usage: vektor search <query> [--json]\n",
+            exitCode: 2,
+          };
+        }
+        result = await callVektorTool(mcpConfigRef.current, "search_documents", {
+          q: rest.join(" "),
+        });
+        break;
+      default:
+        return {
+          stdout: "",
+          stderr: `vektor: unknown subcommand '${subcommand}'\n`,
+          exitCode: 2,
+        };
+    }
+
+    return {
+      stdout: `${formatVektorValue(result, json)}\n`,
+      stderr: "",
+      exitCode: 0,
+    };
+  });
+
+  const pandocCommand = defineCommand("pandoc", async (args, ctx) => {
+    const usage =
+      "usage: pandoc -f <html|html-table> -t csv [input-file] [-o output-file]\n" +
+      "examples:\n" +
+      "  pandoc -f html -t csv table.html > table.csv\n" +
+      "  pandoc -f html-table -t csv table.html > table.csv\n";
+
+    let from: string | null = null;
+    let to: string | null = null;
+    let outputFile: string | null = null;
+    const positional: string[] = [];
+
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index];
+      if (arg === "-f" || arg === "--from") {
+        from = args[++index] ?? null;
+        continue;
+      }
+      if (arg === "-t" || arg === "--to") {
+        to = args[++index] ?? null;
+        continue;
+      }
+      if (arg === "-o" || arg === "--output") {
+        outputFile = args[++index] ?? null;
+        continue;
+      }
+      positional.push(arg);
+    }
+
+    if (!from || !to) {
+      return { stdout: "", stderr: `${usage}`, exitCode: 2 };
+    }
+
+    const inputPath = positional[0]
+      ? ctx.fs.resolvePath(ctx.cwd, positional[0])
+      : null;
+    const inputBytes = inputPath
+      ? await ctx.fs.readFileBuffer(inputPath)
+      : new TextEncoder().encode(ctx.stdin);
+
+    if ((from === "html-table" || from === "html") && to === "csv") {
+      const csv = convertHtmlTableToCsv(Buffer.from(inputBytes).toString("utf-8"));
+      if (outputFile) {
+        const outputPath = ctx.fs.resolvePath(ctx.cwd, outputFile);
+        await ctx.fs.writeFile(outputPath, csv, "utf8");
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      return { stdout: `${csv}\n`, stderr: "", exitCode: 0 };
+    }
+
+    throw new Error(`Unsupported conversion: ${from} -> ${to}`);
+  });
+
+  return new Bash({
+    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand],
+  });
 }

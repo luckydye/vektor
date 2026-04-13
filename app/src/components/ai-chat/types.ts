@@ -11,6 +11,7 @@ export type ChatMessage = {
 
 export type ChatStreamEvent =
   | { type: "text"; text: string }
+  | { type: "status"; text: string }
   | {
       type: "tool_call";
       toolCallId: string;

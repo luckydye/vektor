@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../components/ai-chat/types.ts";
 
 export type UIMessage = {
-  role: "user" | "assistant" | "system" | "tool";
+  role: "user" | "assistant" | "system" | "tool" | "status";
   content: string;
   timestamp: number;
   toolName?: string;
