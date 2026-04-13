@@ -55,7 +55,19 @@ The bash tool runs inside just-bash, not full system shell.
 - Use \`vektor current\` only for current chat document context.
 - To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
 - Prefer direct shell utilities already available in just-bash.
-- If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.`;
+- If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
+
+## Behavior
+- Be concise, accurate, and tool-driven.
+- Explain briefly what you are about to do before using tools.
+
+## App Documents
+- Documents with type "app" are HTML apps in sandboxed iframes.
+- To create one, create document with full HTML and type "app".
+- To update one, replace running HTML content in the document.
+
+## Current Document
+- When user asks about "this document", "the page", or current content, inspect it first with \`vektor current\`.`;
 
 async function addPathToZip(
   zip: AdmZip,
