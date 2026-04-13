@@ -173,7 +173,7 @@ async function apiRequest(
   return text;
 }
 
-async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
+export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
   return [
     {
       name: "list_documents",
@@ -215,13 +215,15 @@ async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "upload_artifact",
-      description: "Upload text content as file artifact to current Vektor space.",
+      description:
+        "Upload a file artifact to the current Vektor space. Pass raw text in content, or base64-encoded bytes with encoding=base64 for binary files.",
       inputSchema: {
         type: "object",
         properties: {
           filename: { type: "string" },
           content: { type: "string" },
           contentType: { type: "string" },
+          encoding: { type: "string", enum: ["base64"] },
           documentId: { type: "string" },
         },
         required: ["filename", "content"],
@@ -242,7 +244,7 @@ async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
   ];
 }
 
-async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown) {
+export async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown) {
   const args = assertObject(rawArgs ?? {}, "tool arguments");
 
   switch (name) {
@@ -289,9 +291,14 @@ async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown)
       const filename = expectString(args, "filename")!;
       const content = expectString(args, "content")!;
       const contentType =
-        expectString(args, "contentType", { optional: true }) ?? "text/plain";
+        expectString(args, "contentType", { optional: true }) ?? "application/octet-stream";
+      const encoding = expectString(args, "encoding", { optional: true });
+      const bytes =
+        encoding === "base64"
+          ? Buffer.from(content, "base64")
+          : new TextEncoder().encode(content);
       form.set("filename", filename);
-      form.set("file", new Blob([content], { type: contentType }), filename);
+      form.set("file", new Blob([bytes], { type: contentType }), filename);
       const documentId = expectString(args, "documentId", { optional: true });
       if (documentId) {
         form.set("documentId", documentId);

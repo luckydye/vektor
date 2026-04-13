@@ -14,10 +14,9 @@ import {
   verifyJobToken,
 } from "../../../../jobs/jobToken.ts";
 import { config } from "../../../../config.ts";
-import { runAcpPrompt } from "../../../../utils/acp.ts";
-import { fileURLToPath } from "node:url";
+import { runAgentInWorker } from "../../../../agent/index.ts";
 
-type ChatRole = "system" | "user" | "assistant";
+type ChatRole = "system" | "user" | "assistant" | "tool";
 
 type ChatContentPart = {
   type: string;
@@ -32,13 +31,10 @@ type ChatMessage = {
 type AcpRequestBody = {
   messages?: ChatMessage[];
   stream?: boolean;
+  chatId?: string;
   spaceId?: string;
   documentId?: string;
 };
-
-function getRepoRoot(): string {
-  return fileURLToPath(new URL("../../../../../../", import.meta.url));
-}
 
 function getApiOrigin(request: Request): string {
   const configured = config().API_URL;
@@ -48,66 +44,16 @@ function getApiOrigin(request: Request): string {
   return new URL(request.url).origin;
 }
 
-function extractMessageText(content: ChatMessage["content"]): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  const parts: string[] = [];
-  for (const part of content) {
-    if (part.type !== "text" || typeof part.text !== "string") {
-      throw badRequestResponse("Only text message content is supported");
-    }
-    parts.push(part.text);
-  }
-  return parts.join("");
-}
-
-function buildPrompt(messages: ChatMessage[]): string {
-  if (messages.length === 0) {
-    throw badRequestResponse("messages must not be empty");
-  }
-
-  const transcript = messages
-    .map((message) => {
-      if (
-        message.role !== "system" &&
-        message.role !== "user" &&
-        message.role !== "assistant"
-      ) {
-        throw badRequestResponse(`Unsupported message role: ${String(message.role)}`);
-      }
-      const content = extractMessageText(message.content).trim();
-      if (!content) {
-        throw badRequestResponse("messages must contain non-empty text content");
-      }
-      return `${message.role.toUpperCase()}:\n${content}`;
-    })
-    .join("\n\n");
-
-  return `${transcript}\n\nReply as ASSISTANT to the latest USER message.`;
-}
-
-function createCompletionResponse(content: string, stopReason: string): Response {
-  return Response.json({
-    id: `chatcmpl_${crypto.randomUUID()}`,
-    object: "chat.completion",
-    created: Math.floor(Date.now() / 1000),
-    model: "acp-configured-agent",
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: "assistant",
-          content,
-        },
-        finish_reason: "stop",
-      },
-    ],
-    acp: {
-      stopReason,
-    },
-  });
+function normalizeMessages(
+  messages: ChatMessage[],
+): Array<{ role: ChatRole; content: string | null }> {
+  return messages.map((m) => ({
+    role: m.role,
+    content:
+      typeof m.content === "string"
+        ? m.content
+        : m.content.map((p) => (p.type === "text" ? (p.text ?? "") : "")).join(""),
+  }));
 }
 
 function createChunkPayload(options: {
@@ -119,40 +65,26 @@ function createChunkPayload(options: {
   role?: "assistant";
 }): Record<string, unknown> {
   const delta: Record<string, string> = {};
-  if (options.role) {
-    delta.role = options.role;
-  }
-  if (options.content) {
-    delta.content = options.content;
-  }
+  if (options.role) delta.role = options.role;
+  if (options.content) delta.content = options.content;
 
   const payload: Record<string, unknown> = {
     id: options.id,
     object: "chat.completion.chunk",
     created: options.created,
-    model: "acp-configured-agent",
-    choices: [
-      {
-        index: 0,
-        delta,
-        finish_reason: options.finishReason ?? null,
-      },
-    ],
+    model: "bash-agent",
+    choices: [{ index: 0, delta, finish_reason: options.finishReason ?? null }],
   };
 
   if (options.stopReason) {
-    payload.acp = {
-      stopReason: options.stopReason,
-    };
+    payload.acp = { stopReason: options.stopReason };
   }
 
   return payload;
 }
 
 function createStreamingResponse(options: {
-  command: string;
-  cwd: string;
-  prompt: string;
+  messages: Array<{ role: ChatRole; content: string | null }>;
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -175,24 +107,12 @@ function createStreamingResponse(options: {
         };
 
         try {
-          send(
-            createChunkPayload({
-              id,
-              created,
-              role: "assistant",
-            }),
-          );
+          send(createChunkPayload({ id, created, role: "assistant" }));
 
-          const result = await runAcpPrompt({
+          const result = await runAgentInWorker({
             ...options,
             onChunk: (content) => {
-              send(
-                createChunkPayload({
-                  id,
-                  created,
-                  content,
-                }),
-              );
+              send(createChunkPayload({ id, created, content }));
             },
           });
 
@@ -206,9 +126,7 @@ function createStreamingResponse(options: {
           );
           send("[DONE]");
         } catch (error) {
-          send({
-            error: error instanceof Error ? error.message : "ACP request failed",
-          });
+          send({ error: error instanceof Error ? error.message : "Agent request failed" });
           send("[DONE]");
         } finally {
           controller.close();
@@ -228,15 +146,13 @@ function createStreamingResponse(options: {
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
-      const acpCommand = config().ACP_COMMAND;
-      if (!acpCommand) {
-        throw new Error("WIKI_ACP_COMMAND not configured");
-      }
-
       const body = await parseJsonBody<AcpRequestBody>(context.request);
 
       if (!Array.isArray(body.messages)) {
         return badRequestResponse("messages is required");
+      }
+      if (!body.chatId || typeof body.chatId !== "string") {
+        return badRequestResponse("chatId is required");
       }
       if (!body.spaceId || typeof body.spaceId !== "string") {
         return badRequestResponse("spaceId is required");
@@ -270,36 +186,39 @@ export const POST: APIRoute = (context) =>
         jobToken = createJobToken(body.spaceId, Date.now().toString(), user.id);
       }
 
-      const prompt = buildPrompt(body.messages);
-      if (body.stream) {
-        return createStreamingResponse({
-          command: acpCommand,
-          cwd: getRepoRoot(),
-          prompt,
-          apiUrl: getApiOrigin(context.request),
-          spaceId: body.spaceId,
-          documentId: body.documentId,
-          jobToken,
-          signal: context.request.signal,
-        });
-      }
-
-      const result = await runAcpPrompt({
-        command: acpCommand,
-        cwd: getRepoRoot(),
-        prompt,
+      const messages = normalizeMessages(body.messages);
+      const sharedOptions = {
+        messages,
         apiUrl: getApiOrigin(context.request),
         spaceId: body.spaceId,
         documentId: body.documentId,
         jobToken,
         signal: context.request.signal,
-      });
+      };
 
-      return createCompletionResponse(result.content, result.stopReason);
+      if (body.stream) {
+        return createStreamingResponse(sharedOptions);
+      }
+
+      const result = await runAgentInWorker(sharedOptions);
+      return Response.json({
+        id: `chatcmpl_${crypto.randomUUID()}`,
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: "bash-agent",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: result.content },
+            finish_reason: "stop",
+          },
+        ],
+        acp: { stopReason: result.stopReason },
+      });
     },
     {
-      fallbackMessage: "ACP request failed",
+      fallbackMessage: "Agent request failed",
       onError: (error) =>
-        errorResponse(error instanceof Error ? error.message : "ACP request failed", 500),
+        errorResponse(error instanceof Error ? error.message : "Agent request failed", 500),
     },
   );

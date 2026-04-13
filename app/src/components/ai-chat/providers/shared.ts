@@ -1,4 +1,4 @@
-import type { ChatMessage, OpenRouterTool, ToolCall } from "../types.ts";
+import type { ChatMessage } from "../types.ts";
 
 export async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,
@@ -40,10 +40,9 @@ export async function fetchStreamingCompletion(options: {
   model: string;
   history: ChatMessage[];
   onDelta: (text: string) => void;
-  tools?: readonly OpenRouterTool[];
   body?: Record<string, unknown>;
   signal?: AbortSignal;
-}): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
+}): Promise<{ content: string }> {
   const response = await fetch(options.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,7 +50,6 @@ export async function fetchStreamingCompletion(options: {
       ...(options.body ?? {}),
       model: options.model,
       messages: options.history,
-      tools: options.tools,
       stream: true,
     }),
     signal: options.signal,
@@ -64,8 +62,6 @@ export async function fetchStreamingCompletion(options: {
   if (!response.body) throw new Error("No response body");
 
   let content = "";
-  let reasoning = "";
-  const toolCallsMap = new Map<number, ToolCall>();
 
   for await (const chunk of parseSSEStream(response.body)) {
     const error = chunk.error;
@@ -74,44 +70,11 @@ export async function fetchStreamingCompletion(options: {
     }
 
     const delta = (chunk as any).choices?.[0]?.delta;
-    if (!delta) continue;
-
-    if (delta.content) {
+    if (delta?.content) {
       content += delta.content;
       options.onDelta(delta.content);
     }
-    if (delta.reasoning) {
-      reasoning += delta.reasoning;
-    }
-
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls as any[]) {
-        const idx = tc.index as number;
-        const existing = toolCallsMap.get(idx);
-        if (!existing) {
-          toolCallsMap.set(idx, {
-            id: tc.id ?? "",
-            type: tc.type ?? "function",
-            function: {
-              name: tc.function?.name ?? "",
-              arguments: tc.function?.arguments ?? "",
-            },
-          });
-        } else if (tc.function?.arguments) {
-          existing.function.arguments += tc.function.arguments;
-        }
-      }
-    }
   }
 
-  const toolCalls =
-    toolCallsMap.size > 0
-      ? [...toolCallsMap.entries()].sort(([a], [b]) => a - b).map(([, v]) => v)
-      : [];
-
-  return {
-    content: content || reasoning,
-    reasoning: content ? reasoning || undefined : undefined,
-    toolCalls,
-  };
+  return { content };
 }

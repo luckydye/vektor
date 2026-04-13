@@ -1,31 +1,17 @@
-export type ChatMessage = {
-  role: "system" | "user" | "assistant" | "tool";
-  content?: string | null;
-  tool_calls?: Array<{
-    id: string;
-    type: string;
-    function: { name: string; arguments: string };
-  }>;
-  tool_call_id?: string;
-};
+import type { ChatMessage } from "../components/ai-chat/types.ts";
 
 export type UIMessage = {
   role: "user" | "assistant" | "system";
   content: string;
-  reasoning?: string;
   timestamp: number;
-  toolApproval?: {
-    id: string;
+  attachments?: Array<{
+    key: string;
+    url: string;
     name: string;
-    args: Record<string, unknown>;
-    status: "pending" | "approved" | "denied";
-  };
-  subAgent?: {
-    status: "running" | "completed" | "failed";
-    logs: string[];
-    result?: string;
-    error?: string;
-  };
+    type: string;
+    size: number;
+    isImage: boolean;
+  }>;
 };
 
 export type ChatSession = {

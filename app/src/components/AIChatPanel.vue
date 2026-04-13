@@ -4,10 +4,9 @@ import { marked } from "marked";
 import { Actions } from "../utils/actions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
-import type { DocumentWithProperties, ExtensionJobInfo } from "../api/ApiClient.ts";
-import { AI_CHAT_PROVIDERS, getAIChatProvider } from "./ai-chat/providers/index.ts";
-import { parseSSEStream } from "./ai-chat/providers/shared.ts";
-import type { ChatMessage, OpenRouterTool, Provider, ToolCall } from "./ai-chat/types.ts";
+import type { DocumentWithProperties } from "../api/ApiClient.ts";
+import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
+import type { ChatMessage } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
@@ -15,6 +14,7 @@ import {
   saveSession,
   deleteSession,
   type ChatSession,
+  type UIMessage,
 } from "../composeables/useChatSessions.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 
@@ -35,30 +35,6 @@ Documents with type "app" render their HTML content in a sandboxed iframe. Use t
 You have a special tool called "runAgent" that spawns an autonomous sub-agent. The sub-agent runs in the background with its own tool loop and can perform multi-step tasks independently. Use it when a task requires several chained actions — for example researching across multiple documents, fetching external content and writing a summary, or any workflow that would need many sequential tool calls. Provide a clear system prompt telling the sub-agent its goal and constraints, and a content message with the specific task. The sub-agent's progress logs and final result will be streamed back to the user automatically. Prefer runAgent over doing many tool calls yourself when the work is self-contained and can be delegated.`;
 
 const CURRENT_DOCUMENT_SYSTEM_PROMPT = `IMPORTANT: You have access to a tool to get the current document content. When a user asks questions about "this document", "the page", "the current content", or anything that requires seeing the document, you MUST use the tool.`;
-
-type ToolApproval = {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  status: "pending" | "approved" | "denied";
-};
-
-type SubAgentState = {
-  status: "running" | "completed" | "failed";
-  logs: string[];
-  result?: string;
-  error?: string;
-};
-
-type UIMessage = {
-  role: "user" | "assistant" | "system";
-  content: string;
-  reasoning?: string;
-  timestamp: number;
-  attachments?: UploadedAttachment[];
-  toolApproval?: ToolApproval;
-  subAgent?: SubAgentState;
-};
 
 type UploadedAttachment = {
   key: string;
@@ -111,16 +87,8 @@ const mentionAnchorEl = ref<HTMLElement | null>(null);
 const mentionOverlayStyle = ref<Record<string, string>>({});
 let mentionReqSeq = 0;
 
-// Provider selection
-const selectedProvider = ref<Provider>("openrouter");
-const showProviderDropdown = ref(false);
-const showProviderConfig = ref(false);
-const ollamaBaseUrl = ref("http://localhost:11434");
-const ollamaModel = ref("llama3.2");
-
-// Conversation history for fetch-based providers
+// Conversation history
 const conversationHistory = ref<ChatMessage[]>([]);
-const pendingToolApprovalResolvers = new Map<string, (allowed: boolean) => void>();
 let abortController: AbortController | null = null;
 
 // Session persistence
@@ -128,7 +96,7 @@ const currentSessionId = ref<string | null>(null);
 const sessions = ref<ChatSession[]>([]);
 const showSessionPicker = ref(false);
 
-// ── Config persistence ────────────────────────────────────────────────────────
+// ── UI state persistence ──────────────────────────────────────────────────────
 
 function loadUIState() {
   // State is now managed by useDockedWindows composable with localStorage persistence.
@@ -154,38 +122,6 @@ function loadUIState() {
   }
 }
 
-function loadProviderConfig() {
-  selectedProvider.value =
-    (localStorage.getItem("ai-provider") as Provider) ?? "openrouter";
-  ollamaBaseUrl.value = localStorage.getItem("ai-ollama-url") ?? "http://localhost:11434";
-  ollamaModel.value = localStorage.getItem("ai-ollama-model") ?? "llama3.2";
-}
-
-function saveProviderConfig() {
-  localStorage.setItem("ai-provider", selectedProvider.value);
-  localStorage.setItem("ai-ollama-url", ollamaBaseUrl.value);
-  localStorage.setItem("ai-ollama-model", ollamaModel.value);
-  showProviderConfig.value = false;
-  showProviderDropdown.value = false;
-}
-
-function selectProvider(provider: Provider) {
-  selectedProvider.value = provider;
-  showProviderDropdown.value = false;
-  showProviderConfig.value = getAIChatProvider(provider).option.configurable === true;
-  conversationHistory.value = [];
-}
-
-const selectedProviderDefinition = computed(() =>
-  getAIChatProvider(selectedProvider.value),
-);
-
-const providerLabel = computed(() => {
-  return selectedProviderDefinition.value.getLabel({
-    ollamaBaseUrl: ollamaBaseUrl.value,
-    ollamaModel: ollamaModel.value,
-  });
-});
 
 const canSend = computed(() => {
   return !!(
@@ -467,882 +403,38 @@ function formatUserMessageForDisplay(message: string): string {
   return message.replace(/@\[([^\]]+)\]\(doc:[^)]+\)/g, "@$1");
 }
 
-// ── Tool execution ────────────────────────────────────────────────────────────
-
-const MAX_AGENT_STEPS = 10;
-
-const OPENROUTER_TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "getDocument",
-      description: "Get a document by ID.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-          rev: { type: "number" },
-        },
-        required: ["spaceId", "documentId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listDocuments",
-      description: "List documents in a space with pagination.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          limit: { type: "number" },
-          offset: { type: "number" },
-          parentId: { type: "string" },
-          categoryId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "searchDocuments",
-      description: "Search documents in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          q: { type: "string" },
-          limit: { type: "number" },
-          offset: { type: "number" },
-          filters: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getDocumentHistory",
-      description: "Get revision history for a document.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-        },
-        required: ["spaceId", "documentId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getDocumentChildren",
-      description: "Get child documents of a document.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-        },
-        required: ["spaceId", "documentId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getDocumentContributors",
-      description: "Get contributors for a document.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-        },
-        required: ["spaceId", "documentId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getDocumentComments",
-      description: "Get comments on a document.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-        },
-        required: ["spaceId", "documentId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getSpace",
-      description: "Get a space by ID.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listSpaces",
-      description: "List all spaces the user has access to.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getSpaceMembers",
-      description: "List members in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getMyPermissions",
-      description: "Get current user's permissions in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listCategories",
-      description: "List categories in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getCategory",
-      description: "Get a category by ID.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          categoryId: { type: "string" },
-        },
-        required: ["spaceId", "categoryId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getCategoryDocuments",
-      description: "List documents in a category.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          categorySlug: { type: "string" },
-        },
-        required: ["spaceId", "categorySlug"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listProperties",
-      description: "List all properties used in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listUsers",
-      description: "List all users.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getUser",
-      description: "Get a user by ID.",
-      parameters: {
-        type: "object",
-        properties: {
-          userId: { type: "string" },
-        },
-        required: ["userId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getDocumentAuditLogs",
-      description: "Get audit logs for a document.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-          limit: { type: "number" },
-        },
-        required: ["spaceId", "documentId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getSpaceAuditLogs",
-      description: "Get audit logs for a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          limit: { type: "number" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listExtensions",
-      description: "List all extensions in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getExtension",
-      description: "Get a specific extension.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          extensionId: { type: "string" },
-        },
-        required: ["spaceId", "extensionId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listWebhooks",
-      description: "List webhooks in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getWebhook",
-      description: "Get a specific webhook.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          webhookId: { type: "string" },
-        },
-        required: ["spaceId", "webhookId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listAccessTokens",
-      description: "List access tokens in a space.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-        },
-        required: ["spaceId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getAccessToken",
-      description: "Get a specific access token.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          tokenId: { type: "string" },
-        },
-        required: ["spaceId", "tokenId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getLatestWorkflowRun",
-      description: "Get the latest workflow run for a document.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-        },
-        required: ["spaceId", "documentId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getWorkflowRun",
-      description: "Get the status of a workflow run.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          runId: { type: "string" },
-        },
-        required: ["spaceId", "runId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "getLinkPreview",
-      description: "Fetch preview metadata for a URL.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: { type: "string" },
-        },
-        required: ["url"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "runAgent",
-      description:
-        "Run a sub-agent that can autonomously use tools (read/write documents, search, fetch URLs, etc.) to accomplish a complex task. The sub-agent runs in the background and its progress logs are streamed back. Use this for multi-step tasks that require tool use.",
-      parameters: {
-        type: "object",
-        properties: {
-          prompt: {
-            type: "string",
-            description: "System prompt / instructions for the sub-agent",
-          },
-          content: {
-            type: "string",
-            description: "The user message / task for the sub-agent to work on",
-          },
-          allowedTools: {
-            type: "array",
-            items: { type: "string" },
-            description:
-              "Optional list of tool names to allow: read_document, prompt, log, http_fetch, write_document, search_documents, upload_artifact, html_to_markdown, sitemap_download, json_to_table, for_each_file",
-          },
-        },
-        required: ["prompt", "content"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "createDocument",
-      description:
-        "Create a new document in a space. Returns the created document with its ID.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          content: { type: "string", description: "HTML content for the document" },
-          type: {
-            type: "string",
-            description:
-              "Optional document type. Use 'app' to create an interactive HTML+JS app rendered in a sandboxed iframe.",
-          },
-          parentId: { type: "string", description: "Optional parent document ID" },
-          categoryId: { type: "string", description: "Optional category ID" },
-          properties: { type: "object", description: "Optional key-value properties" },
-        },
-        required: ["spaceId", "content"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "updateDocument",
-      description: "Update the content of an existing document.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-          content: { type: "string", description: "New HTML content for the document" },
-        },
-        required: ["spaceId", "documentId", "content"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "saveRevision",
-      description:
-        "Save a new revision of a document with an optional message describing the change.",
-      parameters: {
-        type: "object",
-        properties: {
-          spaceId: { type: "string" },
-          documentId: { type: "string" },
-          html: { type: "string", description: "HTML content for the revision" },
-          message: { type: "string", description: "Optional revision message" },
-        },
-        required: ["spaceId", "documentId", "html"],
-      },
-    },
-  },
-] as const;
-
-function assertCurrentSpaceId(): string {
-  if (!currentSpaceId.value) throw new Error("No space selected");
-  return currentSpaceId.value;
-}
-
-function getJobToolName(jobId: string): string {
-  if (!/^[a-zA-Z0-9_-]+$/.test(jobId)) {
-    throw new Error(`Unsupported job id for AI tool: ${jobId}`);
-  }
-  return `job_${jobId}`;
-}
-
-function getJobToolInputType(type: string): string {
-  if (type === "file") return "string";
-  if (
-    type === "string" ||
-    type === "number" ||
-    type === "boolean" ||
-    type === "object" ||
-    type === "array" ||
-    type === "integer"
-  ) {
-    return type;
-  }
-  throw new Error(`Unsupported job input type: ${type}`);
-}
-
-function buildJobTool(
-  extensionId: string,
-  extensionName: string,
-  job: ExtensionJobInfo,
-): OpenRouterTool {
-  return {
-    type: "function",
-    function: {
-      name: getJobToolName(job.id),
-      description: `Run the "${job.name}" job from the "${extensionName}" extension (${extensionId}).`,
-      parameters: {
-        type: "object",
-        properties: Object.fromEntries(
-          Object.entries(job.inputs ?? {}).map(([name, field]) => [
-            name,
-            { type: getJobToolInputType(field.type) },
-          ]),
-        ),
-        required: Object.entries(job.inputs ?? {})
-          .filter(([, field]) => field.required)
-          .map(([name]) => name),
-      },
-    },
-  };
-}
-
-async function getOpenRouterTools(): Promise<OpenRouterTool[]> {
-  const spaceId = assertCurrentSpaceId();
-  const { extensions } = await api.extensions.get(spaceId);
-  return [
-    ...OPENROUTER_TOOLS,
-    ...extensions.flatMap((extension) =>
-      (extension.jobs ?? []).map((job) =>
-        buildJobTool(extension.id, extension.name, job),
-      ),
-    ),
-  ];
-}
-
-async function spawnAndPollAgent(
-  prompt: string,
-  content: string,
-  allowedTools?: string[],
-): Promise<{ status: string; result?: string; error?: string }> {
-  if (!currentSpaceId.value) throw new Error("No space selected");
-
-  const inputs: Record<string, unknown> = { prompt, content };
-  if (allowedTools) inputs.allowedTools = JSON.stringify(allowedTools);
-
-  // Add a sub-agent message to the UI
-  const msgIndex = messages.value.length;
-  messages.value.push({
-    role: "assistant",
-    content: "",
-    timestamp: Date.now(),
-    subAgent: {
-      status: "running",
-      logs: [],
-    },
-  });
-  scrollToBottom();
-
-  const response = await api.jobs.runStream(
-    currentSpaceId.value,
-    "agent",
-    inputs,
-    abortController?.signal,
-  );
-
-  if (!response.ok) throw new Error(`Job run failed: ${response.status}`);
-  if (!response.body) throw new Error("No response body");
-
-  const msg = messages.value[msgIndex];
-
-  for await (const event of parseSSEStream(response.body)) {
-    if (!msg.subAgent) break;
-    const type = event.type as string;
-
-    if (type === "log") {
-      msg.subAgent.logs.push(event.message as string);
-      scrollToBottom();
-    } else if (type === "output") {
-      msg.subAgent.status = "completed";
-      const outputs = event.outputs as Record<string, unknown>;
-      const outputContent = outputs?.content as
-        | { type: string; value: string }
-        | string
-        | undefined;
-      const result =
-        typeof outputContent === "object" && outputContent?.value
-          ? outputContent.value
-          : typeof outputContent === "string"
-            ? outputContent
-            : "";
-      msg.subAgent.result = result;
-      scrollToBottom();
-      return { status: "completed", result };
-    } else if (type === "error") {
-      msg.subAgent.status = "failed";
-      msg.subAgent.error = event.error as string;
-      scrollToBottom();
-      return { status: "failed", error: event.error as string };
-    }
-  }
-
-  throw new Error("Agent stream ended unexpectedly");
-}
-
-async function executeToolCall(
-  name: string,
-  args: Record<string, unknown>,
-): Promise<unknown> {
-  switch (name) {
-    case "getDocument":
-      return api.document.get(
-        args.spaceId as string,
-        args.documentId as string,
-        args.rev ? { rev: args.rev as number } : undefined,
-      );
-    case "listDocuments":
-      return api.documents.get(
-        args.spaceId as string,
-        args as Record<string, string | number | boolean>,
-      );
-    case "searchDocuments":
-      return api.search.get(
-        args.spaceId as string,
-        args as { q?: string; limit?: number; offset?: number; filters?: string },
-      );
-    case "getDocumentHistory":
-      return api.documentHistory.get(args.spaceId as string, args.documentId as string);
-    case "getDocumentChildren":
-      return api.documentChildren.get(args.spaceId as string, args.documentId as string);
-    case "getDocumentContributors":
-      return api.documentContributors.get(
-        args.spaceId as string,
-        args.documentId as string,
-      );
-    case "getDocumentComments":
-      return api.documentComments.get(args.spaceId as string, args.documentId as string);
-    case "getSpace":
-      return api.space.get(args.spaceId as string);
-    case "listSpaces":
-      return api.spaces.get();
-    case "getSpaceMembers":
-      return api.spaceMembers.get(args.spaceId as string);
-    case "getMyPermissions":
-      return api.permissions.getMe(args.spaceId as string);
-    case "listCategories":
-      return api.categories.get(args.spaceId as string);
-    case "getCategory":
-      return api.category.get(args.spaceId as string, args.categoryId as string);
-    case "getCategoryDocuments":
-      return (
-        await api.documents.get(args.spaceId as string, {
-          categorySlugs: args.categorySlug as string,
-        })
-      ).documents;
-    case "listProperties":
-      return api.properties.get(args.spaceId as string);
-    case "listUsers":
-      return api.users.get();
-    case "getUser":
-      return api.users.getById(args.userId as string);
-    case "getDocumentAuditLogs":
-      return api.documentAuditLogs.get(
-        args.spaceId as string,
-        args.documentId as string,
-        args.limit ? { limit: args.limit as number } : undefined,
-      );
-    case "getSpaceAuditLogs":
-      return api.auditLogs.get(
-        args.spaceId as string,
-        args.limit ? { limit: args.limit as number } : undefined,
-      );
-    case "listExtensions":
-      return (await api.extensions.get(args.spaceId as string)).extensions;
-    case "getExtension":
-      return api.extensions.getById(args.spaceId as string, args.extensionId as string);
-    case "listWebhooks":
-      return api.webhooks.get(args.spaceId as string);
-    case "getWebhook":
-      return api.webhooks.getById(args.spaceId as string, args.webhookId as string);
-    case "listAccessTokens":
-      return api.accessTokens.get(args.spaceId as string);
-    case "getAccessToken":
-      return api.accessTokens.getById(args.spaceId as string, args.tokenId as string);
-    case "getLatestWorkflowRun":
-      return api.workflows.getLatestRun(
-        args.spaceId as string,
-        args.documentId as string,
-      );
-    case "getWorkflowRun":
-      return api.workflows.getRun(args.spaceId as string, args.runId as string);
-    case "getLinkPreview":
-      return api.linkPreview.get(args.url as string);
-    case "createDocument":
-      return api.documents.post(args.spaceId as string, {
-        content: args.content as string,
-        type: (args.type as string) ?? undefined,
-        parentId: (args.parentId as string) ?? undefined,
-        categoryId: (args.categoryId as string) ?? undefined,
-        properties: (args.properties as Record<string, string>) ?? undefined,
-      });
-    case "updateDocument":
-      return api.document.put(
-        args.spaceId as string,
-        args.documentId as string,
-        args.content as string,
-      );
-    case "saveRevision":
-      return api.document.post(args.spaceId as string, args.documentId as string, {
-        html: args.html as string,
-        message: (args.message as string) ?? undefined,
-      });
-    case "runAgent":
-      return await spawnAndPollAgent(
-        args.prompt as string,
-        args.content as string,
-        args.allowedTools as string[] | undefined,
-      );
-    default:
-      if (!name.startsWith("job_")) throw new Error(`Unknown tool: ${name}`);
-      return api.jobs.run(assertCurrentSpaceId(), name.slice(4), args);
-  }
-}
-
-async function requestToolPermission(
-  name: string,
-  args: Record<string, unknown>,
-): Promise<boolean> {
-  const id = `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  messages.value.push({
-    role: "assistant",
-    content: `Tool call requested: ${name}`,
-    timestamp: Date.now(),
-    toolApproval: {
-      id,
-      name,
-      args,
-      status: "pending",
-    },
-  });
-  scrollToBottom();
-
-  return await new Promise<boolean>((resolve) => {
-    pendingToolApprovalResolvers.set(id, resolve);
-  });
-}
-
-function resolveToolPermission(id: string, allowed: boolean) {
-  const message = messages.value.find((msg) => msg.toolApproval?.id === id);
-  if (message?.toolApproval) {
-    message.toolApproval.status = allowed ? "approved" : "denied";
-  }
-
-  const resolver = pendingToolApprovalResolvers.get(id);
-  if (resolver) {
-    pendingToolApprovalResolvers.delete(id);
-    resolver(allowed);
-  }
-}
-
-function allowToolPermission(id: string) {
-  resolveToolPermission(id, true);
-}
-
-function denyToolPermission(id: string) {
-  resolveToolPermission(id, false);
-}
-
-function getDocumentContent(): string {
-  const documentView = document.querySelector("document-view") as any;
-  if (documentView?.editor) {
-    return documentView.editor.getHTML() || "";
-  }
-  const shadowRoot = documentView?.shadowRoot;
-  if (shadowRoot) {
-    return shadowRoot.querySelector('[part="content"]')?.textContent || "";
-  }
-  return "";
-}
+// ── Send to agent ─────────────────────────────────────────────────────────────
 
 async function sendWithProvider(message: string, assistantMessageIndex: number) {
-  const provider = getAIChatProvider(selectedProvider.value);
   if (conversationHistory.value.length === 0) {
     if (!currentSpaceId.value) throw new Error("No space selected");
     conversationHistory.value = [
       {
         role: "system",
-        content: provider.buildSystemPrompt({
-          systemPrompt: SYSTEM_PROMPT,
-          currentDocumentSystemPrompt: CURRENT_DOCUMENT_SYSTEM_PROMPT,
-          spaceId: currentSpaceId.value,
-          documentId: props.documentId,
-        }),
+        content: `${SYSTEM_PROMPT}\n\nCurrent context:\n- spaceId: ${currentSpaceId.value}\n- documentId: ${props.documentId}\n\nYou also have MCP tools from current Vektor server, scoped to this space, including document access and extension jobs.\n\n${CURRENT_DOCUMENT_SYSTEM_PROMPT}`,
       },
     ];
   }
 
   conversationHistory.value.push({ role: "user", content: message });
-  await provider.send({
+
+  const { content } = await fetchStreamingCompletion({
+    url: "/api/v1/chat/acp",
+    model: "bash-agent",
     history: conversationHistory.value,
-    assistantMessageIndex,
-    spaceId: assertCurrentSpaceId(),
-    documentId: props.documentId,
-    config: {
-      ollamaBaseUrl: ollamaBaseUrl.value,
-      ollamaModel: ollamaModel.value,
+    body: {
+      chatId: currentSessionId.value,
+      spaceId: currentSpaceId.value,
+      documentId: props.documentId || undefined,
     },
-    maxAgentSteps: MAX_AGENT_STEPS,
+    onDelta: (text) => {
+      messages.value[assistantMessageIndex].content += text;
+      scrollToBottom();
+    },
     signal: abortController?.signal,
-    appendAssistantText: (messageIndex, text) => {
-      messages.value[messageIndex].content += text;
-      scrollToBottom();
-    },
-    setAssistantContent: (messageIndex, text) => {
-      messages.value[messageIndex].content = text;
-      scrollToBottom();
-    },
-    setAssistantReasoning: (messageIndex, reasoning) => {
-      messages.value[messageIndex].reasoning = reasoning;
-    },
-    pushConversationMessage: (conversationMessage) => {
-      conversationHistory.value.push(conversationMessage);
-    },
-    pushStatusMessage: (content) => {
-      messages.value.push({
-        role: "assistant",
-        content,
-        timestamp: Date.now(),
-      });
-      scrollToBottom();
-    },
-    createAssistantPlaceholder: () => {
-      const nextIndex = messages.value.length;
-      messages.value.push({ role: "assistant", content: "", timestamp: Date.now() });
-      scrollToBottom();
-      return nextIndex;
-    },
-    getOpenRouterTools,
-    requestToolPermission,
-    executeToolCall,
   });
+
+  conversationHistory.value.push({ role: "assistant", content });
 }
 
 // ── Session management ────────────────────────────────────────────────────────
@@ -1557,7 +649,6 @@ Actions.register("ai-chat:toggle", {
 
 onMounted(async () => {
   loadUIState();
-  loadProviderConfig();
   await loadSessions();
   window.addEventListener("resize", updateMentionOverlayPosition);
   window.addEventListener("scroll", updateMentionOverlayPosition, true);
@@ -1577,10 +668,6 @@ onUnmounted(() => {
   window.removeEventListener("resize", updateMentionOverlayPosition);
   window.removeEventListener("scroll", updateMentionOverlayPosition, true);
   clearPendingAttachments();
-  for (const resolve of pendingToolApprovalResolvers.values()) {
-    resolve(false);
-  }
-  pendingToolApprovalResolvers.clear();
   Actions.unregister("ai-chat:toggle");
 });
 </script>
@@ -1593,102 +680,8 @@ onUnmounted(() => {
     :default-width="380"
   >
     <div class="flex flex-col h-full bg-neutral-50">
-      <!-- Provider selector -->
-      <div class="px-3 py-2 border-b border-neutral-100 bg-neutral-10 shrink-0 relative">
-        <div
-          class="flex items-center justify-between px-2.5 py-1.5 border border-neutral-100 rounded-lg text-sm cursor-pointer hover:bg-neutral-50 transition-colors select-none"
-          @click="showProviderDropdown = !showProviderDropdown"
-        >
-          <div class="flex items-center gap-2">
-            <svg class="w-4 h-4 text-primary-500" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
-            </svg>
-            <span class="font-medium text-neutral-800">{{ providerLabel.name }}</span>
-            <span class="text-xs text-neutral-500 font-normal">{{ providerLabel.sub }}</span>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <!-- Settings icon for configurable providers -->
-            <button
-              v-if="selectedProviderDefinition.option.configurable"
-              class="p-0.5 text-neutral-500 hover:text-neutral-700 transition-colors"
-              @click.stop="showProviderConfig = !showProviderConfig; showProviderDropdown = false"
-              title="Configure provider"
-            >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
-              </svg>
-            </button>
-            <svg class="w-3.5 h-3.5 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </div>
-        </div>
 
-        <!-- Dropdown -->
-        <div
-          v-if="showProviderDropdown"
-          class="absolute top-full left-3 right-3 mt-1 bg-neutral-10 border border-neutral-100 rounded-lg shadow-lg z-20 overflow-hidden"
-        >
-          <button
-            v-for="provider in AI_CHAT_PROVIDERS"
-            :key="provider.option.value"
-            class="w-full flex items-center justify-between px-3 py-2.5 text-sm hover:bg-neutral-50 transition-colors text-left"
-            :class="selectedProvider === provider.option.value ? 'bg-primary-50' : ''"
-            @click="selectProvider(provider.option.value)"
-          >
-            <div class="flex items-center gap-2">
-              <span class="font-medium text-neutral-800">{{ provider.option.name }}</span>
-              <span class="text-xs text-neutral-500">{{ provider.option.sub }}</span>
-            </div>
-            <svg v-if="selectedProvider === provider.option.value" class="w-3.5 h-3.5 text-primary-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Provider config panel -->
-      <div
-        v-if="showProviderConfig && selectedProvider === 'ollama'"
-        class="px-3 py-3 border-b border-neutral-100 bg-neutral-50 shrink-0 space-y-2"
-      >
-        <template v-if="selectedProvider === 'ollama'">
-          <div>
-            <label class="block text-xs text-neutral-600 mb-1">Base URL</label>
-            <input
-              v-model="ollamaBaseUrl"
-              type="text"
-              placeholder="http://localhost:11434"
-              class="w-full px-2.5 py-1.5 text-sm bg-neutral-10 text-neutral-800 placeholder-neutral-400 border border-neutral-200 rounded-lg focus:outline-none focus:border-primary-400"
-            />
-          </div>
-          <div>
-            <label class="block text-xs text-neutral-600 mb-1">Model</label>
-            <input
-              v-model="ollamaModel"
-              type="text"
-              placeholder="llama3.2"
-              class="w-full px-2.5 py-1.5 text-sm bg-neutral-10 text-neutral-800 placeholder-neutral-400 border border-neutral-200 rounded-lg focus:outline-none focus:border-primary-400"
-            />
-          </div>
-        </template>
-        <div class="flex gap-2 pt-1">
-          <button
-            @click="saveProviderConfig"
-            class="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-          >
-            Save
-          </button>
-          <button
-            @click="showProviderConfig = false"
-            class="px-3 py-1.5 text-xs text-neutral-600 bg-neutral-10 border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-
-      <!-- Sessions picker -->
+            <!-- Sessions picker -->
       <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
         <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide mb-3 px-1">Recent conversations</p>
         <div class="space-y-0.5">
@@ -1720,7 +713,7 @@ onUnmounted(() => {
         v-else
         ref="messagesContainer"
         class="flex-1 overflow-y-auto px-3 py-4 space-y-3"
-        @click="showProviderDropdown = false; closeMentionSuggestions()"
+        @click="closeMentionSuggestions()"
         @dragover.prevent
         @drop="onDropFiles"
       >
@@ -1748,83 +741,13 @@ onUnmounted(() => {
             </div>
             <div class="flex-1 min-w-0">
               <div class="bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm">
-                <template v-if="message.toolApproval">
-                  <div class="px-3.5 py-3 border-b border-neutral-100">
-                    <p class="text-sm text-neutral-800 font-medium">Tool permission required</p>
-                    <p class="text-xs text-neutral-600 mt-1">
-                      Tool: <code>{{ message.toolApproval.name }}</code>
-                    </p>
-                  </div>
-                  <pre class="text-xs">{{ JSON.stringify(message.toolApproval.args, null, 2) }}</pre>
-                  <div class="px-3.5 pb-3 pt-1 flex items-center gap-2">
-                    <button
-                      v-if="message.toolApproval.status === 'pending'"
-                      class="px-2.5 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                      @click="allowToolPermission(message.toolApproval.id)"
-                    >
-                      Allow
-                    </button>
-                    <button
-                      v-if="message.toolApproval.status === 'pending'"
-                      class="px-2.5 py-1.5 text-xs border border-neutral-300 text-neutral-700 rounded-lg hover:bg-neutral-50 transition-colors"
-                      @click="denyToolPermission(message.toolApproval.id)"
-                    >
-                      Deny
-                    </button>
-                    <span
-                      v-if="message.toolApproval.status !== 'pending'"
-                      class="text-xs"
-                      :class="message.toolApproval.status === 'approved' ? 'text-green-700' : 'text-red-700'"
-                    >
-                      {{ message.toolApproval.status === "approved" ? "Allowed" : "Denied" }}
-                    </span>
-                  </div>
-                </template>
-                <template v-else-if="message.subAgent">
-                  <div class="px-3.5 py-3">
-                    <div class="flex items-center gap-2 mb-2">
-                      <svg class="w-4 h-4 text-primary-500" :class="message.subAgent.status === 'running' ? 'animate-spin' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path v-if="message.subAgent.status === 'running'" d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
-                        <path v-else-if="message.subAgent.status === 'completed'" stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                        <path v-else stroke-linecap="round" d="M18 6L6 18M6 6l12 12"/>
-                      </svg>
-                      <span class="text-sm font-medium text-neutral-800">
-                        Sub-agent
-                        <span
-                          class="text-xs font-normal ml-1"
-                          :class="{
-                            'text-primary-500': message.subAgent.status === 'running',
-                            'text-green-600': message.subAgent.status === 'completed',
-                            'text-red-600': message.subAgent.status === 'failed',
-                          }"
-                        >{{ message.subAgent.status }}</span>
-                      </span>
-                    </div>
-                    <div v-if="message.subAgent.logs.length" class="bg-neutral-900 text-neutral-200 rounded-lg p-3 text-xs font-mono leading-relaxed max-h-48 overflow-y-auto">
-                      <div v-for="(line, i) in message.subAgent.logs" :key="i" class="whitespace-pre-wrap">{{ line }}</div>
-                    </div>
-                    <div v-if="message.subAgent.result" class="mt-2 text-sm text-neutral-800 leading-relaxed markdown-content" v-html="renderMarkdown(message.subAgent.result)"></div>
-                    <div v-if="message.subAgent.error" class="mt-2 text-sm text-red-600">{{ message.subAgent.error }}</div>
-                  </div>
-                </template>
-                <template v-else>
-                  <details v-if="message.reasoning" class="border-b border-neutral-100">
-                    <summary class="px-3.5 py-2 text-xs text-neutral-500 cursor-pointer select-none hover:bg-neutral-50 transition-colors list-none flex items-center gap-1.5">
-                      <svg class="w-3 h-3 shrink-0 transition-transform details-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6"/>
-                      </svg>
-                      Reasoning
-                    </summary>
-                    <div class="px-3.5 pb-2.5 pt-1 text-xs text-neutral-500 leading-relaxed italic border-t border-neutral-100 bg-neutral-50">{{ message.reasoning }}</div>
-                  </details>
-                  <div class="px-3.5 py-3 text-sm text-neutral-800 leading-relaxed markdown-content" v-html="renderMarkdown(message.content)"></div>
-                </template>
+                <div class="px-3.5 py-3 text-sm text-neutral-800 leading-relaxed markdown-content" v-html="renderMarkdown(message.content)"></div>
               </div>
               <!-- Timestamp + model + copy/refresh icons -->
               <div class="flex items-center justify-between mt-1.5 px-0.5">
                 <span class="text-[11px] text-neutral-500">
                   {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                  &nbsp;·&nbsp; {{ providerLabel.name }}
+                  &nbsp;·&nbsp; Agent
                 </span>
                 <div class="flex items-center gap-1">
                   <button class="p-0.5 text-neutral-400 hover:text-neutral-600 transition-colors" title="Copy" @click="navigator.clipboard.writeText(message.content)">
