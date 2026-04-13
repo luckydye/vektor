@@ -26,6 +26,7 @@ export type ChatSession = {
   updatedAt: number;
   messages: UIMessage[];
   conversationHistory: ChatMessage[];
+  shellSnapshot?: string | null;
 };
 
 function getSessionPath(spaceId: string, sessionId?: string): string {

@@ -49,6 +49,13 @@ function parseSessionInput(
   if (!Array.isArray(session.conversationHistory)) {
     throw badRequestResponse("Session conversationHistory must be an array");
   }
+  if (
+    session.shellSnapshot !== undefined &&
+    session.shellSnapshot !== null &&
+    typeof session.shellSnapshot !== "string"
+  ) {
+    throw badRequestResponse("Session shellSnapshot must be a string");
+  }
 
   return {
     id: sessionId,
@@ -57,6 +64,10 @@ function parseSessionInput(
     updatedAt: session.updatedAt,
     messages: session.messages,
     conversationHistory: session.conversationHistory,
+    shellSnapshot:
+      session.shellSnapshot === undefined || session.shellSnapshot === null
+        ? undefined
+        : session.shellSnapshot,
   };
 }
 

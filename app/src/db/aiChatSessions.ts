@@ -10,6 +10,7 @@ export type StoredAIChatSession = {
   updatedAt: number;
   messages: unknown[];
   conversationHistory: unknown[];
+  shellSnapshot: string | null;
 };
 
 export type AIChatSessionInput = {
@@ -19,6 +20,7 @@ export type AIChatSessionInput = {
   updatedAt: number;
   messages: unknown[];
   conversationHistory: unknown[];
+  shellSnapshot?: string | null;
 };
 
 function parseJsonArray(value: string, field: string): unknown[] {
@@ -44,6 +46,7 @@ function toStoredAIChatSession(
       row.conversationHistory,
       "conversationHistory",
     ),
+    shellSnapshot: row.shellSnapshot ?? null,
   };
 }
 
@@ -92,6 +95,10 @@ export async function upsertAIChatSession(
     updatedAt: new Date(session.updatedAt),
     messages: JSON.stringify(session.messages),
     conversationHistory: JSON.stringify(session.conversationHistory),
+    shellSnapshot:
+      session.shellSnapshot === undefined
+        ? existing?.shellSnapshot ?? null
+        : session.shellSnapshot,
   };
 
   if (existing) {
@@ -123,6 +130,24 @@ export async function deleteAIChatSession(
   const db = await getSpaceDb(spaceId);
   await db
     .delete(aiChatSession)
+    .where(
+      and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)),
+    );
+}
+
+export async function updateAIChatSessionShellSnapshot(
+  spaceId: string,
+  sessionId: string,
+  userId: string,
+  shellSnapshot: string | null,
+): Promise<void> {
+  const db = await getSpaceDb(spaceId);
+  await db
+    .update(aiChatSession)
+    .set({
+      shellSnapshot,
+      updatedAt: new Date(),
+    })
     .where(
       and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)),
     );
