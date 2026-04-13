@@ -1,11 +1,12 @@
 import { Worker } from "node:worker_threads";
-import type { AgentResult, ChatMessage } from "./core.ts";
+import type { AgentEvent, AgentResult, ChatMessage } from "./core.ts";
 
 export type { AgentResult, ChatMessage };
+export type { AgentEvent };
 export { runAgentPrompt } from "./core.ts";
 
 type WorkerMessage =
-  | { type: "chunk"; text: string }
+  | { type: "event"; event: AgentEvent }
   | { type: "done"; result: AgentResult }
   | { type: "error"; message: string };
 
@@ -16,9 +17,9 @@ export async function runAgentInWorker(options: {
   documentId?: string;
   jobToken: string;
   signal?: AbortSignal;
-  onChunk?: (chunk: string) => void | Promise<void>;
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
 }): Promise<AgentResult> {
-  const { signal, onChunk, ...workerInput } = options;
+  const { signal, onEvent, ...workerInput } = options;
 
   return new Promise((resolve, reject) => {
     const worker = new Worker("./src/agent/agentWorker.ts", { workerData: workerInput });
@@ -30,8 +31,8 @@ export async function runAgentInWorker(options: {
     signal?.addEventListener("abort", abort, { once: true });
 
     worker.on("message", (msg: WorkerMessage) => {
-      if (msg.type === "chunk") {
-        void onChunk?.(msg.text);
+      if (msg.type === "event") {
+        void onEvent?.(msg.event);
       } else if (msg.type === "done") {
         signal?.removeEventListener("abort", abort);
         resolve(msg.result);
