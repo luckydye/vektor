@@ -58,6 +58,14 @@ export type AcpPromptResult = {
   stopReason: string;
 };
 
+type AcpMcpServerConfig = {
+  type: "remote";
+  url: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+  timeout?: number;
+};
+
 export function parseAcpCommand(command: string): { bin: string; args: string[] } {
   const parts = command
     .trim()
@@ -127,12 +135,31 @@ export async function runAcpPrompt(options: {
   command: string;
   cwd: string;
   prompt: string;
+  apiUrl?: string;
+  spaceId?: string;
+  documentId?: string;
+  jobToken?: string;
   signal?: AbortSignal;
   onChunk?: (chunk: string) => void | Promise<void>;
 }): Promise<AcpPromptResult> {
-  const { command, cwd, prompt, signal, onChunk } = options;
+  const { command, cwd, prompt, apiUrl, spaceId, documentId, jobToken, signal, onChunk } =
+    options;
   const { bin, args } = parseAcpCommand(command);
   const dataHome = await prepareAcpRuntimeHome(cwd);
+  const mcpServers: Record<string, AcpMcpServerConfig> = {};
+  if (apiUrl && spaceId && jobToken) {
+    mcpServers.vektor = {
+      type: "remote",
+      url: new URL(`/api/v1/spaces/${spaceId}/mcp`, apiUrl).toString(),
+      headers: {
+        "X-Job-Token": jobToken,
+        "X-Space-Id": spaceId,
+        ...(documentId ? { "X-Vektor-Document-Id": documentId } : {}),
+      },
+      enabled: true,
+      timeout: 20_000,
+    };
+  }
   const child = spawn(bin, args, {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
@@ -142,6 +169,10 @@ export async function runAcpPrompt(options: {
       OPENCODE_DISABLE_MODELS_FETCH: "1",
       OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: "1",
       OPENCODE_CLIENT: "vektor-api",
+      ...(apiUrl ? { VEKTOR_API_URL: apiUrl } : {}),
+      ...(spaceId ? { VEKTOR_SPACE_ID: spaceId } : {}),
+      ...(documentId ? { VEKTOR_DOCUMENT_ID: documentId } : {}),
+      ...(jobToken ? { VEKTOR_JOB_TOKEN: jobToken } : {}),
     },
   });
 
@@ -202,7 +233,10 @@ export async function runAcpPrompt(options: {
       throw new Error("ACP process emitted a non-object message");
     }
 
-    if ("method" in message && typeof (message as { method?: unknown }).method === "string") {
+    if (
+      "method" in message &&
+      typeof (message as { method?: unknown }).method === "string"
+    ) {
       const notification = message as JsonRpcNotification & { id?: unknown };
       if (notification.method === "session/update") {
         const params = (notification.params ?? {}) as AcpSessionUpdateNotification;
@@ -309,7 +343,9 @@ export async function runAcpPrompt(options: {
     const stderrText = stderr.join("").trim();
     const suffix = stderrText ? `: ${stderrText}` : "";
     failPending(
-      normalizeAcpStartupError(`ACP process exited with code ${code ?? "unknown"}${suffix}`),
+      normalizeAcpStartupError(
+        `ACP process exited with code ${code ?? "unknown"}${suffix}`,
+      ),
     );
   });
 
@@ -332,7 +368,7 @@ export async function runAcpPrompt(options: {
 
     const sessionResult = (await sendRequest("session/new", {
       cwd,
-      mcpServers: [],
+      mcpServers,
     })) as { sessionId?: string } | null;
     const sessionId = sessionResult?.sessionId;
     if (!sessionId) {

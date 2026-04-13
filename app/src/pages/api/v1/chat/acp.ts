@@ -3,10 +3,16 @@ import {
   badRequestResponse,
   errorResponse,
   parseJsonBody,
+  requireUser,
   unauthorizedResponse,
+  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { verifyJobToken } from "../../../../jobs/jobToken.ts";
+import {
+  createJobToken,
+  parseJobToken,
+  verifyJobToken,
+} from "../../../../jobs/jobToken.ts";
 import { config } from "../../../../config.ts";
 import { runAcpPrompt } from "../../../../utils/acp.ts";
 import { fileURLToPath } from "node:url";
@@ -23,8 +29,23 @@ type ChatMessage = {
   content: string | ChatContentPart[];
 };
 
+type AcpRequestBody = {
+  messages?: ChatMessage[];
+  stream?: boolean;
+  spaceId?: string;
+  documentId?: string;
+};
+
 function getRepoRoot(): string {
   return fileURLToPath(new URL("../../../../../../", import.meta.url));
+}
+
+function getApiOrigin(request: Request): string {
+  const configured = config().API_URL;
+  if (configured) {
+    return new URL(configured, request.url).origin;
+  }
+  return new URL(request.url).origin;
 }
 
 function extractMessageText(content: ChatMessage["content"]): string {
@@ -132,6 +153,10 @@ function createStreamingResponse(options: {
   command: string;
   cwd: string;
   prompt: string;
+  apiUrl: string;
+  spaceId: string;
+  documentId?: string;
+  jobToken: string;
   signal?: AbortSignal;
 }): Response {
   const encoder = new TextEncoder();
@@ -203,26 +228,46 @@ function createStreamingResponse(options: {
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
-      if (!context.locals.user) {
-        const jobToken = context.request.headers.get("X-Job-Token");
-        const spaceId = context.request.headers.get("X-Space-Id");
-        if (!jobToken || !spaceId || !verifyJobToken(jobToken, spaceId)) {
-          throw unauthorizedResponse();
-        }
-      }
-
       const acpCommand = config().ACP_COMMAND;
       if (!acpCommand) {
         throw new Error("WIKI_ACP_COMMAND not configured");
       }
 
-      const body = await parseJsonBody<{
-        messages?: ChatMessage[];
-        stream?: boolean;
-      }>(context.request);
+      const body = await parseJsonBody<AcpRequestBody>(context.request);
 
       if (!Array.isArray(body.messages)) {
         return badRequestResponse("messages is required");
+      }
+      if (!body.spaceId || typeof body.spaceId !== "string") {
+        return badRequestResponse("spaceId is required");
+      }
+      if (body.documentId !== undefined && typeof body.documentId !== "string") {
+        return badRequestResponse("documentId must be a string");
+      }
+
+      let jobToken: string;
+      if (!context.locals.user) {
+        const providedJobToken = context.request.headers.get("X-Job-Token");
+        const headerSpaceId = context.request.headers.get("X-Space-Id");
+        if (
+          !providedJobToken ||
+          !headerSpaceId ||
+          !verifyJobToken(providedJobToken, headerSpaceId)
+        ) {
+          throw unauthorizedResponse();
+        }
+        if (headerSpaceId !== body.spaceId) {
+          return badRequestResponse("spaceId does not match job token scope");
+        }
+        const parsed = parseJobToken(providedJobToken, body.spaceId);
+        if (!parsed) {
+          throw unauthorizedResponse();
+        }
+        jobToken = providedJobToken;
+      } else {
+        const user = requireUser(context);
+        await verifySpaceRole(body.spaceId, user.id, "viewer");
+        jobToken = createJobToken(body.spaceId, Date.now().toString(), user.id);
       }
 
       const prompt = buildPrompt(body.messages);
@@ -231,6 +276,10 @@ export const POST: APIRoute = (context) =>
           command: acpCommand,
           cwd: getRepoRoot(),
           prompt,
+          apiUrl: getApiOrigin(context.request),
+          spaceId: body.spaceId,
+          documentId: body.documentId,
+          jobToken,
           signal: context.request.signal,
         });
       }
@@ -239,6 +288,10 @@ export const POST: APIRoute = (context) =>
         command: acpCommand,
         cwd: getRepoRoot(),
         prompt,
+        apiUrl: getApiOrigin(context.request),
+        spaceId: body.spaceId,
+        documentId: body.documentId,
+        jobToken,
         signal: context.request.signal,
       });
 

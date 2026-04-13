@@ -4,21 +4,10 @@ import { marked } from "marked";
 import { Actions } from "../utils/actions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
-import type {
-  DocumentWithProperties,
-  ExtensionJobInfo,
-} from "../api/ApiClient.ts";
-import {
-  AI_CHAT_PROVIDERS,
-  getAIChatProvider,
-} from "./ai-chat/providers/index.ts";
+import type { DocumentWithProperties, ExtensionJobInfo } from "../api/ApiClient.ts";
+import { AI_CHAT_PROVIDERS, getAIChatProvider } from "./ai-chat/providers/index.ts";
 import { parseSSEStream } from "./ai-chat/providers/shared.ts";
-import type {
-  ChatMessage,
-  OpenRouterTool,
-  Provider,
-  ToolCall,
-} from "./ai-chat/types.ts";
+import type { ChatMessage, OpenRouterTool, Provider, ToolCall } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
@@ -187,7 +176,9 @@ function selectProvider(provider: Provider) {
   conversationHistory.value = [];
 }
 
-const selectedProviderDefinition = computed(() => getAIChatProvider(selectedProvider.value));
+const selectedProviderDefinition = computed(() =>
+  getAIChatProvider(selectedProvider.value),
+);
 
 const providerLabel = computed(() => {
   return selectedProviderDefinition.value.getLabel({
@@ -309,10 +300,16 @@ function updateMentionOverlayPosition() {
 
 async function ensureMentionDocs(): Promise<DocumentWithProperties[]> {
   if (!currentSpaceId.value) return [];
-  if (mentionDocsSpaceId.value === currentSpaceId.value && mentionDocsCache.value.length > 0) {
+  if (
+    mentionDocsSpaceId.value === currentSpaceId.value &&
+    mentionDocsCache.value.length > 0
+  ) {
     return mentionDocsCache.value;
   }
-  const response = await api.documents.get(currentSpaceId.value, { limit: 1000, offset: 0 });
+  const response = await api.documents.get(currentSpaceId.value, {
+    limit: 1000,
+    offset: 0,
+  });
   mentionDocsSpaceId.value = currentSpaceId.value;
   mentionDocsCache.value = response.documents || [];
   return mentionDocsCache.value;
@@ -345,7 +342,7 @@ async function updateMentionSuggestions() {
     const docs = await ensureMentionDocs();
     if (seq !== mentionReqSeq) return;
     const query = mentionQuery.value.trim().toLowerCase();
-      const filtered = [...docs]
+    const filtered = [...docs]
       .filter((doc) => {
         const title = getDocumentTitle(doc).toLowerCase();
         const slug = doc.slug.toLowerCase();
@@ -413,7 +410,8 @@ function onMessageKeydown(event: KeyboardEvent) {
   if (mentionOpen.value && mentionSuggestions.value.length > 0) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      mentionActiveIndex.value = (mentionActiveIndex.value + 1) % mentionSuggestions.value.length;
+      mentionActiveIndex.value =
+        (mentionActiveIndex.value + 1) % mentionSuggestions.value.length;
       return;
     }
     if (event.key === "ArrowUp") {
@@ -1001,7 +999,11 @@ function getJobToolInputType(type: string): string {
   throw new Error(`Unsupported job input type: ${type}`);
 }
 
-function buildJobTool(extensionId: string, extensionName: string, job: ExtensionJobInfo): OpenRouterTool {
+function buildJobTool(
+  extensionId: string,
+  extensionName: string,
+  job: ExtensionJobInfo,
+): OpenRouterTool {
   return {
     type: "function",
     function: {
@@ -1029,7 +1031,9 @@ async function getOpenRouterTools(): Promise<OpenRouterTool[]> {
   return [
     ...OPENROUTER_TOOLS,
     ...extensions.flatMap((extension) =>
-      (extension.jobs ?? []).map((job) => buildJobTool(extension.id, extension.name, job)),
+      (extension.jobs ?? []).map((job) =>
+        buildJobTool(extension.id, extension.name, job),
+      ),
     ),
   ];
 }
@@ -1299,6 +1303,8 @@ async function sendWithProvider(message: string, assistantMessageIndex: number) 
   await provider.send({
     history: conversationHistory.value,
     assistantMessageIndex,
+    spaceId: assertCurrentSpaceId(),
+    documentId: props.documentId,
     config: {
       ollamaBaseUrl: ollamaBaseUrl.value,
       ollamaModel: ollamaModel.value,
