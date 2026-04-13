@@ -35,6 +35,12 @@ export type AgentEvent =
       isError: boolean;
     };
 
+const CORE_AGENT_SYSTEM_PROMPT = `## Bash Tool Runtime
+The bash tool runs inside just-bash, not full system shell.
+- Do not assume node, npm, npx, pnpm, bun, pip, python, or js-exec exist.
+- Prefer direct shell utilities already available in just-bash.
+- If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.`;
+
 async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -187,7 +193,7 @@ export async function runAgentPrompt(options: {
       type: "function",
       function: {
         name: "bash",
-        description: "Execute a bash command in an isolated in-memory environment.",
+        description: "Execute bash in isolated in-memory environment.",
         parameters: {
           type: "object",
           properties: { command: { type: "string" } },
@@ -205,11 +211,13 @@ export async function runAgentPrompt(options: {
     })),
   ];
 
-  const agentMessages: ChatMessage[] = [...messages];
+  const agentMessages: ChatMessage[] = [
+    { role: "system", content: CORE_AGENT_SYSTEM_PROMPT },
+    ...messages,
+  ];
   const allChunks: string[] = [];
-  const MAX_STEPS = 20;
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  while (true) {
     const { message, finishReason } = await callModel({
       apiKey,
       model,
@@ -244,8 +252,18 @@ export async function runAgentPrompt(options: {
         if (toolCall.function.name === "bash") {
           const cmd = (args as { command: string }).command;
           const res = await bash.exec(cmd);
-          result = res.stdout + (res.stderr ? `\nstderr: ${res.stderr}` : "");
-          if (res.exitCode !== 0) result = `exit ${res.exitCode}\n${result}`;
+          const stdout = res.stdout.trim();
+          const stderr = res.stderr.trim();
+          const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
+            .filter(Boolean)
+            .join("\n");
+          if (res.exitCode !== 0) {
+            result =
+              output ||
+              `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
+          } else {
+            result = output || "(no output)";
+          }
           isError = res.exitCode !== 0;
         } else {
           result = await callVektorTool(mcpConfig, toolCall.function.name, args);
@@ -273,6 +291,4 @@ export async function runAgentPrompt(options: {
       });
     }
   }
-
-  throw new Error("Agent exceeded maximum steps");
 }
