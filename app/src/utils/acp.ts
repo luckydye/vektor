@@ -1,9 +1,9 @@
 import { once } from "node:events";
 import { spawn } from "node:child_process";
-import { access, copyFile, mkdir } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { createHash } from "node:crypto";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 type JsonRpcId = number;
@@ -108,13 +108,21 @@ async function prepareAcpRuntimeHome(cwd: string): Promise<string> {
   const opencodeHome = join(dataHome, "opencode");
   await mkdir(opencodeHome, { recursive: true });
 
-  const globalAuthPath = join(homedir(), ".local", "share", "opencode", "auth.json");
-  const runtimeAuthPath = join(opencodeHome, "auth.json");
-  if ((await pathExists(globalAuthPath)) && !(await pathExists(runtimeAuthPath))) {
-    await copyFile(globalAuthPath, runtimeAuthPath);
+  return dataHome;
+}
+
+async function writeAcpRuntimeConfig(options: {
+  dataHome: string;
+  mcp?: Record<string, AcpMcpServerConfig>;
+}): Promise<void> {
+  const { dataHome, mcp } = options;
+  const configPath = join(dataHome, "opencode", "opencode.json");
+  const config: Record<string, unknown> = {};
+  if (mcp && Object.keys(mcp).length > 0) {
+    config.mcp = mcp;
   }
 
-  return dataHome;
+  await writeFile(configPath, JSON.stringify(config, null, 2));
 }
 
 function normalizeAcpStartupError(message: string): Error {
@@ -146,9 +154,10 @@ export async function runAcpPrompt(options: {
     options;
   const { bin, args } = parseAcpCommand(command);
   const dataHome = await prepareAcpRuntimeHome(cwd);
-  const mcpServers: Record<string, AcpMcpServerConfig> = {};
+  const mcpConfig: Record<string, AcpMcpServerConfig> = {};
+  const mcpServers: string[] = [];
   if (apiUrl && spaceId && jobToken) {
-    mcpServers.vektor = {
+    mcpConfig.vektor = {
       type: "remote",
       url: new URL(`/api/v1/spaces/${spaceId}/mcp`, apiUrl).toString(),
       headers: {
@@ -159,13 +168,16 @@ export async function runAcpPrompt(options: {
       enabled: true,
       timeout: 20_000,
     };
+    mcpServers.push("vektor");
   }
+  await writeAcpRuntimeConfig({ dataHome, mcp: mcpConfig });
   const child = spawn(bin, args, {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
     env: {
       ...process.env,
       XDG_DATA_HOME: dataHome,
+      XDG_CONFIG_HOME: dataHome,
       OPENCODE_DISABLE_MODELS_FETCH: "1",
       OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: "1",
       OPENCODE_CLIENT: "vektor-api",
