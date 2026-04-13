@@ -1600,6 +1600,7 @@ export class ApiClient {
       options?: {
         fromRunId?: string;
         fromNodeId?: string;
+        sourceExtensionId?: string;
       },
     ): Promise<{ runId: string }> => {
       return await this.apiPost<{ runId: string }>(
@@ -1610,6 +1611,7 @@ export class ApiClient {
           inputs,
           fromRunId: options?.fromRunId,
           fromNodeId: options?.fromNodeId,
+          sourceExtensionId: options?.sourceExtensionId,
         },
       );
     },
@@ -1648,7 +1650,7 @@ export class ApiClient {
       );
     },
 
-    listRuns: async (spaceId: string) => {
+    listRuns: async (spaceId: string, query?: { sourceExtensionId?: string }) => {
       const response = await this.apiGet<{
         runs: {
           runId: string;
@@ -1656,8 +1658,10 @@ export class ApiClient {
           documentSlug: string | null;
           documentTitle: string;
           status: string;
+          createdAt: string;
+          sourceExtensionId: string | null;
         }[];
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`);
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`, query);
       return response.runs;
     },
 

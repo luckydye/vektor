@@ -27,6 +27,7 @@ export type RunState = {
   spaceId: string;
   documentId: string;
   initiatedByUserId: string | null;
+  sourceExtensionId: string | null;
   createdAt: Date;
   abort?: () => void;
 };
@@ -230,6 +231,7 @@ function serializeRun(run: RunState): PersistedRunState {
     spaceId: run.spaceId,
     documentId: run.documentId,
     initiatedByUserId: run.initiatedByUserId,
+    sourceExtensionId: run.sourceExtensionId,
     createdAt: serializeDate(run.createdAt),
     nodes: Object.fromEntries(
       [...run.nodes.entries()].map(([nodeId, node]) => [
@@ -250,6 +252,7 @@ function deserializeRun(serialized: PersistedRunState): RunState {
     spaceId: serialized.spaceId,
     documentId: serialized.documentId,
     initiatedByUserId: serialized.initiatedByUserId,
+    sourceExtensionId: serialized.sourceExtensionId ?? null,
     createdAt: deserializeDate(serialized.createdAt) ?? new Date(0),
     nodes: new Map(
       Object.entries(serialized.nodes).map(([nodeId, node]) => [
@@ -335,6 +338,7 @@ export function createRun(
   documentId: string,
   nodeIds: string[],
   initiatedByUserId: string | null = null,
+  sourceExtensionId: string | null = null,
 ): string {
   const runId = createId("run");
   const createdAt = new Date();
@@ -350,7 +354,15 @@ export function createRun(
       completedAt: null,
     });
   }
-  runs.set(runId, { status: "pending", nodes, spaceId, documentId, initiatedByUserId, createdAt });
+  runs.set(runId, {
+    status: "pending",
+    nodes,
+    spaceId,
+    documentId,
+    initiatedByUserId,
+    sourceExtensionId,
+    createdAt,
+  });
   latestRunByDoc.set(documentId, runId);
   persistRunStore();
   return runId;
