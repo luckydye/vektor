@@ -34,7 +34,7 @@ Documents with type "app" render their HTML content in a sandboxed iframe. Use t
 
 You have a special tool called "runAgent" that spawns an autonomous sub-agent. The sub-agent runs in the background with its own tool loop and can perform multi-step tasks independently. Use it when a task requires several chained actions — for example researching across multiple documents, fetching external content and writing a summary, or any workflow that would need many sequential tool calls. Provide a clear system prompt telling the sub-agent its goal and constraints, and a content message with the specific task. The sub-agent's progress logs and final result will be streamed back to the user automatically. Prefer runAgent over doing many tool calls yourself when the work is self-contained and can be delegated.`;
 
-const CURRENT_DOCUMENT_SYSTEM_PROMPT = `IMPORTANT: You have access to a tool to get the current document content. When a user asks questions about "this document", "the page", "the current content", or anything that requires seeing the document, you MUST use the tool.`;
+const CURRENT_DOCUMENT_SYSTEM_PROMPT = `IMPORTANT: When a user asks about "this document", "the page", or current content, you MUST inspect it first with \`vektor current\` from the bash tool.`;
 
 type UploadedAttachment = {
   key: string;
@@ -653,7 +653,7 @@ async function sendWithProvider(message: string) {
     conversationHistory.value = [
       {
         role: "system",
-        content: `${SYSTEM_PROMPT}\n\nCurrent context:\n- spaceId: ${currentSpaceId.value}\n- documentId: ${props.documentId}\n\nYou also have MCP tools from current Vektor server, scoped to this space, including document access and extension jobs.\n\n${CURRENT_DOCUMENT_SYSTEM_PROMPT}`,
+        content: `${SYSTEM_PROMPT}\n\nCurrent context:\n- spaceId: ${currentSpaceId.value}\n- documentId: ${props.documentId}\n\nUse the bash tool with the \`vektor\` command for document access and shell workflows.\n\n${CURRENT_DOCUMENT_SYSTEM_PROMPT}`,
       },
     ];
   }
