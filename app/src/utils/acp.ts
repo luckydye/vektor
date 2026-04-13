@@ -2,7 +2,8 @@ import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { access, copyFile, mkdir } from "node:fs/promises";
 import { constants } from "node:fs";
-import { homedir } from "node:os";
+import { createHash } from "node:crypto";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 type JsonRpcId = number;
@@ -91,7 +92,11 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function prepareAcpRuntimeHome(cwd: string): Promise<string> {
-  const dataHome = join(cwd, ".opencode-runtime");
+  if (!cwd) {
+    throw new Error("ACP cwd must not be empty");
+  }
+  const cwdHash = createHash("sha256").update(cwd).digest("hex").slice(0, 12);
+  const dataHome = join(tmpdir(), "vektor", "opencode-runtime", cwdHash);
   const opencodeHome = join(dataHome, "opencode");
   await mkdir(opencodeHome, { recursive: true });
 

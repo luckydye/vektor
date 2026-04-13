@@ -30,7 +30,13 @@ describe("runStore", () => {
   });
 
   it("persists workflow runs and recovers interrupted nodes after reload", () => {
-    const runId = createRun("space_1", "doc_1", ["node1", "node2", "node3"], "user_1");
+    const runId = createRun(
+      "space_1",
+      "doc_1",
+      ["node1", "node2", "node3"],
+      "user_1",
+      "empco-linter",
+    );
     const completedAt = new Date("2026-04-09T10:00:00.000Z");
     const startedAt = new Date("2026-04-09T10:01:00.000Z");
 
@@ -56,6 +62,7 @@ describe("runStore", () => {
     expect(run?.status).toBe("failed");
     expect(run?.spaceId).toBe("space_1");
     expect(run?.initiatedByUserId).toBe("user_1");
+    expect(run?.sourceExtensionId).toBe("empco-linter");
 
     const node1 = run?.nodes.get("node1");
     expect(node1?.status).toBe("completed");

@@ -28,7 +28,8 @@ import { appLogger } from "#observability/logger.ts";
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
  * With documentId: returns { runId, status } for the latest run of that document, or 404.
- * Without documentId: returns { runs: [{ runId, documentId, status, documentTitle }] } for all active runs in the space.
+ * Without documentId: returns { runs: [{ runId, documentId, status, documentTitle }] } for runs in the space.
+ * Optional query: sourceExtensionId filters runs created directly by that extension.
  */
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -36,6 +37,7 @@ export const GET: APIRoute = (context) =>
     await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
     const documentId = context.url.searchParams.get("documentId");
+    const sourceExtensionId = context.url.searchParams.get("sourceExtensionId");
 
     if (documentId) {
       const runId = latestRunByDoc.get(documentId);
@@ -48,7 +50,10 @@ export const GET: APIRoute = (context) =>
     // List all runs for this space, newest first
     const allRuns = await Promise.all(
       [...runs.entries()]
-        .filter(([, run]) => run.spaceId === spaceId)
+        .filter(([, run]) =>
+          run.spaceId === spaceId &&
+          (!sourceExtensionId || run.sourceExtensionId === sourceExtensionId)
+        )
         .map(async ([runId, run]) => {
           const doc = await getDocument(spaceId, run.documentId);
           return {
@@ -57,6 +62,8 @@ export const GET: APIRoute = (context) =>
             documentSlug: doc?.slug ?? null,
             documentTitle: doc?.properties.title ?? run.documentId,
             status: run.status,
+            createdAt: run.createdAt.toISOString(),
+            sourceExtensionId: run.sourceExtensionId,
           };
         }),
     );
@@ -81,8 +88,9 @@ export const POST: APIRoute = (context) =>
         fromRunId?: string;
         fromNodeId?: string;
         inputs?: Record<string, unknown>;
+        sourceExtensionId?: string;
       }>(context.request);
-      const { documentId, fromRunId, fromNodeId, inputs } = body;
+      const { documentId, fromRunId, fromNodeId, inputs, sourceExtensionId } = body;
       if (documentId) span?.setAttribute("wiki.document.id", documentId);
 
       if (!documentId) return badRequestResponse("documentId is required");
@@ -187,7 +195,13 @@ export const POST: APIRoute = (context) =>
         }
       }
 
-      const runId = createRun(spaceId, documentId, Object.keys(definition), initiatedByUserId);
+      const runId = createRun(
+        spaceId,
+        documentId,
+        Object.keys(definition),
+        initiatedByUserId,
+        sourceExtensionId ?? null,
+      );
       const traceHeaders = activeTraceHeaders();
 
       // Fire and forget — errors are recorded in run state

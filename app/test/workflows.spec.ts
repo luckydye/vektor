@@ -586,3 +586,44 @@ describe("Workflow runs — validation errors", () => {
     expect(body.error).toContain("no-such-job");
   });
 });
+
+describe("Workflow runs — source extension filtering", () => {
+  it("lists only runs started directly by requested extension", async () => {
+    const docId = await createWorkflowDoc({
+      node1: {
+        extensionId: "test-workflow-ext",
+        jobId: "greet",
+        inputs: [{ key: "greeting", value: "hello" }],
+        depends: [],
+      },
+    });
+
+    const { runId: empcoRunId } = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({
+        documentId: docId,
+        sourceExtensionId: "empco-linter",
+      }),
+    }).then((r) => r.json() as Promise<{ runId: string }>);
+
+    const { runId: plainRunId } = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({ documentId: docId }),
+    }).then((r) => r.json() as Promise<{ runId: string }>);
+
+    await pollRun(testSpaceId, empcoRunId);
+    await pollRun(testSpaceId, plainRunId);
+
+    const res = await api(
+      `/api/v1/spaces/${testSpaceId}/workflows/runs?sourceExtensionId=empco-linter`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      runs: { runId: string; sourceExtensionId: string | null }[];
+    };
+
+    expect(body.runs.map((run) => run.runId)).toContain(empcoRunId);
+    expect(body.runs.map((run) => run.runId)).not.toContain(plainRunId);
+    expect(body.runs.every((run) => run.sourceExtensionId === "empco-linter")).toBe(true);
+  });
+});
