@@ -1,6 +1,8 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { runAgentPrompt } from "./core.ts";
 
+if (!workerData) process.exit(0);
+
 type WorkerInput = Parameters<typeof runAgentPrompt>[0] & { signal?: never };
 
 runAgentPrompt({

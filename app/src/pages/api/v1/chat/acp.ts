@@ -14,7 +14,7 @@ import {
   verifyJobToken,
 } from "../../../../jobs/jobToken.ts";
 import { config } from "../../../../config.ts";
-import { runAgentInWorker } from "../../../../agent/index.ts";
+import { runAgentInWorker } from "../../../../agent/agent.ts";
 
 type ChatRole = "system" | "user" | "assistant" | "tool";
 

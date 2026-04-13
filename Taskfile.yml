@@ -48,7 +48,7 @@ tasks:
     cmds:
       - bunx --bun astro build
       - bun run ./build.ts
-      - bun build ./vektor.ts --compile --external lightningcss --outfile ./vektor
+      - bun build --compile ./vektor.ts ./src/agent/agentWorker.ts --external lightningcss --outfile ./vektor
 
   start:
     dir: ./app
