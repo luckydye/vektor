@@ -443,11 +443,37 @@ function applyStreamEvent(
 ) {
   if (event.type === "text") {
     appendAssistantMessageChunk(event.text, assistantMessageIndex);
+  } else if (event.type === "status") {
+    appendStatusMessage(event.text);
   } else {
     assistantMessageIndex.value = null;
     appendToolEventMessage(event);
   }
   scrollToBottom();
+}
+
+function appendStatusMessage(text: string) {
+  const lastMessage = messages.value.at(-1);
+  if (lastMessage?.role === "status") {
+    const lines = lastMessage.content.split("\n").filter(Boolean);
+    if (lines.at(-1) !== text) {
+      lastMessage.content = `${lastMessage.content}\n${text}`;
+    }
+    lastMessage.timestamp = Date.now();
+    return;
+  }
+
+  messages.value.push({
+    role: "status",
+    content: text,
+    timestamp: Date.now(),
+  });
+}
+
+function clearTransientStatusMessages(startIndex: number) {
+  messages.value = messages.value.filter(
+    (message, index) => !(index >= startIndex && message.role === "status"),
+  );
 }
 
 function normalizeSavedMessage(message: UIMessage): UIMessage {
@@ -851,6 +877,7 @@ async function sendMessage() {
       });
     }
   } finally {
+    clearTransientStatusMessages(responseStartIndex);
     abortController = null;
     isGenerating.value = false;
     scrollToBottom();
@@ -976,6 +1003,13 @@ onUnmounted(() => {
             class="px-3 py-1 bg-neutral-100 text-neutral-600 rounded-full text-xs"
           >
             {{ message.content }}
+          </div>
+          <div
+            v-else-if="message.role === 'status'"
+            class="max-w-[85%] bg-neutral-950 text-neutral-100 border border-neutral-800 rounded-xl px-3 py-2 shadow-sm"
+          >
+            <div class="text-[11px] uppercase tracking-wide text-neutral-400 mb-1">Agent log</div>
+            <pre class="text-xs leading-relaxed whitespace-pre-wrap font-mono">{{ message.content }}</pre>
           </div>
           <template v-else-if="message.role === 'assistant'">
             <!-- Robot avatar -->
