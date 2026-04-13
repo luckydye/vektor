@@ -13,7 +13,7 @@ export const opencodeProvider: AIChatAppProvider = {
   },
   getLabel,
   buildSystemPrompt: (context) =>
-    `${context.systemPrompt}\n\nCurrent context:\n- spaceId: ${context.spaceId}\n- documentId: ${context.documentId}\n\n${context.currentDocumentSystemPrompt}`,
+    `${context.systemPrompt}\n\nCurrent context:\n- spaceId: ${context.spaceId}\n- documentId: ${context.documentId}\n\nYou also have MCP tools from current Vektor server, scoped to this space, including document access and extension jobs.\n\n${context.currentDocumentSystemPrompt}`,
   send: async (context) => {
     context.setAssistantContent(context.assistantMessageIndex, "");
 
@@ -21,6 +21,10 @@ export const opencodeProvider: AIChatAppProvider = {
       url: "/api/v1/chat/acp",
       model: "acp-configured-agent",
       history: context.history,
+      body: {
+        spaceId: context.spaceId,
+        documentId: context.documentId || undefined,
+      },
       onDelta: (text) => context.appendAssistantText(context.assistantMessageIndex, text),
       signal: context.signal,
     });

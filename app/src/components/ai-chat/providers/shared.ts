@@ -41,12 +41,14 @@ export async function fetchStreamingCompletion(options: {
   history: ChatMessage[];
   onDelta: (text: string) => void;
   tools?: readonly OpenRouterTool[];
+  body?: Record<string, unknown>;
   signal?: AbortSignal;
 }): Promise<{ content: string; reasoning?: string; toolCalls?: ToolCall[] }> {
   const response = await fetch(options.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      ...(options.body ?? {}),
       model: options.model,
       messages: options.history,
       tools: options.tools,

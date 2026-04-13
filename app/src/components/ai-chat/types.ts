@@ -53,6 +53,8 @@ export type SystemPromptContext = {
 export type ProviderContext = {
   history: ChatMessage[];
   assistantMessageIndex: number;
+  spaceId: string;
+  documentId: string;
   config: ProviderConfig;
   maxAgentSteps: number;
   signal?: AbortSignal;

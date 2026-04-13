@@ -29,11 +29,12 @@ export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.params, "spaceId");
 
-    // Authenticate with either user session or access token
-    const auth = await authenticateRequest(context, spaceId);
+    const jobAuth = context.request.headers.get("X-Job-Token")
+      ? await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer")
+      : null;
+    const auth = jobAuth ? null : await authenticateRequest(context, spaceId);
 
-    // Handle token-based authentication
-    if (auth.type === "token") {
+    if (!jobAuth && auth?.type === "token") {
       await verifyTokenPermission(
         auth.token,
         spaceId,
@@ -41,8 +42,8 @@ export const GET: APIRoute = (context) =>
         spaceId,
         "viewer",
       );
-    } else {
-      // Handle user-based authentication
+    }
+    if (!jobAuth && auth?.type === "user") {
       await verifySpaceRole(spaceId, auth.user.id, "viewer");
     }
 
@@ -67,7 +68,7 @@ export const GET: APIRoute = (context) =>
       : [];
 
     if (categorySlugs.length > 0) {
-      const userEmail = auth.type === "token" ? undefined : auth.user.email;
+      const userEmail = auth?.type === "user" ? auth.user.email : undefined;
       const documentsByCategory = await listAllDocumentsByCategories(
         spaceId,
         categorySlugs,
@@ -83,7 +84,10 @@ export const GET: APIRoute = (context) =>
         : documentsByCategory;
 
       if (grouped) {
-        return jsonResponse({ documentsByCategory: filteredDocumentsByCategory, categorySlugs });
+        return jsonResponse({
+          documentsByCategory: filteredDocumentsByCategory,
+          categorySlugs,
+        });
       }
 
       const seen = new Set<string>();
