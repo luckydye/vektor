@@ -177,7 +177,20 @@ Source: `/Users/tihav/source/wiki-extensions/extensions/workflow-builder/manifes
 - If you do this, constrain each layer with `allowedTools` so child agents have a narrow tool set and predictable behavior.
 - Prefer explicit dependency edges and clear input keys per layer to avoid accidental prompt/content collisions.
 
-### 8) `search-documents`
+### 8) `chat-completion`
+
+- Inputs:
+- `prompt` (`string`, required)
+- `content` (`string`, optional)
+- `system` (`string`, optional)
+- `outputKey` (`string`, optional, default `"output"`)
+- Outputs:
+- `output` (`text`)
+- Notes:
+- Makes one non-streaming call to `POST /chat/completions`.
+- Use this when you want one model response without tool calls or an agent loop.
+
+### 9) `search-documents`
 
 - Inputs:
 - `query` (`string`, required)
@@ -186,7 +199,7 @@ Source: `/Users/tihav/source/wiki-extensions/extensions/workflow-builder/manifes
 - `content` (`text`): newline-formatted snippets
 - `results` (`text`): JSON array string
 
-### 9) `upload-artifact`
+### 10) `upload-artifact`
 
 - Inputs:
 - `content` (`string`, required)
@@ -196,7 +209,7 @@ Source: `/Users/tihav/source/wiki-extensions/extensions/workflow-builder/manifes
 - Notes:
 - Uploads content and returns a file artifact object.
 
-### 10) `html-to-markdown`
+### 11) `html-to-markdown`
 
 - Inputs:
 - `content` (`string`, required)
@@ -206,7 +219,7 @@ Source: `/Users/tihav/source/wiki-extensions/extensions/workflow-builder/manifes
 - Notes:
 - Uses `pandoc` for conversion.
 
-### 11) `sitemap-download`
+### 12) `sitemap-download`
 
 - Inputs:
 - `content` (`string`, required): sitemap XML
@@ -215,14 +228,14 @@ Source: `/Users/tihav/source/wiki-extensions/extensions/workflow-builder/manifes
 - `file` (`file`): ZIP of downloaded HTML files
 - `count` (`text`)
 
-### 12) `json-to-table`
+### 13) `json-to-table`
 
 - Inputs:
 - `results` (`string`, required): JSON array string
 - Outputs:
 - `content` (`text`): HTML table
 
-### 13) `for-each-file`
+### 14) `for-each-file`
 
 - Inputs:
 - `file` (`file`, required): ZIP artifact URL
