@@ -6,19 +6,23 @@ import {
   ButtonSecondary,
 } from "~/src/components/index.ts";
 import Contributors from "./Contributors.vue";
+import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
 import { onMounted, onUnmounted, ref, computed, watchEffect } from "vue";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions, type ActionOptions } from "../utils/actions.ts";
 import { api } from "../api/client.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
+import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 
 const props = defineProps<{
   documentId?: string;
   title?: string;
   readonly: boolean;
+  documentType?: string;
 }>();
 
 const { currentSpaceId, currentSpace } = useSpace();
+const { toggle: toggleDockedWindow } = useDockedWindows();
 
 const userCanEdit = computed(() => {
   return canEdit(currentSpace.value?.userRole);
@@ -317,6 +321,16 @@ watchEffect(() => {
     </div>
 
     <button
+      v-if="documentType === 'workflow' && documentId && userCanEdit"
+      type="button"
+      class="button-primary px-3"
+      @click="toggleDockedWindow('workflow-editor', { side: 'right', width: 720, mode: 'floating' })"
+    >
+      <Icon name="edit" />
+      <span>Edit</span>
+    </button>
+
+    <button
       v-if="!isEditing && !readonly && userCanEdit"
       type="button"
       class="button-primary px-3"
@@ -325,6 +339,12 @@ watchEffect(() => {
       <Icon name="edit" />
       <span>Edit</span>
     </button>
+
+    <WorkflowEditorOverlay
+      v-if="documentType === 'workflow' && documentId && currentSpaceId"
+      :documentId="documentId"
+      :spaceId="currentSpaceId"
+    />
 
     <div v-if="isEditing" class="flex items-center gap-2">
       <div ref="actionMenuRef" class="relative">

@@ -187,14 +187,12 @@ if (diffMins >= 1 && diffMins < 60) {
             ) : null}
           </div>
 
-          <DocumentActions documentId={document.id} title={title} readonly={isReadonly} client:load />
+          <DocumentActions documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} client:load />
         </div>
 
-        {document.type !== 'workflow' && (
-          <div class="print:px-0 px-xs lg:px-xl mt-xs">
-            <DocumentProperties client:load documentId={document.id} initialProperties={{ ...document.properties, parentId: document.parentId }} />
-          </div>
-        )}
+        <div class="print:px-0 px-xs lg:px-xl mt-xs">
+          <DocumentProperties client:load documentId={document.id} initialProperties={{ ...document.properties, parentId: document.parentId }} />
+        </div>
       </div>
 
       <!-- Main Content -->

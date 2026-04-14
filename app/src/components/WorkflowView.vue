@@ -170,7 +170,7 @@ const statusBadgeClass: Record<string, string> = {
 </script>
 
 <template>
-  <div class="px-xs lg:px-xl py-xl space-y-8 max-w-(--document-width) mx-auto">
+  <div class="px-xs lg:px-xl space-y-8 mx-auto">
 
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
