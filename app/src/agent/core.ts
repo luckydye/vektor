@@ -57,13 +57,7 @@ The bash tool runs inside bash, not full system shell.
 - upload command is available to upload a file from virtual filesystem: \`upload <file> [-t content-type] [-d document-id]\`. Returns JSON with upload result including URL.
 - Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
-- To loop over lines in a file:
-\`\`\`
-while read -r id; do
-  [ -z "$id" ] && continue
-  vektor read "$id" > "docs/$id.html"
-done < doc_ids.txt
-\`\`\`
+- To loop over lines in a file, use \`done < file.txt\` (single \`<\`). The \`<<\` operator is a heredoc and reads inline text, not a file. Correct pattern: \`while read -r line; do echo "$line"; done < file.txt\`
 
 ## Behavior
 - Be concise, accurate, and tool-driven.
