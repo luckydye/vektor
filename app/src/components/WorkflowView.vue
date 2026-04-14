@@ -22,6 +22,7 @@ const selectedRunId = ref<string | null>(null);
 const selectedRunDetail = ref<WorkflowRunStatus | null>(null);
 const workflowDef = ref<Record<string, WorkflowNodeDef>>({});
 const starting = ref(false);
+const cancelling = ref(false);
 const logsExpanded = ref(false);
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -51,6 +52,19 @@ async function startRun() {
     await selectRun(runId);
   } finally {
     starting.value = false;
+  }
+}
+
+async function cancelRun() {
+  const activeRun = runList.value.find((r) => r.status === "running" || r.status === "pending");
+  if (!activeRun || cancelling.value) return;
+  cancelling.value = true;
+  try {
+    await api.workflows.cancelRun(props.spaceId, activeRun.runId);
+    await fetchRuns();
+    await fetchSelectedRunDetail();
+  } finally {
+    cancelling.value = false;
   }
 }
 
@@ -188,18 +202,34 @@ const statusBadgeClass: Record<string, string> = {
 
       <div class="flex items-center gap-2 ml-auto">
         <button
+          v-if="isActiveRun"
+          class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          :disabled="cancelling"
+          @click="cancelRun"
+        >
+          <svg v-if="cancelling" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          {{ cancelling ? "Cancelling…" : "Cancel" }}
+        </button>
+        <button
+          v-else
           class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 text-white hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          :disabled="starting || isActiveRun"
+          :disabled="starting"
           @click="startRun"
         >
-          <svg v-if="starting || isActiveRun" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <svg v-if="starting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
           <svg v-else class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
           </svg>
-          {{ starting ? "Starting…" : isActiveRun ? "Running…" : "Run Workflow" }}
+          {{ starting ? "Starting…" : "Run Workflow" }}
         </button>
       </div>
     </div>
