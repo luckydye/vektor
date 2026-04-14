@@ -431,6 +431,7 @@ function appendToolEventMessage(event: Exclude<ChatStreamEvent, { type: "text" }
 function applyStreamEvent(
   event: ChatStreamEvent,
   assistantMessageIndex: { value: number | null },
+  responseStartIndex: number,
 ) {
   if (event.type === "text") {
     appendAssistantMessageChunk(event.text, assistantMessageIndex);
@@ -438,6 +439,9 @@ function applyStreamEvent(
     appendStatusMessage(event.text);
   } else {
     assistantMessageIndex.value = null;
+    if (event.type === "tool_call") {
+      clearTransientStatusMessages(responseStartIndex);
+    }
     appendToolEventMessage(event);
   }
   scrollToBottom();
@@ -664,7 +668,7 @@ function toggleToolMessageExpanded(message: UIMessage, index: number) {
 
 // ── Send to agent ─────────────────────────────────────────────────────────────
 
-async function sendWithProvider(message: string) {
+async function sendWithProvider(message: string, responseStartIndex: number) {
   if (conversationHistory.value.length === 0) {
     if (!currentSpaceId.value) throw new Error("No space selected");
     conversationHistory.value = [
@@ -691,7 +695,7 @@ async function sendWithProvider(message: string) {
       appendAssistantMessageChunk(text, assistantMessageIndex);
       scrollToBottom();
     },
-    onEvent: (event) => applyStreamEvent(event, assistantMessageIndex),
+    onEvent: (event) => applyStreamEvent(event, assistantMessageIndex, responseStartIndex),
     signal: abortController?.signal,
   });
 
@@ -851,7 +855,7 @@ async function sendMessage() {
   const responseStartIndex = messages.value.length;
 
   try {
-    await sendWithProvider(modelMessage);
+    await sendWithProvider(modelMessage, responseStartIndex);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       conversationHistory.value.push({
