@@ -49,20 +49,23 @@ const CORE_AGENT_SYSTEM_PROMPT = `## Bash Tool Runtime
 The bash tool runs inside bash, not full system shell.
 - Do not assume node, npm, npx, pnpm, bun, pip, or python exist.
 - zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
+- zipinfo lists zip contents: \`zipinfo archive.zip\`. Use this instead of \`unzip -l\`.
 - vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
-- pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv.
+- pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv. Example: \`vektor current > doc.html && pandoc doc.html -t csv -o table.csv\`.
 - To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
 - Use \`vektor current\` only for current chat document context.
 - To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
 - upload command is available to upload a file from virtual filesystem: \`upload <file> [-t content-type] [-d document-id]\`. Returns JSON with upload result including URL.
+- Never give the user sandbox paths (e.g. sandbox:/file.zip). Always upload files first with \`upload\` and give the user the resulting URL.
 - ai command is available for one-shot AI completions: \`ai <prompt>\` or \`echo <prompt> | ai\`. Examples: \`ai "summarize this" < doc.txt\`, \`cat data.csv | ai "what are the trends?"\`.
 - Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
 - To loop over lines in a file, use \`done < file.txt\` (single \`<\`). The \`<<\` operator is a heredoc and reads inline text, not a file. Correct pattern: \`while read -r line; do echo "$line"; done < file.txt\`
 
 ## Behavior
-- Be concise, accurate, and tool-driven.
-- Explain briefly what you are about to do before using tools.
+- Before starting, outline a short plan of steps.
+- After each step, verify the result before continuing to the next step (e.g. check file exists, inspect output, confirm command succeeded).
+- Do not report results to the user until they have been verified.
 
 ## App Documents
 - Documents with type "app" are HTML apps in sandboxed iframes.
@@ -137,6 +140,23 @@ const zipCommand = defineCommand("zip", async (args, ctx) => {
   };
 });
 
+const zipinfoCommand = defineCommand("zipinfo", async (args, ctx) => {
+  if (args.length === 0) {
+    return { stdout: "", stderr: "usage: zipinfo archive.zip\n", exitCode: 2 };
+  }
+  const archivePath = ctx.fs.resolvePath(ctx.cwd, args[0]!);
+  if (!(await ctx.fs.exists(archivePath))) {
+    return { stdout: "", stderr: `zipinfo: ${args[0]}: No such file or directory\n`, exitCode: 1 };
+  }
+  const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
+  const lines = zip.getEntries().map((e) => {
+    const size = e.header.size;
+    const name = e.entryName;
+    return `${e.isDirectory ? "d" : "-"} ${size.toString().padStart(10)} ${name}`;
+  });
+  return { stdout: lines.join("\n") + "\n", stderr: "", exitCode: 0 };
+});
+
 const unzipCommand = defineCommand("unzip", async (args, ctx) => {
   if (args.length === 0) {
     return {
@@ -148,11 +168,16 @@ const unzipCommand = defineCommand("unzip", async (args, ctx) => {
 
   const archiveArg = args[0];
   let destinationArg = ".";
+  let list = false;
   for (let index = 1; index < args.length; index++) {
     const arg = args[index];
     if (arg === "-d") {
       destinationArg = args[index + 1] ?? ".";
       index++;
+      continue;
+    }
+    if (arg === "-l") {
+      list = true;
       continue;
     }
     return {
@@ -171,10 +196,18 @@ const unzipCommand = defineCommand("unzip", async (args, ctx) => {
     };
   }
 
+  const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
+
+  if (list) {
+    const lines = zip.getEntries().map((e) =>
+      `${e.header.size.toString().padStart(10)} ${e.entryName}`
+    );
+    return { stdout: lines.join("\n") + "\n", stderr: "", exitCode: 0 };
+  }
+
   const destinationPath = ctx.fs.resolvePath(ctx.cwd, destinationArg);
   await ctx.fs.mkdir(destinationPath, { recursive: true });
 
-  const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
   for (const entry of zip.getEntries()) {
     const outputPath = ctx.fs.resolvePath(destinationPath, entry.entryName);
     if (entry.isDirectory) {
@@ -817,6 +850,6 @@ export function createAgentShell(
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand],
+    customCommands: [zipCommand, zipinfoCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand],
   });
 }
