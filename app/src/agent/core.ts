@@ -61,6 +61,7 @@ The bash tool runs inside bash, not full system shell.
 - Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
 - To loop over lines in a file, use \`done < file.txt\` (single \`<\`). The \`<<\` operator is a heredoc and reads inline text, not a file. Correct pattern: \`while read -r line; do echo "$line"; done < file.txt\`
+- Do not use \`awk -F,\` to parse CSV columns — quoted fields containing commas will shift column numbers. To extract doc IDs or other patterns from CSV or HTML, use \`grep -oE 'pattern'\` instead.
 
 ## Behavior
 - Before starting, outline a short plan of steps.
