@@ -55,6 +55,7 @@ The bash tool runs inside bash, not full system shell.
 - Use \`vektor current\` only for current chat document context.
 - To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
 - upload command is available to upload a file from virtual filesystem: \`upload <file> [-t content-type] [-d document-id]\`. Returns JSON with upload result including URL.
+- ai command is available for one-shot AI completions: \`ai <prompt>\` or \`echo <prompt> | ai\`. Examples: \`ai "summarize this" < doc.txt\`, \`cat data.csv | ai "what are the trends?"\`.
 - Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
 - To loop over lines in a file, use \`done < file.txt\` (single \`<\`). The \`<<\` operator is a heredoc and reads inline text, not a file. Correct pattern: \`while read -r line; do echo "$line"; done < file.txt\`
@@ -485,7 +486,7 @@ export async function runAgentPrompt(options: {
   const model = getConfiguredOpenRouterModel();
 
   const mcpConfig: VektorMcpConfig = { apiUrl, spaceId, jobToken, documentId };
-  const bash = providedBash ?? createAgentShell({ current: mcpConfig });
+  const bash = providedBash ?? createAgentShell({ current: mcpConfig }, undefined, { apiKey, model });
   const tools = [
     {
       type: "function",
@@ -598,6 +599,7 @@ export async function runAgentPrompt(options: {
 export function createAgentShell(
   mcpConfigRef: { current: VektorMcpConfig },
   bootstrap?: AgentShellBootstrap,
+  completion?: { apiKey: string; model: string },
 ): Bash {
   const uploadCommand = defineCommand("upload", async (args, ctx) => {
     const usage = "usage: upload <file> [-t content-type] [-d document-id]\n";
@@ -769,9 +771,36 @@ export function createAgentShell(
     throw new Error(`Unsupported conversion: ${from} -> ${to}`);
   });
 
+  const aiCommand = defineCommand("ai", async (args, ctx) => {
+    if (!completion) {
+      return { stdout: "", stderr: "ai: completion not configured\n", exitCode: 1 };
+    }
+    const prompt = args.join(" ") || ctx.stdin;
+    if (!prompt.trim()) {
+      return { stdout: "", stderr: "usage: ai <prompt> or echo <prompt> | ai\n", exitCode: 2 };
+    }
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${completion.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: completion.model,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+    }
+    const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+    const text = data.choices[0]?.message?.content ?? "";
+    return { stdout: `${text}\n`, stderr: "", exitCode: 0 };
+  });
+
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand],
+    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand],
   });
 }
