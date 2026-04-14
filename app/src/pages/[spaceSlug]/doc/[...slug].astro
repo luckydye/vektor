@@ -88,6 +88,7 @@ const isReadonly =
   document.archived ||
   document.type === "canvas" ||
   document.type === "app" ||
+  document.type === "workflow" ||
   readOnlyDocumentTypes.includes(document.type ?? "");
 
 let htmlContent = document.content;
