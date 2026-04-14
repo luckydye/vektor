@@ -465,7 +465,7 @@ function renderTableView() {
 function renderReadView() {
   if (!readViewEl.value) return;
   if (isEditing.value || viewingRevision.value) return;
-  if (props.documentType === "canvas" || props.documentType === "app") return;
+  if (props.documentType === "canvas" || props.documentType === "app" || props.documentType === "workflow") return;
 
   const container = readViewEl.value;
   const root = container.shadowRoot;
