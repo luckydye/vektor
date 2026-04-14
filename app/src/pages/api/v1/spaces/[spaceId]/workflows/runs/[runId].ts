@@ -73,9 +73,38 @@ export const GET: APIRoute = (context) =>
     const run = getRun(runId);
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
 
+    const doc = await getDocument(spaceId, run.documentId);
+    const content = doc?.publishedRev !== null && doc
+      ? ((await getPublishedContent(spaceId, run.documentId)) ?? doc.content)
+      : doc?.content;
+
+    let definition: WorkflowDefinition = {};
+    try { definition = JSON.parse(content ?? "{}") as WorkflowDefinition; } catch {}
+
+    // Topological sort (Kahn's algorithm) to return nodes in execution order
+    const ids = [...run.nodes.keys()];
+    const inDegree = new Map<string, number>(ids.map((id) => [id, definition[id]?.depends.length ?? 0]));
+    const adj = new Map<string, string[]>(ids.map((id) => [id, []]));
+    for (const id of ids) {
+      for (const dep of definition[id]?.depends ?? []) adj.get(dep)?.push(id);
+    }
+    const queue = ids.filter((id) => inDegree.get(id) === 0);
+    const order: string[] = [];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      order.push(id);
+      for (const next of adj.get(id) ?? []) {
+        const deg = (inDegree.get(next) ?? 1) - 1;
+        inDegree.set(next, deg);
+        if (deg === 0) queue.push(next);
+      }
+    }
+    for (const id of ids) { if (!order.includes(id)) order.push(id); }
+
     const nodes: Record<string, unknown> = {};
-    for (const [nodeId, nodeState] of run.nodes) {
-      nodes[nodeId] = {
+    for (const id of order) {
+      const nodeState = run.nodes.get(id)!;
+      nodes[id] = {
         status: nodeState.status,
         inputs: nodeState.inputs,
         outputs: nodeState.outputs,

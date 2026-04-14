@@ -28,7 +28,7 @@ let tickInterval: ReturnType<typeof setInterval> | null = null;
 
 async function fetchRuns() {
   const result = await api.workflows.listRuns(props.spaceId);
-  runs.value = (result as WorkflowRun[]).slice(0, 10);
+  runs.value = (result as WorkflowRun[]).slice(0, 5);
 }
 
 onMounted(() => {
@@ -182,7 +182,7 @@ const groupedRuns = computed(() => {
           </div>
 
           <!-- Bottom: time info -->
-          <div class="mt-auto text-[11px] text-neutral-400" :title="fullTimestamp(run.createdAt)">
+          <div class="flex justify-between mt-auto text-[11px] text-neutral-400" :title="fullTimestamp(run.createdAt)">
             <div>{{ startedAtLabel(run) }}</div>
             <div v-if="durationLabel(run)">{{ durationLabel(run) }}</div>
           </div>
