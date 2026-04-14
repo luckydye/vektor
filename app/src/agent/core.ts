@@ -46,16 +46,24 @@ export type AgentEvent =
     };
 
 const CORE_AGENT_SYSTEM_PROMPT = `## Bash Tool Runtime
-The bash tool runs inside just-bash, not full system shell.
-- Do not assume node, npm, npx, pnpm, bun, pip, python, or js-exec exist.
-- zip and unzip are available and operate on virtual filesystem.
+The bash tool runs inside bash, not full system shell.
+- Do not assume node, npm, npx, pnpm, bun, pip, or python exist.
+- zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
 - vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
 - pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv.
 - To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
 - Use \`vektor current\` only for current chat document context.
 - To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
-- Prefer direct shell utilities already available in just-bash.
+- upload command is available to upload a file from virtual filesystem: \`upload <file> [-t content-type] [-d document-id]\`. Returns JSON with upload result including URL.
+- Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
+- To loop over lines in a file:
+\`\`\`
+while read -r id; do
+  [ -z "$id" ] && continue
+  vektor read "$id" > "docs/$id.html"
+done < doc_ids.txt
+\`\`\`
 
 ## Behavior
 - Be concise, accurate, and tool-driven.
@@ -101,7 +109,8 @@ async function addPathToZip(
 }
 
 const zipCommand = defineCommand("zip", async (args, ctx) => {
-  if (args.length < 2) {
+  const filteredArgs = args.filter((arg) => !arg.startsWith("-"));
+  if (filteredArgs.length < 2) {
     return {
       stdout: "",
       stderr: "usage: zip archive.zip <path...>\n",
@@ -109,7 +118,7 @@ const zipCommand = defineCommand("zip", async (args, ctx) => {
     };
   }
 
-  const [archiveArg, ...inputArgs] = args;
+  const [archiveArg, ...inputArgs] = filteredArgs;
   const archivePath = ctx.fs.resolvePath(ctx.cwd, archiveArg);
   const zip = new AdmZip();
 
@@ -596,6 +605,54 @@ export function createAgentShell(
   mcpConfigRef: { current: VektorMcpConfig },
   bootstrap?: AgentShellBootstrap,
 ): Bash {
+  const uploadCommand = defineCommand("upload", async (args, ctx) => {
+    const usage = "usage: upload <file> [-t content-type] [-d document-id]\n";
+
+    let contentType: string | undefined;
+    let documentId: string | undefined;
+    let fileArg: string | undefined;
+
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index];
+      if (arg === "-t") {
+        contentType = args[++index];
+        continue;
+      }
+      if (arg === "-d") {
+        documentId = args[++index];
+        continue;
+      }
+      fileArg = arg;
+    }
+
+    if (!fileArg) {
+      return { stdout: "", stderr: usage, exitCode: 2 };
+    }
+
+    const filePath = ctx.fs.resolvePath(ctx.cwd, fileArg);
+    if (!(await ctx.fs.exists(filePath))) {
+      return { stdout: "", stderr: `upload: ${fileArg}: No such file or directory\n`, exitCode: 1 };
+    }
+
+    const bytes = await ctx.fs.readFileBuffer(filePath);
+    const content = Buffer.from(bytes).toString("base64");
+    const filename = posix.basename(filePath);
+
+    const result = await callVektorTool(mcpConfigRef.current, "upload_artifact", {
+      filename,
+      content,
+      encoding: "base64",
+      ...(contentType ? { contentType } : {}),
+      ...(documentId ? { documentId } : {}),
+    });
+
+    return {
+      stdout: `${typeof result === "string" ? result : JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+      exitCode: 0,
+    };
+  });
+
   const vektorCommand = defineCommand("vektor", async (args, _ctx) => {
     const json = args.includes("--json");
     const commandArgs = args.filter((arg) => arg !== "--json");
@@ -689,9 +746,14 @@ export function createAgentShell(
       positional.push(arg);
     }
 
-    if (!from || !to) {
+    if (!to) {
       return { stdout: "", stderr: `${usage}`, exitCode: 2 };
     }
+    if (!from && positional[0]) {
+      const ext = posix.extname(positional[0]).slice(1).toLowerCase();
+      from = ext || null;
+    }
+    from ??= "html";
 
     const inputPath = positional[0]
       ? ctx.fs.resolvePath(ctx.cwd, positional[0])
@@ -716,6 +778,6 @@ export function createAgentShell(
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand],
+    customCommands: [zipCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand],
   });
 }
