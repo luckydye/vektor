@@ -671,7 +671,7 @@ export function createAgentShell(
       case "list":
         result = await callVektorTool(mcpConfigRef.current, "list_documents", {});
         break;
-      case "read":
+      case "read": {
         if (!rest[0]) {
           return {
             stdout: "",
@@ -682,10 +682,26 @@ export function createAgentShell(
         result = await callVektorTool(mcpConfigRef.current, "get_document", {
           documentId: rest[0],
         });
+        if (!json) {
+          const doc = (result as Record<string, unknown>)?.document as Record<string, unknown> | undefined;
+          const html = typeof doc?.content === "string" ? doc.content : null;
+          if (html !== null) {
+            return { stdout: `${html}\n`, stderr: "", exitCode: 0 };
+          }
+        }
         break;
-      case "current":
+      }
+      case "current": {
         result = await callVektorTool(mcpConfigRef.current, "get_current_document", {});
+        if (!json) {
+          const doc = (result as Record<string, unknown>)?.document as Record<string, unknown> | undefined;
+          const html = typeof doc?.content === "string" ? doc.content : null;
+          if (html !== null) {
+            return { stdout: `${html}\n`, stderr: "", exitCode: 0 };
+          }
+        }
         break;
+      }
       case "search":
         if (!rest.length) {
           return {
