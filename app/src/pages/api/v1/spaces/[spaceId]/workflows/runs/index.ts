@@ -56,6 +56,18 @@ export const GET: APIRoute = (context) =>
         )
         .map(async ([runId, run]) => {
           const doc = await getDocument(spaceId, run.documentId);
+          const nodeList = [...run.nodes.values()];
+          const startedAt = nodeList.reduce<Date | null>((min, n) => {
+            if (!n.startedAt) return min;
+            return min === null || n.startedAt < min ? n.startedAt : min;
+          }, null);
+          const finishedAt = nodeList.reduce<Date | null>((max, n) => {
+            if (!n.completedAt) return max;
+            return max === null || n.completedAt > max ? n.completedAt : max;
+          }, null);
+          const completedNodes = nodeList.filter(
+            (n) => n.status === "completed" || n.status === "failed" || n.status === "cancelled",
+          ).length;
           return {
             runId,
             documentId: run.documentId,
@@ -63,6 +75,10 @@ export const GET: APIRoute = (context) =>
             documentTitle: doc?.properties.title ?? run.documentId,
             status: run.status,
             createdAt: run.createdAt.toISOString(),
+            startedAt: startedAt?.toISOString() ?? null,
+            finishedAt: finishedAt?.toISOString() ?? null,
+            totalNodes: nodeList.length,
+            completedNodes,
             sourceExtensionId: run.sourceExtensionId,
           };
         }),

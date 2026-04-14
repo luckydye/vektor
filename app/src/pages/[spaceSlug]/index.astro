@@ -2,12 +2,10 @@
 import SpaceActivity from "../../components/SpaceActivity.vue";
 import ExtensionView from "../../components/ExtensionView.vue";
 import { hasPermission, ResourceType, getUserGroups } from "../../db/acl.ts";
-import { listCategories } from "../../db/categories.ts";
-import { getDocument, countDocuments } from "../../db/documents.ts";
+import { getDocument } from "../../db/documents.ts";
 import { getSpaceBySlug } from "../../db/spaces.ts";
 import { listExtensions } from "../../db/extensions.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
-import Categories from "~/src/components/Categories.vue";
 import RunningWorkflows from "~/src/components/RunningWorkflows.vue";
 import PinnedDocument from "~/src/components/PinnedDocument.vue";
 
@@ -48,9 +46,6 @@ if (!hasAccess) {
   });
 }
 
-const categories = await listCategories(space.id);
-const documentCount = await countDocuments(space.id);
-
 const document = await getDocument(space.id, space.id);
 
 // Get extension views for home page placements
@@ -62,7 +57,7 @@ const homeTopViews = extensions.flatMap((ext) =>
 );
 ---
 
-<SpaceLayout title={`Categories - ${space.name} - Wiki`}>
+<SpaceLayout title={`${space.name} - Wiki`}>
 	<div class="space-y-6 mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl w-full">
 
 		{space.preferences.pinnedDocumentId && (
@@ -92,33 +87,12 @@ const homeTopViews = extensions.flatMap((ext) =>
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-3xl mb-20">
 			<div>
-				<div class="mb-4">
-					<h1 class="text-2xl font-bold">Categories</h1>
-					<p class="mt-2 text-sm">
-						Organize your documents with categories
-					</p>
-				</div>
-
-				<Categories client:load spaceSlug={space.slug} spaceId={space.id} />
-
-				<div class="mt-6">
-					<RunningWorkflows client:load spaceSlug={space.slug} spaceId={space.id} />
-				</div>
+				<RunningWorkflows client:load spaceSlug={space.slug} spaceId={space.id} />
 			</div>
 
 			<div>
 				<SpaceActivity client:load spaceId={space.id} limit={15} />
 			</div>
 		</div>
-
-		{categories.length > 0 && (
-			<div class="pt-4 border-t border-neutral-100">
-				<div class="flex items-center justify-between text-sm">
-					<span class="text-neutral-600">
-						{categories.length} {categories.length === 1 ? 'category' : 'categories'} • {documentCount} total {documentCount === 1 ? 'document' : 'documents'}
-					</span>
-				</div>
-			</div>
-		)}
 	</div>
 </SpaceLayout>

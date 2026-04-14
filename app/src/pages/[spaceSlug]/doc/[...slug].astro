@@ -13,6 +13,7 @@ import { getSpaceBySlug } from "../../../db/spaces.ts";
 import { getCategoryBySlug } from "../../../db/categories.ts";
 import { readOnlyDocumentTypes } from "../../../utils/documentTypes.ts";
 import Canvas from "~/src/canvas/Canvas.vue";
+import WorkflowView from "../../../components/WorkflowView.vue";
 import Breadcrumbs from "~/src/components/Breadcrumbs.vue";
 import { twMerge } from "tailwind-merge";
 import DocumentActions from "../../../components/DocumentActions.vue";
@@ -188,9 +189,11 @@ if (diffMins >= 1 && diffMins < 60) {
           <DocumentActions documentId={document.id} title={title} readonly={isReadonly} client:load />
         </div>
 
-        <div class="print:px-0 px-xs lg:px-xl mt-xs">
-          <DocumentProperties client:load documentId={document.id} initialProperties={{ ...document.properties, parentId: document.parentId }} />
-        </div>
+        {document.type !== 'workflow' && (
+          <div class="print:px-0 px-xs lg:px-xl mt-xs">
+            <DocumentProperties client:load documentId={document.id} initialProperties={{ ...document.properties, parentId: document.parentId }} />
+          </div>
+        )}
       </div>
 
       <!-- Main Content -->
@@ -198,7 +201,7 @@ if (diffMins >= 1 && diffMins < 60) {
         class={twMerge(
           'max-w-none text-neutral-700',
           document.type === 'csv' ? 'flex-1 min-h-0 overflow-hidden flex flex-col' : 'h-full',
-          document.type !== 'canvas' && document.type !== 'app' && document.type !== 'csv' && "print:px-0 px-xs lg:px-xl"
+          document.type !== 'canvas' && document.type !== 'app' && document.type !== 'csv' && document.type !== 'workflow' && "print:px-0 px-xs lg:px-xl"
         )}
       >
           <DocumentContent
@@ -221,7 +224,14 @@ if (diffMins >= 1 && diffMins < 60) {
                                  spaceId={space.id}
                   			/>
                     </div>
-                	) : (
+                	) : document.type === "workflow" ? (
+                    <WorkflowView
+                        client:only="vue"
+                        documentId={document.id}
+                        spaceId={space.id}
+                        spaceSlug={spaceSlug}
+                    />
+                ) : (
                     null
                  )}
 

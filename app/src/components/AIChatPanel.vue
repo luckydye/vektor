@@ -709,9 +709,19 @@ async function loadSessions() {
   sessions.value = await getSessionsForSpace(currentSpaceId.value);
 }
 
-watch(currentSpaceId, (id) => {
-  if (id) loadSessions();
-});
+watch(currentSpaceId, async (id) => {
+  if (!id) return;
+  await loadSessions();
+  if (sessions.value.length > 0) {
+    showSessionPicker.value = true;
+  } else if (messages.value.length === 0) {
+    messages.value.push({
+      role: "assistant",
+      content: "Hello! I'm here to help you with this document. Ask me anything!",
+      timestamp: Date.now(),
+    });
+  }
+}, { immediate: true });
 
 function startNewChat() {
   currentSessionId.value = null;
@@ -914,21 +924,10 @@ Actions.register("ai-chat:toggle", {
   },
 });
 
-onMounted(async () => {
+onMounted(() => {
   loadUIState();
-  await loadSessions();
   window.addEventListener("resize", updateMentionOverlayPosition);
   window.addEventListener("scroll", updateMentionOverlayPosition, true);
-
-  if (sessions.value.length > 0) {
-    showSessionPicker.value = true;
-  } else {
-    messages.value.push({
-      role: "assistant",
-      content: "Hello! I'm here to help you with this document. Ask me anything!",
-      timestamp: Date.now(),
-    });
-  }
 });
 
 onUnmounted(() => {
