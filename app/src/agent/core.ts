@@ -57,6 +57,8 @@ The bash tool runs inside bash, not full system shell.
 - To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
 - upload command is available to upload a file from virtual filesystem: \`upload <file> [-t content-type] [-d document-id]\`. Returns JSON with upload result including URL.
 - Never give the user sandbox paths (e.g. sandbox:/file.zip). Always upload files first with \`upload\` and give the user the resulting URL.
+- Use human-readable filenames for uploaded files (e.g. the document title, not the document ID).
+- Only include final output files in zips. Delete or exclude intermediate files (e.g. downloaded HTML used to produce CSVs) before zipping.
 - ai command is available for one-shot AI completions: \`ai <prompt>\` or \`echo <prompt> | ai\`. Examples: \`ai "summarize this" < doc.txt\`, \`cat data.csv | ai "what are the trends?"\`.
 - Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
