@@ -146,7 +146,13 @@ watch([saveStatus, saveError], () => {
   }
 });
 
-function initEditor() {
+async function initEditor() {
+  if (!editorViewEl.value) return;
+  if (!user.value) return;
+
+  await customElements.whenDefined("document-view");
+
+  // Re-check after async wait — state may have changed
   if (!editorViewEl.value) return;
   if (!user.value) return;
 
