@@ -306,7 +306,7 @@ const statusBadgeClass: Record<string, string> = {
     </div>
 
     <!-- Logs (expandable) -->
-    <div v-if="selectedRunDetail && allLogs.length > 0">
+    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col items-end px-4">
       <button
         class="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
         @click="logsExpanded = !logsExpanded"
@@ -328,7 +328,7 @@ const statusBadgeClass: Record<string, string> = {
 
     <!-- Run history -->
     <div v-if="runList.length > 0">
-      <div class="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-2">Run history</div>
+      <div class="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-6">Run history</div>
       <div class="space-y-1">
         <div
           v-for="run in runList"
