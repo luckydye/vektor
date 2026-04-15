@@ -23,6 +23,7 @@ import { useMembers } from "../composeables/useMembers.ts";
 
 const props = defineProps<{
   documentId?: string;
+  documentType?: string;
   initialProperties: Record<string, string | null | undefined> | undefined;
 }>();
 
@@ -34,6 +35,12 @@ const { members } = useMembers();
 const documentProperties = computed(
   () => document.value?.properties || props.initialProperties || {},
 );
+
+const effectiveDocumentType = computed(
+  () => document.value?.type || props.documentType || "document",
+);
+
+const isDocumentType = computed(() => effectiveDocumentType.value === "document");
 
 function requireDocumentId(): string {
   if (!props.documentId) {
@@ -198,12 +205,14 @@ const properties = computed((): Property[] => {
     value: documentProperties.value.category,
   } as Property);
 
-  props_list.push({
-    id: "layout",
-    name: "layout",
-    type: "select",
-    value: documentProperties.value.layout || "document",
-  } as Property);
+  if (isDocumentType.value) {
+    props_list.push({
+      id: "layout",
+      name: "layout",
+      type: "select",
+      value: documentProperties.value.layout || "document",
+    } as Property);
+  }
 
   const otherProps = Object.entries(documentProperties.value)
     .map(([key, value]): Property | null => {
