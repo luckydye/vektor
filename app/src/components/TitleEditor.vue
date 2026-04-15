@@ -1,11 +1,11 @@
 <template>
   <div class="flex items-center gap-3 flex-1">
-    <input v-if="isEditing" v-model="localTitle" type="text" placeholder="Untitled Document"
+    <input ref="inputEl" v-if="isEditing" v-model="localTitle" type="text" placeholder="Untitled Document"
       class="text-3xl font-bold text-neutral-900 bg-transparent focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors"
       @blur="updateTitle" @keydown.enter="updateTitle" />
 
     <div v-else :data-document-id="documentId">
-        <h1 class="text-3xl font-bold text-neutral-900 flex items-center gap-3">
+        <h1 class="text-3xl font-bold text-neutral-900 flex items-center gap-3 cursor-text" @dblclick="startEditing">
             {{ localTitle || 'Untitled Document' }}
             <svg v-if="starred" class="w-6 h-6 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
                 <path
@@ -17,7 +17,7 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
 
@@ -44,8 +44,15 @@ const props = defineProps({
 
 const emit = defineEmits(["title-updated"]);
 
+const inputEl = ref(null);
 const localTitle = ref(props.title);
 const isEditing = ref(props.initialEditMode);
+
+async function startEditing() {
+  isEditing.value = true;
+  await nextTick();
+  inputEl.value?.focus();
+}
 
 watch(
   () => props.title,
@@ -105,7 +112,7 @@ async function updateTitle() {
 }
 
 function handleEditModeStart() {
-  isEditing.value = true;
+  startEditing();
 }
 
 function handleEditModeCancel() {

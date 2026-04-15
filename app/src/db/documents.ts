@@ -1079,8 +1079,7 @@ export async function listAllDocumentsByCategories(
       parentId: doc.parentId || null,
       readonly: doc.readonly,
       archived: doc.archived,
-    }))
-    .filter((doc) => doc.type === "document");
+    }));
 
   const childrenByParentId = new Map<string, string[]>();
   for (const doc of typeFilteredResults) {
