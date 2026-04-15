@@ -316,7 +316,7 @@ const statusBadgeClass: Record<string, string> = {
         </svg>
         Logs
       </button>
-      <div v-if="logsExpanded" class="mt-2 rounded-lg bg-neutral-950 p-4 overflow-x-auto">
+      <div v-if="logsExpanded" class="mt-2 w-full rounded-lg bg-neutral-950 p-4 overflow-x-auto">
         <div class="font-mono text-[11px] space-y-0.5">
           <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
             <span class="text-neutral-500 shrink-0">{{ entry.nodeId }}</span>
