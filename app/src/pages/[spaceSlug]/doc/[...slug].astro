@@ -111,6 +111,9 @@ if (categorySlug) {
   category = await getCategoryBySlug(space.id, categorySlug);
 }
 
+const defaultLayout = document.type === "document" || document.type === "workflow" || !document.type ? "document" : "full";
+const effectiveLayout = document.properties.layout || defaultLayout;
+
 const now = new Date();
 
 let updatedAtStr = "just now";
@@ -138,10 +141,10 @@ if (diffMins >= 1 && diffMins < 60) {
       data-type={document.type}
       data-updated-at={document.updatedAt}
       data-created-at={document.createdAt}
-      data-layout={document.properties.layout || 'document'}
+      data-layout={effectiveLayout}
       class={twMerge(
         "space-y-6 mx-auto h-full flex flex-col relative w-full",
-        (document.type === 'csv' || (document.properties.layout || 'document') === 'full') ? 'max-w-full' : 'max-w-(--document-width)'
+        (document.type === 'csv' || effectiveLayout === 'full') ? 'max-w-full' : 'max-w-(--document-width)'
       )}
      >
       <!-- Archived Document Disclaimer -->
@@ -191,7 +194,7 @@ if (diffMins >= 1 && diffMins < 60) {
         </div>
 
         <div class="print:px-0 px-xs lg:px-xl mt-xs">
-          <DocumentProperties client:load documentId={document.id} initialProperties={{ ...document.properties, parentId: document.parentId }} />
+          <DocumentProperties client:load documentId={document.id} documentType={document.type ?? undefined} initialProperties={{ ...document.properties, parentId: document.parentId }} />
         </div>
       </div>
 
@@ -207,7 +210,7 @@ if (diffMins >= 1 && diffMins < 60) {
          		client:load
          		documentId={document.id}
             initialHtml={htmlContent}
-            initialLayout={document.properties.layout || "document"}
+            initialLayout={effectiveLayout}
          		spaceId={space.id}
          		documentType={document.type ?? "document"}
          		readonly={isReadonly}

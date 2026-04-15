@@ -39,7 +39,7 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
     <div
       class={twMerge(
         "space-y-6 mx-auto h-full flex flex-col relative w-full",
-        ('document') === 'full' ? 'max-w-full' : 'max-w-(--document-width)'
+        (type !== 'document' && type !== 'workflow') ? 'max-w-full' : 'max-w-(--document-width)'
       )}
      >
       <!-- Document Header -->
@@ -57,7 +57,7 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
         </div>
 
         <div class="print:px-0 px-xs lg:px-xl mt-xs">
-          <DocumentProperties client:load documentId={undefined} initialProperties={category ? { category } : {}} />
+          <DocumentProperties client:load documentId={undefined} documentType={type} initialProperties={category ? { category } : {}} />
         </div>
       </div>
 
