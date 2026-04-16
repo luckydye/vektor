@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { extractFile } from "../db/extensions.ts";
-import { config, getConfiguredOpenRouterModel } from "../config.ts";
+import { config, getConfiguredOpenRouterModel, getConfiguredAnthropicModel } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildJobWrapper } from "./jobRuntime.ts";
 import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
@@ -176,6 +176,8 @@ export async function runJob(
           ...inputs,
           openrouterApiKey: config().OPENROUTER_API_KEY,
           openrouterModel: getConfiguredOpenRouterModel(),
+          anthropicApiKey: config().ANTHROPIC_API_KEY,
+          anthropicModel: getConfiguredAnthropicModel(),
           jobId: executionId,
           spaceId,
           // Job-side API calls must stay on the internal backend origin.

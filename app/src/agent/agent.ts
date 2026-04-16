@@ -2,6 +2,7 @@ import { Bash } from "just-bash";
 import {
   type AgentShellBootstrap,
   createAgentShell,
+  getAIProvider,
   type AgentEvent,
   type AgentResult,
   type ChatMessage,
@@ -171,7 +172,7 @@ function getOrCreateSession(options: {
     } satisfies VektorMcpConfig,
   };
   const session = {
-    bash: createAgentShell(mcpConfigRef, bootstrap),
+    bash: createAgentShell(mcpConfigRef, bootstrap, getAIProvider()),
     mcpConfigRef,
     updatedAt: now,
   };
