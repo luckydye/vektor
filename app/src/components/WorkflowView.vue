@@ -197,6 +197,14 @@ function historyOutputDocumentTitle(runId: string): string | null {
   return historyRunDocTitles.value.get(runId) ?? null;
 }
 
+const runFailureError = computed<{ nodeId: string; error: string } | null>(() => {
+  if (!selectedRunDetail.value || selectedRunDetail.value.status !== "failed") return null;
+  for (const [nodeId, node] of Object.entries(selectedRunDetail.value.nodes)) {
+    if (node.status === "failed" && node.error) return { nodeId, error: node.error };
+  }
+  return null;
+});
+
 // All node logs for the expand section
 const allLogs = computed(() => {
   if (!selectedRunDetail.value) return [];
@@ -341,6 +349,12 @@ const statusBadgeClass: Record<string, string> = {
         {{ outputDocumentTitle ?? "Open document" }}
       </a>
 
+    </div>
+
+    <!-- Failure error -->
+    <div v-if="runFailureError" class="rounded-lg border border-red-200 bg-red-50 p-4">
+      <p class="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">{{ runFailureError.nodeId }}</p>
+      <p class="text-sm text-red-700 font-mono break-all">{{ runFailureError.error }}</p>
     </div>
 
     <!-- Logs (expandable) -->
