@@ -208,49 +208,6 @@ export function activate({ views }: ExtensionContext): void {
 
 Extension ui is isolated from the host application using a shadowDOM. Every view is responsible for its own styling.
 
-## Storage
-
-Extensions have access to a scoped key-value storage that persists data in the space database:
-
-```ts
-export function activate({ storage }: ExtensionContext): void {
-  // Get a value (returns null if not found)
-  const value = await storage.get("myKey");
-
-  // Set a value (upserts)
-  await storage.set("myKey", "myValue");
-
-  // Delete a value
-  await storage.delete("myKey");
-
-  // List all entries (optionally filter by prefix)
-  const allEntries = await storage.list();
-  const settingsOnly = await storage.list("settings:");
-}
-```
-
-### Storage Methods
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `get(key)` | `Promise<string \| null>` | Get a value by key |
-| `set(key, value)` | `Promise<void>` | Set a value (creates or updates) |
-| `delete(key)` | `Promise<void>` | Delete a value |
-| `list(prefix?)` | `Promise<Array<{key, value}>>` | List entries, optionally filtered by key prefix |
-
-Values are stored as strings. For complex data, use `JSON.stringify`/`JSON.parse`:
-
-```ts
-// Storing objects
-await storage.set("config", JSON.stringify({ theme: "dark", count: 42 }));
-
-// Reading objects
-const raw = await storage.get("config");
-const config = raw ? JSON.parse(raw) : { theme: "light", count: 0 };
-```
-
-Storage is automatically cleaned up when the extension is deleted.
-
 ## API Client
 
 Access the Wiki API through `ctx.api`:
