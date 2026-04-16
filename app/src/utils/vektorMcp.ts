@@ -230,6 +230,19 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["filename", "content"],
       },
     },
+    {
+      name: "install_extension",
+      description:
+        "Install or update a Vektor extension from a ZIP package. Pass base64-encoded ZIP content. The ZIP must contain manifest.json at root and dist/ with JS entry points.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          filename: { type: "string" },
+          content: { type: "string" },
+        },
+        required: ["filename", "content"],
+      },
+    },
     ...(config.documentId
       ? [
           {
@@ -305,6 +318,18 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         form.set("documentId", documentId);
       }
       return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/uploads`, {
+        method: "POST",
+        body: form,
+        headers: { Origin: new URL(config.apiUrl).origin },
+      });
+    }
+    case "install_extension": {
+      const form = new FormData();
+      const filename = expectString(args, "filename")!;
+      const content = expectString(args, "content")!;
+      const bytes = Buffer.from(content, "base64");
+      form.set("file", new Blob([bytes], { type: "application/zip" }), filename);
+      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/extensions`, {
         method: "POST",
         body: form,
         headers: { Origin: new URL(config.apiUrl).origin },

@@ -1,18 +1,14 @@
 import type { APIRoute } from "astro";
 import {
-  authenticateRequest,
   badRequestResponse,
   canAccessExtension,
   createdResponse,
   errorResponse,
   jsonResponse,
   requireParam,
-  requireUser,
   verifySpaceOwnership,
-  verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { ResourceType } from "#db/acl.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getSpace } from "#db/spaces.ts";
 import {
@@ -75,21 +71,14 @@ export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.params, "spaceId");
-      const auth = await authenticateRequest(context, spaceId);
+      const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "owner");
 
       let createdBy: string;
       if (auth.type === "user") {
         await verifySpaceOwnership(spaceId, auth.user.id, getSpace);
         createdBy = auth.user.id;
       } else {
-        await verifyTokenPermission(
-          auth.token,
-          spaceId,
-          ResourceType.SPACE,
-          spaceId,
-          "extensions",
-        );
-        createdBy = auth.token.token.createdBy;
+        createdBy = auth.userId ?? "agent";
       }
 
       const formData = await context.request.formData();

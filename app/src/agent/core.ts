@@ -75,6 +75,20 @@ The bash tool runs inside bash, not full system shell.
 - To create one, create document with full HTML and type "app".
 - To update one, replace running HTML content in the document.
 
+## Extensions
+- Extensions add UI and job functionality to the space. Use \`extension install <zip-file>\` to install.
+- Extensions are ZIP packages with \`manifest.json\` at root and \`dist/\` with plain ESM JS — no build step needed.
+- Minimum manifest.json: \`{"id":"my-ext","name":"My Extension","version":"1.0.0","entries":{"frontend":"dist/main.js"}}\`
+- Extension IDs must be lowercase alphanumeric with hyphens only (e.g. \`my-extension\`).
+- Frontend entry exports \`activate(ctx)\` and \`deactivate(ctx)\`. The \`ctx\` object provides:
+  - \`ctx.actions.register(id, {title, icon?, async run(ctx)})\` — add command palette actions
+  - \`ctx.suggestions.register(id, {char, items(query), onSelect(item, editor)})\` — add editor slash commands
+  - \`ctx.views.register(path, (container) => { /* render UI into container */ })\` — render a page view
+  - \`ctx.api\` — fetch API client for space/document operations
+- Jobs run server-side in worker threads. Define in manifest: \`"jobs":[{"id":"my-job","name":"My Job","entry":"dist/jobs/my-job.js","inputs":{"text":{"type":"string","required":true}},"outputs":{"result":{"type":"string"}}}]\`
+- Job entry uses worker_threads: \`const {parentPort,workerData}=require("node:worker_threads"); parentPort.postMessage({type:"result",success:true,outputs:{result:{type:"text",value:"..."}}});\`
+- To create an extension: write manifest.json and dist/ files, \`zip ext.zip manifest.json dist/\`, then \`extension install ext.zip\`.
+
 ## Current Document
 - When user asks about "this document", "the page", or current content, inspect it first with \`vektor current\`.`;
 
@@ -1007,9 +1021,38 @@ export function createAgentShell(
     return { stdout: `${text}\n`, stderr: "", exitCode: 0 };
   });
 
+  const extensionCommand = defineCommand("extension", async (args, ctx) => {
+    const usage = "usage: extension install <zip-file>\n";
+    const [subcommand, fileArg] = args;
+
+    if (subcommand !== "install" || !fileArg) {
+      return { stdout: "", stderr: usage, exitCode: 2 };
+    }
+
+    const filePath = ctx.fs.resolvePath(ctx.cwd, fileArg);
+    if (!(await ctx.fs.exists(filePath))) {
+      return { stdout: "", stderr: `extension: ${fileArg}: No such file or directory\n`, exitCode: 1 };
+    }
+
+    const bytes = await ctx.fs.readFileBuffer(filePath);
+    const content = Buffer.from(bytes).toString("base64");
+    const filename = posix.basename(filePath);
+
+    const result = await callVektorTool(mcpConfigRef.current, "install_extension", {
+      filename,
+      content,
+    });
+
+    return {
+      stdout: `${typeof result === "string" ? result : JSON.stringify(result, null, 2)}\n`,
+      stderr: "",
+      exitCode: 0,
+    };
+  });
+
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    customCommands: [zipCommand, zipinfoCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand],
+    customCommands: [zipCommand, zipinfoCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand, extensionCommand],
   });
 }
