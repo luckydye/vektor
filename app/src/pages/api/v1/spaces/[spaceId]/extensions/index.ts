@@ -1,15 +1,20 @@
 import type { APIRoute } from "astro";
 import {
+  authenticateRequest,
   badRequestResponse,
   canAccessExtension,
   createdResponse,
   errorResponse,
+  forbiddenResponse,
   jsonResponse,
   requireParam,
   verifySpaceOwnership,
+  verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { ResourceType } from "#db/acl.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { parseJobToken } from "#jobs/jobToken.ts";
 import { getSpace } from "#db/spaces.ts";
 import {
   createExtension,
@@ -71,14 +76,28 @@ export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.params, "spaceId");
-      const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "owner");
 
       let createdBy: string;
-      if (auth.type === "user") {
-        await verifySpaceOwnership(spaceId, auth.user.id, getSpace);
-        createdBy = auth.user.id;
+      const jobTokenHeader = context.request.headers.get("X-Job-Token");
+      if (jobTokenHeader) {
+        const parsed = parseJobToken(jobTokenHeader, spaceId);
+        if (!parsed) throw forbiddenResponse("Invalid job token");
+        createdBy = parsed.userId ?? "agent";
       } else {
-        createdBy = auth.userId ?? "agent";
+        const auth = await authenticateRequest(context, spaceId);
+        if (auth.type === "user") {
+          await verifySpaceOwnership(spaceId, auth.user.id, getSpace);
+          createdBy = auth.user.id;
+        } else {
+          await verifyTokenPermission(
+            auth.token,
+            spaceId,
+            ResourceType.SPACE,
+            spaceId,
+            "extensions",
+          );
+          createdBy = auth.token.token.createdBy;
+        }
       }
 
       const formData = await context.request.formData();
