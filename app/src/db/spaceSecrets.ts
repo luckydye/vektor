@@ -159,15 +159,15 @@ export async function userCanReadSpaceSecret(
     return true;
   }
 
-  const isSpaceOwner = await hasPermission(
+  const isSpaceEditor = await hasPermission(
     spaceId,
     ResourceType.SPACE,
     spaceId,
     userId,
-    Permission.OWNER,
+    Permission.EDITOR,
     groups,
   );
-  if (isSpaceOwner) {
+  if (isSpaceEditor) {
     return true;
   }
 
