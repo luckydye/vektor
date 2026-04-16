@@ -59,9 +59,9 @@ const statusGradients: Record<string, string> = {
 };
 
 const statusBadgeColors: Record<string, string> = {
-  completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  running: "border-sky-200 bg-sky-50 text-sky-700",
-  failed: "border-rose-200 bg-rose-50 text-rose-700",
+  completed: "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400",
+  running: "border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-400",
+  failed: "border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400",
   pending: "border-neutral-200 bg-neutral-100 text-neutral-500",
   cancelled: "border-neutral-200 bg-neutral-100 text-neutral-400",
 };
@@ -142,7 +142,7 @@ const groupedRuns = computed(() => {
         v-for="run in group.items"
         :key="run.runId"
         :href="docHref(run)"
-        class="group relative flex flex-col overflow-hidden rounded-xl border border-neutral-200/80 bg-white p-0 shadow-[0_2px_8px_rgba(15,23,42,0.04)] hover:border-sky-300 transition-colors"
+        class="group relative flex flex-col overflow-hidden rounded-xl border border-neutral-200/80 bg-white dark:bg-neutral-100 p-0 shadow-[0_2px_8px_rgba(15,23,42,0.04)] hover:border-sky-300 dark:hover:border-neutral-300 transition-colors"
       >
         <!-- Status gradient -->
         <div class="absolute inset-0 pointer-events-none" :class="statusGradient(run.status)" />
