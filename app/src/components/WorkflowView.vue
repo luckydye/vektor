@@ -15,7 +15,13 @@ type RunSummary = {
   createdAt: string;
 };
 
-type WorkflowNodeDef = { jobId: string; extensionId: string };
+type WorkflowNodeDef = {
+  jobId: string;
+  extensionId: string;
+  inputs: { key: string; value: string }[];
+};
+
+type WorkflowInputMapping = { inputKey: string; alias: string };
 
 const runList = ref<RunSummary[]>([]);
 const selectedRunId = ref<string | null>(null);
@@ -24,6 +30,8 @@ const workflowDef = ref<Record<string, WorkflowNodeDef>>({});
 const starting = ref(false);
 const cancelling = ref(false);
 const logsExpanded = ref(false);
+const showInputsDialog = ref(false);
+const inputValues = ref<Record<string, string>>({});
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 async function fetchRuns() {
@@ -44,10 +52,40 @@ async function selectRun(runId: string) {
   await fetchSelectedRunDetail();
 }
 
-async function startRun() {
+const workflowInputMappings = computed((): WorkflowInputMapping[] => {
+  const inputsNode = Object.values(workflowDef.value).find(
+    (n) => n.jobId === "workflow-inputs",
+  );
+  if (!inputsNode) return [];
+  const mappingsInput = inputsNode.inputs.find((i) => i.key === "mappings");
+  if (!mappingsInput?.value) return [];
+  try {
+    return JSON.parse(mappingsInput.value) as WorkflowInputMapping[];
+  } catch {
+    return [];
+  }
+});
+
+function openRunDialog() {
+  if (workflowInputMappings.value.length === 0) {
+    void startRun({});
+    return;
+  }
+  inputValues.value = Object.fromEntries(
+    workflowInputMappings.value.map((m) => [m.inputKey, ""]),
+  );
+  showInputsDialog.value = true;
+}
+
+async function startRun(runtimeInputs: Record<string, string>) {
+  showInputsDialog.value = false;
   starting.value = true;
   try {
-    const { runId } = await api.workflows.startRun(props.spaceId, props.documentId);
+    const { runId } = await api.workflows.startRun(
+      props.spaceId,
+      props.documentId,
+      runtimeInputs,
+    );
     await fetchRuns();
     await selectRun(runId);
   } finally {
@@ -220,7 +258,7 @@ const statusBadgeClass: Record<string, string> = {
           v-else
           class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 text-white hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           :disabled="starting"
-          @click="startRun"
+          @click="openRunDialog"
         >
           <svg v-if="starting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -380,5 +418,38 @@ const statusBadgeClass: Record<string, string> = {
       </div>
     </div>
 
+  </div>
+
+  <!-- Run inputs dialog -->
+  <div
+    v-if="showInputsDialog"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    @click.self="showInputsDialog = false"
+  >
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+      <h2 class="text-base font-semibold text-neutral-900 mb-4">Run Workflow</h2>
+      <form @submit.prevent="startRun(inputValues)" class="space-y-4">
+        <div v-for="mapping in workflowInputMappings" :key="mapping.inputKey" class="space-y-1">
+          <label class="block text-sm font-medium text-neutral-700">{{ mapping.alias }}</label>
+          <input
+            v-model="inputValues[mapping.inputKey]"
+            type="text"
+            class="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            :placeholder="mapping.alias"
+          />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            class="px-3 py-1.5 text-sm font-medium rounded-md border border-neutral-200 text-neutral-700 hover:bg-neutral-50 transition-colors"
+            @click="showInputsDialog = false"
+          >Cancel</button>
+          <button
+            type="submit"
+            class="px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 text-white hover:bg-neutral-700 transition-colors"
+          >Run</button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
