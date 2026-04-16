@@ -1660,6 +1660,7 @@ export class ApiClient {
           status: string;
           createdAt: string;
           sourceExtensionId: string | null;
+          runtimeInputs: Record<string, unknown>;
         }[];
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`, query);
       return response.runs;

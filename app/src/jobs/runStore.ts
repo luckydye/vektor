@@ -28,6 +28,7 @@ export type RunState = {
   documentId: string;
   initiatedByUserId: string | null;
   sourceExtensionId: string | null;
+  runtimeInputs: Record<string, unknown>;
   createdAt: Date;
   abort?: () => void;
 };
@@ -232,6 +233,7 @@ function serializeRun(run: RunState): PersistedRunState {
     documentId: run.documentId,
     initiatedByUserId: run.initiatedByUserId,
     sourceExtensionId: run.sourceExtensionId,
+    runtimeInputs: run.runtimeInputs,
     createdAt: serializeDate(run.createdAt),
     nodes: Object.fromEntries(
       [...run.nodes.entries()].map(([nodeId, node]) => [
@@ -253,6 +255,7 @@ function deserializeRun(serialized: PersistedRunState): RunState {
     documentId: serialized.documentId,
     initiatedByUserId: serialized.initiatedByUserId,
     sourceExtensionId: serialized.sourceExtensionId ?? null,
+    runtimeInputs: serialized.runtimeInputs ?? {},
     createdAt: deserializeDate(serialized.createdAt) ?? new Date(0),
     nodes: new Map(
       Object.entries(serialized.nodes).map(([nodeId, node]) => [
@@ -339,6 +342,7 @@ export function createRun(
   nodeIds: string[],
   initiatedByUserId: string | null = null,
   sourceExtensionId: string | null = null,
+  runtimeInputs: Record<string, unknown> = {},
 ): string {
   const runId = createId("run");
   const createdAt = new Date();
@@ -361,6 +365,7 @@ export function createRun(
     documentId,
     initiatedByUserId,
     sourceExtensionId,
+    runtimeInputs,
     createdAt,
   });
   latestRunByDoc.set(documentId, runId);

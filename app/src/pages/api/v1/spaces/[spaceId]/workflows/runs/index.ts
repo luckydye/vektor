@@ -80,6 +80,7 @@ export const GET: APIRoute = (context) =>
             totalNodes: nodeList.length,
             completedNodes,
             sourceExtensionId: run.sourceExtensionId,
+            runtimeInputs: run.runtimeInputs,
           };
         }),
     );
@@ -217,6 +218,7 @@ export const POST: APIRoute = (context) =>
         Object.keys(definition),
         initiatedByUserId,
         sourceExtensionId ?? null,
+        inputs ?? {},
       );
       const traceHeaders = activeTraceHeaders();
 
