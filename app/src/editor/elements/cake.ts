@@ -24,24 +24,22 @@ customElements.define(
       this.attachShadow({ mode: "open" });
     }
 
-    get colors(): string[] {
-      try {
-        const parsed = JSON.parse(this.dataset.colors || "[]");
-        if (!Array.isArray(parsed)) return COLORS;
-        return parsed.length > 0 ? parsed : COLORS;
-      } catch {
-        return COLORS;
-      }
-    }
-
-    get values(): number[] {
+    // Returns [{value, color}] pairs with zero values removed, colors aligned to original indices
+    get sliceData(): { value: number; color: string }[] {
+      let values: number[] = [];
+      let colors: string[] = [];
       try {
         const parsed = JSON.parse(this.dataset.data || "[]");
-        if (!Array.isArray(parsed)) return [];
-        return parsed.map(Number).filter((n) => n > 0);
-      } catch {
-        return [];
-      }
+        if (Array.isArray(parsed)) values = parsed.map(Number);
+      } catch {}
+      try {
+        const parsed = JSON.parse(this.dataset.colors || "[]");
+        if (Array.isArray(parsed) && parsed.length > 0) colors = parsed;
+      } catch {}
+
+      return values
+        .map((v, i) => ({ value: v, color: colors[i] ?? COLORS[i % COLORS.length] }))
+        .filter(({ value }) => value > 0);
     }
 
     get size(): number {
@@ -57,39 +55,49 @@ customElements.define(
     }
 
     renderEl() {
-      const values = this.values;
-      const colors = this.colors;
+      const sliceData = this.sliceData;
       const size = this.size;
       const r = size / 2;
       const cx = r;
       const cy = r;
 
-      const total = values.reduce((a, b) => a + b, 0);
+      const ir = r * 0.45; // inner (hole) radius
+      const total = sliceData.reduce((a, s) => a + s.value, 0);
 
-      // Build SVG pie slices
+      // Build SVG donut slices
       const slices: ReturnType<typeof svg>[] = [];
 
-      if (values.length === 1) {
-        // Single value — full circle
+      if (sliceData.length === 1) {
+        // Single value — full donut ring via evenodd
         slices.push(svg`
-          <circle cx=${cx} cy=${cy} r=${r} fill=${colors[0] ?? COLORS[0]} />
+          <path
+            fill-rule="evenodd"
+            fill=${sliceData[0].color}
+            d="M${cx},${cy - r} A${r},${r} 0 1,1 ${cx - 0.001},${cy - r} Z
+               M${cx},${cy - ir} A${ir},${ir} 0 1,0 ${cx - 0.001},${cy - ir} Z"
+          />
         `);
       } else {
         let startAngle = -Math.PI / 2;
-        for (let i = 0; i < values.length; i++) {
-          const fraction = values[i] / total;
+        for (const { value, color } of sliceData) {
+          const fraction = value / total;
           const endAngle = startAngle + fraction * 2 * Math.PI;
+          const largeArc = fraction > 0.5 ? 1 : 0;
 
           const x1 = cx + r * Math.cos(startAngle);
           const y1 = cy + r * Math.sin(startAngle);
           const x2 = cx + r * Math.cos(endAngle);
           const y2 = cy + r * Math.sin(endAngle);
-          const largeArc = fraction > 0.5 ? 1 : 0;
+          const ix1 = cx + ir * Math.cos(startAngle);
+          const iy1 = cy + ir * Math.sin(startAngle);
+          const ix2 = cx + ir * Math.cos(endAngle);
+          const iy2 = cy + ir * Math.sin(endAngle);
 
           slices.push(svg`
             <path
-              d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z"
-              fill=${colors[i % colors.length]}
+              d="M${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2}
+                 L${ix2},${iy2} A${ir},${ir} 0 ${largeArc},0 ${ix1},${iy1} Z"
+              fill=${color}
             />
           `);
 
