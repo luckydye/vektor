@@ -17,6 +17,9 @@ tasks:
     env:
       DEV: true
       HOST: 0.0.0.0
+      WIKI_SITE_URL: http://127.0.0.1:4321
+      WIKI_API_URL: http://127.0.0.1:4321
+      WIKI_COLLABORATION_HOST: 127.0.0.1:8080
       VEKTOR_NO_AUTH: "1"
     cmds:
       - bun --watch ./src/server.ts
@@ -55,6 +58,10 @@ tasks:
     desc: Start the compiled binary with the current runtime environment.
     dotenv:
       - ../.env
+    env:
+      WIKI_SITE_URL: http://127.0.0.1:8080
+      WIKI_API_URL: http://127.0.0.1:8080
+      WIKI_COLLABORATION_HOST: 127.0.0.1:8080
     cmds:
       - ./vektor serve --no-auth
 
