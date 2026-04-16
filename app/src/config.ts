@@ -84,6 +84,8 @@ export function config() {
 
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
 SEARCH_EMBEDDINGS_PROVIDER: process.env.WIKI_SEARCH_EMBEDDINGS_PROVIDER,
       SEARCH_EMBEDDINGS_MODEL: process.env.WIKI_SEARCH_EMBEDDINGS_MODEL,
       SEARCH_EMBEDDINGS_BASE_URL: process.env.WIKI_SEARCH_EMBEDDINGS_BASE_URL,
@@ -125,6 +127,12 @@ SEARCH_EMBEDDINGS_PROVIDER: process.env.WIKI_SEARCH_EMBEDDINGS_PROVIDER,
 
 export function getConfiguredOpenRouterModel(): string {
   return config().OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+}
+
+export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
+
+export function getConfiguredAnthropicModel(): string {
+  return config().ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
 }
 
 globalThis.config = config;

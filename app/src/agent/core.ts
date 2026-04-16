@@ -2,7 +2,7 @@ import AdmZip from "adm-zip";
 import { Bash, defineCommand } from "just-bash";
 import * as html5parser from "html5parser";
 import { dirname, posix } from "node:path";
-import { config, getConfiguredOpenRouterModel } from "../config.ts";
+import { config, getConfiguredOpenRouterModel, getConfiguredAnthropicModel } from "../config.ts";
 import { callTool as callVektorTool } from "../utils/vektorMcp.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
 
@@ -405,24 +405,162 @@ async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Recor
   }
 }
 
+export type AIProvider = {
+  provider: "openrouter" | "anthropic";
+  apiKey: string;
+  model: string;
+};
+
+export function getAIProvider(): AIProvider {
+  const cfg = config();
+  if (cfg.ANTHROPIC_API_KEY) {
+    return { provider: "anthropic", apiKey: cfg.ANTHROPIC_API_KEY, model: getConfiguredAnthropicModel() };
+  }
+  if (cfg.OPENROUTER_API_KEY) {
+    return { provider: "openrouter", apiKey: cfg.OPENROUTER_API_KEY, model: getConfiguredOpenRouterModel() };
+  }
+  throw new Error("No AI provider configured. Set ANTHROPIC_API_KEY or OPENROUTER_API_KEY.");
+}
+
+function toAnthropicMessages(messages: ChatMessage[]): {
+  system: string | undefined;
+  messages: Array<{ role: "user" | "assistant"; content: string | unknown[] }>;
+} {
+  const systemParts: string[] = [];
+  const result: Array<{ role: "user" | "assistant"; content: string | unknown[] }> = [];
+
+  let i = 0;
+  while (i < messages.length) {
+    const msg = messages[i]!;
+
+    if (msg.role === "system") {
+      if (msg.content) systemParts.push(msg.content);
+      i++;
+      continue;
+    }
+
+    if (msg.role === "tool") {
+      const toolResults: unknown[] = [];
+      while (i < messages.length && messages[i]!.role === "tool") {
+        const m = messages[i]!;
+        toolResults.push({ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content ?? "" });
+        i++;
+      }
+      result.push({ role: "user", content: toolResults });
+      continue;
+    }
+
+    if (msg.role === "assistant") {
+      const content: unknown[] = [];
+      if (msg.content) content.push({ type: "text", text: msg.content });
+      for (const tc of msg.tool_calls ?? []) {
+        let input: unknown;
+        try { input = JSON.parse(tc.function.arguments || "{}"); } catch { input = {}; }
+        content.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
+      }
+      result.push({ role: "assistant", content: content.length === 1 && !msg.tool_calls?.length ? (msg.content ?? "") : content });
+      i++;
+      continue;
+    }
+
+    result.push({ role: "user", content: msg.content ?? "" });
+    i++;
+  }
+
+  return { system: systemParts.length ? systemParts.join("\n\n") : undefined, messages: result };
+}
+
 type PartialToolCall = { id: string; name: string; arguments: string };
 
 async function callModel(options: {
-  apiKey: string;
-  model: string;
+  provider: AIProvider;
   messages: ChatMessage[];
   tools: unknown[];
   signal?: AbortSignal;
   onText?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
+  if (options.provider.provider === "anthropic") {
+    const { system, messages: anthropicMessages } = toAnthropicMessages(options.messages);
+    const anthropicTools = (options.tools as Array<{
+      function: { name: string; description?: string; parameters: unknown };
+    }>).map(t => ({
+      name: t.function.name,
+      description: t.function.description,
+      input_schema: t.function.parameters,
+    }));
+
+    const body: Record<string, unknown> = {
+      model: options.provider.model,
+      max_tokens: 8192,
+      messages: anthropicMessages,
+      stream: true,
+    };
+    if (system) body.system = system;
+    if (anthropicTools.length) body.tools = anthropicTools;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": options.provider.apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`Anthropic ${response.status}: ${await response.text()}`);
+    }
+
+    let textContent = "";
+    let finishReason = "stop";
+    const toolCalls: PartialToolCall[] = [];
+
+    for await (const chunk of parseSSE(response.body)) {
+      const type = (chunk as { type?: string }).type;
+
+      if (type === "content_block_start") {
+        const block = (chunk as { content_block?: { type: string; id?: string; name?: string } }).content_block;
+        if (block?.type === "tool_use") {
+          toolCalls.push({ id: block.id ?? "", name: block.name ?? "", arguments: "" });
+        }
+      } else if (type === "content_block_delta") {
+        const delta = (chunk as { delta?: { type?: string; text?: string; partial_json?: string } }).delta;
+        if (delta?.type === "text_delta" && delta.text) {
+          textContent += delta.text;
+          await options.onText?.(delta.text);
+        } else if (delta?.type === "input_json_delta" && delta.partial_json && toolCalls.length > 0) {
+          toolCalls[toolCalls.length - 1]!.arguments += delta.partial_json;
+        }
+      } else if (type === "message_delta") {
+        const stopReason = (chunk as { delta?: { stop_reason?: string } }).delta?.stop_reason;
+        if (stopReason === "tool_use") finishReason = "tool_calls";
+        else if (stopReason) finishReason = stopReason;
+      }
+    }
+
+    return {
+      message: {
+        role: "assistant",
+        content: textContent || null,
+        ...(toolCalls.length ? {
+          tool_calls: toolCalls.map(tc => ({ id: tc.id, type: "function" as const, function: { name: tc.name, arguments: tc.arguments } })),
+        } : {}),
+      },
+      finishReason,
+    };
+  }
+
+  // OpenRouter
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${options.apiKey}`,
+      Authorization: `Bearer ${options.provider.apiKey}`,
     },
     body: JSON.stringify({
-      model: options.model,
+      model: options.provider.model,
       messages: options.messages,
       tools: options.tools,
       stream: true,
@@ -517,12 +655,10 @@ export async function runAgentPrompt(options: {
     onEvent,
   } = options;
 
-  const apiKey = config().OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-  const model = getConfiguredOpenRouterModel();
+  const provider = getAIProvider();
 
   const mcpConfig: VektorMcpConfig = { apiUrl, spaceId, jobToken, documentId };
-  const bash = providedBash ?? createAgentShell({ current: mcpConfig }, undefined, { apiKey, model });
+  const bash = providedBash ?? createAgentShell({ current: mcpConfig }, undefined, provider);
   const tools = [
     {
       type: "function",
@@ -547,8 +683,7 @@ export async function runAgentPrompt(options: {
   while (true) {
     await onEvent?.({ type: "status", text: "Thinking..." });
     const { message, finishReason } = await callModel({
-      apiKey,
-      model,
+      provider,
       messages: agentMessages,
       tools,
       signal,
@@ -635,7 +770,7 @@ export async function runAgentPrompt(options: {
 export function createAgentShell(
   mcpConfigRef: { current: VektorMcpConfig },
   bootstrap?: AgentShellBootstrap,
-  completion?: { apiKey: string; model: string },
+  completion?: AIProvider,
 ): Bash {
   const uploadCommand = defineCommand("upload", async (args, ctx) => {
     const usage = "usage: upload <file> [-t content-type] [-d document-id]\n";
@@ -831,22 +966,44 @@ export function createAgentShell(
     if (!prompt.trim()) {
       return { stdout: "", stderr: "usage: ai <prompt> or echo <prompt> | ai\n", exitCode: 2 };
     }
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${completion.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: completion.model,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+    let text: string;
+    if (completion.provider === "anthropic") {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": completion.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: completion.model,
+          max_tokens: 8192,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Anthropic ${response.status}: ${await response.text()}`);
+      }
+      const data = await response.json() as { content: Array<{ type: string; text?: string }> };
+      text = data.content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
+    } else {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${completion.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: completion.model,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+      }
+      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+      text = data.choices[0]?.message?.content ?? "";
     }
-    const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-    const text = data.choices[0]?.message?.content ?? "";
     return { stdout: `${text}\n`, stderr: "", exitCode: 0 };
   });
 

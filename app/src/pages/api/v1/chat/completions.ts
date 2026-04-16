@@ -6,7 +6,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { verifyJobToken } from "../../../../jobs/jobToken.ts";
-import { config, getConfiguredOpenRouterModel } from "../../../../config.ts";
+import { getAIProvider } from "../../../../agent/core.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -19,18 +19,19 @@ export const POST: APIRoute = (context) =>
         }
       }
 
-      const apiKey = config().OPENROUTER_API_KEY;
-      if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
-      const model = getConfiguredOpenRouterModel();
-
+      const provider = getAIProvider();
       const bodyJson = await parseJsonBody(context.request);
-      bodyJson.model = model;
 
+      if (provider.provider === "anthropic") {
+        return proxyToAnthropic(provider.apiKey, provider.model, bodyJson, context.request.signal);
+      }
+
+      bodyJson.model = provider.model;
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${provider.apiKey}`,
         },
         body: JSON.stringify(bodyJson),
         signal: context.request.signal,
@@ -49,3 +50,157 @@ export const POST: APIRoute = (context) =>
       onError: () => errorResponse("Proxy request failed", 500),
     },
   );
+
+type OpenAIMessage = { role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown[] };
+
+function toAnthropicRequestBody(model: string, body: Record<string, unknown>): Record<string, unknown> {
+  const messages = (body.messages as OpenAIMessage[] | undefined) ?? [];
+  const systemParts: string[] = [];
+  const anthropicMessages: Array<{ role: "user" | "assistant"; content: string | unknown[] }> = [];
+
+  let i = 0;
+  while (i < messages.length) {
+    const msg = messages[i]!;
+    if (msg.role === "system") {
+      if (msg.content) systemParts.push(msg.content);
+      i++;
+      continue;
+    }
+    if (msg.role === "tool") {
+      const toolResults: unknown[] = [];
+      while (i < messages.length && messages[i]!.role === "tool") {
+        const m = messages[i]!;
+        toolResults.push({ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content ?? "" });
+        i++;
+      }
+      anthropicMessages.push({ role: "user", content: toolResults });
+      continue;
+    }
+    if (msg.role === "assistant") {
+      const content: unknown[] = [];
+      if (msg.content) content.push({ type: "text", text: msg.content });
+      for (const tc of (msg.tool_calls ?? []) as Array<{ id: string; function: { name: string; arguments: string } }>) {
+        let input: unknown;
+        try { input = JSON.parse(tc.function.arguments || "{}"); } catch { input = {}; }
+        content.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
+      }
+      anthropicMessages.push({ role: "assistant", content: content.length === 1 && !msg.tool_calls?.length ? (msg.content ?? "") : content });
+      i++;
+      continue;
+    }
+    anthropicMessages.push({ role: "user", content: msg.content ?? "" });
+    i++;
+  }
+
+  const tools = (body.tools as Array<{ function: { name: string; description?: string; parameters: unknown } }> | undefined) ?? [];
+
+  const result: Record<string, unknown> = {
+    model,
+    max_tokens: 8192,
+    messages: anthropicMessages,
+    stream: body.stream ?? false,
+  };
+  if (systemParts.length) result.system = systemParts.join("\n\n");
+  if (tools.length) result.tools = tools.map(t => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters }));
+  return result;
+}
+
+async function proxyToAnthropic(
+  apiKey: string,
+  model: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Response> {
+  const anthropicBody = toAnthropicRequestBody(model, body);
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(anthropicBody),
+    signal,
+  });
+
+  if (!response.ok) {
+    return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+  }
+
+  if (!body.stream) {
+    const data = await response.json() as {
+      id: string;
+      content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
+      stop_reason: string;
+    };
+    const textContent = data.content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
+    const toolCalls = data.content
+      .filter(b => b.type === "tool_use")
+      .map(b => ({ id: b.id, type: "function", function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } }));
+    return Response.json({
+      id: data.id,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: textContent || null,
+          ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+        },
+        finish_reason: data.stop_reason === "tool_use" ? "tool_calls" : "stop",
+      }],
+    });
+  }
+
+  // Streaming: convert Anthropic SSE → OpenAI SSE
+  const encoder = new TextEncoder();
+  const id = `chatcmpl_${crypto.randomUUID()}`;
+  const created = Math.floor(Date.now() / 1000);
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (payload: unknown) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      };
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finishReason: string | null = null;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop()!;
+          for (const part of parts) {
+            for (const line of part.split("\n")) {
+              if (!line.startsWith("data: ")) continue;
+              try {
+                const chunk = JSON.parse(line.slice(6)) as { type?: string; delta?: { type?: string; text?: string; stop_reason?: string } };
+                if (chunk.type === "content_block_delta" && chunk.delta?.type === "text_delta" && chunk.delta.text) {
+                  send({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content: chunk.delta.text }, finish_reason: null }] });
+                } else if (chunk.type === "message_delta" && chunk.delta?.stop_reason) {
+                  finishReason = chunk.delta.stop_reason === "tool_use" ? "tool_calls" : "stop";
+                }
+              } catch { /* skip malformed */ }
+            }
+          }
+        }
+        send({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: finishReason ?? "stop" }] });
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      } finally {
+        reader.releaseLock();
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+  });
+}
