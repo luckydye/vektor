@@ -130,5 +130,6 @@ globalThis.getSecret = async (name) => {
   return (await res.json()).value;
 };
 
+__pp.on("message", (msg) => { if (msg?.type === "cancel") process.exit(0); });
 await import(${JSON.stringify(jobFileUrl)});`;
 }
