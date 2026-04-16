@@ -21,7 +21,7 @@ onMounted(async () => {
 });
 
 watch(doc, (d) => {
-  if (d) renderContent(d.content ?? "");
+  if (d && (!d.type || d.type === "document")) renderContent(d.content ?? "");
 });
 
 function renderContent(html: string) {
@@ -77,7 +77,16 @@ async function unpin() {
     </div>
 
     <div class="relative overflow-hidden">
-      <document-view ref="viewEl" class="block"></document-view>
+      <template v-if="doc && doc.type && doc.type !== 'document'">
+        <a
+          :href="`/${spaceSlug}/doc/${doc.slug}`"
+          class="mt-3 flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 hover:bg-neutral-100 transition-colors"
+        >
+          <span class="text-sm font-medium text-neutral-800">{{ doc.properties?.title || 'Untitled' }}</span>
+          <span class="ml-auto text-xs text-neutral-400 capitalize">{{ doc.type }}</span>
+        </a>
+      </template>
+      <document-view v-else ref="viewEl" class="block"></document-view>
     </div>
   </div>
 </template>
