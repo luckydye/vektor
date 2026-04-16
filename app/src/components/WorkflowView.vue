@@ -234,9 +234,9 @@ function formatDate(iso: string): string {
 
 const statusBadgeClass: Record<string, string> = {
   pending:   "bg-neutral-100 text-neutral-500",
-  running:   "bg-blue-100 text-blue-700",
-  completed: "bg-emerald-100 text-emerald-700",
-  failed:    "bg-red-100 text-red-700",
+  running:   "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400",
+  completed: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400",
+  failed:    "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400",
   cancelled: "bg-neutral-100 text-neutral-400",
 };
 </script>
@@ -276,7 +276,7 @@ const statusBadgeClass: Record<string, string> = {
         </button>
         <button
           v-else
-          class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 text-white hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           :disabled="starting"
           @click="openRunDialog"
         >
@@ -353,7 +353,7 @@ const statusBadgeClass: Record<string, string> = {
       <div v-if="outputDocumentId && outputDocumentHref" class="inline-flex items-center gap-2">
         <a
           :href="outputDocumentHref"
-          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white hover:border-sky-300 hover:bg-sky-50 transition-colors text-sm font-medium text-neutral-800"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
         >
           <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -361,7 +361,7 @@ const statusBadgeClass: Record<string, string> = {
           {{ outputDocumentTitle ?? "Open document" }}
         </a>
         <button
-          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
           title="Download as Markdown"
           @click="downloadDocument(outputDocumentHref!, outputDocumentTitle ?? 'document')"
         >
@@ -374,9 +374,9 @@ const statusBadgeClass: Record<string, string> = {
     </div>
 
     <!-- Failure error -->
-    <div v-if="runFailureError" class="rounded-lg border border-red-200 bg-red-50 p-4">
-      <p class="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">{{ runFailureError.nodeId }}</p>
-      <p class="text-sm text-red-700 font-mono break-all">{{ runFailureError.error }}</p>
+    <div v-if="runFailureError" class="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4">
+      <p class="text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide mb-1">{{ runFailureError.nodeId }}</p>
+      <p class="text-sm text-red-700 dark:text-red-300 font-mono break-all">{{ runFailureError.error }}</p>
     </div>
 
     <!-- Logs (expandable) -->
@@ -390,11 +390,11 @@ const statusBadgeClass: Record<string, string> = {
         </svg>
         Logs
       </button>
-      <div v-if="logsExpanded" class="mt-2 w-full rounded-lg bg-neutral-950 p-4 overflow-x-auto">
+      <div v-if="logsExpanded" class="mt-2 w-full rounded-lg bg-neutral-950 dark:bg-neutral-50 p-4 overflow-x-auto">
         <div class="font-mono text-[11px] space-y-0.5">
           <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
-            <span class="text-neutral-500 shrink-0">{{ entry.nodeId }}</span>
-            <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300'">{{ entry.line }}</span>
+            <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
+            <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
           </div>
         </div>
       </div>
@@ -433,13 +433,13 @@ const statusBadgeClass: Record<string, string> = {
           <!-- Expanded output -->
           <div v-if="expandedHistoryRuns.has(run.runId)" class="px-3 pb-3 space-y-3">
             <template v-if="historyRunDetails.has(run.runId)">
-              <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white">
+              <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
                 <div v-html="historyOutputHtml(run.runId)" class="p-4" />
               </div>
               <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
                 <a
                   :href="historyOutputDocumentHref(run.runId)!"
-                  class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white hover:border-sky-300 hover:bg-sky-50 transition-colors text-sm font-medium text-neutral-800"
+                  class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
                 >
                   <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -447,7 +447,7 @@ const statusBadgeClass: Record<string, string> = {
                   {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
                 </a>
                 <button
-                  class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
                   title="Download as Markdown"
                   @click="downloadDocument(historyOutputDocumentHref(run.runId)!, historyOutputDocumentTitle(run.runId) ?? 'document')"
                 >
@@ -472,7 +472,7 @@ const statusBadgeClass: Record<string, string> = {
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
     @click.self="showInputsDialog = false"
   >
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+    <div class="bg-white dark:bg-neutral-100 rounded-lg shadow-xl p-6 w-full max-w-md">
       <h2 class="text-base font-semibold text-neutral-900 mb-4">Run Workflow</h2>
       <form @submit.prevent="startRun(inputValues)" class="space-y-4">
         <div v-for="mapping in workflowInputMappings" :key="mapping.inputKey" class="space-y-1">
@@ -480,7 +480,7 @@ const statusBadgeClass: Record<string, string> = {
           <input
             v-model="inputValues[mapping.inputKey]"
             type="text"
-            class="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            class="w-full rounded-md border border-neutral-300 bg-white dark:bg-neutral-50 text-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
             :placeholder="mapping.alias"
           />
         </div>
@@ -492,7 +492,7 @@ const statusBadgeClass: Record<string, string> = {
           >Cancel</button>
           <button
             type="submit"
-            class="px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 text-white hover:bg-neutral-700 transition-colors"
+            class="px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 transition-colors"
           >Run</button>
         </div>
       </form>
