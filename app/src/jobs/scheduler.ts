@@ -191,9 +191,11 @@ export async function runJob(
         return await new Promise<Record<string, unknown>>((resolve, reject) => {
           const worker = new Worker(resolvedWrapperPath, { workerData });
 
+          const cancelWorker = () => worker.postMessage({ type: "cancel" });
+
           let timer = setTimeout(() => {
             span.setAttribute("wiki.job.timeout", true);
-            worker.terminate();
+            cancelWorker();
             reject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
           }, timeoutMs);
 
@@ -201,7 +203,7 @@ export async function runJob(
             clearTimeout(timer);
             timer = setTimeout(() => {
               span.setAttribute("wiki.job.timeout", true);
-              worker.terminate();
+              cancelWorker();
               reject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
             }, timeoutMs);
           };
@@ -211,7 +213,7 @@ export async function runJob(
             () => {
               clearTimeout(timer);
               span.setAttribute("wiki.job.cancelled", true);
-              worker.terminate();
+              cancelWorker();
               reject(new Error("Job cancelled"));
             },
             { once: true },
