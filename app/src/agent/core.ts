@@ -52,6 +52,7 @@ The bash tool runs inside bash, not full system shell.
 - zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
 - zipinfo lists zip contents: \`zipinfo archive.zip\`. Use this instead of \`unzip -l\`.
 - vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
+- Delete docs with `vektor delete <id>` or `vektor delete <id> --permanent`.
 - pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv. Example: \`vektor current > doc.html && pandoc doc.html -t csv -o table.csv\`.
 - To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
 - Use \`vektor current\` only for current chat document context.
@@ -845,9 +846,11 @@ export function createAgentShell(
       return {
         stdout: "",
         stderr:
-          "usage: vektor <list|read|current|search> [args] [--json]\n" +
+          "usage: vektor <list|read|current|search|delete> [args] [--json]\n" +
           "fetch other docs: vektor search \"query\" --json -> take id -> vektor read <id>\n" +
           "fetch current doc: vektor current\n" +
+          "archive doc: vektor delete <id>\n" +
+          "permanently delete doc: vektor delete <id> --permanent\n" +
           "save to file: vektor read <id> > doc.md\n",
         exitCode: 2,
       };
@@ -901,6 +904,37 @@ export function createAgentShell(
           q: rest.join(" "),
         });
         break;
+      case "delete": {
+        const [documentId, ...flags] = rest;
+        if (!documentId) {
+          return {
+            stdout: "",
+            stderr: "usage: vektor delete <document-id> [--permanent] [--json]\n",
+            exitCode: 2,
+          };
+        }
+        const invalidFlag = flags.find((flag) => flag !== "--permanent");
+        if (invalidFlag) {
+          return {
+            stdout: "",
+            stderr: `vektor delete: unknown flag '${invalidFlag}'\n`,
+            exitCode: 2,
+          };
+        }
+        const permanent = flags.includes("--permanent");
+        result = await callVektorTool(mcpConfigRef.current, "delete_document", {
+          documentId,
+          permanent,
+        });
+        if (!json) {
+          return {
+            stdout: `${permanent ? "deleted" : "archived"} ${documentId}\n`,
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        break;
+      }
       default:
         return {
           stdout: "",
