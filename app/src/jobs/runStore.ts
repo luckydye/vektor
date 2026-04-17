@@ -175,7 +175,7 @@ function sanitizeNodeState(node: NodeState): NodeState {
   return {
     ...node,
     inputs: summarizeRecord(node.inputs) ?? {},
-    outputs: summarizeRecord(node.outputs),
+    outputs: node.outputs,
     logs: summarizeLogs(node.logs),
     error: node.error ? summarizeString(node.error) : null,
   };
@@ -403,9 +403,7 @@ export function setNodeStatus(
   if (sanitizedUpdate.inputs) {
     sanitizedUpdate.inputs = summarizeRecord(sanitizedUpdate.inputs) ?? {};
   }
-  if (sanitizedUpdate.outputs) {
-    sanitizedUpdate.outputs = summarizeRecord(sanitizedUpdate.outputs);
-  }
+  // outputs are structured data — do not truncate
   if (sanitizedUpdate.error) {
     sanitizedUpdate.error = summarizeString(sanitizedUpdate.error);
   }
