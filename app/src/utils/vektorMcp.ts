@@ -147,6 +147,9 @@ async function apiRequest(
   headers.set("X-Job-Token", config.jobToken);
   headers.set("X-Space-Id", config.spaceId);
   headers.set("X-Requested-With", "XMLHttpRequest");
+  if (!headers.has("Origin")) {
+    headers.set("Origin", new URL(config.apiUrl).origin);
+  }
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
   }
