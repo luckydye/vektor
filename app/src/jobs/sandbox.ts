@@ -4,7 +4,12 @@ import { writeFile, unlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractFile } from "../db/extensions.ts";
-import { config, getConfiguredOpenRouterModel, getConfiguredAnthropicModel } from "../config.ts";
+import {
+  config,
+  getConfiguredOpenRouterModel,
+  getConfiguredAnthropicModel,
+  getLocalOrigin,
+} from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildSandboxWrapper } from "./sandboxRuntime.ts";
 import { activeTraceHeaders } from "../observability/otel.ts";
@@ -51,10 +56,8 @@ export async function createSandbox(): Promise<Sandbox> {
       const wrapperPath = join(stagingDir, "wrapper.mjs");
       const dataPath = join(stagingDir, "data.json");
 
-      // Sandbox jobs hit the backend directly; do not route through the public ingress.
-      const apiUrl = import.meta.env.DEV
-        ? "http://127.0.0.1:4321"
-        : "http://127.0.0.1:8080";
+      // Sandbox jobs hit backend directly; do not route through public ingress.
+      const apiUrl = getLocalOrigin();
       const timestamp = Date.now().toString();
       const traceHeaders = activeTraceHeaders();
 

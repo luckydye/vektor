@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { extractFile } from "../db/extensions.ts";
-import { config, getConfiguredOpenRouterModel, getConfiguredAnthropicModel } from "../config.ts";
+import {
+  config,
+  getConfiguredOpenRouterModel,
+  getConfiguredAnthropicModel,
+  getLocalOrigin,
+} from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildJobWrapper } from "./jobRuntime.ts";
 import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
@@ -180,8 +185,8 @@ export async function runJob(
           anthropicModel: getConfiguredAnthropicModel(),
           jobId: executionId,
           spaceId,
-          // Job-side API calls must stay on the internal backend origin.
-          apiUrl: import.meta.env.DEV ? "http://127.0.0.1:4321" : "http://127.0.0.1:8080",
+          // Job-side API calls must stay on internal backend origin.
+          apiUrl: getLocalOrigin(),
           jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
           traceparent: traceHeaders.traceparent ?? null,
           tracestate: traceHeaders.tracestate ?? null,

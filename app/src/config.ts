@@ -135,4 +135,15 @@ export function getConfiguredAnthropicModel(): string {
   return config().ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
 }
 
+export function getLocalOrigin(): string {
+  const argv = globalThis.process?.argv ?? [];
+  const portIdx = argv.findIndex((arg) => arg === "--port");
+  const portArg =
+    portIdx >= 0
+      ? argv[portIdx + 1]
+      : argv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
+  const port = portArg ?? "8080";
+  return `http://127.0.0.1:${port}`;
+}
+
 globalThis.config = config;

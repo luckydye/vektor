@@ -8,6 +8,7 @@ import {
   withApiErrorHandling,
   authenticateWithToken,
 } from "#db/api.ts";
+import { getLocalOrigin } from "../../../../../config.ts";
 import {
   createJobToken,
   parseJobToken,
@@ -20,17 +21,6 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "../../../../../utils/vektorMcp.ts";
-
-function getLocalOrigin(): string {
-  const argv = globalThis.process?.argv ?? [];
-  const portIdx = argv.findIndex((a) => a === "--port");
-  const portArg =
-    portIdx >= 0
-      ? argv[portIdx + 1]
-      : argv.find((a) => a.startsWith("--port="))?.slice("--port=".length);
-  const port = portArg ?? "8080";
-  return `http://127.0.0.1:${port}`;
-}
 
 async function resolveJobToken(context: APIContext, spaceId: string): Promise<string> {
   // 1. X-Job-Token header (internal calls from agent workers)
