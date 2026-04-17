@@ -551,7 +551,21 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       return await apiRequest(config, `/docs/${section}`);
     }
     case "install_extension": {
-
+      const form = new FormData();
+      const filename = expectString(args, "filename")!;
+      const content = expectString(args, "content")!;
+      const bytes = Buffer.from(content, "base64");
+      form.set("file", new Blob([bytes], { type: "application/zip" }), filename);
+      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/extensions`, {
+        method: "POST",
+        body: form,
+        headers: { Origin: new URL(config.apiUrl).origin },
+      });
+    }
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
+}
 
 function formatToolResult(result: unknown) {
   return {
