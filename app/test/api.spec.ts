@@ -4,6 +4,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { createJobToken } from "../src/jobs/jobToken.ts";
 
 const DATA_DIR = "./data";
 const AUTH_DB_PATH = join(DATA_DIR, "auth.db");
@@ -464,6 +465,38 @@ describe("API Tests - Documents", () => {
     expect(getDocData.document.id).toBe(docToRestoreId);
   });
 
+  it("should archive document with X-Job-Token auth", async () => {
+    const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>Job token delete target</p>",
+        properties: { title: "Job Token Delete Target" },
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const createData = await createResponse.json();
+    const documentId = createData.document.id;
+
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), testUser.id);
+    const archiveResponse = await fetch(
+      `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+      {
+        method: "DELETE",
+        headers: {
+          "X-Job-Token": jobToken,
+        },
+      },
+    );
+    expect(archiveResponse.status).toBe(200);
+
+    const checkResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+    );
+    expect(checkResponse.status).toBe(200);
+    const checkData = await checkResponse.json();
+    expect(checkData.document.archived).toBe(true);
+  });
+
   it("should permanently delete a document", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${childDocumentId}?permanent=true`,
@@ -527,6 +560,32 @@ describe("API Tests - Document Properties", () => {
     );
     const docData = await docResponse.json();
     expect(docData.document.properties.status).toBe("published");
+  });
+
+  it("should patch properties with X-Job-Token auth", async () => {
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), testUser.id);
+    const patchResponse = await fetch(
+      `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Job-Token": jobToken,
+        },
+        body: JSON.stringify({
+          properties: {
+            title: "Patched By Job Token",
+          },
+        }),
+      },
+    );
+    expect(patchResponse.status).toBe(200);
+
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
+    );
+    const docData = await docResponse.json();
+    expect(docData.document.properties.title).toBe("Patched By Job Token");
   });
 
   it("should update an existing document property", async () => {
