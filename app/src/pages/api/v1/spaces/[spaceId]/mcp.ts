@@ -14,7 +14,6 @@ import {
   verifyJobToken,
 } from "../../../../../jobs/jobToken.ts";
 import { getTokenUserId } from "../../../../../db/accessTokens.ts";
-import { config } from "../../../../../config.ts";
 import {
   createParseErrorResponse,
   handleMcpRequest,
@@ -22,10 +21,15 @@ import {
   type JsonRpcResponse,
 } from "../../../../../utils/vektorMcp.ts";
 
-function getApiOrigin(request: Request): string {
-  // Use the request's own origin for internal API calls — avoids routing
-  // back through a reverse proxy (nginx) which may block loopback requests.
-  return new URL(request.url).origin;
+function getLocalOrigin(): string {
+  const argv = globalThis.process?.argv ?? [];
+  const portIdx = argv.findIndex((a) => a === "--port");
+  const portArg =
+    portIdx >= 0
+      ? argv[portIdx + 1]
+      : argv.find((a) => a.startsWith("--port="))?.slice("--port=".length);
+  const port = portArg ?? "8080";
+  return `http://127.0.0.1:${port}`;
 }
 
 async function resolveJobToken(context: APIContext, spaceId: string): Promise<string> {
@@ -95,7 +99,7 @@ export const POST: APIRoute = (context) =>
 
     const response = await handleMcpRequest(
       {
-        apiUrl: getApiOrigin(context.request),
+        apiUrl: getLocalOrigin(),
         spaceId,
         jobToken: await resolveJobToken(context, spaceId),
         documentId:
