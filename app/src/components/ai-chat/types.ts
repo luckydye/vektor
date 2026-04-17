@@ -1,6 +1,7 @@
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content?: string | null;
+  thinking?: string | null;
   tool_calls?: Array<{
     id: string;
     type: string;
@@ -11,6 +12,7 @@ export type ChatMessage = {
 
 export type ChatStreamEvent =
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "status"; text: string }
   | {
       type: "tool_call";

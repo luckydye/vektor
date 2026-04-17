@@ -30,6 +30,7 @@ type ChatContentPart = {
 type ChatMessage = {
   role: ChatRole;
   content: string | ChatContentPart[];
+  thinking?: string | null;
 };
 
 type AcpRequestBody = {
@@ -42,13 +43,14 @@ type AcpRequestBody = {
 
 function normalizeMessages(
   messages: ChatMessage[],
-): Array<{ role: ChatRole; content: string | null }> {
+): Array<{ role: ChatRole; content: string | null; thinking?: string | null }> {
   return messages.map((m) => ({
     role: m.role,
     content:
       typeof m.content === "string"
         ? m.content
         : m.content.map((p) => (p.type === "text" ? (p.text ?? "") : "")).join(""),
+    ...(typeof m.thinking === "string" ? { thinking: m.thinking } : {}),
   }));
 }
 

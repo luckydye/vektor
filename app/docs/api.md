@@ -24,7 +24,7 @@ Most errors are JSON:
 |---|---|---|
 | POST | `/chat/acp` | Runs one prompt turn through a configured ACP agent and returns a chat-completion-like JSON response. |
 | GET | `/url-metadata` | Returns link preview metadata for internal docs or external URLs. |
-| POST | `/chat/completions` | Proxies chat-completion requests to OpenRouter with a fixed model. |
+| POST | `/chat/completions` | Proxies chat-completion requests to configured AI provider and forces configured model. |
 | GET | `/users` | Lists users or fetches a single user by `id` query param. |
 | GET | `/users/me` | Returns the current authenticated user profile. |
 | GET | `/spaces` | Lists spaces the current user can access. |
@@ -123,8 +123,9 @@ Most errors are JSON:
 - Auth:
 - User session OR job headers `X-Job-Token` + `X-Space-Id`.
 - Body:
-- Proxied JSON payload for OpenRouter chat completions.
-- Server forces `model = "qwen/qwen3.5-397b-a17b"`.
+- Proxied JSON payload for chat completions.
+- Server forces configured provider model.
+- Provider selection priority: `OLLAMA_BASE_URL`, then `ANTHROPIC_API_KEY`, then `OPENROUTER_API_KEY`.
 - Returns:
 - Proxied upstream status/body (supports streaming).
 
