@@ -206,7 +206,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     {
-      name: "get_document",
+      name: "read_document",
       description: "Get document by ID from current Vektor space.",
       inputSchema: {
         type: "object",
@@ -231,6 +231,51 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           documentId: { type: "string" },
         },
         required: ["filename", "content"],
+      },
+    },
+    {
+      name: "write_document",
+      description:
+        "Create or update a document in the current Vektor space. Omit documentId to create a new document, provide it to update an existing one. Content can be HTML or Markdown.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string", description: "Document ID to update. Omit to create a new document." },
+          content: { type: "string", description: "Document content (HTML or Markdown)" },
+          title: { type: "string", description: "Document title (used when creating)" },
+          type: { type: "string", description: "Document type (used when creating)" },
+          parentId: { type: "string", description: "Parent document ID (used when creating)" },
+        },
+        required: ["content"],
+      },
+    },
+    {
+      name: "delete_document",
+      description:
+        "Delete a document from the current Vektor space. By default archives the document (recoverable). Set permanent to true to delete permanently.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string", description: "Document ID to delete" },
+          permanent: { type: "boolean", description: "Permanently delete instead of archiving" },
+        },
+        required: ["documentId"],
+      },
+    },
+    {
+      name: "update_document_properties",
+      description:
+        "Update properties (e.g. title) on a document. Set a property value to null to remove it.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string", description: "Document ID" },
+          properties: {
+            type: "object",
+            description: "Key-value pairs to set. Use null to delete a property.",
+          },
+        },
+        required: ["documentId", "properties"],
       },
     },
     {
@@ -285,7 +330,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
           filters: expectString(args, "filters", { optional: true }),
         })}`,
       );
-    case "get_document": {
+    case "read_document": {
       const documentId = expectString(args, "documentId")!;
       const rev = expectNumber(args, "rev", { optional: true });
       return await apiRequest(
@@ -303,6 +348,67 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         config,
         `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(config.documentId)}`,
       );
+    case "write_document": {
+      const documentId = expectString(args, "documentId", { optional: true });
+      const content = expectString(args, "content")!;
+      if (documentId) {
+        return await apiRequest(
+          config,
+          `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: new URL(config.apiUrl).origin,
+            },
+            body: JSON.stringify({ content }),
+          },
+        );
+      }
+      const title = expectString(args, "title", { optional: true });
+      const type = expectString(args, "type", { optional: true });
+      const parentId = expectString(args, "parentId", { optional: true });
+      const body: Record<string, unknown> = { content };
+      if (title) body.properties = { title };
+      if (type) body.type = type;
+      if (parentId) body.parentId = parentId;
+      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/documents`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: new URL(config.apiUrl).origin,
+        },
+        body: JSON.stringify(body),
+      });
+    }
+    case "delete_document": {
+      const documentId = expectString(args, "documentId")!;
+      const permanent = args.permanent === true;
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}${permanent ? "?permanent=true" : ""}`,
+        {
+          method: "DELETE",
+          headers: { Origin: new URL(config.apiUrl).origin },
+        },
+      );
+    }
+    case "update_document_properties": {
+      const documentId = expectString(args, "documentId")!;
+      const properties = expectObject(args, "properties")!;
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: new URL(config.apiUrl).origin,
+          },
+          body: JSON.stringify({ properties }),
+        },
+      );
+    }
     case "upload_artifact": {
       const form = new FormData();
       const filename = expectString(args, "filename")!;
