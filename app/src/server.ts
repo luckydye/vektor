@@ -399,7 +399,12 @@ async function handleRealtimeWebSocket(
   });
 }
 
-app.use(express.json({ limit: "100mb" }));
+app.use(express.json({ limit: "100mb", type: (req: any) => {
+  // Skip express.json for MCP routes — they parse the body themselves
+  if (req.url?.includes("/mcp")) return false;
+  const ct = req.headers["content-type"] ?? "";
+  return ct.includes("application/json");
+} }));
 app.post("/sync", (req: any, res: any) => {
   const events = Array.isArray(req.body) ? req.body : [req.body];
   publishSyncEvents(events);

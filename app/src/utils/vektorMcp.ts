@@ -368,9 +368,18 @@ export async function handleMcpRequest(
 
   try {
     switch (request.method) {
-      case "initialize":
+      case "initialize": {
+        const params = assertObject(request.params ?? {}, "initialize params");
+        const clientVersion =
+          typeof params.protocolVersion === "string"
+            ? params.protocolVersion
+            : "2024-11-05";
+        const SUPPORTED_VERSIONS = ["2025-03-26", "2024-11-05"];
+        const negotiatedVersion = SUPPORTED_VERSIONS.includes(clientVersion)
+          ? clientVersion
+          : SUPPORTED_VERSIONS[0];
         return createResult(request.id, {
-          protocolVersion: "2024-11-05",
+          protocolVersion: negotiatedVersion,
           capabilities: {
             tools: {},
           },
@@ -379,6 +388,7 @@ export async function handleMcpRequest(
             version: "1.0.0",
           },
         });
+      }
       case "ping":
         return createResult(request.id, {});
       case "tools/list":
