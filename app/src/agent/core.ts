@@ -52,7 +52,7 @@ The bash tool runs inside bash, not full system shell.
 - zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
 - zipinfo lists zip contents: \`zipinfo archive.zip\`. Use this instead of \`unzip -l\`.
 - vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
-- Delete docs with `vektor delete <id>` or `vektor delete <id> --permanent`.
+- Delete docs with \`vektor delete <id>\` or \`vektor delete <id> --permanent\`.
 - pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv. Example: \`vektor current > doc.html && pandoc doc.html -t csv -o table.csv\`.
 - To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
 - Use \`vektor current\` only for current chat document context.
