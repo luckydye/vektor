@@ -29,7 +29,9 @@ let tickInterval: ReturnType<typeof setInterval> | null = null;
 
 async function fetchRuns() {
   const result = await api.workflows.listRuns(props.spaceId);
-  runs.value = (result as WorkflowRun[]).slice(0, 5);
+  runs.value = (result as WorkflowRun[])
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5);
 }
 
 onMounted(() => {

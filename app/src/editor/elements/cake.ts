@@ -64,46 +64,32 @@ customElements.define(
       const ir = r * 0.45; // inner (hole) radius
       const total = sliceData.reduce((a, s) => a + s.value, 0);
 
-      // Build SVG donut slices
+      // Build SVG pie slices (no inner hole — masked out below)
       const slices: ReturnType<typeof svg>[] = [];
 
       if (sliceData.length === 1) {
-        // Single value — full donut ring via evenodd
-        slices.push(svg`
-          <path
-            fill-rule="evenodd"
-            fill=${sliceData[0].color}
-            d="M${cx},${cy - r} A${r},${r} 0 1,1 ${cx - 0.001},${cy - r} Z
-               M${cx},${cy - ir} A${ir},${ir} 0 1,0 ${cx - 0.001},${cy - ir} Z"
-          />
-        `);
+        slices.push(svg`<circle cx=${cx} cy=${cy} r=${r} fill=${sliceData[0].color} />`);
       } else {
         let startAngle = -Math.PI / 2;
         for (const { value, color } of sliceData) {
           const fraction = value / total;
           const endAngle = startAngle + fraction * 2 * Math.PI;
           const largeArc = fraction > 0.5 ? 1 : 0;
-
           const x1 = cx + r * Math.cos(startAngle);
           const y1 = cy + r * Math.sin(startAngle);
           const x2 = cx + r * Math.cos(endAngle);
           const y2 = cy + r * Math.sin(endAngle);
-          const ix1 = cx + ir * Math.cos(startAngle);
-          const iy1 = cy + ir * Math.sin(startAngle);
-          const ix2 = cx + ir * Math.cos(endAngle);
-          const iy2 = cy + ir * Math.sin(endAngle);
-
           slices.push(svg`
             <path
-              d="M${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2}
-                 L${ix2},${iy2} A${ir},${ir} 0 ${largeArc},0 ${ix1},${iy1} Z"
+              d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z"
               fill=${color}
             />
           `);
-
           startAngle = endAngle;
         }
       }
+
+      const maskId = `donut-${cx}-${cy}`;
 
       return html`
         <style>
@@ -123,7 +109,13 @@ customElements.define(
           viewBox="0 0 ${size} ${size}"
           xmlns="http://www.w3.org/2000/svg"
         >
-          ${slices}
+          <defs>
+            <mask id=${maskId}>
+              <circle cx=${cx} cy=${cy} r=${r} fill="white" />
+              <circle cx=${cx} cy=${cy} r=${ir} fill="black" />
+            </mask>
+          </defs>
+          <g mask="url(#${maskId})">${slices}</g>
         </svg>
       `;
     }
