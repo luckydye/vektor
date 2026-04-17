@@ -460,7 +460,7 @@ watch(documentData, (doc) => {
   if (typeof doc.content === "string") {
     renderedHtml.value = doc.content;
   }
-  applyLayout(doc.properties?.layout || "document");
+  applyLayout(doc.properties?.layout || (props.documentType === "csv" ? "full" : "document"));
 });
 
 function renderTableView() {
