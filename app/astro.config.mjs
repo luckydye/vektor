@@ -13,6 +13,10 @@ export default defineConfig({
     enabled: false,
   },
 
+  security: {
+    checkOrigin: false,
+  },
+
   vite: {
     plugins: [
       //

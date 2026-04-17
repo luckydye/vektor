@@ -17,6 +17,7 @@ import {
   createParseErrorResponse,
   handleMcpRequest,
   type JsonRpcRequest,
+  type JsonRpcResponse,
 } from "../../../../../utils/vektorMcp.ts";
 
 function getApiOrigin(request: Request): string {
@@ -43,6 +44,22 @@ async function resolveJobToken(context: APIContext, spaceId: string): Promise<st
   const user = requireUser(context);
   await verifySpaceRole(spaceId, user.id, "viewer");
   return createJobToken(spaceId, Date.now().toString(), user.id);
+}
+
+function generateSessionId(): string {
+  return crypto.randomUUID();
+}
+
+function sseResponse(data: JsonRpcResponse): Response {
+  const body = `event: message\ndata: ${JSON.stringify(data)}\n\n`;
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
 
 export const POST: APIRoute = (context) =>
@@ -72,5 +89,60 @@ export const POST: APIRoute = (context) =>
       return new Response(null, { status: 204 });
     }
 
-    return jsonResponse(response);
+    const accept = context.request.headers.get("Accept") ?? "";
+    const wantsSSE = accept.includes("text/event-stream");
+
+    const sessionId =
+      context.request.headers.get("Mcp-Session-Id") ?? generateSessionId();
+
+    if (wantsSSE) {
+      const res = sseResponse(response);
+      res.headers.set("Mcp-Session-Id", sessionId);
+      return res;
+    }
+
+    const res = jsonResponse(response);
+    res.headers.set("Mcp-Session-Id", sessionId);
+    return res;
   }, "Failed to handle MCP request");
+
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
+    const sessionId = context.request.headers.get("Mcp-Session-Id");
+    if (!sessionId) {
+      return new Response("Mcp-Session-Id header required", { status: 400 });
+    }
+
+    // SSE stream for server-initiated messages. Keep-alive only for now —
+    // server-initiated notifications not yet implemented.
+    const stream = new ReadableStream({
+      start(controller) {
+        const keepAlive = setInterval(() => {
+          controller.enqueue(new TextEncoder().encode(": keep-alive\n\n"));
+        }, 15_000);
+        context.request.signal.addEventListener("abort", () => {
+          clearInterval(keepAlive);
+          controller.close();
+        });
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Mcp-Session-Id": sessionId,
+      },
+    });
+  }, "Failed to open MCP SSE stream");
+
+export const DELETE: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
+    const sessionId = context.request.headers.get("Mcp-Session-Id");
+    if (!sessionId) {
+      return new Response("Mcp-Session-Id header required", { status: 400 });
+    }
+    return new Response(null, { status: 204 });
+  }, "Failed to close MCP session");
