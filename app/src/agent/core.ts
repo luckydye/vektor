@@ -60,6 +60,7 @@ The bash tool runs inside bash, not full system shell.
 - Use human-readable filenames for uploaded files (e.g. the document title, not the document ID).
 - Only include final output files in zips. Delete or exclude intermediate files (e.g. downloaded HTML used to produce CSVs) before zipping.
 - ai command is available for one-shot AI completions: \`ai <prompt>\` or \`echo <prompt> | ai\`. Examples: \`ai "summarize this" < doc.txt\`, \`cat data.csv | ai "what are the trends?"\`.
+- curl is available for HTTP requests. Use \`curl -s <url>\` for GET, \`curl -X POST -H "Content-Type: application/json" -d '{"key":"val"}' <url>\` for POST. Pipe output to \`html-to-markdown\` to convert pages to markdown.
 - Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
 - To loop over lines in a file, use \`done < file.txt\` (single \`<\`). The \`<<\` operator is a heredoc and reads inline text, not a file. Correct pattern: \`while read -r line; do echo "$line"; done < file.txt\`
@@ -1021,6 +1022,62 @@ export function createAgentShell(
     return { stdout: `${text}\n`, stderr: "", exitCode: 0 };
   });
 
+  // Custom curl that uses Node.js fetch directly, bypassing just-bash's loopback/private IP block.
+  // Supports: -s (silent), -o <file>, -X <method>, -H <header>, -d <body>, -L (follow redirects).
+  const curlCommand = defineCommand("curl", async (args, ctx) => {
+    let silent = false;
+    let outputFile: string | null = null;
+    let method = "GET";
+    const headers: Record<string, string> = {};
+    let body: string | null = null;
+    let url: string | null = null;
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]!;
+      if (arg === "-s" || arg === "--silent") { silent = true; continue; }
+      if (arg === "-L" || arg === "--location") { continue; } // fetch follows redirects by default
+      if (arg === "-o" || arg === "--output") { outputFile = args[++i] ?? null; continue; }
+      if (arg === "-X" || arg === "--request") { method = args[++i] ?? "GET"; continue; }
+      if (arg === "-H" || arg === "--header") {
+        const raw = args[++i] ?? "";
+        const colon = raw.indexOf(":");
+        if (colon !== -1) headers[raw.slice(0, colon).trim()] = raw.slice(colon + 1).trim();
+        continue;
+      }
+      if (arg === "-d" || arg === "--data") { body = args[++i] ?? null; if (method === "GET") method = "POST"; continue; }
+      if (!arg.startsWith("-")) { url = arg; continue; }
+    }
+
+    if (!url) {
+      return { stdout: "", stderr: "curl: no URL specified\nusage: curl [-s] [-o file] [-X method] [-H header] [-d data] <url>\n", exitCode: 2 };
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      ...(body != null ? { body } : {}),
+      redirect: "follow",
+    });
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+
+    if (!response.ok && !silent) {
+      const text = Buffer.from(bytes).toString("utf-8");
+      return { stdout: "", stderr: `curl: HTTP ${response.status}\n${text}\n`, exitCode: 22 };
+    }
+
+    if (outputFile) {
+      const filePath = ctx.fs.resolvePath(ctx.cwd, outputFile);
+      await ctx.fs.writeFile(filePath, bytes, "binary");
+      if (!silent) {
+        return { stdout: `  % Total\n100  ${bytes.length}\n`, stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+
+    return { stdout: Buffer.from(bytes).toString("utf-8"), stderr: "", exitCode: 0 };
+  });
+
   const extensionCommand = defineCommand("extension", async (args, ctx) => {
     const usage = "usage: extension install <zip-file>\n";
     const [subcommand, fileArg] = args;
@@ -1053,6 +1110,6 @@ export function createAgentShell(
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    customCommands: [zipCommand, zipinfoCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand, extensionCommand],
+    customCommands: [zipCommand, zipinfoCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand, extensionCommand, curlCommand],
   });
 }
