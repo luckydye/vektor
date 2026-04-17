@@ -23,10 +23,8 @@ import {
 } from "../../../../../utils/vektorMcp.ts";
 
 function getApiOrigin(request: Request): string {
-  const configured = config().API_URL;
-  if (configured) {
-    return new URL(configured, request.url).origin;
-  }
+  // Use the request's own origin for internal API calls — avoids routing
+  // back through a reverse proxy (nginx) which may block loopback requests.
   return new URL(request.url).origin;
 }
 
