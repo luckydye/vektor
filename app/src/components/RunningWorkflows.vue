@@ -14,6 +14,7 @@ type WorkflowRun = {
   finishedAt: string | null;
   totalNodes: number;
   completedNodes: number;
+  runtimeInputs: Record<string, unknown>;
 };
 
 const props = defineProps<{
@@ -152,7 +153,7 @@ const groupedRuns = computed(() => {
           <div class="flex items-start justify-between gap-3 mb-3">
             <div class="min-w-0">
               <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400 mb-1">Workflow</p>
-              <h3 class="font-semibold text-[15px] leading-tight text-neutral-900 line-clamp-2">{{ run.documentTitle }}</h3>
+              <h3 class="font-semibold text-[15px] leading-tight text-neutral-900 line-clamp-2">{{ run.runtimeInputs?.title ?? run.documentTitle }}</h3>
             </div>
             <span
               class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold text-[11px] uppercase tracking-[0.08em] flex-shrink-0"
