@@ -3,10 +3,9 @@ const STYLES = `
     display: block;
     width: 100%;
     height: 100%;
-    padding: 1rem;
   }
 
-  .container {
+  .scroll {
     width: 100%;
     height: 100%;
     overflow: auto;
@@ -15,11 +14,12 @@ const STYLES = `
   table {
     border-collapse: collapse;
     table-layout: fixed;
-    min-width: max-content;
+    width: max-content;
     font-size: 13px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 
+  /* Column-label row (A, B, C…) — frozen at top */
   .col-labels th {
     position: sticky;
     top: 0;
@@ -33,43 +33,58 @@ const STYLES = `
     height: 28px;
     user-select: none;
     white-space: nowrap;
+    overflow: hidden;
   }
 
-  .col-labels .row-num {
-    position: sticky;
-    left: 0;
-    z-index: 30;
-  }
-
+  /* Column-header row (CSV field names) — frozen below col-labels */
+  /* position:sticky makes this a containing block for .col-resize-handle */
   .col-headers th {
     position: sticky;
     top: 28px;
     z-index: 20;
     background: #f9fafb;
-    padding: 4px 8px;
+    /* right padding leaves room for the resize handle */
+    padding: 4px 12px 4px 8px;
     font-weight: 600;
     color: #111827;
     text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 160px;
     height: 32px;
   }
 
-  .col-headers .row-num {
+  /* Row-number column — frozen at left; corner cells frozen on both axes */
+  .col-labels th.row-num {
     position: sticky;
     left: 0;
     z-index: 30;
   }
 
-  tbody tr:nth-child(even) td {
-    background: rgba(249, 250, 251, 0.5);
+  .col-headers th.row-num {
+    position: sticky;
+    top: 28px;
+    left: 0;
+    z-index: 30;
   }
 
-  tbody tr:hover td {
-    background: rgba(239, 246, 255, 0.5) !important;
+  tbody .row-num {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    text-align: center;
+    font-size: 11px;
+    color: #9ca3af;
+    user-select: none;
+    /* containing block for .row-resize-handle */
   }
+
+  /* Body cells */
+  tbody tr:nth-child(even) td { background: rgba(249, 250, 251, 0.5); }
+  tbody tr:hover td { background: rgba(239, 246, 255, 0.5) !important; }
+  tbody tr:hover .row-num { background: rgba(219, 234, 254, 0.5) !important; }
 
   tbody td {
     border: 1px solid #e5e7eb;
@@ -78,26 +93,39 @@ const STYLES = `
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 160px;
+    max-width: 0;
     height: 30px;
   }
 
-  tbody .row-num {
-    position: sticky;
-    left: 0;
-    background: #f3f4f6;
-    border: 1px solid #d1d5db;
-    text-align: center;
-    font-size: 11px;
-    color: #9ca3af;
-    user-select: none;
-    z-index: 10;
-    width: 52px;
-    min-width: 52px;
+  /* Resize handles */
+  .col-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 4px;
+    cursor: col-resize;
+    z-index: 1;
   }
 
-  tbody tr:hover .row-num {
-    background: rgba(219, 234, 254, 0.5) !important;
+  .col-resize-handle:hover,
+  .col-resize-handle.resizing {
+    background: #3b82f6;
+  }
+
+  .row-resize-handle {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 4px;
+    cursor: row-resize;
+    z-index: 1;
+  }
+
+  .row-resize-handle:hover,
+  .row-resize-handle.resizing {
+    background: #3b82f6;
   }
 `;
 
@@ -137,57 +165,54 @@ function parseHtmlTable(html: string): { headers: string[]; rows: string[][] } {
 
 const COL_WIDTH = 160;
 const ROW_NUM_WIDTH = 52;
+const MIN_COL_WIDTH = 40;
+const MIN_ROW_HEIGHT = 20;
 
 function render(html: string): string {
   const { headers, rows } = parseHtmlTable(html);
 
   const dataColCount = Math.max(headers.length, ...rows.map((r) => r.length), 0);
-  const dataRowCount = rows.length;
-
   const colCount = Math.max(dataColCount, 26);
-  const rowCount = Math.max(dataRowCount, 256);
+  const rowCount = Math.max(rows.length, 256);
 
-  const colgroup = `
-    <colgroup>
-      <col style="width:${ROW_NUM_WIDTH}px;min-width:${ROW_NUM_WIDTH}px" />
-      ${Array.from({ length: colCount }, () => `<col style="width:${COL_WIDTH}px;min-width:80px" />`).join("")}
-    </colgroup>`;
+  const colgroupHtml = `<colgroup>
+    <col style="width:${ROW_NUM_WIDTH}px;min-width:${ROW_NUM_WIDTH}px" />
+    ${Array.from({ length: colCount }, (_, i) => `<col data-col="${i}" style="width:${COL_WIDTH}px" />`).join("")}
+  </colgroup>`;
 
-  const colLabelsRow = `
-    <tr class="col-labels">
-      <th class="row-num"></th>
-      ${Array.from({ length: colCount }, (_, i) => `<th>${colLabel(i)}</th>`).join("")}
-    </tr>`;
+  const colLabelsRow = `<tr class="col-labels">
+    <th class="row-num"></th>
+    ${Array.from({ length: colCount }, (_, i) => `<th>${colLabel(i)}</th>`).join("")}
+  </tr>`;
 
-  const colHeadersRow = `
-    <tr class="col-headers">
-      <th class="row-num"></th>
-      ${headers.map((h) => `<th title="${escapeHtml(h)}">${escapeHtml(h)}</th>`).join("")}
-      ${Array.from({ length: colCount - headers.length }, () => `<th></th>`).join("")}
-    </tr>`;
+  const colHeadersRow = `<tr class="col-headers">
+    <th class="row-num"></th>
+    ${headers.map((h, i) => `<th data-col-index="${i}" title="${escapeHtml(h)}">${escapeHtml(h)}<div class="col-resize-handle"></div></th>`).join("")}
+    ${Array.from({ length: colCount - headers.length }, (_, i) => `<th data-col-index="${headers.length + i}"><div class="col-resize-handle"></div></th>`).join("")}
+  </tr>`;
 
   const bodyRows = Array.from({ length: rowCount }, (_, ri) => {
     const row = rows[ri] ?? [];
-    return `
-      <tr>
-        <td class="row-num">${ri + 1}</td>
-        ${row.map((cell) => `<td title="${escapeHtml(cell)}">${escapeHtml(cell)}</td>`).join("")}
-        ${Array.from({ length: colCount - row.length }, () => `<td></td>`).join("")}
-      </tr>`;
+    return `<tr>
+      <td class="row-num">${ri + 1}<div class="row-resize-handle"></div></td>
+      ${row.map((cell) => `<td title="${escapeHtml(cell)}">${escapeHtml(cell)}</td>`).join("")}
+      ${Array.from({ length: colCount - row.length }, () => `<td></td>`).join("")}
+    </tr>`;
   }).join("");
 
-  return `
-    <div class="container">
-      <table>
-        ${colgroup}
-        <thead>${colLabelsRow}${colHeadersRow}</thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
-    </div>`;
+  return `<div class="scroll">
+    <table>
+      ${colgroupHtml}
+      <thead>${colLabelsRow}${colHeadersRow}</thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+  </div>`;
 }
 
 export class TableViewElement extends HTMLElement {
   private wheelHandler: ((e: WheelEvent) => void) | null = null;
+  private colDragCleanup: (() => void) | null = null;
+  private rowDragCleanup: (() => void) | null = null;
 
   connectedCallback() {
     if (!this.shadowRoot) {
@@ -199,21 +224,124 @@ export class TableViewElement extends HTMLElement {
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
     }
+
+    this.colDragCleanup?.();
+    this.rowDragCleanup?.();
+
     this.shadowRoot!.innerHTML = `<style>${STYLES}</style>${render(html)}`;
 
-    const container = this.shadowRoot!.querySelector<HTMLElement>(".container")!;
+    const root = this.shadowRoot!;
+    const scroll = root.querySelector<HTMLElement>(".scroll")!;
+    const table = root.querySelector<HTMLTableElement>("table")!;
 
     if (this.wheelHandler) {
       this.removeEventListener("wheel", this.wheelHandler);
     }
-
     this.wheelHandler = (e: WheelEvent) => {
       e.preventDefault();
-      container.scrollLeft += e.deltaX;
-      container.scrollTop += e.deltaY;
+      scroll.scrollLeft += e.deltaX;
+      scroll.scrollTop += e.deltaY;
     };
-
     this.addEventListener("wheel", this.wheelHandler, { passive: false });
+
+    // Column resizing
+    {
+      let activeHandle: HTMLElement | null = null;
+      let startX = 0;
+      let startWidth = 0;
+      let colEl: HTMLElement | null = null;
+
+      const onMouseMove = (e: MouseEvent) => {
+        if (!colEl) return;
+        const newWidth = Math.max(MIN_COL_WIDTH, startWidth + e.clientX - startX);
+        colEl.style.width = `${newWidth}px`;
+      };
+
+      const onMouseUp = () => {
+        activeHandle?.classList.remove("resizing");
+        activeHandle = null;
+        colEl = null;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      const onMouseDown = (e: MouseEvent) => {
+        const handle = (e.target as HTMLElement).closest<HTMLElement>(".col-resize-handle");
+        if (!handle) return;
+        const th = handle.parentElement as HTMLElement;
+        const colIndex = parseInt(th.dataset.colIndex ?? "0");
+        // index 0 in querySelectorAll("col") is the row-num col; data cols start at 1
+        colEl = table.querySelectorAll<HTMLElement>("col")[colIndex + 1] ?? null;
+        if (!colEl) return;
+        activeHandle = handle;
+        startX = e.clientX;
+        startWidth = colEl.offsetWidth;
+        activeHandle.classList.add("resizing");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+        e.preventDefault();
+      };
+
+      table.addEventListener("mousedown", onMouseDown);
+      this.colDragCleanup = () => {
+        table.removeEventListener("mousedown", onMouseDown);
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+    }
+
+    // Row resizing
+    {
+      let activeHandle: HTMLElement | null = null;
+      let startY = 0;
+      let startHeight = 0;
+      let rowEl: HTMLElement | null = null;
+
+      const onMouseMove = (e: MouseEvent) => {
+        if (!rowEl) return;
+        const newHeight = Math.max(MIN_ROW_HEIGHT, startHeight + e.clientY - startY);
+        for (const td of rowEl.querySelectorAll<HTMLElement>("td")) {
+          td.style.height = `${newHeight}px`;
+        }
+      };
+
+      const onMouseUp = () => {
+        activeHandle?.classList.remove("resizing");
+        activeHandle = null;
+        rowEl = null;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      const onMouseDown = (e: MouseEvent) => {
+        const handle = (e.target as HTMLElement).closest<HTMLElement>(".row-resize-handle");
+        if (!handle) return;
+        const td = handle.parentElement as HTMLElement;
+        rowEl = td.parentElement as HTMLElement;
+        activeHandle = handle;
+        startY = e.clientY;
+        startHeight = td.offsetHeight;
+        activeHandle.classList.add("resizing");
+        document.body.style.cursor = "row-resize";
+        document.body.style.userSelect = "none";
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+        e.preventDefault();
+      };
+
+      table.addEventListener("mousedown", onMouseDown);
+      this.rowDragCleanup = () => {
+        table.removeEventListener("mousedown", onMouseDown);
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+    }
   }
 
   disconnectedCallback() {
@@ -221,6 +349,8 @@ export class TableViewElement extends HTMLElement {
       this.removeEventListener("wheel", this.wheelHandler);
       this.wheelHandler = null;
     }
+    this.colDragCleanup?.();
+    this.rowDragCleanup?.();
   }
 }
 
