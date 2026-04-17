@@ -6,12 +6,14 @@ import {
   unauthorizedResponse,
   verifySpaceRole,
   withApiErrorHandling,
+  authenticateWithToken,
 } from "#db/api.ts";
 import {
   createJobToken,
   parseJobToken,
   verifyJobToken,
 } from "../../../../../jobs/jobToken.ts";
+import { getTokenUserId } from "../../../../../db/accessTokens.ts";
 import { config } from "../../../../../config.ts";
 import {
   createParseErrorResponse,
@@ -29,21 +31,40 @@ function getApiOrigin(request: Request): string {
 }
 
 async function resolveJobToken(context: APIContext, spaceId: string): Promise<string> {
-  if (!context.locals.user) {
-    const providedJobToken = context.request.headers.get("X-Job-Token");
-    if (!providedJobToken || !verifyJobToken(providedJobToken, spaceId)) {
-      throw unauthorizedResponse();
-    }
+  // 1. X-Job-Token header (internal calls from agent workers)
+  const providedJobToken = context.request.headers.get("X-Job-Token");
+  if (providedJobToken) {
     const parsed = parseJobToken(providedJobToken, spaceId);
-    if (!parsed) {
-      throw unauthorizedResponse();
-    }
+    if (!parsed) throw unauthorizedResponse();
     return providedJobToken;
   }
 
+  // 2. Access token (Bearer at_... or at_...)
+  const tokenResult = await authenticateWithToken(context, spaceId);
+  if (tokenResult) {
+    const userId = getTokenUserId(tokenResult.tokenId);
+    return createJobToken(spaceId, Date.now().toString(), userId);
+  }
+
+  // 3. Session cookie
   const user = requireUser(context);
   await verifySpaceRole(spaceId, user.id, "viewer");
   return createJobToken(spaceId, Date.now().toString(), user.id);
+}
+
+/** Verify caller has at least viewer access to the space. */
+async function requireSpaceAuth(context: APIContext, spaceId: string): Promise<void> {
+  const jobToken = context.request.headers.get("X-Job-Token");
+  if (jobToken) {
+    if (!parseJobToken(jobToken, spaceId)) throw unauthorizedResponse();
+    return;
+  }
+
+  const tokenResult = await authenticateWithToken(context, spaceId);
+  if (tokenResult) return;
+
+  const user = requireUser(context);
+  await verifySpaceRole(spaceId, user.id, "viewer");
 }
 
 function generateSessionId(): string {
@@ -108,13 +129,14 @@ export const POST: APIRoute = (context) =>
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
+    const spaceId = requireParam(context.params, "spaceId");
+    await requireSpaceAuth(context, spaceId);
+
     const sessionId = context.request.headers.get("Mcp-Session-Id");
     if (!sessionId) {
       return new Response("Mcp-Session-Id header required", { status: 400 });
     }
 
-    // SSE stream for server-initiated messages. Keep-alive only for now —
-    // server-initiated notifications not yet implemented.
     const stream = new ReadableStream({
       start(controller) {
         const keepAlive = setInterval(() => {
@@ -140,6 +162,9 @@ export const GET: APIRoute = (context) =>
 
 export const DELETE: APIRoute = (context) =>
   withApiErrorHandling(async () => {
+    const spaceId = requireParam(context.params, "spaceId");
+    await requireSpaceAuth(context, spaceId);
+
     const sessionId = context.request.headers.get("Mcp-Session-Id");
     if (!sessionId) {
       return new Response("Mcp-Session-Id header required", { status: 400 });
