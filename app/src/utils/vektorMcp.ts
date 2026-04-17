@@ -279,6 +279,54 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     {
+      name: "run_workflow",
+      description: "Start a workflow run for a workflow document.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string", description: "Workflow document ID" },
+          inputs: { type: "object", description: "Runtime inputs for workflow nodes" },
+          sourceExtensionId: { type: "string", description: "Extension that initiated the run" },
+        },
+        required: ["documentId"],
+      },
+    },
+    {
+      name: "get_workflow_run",
+      description: "Get status and outputs of a workflow run.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          runId: { type: "string", description: "Workflow run ID" },
+        },
+        required: ["runId"],
+      },
+    },
+    {
+      name: "get_workflow_log",
+      description:
+        "Get logs from a workflow run. Returns logs and errors for all nodes, or a specific node if nodeId is provided.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          runId: { type: "string", description: "Workflow run ID" },
+          nodeId: { type: "string", description: "Filter logs to a specific node" },
+        },
+        required: ["runId"],
+      },
+    },
+    {
+      name: "list_workflow_runs",
+      description: "List workflow runs in the current Vektor space.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string", description: "Filter by workflow document ID" },
+          sourceExtensionId: { type: "string", description: "Filter by source extension" },
+        },
+      },
+    },
+    {
       name: "install_extension",
       description:
         "Install or update a Vektor extension from a ZIP package. Pass base64-encoded ZIP content. The ZIP must contain manifest.json at root and dist/ with JS entry points.",
@@ -407,6 +455,57 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
           },
           body: JSON.stringify({ properties }),
         },
+      );
+    }
+    case "run_workflow": {
+      const documentId = expectString(args, "documentId")!;
+      const inputs = expectObject(args, "inputs", { optional: true });
+      const sourceExtensionId = expectString(args, "sourceExtensionId", { optional: true });
+      const body: Record<string, unknown> = { documentId };
+      if (inputs) body.inputs = inputs;
+      if (sourceExtensionId) body.sourceExtensionId = sourceExtensionId;
+      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/workflows/runs`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: new URL(config.apiUrl).origin,
+        },
+        body: JSON.stringify(body),
+      });
+    }
+    case "get_workflow_run": {
+      const runId = expectString(args, "runId")!;
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
+      );
+    }
+    case "get_workflow_log": {
+      const runId = expectString(args, "runId")!;
+      const nodeId = expectString(args, "nodeId", { optional: true });
+      const run = (await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
+      )) as { nodes: Record<string, { logs: string[]; error: string | null; status: string }> };
+      if (nodeId) {
+        const node = run.nodes[nodeId];
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+        return { nodeId, status: node.status, error: node.error, logs: node.logs };
+      }
+      const result: Record<string, { status: string; error: string | null; logs: string[] }> = {};
+      for (const [id, node] of Object.entries(run.nodes)) {
+        if (node.logs.length > 0 || node.error) {
+          result[id] = { status: node.status, error: node.error, logs: node.logs };
+        }
+      }
+      return result;
+    }
+    case "list_workflow_runs": {
+      const documentId = expectString(args, "documentId", { optional: true });
+      const sourceExtensionId = expectString(args, "sourceExtensionId", { optional: true });
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/workflows/runs${buildQuery({ documentId, sourceExtensionId })}`,
       );
     }
     case "upload_artifact": {
