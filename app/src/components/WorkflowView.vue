@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { api } from "../api/client.ts";
 import type { WorkflowRunStatus, WorkflowNodeState } from "../api/ApiClient.ts";
+import DataTable from "./DataTable.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -152,6 +153,20 @@ const outputDocumentId = computed<string | null>(() =>
   unwrapOutputValue(selectedRunDetail.value?.output?.["documentId"]),
 );
 
+function extractTableData(output: Record<string, unknown> | null | undefined): Record<string, unknown>[] | null {
+  let raw: unknown = output?.["data"] ?? output?.["result"];
+  // unwrap { type: "text", value: "..." } envelope
+  const str = unwrapOutputValue(raw);
+  if (str !== null) {
+    try { raw = JSON.parse(str); } catch { return null; }
+  }
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  if (typeof raw[0] !== "object" || raw[0] === null) return null;
+  return raw as Record<string, unknown>[];
+}
+
+const outputData = computed(() => extractTableData(selectedRunDetail.value?.output));
+
 const outputDocumentHref = ref<string | null>(null);
 const outputDocumentTitle = ref<string | null>(null);
 
@@ -187,6 +202,10 @@ async function toggleHistoryRun(runId: string) {
 
 function historyOutputHtml(runId: string): string | null {
   return unwrapOutputValue(historyRunDetails.value.get(runId)?.output?.["html"]);
+}
+
+function historyOutputData(runId: string): Record<string, unknown>[] | null {
+  return extractTableData(historyRunDetails.value.get(runId)?.output);
 }
 
 function historyOutputDocumentHref(runId: string): string | null {
@@ -346,8 +365,11 @@ const statusBadgeClass: Record<string, string> = {
 
       <!-- HTML output -->
       <div v-if="outputHtml" class="rounded-xl border border-neutral-200 overflow-hidden">
-        <div v-html="outputHtml" class="p-6" />
+        <div v-html="outputHtml" class="p-2" />
       </div>
+
+      <!-- Data table -->
+      <DataTable v-if="outputData" :data="outputData" />
 
       <!-- Document link -->
       <div v-if="outputDocumentId && outputDocumentHref" class="inline-flex items-center gap-2">
@@ -370,6 +392,17 @@ const statusBadgeClass: Record<string, string> = {
           </svg>
         </button>
       </div>
+
+      <!-- Raw output fields (debug) -->
+      <details v-if="selectedRunDetail?.output" class="text-xs">
+        <summary class="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">Output fields</summary>
+        <div class="mt-2 space-y-2">
+          <div v-for="(val, key) in selectedRunDetail.output" :key="key" class="rounded-lg border border-neutral-200 overflow-hidden">
+            <div class="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 font-mono font-semibold text-neutral-500 border-b border-neutral-200">{{ key }}</div>
+            <pre class="px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-300">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+          </div>
+        </div>
+      </details>
 
     </div>
 
@@ -436,6 +469,8 @@ const statusBadgeClass: Record<string, string> = {
               <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
                 <div v-html="historyOutputHtml(run.runId)" class="p-4" />
               </div>
+              <DataTable v-if="historyOutputData(run.runId)" :data="historyOutputData(run.runId)!" />
+
               <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
                 <a
                   :href="historyOutputDocumentHref(run.runId)!"
@@ -456,7 +491,7 @@ const statusBadgeClass: Record<string, string> = {
                   </svg>
                 </button>
               </div>
-              <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId)" class="text-xs text-neutral-400">No output</p>
+              <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-xs text-neutral-400">No output</p>
             </template>
             <div v-else class="text-xs text-neutral-400">Loading…</div>
           </div>
