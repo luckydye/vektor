@@ -13,7 +13,7 @@ import {
   parseJobToken,
   verifyJobToken,
 } from "../../../../jobs/jobToken.ts";
-import { config } from "../../../../config.ts";
+import { getLocalOrigin } from "../../../../config.ts";
 import { runAgentInWorker, type AgentEvent } from "../../../../agent/agent.ts";
 import {
   getAIChatSession,
@@ -39,14 +39,6 @@ type AcpRequestBody = {
   spaceId?: string;
   documentId?: string;
 };
-
-function getApiOrigin(request: Request): string {
-  const configured = config().API_URL;
-  if (configured) {
-    return new URL(configured, request.url).origin;
-  }
-  return new URL(request.url).origin;
-}
 
 function normalizeMessages(
   messages: ChatMessage[],
@@ -216,7 +208,7 @@ export const POST: APIRoute = (context) =>
       const sharedOptions = {
         chatId: body.chatId,
         messages,
-        apiUrl: getApiOrigin(context.request),
+        apiUrl: getLocalOrigin(),
         spaceId: body.spaceId,
         documentId: body.documentId,
         jobToken,
