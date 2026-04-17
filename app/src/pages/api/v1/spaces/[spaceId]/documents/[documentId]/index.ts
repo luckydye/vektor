@@ -49,7 +49,7 @@ import { document as documentTable } from "#db/schema/space.ts";
 import { eq } from "drizzle-orm";
 import { createAuditLog } from "#db/auditLogs.ts";
 import { realtimeTopics } from "../../../../../../../utils/realtime.ts";
-import { verifyJobToken } from "../../../../../../../jobs/jobToken.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 type PropertyPatchValue =
   | null
@@ -395,7 +395,6 @@ export const PUT: APIRoute = (context) =>
 
 export const PATCH: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "documentId");
     const existingDoc = await getDocument(spaceId, id);
@@ -403,10 +402,16 @@ export const PATCH: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+    const userId = auth.type === "user" ? auth.user.id : auth.userId;
+    if (!userId) {
+      throw forbiddenResponse("Job token is missing user context");
+    }
+
     const body = await parseJsonBody<DocumentPatchBody>(context.request);
     const { properties, parentId, publishedRev, readonly } = body;
 
-    await verifyDocumentRole(spaceId, id, user.id, "editor");
+    await verifyDocumentRole(spaceId, id, userId, "editor");
 
     if (properties !== undefined) {
       if (parentId !== undefined || publishedRev !== undefined || readonly !== undefined) {
@@ -422,7 +427,7 @@ export const PATCH: APIRoute = (context) =>
       const payload = await handlePropertiesPatch(
         spaceId,
         id,
-        user.id,
+        userId,
         properties as Record<string, PropertyPatchValue>,
       );
       return successResponse(payload);
@@ -434,7 +439,7 @@ export const PATCH: APIRoute = (context) =>
       }
 
       if (parentId) {
-        await verifyDocumentAccess(spaceId, parentId, user.id);
+        await verifyDocumentAccess(spaceId, parentId, userId);
       }
 
       const parentChange = await setDocumentParent(spaceId, id, parentId);
@@ -463,14 +468,14 @@ export const PATCH: APIRoute = (context) =>
     }
 
     if (publishedRev !== undefined) {
-      await handlePublishedRevisionPatch(spaceId, id, user.id, publishedRev);
+      await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev);
     }
 
     if (readonly !== undefined) {
       if (readOnlyDocumentTypes.includes(existingDoc.type ?? "") && readonly !== true) {
         throw badRequestResponse("CSV documents are readonly");
       }
-      await handleReadonlyPatch(spaceId, id, user.id, readonly);
+      await handleReadonlyPatch(spaceId, id, userId, readonly);
     }
 
     return jsonResponse({ success: true });
@@ -478,17 +483,21 @@ export const PATCH: APIRoute = (context) =>
 
 export const DELETE: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "documentId");
     const permanent = context.url.searchParams.get("permanent") === "true";
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+    const userId = auth.type === "user" ? auth.user.id : auth.userId;
+    if (!userId) {
+      throw forbiddenResponse("Job token is missing user context");
+    }
 
     if (permanent) {
-      await verifyDocumentRole(spaceId, id, user.id, "owner");
-      await deleteDocument(spaceId, id, user.id);
+      await verifyDocumentRole(spaceId, id, userId, "owner");
+      await deleteDocument(spaceId, id, userId);
     } else {
-      await verifyDocumentRole(spaceId, id, user.id, "editor");
-      await archiveDocument(spaceId, id, user.id);
+      await verifyDocumentRole(spaceId, id, userId, "editor");
+      await archiveDocument(spaceId, id, userId);
     }
 
     return successResponse();
