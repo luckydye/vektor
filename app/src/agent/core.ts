@@ -45,7 +45,8 @@ export type AgentEvent =
       isError: boolean;
     };
 
-const CORE_AGENT_SYSTEM_PROMPT = `## Bash Tool Runtime
+function buildCoreAgentSystemPrompt(documentId?: string) {
+  return `## Bash Tool Runtime
 The bash tool runs inside bash, not full system shell.
 - Do not assume node, npm, npx, pnpm, bun, pip, or python exist.
 - zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
@@ -90,8 +91,8 @@ The bash tool runs inside bash, not full system shell.
 - Job entry uses worker_threads: \`const {parentPort,workerData}=require("node:worker_threads"); parentPort.postMessage({type:"result",success:true,outputs:{result:{type:"text",value:"..."}}});\`
 - To create an extension: write manifest.json and dist/ files, \`zip ext.zip manifest.json dist/\`, then \`extension install ext.zip\`.
 
-## Current Document
-- When user asks about "this document", "the page", or current content, inspect it first with \`vektor current\`.`;
+${documentId ? `\n## Current Document\n- When user asks about "this document", "the page", or current content, inspect it first with \`vektor current\`.` : ""}`;
+}
 
 async function addPathToZip(
   zip: AdmZip,
@@ -690,7 +691,7 @@ export async function runAgentPrompt(options: {
   ];
 
   const agentMessages: ChatMessage[] = [
-    { role: "system", content: CORE_AGENT_SYSTEM_PROMPT },
+    { role: "system", content: buildCoreAgentSystemPrompt(documentId) },
     ...messages,
   ];
   const allChunks: string[] = [];
