@@ -6,7 +6,10 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { verifyJobToken } from "../../../../jobs/jobToken.ts";
-import { getAIProvider } from "../../../../agent/core.ts";
+import {
+  getAIProvider,
+  getOpenAICompatibleChatCompletionsUrl,
+} from "../../../../agent/core.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -25,9 +28,12 @@ export const POST: APIRoute = (context) =>
       if (provider.provider === "anthropic") {
         return proxyToAnthropic(provider.apiKey, provider.model, bodyJson, context.request.signal);
       }
+      if (provider.provider === "ollama") {
+        return proxyToOllama(provider.baseUrl, provider.model, bodyJson, context.request.signal);
+      }
 
       bodyJson.model = provider.model;
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetch(getOpenAICompatibleChatCompletionsUrl(provider), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -52,6 +58,38 @@ export const POST: APIRoute = (context) =>
   );
 
 type OpenAIMessage = { role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown[] };
+
+async function* parseNDJSONStream(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<Record<string, unknown>> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        yield JSON.parse(trimmed) as Record<string, unknown>;
+      }
+    }
+
+    const tail = buffer.trim();
+    if (tail) {
+      yield JSON.parse(tail) as Record<string, unknown>;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 function toAnthropicRequestBody(model: string, body: Record<string, unknown>): Record<string, unknown> {
   const messages = (body.messages as OpenAIMessage[] | undefined) ?? [];
@@ -195,6 +233,122 @@ async function proxyToAnthropic(
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } finally {
         reader.releaseLock();
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+  });
+}
+
+async function proxyToOllama(
+  baseUrl: string,
+  model: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Response> {
+  const ollamaBody = {
+    model,
+    messages: body.messages,
+    tools: body.tools,
+    stream: body.stream ?? false,
+    think: true,
+  };
+
+  const response = await fetch(`${baseUrl}/api/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(ollamaBody),
+    signal,
+  });
+
+  if (!response.ok) {
+    return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+  }
+
+  if (!body.stream) {
+    const data = await response.json() as {
+      message?: {
+        content?: string;
+        thinking?: string;
+        tool_calls?: Array<{ function?: { name?: string; arguments?: unknown } }>;
+      };
+      done_reason?: string;
+    };
+    const toolCalls = (data.message?.tool_calls ?? []).map((toolCall, index) => ({
+      id: `ollama_tool_${index}_${crypto.randomUUID()}`,
+      type: "function",
+      function: {
+        name: toolCall.function?.name ?? "",
+        arguments: JSON.stringify(toolCall.function?.arguments ?? {}),
+      },
+    }));
+    return Response.json({
+      id: `chatcmpl_${crypto.randomUUID()}`,
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: data.message?.content ?? null,
+          ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+        },
+        finish_reason: toolCalls.length > 0 ? "tool_calls" : data.done_reason ?? "stop",
+      }],
+      acp: data.message?.thinking ? { event: { type: "thinking", text: data.message.thinking } } : undefined,
+    });
+  }
+
+  const encoder = new TextEncoder();
+  const id = `chatcmpl_${crypto.randomUUID()}`;
+  const created = Math.floor(Date.now() / 1000);
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (payload: unknown) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      };
+
+      try {
+        for await (const chunk of parseNDJSONStream(response.body!)) {
+          const message = (chunk.message as Record<string, unknown> | undefined) ?? {};
+          if (typeof message.thinking === "string" && message.thinking) {
+            send({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [{ index: 0, delta: {}, finish_reason: null }],
+              acp: { event: { type: "thinking", text: message.thinking } },
+            });
+          }
+
+          if (typeof message.content === "string" && message.content) {
+            send({
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
+            });
+          }
+        }
+
+        send({
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        });
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      } finally {
         controller.close();
       }
     },

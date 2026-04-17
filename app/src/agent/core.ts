@@ -2,13 +2,20 @@ import AdmZip from "adm-zip";
 import { Bash, defineCommand } from "just-bash";
 import * as html5parser from "html5parser";
 import { dirname, posix } from "node:path";
-import { config, getConfiguredOpenRouterModel, getConfiguredAnthropicModel } from "../config.ts";
+import {
+  config,
+  getConfiguredAnthropicModel,
+  getConfiguredOllamaBaseUrl,
+  getConfiguredOllamaModel,
+  getConfiguredOpenRouterModel,
+} from "../config.ts";
 import { callTool as callVektorTool } from "../utils/vektorMcp.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content?: string | null;
+  thinking?: string | null;
   tool_calls?: Array<{
     id: string;
     type: "function";
@@ -30,6 +37,7 @@ export type AgentShellBootstrap = {
 
 export type AgentEvent =
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "status"; text: string }
   | {
       type: "tool_call";
@@ -422,21 +430,135 @@ async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Recor
   }
 }
 
-export type AIProvider = {
-  provider: "openrouter" | "anthropic";
-  apiKey: string;
-  model: string;
-};
+async function* parseNDJSON(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        yield JSON.parse(trimmed) as Record<string, unknown>;
+      }
+    }
+
+    const tail = buffer.trim();
+    if (tail) {
+      yield JSON.parse(tail) as Record<string, unknown>;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export type AIProvider =
+  | {
+      provider: "anthropic";
+      apiKey: string;
+      model: string;
+    }
+  | {
+      provider: "openrouter";
+      apiKey: string;
+      model: string;
+    }
+  | {
+      provider: "ollama";
+      baseUrl: string;
+      model: string;
+    };
 
 export function getAIProvider(): AIProvider {
   const cfg = config();
+  if (cfg.OLLAMA_BASE_URL) {
+    return { provider: "ollama", baseUrl: getConfiguredOllamaBaseUrl(), model: getConfiguredOllamaModel() };
+  }
   if (cfg.ANTHROPIC_API_KEY) {
     return { provider: "anthropic", apiKey: cfg.ANTHROPIC_API_KEY, model: getConfiguredAnthropicModel() };
   }
   if (cfg.OPENROUTER_API_KEY) {
     return { provider: "openrouter", apiKey: cfg.OPENROUTER_API_KEY, model: getConfiguredOpenRouterModel() };
   }
-  throw new Error("No AI provider configured. Set ANTHROPIC_API_KEY or OPENROUTER_API_KEY.");
+  throw new Error("No AI provider configured. Set OLLAMA_BASE_URL, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY.");
+}
+
+export function getOpenAICompatibleChatCompletionsUrl(
+  _provider: Extract<AIProvider, { provider: "openrouter" }>,
+): string {
+  return "https://openrouter.ai/api/v1/chat/completions";
+}
+
+function getOpenAICompatibleHeaders(
+  provider: Extract<AIProvider, { provider: "openrouter" }>,
+): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${provider.apiKey}`,
+  };
+}
+
+function toOllamaMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
+  const toolNames = new Map<string, string>();
+
+  return messages.map((message) => {
+    if (message.role === "assistant") {
+      const toolCalls = (message.tool_calls ?? []).map((toolCall, index) => {
+        let parsedArguments: unknown;
+        try {
+          parsedArguments = JSON.parse(toolCall.function.arguments || "{}");
+        } catch {
+          parsedArguments = {};
+        }
+
+        toolNames.set(toolCall.id, toolCall.function.name);
+        return {
+          type: "function",
+          function: {
+            index,
+            name: toolCall.function.name,
+            arguments: parsedArguments,
+          },
+        };
+      });
+
+      const result: Record<string, unknown> = {
+        role: "assistant",
+      };
+      if (message.content) result.content = message.content;
+      if (message.thinking) result.thinking = message.thinking;
+      if (toolCalls.length > 0) result.tool_calls = toolCalls;
+      return result;
+    }
+
+    if (message.role === "tool") {
+      if (!message.tool_call_id) {
+        throw new Error("Ollama tool message is missing tool_call_id.");
+      }
+      const toolName = toolNames.get(message.tool_call_id);
+      if (!toolName) {
+        throw new Error(`Ollama tool message references unknown tool_call_id: ${message.tool_call_id}`);
+      }
+      return {
+        role: "tool",
+        tool_name: toolName,
+        content: message.content ?? "",
+      };
+    }
+
+    return {
+      role: message.role,
+      content: message.content ?? "",
+    };
+  });
 }
 
 function toAnthropicMessages(messages: ChatMessage[]): {
@@ -495,6 +617,7 @@ async function callModel(options: {
   tools: unknown[];
   signal?: AbortSignal;
   onText?: (text: string) => void | Promise<void>;
+  onThinking?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
   if (options.provider.provider === "anthropic") {
     const { system, messages: anthropicMessages } = toAnthropicMessages(options.messages);
@@ -569,13 +692,100 @@ async function callModel(options: {
     };
   }
 
-  // OpenRouter
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  if (options.provider.provider === "ollama") {
+    const response = await fetch(`${options.provider.baseUrl}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: options.provider.model,
+        messages: toOllamaMessages(options.messages),
+        tools: options.tools,
+        stream: true,
+        think: true,
+      }),
+      signal: options.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`Ollama ${response.status}: ${await response.text()}`);
+    }
+
+    const pendingCalls = new Map<number, PartialToolCall>();
+    let content = "";
+    let thinking = "";
+    let finishReason = "stop";
+
+    for await (const chunk of parseNDJSON(response.body)) {
+      const message = (chunk.message as Record<string, unknown> | undefined) ?? {};
+      const thinkingDelta = typeof message.thinking === "string" ? message.thinking : "";
+      const contentDelta = typeof message.content === "string" ? message.content : "";
+      if (thinkingDelta) {
+        thinking += thinkingDelta;
+        await options.onThinking?.(thinkingDelta);
+      }
+      if (contentDelta) {
+        content += contentDelta;
+        await options.onText?.(contentDelta);
+      }
+
+      const toolCalls = Array.isArray(message.tool_calls)
+        ? (message.tool_calls as Array<{ function?: { index?: number; name?: string; arguments?: unknown } }>)
+        : [];
+      for (const toolCall of toolCalls) {
+        const index = typeof toolCall.function?.index === "number"
+          ? toolCall.function.index
+          : pendingCalls.size;
+        const pending = pendingCalls.get(index) ?? {
+          id: `ollama_tool_${index}_${crypto.randomUUID()}`,
+          name: "",
+          arguments: "",
+        };
+        if (toolCall.function?.name) {
+          pending.name = toolCall.function.name;
+        }
+        if (toolCall.function?.arguments !== undefined) {
+          pending.arguments = JSON.stringify(toolCall.function.arguments);
+        }
+        pendingCalls.set(index, pending);
+      }
+
+      if (chunk.done === true) {
+        const doneReason = chunk.done_reason;
+        if (typeof doneReason === "string" && doneReason) {
+          finishReason = doneReason;
+        } else if (pendingCalls.size > 0) {
+          finishReason = "tool_calls";
+        }
+      }
+    }
+
+    const toolCalls = [...pendingCalls.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, toolCall]) => ({
+        id: toolCall.id,
+        type: "function" as const,
+        function: {
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+        },
+      }));
+
+    return {
+      message: {
+        role: "assistant",
+        content: content || null,
+        thinking: thinking || null,
+        ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+      },
+      finishReason: toolCalls.length > 0 ? "tool_calls" : finishReason,
+    };
+  }
+
+  const response = await fetch(getOpenAICompatibleChatCompletionsUrl(options.provider), {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${options.provider.apiKey}`,
-    },
+    headers: getOpenAICompatibleHeaders(options.provider),
     body: JSON.stringify({
       model: options.provider.model,
       messages: options.messages,
@@ -586,7 +796,8 @@ async function callModel(options: {
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+    const label = options.provider.provider === "openrouter" ? "OpenRouter" : "Ollama";
+    throw new Error(`${label} ${response.status}: ${await response.text()}`);
   }
 
   const pendingCalls = new Map<number, PartialToolCall>();
@@ -708,6 +919,9 @@ export async function runAgentPrompt(options: {
         allChunks.push(text);
         await onEvent?.({ type: "text", text });
         await onChunk?.(text);
+      },
+      onThinking: async (text) => {
+        await onEvent?.({ type: "thinking", text });
       },
     });
 
@@ -1036,20 +1250,36 @@ export function createAgentShell(
       }
       const data = await response.json() as { content: Array<{ type: string; text?: string }> };
       text = data.content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
-    } else {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    } else if (completion.provider === "ollama") {
+      const response = await fetch(`${completion.baseUrl}/api/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${completion.apiKey}`,
         },
+        body: JSON.stringify({
+          model: completion.model,
+          messages: [{ role: "user", content: prompt }],
+          stream: false,
+          think: true,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Ollama ${response.status}: ${await response.text()}`);
+      }
+      const data = await response.json() as { message?: { content?: string } };
+      text = data.message?.content ?? "";
+    } else {
+      const response = await fetch(getOpenAICompatibleChatCompletionsUrl(completion), {
+        method: "POST",
+        headers: getOpenAICompatibleHeaders(completion),
         body: JSON.stringify({
           model: completion.model,
           messages: [{ role: "user", content: prompt }],
         }),
       });
       if (!response.ok) {
-        throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+        const label = completion.provider === "openrouter" ? "OpenRouter" : "Ollama";
+        throw new Error(`${label} ${response.status}: ${await response.text()}`);
       }
       const data = await response.json() as { choices: Array<{ message: { content: string } }> };
       text = data.choices[0]?.message?.content ?? "";

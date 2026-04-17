@@ -1,6 +1,7 @@
 let _publicEnvVars: Record<string, string> | undefined;
 
 export const DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.5-397b-a17b";
+export const DEFAULT_OLLAMA_MODEL = "qwen3:latest";
 
 const publicEnvVars = () => {
   if (_publicEnvVars) {
@@ -86,7 +87,9 @@ export function config() {
       OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
-SEARCH_EMBEDDINGS_PROVIDER: process.env.WIKI_SEARCH_EMBEDDINGS_PROVIDER,
+      OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
+      OLLAMA_MODEL: process.env.OLLAMA_MODEL,
+      SEARCH_EMBEDDINGS_PROVIDER: process.env.WIKI_SEARCH_EMBEDDINGS_PROVIDER,
       SEARCH_EMBEDDINGS_MODEL: process.env.WIKI_SEARCH_EMBEDDINGS_MODEL,
       SEARCH_EMBEDDINGS_BASE_URL: process.env.WIKI_SEARCH_EMBEDDINGS_BASE_URL,
       SEARCH_EMBEDDINGS_API_KEY: process.env.WIKI_SEARCH_EMBEDDINGS_API_KEY,
@@ -133,6 +136,18 @@ export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
 export function getConfiguredAnthropicModel(): string {
   return config().ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
+}
+
+export function getConfiguredOllamaBaseUrl(): string {
+  const baseUrl = config().OLLAMA_BASE_URL?.trim();
+  if (!baseUrl) {
+    throw new Error("OLLAMA_BASE_URL is required when using Ollama.");
+  }
+  return baseUrl.replace(/\/$/, "");
+}
+
+export function getConfiguredOllamaModel(): string {
+  return config().OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
 }
 
 export function getLocalOrigin(): string {

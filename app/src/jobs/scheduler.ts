@@ -6,8 +6,10 @@ import { pathToFileURL } from "node:url";
 import { extractFile } from "../db/extensions.ts";
 import {
   config,
-  getConfiguredOpenRouterModel,
   getConfiguredAnthropicModel,
+  getConfiguredOllamaBaseUrl,
+  getConfiguredOllamaModel,
+  getConfiguredOpenRouterModel,
   getLocalOrigin,
 } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
@@ -183,6 +185,8 @@ export async function runJob(
           openrouterModel: getConfiguredOpenRouterModel(),
           anthropicApiKey: config().ANTHROPIC_API_KEY,
           anthropicModel: getConfiguredAnthropicModel(),
+          ollamaBaseUrl: config().OLLAMA_BASE_URL ? getConfiguredOllamaBaseUrl() : null,
+          ollamaModel: config().OLLAMA_BASE_URL ? getConfiguredOllamaModel() : null,
           jobId: executionId,
           spaceId,
           // Job-side API calls must stay on internal backend origin.

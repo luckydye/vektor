@@ -43,7 +43,7 @@ export async function fetchStreamingCompletion(options: {
   onEvent?: (event: ChatStreamEvent) => void;
   body?: Record<string, unknown>;
   signal?: AbortSignal;
-}): Promise<{ content: string }> {
+}): Promise<{ content: string; thinking: string }> {
   const response = await fetch(options.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -63,6 +63,7 @@ export async function fetchStreamingCompletion(options: {
   if (!response.body) throw new Error("No response body");
 
   let content = "";
+  let thinking = "";
 
   for await (const chunk of parseSSEStream(response.body)) {
     const error = chunk.error;
@@ -76,6 +77,8 @@ export async function fetchStreamingCompletion(options: {
       options.onEvent?.(event);
       if (event.type === "text") {
         content += event.text;
+      } else if (event.type === "thinking") {
+        thinking += event.text;
       }
       continue;
     }
@@ -86,5 +89,5 @@ export async function fetchStreamingCompletion(options: {
     }
   }
 
-  return { content };
+  return { content, thinking };
 }

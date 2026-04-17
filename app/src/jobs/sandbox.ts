@@ -6,8 +6,10 @@ import { join } from "node:path";
 import { extractFile } from "../db/extensions.ts";
 import {
   config,
-  getConfiguredOpenRouterModel,
   getConfiguredAnthropicModel,
+  getConfiguredOllamaBaseUrl,
+  getConfiguredOllamaModel,
+  getConfiguredOpenRouterModel,
   getLocalOrigin,
 } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
@@ -67,6 +69,8 @@ export async function createSandbox(): Promise<Sandbox> {
         openrouterModel: getConfiguredOpenRouterModel(),
         anthropicApiKey: config().ANTHROPIC_API_KEY,
         anthropicModel: getConfiguredAnthropicModel(),
+        ollamaBaseUrl: config().OLLAMA_BASE_URL ? getConfiguredOllamaBaseUrl() : null,
+        ollamaModel: config().OLLAMA_BASE_URL ? getConfiguredOllamaModel() : null,
         jobId: executionId,
         spaceId,
         apiUrl,

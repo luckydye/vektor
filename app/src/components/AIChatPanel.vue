@@ -416,6 +416,27 @@ function appendAssistantMessageChunk(
   existing.content += text;
 }
 
+function appendThinkingMessageChunk(
+  text: string,
+  thinkingMessageIndex: { value: number | null },
+) {
+  if (!text) return;
+  const existing =
+    thinkingMessageIndex.value === null
+      ? null
+      : messages.value[thinkingMessageIndex.value];
+  if (!existing || existing.role !== "thinking") {
+    messages.value.push({
+      role: "thinking",
+      content: text,
+      timestamp: Date.now(),
+    });
+    thinkingMessageIndex.value = messages.value.length - 1;
+    return;
+  }
+  existing.content += text;
+}
+
 function appendToolEventMessage(event: Exclude<ChatStreamEvent, { type: "text" }>) {
   messages.value.push({
     role: "tool",
@@ -431,14 +452,18 @@ function appendToolEventMessage(event: Exclude<ChatStreamEvent, { type: "text" }
 function applyStreamEvent(
   event: ChatStreamEvent,
   assistantMessageIndex: { value: number | null },
+  thinkingMessageIndex: { value: number | null },
   responseStartIndex: number,
 ) {
   if (event.type === "text") {
     appendAssistantMessageChunk(event.text, assistantMessageIndex);
+  } else if (event.type === "thinking") {
+    appendThinkingMessageChunk(event.text, thinkingMessageIndex);
   } else if (event.type === "status") {
     appendStatusMessage(event.text);
   } else {
     assistantMessageIndex.value = null;
+    thinkingMessageIndex.value = null;
     if (event.type === "tool_call") {
       clearTransientStatusMessages(responseStartIndex);
     }
@@ -488,6 +513,14 @@ function collectAssistantText(startIndex: number): string {
   return messages.value
     .slice(startIndex)
     .filter((message) => message.role === "assistant")
+    .map((message) => message.content)
+    .join("");
+}
+
+function collectThinkingText(startIndex: number): string {
+  return messages.value
+    .slice(startIndex)
+    .filter((message) => message.role === "thinking")
     .map((message) => message.content)
     .join("");
 }
@@ -681,8 +714,9 @@ async function sendWithProvider(message: string, responseStartIndex: number) {
 
   conversationHistory.value.push({ role: "user", content: message });
   const assistantMessageIndex = { value: null as number | null };
+  const thinkingMessageIndex = { value: null as number | null };
 
-  const { content } = await fetchStreamingCompletion({
+  const { content, thinking } = await fetchStreamingCompletion({
     url: "/api/v1/chat/acp",
     model: "bash-agent",
     history: conversationHistory.value,
@@ -695,11 +729,21 @@ async function sendWithProvider(message: string, responseStartIndex: number) {
       appendAssistantMessageChunk(text, assistantMessageIndex);
       scrollToBottom();
     },
-    onEvent: (event) => applyStreamEvent(event, assistantMessageIndex, responseStartIndex),
+    onEvent: (event) =>
+      applyStreamEvent(
+        event,
+        assistantMessageIndex,
+        thinkingMessageIndex,
+        responseStartIndex,
+      ),
     signal: abortController?.signal,
   });
 
-  conversationHistory.value.push({ role: "assistant", content });
+  conversationHistory.value.push({
+    role: "assistant",
+    content,
+    ...(thinking ? { thinking } : {}),
+  });
 }
 
 // ── Session management ────────────────────────────────────────────────────────
@@ -871,6 +915,9 @@ async function sendMessage() {
       conversationHistory.value.push({
         role: "assistant",
         content: collectAssistantText(responseStartIndex) || "(cancelled)",
+        ...(collectThinkingText(responseStartIndex)
+          ? { thinking: collectThinkingText(responseStartIndex) }
+          : {}),
       });
     } else {
       const errorMessage =
@@ -1005,6 +1052,27 @@ onUnmounted(() => {
             <div class="text-[11px] uppercase tracking-wide text-neutral-400 mb-1">Agent log</div>
             <pre class="text-xs leading-relaxed whitespace-pre-wrap font-mono">{{ message.content }}</pre>
           </div>
+          <template v-else-if="message.role === 'thinking'">
+            <div class="w-7 h-7 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-4 h-4 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 019 9c0 3.1-1.57 5.55-3.46 7.2-.92.8-1.54 1.92-1.54 3.1V23H8v-.7c0-1.18-.62-2.3-1.54-3.1C4.57 17.55 3 15.1 3 12a9 9 0 019-9z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 10a3 3 0 116 0c0 1.39-.94 2.1-1.73 2.7-.7.53-1.27.97-1.27 1.8"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01"/>
+              </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="bg-neutral-100 border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
+                <div class="px-3.5 py-2 border-b border-neutral-200 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                  Thinking
+                </div>
+                <pre class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-700">{{ message.content }}</pre>
+              </div>
+              <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
+                {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+                &nbsp;·&nbsp; Agent
+              </div>
+            </div>
+          </template>
           <template v-else-if="message.role === 'assistant'">
             <!-- Robot avatar -->
             <div class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5">
