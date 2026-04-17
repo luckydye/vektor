@@ -80,16 +80,26 @@ globalThis.writeDocument = async (documentId, content, type) => {
 
 globalThis.createDocument = async (content, options) => {
   log("POST " + __a + "/api/v1/spaces/" + __s + "/documents");
-  const headers = __headersWithTrace({
-    "Content-Type": "text/markdown; charset=utf-8",
-    "X-Job-Token": __t,
-  });
   const title =
     typeof options === "string"
       ? options
       : options && typeof options === "object"
         ? options.title
         : undefined;
+  const type =
+    options && typeof options === "object" && typeof options.type === "string"
+      ? options.type
+      : undefined;
+  const contentType =
+    type === "csv"
+      ? "text/csv; charset=utf-8"
+      : type === "app"
+        ? "application/vnd.wiki.app+html; charset=utf-8"
+        : "text/markdown; charset=utf-8";
+  const headers = __headersWithTrace({
+    "Content-Type": contentType,
+    "X-Job-Token": __t,
+  });
   if (title) headers.set("X-Document-Title", String(title));
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/documents", {
     method: "POST",
