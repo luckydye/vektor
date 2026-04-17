@@ -312,6 +312,31 @@
       </div>
     </section>
 
+    <!-- MCP Server -->
+    <section v-if="activeTab === 'api'" class="mt-8 pt-6 border-t border-neutral-100">
+      <h2 class="text-sm font-semibold text-neutral-900 mb-2">MCP Server</h2>
+      <p class="text-sm text-neutral-600 mb-4">
+        Connect AI tools like Claude Desktop, Cursor, or Claude Code to this space via the
+        <a href="https://modelcontextprotocol.io" target="_blank" class="text-blue-600 hover:text-blue-800 underline">Model Context Protocol</a>.
+        Create an access token above, then add this configuration to your MCP client:
+      </p>
+      <div class="relative">
+        <pre class="p-3 text-xs font-mono bg-neutral-50 border border-neutral-200 rounded-md overflow-x-auto whitespace-pre">{{ mcpConfigJson }}</pre>
+        <button type="button" @click="handleCopyMcpConfig" :disabled="isCopyingMcpConfig"
+          class="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded hover:bg-neutral-100 disabled:opacity-50">
+          {{ isCopyingMcpConfig ? 'Creating token...' : mcpConfigCopied ? 'Copied with token!' : 'Copy with new token' }}
+        </button>
+      </div>
+      <p class="mt-3 text-xs text-neutral-500">
+        Clicking copy creates a new access token and includes it in the copied config.
+        Available tools: <code class="px-1 py-0.5 bg-neutral-100 rounded">list_documents</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded">search_documents</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded">get_document</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded">upload_artifact</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded">install_extension</code>.
+      </p>
+    </section>
+
     <!-- Secrets -->
     <section v-if="activeTab === 'secrets'">
       <div class="flex items-center justify-between mb-4">
@@ -556,6 +581,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from "vue";
+import { config } from "../config.ts";
 
 const tabs = [
   { id: "general", label: "General" },
@@ -591,6 +617,51 @@ const localBrandColor = ref("#1e293b");
 const localLogoSvg = ref("");
 const isSaving = ref(false);
 const error = ref<string | null>(null);
+
+// MCP config
+const mcpConfigCopied = ref(false);
+const isCopyingMcpConfig = ref(false);
+
+function mcpOrigin(): string {
+  const cfg = config();
+  return cfg.API_URL || cfg.SITE_URL || window.location.origin;
+}
+
+function mcpConfigWithToken(token: string): string {
+  const id = currentSpace.value?.id ?? "";
+  return JSON.stringify({
+    "vektor": {
+      "type": "streamable-http",
+      "url": `${mcpOrigin()}/api/v1/spaces/${id}/mcp`,
+      "headers": {
+        "Authorization": `Bearer ${token}`
+      }
+    }
+  }, null, 2);
+}
+
+const mcpConfigJson = computed(() => mcpConfigWithToken("<your-access-token>"));
+
+async function handleCopyMcpConfig() {
+  if (!currentSpace.value?.id || isCopyingMcpConfig.value) return;
+  isCopyingMcpConfig.value = true;
+  try {
+    const result = await api.accessTokens.create(currentSpace.value.id, {
+      name: `MCP ${new Date().toLocaleDateString()}`,
+      permission: "editor",
+      resourceType: "space",
+      resourceId: currentSpace.value.id,
+    });
+    await loadAccessTokens();
+    await navigator.clipboard.writeText(mcpConfigWithToken(result.token));
+    mcpConfigCopied.value = true;
+    setTimeout(() => { mcpConfigCopied.value = false; }, 3000);
+  } catch (err) {
+    tokenError.value = err instanceof Error ? err.message : "Failed to create token";
+  } finally {
+    isCopyingMcpConfig.value = false;
+  }
+}
 
 // Webhook state
 const webhooks = ref<Webhook[]>([]);
