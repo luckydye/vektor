@@ -84,6 +84,6 @@ extension-view {
     width: 100%;
     position: absolute;
     top: 0;
-    left: 1rem;
+    left: 0;
 }
 </style>
