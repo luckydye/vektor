@@ -369,7 +369,7 @@ const statusBadgeClass: Record<string, string> = {
       </div>
 
       <!-- Data table -->
-      <DataTable v-if="outputData" :data="outputData" />
+      <DataTable v-if="outputData" :data="outputData" :space-slug="props.spaceSlug" />
 
       <!-- Document link -->
       <div v-if="outputDocumentId && outputDocumentHref" class="inline-flex items-center gap-2">
@@ -469,7 +469,7 @@ const statusBadgeClass: Record<string, string> = {
               <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
                 <div v-html="historyOutputHtml(run.runId)" class="p-4" />
               </div>
-              <DataTable v-if="historyOutputData(run.runId)" :data="historyOutputData(run.runId)!" />
+              <DataTable v-if="historyOutputData(run.runId)" :data="historyOutputData(run.runId)!" :space-slug="props.spaceSlug" />
 
               <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
                 <a

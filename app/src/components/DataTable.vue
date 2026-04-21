@@ -5,6 +5,7 @@ const PAGE_SIZE = 10;
 
 const props = defineProps<{
   data: Record<string, unknown>[];
+  spaceSlug: string;
 }>();
 
 const filter = ref("");
@@ -32,6 +33,17 @@ function cellText(v: unknown): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
+}
+
+function isDocumentIdColumn(column: string): boolean {
+  return column.toLowerCase().includes("documentid");
+}
+
+function documentHref(column: string, value: unknown): string | null {
+  if (!isDocumentIdColumn(column)) return null;
+  const text = cellText(value).trim();
+  if (!text) return null;
+  return `/${props.spaceSlug}/doc/${encodeURIComponent(text)}`;
 }
 </script>
 
@@ -65,7 +77,16 @@ function cellText(v: unknown): string {
               :key="col"
               class="px-3 py-2 text-neutral-700 dark:text-neutral-300 whitespace-nowrap min-w-[200px] max-w-xs truncate"
               :title="cellText(row[col])"
-            >{{ cellText(row[col]) }}</td>
+            >
+              <a
+                v-if="documentHref(col, row[col])"
+                :href="documentHref(col, row[col])!"
+                class="text-sky-700 hover:text-sky-800 hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >{{ cellText(row[col]) }}</a>
+              <template v-else>{{ cellText(row[col]) }}</template>
+            </td>
           </tr>
           <tr v-if="filtered.length === 0">
             <td :colspan="columns.length" class="px-3 py-4 text-center text-xs text-neutral-400">No results</td>
