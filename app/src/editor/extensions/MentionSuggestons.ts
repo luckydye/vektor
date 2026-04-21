@@ -140,8 +140,8 @@ export const MentionSuggestons = Mention.extend<MentionOptions>({
 
             if (item.type === "document") {
               const spaceSlug = window.location.pathname.split("/").filter(Boolean)[0];
-              if (!spaceSlug || !item.slug) return;
-              const href = `/${spaceSlug}/doc/${item.slug}`;
+              if (!spaceSlug) return;
+              const href = `/${spaceSlug}/doc/${item.id}`;
 
               // Delete the @query range and insert a link directly
               const { editor, range } = props;
