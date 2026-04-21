@@ -337,7 +337,7 @@ const statusBadgeClass: Record<string, string> = {
       </div>
     </div>
 
-    <p v-if="selectedRunFileName" class="text-sm text-neutral-500">{{ selectedRunFileName }}</p>
+    <!-- <p v-if="selectedRunFileName" class="text-sm text-neutral-500">{{ selectedRunFileName }}</p> -->
 
     <!-- Pipeline progress -->
     <div v-if="pipelineNodes.length > 0" class="py-2 px-6">
