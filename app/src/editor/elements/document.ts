@@ -535,6 +535,7 @@ function createEditor(
       }),
       MentionSuggestons.configure({
         spaceId: spaceId,
+        documentId: documentId,
       }),
 
       ExtensionSuggestions,
