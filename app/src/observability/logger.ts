@@ -3,6 +3,35 @@ import { logs, SeverityNumber, type LogAttributes } from "@opentelemetry/api-log
 
 const logger = logs.getLogger("wiki.app");
 
+function serializeError(error: Error): Record<string, unknown> {
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    ...(error.cause === undefined ? {} : {
+      cause: error.cause instanceof Error ? serializeError(error.cause) : error.cause,
+    }),
+  };
+}
+
+function serializeAttributeValue(value: unknown): unknown {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return serializeError(value);
+  }
+
+  return value;
+}
+
 function formatConsoleMessage(
   message: string,
   attributes?: Record<string, unknown>,
@@ -13,20 +42,22 @@ function formatConsoleMessage(
 
   const parts: string[] = [];
   for (const [key, value] of Object.entries(attributes)) {
+    const serializedValue = serializeAttributeValue(value);
     if (
-      value === null ||
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
+      serializedValue === null ||
+      serializedValue === undefined ||
+      typeof serializedValue === "string" ||
+      typeof serializedValue === "number" ||
+      typeof serializedValue === "boolean"
     ) {
-      parts.push(`${key}=${JSON.stringify(value)}`);
+      parts.push(`${key}=${JSON.stringify(serializedValue)}`);
       continue;
     }
 
     try {
-      parts.push(`${key}=${JSON.stringify(value)}`);
+      parts.push(`${key}=${JSON.stringify(serializedValue)}`);
     } catch {
-      parts.push(`${key}=${JSON.stringify(String(value))}`);
+      parts.push(`${key}=${JSON.stringify(String(serializedValue))}`);
     }
   }
 
@@ -39,20 +70,24 @@ function toLogAttributes(
   if (!attributes) return undefined;
   const out: LogAttributes = {};
   for (const [key, value] of Object.entries(attributes)) {
+    const serializedValue = serializeAttributeValue(value);
+    if (serializedValue === undefined) {
+      continue;
+    }
     if (
-      value === null ||
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
+      serializedValue === null ||
+      typeof serializedValue === "string" ||
+      typeof serializedValue === "number" ||
+      typeof serializedValue === "boolean"
     ) {
-      out[key] = value;
+      out[key] = serializedValue as string | number | boolean | null;
       continue;
     }
 
     try {
-      out[key] = JSON.stringify(value);
+      out[key] = JSON.stringify(serializedValue);
     } catch {
-      out[key] = String(value);
+      out[key] = String(serializedValue);
     }
   }
   return out;

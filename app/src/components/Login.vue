@@ -10,6 +10,8 @@ import { authClient } from "../composeables/auth-client.ts";
 import { config } from "#config";
 
 const conf = config();
+const showPasswordLogin = conf.AUTH_LOGIN !== "false";
+const showSsoLogin = !!conf.OAUTH_PROVIDER_ID;
 
 const email = ref("");
 const password = ref("");
@@ -96,11 +98,11 @@ function toggleMode() {
 
 <template>
   <div class="p-6 bg-background rounded-md w-[400px] mx-auto space-y-4">
-    <h2 class="text-2xl font-semibold text-center mb-6">
-      {{ isSignUp ? "Sign Up" : "Sign In" }}
+    <h2 v-if="showPasswordLogin || showSsoLogin" class="text-2xl font-semibold text-center mb-6">
+      {{ showPasswordLogin ? (isSignUp ? "Sign Up" : "Sign In") : "Sign In" }}
     </h2>
 
-    <form @submit.prevent="onEmailLogin" class="space-y-4">
+    <form v-if="showPasswordLogin" @submit.prevent="onEmailLogin" class="space-y-4">
       <FormField v-if="isSignUp" label="Name">
         <Input
           v-model="name"
@@ -149,7 +151,7 @@ function toggleMode() {
       </button>
     </form>
 
-    <div class="relative">
+    <div v-if="showPasswordLogin && showSsoLogin" class="relative">
       <div class="absolute inset-0 flex items-center">
         <div class="w-full border-t border-neutral"></div>
       </div>
@@ -159,10 +161,15 @@ function toggleMode() {
     </div>
 
     <ButtonSecondary
+      v-if="showSsoLogin"
       text="Login mit SSO"
       class="w-full px-6 py-3 text-base justify-center"
       @click="onOAuthLogin"
       :disabled="loading"
     />
+
+    <div v-if="!showPasswordLogin && !showSsoLogin" class="text-sm text-center text-neutral">
+      No login method configured.
+    </div>
   </div>
 </template>

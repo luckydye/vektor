@@ -5,6 +5,7 @@ import {
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { appLogger } from "#observability/logger.ts";
 import { verifyJobToken } from "../../../../jobs/jobToken.ts";
 import {
   getAIProvider,
@@ -43,6 +44,8 @@ export const POST: APIRoute = (context) =>
         signal: context.request.signal,
       });
 
+      await logChatCompletionUpstreamFailure(provider.provider, provider.model, response);
+
       return new Response(response.body, {
         status: response.status,
         headers: {
@@ -53,9 +56,39 @@ export const POST: APIRoute = (context) =>
     },
     {
       fallbackMessage: "Proxy request failed",
-      onError: () => errorResponse("Proxy request failed", 500),
+      onError: (error) => {
+        appLogger.error("Chat completions proxy failed", {
+          error,
+        });
+        return errorResponse("Proxy request failed", 500);
+      },
     },
   );
+
+async function logChatCompletionUpstreamFailure(
+  provider: string,
+  model: string,
+  response: Response,
+): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  let responseBody: string;
+  try {
+    responseBody = await response.clone().text();
+  } catch (error) {
+    responseBody = error instanceof Error ? `failed to read upstream body: ${error.message}` : "failed to read upstream body";
+  }
+
+  appLogger.error("Chat completions upstream error", {
+    provider,
+    model,
+    statusCode: response.status,
+    contentType: response.headers.get("Content-Type"),
+    body: responseBody.slice(0, 2000),
+  });
+}
 
 type OpenAIMessage = { role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown[] };
 

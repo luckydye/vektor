@@ -54,6 +54,7 @@ export function config() {
        * better-auth secret token
        */
       AUTH_SECRET: process.env.AUTH_SECRET,
+      AUTH_LOGIN: process.env.AUTH_LOGIN,
 
       /**
        * OAuth configuration
@@ -124,6 +125,7 @@ export function config() {
     COLLABORATION_HOST: publicEnv.WIKI_COLLABORATION_HOST,
     DEFAULT_SPACE: publicEnv.WIKI_DEFAULT_SPACE,
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
+    AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
   } as const;
 }

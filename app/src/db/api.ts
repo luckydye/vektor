@@ -100,7 +100,7 @@ export async function withApiErrorHandling(
       }
     }
     appLogger.error("Unhandled API error", {
-      error: error instanceof Error ? error.message : String(error),
+      error,
     });
     return errorResponse(options.fallbackMessage ?? "Internal server error", 500);
   }
