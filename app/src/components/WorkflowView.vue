@@ -14,6 +14,7 @@ type RunSummary = {
   runId: string;
   status: string;
   createdAt: string;
+  runtimeInputs: Record<string, unknown>;
 };
 
 type WorkflowNodeDef = {
@@ -106,6 +107,24 @@ async function cancelRun() {
     cancelling.value = false;
   }
 }
+
+const selectedRun = computed(() => runList.value.find((r) => r.runId === selectedRunId.value));
+
+const selectedRunTitle = computed(() => {
+  const title = selectedRun.value?.runtimeInputs?.["title"];
+  return typeof title === "string" ? title : null;
+});
+
+const selectedRunFileName = computed(() => {
+  const name = selectedRun.value?.runtimeInputs?.["fileName"];
+  return typeof name === "string" ? name : null;
+});
+
+const selectedRunInputs = computed(() => {
+  const inputs = selectedRun.value?.runtimeInputs;
+  if (!inputs || Object.keys(inputs).length === 0) return null;
+  return inputs;
+});
 
 const isActiveRun = computed(() =>
   runList.value.some((r) => r.status === "running" || r.status === "pending"),
@@ -263,19 +282,26 @@ const statusBadgeClass: Record<string, string> = {
 <template>
   <div class="px-xs lg:px-xl space-y-8 mx-auto">
 
+    <!-- Title -->
+    <h2 v-if="selectedRunTitle" class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle }}</h2>
+
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
-      <span
-        v-if="selectedRunDetail"
-        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium capitalize"
-        :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
-      >
+      <div v-if="selectedRunDetail" class="flex items-center gap-3">
+        <span
+          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium capitalize"
+          :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
+        >
         <svg v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
         </svg>
         {{ selectedRunDetail.status }}
       </span>
+      <span v-if="selectedRun" class="text-xs text-neutral-400">
+        {{ formatDate(selectedRun.createdAt) }}
+      </span>
+      </div>
 
       <div class="flex items-center gap-2 ml-auto">
         <button
@@ -310,6 +336,8 @@ const statusBadgeClass: Record<string, string> = {
         </button>
       </div>
     </div>
+
+    <p v-if="selectedRunFileName" class="text-sm text-neutral-500">{{ selectedRunFileName }}</p>
 
     <!-- Pipeline progress -->
     <div v-if="pipelineNodes.length > 0" class="py-2 px-6">
@@ -392,6 +420,17 @@ const statusBadgeClass: Record<string, string> = {
           </svg>
         </button>
       </div>
+
+      <!-- Input fields -->
+      <details v-if="selectedRunInputs" class="text-xs">
+        <summary class="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">Input fields</summary>
+        <div class="mt-2 space-y-2">
+          <div v-for="(val, key) in selectedRunInputs" :key="key" class="rounded-lg border border-neutral-200 overflow-hidden">
+            <div class="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 font-mono font-semibold text-neutral-500 border-b border-neutral-200">{{ key }}</div>
+            <pre class="px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-300">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+          </div>
+        </div>
+      </details>
 
       <!-- Raw output fields (debug) -->
       <details v-if="selectedRunDetail?.output" class="text-xs">
