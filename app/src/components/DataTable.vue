@@ -14,6 +14,7 @@ const filter = ref("");
 const page = ref(0);
 const sortCol = ref<string | null>(null);
 const sortAsc = ref(true);
+const focusedRow = ref<number | null>(null);
 
 watch(filter, () => { page.value = 0; });
 
@@ -161,7 +162,12 @@ onUnmounted(() => {
           <tr
             v-for="(row, i) in paginated"
             :key="i"
-            class="border-b border-neutral-100 dark:border-neutral-800 last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+            tabindex="0"
+            class="border-b border-neutral-100 dark:border-neutral-800 last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors outline-none cursor-pointer"
+            :class="focusedRow === i ? 'bg-sky-50 dark:bg-sky-900/20 ring-1 ring-inset ring-sky-300 dark:ring-sky-700' : ''"
+            @focus="focusedRow = i"
+            @blur="focusedRow = null"
+            @click="focusedRow = i"
           >
             <td
               v-for="col in columns"

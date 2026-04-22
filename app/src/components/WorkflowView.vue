@@ -340,7 +340,7 @@ const statusBadgeClass: Record<string, string> = {
     <!-- <p v-if="selectedRunFileName" class="text-sm text-neutral-500">{{ selectedRunFileName }}</p> -->
 
     <!-- Pipeline progress -->
-    <div v-if="pipelineNodes.length > 0" class="py-2 px-6">
+    <div v-if="pipelineNodes.length > 0 && selectedRunDetail?.status !== 'completed'" class="py-2 px-6">
       <!-- Track row: circles + lines only -->
       <div class="flex items-center">
         <template v-for="([nodeId, node], i) in pipelineNodes" :key="nodeId">
