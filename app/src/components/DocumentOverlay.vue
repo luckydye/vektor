@@ -21,7 +21,6 @@
  */
 import { ref, onMounted, onUnmounted, watch, nextTick, computed, watchEffect } from "vue";
 import { api } from "../api/client.ts";
-import { useDocuments } from "../composeables/useDocuments.ts";
 import docStyles from "../styles/document.css?inline";
 import { useComments } from "../composeables/useComments.ts";
 import type { Comment } from "../api/ApiClient.ts";
@@ -44,8 +43,6 @@ const documentData = ref<{
 const currentState = ref<OverlayState | null>(null);
 const contentContainer = ref<HTMLElement | null>(null);
 
-// Use cached documents for efficient slug lookup
-const { documents } = useDocuments();
 const { comments, submitComment } = useComments({
   spaceId: computed(() => currentState.value?.spaceId),
   documentId: computed(() => currentState.value?.documentId),
@@ -136,60 +133,14 @@ function handleViewDocumentEvent(event: Event) {
   openOverlay(customEvent.detail.spaceId, customEvent.detail.documentId);
 }
 
-// Event handler for slug-based viewing (from document-view shadow DOM clicks)
-function handleViewDocumentBySlugEvent(event: Event) {
-  const customEvent = event as CustomEvent<{ spaceId: string; docSlug: string }>;
-  fetchDocumentBySlug(customEvent.detail.spaceId, customEvent.detail.docSlug);
-}
-
-async function fetchDocumentBySlug(spaceId: string, slug: string) {
-  isOpen.value = true;
-  loading.value = true;
-  error.value = null;
-  documentData.value = null;
-  currentState.value = { spaceId, documentId: "" };
-
-  try {
-    // First check cached documents from useDocuments
-    let doc = documents.value.find((d) => d.slug === slug);
-
-    // If not in cache, fetch fresh list
-    if (!doc) {
-      const freshDocs = await api.documents.get(spaceId);
-      doc = freshDocs.documents?.find((d) => d.slug === slug);
-    }
-
-    if (!doc) {
-      throw new Error("Document not found");
-    }
-
-    // Now fetch the full document with content
-    const fullDoc = await api.document.get(spaceId, doc.id);
-    documentData.value = {
-      title: fullDoc.properties?.title || "Untitled Document",
-      content: fullDoc.content || "",
-      slug: fullDoc.slug,
-      updatedAt: fullDoc.updatedAt,
-    };
-    currentState.value = { spaceId, documentId: doc.id, slug: fullDoc.slug };
-  } catch (err) {
-    console.error(err);
-    error.value = err instanceof Error ? err.message : "Failed to load document";
-  } finally {
-    loading.value = false;
-  }
-}
-
 onMounted(() => {
   document.addEventListener("keydown", handleKeydown);
   window.addEventListener("view-document", handleViewDocumentEvent);
-  window.addEventListener("view-document-by-slug", handleViewDocumentBySlugEvent);
 });
 
 onUnmounted(() => {
   document.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("view-document", handleViewDocumentEvent);
-  window.removeEventListener("view-document-by-slug", handleViewDocumentBySlugEvent);
 });
 
 // Prevent body scroll when overlay is open

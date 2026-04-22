@@ -696,8 +696,8 @@ export class DocumentView extends HTMLElement {
         if (!href) return;
 
         // Check if this is an internal document link
-        const docSlug = this.parseDocumentSlug(href);
-        if (!docSlug) return;
+        const documentId = this.parseDocumentId(href);
+        if (!documentId) return;
 
         // Prevent default navigation
         e.preventDefault();
@@ -708,8 +708,8 @@ export class DocumentView extends HTMLElement {
         if (!spaceId) return;
 
         window.dispatchEvent(
-          new CustomEvent("view-document-by-slug", {
-            detail: { spaceId, docSlug },
+          new CustomEvent("view-document", {
+            detail: { spaceId, documentId },
           }),
         );
       }) as EventListener,
@@ -717,16 +717,15 @@ export class DocumentView extends HTMLElement {
     );
   }
 
-  // Extract document slug from URL like /space-slug/doc/document-slug
-  parseDocumentSlug(url: string): string | null {
+  parseDocumentId(url: string): string | null {
     try {
       const urlObj = new URL(url, window.location.origin);
       if (urlObj.origin !== window.location.origin) return null;
 
       const parts = urlObj.pathname.split("/").filter(Boolean);
-      // Expected: [spaceSlug, "doc", ...docSlugParts]
+      // Expected: [spaceSlug, "doc", documentId]
       if (parts.length >= 3 && parts[1] === "doc") {
-        return parts.slice(2).join("/");
+        return parts[2];
       }
       return null;
     } catch {
