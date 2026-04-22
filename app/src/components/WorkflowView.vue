@@ -120,6 +120,22 @@ const selectedRunFileName = computed(() => {
   return typeof name === "string" ? name : null;
 });
 
+const selectedRunFileUrl = computed(() => {
+  const file = selectedRun.value?.runtimeInputs?.["file"];
+  return typeof file === "string" ? file : null;
+});
+
+async function downloadFile(url: string, fileName: string) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+  const blob = await response.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 const selectedRunInputs = computed(() => {
   const inputs = selectedRun.value?.runtimeInputs;
   if (!inputs || Object.keys(inputs).length === 0) return null;
@@ -420,6 +436,32 @@ const statusBadgeClass: Record<string, string> = {
           </svg>
         </button>
       </div>
+
+      <!-- File input -->
+      <div v-if="selectedRunFileUrl && selectedRunFileName" class="inline-flex items-center gap-2 ml-4">
+        <a
+          :href="selectedRunFileUrl"
+          target="_blank"
+          rel="noreferrer"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
+        >
+          <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+          {{ selectedRunFileName }}
+        </a>
+        <button
+          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+          title="Download"
+          @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!)"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+        </button>
+      </div>
+      
+      <div class="pt-10"></div>
 
       <!-- Input fields -->
       <details v-if="selectedRunInputs" class="text-xs">
