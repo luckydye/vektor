@@ -1262,8 +1262,7 @@ export async function searchDocuments(
       .from(document)
       .where(
         sql`(search_embedding IS NULL OR search_text IS NULL)
-          AND ${nonArchivedDocumentCondition}
-          AND (type = 'document' OR type IS NULL)`,
+          AND ${nonArchivedDocumentCondition}`,
       )
       .all();
 
@@ -1272,9 +1271,25 @@ export async function searchDocuments(
     }
   }
 
+  // Separate "type" filters from property filters
+  const typeFilters = filters.filter((f) => f.key === "type");
+  const propertyFilters = filters.filter((f) => f.key !== "type");
+
   // Helper to check if a document matches property filters
-  const matchesFilters = (properties: Record<string, string>): boolean => {
-    for (const filter of filters) {
+  const matchesFilters = (
+    properties: Record<string, string>,
+    docType: string | null,
+  ): boolean => {
+    for (const filter of typeFilters) {
+      const normalizedType = docType || "document";
+      if (filter.value === null) {
+        continue; // "has type" is always true
+      }
+      if (normalizedType.toLowerCase() !== filter.value.toLowerCase()) {
+        return false;
+      }
+    }
+    for (const filter of propertyFilters) {
       const propValue = properties[filter.key];
       if (filter.value === null) {
         // Filter for "has property" - just check if key exists with any non-empty value
@@ -1296,6 +1311,7 @@ export async function searchDocuments(
 
   let allRawResults: {
     id: string;
+    type: string | null;
     content: string;
     userId: string;
     parentId: string | null;
@@ -1340,7 +1356,6 @@ export async function searchDocuments(
         d.updated_at as updatedAt
       FROM document d
       WHERE ${nonArchivedColumnCondition("d.archived")}
-      AND (d.type = 'document' OR d.type IS NULL)
       AND d.search_embedding IS NOT NULL
     `);
 
@@ -1361,6 +1376,7 @@ export async function searchDocuments(
 
         return {
           id: candidate.id,
+          type: candidate.type,
           content: candidate.content,
           userId: candidate.userId,
           parentId: candidate.parentId,
@@ -1381,6 +1397,7 @@ export async function searchDocuments(
     // Filter-only search (no text query) - get all non-archived documents
     allRawResults = await db.all<{
       id: string;
+      type: string | null;
       content: string;
       userId: string;
       parentId: string | null;
@@ -1391,6 +1408,7 @@ export async function searchDocuments(
     }>(sql`
       SELECT
         d.id,
+        d.type,
         d.content,
         d.created_by as userId,
         d.parent_id as parentId,
@@ -1400,7 +1418,6 @@ export async function searchDocuments(
         substr(d.content, 1, 200) as snippet
       FROM document d
       WHERE ${nonArchivedColumnCondition("d.archived")}
-      AND (d.type = 'document' OR d.type IS NULL)
       ORDER BY d.updated_at DESC
     `);
   }
@@ -1425,7 +1442,7 @@ export async function searchDocuments(
         properties[prop.key] = prop.value;
       }
 
-      if (matchesFilters(properties)) {
+      if (matchesFilters(properties, row.type)) {
         filteredResults.push(row);
       }
     }
@@ -1518,7 +1535,21 @@ export async function getAllPropertiesWithValues(
     }
   }
 
-  const result: PropertyInfo[] = [];
+  // Add document type as a virtual property
+  const docTypes = await db
+    .selectDistinct({ type: document.type })
+    .from(document)
+    .where(sql`${nonArchivedDocumentCondition}`)
+    .all();
+
+  const typeValues = docTypes
+    .map((d) => d.type || "document")
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .sort();
+
+  const result: PropertyInfo[] = [
+    { name: "type", type: "select", values: typeValues },
+  ];
   for (const [key, data] of Object.entries(propertyMap)) {
     result.push({
       name: key,
