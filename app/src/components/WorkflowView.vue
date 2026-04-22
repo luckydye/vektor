@@ -306,11 +306,8 @@ const statusBadgeClass: Record<string, string> = {
 </script>
 
 <template>
-  <div class="px-xs lg:px-xl space-y-8 mx-auto">
-
-    <!-- Back to extension -->
+  <Teleport v-if="sourceExtensionHref" to="#workflow-breadcrumb-slot">
     <a
-      v-if="sourceExtensionHref"
       :href="sourceExtensionHref"
       class="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-600 transition-colors"
     >
@@ -319,6 +316,9 @@ const statusBadgeClass: Record<string, string> = {
       </svg>
       Back
     </a>
+  </Teleport>
+
+  <div class="px-xs lg:px-xl space-y-8 mx-auto">
 
     <!-- Title -->
     <h2 v-if="selectedRunTitle" class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle }}</h2>

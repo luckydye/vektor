@@ -111,7 +111,7 @@ if (categorySlug) {
   category = await getCategoryBySlug(space.id, categorySlug);
 }
 
-const defaultLayout = document.type === "document" || document.type === "workflow" || !document.type ? "document" : "full";
+const defaultLayout = document.type === "document" || !document.type ? "document" : "full";
 const effectiveLayout = document.properties.layout || defaultLayout;
 
 const now = new Date();
@@ -169,12 +169,16 @@ if (diffMins >= 1 && diffMins < 60) {
         (document.type === 'canvas' || document.type === 'app') ? 'hidden' : 'pt-s mb-xl'
       )}>
         <div class="print:px-0 px-xs lg:px-xl">
-            <Breadcrumbs
-                spaceSlug={spaceSlug!}
-                category={category}
-                parents={parentBreadcrumbs}
-                currentTitle={title}
-            />
+            {document.type === "workflow" ? (
+                <div id="workflow-breadcrumb-slot" />
+            ) : (
+                <Breadcrumbs
+                    spaceSlug={spaceSlug!}
+                    category={category}
+                    parents={parentBreadcrumbs}
+                    currentTitle={title}
+                />
+            )}
         </div>
 
         <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xl">
