@@ -1,17 +1,31 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 
 const PAGE_SIZE = 10;
+const DEFAULT_COL_WIDTH = 200;
 
 const props = defineProps<{
   data: Record<string, unknown>[];
   spaceSlug: string;
+  documentId?: string;
 }>();
 
 const filter = ref("");
 const page = ref(0);
+const sortCol = ref<string | null>(null);
+const sortAsc = ref(true);
 
 watch(filter, () => { page.value = 0; });
+
+function toggleSort(col: string) {
+  if (sortCol.value === col) {
+    sortAsc.value = !sortAsc.value;
+  } else {
+    sortCol.value = col;
+    sortAsc.value = true;
+  }
+  page.value = 0;
+}
 
 const columns = computed(() => {
   if (props.data.length === 0) return [];
@@ -20,10 +34,22 @@ const columns = computed(() => {
 
 const filtered = computed(() => {
   const q = filter.value.trim().toLowerCase();
-  if (!q) return props.data;
-  return props.data.filter((row) =>
-    Object.values(row).some((v) => String(v ?? "").toLowerCase().includes(q)),
-  );
+  let rows = q
+    ? props.data.filter((row) =>
+        Object.values(row).some((v) => String(v ?? "").toLowerCase().includes(q)),
+      )
+    : props.data;
+  if (sortCol.value) {
+    const col = sortCol.value;
+    const asc = sortAsc.value ? 1 : -1;
+    rows = [...rows].sort((a, b) => {
+      const av = a[col] ?? "";
+      const bv = b[col] ?? "";
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * asc;
+      return String(av).localeCompare(String(bv)) * asc;
+    });
+  }
+  return rows;
 });
 
 const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)));
@@ -45,6 +71,56 @@ function documentHref(column: string, value: unknown): string | null {
   if (!text) return null;
   return `/${props.spaceSlug}/doc/${encodeURIComponent(text)}`;
 }
+
+// Column resizing
+const storageKey = computed(() => props.documentId ? `datatable-col-widths-${props.documentId}` : null);
+const columnWidths = ref<Record<string, number>>({});
+
+onMounted(() => {
+  if (!storageKey.value) return;
+  try {
+    const saved = sessionStorage.getItem(storageKey.value);
+    if (saved) columnWidths.value = JSON.parse(saved);
+  } catch {}
+});
+
+function colWidth(col: string): string {
+  return `${columnWidths.value[col] ?? DEFAULT_COL_WIDTH}px`;
+}
+
+let resizeCol: string | null = null;
+let resizeStartX = 0;
+let resizeStartWidth = 0;
+
+function onResizeMouseDown(col: string, e: MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  resizeCol = col;
+  resizeStartX = e.clientX;
+  resizeStartWidth = columnWidths.value[col] ?? DEFAULT_COL_WIDTH;
+  document.addEventListener("mousemove", onResizeMouseMove);
+  document.addEventListener("mouseup", onResizeMouseUp);
+}
+
+function onResizeMouseMove(e: MouseEvent) {
+  if (!resizeCol) return;
+  const newWidth = Math.max(80, resizeStartWidth + (e.clientX - resizeStartX));
+  columnWidths.value = { ...columnWidths.value, [resizeCol]: newWidth };
+}
+
+function onResizeMouseUp() {
+  resizeCol = null;
+  document.removeEventListener("mousemove", onResizeMouseMove);
+  document.removeEventListener("mouseup", onResizeMouseUp);
+  if (storageKey.value) {
+    sessionStorage.setItem(storageKey.value, JSON.stringify(columnWidths.value));
+  }
+}
+
+onUnmounted(() => {
+  document.removeEventListener("mousemove", onResizeMouseMove);
+  document.removeEventListener("mouseup", onResizeMouseUp);
+});
 </script>
 
 <template>
@@ -56,14 +132,29 @@ function documentHref(column: string, value: unknown): string | null {
       class="w-full rounded-md border border-neutral-200 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
     />
     <div class="overflow-x-auto rounded-lg border border-neutral-200">
-      <table class="w-full text-sm">
+      <table class="text-sm" style="table-layout: fixed;">
         <thead>
           <tr class="bg-neutral-50 dark:bg-neutral-800 text-left">
             <th
               v-for="col in columns"
               :key="col"
-              class="px-3 py-2 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide whitespace-nowrap border-b border-neutral-200 min-w-[200px]"
-            >{{ col }}</th>
+              class="relative px-3 py-2 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide whitespace-nowrap border-b border-neutral-200 cursor-pointer select-none hover:text-neutral-700 dark:hover:text-neutral-200 overflow-hidden"
+              :style="{ width: colWidth(col) }"
+              @click="toggleSort(col)"
+            >
+              <span class="inline-flex items-center gap-1 truncate">
+                {{ col }}
+                <span class="opacity-50 shrink-0">
+                  <template v-if="sortCol === col">{{ sortAsc ? "↑" : "↓" }}</template>
+                  <template v-else>↕</template>
+                </span>
+              </span>
+              <!-- Resize handle -->
+              <div
+                class="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-neutral-300 dark:hover:bg-neutral-600 active:bg-neutral-400"
+                @mousedown.stop="onResizeMouseDown(col, $event)"
+              />
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -75,7 +166,8 @@ function documentHref(column: string, value: unknown): string | null {
             <td
               v-for="col in columns"
               :key="col"
-              class="px-3 py-2 text-neutral-700 dark:text-neutral-300 whitespace-nowrap min-w-[200px] max-w-xs truncate"
+              class="px-3 py-2 text-neutral-700 dark:text-neutral-300 whitespace-nowrap overflow-hidden truncate"
+              :style="{ width: colWidth(col), maxWidth: colWidth(col) }"
               :title="cellText(row[col])"
             >
               <a
