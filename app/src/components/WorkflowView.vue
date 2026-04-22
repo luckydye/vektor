@@ -14,6 +14,7 @@ type RunSummary = {
   runId: string;
   status: string;
   createdAt: string;
+  sourceExtensionId: string | null;
   runtimeInputs: Record<string, unknown>;
 };
 
@@ -26,6 +27,7 @@ type WorkflowNodeDef = {
 type WorkflowInputMapping = { inputKey: string; alias: string };
 
 const runList = ref<RunSummary[]>([]);
+const sourceExtensionHref = ref<string | null>(null);
 const selectedRunId = ref<string | null>(null);
 const selectedRunDetail = ref<WorkflowRunStatus | null>(null);
 const workflowDef = ref<Record<string, WorkflowNodeDef>>({});
@@ -152,6 +154,14 @@ onMounted(async () => {
 
   await fetchRuns();
   if (runList.value[0]) await selectRun(runList.value[0].runId);
+
+  const sourceExtId = runList.value[0]?.sourceExtensionId;
+  if (sourceExtId) {
+    const ext = await api.extensions.getById(props.spaceId, sourceExtId);
+    const firstRoute = ext.routes?.[0];
+    if (firstRoute) sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
+  }
+
   pollInterval = setInterval(async () => {
     await fetchRuns();
     if (selectedRunId.value) await fetchSelectedRunDetail();
@@ -297,6 +307,18 @@ const statusBadgeClass: Record<string, string> = {
 
 <template>
   <div class="px-xs lg:px-xl space-y-8 mx-auto">
+
+    <!-- Back to extension -->
+    <a
+      v-if="sourceExtensionHref"
+      :href="sourceExtensionHref"
+      class="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-600 transition-colors"
+    >
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+      </svg>
+      Back
+    </a>
 
     <!-- Title -->
     <h2 v-if="selectedRunTitle" class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle }}</h2>
@@ -524,7 +546,7 @@ const statusBadgeClass: Record<string, string> = {
           class="rounded-md border border-transparent transition-colors"
           :class="expandedHistoryRuns.has(run.runId) ? 'border-neutral-200 bg-neutral-50' : ''"
         >
-          <div class="flex items-center justify-between px-3 py-2 text-sm">
+          <div class="flex items-center justify-between py-2 text-sm">
             <button class="flex items-center gap-2 text-left" @click="selectRun(run.runId)">
               <span class="text-neutral-500 text-xs">{{ formatDate(run.createdAt) }}</span>
               <span
