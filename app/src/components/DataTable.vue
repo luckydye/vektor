@@ -62,6 +62,22 @@ function cellText(v: unknown): string {
   return String(v);
 }
 
+function downloadCsv() {
+  const csvCols = columns.value;
+  const escape = (s: string) => s.includes(",") || s.includes('"') || s.includes("\n")
+    ? `"${s.replace(/"/g, '""')}"` : s;
+  const header = csvCols.map(escape).join(",");
+  const rows = filtered.value.map((row) =>
+    csvCols.map((col) => escape(cellText(row[col]))).join(","),
+  );
+  const blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "data.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function isDocumentIdColumn(column: string): boolean {
   return column.toLowerCase().includes("documentid");
 }
@@ -193,7 +209,19 @@ onUnmounted(() => {
       </table>
     </div>
     <div class="flex items-center justify-between text-xs text-neutral-400">
-      <span>{{ filtered.length }} / {{ data.length }} rows</span>
+      <div class="flex items-center gap-2">
+        <span>{{ filtered.length }} / {{ data.length }} rows</span>
+        <button
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+          title="Download as CSV"
+          @click="downloadCsv"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          CSV
+        </button>
+      </div>
       <div v-if="pageCount > 1" class="flex items-center gap-1">
         <button
           class="px-2 py-0.5 rounded border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
