@@ -31,7 +31,12 @@ ASSET="${BIN_NAME}-${os}-${arch}"
 URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 
 echo "Downloading $ASSET..."
-curl -fSL "$URL" -o "/tmp/${BIN_NAME}"
+if ! curl -fSL "$URL" -o "/tmp/${BIN_NAME}"; then
+  echo ""
+  echo "Error: failed to download $ASSET."
+  echo "Check that a release exists: https://github.com/${REPO}/releases"
+  exit 1
+fi
 chmod +x "/tmp/${BIN_NAME}"
 
 echo "Installing to ${INSTALL_DIR}/${BIN_NAME}..."
