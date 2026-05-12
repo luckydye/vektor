@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseArgs } from "../src/workflow.ts";
+import { parseArgs } from "../src/cli/workflow.ts";
 
 describe("workflow cli", () => {
   it("parses document id and flags", () => {
