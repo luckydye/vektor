@@ -199,13 +199,31 @@ export async function runJob(
 
         return await new Promise<Record<string, unknown>>((resolve, reject) => {
           const worker = new Worker(resolvedWrapperPath, { workerData });
+          let settled = false;
 
           const cancelWorker = () => worker.postMessage({ type: "cancel" });
+
+          const cleanup = () => {
+            clearTimeout(timer);
+            worker.terminate().catch(() => {});
+          };
+          const settleResolve = (outputs: Record<string, unknown>) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(outputs);
+          };
+          const settleReject = (err: Error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(err);
+          };
 
           let timer = setTimeout(() => {
             span.setAttribute("wiki.job.timeout", true);
             cancelWorker();
-            reject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
+            settleReject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
           }, timeoutMs);
 
           const resetTimer = () => {
@@ -213,17 +231,16 @@ export async function runJob(
             timer = setTimeout(() => {
               span.setAttribute("wiki.job.timeout", true);
               cancelWorker();
-              reject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
+              settleReject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
             }, timeoutMs);
           };
 
           signal?.addEventListener(
             "abort",
             () => {
-              clearTimeout(timer);
               span.setAttribute("wiki.job.cancelled", true);
               cancelWorker();
-              reject(new Error("Job cancelled"));
+              settleReject(new Error("Job cancelled"));
             },
             { once: true },
           );
@@ -242,18 +259,22 @@ export async function runJob(
                 const message = msg.message ?? "";
                 onLog?.(message);
               } else if (msg.type === "result") {
-                clearTimeout(timer);
                 if (msg.success) {
                   const outputs = msg.outputs ?? {};
                   span.setAttribute("wiki.job.outputs_json", toSpanJson(outputs));
-                  resolve(outputs);
-                } else reject(new Error(msg.error ?? "Job failed without error message"));
+                  settleResolve(outputs);
+                } else {
+                  settleReject(new Error(msg.error ?? "Job failed without error message"));
+                }
               }
             },
           );
           worker.once("error", (err) => {
-            clearTimeout(timer);
-            reject(err);
+            settleReject(err);
+          });
+          worker.once("exit", (code) => {
+            if (settled) return;
+            settleReject(new Error(`Worker exited unexpectedly with code ${code}`));
           });
         });
       },
