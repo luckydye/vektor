@@ -270,7 +270,7 @@ export async function runJob(
             },
           );
           worker.once("error", (err) => {
-            settleReject(err);
+            settleReject(err instanceof Error ? err : new Error(String(err)));
           });
           worker.once("exit", (code) => {
             if (settled) return;

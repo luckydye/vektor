@@ -270,7 +270,7 @@ function deserializeRun(serialized: PersistedRunState): RunState {
   });
 }
 
-function persistRunStore(): void {
+function persistRunStoreSync(): void {
   pruneCompletedRuns();
   ensureRunStoreDirectory();
   const tempFilePath = `${runStoreFilePath}.${process.pid}.tmp`;
@@ -280,6 +280,34 @@ function persistRunStore(): void {
   };
   writeFileSync(tempFilePath, JSON.stringify(serialized), "utf-8");
   renameSync(tempFilePath, runStoreFilePath);
+}
+
+const PERSIST_DEBOUNCE_MS = 500;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistPending = false;
+
+function schedulePersist(): void {
+  persistPending = true;
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    if (!persistPending) return;
+    persistPending = false;
+    try {
+      persistRunStoreSync();
+    } catch {
+      // best-effort; next change will retry
+    }
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+function persistRunStore(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  persistPending = false;
+  persistRunStoreSync();
 }
 
 function recoverInterruptedRuns(): void {
@@ -403,12 +431,19 @@ export function setNodeStatus(
   if (sanitizedUpdate.inputs) {
     sanitizedUpdate.inputs = summarizeRecord(sanitizedUpdate.inputs) ?? {};
   }
-  // outputs are structured data — do not truncate
+  // outputs are structured data — do not truncate (used for retry preSeeded)
   if (sanitizedUpdate.error) {
     sanitizedUpdate.error = summarizeString(sanitizedUpdate.error);
   }
   Object.assign(node, sanitizedUpdate);
-  persistRunStore();
+  const isTerminal = sanitizedUpdate.status &&
+    sanitizedUpdate.status !== "pending" &&
+    sanitizedUpdate.status !== "running";
+  if (isTerminal) {
+    persistRunStore();
+  } else {
+    schedulePersist();
+  }
 }
 
 export function appendNodeLog(runId: string, nodeId: string, message: string): void {
@@ -420,7 +455,7 @@ export function appendNodeLog(runId: string, nodeId: string, message: string): v
   if (node.logs.length > MAX_LOG_ENTRIES) {
     node.logs = summarizeLogs(node.logs);
   }
-  persistRunStore();
+  schedulePersist();
 }
 
 export function finalizeRun(runId: string): void {
