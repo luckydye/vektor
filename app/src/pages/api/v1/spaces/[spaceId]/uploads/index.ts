@@ -143,8 +143,8 @@ export const POST: APIRoute = (context) =>
         }
       }
 
-      // Validate file size
-      if (file.size > MAX_FILE_SIZE) {
+      // Validate file size (user uploads only; job uploads are trusted)
+      if (!isJobAuth && file.size > MAX_FILE_SIZE) {
         return badRequestResponse(
           `File size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`,
         );
