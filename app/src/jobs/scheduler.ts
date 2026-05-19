@@ -200,11 +200,20 @@ export async function runJob(
         return await new Promise<Record<string, unknown>>((resolve, reject) => {
           const worker = new Worker(resolvedWrapperPath, { workerData });
           let settled = false;
+          const abortListenerController = new AbortController();
 
-          const cancelWorker = () => worker.postMessage({ type: "cancel" });
+          const cancelWorker = () => {
+            if (settled) return;
+            try {
+              worker.postMessage({ type: "cancel" });
+            } catch {
+              // Worker may already be terminated; ignore.
+            }
+          };
 
           const cleanup = () => {
             clearTimeout(timer);
+            abortListenerController.abort();
             worker.terminate().catch(() => {});
           };
           const settleResolve = (outputs: Record<string, unknown>) => {
@@ -238,11 +247,12 @@ export async function runJob(
           signal?.addEventListener(
             "abort",
             () => {
+              if (settled) return;
               span.setAttribute("wiki.job.cancelled", true);
               cancelWorker();
               settleReject(new Error("Job cancelled"));
             },
-            { once: true },
+            { once: true, signal: abortListenerController.signal },
           );
 
           worker.on(
