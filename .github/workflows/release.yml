@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: |
+          bun i
+          cd app && bun i
+
+      - name: Build Astro assets
+        working-directory: app
+        run: |
+          bunx --bun astro build
+          bun run ./build.ts
+
+      - name: Compile linux-x64
+        working-directory: app
+        run: >
+          bun build --compile --target=bun-linux-x64
+          ./vektor.ts ./src/agent/agentWorker.ts
+          --external lightningcss
+          --outfile ./vektor-linux-x64
+
+      - name: Compile darwin-arm64
+        working-directory: app
+        run: >
+          bun build --compile --target=bun-darwin-arm64
+          ./vektor.ts ./src/agent/agentWorker.ts
+          --external lightningcss
+          --outfile ./vektor-darwin-arm64
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/vektor-linux-x64
+            app/vektor-darwin-arm64

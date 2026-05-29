@@ -229,6 +229,8 @@ export async function runJob(
             reject(err);
           };
 
+          const cancelWorker = () => worker.postMessage({ type: "cancel" });
+
           let timer = setTimeout(() => {
             span.setAttribute("wiki.job.timeout", true);
             cancelWorker();
