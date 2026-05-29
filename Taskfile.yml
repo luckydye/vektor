@@ -41,7 +41,6 @@ tasks:
     dotenv:
       - ../.env
     cmds:
-      - bun run ../scripts/genApiRoutes.ts
       - bunx --bun astro build
 
   compile:
@@ -50,7 +49,6 @@ tasks:
     dotenv:
       - ../.env
     cmds:
-      - bun run ../scripts/genApiRoutes.ts
       - bunx --bun astro build
       - bun run ./build.ts
       - bun build --compile ./vektor.ts ./src/agent/agentWorker.ts --external lightningcss --outfile ./vektor

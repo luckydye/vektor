@@ -1,19 +1,12 @@
 import type { NextFunction, Request as ExRequest, Response as ExResponse } from "express";
 import { appLogger } from "#observability/logger.ts";
-import { generatedRoutes } from "../routes.generated.ts";
-import * as wellKnownCaldav from "../extra/wellKnownCaldav.ts";
+import { apiRoutes } from "../routes.ts";
 import { buildApiContext, sendWebResponse } from "./adapter.ts";
 import { compileRoute, matchRoute, sortRoutes, type CompiledRoute } from "./matcher.ts";
 import type { ApiRouteMethod, ApiRouteModule } from "./types.ts";
 
-/** All routes served by Express: the generated `/api/**` set plus CalDAV discovery. */
-const routeTable: { pattern: string; module: ApiRouteModule }[] = [
-  ...generatedRoutes,
-  { pattern: "/.well-known/caldav", module: wellKnownCaldav },
-];
-
 const compiledRoutes: CompiledRoute[] = sortRoutes(
-  routeTable.map(({ pattern, module }) => compileRoute(pattern, module)),
+  apiRoutes.map(({ pattern, module }) => compileRoute(pattern, module)),
 );
 
 function isApiPath(pathname: string): boolean {
