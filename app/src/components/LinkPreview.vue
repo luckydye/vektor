@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import type { LinkMetadata } from "../pages/api/v1/url-metadata.ts";
+import type { LinkMetadata } from "../api/routes/v1/url-metadata.ts";
 
 const activePreview = ref<{
   url: string;

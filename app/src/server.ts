@@ -6,6 +6,7 @@ import { appLogger } from "./observability/logger.ts";
 import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
 
 import { auth } from "./auth.ts";
+import { apiRouter } from "./api/server/router.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
 import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
 import {
@@ -399,6 +400,11 @@ async function handleRealtimeWebSocket(
   });
 }
 
+// Serve the API directly from Express so it can operate without the Astro
+// frontend. Mounted before express.json so handlers receive the raw request
+// body (JSON, multipart, binary uploads, MCP, …).
+app.use(apiRouter);
+
 app.use(express.json({ limit: "100mb", type: (req: any) => {
   // Skip express.json for MCP routes — they parse the body themselves
   if (req.url?.includes("/mcp")) return false;
@@ -411,29 +417,38 @@ app.post("/sync", (req: any, res: any) => {
   res.status(200).end();
 });
 
-if (import.meta.env.DEV) {
-  app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
-} else {
-  const { embeddedClientAssets } = await import("../generated/client-assets.ts");
-  app.use("/", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
-}
+// The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
+// server (no client assets, no Astro dev server, no SSR handler).
+const apiOnly =
+  process.env.VEKTOR_API_ONLY === "1" || process.env.VEKTOR_API_ONLY === "true";
 
 let devServer: Awaited<ReturnType<typeof dev>> | undefined;
 
-if (import.meta.env.DEV) {
-  const { dev } = await import("astro");
+if (!apiOnly) {
+  if (import.meta.env.DEV) {
+    app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
+  } else {
+    const { embeddedClientAssets } = await import("../generated/client-assets.ts");
+    app.use("/", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
+  }
 
-  devServer = await dev({
-    root: "./",
-    logLevel: "error",
-    server: {
-      host: true
-    }
-  });
+  if (import.meta.env.DEV) {
+    const { dev } = await import("astro");
+
+    devServer = await dev({
+      root: "./",
+      logLevel: "error",
+      server: {
+        host: true
+      }
+    });
+  } else {
+    import("../dist/server/entry.mjs").then(({ handler }) => {
+      app.use(handler);
+    });
+  }
 } else {
-  import("../dist/server/entry.mjs").then(({ handler }) => {
-    app.use(handler);
-  });
+  appLogger.info("Starting in API-only mode (Astro frontend disabled)");
 }
 
 const runtimeArgv = globalThis.process?.argv ?? [];

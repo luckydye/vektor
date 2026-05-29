@@ -66,6 +66,8 @@
   },
   "imports": {
     "#config": "./src/config.ts",
+    "#auth": "./src/auth.ts",
+    "#agent/*": "./src/agent/*",
     "#db/*": "./src/db/*",
     "#integrations/*": "./src/integrations/*",
     "#jobs/*": "./src/jobs/*",
