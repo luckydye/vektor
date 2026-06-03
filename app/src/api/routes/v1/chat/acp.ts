@@ -12,6 +12,7 @@ import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts
 import { getLocalOrigin } from "#config";
 import { runAgentInWorker, type AgentEvent, type ChatMessage } from "#agent/agent.ts";
 import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
+import { appLogger } from "#observability/logger.ts";
 
 // ---------------------------------------------------------------------------
 // JSON-RPC 2.0 types
@@ -219,6 +220,37 @@ function createTurnMessagesFromEvents(
  * from ACP events, and the assistant message comes from the agent result.
  * The client never writes display messages to the session.
  */
+/**
+ * Undoes the pre-save that was written before the turn started, restoring the
+ * session to the state it was in before the user sent this message.  Called
+ * when a turn is cancelled so the session doesn't get permanently stuck with a
+ * dangling user message.
+ */
+async function rollbackPreSavedUserMessage(options: {
+  spaceId: string;
+  chatId: string;
+  userId: string;
+  preTurnHistory: ChatMessage[];
+}) {
+  const session = await getAIChatSession(options.spaceId, options.chatId, options.userId);
+  if (!session) return;
+
+  // Remove the user message that was appended by the pre-save.
+  const messages = session.messages as unknown[];
+  const lastMsg = messages.at(-1) as { role?: string } | undefined;
+  const trimmedMessages = lastMsg?.role === "user" ? messages.slice(0, -1) : messages;
+
+  await upsertAIChatSession(options.spaceId, options.userId, {
+    id: session.id,
+    title: session.title,
+    createdAt: session.createdAt,
+    updatedAt: Date.now(),
+    messages: trimmedMessages,
+    conversationHistory: options.preTurnHistory,
+    shellSnapshot: session.shellSnapshot,
+  });
+}
+
 async function persistCompletedChatTurn(options: {
   spaceId: string;
   chatId: string;
@@ -433,6 +465,8 @@ function getOrStartActiveChatTurn(options: {
   userId: string | null;
   chatId: string;
   messages: ChatMessage[];
+  /** History before this turn's user message was added. Non-null only when a pre-save was written. */
+  preTurnHistory: ChatMessage[] | null;
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -478,22 +512,39 @@ function getOrStartActiveChatTurn(options: {
       turn.result = result;
       turn.updatedAt = Date.now();
       if (options.userId !== null) {
-        try {
-          await persistCompletedChatTurn({
-            spaceId: options.spaceId,
-            chatId: options.chatId,
-            userId: options.userId,
-            requestMessages: options.messages,
-            events: turn.events,
-            result,
-          });
-        } catch {
-          // The connected client also persists the final session when present.
-        }
+        await persistCompletedChatTurn({
+          spaceId: options.spaceId,
+          chatId: options.chatId,
+          userId: options.userId,
+          requestMessages: options.messages,
+          events: turn.events,
+          result,
+        });
       }
     })
-    .catch((error) => {
-      turn.error = error instanceof Error ? error.message : "Agent request failed";
+    .catch(async (error) => {
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      if (isAbort) {
+        if (options.userId !== null && options.preTurnHistory !== null) {
+          try {
+            await rollbackPreSavedUserMessage({
+              spaceId: options.spaceId,
+              chatId: options.chatId,
+              userId: options.userId,
+              preTurnHistory: options.preTurnHistory,
+            });
+          } catch (rollbackError) {
+            appLogger.warn("Failed to rollback pre-saved user message after cancellation", {
+              chatId: options.chatId,
+              spaceId: options.spaceId,
+              error: rollbackError,
+            });
+          }
+        }
+      } else {
+        appLogger.error("Chat turn failed", { chatId: options.chatId, spaceId: options.spaceId, error });
+        turn.error = error instanceof Error ? error.message : "Agent request failed";
+      }
       turn.updatedAt = Date.now();
     })
     .finally(() => {
@@ -621,6 +672,8 @@ export const POST: APIRoute = (context) =>
           userId,
           chatId: sessionId,
           messages,
+          preTurnHistory:
+            userId !== null && persistedSession && lastHistoryRole !== "user" ? history : null,
           apiUrl: getLocalOrigin(),
           spaceId,
           documentId: typeof documentId === "string" ? documentId : undefined,

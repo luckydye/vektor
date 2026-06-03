@@ -52,24 +52,34 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
   return defineCommand("gitlab", async (args, _ctx) => {
     const usage =
       "usage:\n" +
-      "  gitlab [-X METHOD] [-H 'Header: value'] [-d data] <path-or-url>\n" +
+      "  gitlab api [-X METHOD] [-H 'Header: value'] [-d data] <path>\n" +
       "  gitlab ls <project> [path] [--ref <ref>]\n" +
       "  gitlab cat <project> <file-path> [--ref <ref>]\n" +
       "  gitlab tree <project> [path] [--ref <ref>]\n" +
       "examples:\n" +
-      "  gitlab /user\n" +
-      "  gitlab '/projects?membership=true&simple=true'\n" +
+      "  gitlab api /user\n" +
+      "  gitlab api '/projects?membership=true&simple=true'\n" +
       "  gitlab ls group/project src/\n" +
       "  gitlab cat group/project README.md --ref main\n" +
       "  gitlab tree group/project --ref develop\n";
 
     const subcommand = args[0];
 
+    if (!subcommand) {
+      return { stdout: "", stderr: usage, exitCode: 2 };
+    }
+
     // --- ls / cat / tree sub-commands ---
     if (subcommand === "ls" || subcommand === "cat" || subcommand === "tree") {
       const project = args[1];
-      if (!project) {
-        return { stdout: "", stderr: `gitlab ${subcommand}: missing <project>\n${usage}`, exitCode: 2 };
+      if (!project || project.startsWith("-")) {
+        return {
+          stdout: "",
+          stderr:
+            `gitlab ${subcommand}: missing <project> (must be a numeric ID or namespace/project path).\n` +
+            `To list or search projects use: gitlab '/projects?search=name'\n`,
+          exitCode: 2,
+        };
       }
 
       let filePath = "";
@@ -146,16 +156,17 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
       return { stdout: `${out}\n`, stderr: "", exitCode: 0 };
     }
 
-    // --- default: raw API request ---
-    const usage_short =
-      "usage: gitlab [-X METHOD] [-H 'Header: value'] [-d data] <path-or-url>\n";
+    // --- api sub-command: raw API request ---
+    if (subcommand !== "api") {
+      return { stdout: "", stderr: `gitlab: unknown sub-command '${subcommand}'\n${usage}`, exitCode: 2 };
+    }
 
     let method = "GET";
     const headers: Record<string, string> = {};
     let body: string | undefined;
     let path: string | undefined;
 
-    for (let index = 0; index < args.length; index++) {
+    for (let index = 1; index < args.length; index++) {
       const arg = args[index]!;
       if (arg === "-X" || arg === "--request") {
         method = (args[++index] ?? "").toUpperCase();
@@ -181,7 +192,7 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
     }
 
     if (!path) {
-      return { stdout: "", stderr: usage_short, exitCode: 2 };
+      return { stdout: "", stderr: `usage: gitlab api [-X METHOD] [-H 'Header: value'] [-d data] <path>\n`, exitCode: 2 };
     }
 
     const result = await gitlabApiRequest(mcpConfigRef, method, path, headers, body);
