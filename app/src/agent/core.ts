@@ -60,6 +60,7 @@ The bash tool runs inside bash, not full system shell.
 - zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
 - zipinfo lists zip contents: \`zipinfo archive.zip\`. Use this instead of \`unzip -l\`.
 - vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
+- Create docs with \`vektor create --title "Title" [--type type] [--parent document-id] [file]\`. If no file is given, content is read from stdin. Example: \`cat app.html | vektor create --title "Dashboard" --type app\`.
 - Delete docs with \`vektor delete <id>\` or \`vektor delete <id> --permanent\`.
 - pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv. Example: \`vektor current > doc.html && pandoc doc.html -t csv -o table.csv\`.
 - To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
@@ -1061,9 +1062,10 @@ export function createAgentShell(
       return {
         stdout: "",
         stderr:
-          "usage: vektor <list|read|current|search|delete> [args] [--json]\n" +
+          "usage: vektor <list|read|current|search|create|delete> [args] [--json]\n" +
           "fetch other docs: vektor search \"query\" --json -> take id -> vektor read <id>\n" +
           "fetch current doc: vektor current\n" +
+          "create doc: vektor create --title \"Title\" [--type type] [--parent document-id] [file]\n" +
           "archive doc: vektor delete <id>\n" +
           "permanently delete doc: vektor delete <id> --permanent\n" +
           "save to file: vektor read <id> > doc.md\n",
@@ -1119,6 +1121,87 @@ export function createAgentShell(
           q: rest.join(" "),
         });
         break;
+      case "create": {
+        const usage =
+          "usage: vektor create --title <title> [--type type] [--parent document-id] [file] [--json]\n";
+        let title: string | undefined;
+        let type: string | undefined;
+        let parentId: string | undefined;
+        let fileArg: string | undefined;
+
+        for (let index = 0; index < rest.length; index++) {
+          const arg = rest[index]!;
+          if (arg === "--title" || arg === "-t") {
+            title = rest[++index];
+            continue;
+          }
+          if (arg === "--type") {
+            type = rest[++index];
+            continue;
+          }
+          if (arg === "--parent" || arg === "--parent-id") {
+            parentId = rest[++index];
+            continue;
+          }
+          if (!arg.startsWith("-")) {
+            fileArg = arg;
+            continue;
+          }
+          return {
+            stdout: "",
+            stderr: `vektor create: unknown flag '${arg}'\n${usage}`,
+            exitCode: 2,
+          };
+        }
+
+        if (!title?.trim()) {
+          return { stdout: "", stderr: usage, exitCode: 2 };
+        }
+
+        let content: string;
+        if (fileArg) {
+          const filePath = _ctx.fs.resolvePath(_ctx.cwd, fileArg);
+          if (!(await _ctx.fs.exists(filePath))) {
+            return {
+              stdout: "",
+              stderr: `vektor create: ${fileArg}: No such file or directory\n`,
+              exitCode: 1,
+            };
+          }
+          content = Buffer.from(await _ctx.fs.readFileBuffer(filePath)).toString("utf-8");
+        } else {
+          content = _ctx.stdin;
+        }
+
+        if (!content.trim()) {
+          return {
+            stdout: "",
+            stderr: "vektor create: content is required from file or stdin\n",
+            exitCode: 2,
+          };
+        }
+
+        result = await callVektorTool(mcpConfigRef.current, "write_document", {
+          title,
+          content,
+          ...(type ? { type } : {}),
+          ...(parentId ? { parentId } : {}),
+        });
+
+        if (!json) {
+          const doc = (result as Record<string, unknown>)?.document as
+            | Record<string, unknown>
+            | undefined;
+          const id = typeof doc?.id === "string" ? doc.id : null;
+          const slug = typeof doc?.slug === "string" ? doc.slug : null;
+          return {
+            stdout: `created ${id ?? "document"}${slug ? ` ${slug}` : ""}\n`,
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        break;
+      }
       case "delete": {
         const [documentId, ...flags] = rest;
         if (!documentId) {
