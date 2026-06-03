@@ -354,6 +354,25 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["section"],
       },
     },
+    {
+      name: "integration_api_request",
+      description:
+        "Call a configured integration API using the current user's connected OAuth token. GitLab paths are relative to /api/v4, for example /user or /projects?membership=true.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          provider: { type: "string", enum: ["gitlab", "youtrack"] },
+          method: {
+            type: "string",
+            enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          },
+          path: { type: "string" },
+          headers: { type: "object" },
+          body: { type: "string" },
+        },
+        required: ["provider", "path"],
+      },
+    },
     ...(config.documentId
       ? [
           {
@@ -549,6 +568,25 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     case "get_documentation": {
       const section = expectString(args, "section")!;
       return await apiRequest(config, `/docs/${section}`);
+    }
+    case "integration_api_request": {
+      const provider = expectString(args, "provider")!;
+      const path = expectString(args, "path")!;
+      const method = expectString(args, "method", { optional: true });
+      const headers = expectObject(args, "headers", { optional: true });
+      const body = expectString(args, "body", { optional: true });
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/integrations/${encodeURIComponent(provider)}/proxy`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: new URL(config.apiUrl).origin,
+          },
+          body: JSON.stringify({ method, path, headers, body }),
+        },
+      );
     }
     case "install_extension": {
       const form = new FormData();

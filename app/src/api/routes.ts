@@ -49,6 +49,7 @@ import * as space from "./routes/v1/spaces/[spaceId]/index.ts";
 // Integrations
 import * as integrationCallback from "./routes/v1/spaces/[spaceId]/integrations/[provider]/callback.ts";
 import * as integrationConnect from "./routes/v1/spaces/[spaceId]/integrations/[provider]/connect.ts";
+import * as integrationProxy from "./routes/v1/spaces/[spaceId]/integrations/[provider]/proxy.ts";
 import * as integration from "./routes/v1/spaces/[spaceId]/integrations/[provider]/index.ts";
 import * as integrations from "./routes/v1/spaces/[spaceId]/integrations/index.ts";
 
@@ -155,6 +156,7 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]", module: integration },
   { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/connect", module: integrationConnect },
   { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/callback", module: integrationCallback },
+  { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/proxy", module: integrationProxy },
 
   { pattern: "/api/v1/spaces/[spaceId]/permissions", module: permissions },
   { pattern: "/api/v1/spaces/[spaceId]/permissions/me", module: permissionsMe },

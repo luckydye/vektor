@@ -72,7 +72,7 @@ export function getOAuthProviderConfiguration(provider: OAuthIntegrationProvider
 
     const clientId = appConfig.GITLAB_OAUTH_CLIENT_ID?.trim() || "";
     const clientSecret = appConfig.GITLAB_OAUTH_CLIENT_SECRET?.trim() || "";
-    const scopes = (appConfig.GITLAB_OAUTH_SCOPES || "read_api read_user")
+    const scopes = (appConfig.GITLAB_OAUTH_SCOPES || "api")
       .split(/[\s,]+/)
       .map((scope) => scope.trim())
       .filter(Boolean);

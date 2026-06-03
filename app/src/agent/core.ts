@@ -70,6 +70,7 @@ The bash tool runs inside bash, not full system shell.
 - Use human-readable filenames for uploaded files (e.g. the document title, not the document ID).
 - Only include final output files in zips. Delete or exclude intermediate files (e.g. downloaded HTML used to produce CSVs) before zipping.
 - ai command is available for one-shot AI completions: \`ai <prompt>\` or \`echo <prompt> | ai\`. Examples: \`ai "summarize this" < doc.txt\`, \`cat data.csv | ai "what are the trends?"\`.
+- gitlab command is available for GitLab API requests using the current user's connected OAuth token. Paths are relative to /api/v4. Examples: \`gitlab /user\`, \`gitlab '/projects?membership=true&simple=true'\`, \`gitlab -X POST -H "Content-Type: application/json" -d '{"title":"Bug"}' /projects/123/issues\`.
 - curl is available for HTTP requests. Use \`curl -s <url>\` for GET, \`curl -X POST -H "Content-Type: application/json" -d '{"key":"val"}' <url>\` for POST. Pipe output to \`html-to-markdown\` to convert pages to markdown.
 - Prefer direct shell utilities already available in bash.
 - If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
@@ -1287,6 +1288,77 @@ export function createAgentShell(
     return { stdout: `${text}\n`, stderr: "", exitCode: 0 };
   });
 
+  const gitlabCommand = defineCommand("gitlab", async (args, _ctx) => {
+    const usage =
+      "usage: gitlab [-X METHOD] [-H 'Header: value'] [-d data] <path-or-url>\n" +
+      "examples:\n" +
+      "  gitlab /user\n" +
+      "  gitlab '/projects?membership=true&simple=true'\n" +
+      "  gitlab -X POST -H 'Content-Type: application/json' -d '{\"title\":\"Bug\"}' /projects/123/issues\n";
+
+    let method = "GET";
+    const headers: Record<string, string> = {};
+    let body: string | undefined;
+    let path: string | undefined;
+
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index]!;
+      if (arg === "-X" || arg === "--request") {
+        method = (args[++index] ?? "").toUpperCase();
+        continue;
+      }
+      if (arg === "-H" || arg === "--header") {
+        const raw = args[++index] ?? "";
+        const colon = raw.indexOf(":");
+        if (colon !== -1) {
+          headers[raw.slice(0, colon).trim()] = raw.slice(colon + 1).trim();
+        }
+        continue;
+      }
+      if (arg === "-d" || arg === "--data") {
+        body = args[++index] ?? "";
+        if (method === "GET") method = "POST";
+        continue;
+      }
+      if (!arg.startsWith("-")) {
+        path = arg;
+        continue;
+      }
+    }
+
+    if (!path) {
+      return { stdout: "", stderr: usage, exitCode: 2 };
+    }
+
+    const result = (await callVektorTool(mcpConfigRef.current, "integration_api_request", {
+      provider: "gitlab",
+      method,
+      path,
+      headers,
+      body,
+    })) as {
+      ok?: boolean;
+      status?: number;
+      statusText?: string;
+      body?: string;
+    };
+
+    const responseBody = result.body ?? "";
+    if (!result.ok) {
+      return {
+        stdout: "",
+        stderr: `gitlab: HTTP ${result.status ?? "unknown"} ${result.statusText ?? ""}\n${responseBody}\n`,
+        exitCode: 22,
+      };
+    }
+
+    return {
+      stdout: responseBody.endsWith("\n") ? responseBody : `${responseBody}\n`,
+      stderr: "",
+      exitCode: 0,
+    };
+  });
+
   // Custom curl that uses Node.js fetch directly, bypassing just-bash's loopback/private IP block.
   // Supports: -s (silent), -o <file>, -X <method>, -H <header>, -d <body>, -L (follow redirects).
   const curlCommand = defineCommand("curl", async (args, ctx) => {
@@ -1375,6 +1447,17 @@ export function createAgentShell(
   return new Bash({
     cwd: bootstrap?.cwd,
     env: bootstrap?.env,
-    customCommands: [zipCommand, zipinfoCommand, unzipCommand, vektorCommand, pandocCommand, uploadCommand, aiCommand, extensionCommand, curlCommand],
+    customCommands: [
+      zipCommand,
+      zipinfoCommand,
+      unzipCommand,
+      vektorCommand,
+      pandocCommand,
+      uploadCommand,
+      aiCommand,
+      gitlabCommand,
+      extensionCommand,
+      curlCommand,
+    ],
   });
 }

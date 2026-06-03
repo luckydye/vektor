@@ -1,7 +1,7 @@
 import { and, eq, lt } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
-import { encryptSecret } from "./secretsCrypto.ts";
+import { decryptSecret, encryptSecret } from "./secretsCrypto.ts";
 import { oauthIntegration, oauthIntegrationState } from "./schema/space.ts";
 
 export type OAuthIntegrationProvider = "gitlab" | "youtrack";
@@ -25,6 +25,11 @@ export interface OAuthIntegrationTokenSet {
   refreshToken: string | null;
   expiresAt: Date | null;
   scope: string | null;
+}
+
+export interface OAuthIntegrationCredential extends OAuthIntegrationConnection {
+  accessToken: string;
+  refreshToken: string | null;
 }
 
 export async function listOAuthIntegrationsForUser(
@@ -81,6 +86,57 @@ export async function getOAuthIntegrationForUser(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     lastUsedAt: row.lastUsedAt ?? null,
+  };
+}
+
+export async function getOAuthIntegrationCredentialForUser(
+  spaceId: string,
+  userId: string,
+  provider: OAuthIntegrationProvider,
+): Promise<OAuthIntegrationCredential | null> {
+  const db = await getSpaceDb(spaceId);
+  const row = await db
+    .select()
+    .from(oauthIntegration)
+    .where(and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)))
+    .limit(1)
+    .get();
+
+  if (!row) {
+    return null;
+  }
+
+  const now = new Date();
+  await db
+    .update(oauthIntegration)
+    .set({ lastUsedAt: now })
+    .where(eq(oauthIntegration.id, row.id));
+
+  return {
+    id: row.id,
+    provider: row.provider as OAuthIntegrationProvider,
+    userId: row.userId,
+    externalAccountId: row.externalAccountId,
+    externalUsername: row.externalUsername ?? null,
+    instanceUrl: row.instanceUrl ?? null,
+    scope: row.scope ?? null,
+    accessTokenExpiresAt: row.accessTokenExpiresAt ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    lastUsedAt: now,
+    accessToken: decryptSecret({
+      ciphertext: row.accessTokenCiphertext,
+      iv: row.accessTokenIv,
+      authTag: row.accessTokenAuthTag,
+    }),
+    refreshToken:
+      row.refreshTokenCiphertext && row.refreshTokenIv && row.refreshTokenAuthTag
+        ? decryptSecret({
+            ciphertext: row.refreshTokenCiphertext,
+            iv: row.refreshTokenIv,
+            authTag: row.refreshTokenAuthTag,
+          })
+        : null,
   };
 }
 
