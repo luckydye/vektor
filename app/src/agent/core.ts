@@ -56,7 +56,7 @@ export type AgentEvent =
 function buildCoreAgentSystemPrompt(documentId?: string) {
   return `## Bash Tool Runtime
 The bash tool runs inside bash, not full system shell.
-- js-exec is available for JavaScript/TypeScript execution. Use `js-exec -c "..."` for inline scripts, `js-exec script.js` for files. Supports `require()` and `import` with common Node.js built-in modules. Default timeout: 10s (60s with network).
+- js-exec is available for JavaScript/TypeScript execution. Use \`js-exec -c "..."\` for inline scripts, \`js-exec script.js\` for files. Supports \`require()\` and \`import\` with common Node.js built-in modules. Default timeout: 10s (60s with network).
 - zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
 - zipinfo lists zip contents: \`zipinfo archive.zip\`. Use this instead of \`unzip -l\`.
 - vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
