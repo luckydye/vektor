@@ -69,8 +69,8 @@ function buildCoreAgentSystemPrompt(documentId?: string) {
 - vektor CLI: \`vektor current\` (current doc), \`vektor read <id>\`, \`vektor list --json\`, \`vektor search "<q>" --json\`, \`vektor create --title "T" [--type type] [--parent id] [file]\`, \`vektor delete <id> [--permanent]\`. Pipe/redirect to/from virtual files as needed.
 - upload <file> uploads from the virtual filesystem and returns JSON with a URL. Never share sandbox paths — always upload first.
 - Only include final output files in zips; exclude intermediates.
-- ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to `html-to-markdown` to convert HTML.
-- gitlab <path>: raw GitLab API request via OAuth (paths relative to /api/v4). Sub-commands: `gitlab ls <project> [path] [--ref <ref>]` (list directory), `gitlab cat <project> <file> [--ref <ref>]` (file contents), `gitlab tree <project> [path] [--ref <ref>]` (recursive listing). Project can be a numeric ID or `namespace/project`.
+- ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.
+- gitlab <path>: raw GitLab API request via OAuth (paths relative to /api/v4). Sub-commands: \`gitlab ls <project> [path] [--ref <ref>]\` (list directory), \`gitlab cat <project> <file> [--ref <ref>]\` (file contents), \`gitlab tree <project> [path] [--ref <ref>]\` (recursive listing). Project can be a numeric ID or \`namespace/project\`.
 - pandoc conversions: \`html -> csv\` (first table) and \`html-table -> csv\`.
 - Prefer built-in shell utilities. On failure, inspect stderr and adapt — don't retry blindly.
 - Loop over file lines with \`while read -r line; do ...; done < file.txt\` (\`<<\` is a heredoc, not a file).
