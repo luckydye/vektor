@@ -440,10 +440,14 @@ function getOrStartActiveChatTurn(options: {
   shellSnapshot?: string | null;
 }): ActiveChatTurn {
   const existing = activeChatTurns.get(options.key);
-  if (existing) {
+  if (existing && !existing.result && !existing.error) {
+    // Turn is still in progress — reconnect this client to it.
     existing.updatedAt = Date.now();
     return existing;
   }
+  // No in-progress turn (either none exists, or the previous one for this
+  // session already completed).  Fall through to start a fresh turn.
+  // Overwriting the map entry replaces any lingering completed turn.
 
   const turnAbortController = new AbortController();
   const turn: ActiveChatTurn = {
@@ -573,11 +577,43 @@ export const POST: APIRoute = (context) =>
           jobToken = createJobToken(spaceId, Date.now().toString(), user.id);
         }
 
-        // Load existing conversation history from DB and append the new user message.
+        // Load existing conversation history from DB.
         const persistedSession =
           userId === null ? null : await getAIChatSession(spaceId, sessionId, userId);
         const history = (persistedSession?.conversationHistory ?? []) as ChatMessage[];
-        const messages: ChatMessage[] = [...history, { role: "user", content: userText }];
+
+        // If the history already ends with a user message it means the session
+        // was interrupted mid-turn (the user message was pre-saved below but
+        // the agent never completed).  In that case we reconnect as-is rather
+        // than appending the user message a second time.
+        const lastHistoryRole = history.at(-1)?.role;
+        const messages: ChatMessage[] =
+          lastHistoryRole === "user"
+            ? history
+            : [...history, { role: "user", content: userText }];
+
+        // Pre-save the user message to the session BEFORE starting the agent.
+        // This ensures that if the page is reloaded mid-turn the history shows
+        // the pending message and getSessionStatus returns "awaiting".
+        if (userId !== null && persistedSession && lastHistoryRole !== "user") {
+          try {
+            await upsertAIChatSession(spaceId, userId, {
+              id: persistedSession.id,
+              title: persistedSession.title,
+              createdAt: persistedSession.createdAt,
+              updatedAt: Date.now(),
+              messages: [
+                ...(persistedSession.messages as unknown[]),
+                { role: "user", content: userText, timestamp: Date.now() },
+              ],
+              conversationHistory: messages,
+              shellSnapshot: persistedSession.shellSnapshot ?? null,
+            });
+          } catch {
+            // Non-fatal — the turn still runs; worst case the user message
+            // won't appear in history until the turn completes normally.
+          }
+        }
 
         const key = getActiveTurnKey({ spaceId, userId, chatId: sessionId });
         const turn = getOrStartActiveChatTurn({

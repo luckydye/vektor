@@ -64,55 +64,36 @@ export type AgentEvent =
 
 function buildCoreAgentSystemPrompt(documentId?: string) {
   return `## Bash Tool Runtime
-The bash tool runs inside bash, not full system shell.
-- js-exec is available for JavaScript/TypeScript execution in a QuickJS sandbox. Use \`js-exec -c "..."\` for inline scripts, \`js-exec script.js\` for files. Has \`console\`, \`process\` (argv, cwd, env, platform), and basic globals. No \`require\`, \`fetch\`, or Node.js built-in modules inside the sandbox. Default timeout: 10s.
-- zip and unzip are available and operate on virtual filesystem. Always recursive — no flags needed. Examples: \`zip archive.zip file.txt dir/\`, \`unzip archive.zip -d output/\`.
-- zipinfo lists zip contents: \`zipinfo archive.zip\`. Use this instead of \`unzip -l\`.
-- vektor command is available in bash for document access. Use it when shell piping or redirection into virtual files is useful.
-- Create docs with \`vektor create --title "Title" [--type type] [--parent document-id] [file]\`. If no file is given, content is read from stdin. Example: \`cat app.html | vektor create --title "Dashboard" --type app\`.
-- Delete docs with \`vektor delete <id>\` or \`vektor delete <id> --permanent\`.
-- pandoc command is available for focused conversions in virtual filesystem: html -> csv (first table) and html-table -> csv. Example: \`vektor current > doc.html && pandoc doc.html -t csv -o table.csv\`.
-- To fetch non-current documents: run \`vektor search "<query>" --json\` or \`vektor list --json\`, extract document \`id\`, then run \`vektor read <id>\`.
-- Use \`vektor current\` only for current chat document context.
-- To save document output into virtual filesystem, use shell redirection. Examples: \`vektor current > current-doc.txt\`, \`vektor read <id> > doc.md\`, \`vektor search "auth" --json > results.json\`.
-- upload command is available to upload a file from virtual filesystem: \`upload <file> [-t content-type] [-d document-id]\`. Returns JSON with upload result including URL.
-- Never give the user sandbox paths (e.g. sandbox:/file.zip). Always upload files first with \`upload\` and give the user the resulting URL.
-- Use human-readable filenames for uploaded files (e.g. the document title, not the document ID).
-- Only include final output files in zips. Delete or exclude intermediate files (e.g. downloaded HTML used to produce CSVs) before zipping.
-- ai command is available for one-shot AI completions: \`ai <prompt>\` or \`echo <prompt> | ai\`. Examples: \`ai "summarize this" < doc.txt\`, \`cat data.csv | ai "what are the trends?"\`.
-- gitlab command is available for GitLab API requests using the current user's connected OAuth token. Paths are relative to /api/v4. Examples: \`gitlab /user\`, \`gitlab '/projects?membership=true&simple=true'\`, \`gitlab -X POST -H "Content-Type: application/json" -d '{"title":"Bug"}' /projects/123/issues\`.
-- curl is available for HTTP requests. Use \`curl -s <url>\` for GET, \`curl -X POST -H "Content-Type: application/json" -d '{"key":"val"}' <url>\` for POST. Pipe output to \`html-to-markdown\` to convert pages to markdown.
-- Prefer direct shell utilities already available in bash.
-- If command fails, inspect error output and adapt. Do not assume missing commands exist on retry.
-- To loop over lines in a file, use \`done < file.txt\` (single \`<\`). The \`<<\` operator is a heredoc and reads inline text, not a file. Correct pattern: \`while read -r line; do echo "$line"; done < file.txt\`
-- Do not use \`awk -F,\` to parse CSV columns — quoted fields containing commas will shift column numbers. To extract doc IDs or other patterns from CSV or HTML, use \`grep -oE 'pattern'\` instead.
+- js-exec runs JavaScript/TypeScript in a QuickJS sandbox: \`js-exec -c "..."\` or \`js-exec script.js\`. Has \`console\` and \`process\`; no \`require\`, \`fetch\`, or Node built-ins.
+- zip/unzip/zipinfo operate on the virtual filesystem (zip is always recursive). Use \`zipinfo\` instead of \`unzip -l\`.
+- vektor CLI: \`vektor current\` (current doc), \`vektor read <id>\`, \`vektor list --json\`, \`vektor search "<q>" --json\`, \`vektor create --title "T" [--type type] [--parent id] [file]\`, \`vektor delete <id> [--permanent]\`. Pipe/redirect to/from virtual files as needed.
+- upload <file> uploads from the virtual filesystem and returns JSON with a URL. Never share sandbox paths — always upload first.
+- Only include final output files in zips; exclude intermediates.
+- ai <prompt>: one-shot AI completion. gitlab <path>: GitLab API via OAuth (paths relative to /api/v4). curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.
+- pandoc conversions: \`html -> csv\` (first table) and \`html-table -> csv\`.
+- Prefer built-in shell utilities. On failure, inspect stderr and adapt — don't retry blindly.
+- Loop over file lines with \`while read -r line; do ...; done < file.txt\` (\`<<\` is a heredoc, not a file).
+- Don't use \`awk -F,\` for CSV column extraction — use \`grep -oE\` instead.
+
+## Handling Large Output
+- Tool output is capped at ~6 000 chars. If truncated, redirect to a file and process: \`command > out.json && jq ... out.json\`.
+- For paginated APIs, loop over pages and append to a file; stop when a page is empty.
+- Never install extensions unless the user explicitly asks.
 
 ## Behavior
-- Before starting, outline a short plan of steps.
-- After each step, verify the result before continuing to the next step (e.g. check file exists, inspect output, confirm command succeeded).
-- Do not report results to the user until they have been verified.
-- Do not restate command output that is already visible in the tool result. After a command, only add a final response when you have extra interpretation, a requested summary, or a useful next step.
+- Outline a short plan before starting. Verify each step before proceeding.
+- Don't report results until verified. Don't restate visible tool output — only add interpretation, summaries, or next steps.
 
 ## App Documents
-- Documents with type "app" are HTML apps in sandboxed iframes.
-- To create one, create document with full HTML and type "app".
-- To update one, replace running HTML content in the document.
+- Type "app" documents are HTML apps in sandboxed iframes. Create with full HTML and \`--type app\`; update by replacing the HTML content.
 
 ## Extensions
-- Extensions add UI and job functionality to the space. Use \`extension install <zip-file>\` to install.
-- Extensions are ZIP packages with \`manifest.json\` at root and \`dist/\` with plain ESM JS — no build step needed.
-- Minimum manifest.json: \`{"id":"my-ext","name":"My Extension","version":"1.0.0","entries":{"frontend":"dist/main.js"}}\`
-- Extension IDs must be lowercase alphanumeric with hyphens only (e.g. \`my-extension\`).
-- Frontend entry exports \`activate(ctx)\` and \`deactivate(ctx)\`. The \`ctx\` object provides:
-  - \`ctx.actions.register(id, {title, icon?, async run(ctx)})\` — add command palette actions
-  - \`ctx.suggestions.register(id, {char, items(query), onSelect(item, editor)})\` — add editor slash commands
-  - \`ctx.views.register(path, (container) => { /* render UI into container */ })\` — render a page view
-  - \`ctx.api\` — fetch API client for space/document operations
-- Jobs run server-side in worker threads. Define in manifest: \`"jobs":[{"id":"my-job","name":"My Job","entry":"dist/jobs/my-job.js","inputs":{"text":{"type":"string","required":true}},"outputs":{"result":{"type":"string"}}}]\`
-- Job entry uses worker_threads: \`const {parentPort,workerData}=require("node:worker_threads"); parentPort.postMessage({type:"result",success:true,outputs:{result:{type:"text",value:"..."}}});\`
-- To create an extension: write manifest.json and dist/ files, \`zip ext.zip manifest.json dist/\`, then \`extension install ext.zip\`.
+- ZIP packages with \`manifest.json\` at root and \`dist/\` plain ESM JS. Install with \`extension install <zip>\`.
+- Minimum manifest: \`{"id":"my-ext","name":"My Extension","version":"1.0.0","entries":{"frontend":"dist/main.js"}}\`. IDs: lowercase alphanumeric + hyphens.
+- Frontend entry exports \`activate(ctx)\`/\`deactivate(ctx)\`. \`ctx\` provides: \`ctx.actions.register\`, \`ctx.suggestions.register\`, \`ctx.views.register\`, \`ctx.api\`.
+- Jobs: declare in manifest \`"jobs":[{"id","name","entry","inputs","outputs"}]\`. Entry uses \`worker_threads\` and posts \`{type:"result",success:true,outputs:{...}}\`.
 
-${documentId ? `\n## Current Document\n- When user asks about "this document", "the page", or current content, inspect it first with \`vektor current\`.` : ""}`;
+${documentId ? `\n## Current Document\n- When the user refers to "this document" or "the page", inspect it first with \`vektor current\`.` : ""}`;
 }
 
 async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
@@ -683,6 +664,7 @@ export async function runAgentPrompt(options: {
       const content =
         typeof result === "string" ? result : JSON.stringify(result, null, 2);
 
+      // Full content goes to the client for display.
       await onEvent?.({
         type: "tool_result",
         toolCallId: toolCall.id,
@@ -690,10 +672,21 @@ export async function runAgentPrompt(options: {
         content,
         isError,
       });
+
+      // Truncate before adding to the LLM context window.
+      // Large tool outputs flood the context and cause the model to lose
+      // coherence.  The truncation message instructs the model to redirect
+      // output to a file when it needs to process more data.
+      const MAX_TOOL_RESULT_CHARS = 6_000;
+      const modelContent =
+        content.length > MAX_TOOL_RESULT_CHARS
+          ? `${content.slice(0, MAX_TOOL_RESULT_CHARS)}\n\n[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} more characters not shown. Redirect to a file and process it there: e.g. \`command > output.json && jq \'...\'  output.json\`]`
+          : content;
+
       agentMessages.push({
         role: "tool",
         tool_call_id: toolCall.id,
-        content,
+        content: modelContent,
       });
     }
   }

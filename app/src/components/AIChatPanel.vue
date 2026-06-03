@@ -856,6 +856,48 @@ function resumeSession(session: ChatSession) {
   messages.value = (session.messages as UIMessage[]).map(normalizeSavedMessage);
   showSessionPicker.value = false;
   scrollToBottom();
+
+  // If the session was interrupted while the agent was responding, the history
+  // will end with a user message (pre-saved before the agent started).  Connect
+  // back to the in-progress turn (or restart it if the server already finished).
+  const conversationArr = session.conversationHistory as Array<{ role: string; content?: string }>;
+  const lastHistoryMsg = conversationArr.at(-1);
+  if (lastHistoryMsg?.role === "user" && typeof lastHistoryMsg.content === "string") {
+    void nextTick(() => void reconnectSession(lastHistoryMsg.content!));
+  }
+}
+
+async function reconnectSession(pendingUserMessage: string) {
+  if (isGenerating.value || !currentSessionId.value) return;
+  isGenerating.value = true;
+  abortController = new AbortController();
+  const responseStartIndex = messages.value.length;
+
+  try {
+    await streamAssistantResponse(pendingUserMessage, responseStartIndex);
+    if (currentSessionId.value && currentSpaceId.value) {
+      const refreshed = await getSession(currentSpaceId.value, currentSessionId.value);
+      if (refreshed) {
+        const idx = sessions.value.findIndex((s) => s.id === refreshed.id);
+        if (idx !== -1) sessions.value[idx] = refreshed;
+      }
+    }
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === "AbortError")) {
+      const errorMessage = error instanceof Error ? error.message : "AI generation failed";
+      messages.value.push({
+        role: "assistant",
+        content: `Sorry, I encountered an error: ${errorMessage}`,
+        timestamp: Date.now(),
+      });
+    }
+  } finally {
+    clearTransientStatusMessages(responseStartIndex);
+    removeThinkingMessages(responseStartIndex);
+    abortController = null;
+    isGenerating.value = false;
+    scrollToBottom();
+  }
 }
 
 async function removeSession(id: string) {
