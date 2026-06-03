@@ -305,21 +305,20 @@ function exitPopover(e: Event) {
 
 <template>
   <DockedPanel id="revisions" title="Document History" default-side="right" :default-width="420">
-    <div class="flex flex-col h-full">
-      <!-- Toolbar -->
-      <div class="flex items-center justify-end px-3 py-1.5 border-b border-neutral-100 shrink-0">
-        <button
-          @click="refresh"
-          :disabled="isLoadingAudit"
-          class="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors disabled:opacity-50"
-          title="Refresh"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        </button>
-      </div>
-
+    <div class="relative flex flex-col h-full">
+        <div class="absolute top-3 right-3">
+            <button
+                @click="refresh"
+                :disabled="isLoadingAudit"
+                class="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors disabled:opacity-50"
+                title="Refresh"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </button>
+        </div>
+    
       <!-- Error State -->
       <div v-if="auditError" class="mx-4 mt-4 p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
         {{ auditError }}

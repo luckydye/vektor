@@ -449,6 +449,12 @@ function appendToolEventMessage(event: Exclude<ChatStreamEvent, { type: "text" }
   });
 }
 
+function removeThinkingMessages(startIndex: number) {
+  messages.value = messages.value.filter(
+    (message, index) => !(index >= startIndex && message.role === "thinking"),
+  );
+}
+
 function applyStreamEvent(
   event: ChatStreamEvent,
   assistantMessageIndex: { value: number | null },
@@ -456,12 +462,14 @@ function applyStreamEvent(
   responseStartIndex: number,
 ) {
   if (event.type === "text") {
+    removeThinkingMessages(responseStartIndex);
     appendAssistantMessageChunk(event.text, assistantMessageIndex);
   } else if (event.type === "thinking") {
     appendThinkingMessageChunk(event.text, thinkingMessageIndex);
   } else if (event.type === "status") {
     appendStatusMessage(event.text);
   } else {
+    removeThinkingMessages(responseStartIndex);
     assistantMessageIndex.value = null;
     thinkingMessageIndex.value = null;
     if (event.type === "tool_call") {
@@ -930,6 +938,7 @@ async function sendMessage() {
     }
   } finally {
     clearTransientStatusMessages(responseStartIndex);
+    removeThinkingMessages(responseStartIndex);
     abortController = null;
     isGenerating.value = false;
     scrollToBottom();
@@ -1047,9 +1056,9 @@ onUnmounted(() => {
           </div>
           <div
             v-else-if="message.role === 'status'"
-            class="max-w-[85%] bg-neutral-950 text-neutral-100 border border-neutral-800 rounded-xl px-3 py-2 shadow-sm"
+            class="max-w-[85%] status-bubble rounded-xl px-3 py-2 shadow-sm"
           >
-            <div class="text-[11px] uppercase tracking-wide text-neutral-400 mb-1">Agent log</div>
+            <div class="text-[11px] uppercase tracking-wide status-bubble-label mb-1">Agent log</div>
             <pre class="text-xs leading-relaxed whitespace-pre-wrap font-mono">{{ message.content }}</pre>
           </div>
           <template v-else-if="message.role === 'thinking'">
@@ -1065,7 +1074,7 @@ onUnmounted(() => {
                 <div class="px-3.5 py-2 border-b border-neutral-200 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
                   Thinking
                 </div>
-                <pre class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-700">{{ message.content }}</pre>
+                <pre class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 max-h-48 overflow-y-auto">{{ message.content }}</pre>
               </div>
               <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
                 {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
@@ -1101,8 +1110,8 @@ onUnmounted(() => {
             </div>
           </template>
           <template v-else-if="message.role === 'tool'">
-            <div class="w-7 h-7 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-              <svg class="w-4 h-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-4 h-4 tool-message-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 010 1.4l-1 1a4 4 0 005.7 5.6l1-1a1 1 0 011.4 1.5l-1 1a6 6 0 01-8.5-8.5l1-1a1 1 0 011.4 0z"/>
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.3 17.7a1 1 0 010-1.4l1-1a4 4 0 00-5.7-5.6l-1 1a1 1 0 01-1.4-1.5l1-1a6 6 0 018.5 8.5l-1 1a1 1 0 01-1.4 0z"/>
               </svg>
@@ -1110,12 +1119,12 @@ onUnmounted(() => {
             <div class="flex-1 min-w-0">
               <button
                 type="button"
-                class="w-full text-left bg-amber-50 border border-amber-100 rounded-xl overflow-hidden shadow-sm cursor-pointer"
+                class="w-full text-left border tool-message-bg rounded-xl overflow-hidden shadow-sm cursor-pointer"
                 @click="toggleToolMessageExpanded(message, index)"
               >
-                <div class="px-3.5 py-2 border-b border-amber-100/80 text-[11px] font-medium uppercase tracking-wide text-amber-700">
+                <div class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide">
                   {{ message.toolPhase === 'call' ? 'Tool call' : 'Tool result' }}
-                  <span v-if="message.toolName" class="normal-case tracking-normal font-semibold text-amber-800 ml-1">
+                  <span v-if="message.toolName" class="normal-case tracking-normal font-semibold tool-message-name ml-1">
                     {{ message.toolName }}
                   </span>
                   <span
@@ -1132,7 +1141,7 @@ onUnmounted(() => {
                       ? { maxHeight: '12rem' }
                       : undefined
                   "
-                  :class="message.isError ? 'text-red-700 bg-red-50/40' : 'text-neutral-700'"
+                  :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
                 >{{ formatToolPreview(message) }}</pre>
               </button>
               <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
@@ -1360,4 +1369,100 @@ details[open] .details-chevron { transform: rotate(90deg); }
 .markdown-content :deep(blockquote) { border-left: 3px solid var(--color-neutral-200); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-neutral-500); }
 .markdown-content :deep(strong) { font-weight: 600; }
 .markdown-content :deep(hr) { margin: 0.75rem 0; border-color: var(--color-neutral-200); }
+
+/* ── Chat bubble theming ────────────────────────────────────────────── */
+
+.status-bubble {
+  background-color: #0b0c10;
+  color: #e2e5eb;
+  border: 1px solid #2b3140;
+}
+
+.status-bubble-label {
+  color: var(--color-neutral-400);
+}
+
+.tool-message-bg {
+  background-color: #fffbeb;
+  border-color: #fef3c7;
+}
+
+.tool-message-header {
+  color: #b45309;
+  border-color: rgba(254, 243, 199, 0.8);
+}
+
+.tool-message-name {
+  color: #92400e;
+}
+
+.tool-message-icon {
+  color: #d97706;
+}
+
+.tool-error-bg {
+  background-color: rgba(254, 242, 242, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  .markdown-content :deep(pre) {
+    background: var(--color-neutral-200);
+    color: var(--color-neutral-800);
+  }
+  .status-bubble {
+    background-color: var(--color-neutral-100);
+    color: var(--color-neutral-700);
+    border-color: var(--color-neutral-200);
+  }
+  .status-bubble-label {
+    color: var(--color-neutral-500);
+  }
+  .tool-message-bg {
+    background-color: var(--color-neutral-100);
+    border-color: var(--color-neutral-200);
+  }
+  .tool-message-header {
+    color: var(--color-neutral-600);
+    border-color: var(--color-neutral-200);
+  }
+  .tool-message-name {
+    color: var(--color-neutral-600);
+  }
+  .tool-message-icon {
+    color: var(--color-neutral-500);
+  }
+  .tool-error-bg {
+    background-color: rgba(33, 33, 33, 0.4);
+  }
+}
+
+:root[data-theme="dark"] .markdown-content :deep(pre) {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-800);
+}
+:root[data-theme="dark"] .status-bubble {
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  border-color: var(--color-neutral-200);
+}
+:root[data-theme="dark"] .status-bubble-label {
+  color: var(--color-neutral-500);
+}
+:root[data-theme="dark"] .tool-message-bg {
+  background-color: var(--color-neutral-100);
+  border-color: var(--color-neutral-200);
+}
+:root[data-theme="dark"] .tool-message-header {
+  color: var(--color-neutral-600);
+  border-color: var(--color-neutral-200);
+}
+:root[data-theme="dark"] .tool-message-name {
+  color: var(--color-neutral-600);
+}
+:root[data-theme="dark"] .tool-message-icon {
+  color: var(--color-neutral-500);
+}
+:root[data-theme="dark"] .tool-error-bg {
+  background-color: rgba(33, 33, 33, 0.4);
+}
 </style>

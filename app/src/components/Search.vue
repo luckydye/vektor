@@ -240,13 +240,6 @@ const canSearch = computed(() => {
 
 <template>
   <div>
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold text-neutral-900">Find Documents</h1>
-      <p class="mt-2 text-sm text-neutral-600">
-        Search across all documents you have access to in this space with semantic ranking
-      </p>
-    </div>
-
     <!-- Search Box -->
     <div class="flex gap-3 mb-4">
       <div class="relative flex-1">

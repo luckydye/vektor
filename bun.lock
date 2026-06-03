@@ -66,6 +66,7 @@
         "just-bash": "^3.0.1",
         "lit-html": "^3.3.1",
         "marked": "^17.0.0",
+        "quickjs-emscripten": "^0.32.0",
         "tailwind-merge": "^3.3.1",
         "tailwindcss": "^4.1.16",
         "vue": "^3.5.25",
