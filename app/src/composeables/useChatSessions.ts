@@ -52,6 +52,15 @@ export async function getSessionsForSpace(spaceId: string): Promise<ChatSession[
   return sessions;
 }
 
+export async function getSession(spaceId: string, sessionId: string): Promise<ChatSession | null> {
+  const response = await fetch(getSessionPath(spaceId, sessionId), {
+    credentials: "same-origin",
+  });
+  if (response.status === 404) return null;
+  const { session } = await parseResponse<{ session: ChatSession }>(response);
+  return session;
+}
+
 export async function saveSession(session: ChatSession): Promise<void> {
   const response = await fetch(getSessionPath(session.spaceId, session.id), {
     method: "PUT",

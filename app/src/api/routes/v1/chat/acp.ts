@@ -19,7 +19,6 @@ import { runAgentInWorker, type AgentEvent } from "#agent/agent.ts";
 import {
   getAIChatSession,
   upsertAIChatSession,
-  updateAIChatSessionShellSnapshot,
 } from "#db/aiChatSessions.ts";
 
 type ChatRole = "system" | "user" | "assistant" | "tool";
@@ -506,14 +505,21 @@ export const POST: APIRoute = (context) =>
         return createStreamingResponse(turn);
       }
 
-      const result = await runAgentInWorker({ ...workerOptions, signal: context.request.signal });
+      const nonStreamingEvents: AgentEvent[] = [];
+      const result = await runAgentInWorker({
+        ...workerOptions,
+        signal: context.request.signal,
+        onEvent: (event) => { nonStreamingEvents.push(event); },
+      });
       if (userId !== null) {
-        await updateAIChatSessionShellSnapshot(
-          body.spaceId,
-          body.chatId,
+        await persistCompletedChatTurn({
+          spaceId: body.spaceId,
+          chatId: body.chatId,
           userId,
-          result.shellSnapshot ?? null,
-        );
+          requestMessages: messages,
+          events: nonStreamingEvents,
+          result,
+        });
       }
       return Response.json({
         id: `chatcmpl_${crypto.randomUUID()}`,

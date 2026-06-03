@@ -11,6 +11,7 @@ import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
   getSessionsForSpace,
+  getSession,
   saveSession,
   deleteSession,
   type ChatSession,
@@ -1000,6 +1001,14 @@ async function sendMessage() {
 
   try {
     await streamAssistantResponse(responseStartIndex);
+    // Reload the session so sessions.value reflects the messages persistCompletedChatTurn saved.
+    if (currentSessionId.value && currentSpaceId.value) {
+      const refreshed = await getSession(currentSpaceId.value, currentSessionId.value);
+      if (refreshed) {
+        const idx = sessions.value.findIndex((s) => s.id === refreshed.id);
+        if (idx !== -1) sessions.value[idx] = refreshed;
+      }
+    }
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       conversationHistory.value.push({
@@ -1024,10 +1033,6 @@ async function sendMessage() {
     abortController = null;
     isGenerating.value = false;
     scrollToBottom();
-    // Session messages are persisted by the server (persistCompletedChatTurn).
-    // The client only needs to save the updated conversationHistory so the
-    // next turn has the right context — but only if the turn completed normally
-    // (AbortError means cancel; other errors leave conversationHistory unchanged).
   }
 }
 

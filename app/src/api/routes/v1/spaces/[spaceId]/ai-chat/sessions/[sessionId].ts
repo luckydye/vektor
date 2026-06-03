@@ -71,6 +71,22 @@ function parseSessionInput(
   };
 }
 
+export const GET: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const spaceId = requireParam(context.params, "spaceId");
+    const sessionId = requireParam(context.params, "sessionId");
+
+    await verifySpaceRole(spaceId, user.id, "viewer");
+
+    const session = await getAIChatSession(spaceId, sessionId, user.id);
+    if (!session) {
+      throw notFoundResponse("AI chat session");
+    }
+
+    return jsonResponse({ session });
+  }, "Failed to get AI chat session");
+
 export const PUT: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);

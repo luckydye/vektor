@@ -623,7 +623,6 @@ export async function runAgentPrompt(options: {
   const allChunks: string[] = [];
 
   while (true) {
-    await onEvent?.({ type: "status", text: "Thinking..." });
     const { message, finishReason } = await callModel({
       provider,
       messages: agentMessages,
