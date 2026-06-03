@@ -26,8 +26,6 @@ const props = defineProps({
   },
 });
 
-const SYSTEM_PROMPT = `You are a helpful AI assistant integrated into a wiki/documentation system.`;
-
 type UploadedAttachment = {
   key: string;
   url: string;
@@ -493,7 +491,7 @@ function applyStreamEvent(
     }
     appendToolEventMessage(event);
   }
-  scrollToBottom();
+  scrollToBottomIfNearBottom();
 }
 
 function appendStatusMessage(text: string) {
@@ -767,18 +765,6 @@ function toggleToolMessageExpanded(message: UIMessage, index: number) {
 
 // ── Send to agent ─────────────────────────────────────────────────────────────
 
-function ensureConversationHistory() {
-  if (conversationHistory.value.length === 0) {
-    if (!currentSpaceId.value) throw new Error("No space selected");
-    conversationHistory.value = [
-      {
-        role: "system",
-        content: `${SYSTEM_PROMPT}\n\nCurrent context:\n- spaceId: ${currentSpaceId.value}\n- documentId: ${props.documentId}`,
-      },
-    ];
-  }
-}
-
 async function streamAssistantResponse(responseStartIndex: number) {
   const assistantMessageIndex = { value: null as number | null };
   const thinkingMessageIndex = { value: null as number | null };
@@ -794,7 +780,7 @@ async function streamAssistantResponse(responseStartIndex: number) {
     },
     onDelta: (text) => {
       appendAssistantMessageChunk(text, assistantMessageIndex);
-      scrollToBottom();
+      scrollToBottomIfNearBottom();
     },
     onEvent: (event) =>
       applyStreamEvent(
@@ -991,7 +977,6 @@ async function sendMessage() {
   clearPendingAttachments();
   scrollToBottom();
 
-  ensureConversationHistory();
   conversationHistory.value.push({ role: "user", content: modelMessage });
   await persistSession();
 
@@ -1038,12 +1023,28 @@ async function sendMessage() {
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
+function isNearBottom(): boolean {
+  const el = messagesContainer.value;
+  if (!el) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+}
+
+/** Unconditional scroll — use for explicit user actions (send, load session, generation done). */
 function scrollToBottom() {
   setTimeout(() => {
     if (messagesContainer.value) {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
     }
   }, 50);
+}
+
+/** Conditional scroll — use during streaming so the user can freely scroll up mid-response. */
+function scrollToBottomIfNearBottom() {
+  nextTick(() => {
+    if (messagesContainer.value && isNearBottom()) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+    }
+  });
 }
 
 function scrollThinkingToBottom() {
@@ -1054,6 +1055,10 @@ function scrollThinkingToBottom() {
     if (!pres.length) return;
     const lastPre = pres[pres.length - 1] as HTMLElement;
     lastPre.scrollTop = lastPre.scrollHeight;
+    // Also keep the main container scrolled to bottom if the user hasn't scrolled up.
+    if (isNearBottom()) {
+      container.scrollTop = container.scrollHeight;
+    }
   });
 }
 
@@ -1105,8 +1110,19 @@ onUnmounted(() => {
     <div class="flex flex-col h-full bg-neutral-50">
 
             <!-- Sessions picker -->
-      <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
-        <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide mb-3 px-1">Recent conversations</p>
+            <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
+              <div class="flex items-center justify-between mb-3 px-1">
+                <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide">Recent conversations</p>
+                <button
+                  @click="startNewChat"
+                  class="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium transition-colors"
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/>
+                  </svg>
+                  New chat
+                </button>
+              </div>
         <div class="space-y-0.5">
           <div
             v-for="session in sessions"
@@ -1159,14 +1175,17 @@ onUnmounted(() => {
       <div
         v-else
         ref="messagesContainer"
-        class="flex-1 overflow-y-auto px-3 py-4 space-y-3"
+        class="flex-1 overflow-y-auto px-3 py-4 space-y-3 messages-container"
         @click="closeMentionSuggestions()"
         @dragover.prevent
         @drop="onDropFiles"
       >
-        <div
+        <template
           v-for="(message, index) in messages"
           :key="getMessageKey(message, index)"
+        >
+        <div
+          v-if="message.role !== 'tool' || message.toolPhase !== 'call'"
           :class="[
             'animate-message-slide-in',
             message.role === 'system' ? 'flex justify-center' : 'flex gap-2',
@@ -1295,17 +1314,34 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+        </template>
       </div>
 
-      <!-- Suggestion chips -->
-      <div v-if="!showSessionPicker" class="px-3 py-2 flex gap-2 flex-wrap shrink-0 border-t border-neutral-100 bg-neutral-50">
+      <!-- Toolbar -->
+      <div v-if="!showSessionPicker" class="px-3 py-1.5 flex items-center gap-3 shrink-0 border-t border-neutral-100 bg-neutral-50">
         <button
-          v-for="chip in []"
-          :key="chip"
-          class="px-3 py-1 text-xs text-neutral-700 bg-neutral-10 border border-neutral-100 rounded-full hover:bg-neutral-50 hover:border-neutral-200 transition-colors"
-          @click="messageInput = chip"
+          @click="startNewChat"
+          :disabled="isGenerating"
+          class="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="New chat"
         >
-          {{ chip }}
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          New chat
+        </button>
+        <div class="flex-1"/>
+        <button
+          v-if="sessions.length > 0"
+          @click="showSessionPicker = true"
+          class="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-700 transition-colors"
+          title="Recent conversations"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          History
         </button>
       </div>
 
@@ -1358,16 +1394,6 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="flex items-end gap-2">
-          <button
-            v-if="sessions.length > 0"
-            @click="showSessionPicker = true"
-            title="Chat history"
-            class="shrink-0 text-neutral-400 hover:text-neutral-600 transition-colors mb-0.5"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 6v6l4 2"/>
-            </svg>
-          </button>
           <button
             type="button"
             @click="openFilePicker"
@@ -1445,6 +1471,12 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Disable browser scroll anchoring so it doesn't fight our manual scroll management.
+   We handle "stick to bottom" ourselves via scrollToBottomIfNearBottom(). */
+.messages-container {
+  overflow-anchor: none;
+}
+
 .animate-message-slide-in {
   animation: messageSlideIn 0.2s ease-out;
 }

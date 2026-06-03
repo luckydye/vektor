@@ -141,37 +141,65 @@ function emitTurnEvent(turn: ActiveChatTurn, event: AgentEvent) {
   }
 }
 
-function createToolMessagesFromEvents(events: AgentEvent[]): unknown[] {
-  return events.flatMap((event) => {
-    const timestamp = Date.now();
-    if (event.type === "tool_call") {
-      return [
-        {
-          role: "tool",
-          content: event.toolArguments,
-          timestamp,
-          toolName: event.toolName,
-          toolCallId: event.toolCallId,
-          toolPhase: "call",
-          isError: false,
-        },
-      ];
+/**
+ * Reconstructs the display message sequence for a completed turn from its
+ * ordered event stream, preserving the exact interleaving the client saw
+ * while streaming:
+ *
+ *   pre-tool text (assistant) → tool result → post-tool text (assistant) → …
+ *
+ * - `text` events are accumulated into assistant messages, flushing each time
+ *   a tool boundary is crossed so pre- and post-tool text appear as separate
+ *   bubbles in the correct order.
+ * - `tool_result` events are saved as tool messages (call-phase is omitted
+ *   because the result already shows the command via the `$ cmd` prefix).
+ * - `thinking` and `status` events are transient UI-only and not persisted.
+ *
+ * If no text was emitted at all, `fallbackContent` is used as a final
+ * assistant message so the turn always has at least one visible response.
+ */
+function createTurnMessagesFromEvents(
+  events: AgentEvent[],
+  fallbackContent: string,
+): unknown[] {
+  const messages: unknown[] = [];
+  const now = Date.now();
+  let pendingText = "";
+
+  const flushText = () => {
+    if (pendingText.trim()) {
+      messages.push({ role: "assistant", content: pendingText, timestamp: now });
+      pendingText = "";
     }
-    if (event.type === "tool_result") {
-      return [
-        {
-          role: "tool",
-          content: event.content,
-          timestamp,
-          toolName: event.toolName,
-          toolCallId: event.toolCallId,
-          toolPhase: "result",
-          isError: event.isError,
-        },
-      ];
+  };
+
+  for (const event of events) {
+    if (event.type === "text") {
+      pendingText += event.text;
+    } else if (event.type === "tool_call") {
+      flushText();
+      // tool_call is not persisted; the result's `$ cmd` prefix carries the command.
+    } else if (event.type === "tool_result") {
+      messages.push({
+        role: "tool",
+        content: event.content,
+        timestamp: now,
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        toolPhase: "result",
+        isError: event.isError,
+      });
     }
-    return [];
-  });
+    // thinking and status are transient; not persisted.
+  }
+
+  flushText();
+
+  if (!messages.some((m) => (m as { role: string }).role === "assistant")) {
+    messages.push({ role: "assistant", content: fallbackContent, timestamp: now });
+  }
+
+  return messages;
 }
 
 /**
@@ -203,11 +231,6 @@ async function persistCompletedChatTurn(options: {
     ? { role: "user", content: lastUserRequest.content ?? "", timestamp: Date.now() }
     : null;
 
-  const assistantMessage = {
-    role: "assistant",
-    content: options.result.content,
-    timestamp: Date.now(),
-  };
   const conversationHistory = [
     ...options.requestMessages,
     { role: "assistant", content: options.result.content },
@@ -221,10 +244,10 @@ async function persistCompletedChatTurn(options: {
     messages: [
       // All messages from previous completed turns.
       ...(session.messages as unknown[]),
-      // Current turn: user → tool calls/results → assistant.
+      // Current turn reconstructed in streaming order:
+      // user → [pre-tool text] → tool result → [post-tool text] → …
       ...(userMessage ? [userMessage] : []),
-      ...createToolMessagesFromEvents(options.events),
-      assistantMessage,
+      ...createTurnMessagesFromEvents(options.events, options.result.content),
     ],
     conversationHistory,
     shellSnapshot: options.result.shellSnapshot ?? null,
