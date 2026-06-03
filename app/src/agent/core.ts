@@ -91,6 +91,7 @@ The bash tool runs inside bash, not full system shell.
 - Before starting, outline a short plan of steps.
 - After each step, verify the result before continuing to the next step (e.g. check file exists, inspect output, confirm command succeeded).
 - Do not report results to the user until they have been verified.
+- Do not restate command output that is already visible in the tool result. After a command, only add a final response when you have extra interpretation, a requested summary, or a useful next step.
 
 ## App Documents
 - Documents with type "app" are HTML apps in sandboxed iframes.

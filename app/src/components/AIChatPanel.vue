@@ -314,6 +314,19 @@ function formatSessionDate(date: string | number | Date): string {
   });
 }
 
+type SessionStatus = "generating" | "awaiting" | "idle";
+
+function getSessionStatus(session: ChatSession): SessionStatus {
+  if (session.id === currentSessionId.value && isGenerating.value) {
+    return "generating";
+  }
+  const lastMsg = (session.conversationHistory as ChatMessage[]).at(-1);
+  if (lastMsg?.role === "user") {
+    return "awaiting";
+  }
+  return "idle";
+}
+
 function selectMention(suggestion: MentionSuggestion) {
   const start = mentionStart.value;
   const end = mentionEnd.value;
@@ -432,9 +445,11 @@ function appendThinkingMessageChunk(
       timestamp: Date.now(),
     });
     thinkingMessageIndex.value = messages.value.length - 1;
+    scrollThinkingToBottom();
     return;
   }
   existing.content += text;
+  scrollThinkingToBottom();
 }
 
 function appendToolEventMessage(event: Exclude<ChatStreamEvent, { type: "text" }>) {
@@ -553,6 +568,44 @@ function parseToolResultContent(content: string): unknown {
   }
 }
 
+function getBashCommandFromToolCallMessage(message: UIMessage): string | null {
+  if (message.toolName !== "bash" || message.toolPhase !== "call") {
+    return null;
+  }
+  const args = parseToolArguments(message.content);
+  const command = args?.command;
+  return typeof command === "string" && command.trim() ? command : null;
+}
+
+function findBashCommandForResultMessage(message: UIMessage): string | null {
+  if (message.toolName !== "bash" || message.toolPhase !== "result") {
+    return null;
+  }
+  const toolCallId = message.toolCallId;
+  if (!toolCallId) {
+    return null;
+  }
+  const toolCallMessage = messages.value.find(
+    (candidate) =>
+      candidate.toolCallId === toolCallId &&
+      candidate.toolName === "bash" &&
+      candidate.toolPhase === "call",
+  );
+  return toolCallMessage ? getBashCommandFromToolCallMessage(toolCallMessage) : null;
+}
+
+function formatBashResultPreview(message: UIMessage, result: unknown): string {
+  const output =
+    typeof result === "string"
+      ? result.trim() || "(no output)"
+      : formatValuePreview(result);
+  const command = findBashCommandForResultMessage(message);
+  if (!command) {
+    return output;
+  }
+  return `$ ${command}\n\n${output}`;
+}
+
 function formatValuePreview(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") {
@@ -633,10 +686,7 @@ function formatToolPreview(message: UIMessage): string {
   const result = parseToolResultContent(message.content);
 
   if (message.toolName === "bash") {
-    if (typeof result === "string") {
-      return result.trim() || "(no output)";
-    }
-    return formatValuePreview(result);
+    return formatBashResultPreview(message, result);
   }
 
   if (message.toolName === "get_document" || message.toolName === "get_current_document") {
@@ -692,6 +742,13 @@ function getToolMessageKey(message: UIMessage, index: number): string {
     : `tool:${index}:${message.timestamp}`;
 }
 
+function getMessageKey(message: UIMessage, index: number): string {
+  if (message.role === "tool") {
+    return getToolMessageKey(message, index);
+  }
+  return `${message.role}:${message.timestamp}:${index}`;
+}
+
 function isToolMessageExpanded(message: UIMessage, index: number): boolean {
   return expandedToolMessages.value.has(getToolMessageKey(message, index));
 }
@@ -709,7 +766,7 @@ function toggleToolMessageExpanded(message: UIMessage, index: number) {
 
 // ── Send to agent ─────────────────────────────────────────────────────────────
 
-async function sendWithProvider(message: string, responseStartIndex: number) {
+function ensureConversationHistory() {
   if (conversationHistory.value.length === 0) {
     if (!currentSpaceId.value) throw new Error("No space selected");
     conversationHistory.value = [
@@ -719,8 +776,9 @@ async function sendWithProvider(message: string, responseStartIndex: number) {
       },
     ];
   }
+}
 
-  conversationHistory.value.push({ role: "user", content: message });
+async function streamAssistantResponse(responseStartIndex: number) {
   const assistantMessageIndex = { value: null as number | null };
   const thinkingMessageIndex = { value: null as number | null };
 
@@ -761,19 +819,23 @@ async function loadSessions() {
   sessions.value = await getSessionsForSpace(currentSpaceId.value);
 }
 
-watch(currentSpaceId, async (id) => {
-  if (!id) return;
-  await loadSessions();
-  if (sessions.value.length > 0) {
-    showSessionPicker.value = true;
-  } else if (messages.value.length === 0) {
-    messages.value.push({
-      role: "assistant",
-      content: "Hello! I'm here to help you with this document. Ask me anything!",
-      timestamp: Date.now(),
-    });
-  }
-}, { immediate: true });
+watch(
+  currentSpaceId,
+  async (id) => {
+    if (!id) return;
+    await loadSessions();
+    if (sessions.value.length > 0) {
+      showSessionPicker.value = true;
+    } else if (messages.value.length === 0) {
+      messages.value.push({
+        role: "assistant",
+        content: "Hello! I'm here to help you with this document. Ask me anything!",
+        timestamp: Date.now(),
+      });
+    }
+  },
+  { immediate: true },
+);
 
 function startNewChat() {
   currentSessionId.value = null;
@@ -805,7 +867,8 @@ async function persistSession() {
   if (!currentSessionId.value) return;
   const session = sessions.value.find((s) => s.id === currentSessionId.value);
   if (!session) return;
-  session.messages = messages.value;
+  // Messages are owned by the server — built from ACP events in persistCompletedChatTurn.
+  // Only persist the conversation history here so the next turn has the right context.
   session.conversationHistory = conversationHistory.value;
   session.updatedAt = Date.now();
   await saveSession(session);
@@ -831,6 +894,21 @@ async function removeSession(id: string) {
 // ── Send message ──────────────────────────────────────────────────────────────
 
 function cancelGeneration() {
+  // Tell the server to abort the agent turn before we close the SSE stream.
+  // Without this the server cannot distinguish an intentional cancel from an
+  // accidental disconnect, and the agent would keep running in the background.
+  if (currentSessionId.value && currentSpaceId.value) {
+    void fetch("/api/v1/chat/acp", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        chatId: currentSessionId.value,
+        spaceId: currentSpaceId.value,
+        messages: conversationHistory.value,
+      }),
+    });
+  }
   abortController?.abort();
   abortController = null;
 }
@@ -912,12 +990,16 @@ async function sendMessage() {
   clearPendingAttachments();
   scrollToBottom();
 
+  ensureConversationHistory();
+  conversationHistory.value.push({ role: "user", content: modelMessage });
+  await persistSession();
+
   isGenerating.value = true;
   abortController = new AbortController();
   const responseStartIndex = messages.value.length;
 
   try {
-    await sendWithProvider(modelMessage, responseStartIndex);
+    await streamAssistantResponse(responseStartIndex);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       conversationHistory.value.push({
@@ -942,7 +1024,10 @@ async function sendMessage() {
     abortController = null;
     isGenerating.value = false;
     scrollToBottom();
-    await persistSession();
+    // Session messages are persisted by the server (persistCompletedChatTurn).
+    // The client only needs to save the updated conversationHistory so the
+    // next turn has the right context — but only if the turn completed normally
+    // (AbortError means cancel; other errors leave conversationHistory unchanged).
   }
 }
 
@@ -954,6 +1039,17 @@ function scrollToBottom() {
       messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
     }
   }, 50);
+}
+
+function scrollThinkingToBottom() {
+  nextTick(() => {
+    const container = messagesContainer.value;
+    if (!container) return;
+    const pres = container.querySelectorAll(".thinking-content");
+    if (!pres.length) return;
+    const lastPre = pres[pres.length - 1] as HTMLElement;
+    lastPre.scrollTop = lastPre.scrollHeight;
+  });
 }
 
 const markdownRenderer = new marked.Renderer();
@@ -1010,13 +1106,37 @@ onUnmounted(() => {
           <div
             v-for="session in sessions"
             :key="session.id"
-            class="group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-neutral-100 cursor-pointer transition-colors"
+            class="group flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-neutral-100 cursor-pointer transition-colors"
             @click="resumeSession(session)"
           >
+            <!-- Status dot -->
+            <div class="shrink-0 mt-0.5">
+              <span
+                v-if="getSessionStatus(session) === 'generating'"
+                class="block w-2 h-2 rounded-full bg-primary-500 animate-pulse"
+              />
+              <span
+                v-else-if="getSessionStatus(session) === 'awaiting'"
+                class="block w-2 h-2 rounded-full bg-amber-400"
+              />
+              <span v-else class="block w-2 h-2 rounded-full bg-neutral-200" />
+            </div>
+
             <div class="flex-1 min-w-0">
               <p class="text-sm text-neutral-800 truncate">{{ session.title }}</p>
-              <p class="text-xs text-neutral-400 mt-0.5">{{ formatSessionDate(session.updatedAt) }}</p>
+              <p class="text-xs mt-0.5">
+                <template v-if="getSessionStatus(session) === 'generating'">
+                  <span class="text-primary-500 font-medium">Generating response…</span>
+                </template>
+                <template v-else-if="getSessionStatus(session) === 'awaiting'">
+                  <span class="text-amber-500 font-medium">Awaiting response</span>
+                </template>
+                <template v-else>
+                  <span class="text-neutral-400">{{ formatSessionDate(session.updatedAt) }}</span>
+                </template>
+              </p>
             </div>
+
             <button
               @click.stop="removeSession(session.id)"
               class="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-red-500 transition-all shrink-0"
@@ -1041,7 +1161,7 @@ onUnmounted(() => {
       >
         <div
           v-for="(message, index) in messages"
-          :key="index"
+          :key="getMessageKey(message, index)"
           :class="[
             'animate-message-slide-in',
             message.role === 'system' ? 'flex justify-center' : 'flex gap-2',
@@ -1070,11 +1190,11 @@ onUnmounted(() => {
               </svg>
             </div>
             <div class="flex-1 min-w-0">
-              <div class="bg-neutral-100 border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
-                <div class="px-3.5 py-2 border-b border-neutral-200 text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+              <div class="bg-neutral-100 border border-neutral-200 rounded-xl overflow-hidden shadow-sm max-h-72 flex flex-col">
+                <div class="px-3.5 py-2 border-b border-neutral-200 text-[11px] font-medium uppercase tracking-wide text-neutral-500 shrink-0">
                   Thinking
                 </div>
-                <pre class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 max-h-48 overflow-y-auto">{{ message.content }}</pre>
+                <pre class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 overflow-y-auto flex-1 min-h-0 thinking-content">{{ message.content }}</pre>
               </div>
               <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
                 {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
