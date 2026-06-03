@@ -641,15 +641,10 @@ export async function runAgentPrompt(options: {
     agentMessages.push(message);
 
     if (!message.tool_calls?.length) {
-      await onEvent?.({ type: "status", text: "Writing response..." });
       return { content: allChunks.join(""), stopReason: finishReason };
     }
 
     for (const toolCall of message.tool_calls) {
-      await onEvent?.({
-        type: "status",
-        text: `Running ${toolCall.function.name}...`,
-      });
       await onEvent?.({
         type: "tool_call",
         toolCallId: toolCall.id,
@@ -695,13 +690,6 @@ export async function runAgentPrompt(options: {
         content,
         isError,
       });
-      await onEvent?.({
-        type: "status",
-        text: isError
-          ? `${toolCall.function.name} failed`
-          : `${toolCall.function.name} finished`,
-      });
-
       agentMessages.push({
         role: "tool",
         tool_call_id: toolCall.id,
