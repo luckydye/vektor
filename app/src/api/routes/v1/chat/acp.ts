@@ -151,8 +151,9 @@ function emitTurnEvent(turn: ActiveChatTurn, event: AgentEvent) {
  * - `text` events are accumulated into assistant messages, flushing each time
  *   a tool boundary is crossed so pre- and post-tool text appear as separate
  *   bubbles in the correct order.
- * - `tool_result` events are saved as tool messages (call-phase is omitted
- *   because the result already shows the command via the `$ cmd` prefix).
+ * - `tool_call` events flush accumulated text and are saved as hidden reference
+ *   messages so `formatBashResultPreview` can reconstruct `$ cmd` after reload.
+ * - `tool_result` events are saved as visible tool messages.
  * - `thinking` and `status` events are transient UI-only and not persisted.
  *
  * If no text was emitted at all, `fallbackContent` is used as a final
@@ -178,7 +179,17 @@ function createTurnMessagesFromEvents(
       pendingText += event.text;
     } else if (event.type === "tool_call") {
       flushText();
-      // tool_call is not persisted; the result's `$ cmd` prefix carries the command.
+      // Save the call so the client can look up the command for `$ cmd` formatting
+      // after reload. The call is never rendered (filtered out by the template).
+      messages.push({
+        role: "tool",
+        content: event.toolArguments,
+        timestamp: now,
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+        toolPhase: "call",
+        isError: false,
+      });
     } else if (event.type === "tool_result") {
       messages.push({
         role: "tool",

@@ -1303,6 +1303,23 @@ onUnmounted(() => {
           </div>
         </div>
         </template>
+
+        <!-- Waiting indicator: shown when generating but no active text/thinking/status is streaming -->
+        <div
+          v-if="isGenerating && !['assistant', 'thinking', 'status'].includes(messages.at(-1)?.role ?? '')"
+          class="flex gap-2 justify-start animate-message-slide-in"
+        >
+          <div class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5">
+            <svg class="w-4 h-4 text-primary-500" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2a2 2 0 012 2v1h3a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h3V4a2 2 0 012-2zm-3 7a1 1 0 100 2 1 1 0 000-2zm6 0a1 1 0 100 2 1 1 0 000-2zm-6 4h6v1H9v-1z"/>
+            </svg>
+          </div>
+          <div class="flex items-center bg-neutral-10 border border-neutral-100 rounded-xl px-3.5 py-3 gap-1 mt-0.5">
+            <span class="typing-dot" />
+            <span class="typing-dot" style="animation-delay: 160ms" />
+            <span class="typing-dot" style="animation-delay: 320ms" />
+          </div>
+        </div>
       </div>
 
       <!-- Toolbar -->
@@ -1472,6 +1489,21 @@ onUnmounted(() => {
 @keyframes messageSlideIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.typing-dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  color: var(--color-neutral-400, #a3a3a3);
+  animation: typingBounce 1s ease-in-out infinite;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
 .overflow-y-auto::-webkit-scrollbar {
