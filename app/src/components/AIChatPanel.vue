@@ -850,17 +850,6 @@ function resumeSession(session: ChatSession) {
   scrollToBottom();
 }
 
-async function persistSession() {
-  if (!currentSessionId.value) return;
-  const session = sessions.value.find((s) => s.id === currentSessionId.value);
-  if (!session) return;
-  // Messages are owned by the server — built from ACP events in persistCompletedChatTurn.
-  // Only persist the conversation history here so the next turn has the right context.
-  session.conversationHistory = conversationHistory.value;
-  session.updatedAt = Date.now();
-  await saveSession(session);
-}
-
 async function removeSession(id: string) {
   const session = sessions.value.find((item) => item.id === id);
   if (!session) return;
@@ -978,7 +967,6 @@ async function sendMessage() {
   scrollToBottom();
 
   conversationHistory.value.push({ role: "user", content: modelMessage });
-  await persistSession();
 
   isGenerating.value = true;
   abortController = new AbortController();
