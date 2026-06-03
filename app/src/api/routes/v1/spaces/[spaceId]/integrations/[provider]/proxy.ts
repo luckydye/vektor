@@ -11,10 +11,13 @@ import {
 } from "#db/api.ts";
 import {
   getOAuthIntegrationCredentialForUser,
+  updateOAuthIntegrationTokenSet,
+  type OAuthIntegrationCredential,
   type OAuthIntegrationProvider,
 } from "#db/oauthIntegrations.ts";
 import {
   getOAuthProviderConfiguration,
+  refreshOAuthToken,
   type OAuthProviderConfiguration,
   isOAuthIntegrationProvider,
 } from "#integrations/oauthProviders.ts";
@@ -107,6 +110,48 @@ function buildIntegrationApiUrl(
   return new URL(path, base);
 }
 
+/** Seconds before expiry at which we proactively refresh the access token. */
+const REFRESH_BUFFER_SECS = 60;
+
+/**
+ * Returns a valid access token for the credential, refreshing it first if it
+ * is expired or within REFRESH_BUFFER_SECS of expiry.  Throws if the token is
+ * expired and no refresh token is available.
+ */
+async function resolveAccessToken(
+  spaceId: string,
+  credential: OAuthIntegrationCredential,
+  providerConfig: OAuthProviderConfiguration,
+): Promise<string> {
+  const { accessTokenExpiresAt, refreshToken } = credential;
+
+  const needsRefresh =
+    accessTokenExpiresAt !== null &&
+    accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_BUFFER_SECS * 1000;
+
+  if (!needsRefresh) {
+    return credential.accessToken;
+  }
+
+  if (!refreshToken) {
+    throw new Error(
+      `${credential.provider} access token has expired and no refresh token is available. ` +
+        `Please reconnect the integration.`,
+    );
+  }
+
+  const refreshed = await refreshOAuthToken({ providerConfig, refreshToken });
+
+  await updateOAuthIntegrationTokenSet(spaceId, credential.id, {
+    accessToken: refreshed.accessToken,
+    refreshToken: refreshed.refreshToken ?? refreshToken, // keep old refresh token if provider didn't return a new one
+    expiresAt: refreshed.expiresAt,
+    scope: refreshed.scope ?? credential.scope,
+  });
+
+  return refreshed.accessToken;
+}
+
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.params, "spaceId");
@@ -154,8 +199,14 @@ export const POST: APIRoute = (context) =>
       throw forbiddenResponse("Integration credential does not belong to this user");
     }
 
+    const accessToken = await resolveAccessToken(
+      spaceId,
+      credential,
+      providerConfig.config,
+    );
+
     const headers = normalizeProxyHeaders(body.headers);
-    headers.set("Authorization", `Bearer ${credential.accessToken}`);
+    headers.set("Authorization", `Bearer ${accessToken}`);
 
     const response = await fetch(
       buildIntegrationApiUrl(providerParam, providerConfig.config, body.path),

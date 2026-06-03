@@ -265,6 +265,38 @@ export async function exchangeOAuthCode(options: {
   return parseTokenExchangeResponse(json);
 }
 
+export async function refreshOAuthToken(options: {
+  providerConfig: OAuthProviderConfiguration;
+  refreshToken: string;
+}): Promise<OAuthTokenExchangeResult> {
+  const { providerConfig, refreshToken } = options;
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: providerConfig.clientId,
+    client_secret: providerConfig.clientSecret,
+  });
+
+  const response = await fetch(providerConfig.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `OAuth token refresh failed (${response.status}): ${text.slice(0, 300)}`,
+    );
+  }
+
+  const json = (await response.json()) as Record<string, unknown>;
+  return parseTokenExchangeResponse(json);
+}
+
 export async function fetchOAuthExternalUser(
   provider: OAuthIntegrationProvider,
   providerConfig: OAuthProviderConfiguration,

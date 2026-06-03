@@ -233,6 +233,31 @@ export async function upsertOAuthIntegrationForUser(
   };
 }
 
+export async function updateOAuthIntegrationTokenSet(
+  spaceId: string,
+  integrationId: string,
+  tokenSet: OAuthIntegrationTokenSet,
+): Promise<void> {
+  const db = await getSpaceDb(spaceId);
+  const accessEncrypted = encryptSecret(tokenSet.accessToken);
+  const refreshEncrypted = tokenSet.refreshToken ? encryptSecret(tokenSet.refreshToken) : null;
+
+  await db
+    .update(oauthIntegration)
+    .set({
+      accessTokenCiphertext: accessEncrypted.ciphertext,
+      accessTokenIv: accessEncrypted.iv,
+      accessTokenAuthTag: accessEncrypted.authTag,
+      refreshTokenCiphertext: refreshEncrypted?.ciphertext ?? null,
+      refreshTokenIv: refreshEncrypted?.iv ?? null,
+      refreshTokenAuthTag: refreshEncrypted?.authTag ?? null,
+      accessTokenExpiresAt: tokenSet.expiresAt,
+      scope: tokenSet.scope,
+      updatedAt: new Date(),
+    })
+    .where(eq(oauthIntegration.id, integrationId));
+}
+
 export async function deleteOAuthIntegrationForUser(
   spaceId: string,
   userId: string,
