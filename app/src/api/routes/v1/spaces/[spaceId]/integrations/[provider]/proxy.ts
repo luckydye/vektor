@@ -1,6 +1,7 @@
 import type { APIContext, APIRoute } from "astro";
 import {
   badRequestResponse,
+  forbiddenResponse,
   jsonResponse,
   requireParam,
   requireUser,
@@ -148,6 +149,9 @@ export const POST: APIRoute = (context) =>
     );
     if (!credential) {
       throw badRequestResponse(`${providerParam} is not connected for this user`);
+    }
+    if (credential.userId !== userId) {
+      throw forbiddenResponse("Integration credential does not belong to this user");
     }
 
     const headers = normalizeProxyHeaders(body.headers);
