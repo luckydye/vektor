@@ -31,9 +31,10 @@ export const GET: APIRoute = (context) =>
     await verifySpaceRole(spaceId, user.id, "viewer");
 
     const connection = await getOAuthIntegrationForUser(spaceId, user.id, providerParam);
-    const configured = getOAuthProviderConfiguration(providerParam, {
-      instanceUrl: connection?.instanceUrl ?? null,
-    });
+    const configured = getOAuthProviderConfiguration(providerParam);
+    const instanceUrl = configured.configured
+      ? configured.config.instanceUrl
+      : (connection?.instanceUrl ?? null);
 
     return jsonResponse({
       connection: {
@@ -44,7 +45,7 @@ export const GET: APIRoute = (context) =>
         connected: !!connection,
         externalAccountId: connection?.externalAccountId ?? null,
         externalUsername: connection?.externalUsername ?? null,
-        instanceUrl: connection?.instanceUrl ?? null,
+        instanceUrl,
         scopes: connection?.scope?.split(/\s+/).filter(Boolean) ?? [],
         accessTokenExpiresAt: connection?.accessTokenExpiresAt?.toISOString() ?? null,
         createdAt: connection?.createdAt.toISOString() ?? null,

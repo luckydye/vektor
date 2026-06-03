@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { api, type OAuthIntegrationConnection, type OAuthIntegrationProvider } from "../api/client.ts";
+import {
+  api,
+  type OAuthIntegrationConnection,
+  type OAuthIntegrationProvider,
+} from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 
 type ThemePreference = "system" | "light" | "dark";
@@ -14,10 +18,6 @@ const integrationsError = ref<string | null>(null);
 const integrationsMessage = ref<string | null>(null);
 const connectingProvider = ref<OAuthIntegrationProvider | null>(null);
 const disconnectingProvider = ref<OAuthIntegrationProvider | null>(null);
-const instanceUrls = ref<Record<OAuthIntegrationProvider, string>>({
-  gitlab: "",
-  youtrack: "",
-});
 const { currentSpace } = useSpace();
 
 const emit = defineEmits<{
@@ -73,10 +73,6 @@ const loadIntegrations = async () => {
   try {
     const response = await api.integrations.get(currentSpace.value.id);
     integrationConnections.value = response.connections || [];
-    for (const provider of integrationProviders) {
-      const connected = response.connections?.find((c) => c.provider === provider);
-      instanceUrls.value[provider] = connected?.instanceUrl ?? "";
-    }
   } catch (error) {
     integrationsError.value =
       error instanceof Error ? error.message : "Failed to load integrations";
@@ -94,10 +90,8 @@ const handleConnectIntegration = async (provider: OAuthIntegrationProvider) => {
 
   try {
     const redirectTo = `${window.location.pathname}${window.location.search}`;
-    const instanceUrl = instanceUrls.value[provider].trim() || undefined;
     const response = await api.integrations.connect(currentSpace.value.id, provider, {
       redirectTo,
-      instanceUrl,
     });
     window.location.href = response.authorizeUrl;
   } catch (error) {
@@ -242,20 +236,11 @@ watch(
             >
               Missing config: {{ getIntegrationConnection(provider)?.missingConfig.join(", ") }}
             </p>
-            <label class="block text-xs text-neutral-500 mt-2">
-              Instance URL (optional)
-            </label>
-            <input
-              v-model="instanceUrls[provider]"
-              type="url"
-              placeholder="https://your-instance.example"
-              class="mt-1 w-full px-2 py-1 rounded border border-neutral-100 bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
-            />
             <p
               v-if="getIntegrationConnection(provider)?.instanceUrl"
               class="text-xs text-neutral-500 mt-1"
             >
-              Connected instance: {{ getIntegrationConnection(provider)?.instanceUrl }}
+              Instance: {{ getIntegrationConnection(provider)?.instanceUrl }}
             </p>
           </div>
           <div class="mt-4"> 

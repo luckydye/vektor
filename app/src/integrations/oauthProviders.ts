@@ -58,21 +58,17 @@ export function normalizeInstanceUrl(value: string | null | undefined): string |
   return parsed.toString().replace(/\/$/, "");
 }
 
-export function getOAuthProviderConfiguration(
-  provider: OAuthIntegrationProvider,
-  options?: { instanceUrl?: string | null },
-): { configured: true; config: OAuthProviderConfiguration } | {
-  configured: false;
-  missing: string[];
-} {
+export function getOAuthProviderConfiguration(provider: OAuthIntegrationProvider):
+  | { configured: true; config: OAuthProviderConfiguration }
+  | {
+      configured: false;
+      missing: string[];
+    } {
   const appConfig = config();
-  const requestedInstance = normalizeInstanceUrl(options?.instanceUrl);
 
   if (provider === "gitlab") {
     const baseUrl =
-      requestedInstance ||
-      normalizeInstanceUrl(appConfig.GITLAB_OAUTH_BASE_URL) ||
-      "https://gitlab.com";
+      normalizeInstanceUrl(appConfig.GITLAB_OAUTH_BASE_URL) || "https://gitlab.com";
 
     const clientId = appConfig.GITLAB_OAUTH_CLIENT_ID?.trim() || "";
     const clientSecret = appConfig.GITLAB_OAUTH_CLIENT_SECRET?.trim() || "";
@@ -82,17 +78,10 @@ export function getOAuthProviderConfiguration(
       .filter(Boolean);
 
     const authorizationUrl =
-      requestedInstance != null
-        ? `${baseUrl}/oauth/authorize`
-        : appConfig.GITLAB_OAUTH_AUTHORIZATION_URL?.trim() || `${baseUrl}/oauth/authorize`;
-    const tokenUrl =
-      requestedInstance != null
-        ? `${baseUrl}/oauth/token`
-        : appConfig.GITLAB_OAUTH_TOKEN_URL?.trim() || `${baseUrl}/oauth/token`;
+      appConfig.GITLAB_OAUTH_AUTHORIZATION_URL?.trim() || `${baseUrl}/oauth/authorize`;
+    const tokenUrl = appConfig.GITLAB_OAUTH_TOKEN_URL?.trim() || `${baseUrl}/oauth/token`;
     const userInfoUrl =
-      requestedInstance != null
-        ? `${baseUrl}/api/v4/user`
-        : appConfig.GITLAB_OAUTH_USERINFO_URL?.trim() || `${baseUrl}/api/v4/user`;
+      appConfig.GITLAB_OAUTH_USERINFO_URL?.trim() || `${baseUrl}/api/v4/user`;
 
     const missing: string[] = [];
     if (!clientId) missing.push("WIKI_GITLAB_OAUTH_CLIENT_ID");
@@ -113,13 +102,12 @@ export function getOAuthProviderConfiguration(
         authorizationUrl,
         tokenUrl,
         userInfoUrl,
-        instanceUrl: requestedInstance,
+        instanceUrl: baseUrl,
       },
     };
   }
 
-  const baseUrl =
-    requestedInstance || normalizeInstanceUrl(appConfig.YOUTRACK_OAUTH_BASE_URL) || null;
+  const baseUrl = normalizeInstanceUrl(appConfig.YOUTRACK_OAUTH_BASE_URL) || null;
 
   const clientId = appConfig.YOUTRACK_OAUTH_CLIENT_ID?.trim() || "";
   const clientSecret = appConfig.YOUTRACK_OAUTH_CLIENT_SECRET?.trim() || "";
@@ -144,9 +132,15 @@ export function getOAuthProviderConfiguration(
   const missing: string[] = [];
   if (!clientId) missing.push("WIKI_YOUTRACK_OAUTH_CLIENT_ID");
   if (!clientSecret) missing.push("WIKI_YOUTRACK_OAUTH_CLIENT_SECRET");
-  if (!authorizationUrl) missing.push("WIKI_YOUTRACK_OAUTH_AUTHORIZATION_URL or instanceUrl");
-  if (!tokenUrl) missing.push("WIKI_YOUTRACK_OAUTH_TOKEN_URL or instanceUrl");
-  if (!userInfoUrl) missing.push("WIKI_YOUTRACK_OAUTH_USERINFO_URL or instanceUrl");
+  if (!authorizationUrl) {
+    missing.push("WIKI_YOUTRACK_OAUTH_AUTHORIZATION_URL or WIKI_YOUTRACK_OAUTH_BASE_URL");
+  }
+  if (!tokenUrl) {
+    missing.push("WIKI_YOUTRACK_OAUTH_TOKEN_URL or WIKI_YOUTRACK_OAUTH_BASE_URL");
+  }
+  if (!userInfoUrl) {
+    missing.push("WIKI_YOUTRACK_OAUTH_USERINFO_URL or WIKI_YOUTRACK_OAUTH_BASE_URL");
+  }
 
   if (missing.length > 0) {
     return { configured: false, missing };
@@ -163,7 +157,7 @@ export function getOAuthProviderConfiguration(
       authorizationUrl,
       tokenUrl,
       userInfoUrl,
-      instanceUrl: requestedInstance,
+      instanceUrl: baseUrl,
     },
   };
 }
@@ -199,7 +193,9 @@ export function buildOAuthAuthorizationUrl(options: {
   return `${providerConfig.authorizationUrl}?${params.toString()}`;
 }
 
-function parseTokenExchangeResponse(json: Record<string, unknown>): OAuthTokenExchangeResult {
+function parseTokenExchangeResponse(
+  json: Record<string, unknown>,
+): OAuthTokenExchangeResult {
   const accessToken = String(json.access_token || "").trim();
   if (!accessToken) {
     throw new Error("OAuth token response missing access_token");
@@ -260,7 +256,9 @@ export async function exchangeOAuthCode(options: {
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`OAuth token exchange failed (${response.status}): ${text.slice(0, 300)}`);
+    throw new Error(
+      `OAuth token exchange failed (${response.status}): ${text.slice(0, 300)}`,
+    );
   }
 
   const json = (await response.json()) as Record<string, unknown>;

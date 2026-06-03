@@ -14,7 +14,6 @@ import {
   getOAuthCallbackUrl,
   getOAuthProviderConfiguration,
   isOAuthIntegrationProvider,
-  normalizeInstanceUrl,
 } from "#integrations/oauthProviders.ts";
 import {
   createOAuthState,
@@ -35,23 +34,12 @@ export const POST: APIRoute = (context) =>
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const body = await parseJsonBodyOrEmpty<{ redirectTo?: string; instanceUrl?: string }>(
-      context.request,
-    );
+    const body = await parseJsonBodyOrEmpty<{ redirectTo?: string }>(context.request);
     const redirectTo = normalizeRedirectPath(
       typeof body.redirectTo === "string" ? body.redirectTo : null,
     );
-    const instanceUrl =
-      body.instanceUrl === undefined
-        ? null
-        : normalizeInstanceUrl(
-            typeof body.instanceUrl === "string" ? body.instanceUrl : null,
-          );
-    if (body.instanceUrl !== undefined && instanceUrl === null) {
-      throw badRequestResponse("instanceUrl must be a valid absolute http(s) URL");
-    }
 
-    const configured = getOAuthProviderConfiguration(providerParam, { instanceUrl });
+    const configured = getOAuthProviderConfiguration(providerParam);
     if (!configured.configured) {
       throw badRequestResponse(
         `Provider is not configured: missing ${configured.missing.join(", ")}`,
@@ -69,7 +57,7 @@ export const POST: APIRoute = (context) =>
       state,
       codeVerifier,
       redirectTo,
-      instanceUrl,
+      configured.config.instanceUrl,
     );
 
     const authorizeUrl = buildOAuthAuthorizationUrl({

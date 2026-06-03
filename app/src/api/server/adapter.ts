@@ -56,8 +56,9 @@ function requestUrl(req: IncomingMessage): string {
   const socketEncrypted = (req.socket as { encrypted?: boolean })?.encrypted;
   const forwardedProto = req.headers["x-forwarded-proto"];
   const proto =
-    (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)?.split(",")[0]?.trim() ||
-    (socketEncrypted ? "https" : "http");
+    (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)
+      ?.split(",")[0]
+      ?.trim() || (socketEncrypted ? "https" : "http");
   const host = req.headers.host ?? "localhost";
   return `${proto}://${host}${req.url ?? "/"}`;
 }
@@ -75,7 +76,6 @@ export async function buildApiContext(
     if (!controller.signal.aborted) controller.abort();
   };
   req.on("aborted", abort);
-  req.on("close", abort);
 
   const body = await readRequestBody(req);
   const url = requestUrl(req);
@@ -112,7 +112,10 @@ export async function buildApiContext(
 }
 
 /** Write a Web `Response` produced by a route handler to the Express response. */
-export async function sendWebResponse(res: ServerResponse, response: Response): Promise<void> {
+export async function sendWebResponse(
+  res: ServerResponse,
+  response: Response,
+): Promise<void> {
   if (res.headersSent) return;
 
   const setCookies = response.headers.getSetCookie?.() ?? [];

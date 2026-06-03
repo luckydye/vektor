@@ -1166,7 +1166,7 @@ onUnmounted(() => {
       <!-- Suggestion chips -->
       <div v-if="!showSessionPicker" class="px-3 py-2 flex gap-2 flex-wrap shrink-0 border-t border-neutral-100 bg-neutral-50">
         <button
-          v-for="chip in ['Create pipeline', 'Error handling', 'Optimize', 'Add AI node']"
+          v-for="chip in []"
           :key="chip"
           class="px-3 py-1 text-xs text-neutral-700 bg-neutral-10 border border-neutral-100 rounded-full hover:bg-neutral-50 hover:border-neutral-200 transition-colors"
           @click="messageInput = chip"

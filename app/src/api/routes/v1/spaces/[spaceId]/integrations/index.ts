@@ -23,9 +23,10 @@ export const GET: APIRoute = (context) =>
 
     const connections = getOAuthIntegrationProviders().map((provider) => {
       const connection = existing.find((item) => item.provider === provider) ?? null;
-      const providerConfig = getOAuthProviderConfiguration(provider, {
-        instanceUrl: connection?.instanceUrl ?? null,
-      });
+      const providerConfig = getOAuthProviderConfiguration(provider);
+      const instanceUrl = providerConfig.configured
+        ? providerConfig.config.instanceUrl
+        : (connection?.instanceUrl ?? null);
 
       return {
         provider,
@@ -35,7 +36,7 @@ export const GET: APIRoute = (context) =>
         connected: !!connection,
         externalAccountId: connection?.externalAccountId ?? null,
         externalUsername: connection?.externalUsername ?? null,
-        instanceUrl: connection?.instanceUrl ?? null,
+        instanceUrl,
         scopes: connection?.scope?.split(/\s+/).filter(Boolean) ?? [],
         accessTokenExpiresAt: connection?.accessTokenExpiresAt?.toISOString() ?? null,
         createdAt: connection?.createdAt.toISOString() ?? null,

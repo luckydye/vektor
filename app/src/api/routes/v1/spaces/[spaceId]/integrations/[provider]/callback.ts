@@ -1,5 +1,10 @@
 import type { APIRoute } from "astro";
-import { badRequestResponse, requireParam, requireUser, verifySpaceRole } from "#db/api.ts";
+import {
+  badRequestResponse,
+  requireParam,
+  requireUser,
+  verifySpaceRole,
+} from "#db/api.ts";
 import {
   consumeOAuthIntegrationState,
   upsertOAuthIntegrationForUser,
@@ -89,15 +94,16 @@ export const GET: APIRoute = async (context) => {
       });
     }
 
-    const configured = getOAuthProviderConfiguration(providerParam, {
-      instanceUrl: statePayload.instanceUrl,
-    });
+    const configured = getOAuthProviderConfiguration(providerParam);
     if (!configured.configured) {
-      return redirectWithResult({
-        integration: providerParam,
-        status: "error",
-        message: `Provider is not configured: missing ${configured.missing.join(", ")}`,
-      }, statePayload.redirectTo);
+      return redirectWithResult(
+        {
+          integration: providerParam,
+          status: "error",
+          message: `Provider is not configured: missing ${configured.missing.join(", ")}`,
+        },
+        statePayload.redirectTo,
+      );
     }
 
     const redirectUri = getOAuthCallbackUrl(spaceId, providerParam);

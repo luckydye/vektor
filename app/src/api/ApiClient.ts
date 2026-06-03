@@ -1369,7 +1369,7 @@ export class ApiClient {
     connect: async (
       spaceId: string,
       provider: OAuthIntegrationProvider,
-      body?: { redirectTo?: string; instanceUrl?: string },
+      body?: { redirectTo?: string },
     ) => {
       return await this.apiPost<{ authorizeUrl: string }>(
         this.baseUrl,
