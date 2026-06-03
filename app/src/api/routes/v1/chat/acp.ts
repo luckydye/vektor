@@ -1,5 +1,4 @@
 import type { APIRoute } from "astro";
-import { createHash } from "node:crypto";
 import {
   badRequestResponse,
   errorResponse,
@@ -9,44 +8,25 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  createJobToken,
-  parseJobToken,
-  verifyJobToken,
-} from "#jobs/jobToken.ts";
+import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
 import { getLocalOrigin } from "#config";
-import { runAgentInWorker, type AgentEvent } from "#agent/agent.ts";
-import {
-  getAIChatSession,
-  upsertAIChatSession,
-} from "#db/aiChatSessions.ts";
+import { runAgentInWorker, type AgentEvent, type ChatMessage } from "#agent/agent.ts";
+import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
 
-type ChatRole = "system" | "user" | "assistant" | "tool";
+// ---------------------------------------------------------------------------
+// JSON-RPC 2.0 types
+// ---------------------------------------------------------------------------
 
-type ChatContentPart = {
-  type: string;
-  text?: string;
+type AcpJsonRpcRequest = {
+  jsonrpc: "2.0";
+  id?: string | number | null;
+  method: string;
+  params?: Record<string, unknown>;
 };
 
-type ChatMessage = {
-  role: ChatRole;
-  content: string | ChatContentPart[];
-  thinking?: string | null;
-};
-
-type AcpRequestBody = {
-  messages?: ChatMessage[];
-  stream?: boolean;
-  chatId?: string;
-  spaceId?: string;
-  documentId?: string;
-};
-
-type NormalizedChatMessage = {
-  role: ChatRole;
-  content: string | null;
-  thinking?: string | null;
-};
+// ---------------------------------------------------------------------------
+// Agent run types
+// ---------------------------------------------------------------------------
 
 type AgentRunResult = Awaited<ReturnType<typeof runAgentInWorker>>;
 
@@ -76,45 +56,22 @@ type ActiveChatTurn = {
   abort: () => void;
 };
 
-/**
- * Keyed by `spaceId:userId:chatId:messagesFingerprint`.  The fingerprint is a
- * SHA-256 of the serialized request messages so that a retry with a different
- * message list always starts a fresh turn instead of reusing a stale one.
- */
+// ---------------------------------------------------------------------------
+// Turn registry
+// ---------------------------------------------------------------------------
+
+/** Keyed by `spaceId:userId:chatId`. */
 const activeChatTurns = new Map<string, ActiveChatTurn>();
 
 /** How long a completed turn stays in the map so reconnecting clients can catch up. */
 const ACTIVE_TURN_RETENTION_MS = 1000 * 60 * 5;
 
-function normalizeMessages(
-  messages: ChatMessage[],
-): NormalizedChatMessage[] {
-  return messages.map((m) => ({
-    role: m.role,
-    content:
-      typeof m.content === "string"
-        ? m.content
-        : m.content.map((p) => (p.type === "text" ? (p.text ?? "") : "")).join(""),
-    ...(typeof m.thinking === "string" ? { thinking: m.thinking } : {}),
-  }));
-}
-
-function getMessagesFingerprint(messages: NormalizedChatMessage[]): string {
-  return createHash("sha256").update(JSON.stringify(messages)).digest("hex");
-}
-
 function getActiveTurnKey(options: {
   spaceId: string;
   userId: string | null;
   chatId: string;
-  messages: NormalizedChatMessage[];
 }): string {
-  return [
-    options.spaceId,
-    options.userId ?? "job",
-    options.chatId,
-    getMessagesFingerprint(options.messages),
-  ].join(":");
+  return [options.spaceId, options.userId ?? "job", options.chatId].join(":");
 }
 
 /**
@@ -132,7 +89,7 @@ function scheduleActiveTurnCleanup(key: string, turn: ActiveChatTurn) {
   maybeTimer.unref?.();
 }
 
-/** Appends an event to the turn log and fan-outs to all connected listeners. */
+/** Appends an event to the turn log and fans out to all connected listeners. */
 function emitTurnEvent(turn: ActiveChatTurn, event: AgentEvent) {
   turn.events.push(event);
   turn.updatedAt = Date.now();
@@ -140,6 +97,48 @@ function emitTurnEvent(turn: ActiveChatTurn, event: AgentEvent) {
     listener(event);
   }
 }
+
+// ---------------------------------------------------------------------------
+// ACP helpers
+// ---------------------------------------------------------------------------
+
+function tryParseJson(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return {};
+  }
+}
+
+function getToolKind(toolName: string): string {
+  if (toolName === "bash" || toolName === "js-exec") return "execute";
+  if (
+    toolName.startsWith("get_") ||
+    toolName.startsWith("read_") ||
+    toolName.startsWith("list_")
+  )
+    return "read";
+  if (toolName.startsWith("search_") || toolName.startsWith("find_")) return "search";
+  if (
+    toolName.startsWith("create_") ||
+    toolName.startsWith("update_") ||
+    toolName.startsWith("write_") ||
+    toolName.startsWith("edit_")
+  )
+    return "edit";
+  if (toolName.startsWith("delete_") || toolName.startsWith("remove_")) return "delete";
+  if (
+    toolName.startsWith("upload_") ||
+    toolName.startsWith("fetch_") ||
+    toolName.startsWith("download_")
+  )
+    return "fetch";
+  return "other";
+}
+
+// ---------------------------------------------------------------------------
+// Session persistence helpers
+// ---------------------------------------------------------------------------
 
 /**
  * Reconstructs the display message sequence for a completed turn from its
@@ -224,15 +223,11 @@ async function persistCompletedChatTurn(options: {
   spaceId: string;
   chatId: string;
   userId: string;
-  requestMessages: NormalizedChatMessage[];
+  requestMessages: Array<{ role: string; content?: string | null }>;
   events: AgentEvent[];
   result: AgentRunResult;
 }) {
-  const session = await getAIChatSession(
-    options.spaceId,
-    options.chatId,
-    options.userId,
-  );
+  const session = await getAIChatSession(options.spaceId, options.chatId, options.userId);
   if (!session) return;
 
   // The last user-role entry in requestMessages is the message that triggered
@@ -265,39 +260,22 @@ async function persistCompletedChatTurn(options: {
   });
 }
 
-function createChunkPayload(options: {
-  id: string;
-  created: number;
-  content?: string;
-  finishReason?: string | null;
-  stopReason?: string;
-  role?: "assistant";
-  event?: AgentEvent;
-}): Record<string, unknown> {
-  const delta: Record<string, string> = {};
-  if (options.role) delta.role = options.role;
-  if (options.content) delta.content = options.content;
+// ---------------------------------------------------------------------------
+// SSE streaming
+// ---------------------------------------------------------------------------
 
-  const payload: Record<string, unknown> = {
-    id: options.id,
-    object: "chat.completion.chunk",
-    created: options.created,
-    model: "bash-agent",
-    choices: [{ index: 0, delta, finish_reason: options.finishReason ?? null }],
-  };
-
-  if (options.stopReason) {
-    payload.acp = { stopReason: options.stopReason };
-  }
-  if (options.event) {
-    payload.acp = { ...(payload.acp as Record<string, unknown> | undefined), event: options.event };
-  }
-
-  return payload;
+/** Sends a JSON-RPC `session/update` notification over SSE. */
+function sendUpdate(
+  send: (payload: Record<string, unknown>) => void,
+  sessionId: string,
+  update: Record<string, unknown>,
+) {
+  send({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update } });
 }
 
 /**
- * Creates an SSE response that streams events from `turn` to the caller.
+ * Creates an SSE response that streams ACP `session/update` notifications from
+ * `turn` to the caller.
  *
  * If the turn is already complete the buffered events are flushed immediately.
  * If it is still running the caller subscribes as a listener and receives
@@ -306,20 +284,22 @@ function createChunkPayload(options: {
  * Cancelling the stream (client disconnect) does NOT abort the agent; the
  * turn stays alive so the next request can reconnect.
  */
-function createStreamingResponse(turn: ActiveChatTurn): Response {
+function createStreamingResponse(
+  turn: ActiveChatTurn,
+  requestId: string | number | null,
+  sessionId: string,
+): Response {
   const encoder = new TextEncoder();
-  const id = `chatcmpl_${crypto.randomUUID()}`;
-  const created = Math.floor(Date.now() / 1000);
 
   return new Response(
     new ReadableStream({
       async start(controller) {
         let closed = false;
-        const send = (payload: Record<string, unknown> | "[DONE]") => {
+        const send = (payload: Record<string, unknown> | string) => {
           if (closed) return;
           const data =
-            payload === "[DONE]"
-              ? "data: [DONE]\n\n"
+            typeof payload === "string"
+              ? `data: ${payload}\n\n`
               : `data: ${JSON.stringify(payload)}\n\n`;
           try {
             controller.enqueue(encoder.encode(data));
@@ -327,22 +307,60 @@ function createStreamingResponse(turn: ActiveChatTurn): Response {
             closed = true;
           }
         };
-        const sendEvent = (event: AgentEvent) => {
-          send(
-            createChunkPayload({
-              id,
-              created,
-              content: event.type === "text" ? event.text : undefined,
-              event,
-            }),
-          );
+
+        const sendAgentEvent = (event: AgentEvent) => {
+          if (event.type === "text") {
+            sendUpdate(send, sessionId, {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: event.text },
+            });
+          } else if (event.type === "thinking") {
+            sendUpdate(send, sessionId, {
+              sessionUpdate: "generic",
+              generic: { type: "thinking", text: event.text },
+            });
+          } else if (event.type === "status") {
+            sendUpdate(send, sessionId, {
+              sessionUpdate: "plan",
+              entries: [{ content: event.text, status: "in_progress" }],
+            });
+          } else if (event.type === "tool_call") {
+            sendUpdate(send, sessionId, {
+              sessionUpdate: "tool_call",
+              toolCallId: event.toolCallId,
+              title: event.toolName,
+              kind: getToolKind(event.toolName),
+              input: tryParseJson(event.toolArguments),
+              status: "pending",
+            });
+            sendUpdate(send, sessionId, {
+              sessionUpdate: "tool_call_update",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              status: "in_progress",
+            });
+          } else if (event.type === "tool_result") {
+            sendUpdate(send, sessionId, {
+              sessionUpdate: "tool_call_update",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              status: event.isError ? "failed" : "completed",
+              content: [
+                {
+                  type: "content",
+                  content: { type: "text", text: event.content },
+                },
+              ],
+            });
+          }
         };
-        const listener = (event: AgentEvent) => sendEvent(event);
+
+        const listener = (event: AgentEvent) => sendAgentEvent(event);
 
         try {
-          send(createChunkPayload({ id, created, role: "assistant" }));
+          // Replay buffered events to late-joining clients.
           for (const event of turn.events) {
-            sendEvent(event);
+            sendAgentEvent(event);
           }
           if (!turn.result && !turn.error) {
             turn.listeners.add(listener);
@@ -350,21 +368,30 @@ function createStreamingResponse(turn: ActiveChatTurn): Response {
           }
 
           if (turn.error) {
-            send({ error: turn.error });
+            send({
+              jsonrpc: "2.0",
+              id: requestId,
+              error: { code: "server_error", message: turn.error },
+            });
             send("[DONE]");
             return;
           }
-          send(
-            createChunkPayload({
-              id,
-              created,
-              finishReason: "stop",
-              stopReason: turn.result?.stopReason,
-            }),
-          );
+
+          send({
+            jsonrpc: "2.0",
+            id: requestId,
+            result: { stopReason: "end_turn" },
+          });
           send("[DONE]");
         } catch (error) {
-          send({ error: error instanceof Error ? error.message : "Agent request failed" });
+          send({
+            jsonrpc: "2.0",
+            id: requestId,
+            error: {
+              code: "server_error",
+              message: error instanceof Error ? error.message : "Agent request failed",
+            },
+          });
           send("[DONE]");
         } finally {
           turn.listeners.delete(listener);
@@ -390,6 +417,10 @@ function createStreamingResponse(turn: ActiveChatTurn): Response {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Turn management
+// ---------------------------------------------------------------------------
+
 /**
  * Returns the existing in-progress (or recently completed) turn for the given
  * key, or starts a fresh agent run and registers it.
@@ -401,7 +432,7 @@ function getOrStartActiveChatTurn(options: {
   key: string;
   userId: string | null;
   chatId: string;
-  messages: NormalizedChatMessage[];
+  messages: ChatMessage[];
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -468,167 +499,152 @@ function getOrStartActiveChatTurn(options: {
   return turn;
 }
 
+// ---------------------------------------------------------------------------
+// POST handler
+// ---------------------------------------------------------------------------
+
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
-      const body = await parseJsonBody<AcpRequestBody>(context.request);
+      const body = await parseJsonBody<AcpJsonRpcRequest>(context.request);
 
-      if (!Array.isArray(body.messages)) {
-        return badRequestResponse("messages is required");
-      }
-      if (!body.chatId || typeof body.chatId !== "string") {
-        return badRequestResponse("chatId is required");
-      }
-      if (!body.spaceId || typeof body.spaceId !== "string") {
-        return badRequestResponse("spaceId is required");
-      }
-      if (body.documentId !== undefined && typeof body.documentId !== "string") {
-        return badRequestResponse("documentId must be a string");
+      if (body.jsonrpc !== "2.0" || !body.method) {
+        return badRequestResponse("Invalid JSON-RPC 2.0 request");
       }
 
-      let jobToken: string;
-      let userId: string | null = null;
-      if (!context.locals.user) {
-        const providedJobToken = context.request.headers.get("X-Job-Token");
-        const headerSpaceId = context.request.headers.get("X-Space-Id");
+      const requestId = body.id ?? null;
+      const params = (body.params ?? {}) as Record<string, unknown>;
+
+      // -----------------------------------------------------------------------
+      // session/prompt — start or resume a streaming agent turn
+      // -----------------------------------------------------------------------
+      if (body.method === "session/prompt") {
+        const sessionId = params.sessionId;
+        const spaceId = params.spaceId;
+        const documentId = params.documentId;
+        const prompt = params.prompt;
+
+        if (!sessionId || typeof sessionId !== "string") {
+          return badRequestResponse("params.sessionId is required");
+        }
+        if (!spaceId || typeof spaceId !== "string") {
+          return badRequestResponse("params.spaceId is required");
+        }
+        if (documentId !== undefined && typeof documentId !== "string") {
+          return badRequestResponse("params.documentId must be a string");
+        }
         if (
-          !providedJobToken ||
-          !headerSpaceId ||
-          !verifyJobToken(providedJobToken, headerSpaceId)
+          !Array.isArray(prompt) ||
+          prompt.length === 0 ||
+          typeof (prompt[0] as { text?: unknown }).text !== "string"
         ) {
-          throw unauthorizedResponse();
+          return badRequestResponse(
+            "params.prompt must be a non-empty array with a text entry",
+          );
         }
-        if (headerSpaceId !== body.spaceId) {
-          return badRequestResponse("spaceId does not match job token scope");
+
+        const userText = (prompt[0] as { text: string }).text;
+
+        let jobToken: string;
+        let userId: string | null = null;
+
+        if (!context.locals.user) {
+          const providedJobToken = context.request.headers.get("X-Job-Token");
+          const headerSpaceId = context.request.headers.get("X-Space-Id");
+          if (
+            !providedJobToken ||
+            !headerSpaceId ||
+            !verifyJobToken(providedJobToken, headerSpaceId)
+          ) {
+            throw unauthorizedResponse();
+          }
+          if (headerSpaceId !== spaceId) {
+            return badRequestResponse("spaceId does not match job token scope");
+          }
+          const parsed = parseJobToken(providedJobToken, spaceId);
+          if (!parsed) {
+            throw unauthorizedResponse();
+          }
+          jobToken = providedJobToken;
+        } else {
+          const user = requireUser(context);
+          await verifySpaceRole(spaceId, user.id, "viewer");
+          userId = user.id;
+          jobToken = createJobToken(spaceId, Date.now().toString(), user.id);
         }
-        const parsed = parseJobToken(providedJobToken, body.spaceId);
-        if (!parsed) {
-          throw unauthorizedResponse();
-        }
-        jobToken = providedJobToken;
-      } else {
-        const user = requireUser(context);
-        await verifySpaceRole(body.spaceId, user.id, "viewer");
-        userId = user.id;
-        jobToken = createJobToken(body.spaceId, Date.now().toString(), user.id);
-      }
 
-      const messages = normalizeMessages(body.messages);
-      const persistedSession =
-        userId === null
-          ? null
-          : await getAIChatSession(body.spaceId, body.chatId, userId);
+        // Load existing conversation history from DB and append the new user message.
+        const persistedSession =
+          userId === null ? null : await getAIChatSession(spaceId, sessionId, userId);
+        const history = (persistedSession?.conversationHistory ?? []) as ChatMessage[];
+        const messages: ChatMessage[] = [...history, { role: "user", content: userText }];
 
-      // Base options shared by both streaming and non-streaming paths.
-      // Note: the request AbortSignal is intentionally excluded here; it is
-      // only applied to the non-streaming (synchronous) path so that client
-      // disconnects during a streaming turn do not abort the agent worker.
-      const workerOptions = {
-        chatId: body.chatId,
-        messages,
-        apiUrl: getLocalOrigin(),
-        spaceId: body.spaceId,
-        documentId: body.documentId,
-        jobToken,
-        shellSnapshot: persistedSession?.shellSnapshot ?? null,
-      };
-
-      if (body.stream) {
-        const key = getActiveTurnKey({ spaceId: body.spaceId, userId, chatId: body.chatId, messages });
-        const turn = getOrStartActiveChatTurn({ key, userId, ...workerOptions });
-        return createStreamingResponse(turn);
-      }
-
-      const nonStreamingEvents: AgentEvent[] = [];
-      const result = await runAgentInWorker({
-        ...workerOptions,
-        signal: context.request.signal,
-        onEvent: (event) => { nonStreamingEvents.push(event); },
-      });
-      if (userId !== null) {
-        await persistCompletedChatTurn({
-          spaceId: body.spaceId,
-          chatId: body.chatId,
+        const key = getActiveTurnKey({ spaceId, userId, chatId: sessionId });
+        const turn = getOrStartActiveChatTurn({
+          key,
           userId,
-          requestMessages: messages,
-          events: nonStreamingEvents,
-          result,
+          chatId: sessionId,
+          messages,
+          apiUrl: getLocalOrigin(),
+          spaceId,
+          documentId: typeof documentId === "string" ? documentId : undefined,
+          jobToken,
+          shellSnapshot: persistedSession?.shellSnapshot ?? null,
         });
+
+        return createStreamingResponse(turn, requestId, sessionId);
       }
-      return Response.json({
-        id: `chatcmpl_${crypto.randomUUID()}`,
-        object: "chat.completion",
-        created: Math.floor(Date.now() / 1000),
-        model: "bash-agent",
-        choices: [
-          {
-            index: 0,
-            message: { role: "assistant", content: result.content },
-            finish_reason: "stop",
-          },
-        ],
-        acp: { stopReason: result.stopReason },
-      });
+
+      // -----------------------------------------------------------------------
+      // session/cancel — abort an active turn
+      // -----------------------------------------------------------------------
+      if (body.method === "session/cancel") {
+        const sessionId = params.sessionId;
+        const spaceId = params.spaceId;
+
+        if (!sessionId || typeof sessionId !== "string") {
+          return badRequestResponse("params.sessionId is required");
+        }
+        if (!spaceId || typeof spaceId !== "string") {
+          return badRequestResponse("params.spaceId is required");
+        }
+
+        let userId: string | null = null;
+
+        if (!context.locals.user) {
+          const providedJobToken = context.request.headers.get("X-Job-Token");
+          const headerSpaceId = context.request.headers.get("X-Space-Id");
+          if (
+            !providedJobToken ||
+            !headerSpaceId ||
+            !verifyJobToken(providedJobToken, headerSpaceId)
+          ) {
+            throw unauthorizedResponse();
+          }
+          if (headerSpaceId !== spaceId) {
+            return badRequestResponse("spaceId does not match job token scope");
+          }
+        } else {
+          const user = requireUser(context);
+          await verifySpaceRole(spaceId, user.id, "viewer");
+          userId = user.id;
+        }
+
+        const key = getActiveTurnKey({ spaceId, userId, chatId: sessionId });
+        const turn = activeChatTurns.get(key);
+        if (turn) {
+          turn.abort();
+          activeChatTurns.delete(key);
+        }
+
+        return Response.json({ jsonrpc: "2.0", id: requestId, result: { cancelled: true } });
+      }
+
+      return badRequestResponse(`Unknown method: ${body.method}`);
     },
     {
       fallbackMessage: "Agent request failed",
       onError: (error) =>
         errorResponse(error instanceof Error ? error.message : "Agent request failed", 500),
     },
-  );
-
-/**
- * Cancels an active agent turn identified by the same (spaceId, chatId,
- * messages) triple used when starting it.  Aborting is idempotent — if the
- * turn has already finished or does not exist the request still succeeds.
- *
- * The client should fire this before closing the SSE stream so the server
- * can distinguish an intentional cancel from an accidental disconnect.
- */
-export const DELETE: APIRoute = (context) =>
-  withApiErrorHandling(
-    async () => {
-      const body = await parseJsonBody<AcpRequestBody>(context.request);
-
-      if (!Array.isArray(body.messages)) {
-        return badRequestResponse("messages is required");
-      }
-      if (!body.chatId || typeof body.chatId !== "string") {
-        return badRequestResponse("chatId is required");
-      }
-      if (!body.spaceId || typeof body.spaceId !== "string") {
-        return badRequestResponse("spaceId is required");
-      }
-
-      let userId: string | null = null;
-      if (!context.locals.user) {
-        const providedJobToken = context.request.headers.get("X-Job-Token");
-        const headerSpaceId = context.request.headers.get("X-Space-Id");
-        if (
-          !providedJobToken ||
-          !headerSpaceId ||
-          !verifyJobToken(providedJobToken, headerSpaceId)
-        ) {
-          throw unauthorizedResponse();
-        }
-        if (headerSpaceId !== body.spaceId) {
-          return badRequestResponse("spaceId does not match job token scope");
-        }
-      } else {
-        const user = requireUser(context);
-        await verifySpaceRole(body.spaceId, user.id, "viewer");
-        userId = user.id;
-      }
-
-      const messages = normalizeMessages(body.messages);
-      const key = getActiveTurnKey({ spaceId: body.spaceId, userId, chatId: body.chatId, messages });
-      const turn = activeChatTurns.get(key);
-      if (turn) {
-        turn.abort();
-        activeChatTurns.delete(key);
-      }
-
-      return Response.json({ cancelled: true });
-    },
-    { fallbackMessage: "Cancel failed" },
   );

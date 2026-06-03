@@ -6,7 +6,7 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
-import type { ChatMessage, ChatStreamEvent } from "./ai-chat/types.ts";
+import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
@@ -78,8 +78,6 @@ const mentionOverlayStyle = ref<Record<string, string>>({});
 const expandedToolMessages = ref<Set<string>>(new Set());
 let mentionReqSeq = 0;
 
-// Conversation history
-const conversationHistory = ref<ChatMessage[]>([]);
 let abortController: AbortController | null = null;
 
 // Session persistence
@@ -120,6 +118,25 @@ const canSend = computed(() => {
     !isUploadingFiles.value &&
     (messageInput.value.trim() || pendingAttachments.value.length > 0)
   );
+});
+
+/**
+ * The current generation state from the perspective of the waiting indicator.
+ * - 'tool_executing': a tool_call message is at the tail — tool is running on server
+ * - 'waiting': generating but nothing is actively streaming (pre-first-event, or model
+ *              processing a tool result before responding)
+ * - null: not generating, or content is actively streaming (text / thinking / status)
+ */
+const waitingState = computed((): { kind: 'tool_executing'; tool: UIMessage } | { kind: 'waiting' } | null => {
+  if (!isGenerating.value) return null;
+  const last = messages.value.at(-1);
+  if (last?.role === 'tool' && last.toolPhase === 'call') {
+    return { kind: 'tool_executing', tool: last };
+  }
+  if (last?.role === 'assistant' || last?.role === 'thinking' || last?.role === 'status') {
+    return null;
+  }
+  return { kind: 'waiting' };
 });
 
 function formatFileSize(bytes: number): string {
@@ -319,7 +336,7 @@ function getSessionStatus(session: ChatSession): SessionStatus {
   if (session.id === currentSessionId.value && isGenerating.value) {
     return "generating";
   }
-  const lastMsg = (session.conversationHistory as ChatMessage[]).at(-1);
+  const lastMsg = (session.conversationHistory as Array<{ role: string }>).at(-1);
   if (lastMsg?.role === "user") {
     return "awaiting";
   }
@@ -451,7 +468,9 @@ function appendThinkingMessageChunk(
   scrollThinkingToBottom();
 }
 
-function appendToolEventMessage(event: Exclude<ChatStreamEvent, { type: "text" }>) {
+function appendToolEventMessage(
+  event: Extract<ChatStreamEvent, { type: "tool_call" | "tool_result" }>,
+) {
   messages.value.push({
     role: "tool",
     content: event.type === "tool_call" ? event.toolArguments : event.content,
@@ -482,7 +501,11 @@ function applyStreamEvent(
     appendThinkingMessageChunk(event.text, thinkingMessageIndex);
   } else if (event.type === "status") {
     appendStatusMessage(event.text);
+  } else if (event.type === "tool_progress") {
+    // Tool is actively running — the waitingState indicator already reflects this
+    // from the tool_call message at the tail; nothing extra to render.
   } else {
+    // tool_call or tool_result
     removeThinkingMessages(responseStartIndex);
     assistantMessageIndex.value = null;
     thinkingMessageIndex.value = null;
@@ -765,23 +788,16 @@ function toggleToolMessageExpanded(message: UIMessage, index: number) {
 
 // ── Send to agent ─────────────────────────────────────────────────────────────
 
-async function streamAssistantResponse(responseStartIndex: number) {
+async function streamAssistantResponse(userMessage: string, responseStartIndex: number) {
   const assistantMessageIndex = { value: null as number | null };
   const thinkingMessageIndex = { value: null as number | null };
 
-  const { content, thinking } = await fetchStreamingCompletion({
+  await fetchStreamingCompletion({
     url: "/api/v1/chat/acp",
-    model: "bash-agent",
-    history: conversationHistory.value,
-    body: {
-      chatId: currentSessionId.value,
-      spaceId: currentSpaceId.value,
-      documentId: props.documentId || undefined,
-    },
-    onDelta: (text) => {
-      appendAssistantMessageChunk(text, assistantMessageIndex);
-      scrollToBottomIfNearBottom();
-    },
+    sessionId: currentSessionId.value!,
+    spaceId: currentSpaceId.value!,
+    documentId: props.documentId || undefined,
+    userMessage,
     onEvent: (event) =>
       applyStreamEvent(
         event,
@@ -790,12 +806,6 @@ async function streamAssistantResponse(responseStartIndex: number) {
         responseStartIndex,
       ),
     signal: abortController?.signal,
-  });
-
-  conversationHistory.value.push({
-    role: "assistant",
-    content,
-    ...(thinking ? { thinking } : {}),
   });
 }
 
@@ -827,7 +837,6 @@ watch(
 function startNewChat() {
   currentSessionId.value = null;
   messages.value = [];
-  conversationHistory.value = [];
   uploadError.value = "";
   clearPendingAttachments();
   closeMentionSuggestions();
@@ -845,7 +854,6 @@ function resumeSession(session: ChatSession) {
   clearPendingAttachments();
   closeMentionSuggestions();
   messages.value = (session.messages as UIMessage[]).map(normalizeSavedMessage);
-  conversationHistory.value = session.conversationHistory as ChatMessage[];
   showSessionPicker.value = false;
   scrollToBottom();
 }
@@ -860,7 +868,6 @@ async function removeSession(id: string) {
       showSessionPicker.value = true;
       currentSessionId.value = null;
       messages.value = [];
-      conversationHistory.value = [];
     } else {
       startNewChat();
     }
@@ -870,18 +877,21 @@ async function removeSession(id: string) {
 // ── Send message ──────────────────────────────────────────────────────────────
 
 function cancelGeneration() {
-  // Tell the server to abort the agent turn before we close the SSE stream.
+  // Send session/cancel so the server can abort the agent worker.
   // Without this the server cannot distinguish an intentional cancel from an
   // accidental disconnect, and the agent would keep running in the background.
   if (currentSessionId.value && currentSpaceId.value) {
     void fetch("/api/v1/chat/acp", {
-      method: "DELETE",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify({
-        chatId: currentSessionId.value,
-        spaceId: currentSpaceId.value,
-        messages: conversationHistory.value,
+        jsonrpc: "2.0",
+        method: "session/cancel",
+        params: {
+          sessionId: currentSessionId.value,
+          spaceId: currentSpaceId.value,
+        },
       }),
     });
   }
@@ -966,14 +976,12 @@ async function sendMessage() {
   clearPendingAttachments();
   scrollToBottom();
 
-  conversationHistory.value.push({ role: "user", content: modelMessage });
-
   isGenerating.value = true;
   abortController = new AbortController();
   const responseStartIndex = messages.value.length;
 
   try {
-    await streamAssistantResponse(responseStartIndex);
+    await streamAssistantResponse(modelMessage, responseStartIndex);
     // Reload the session so sessions.value reflects the messages persistCompletedChatTurn saved.
     if (currentSessionId.value && currentSpaceId.value) {
       const refreshed = await getSession(currentSpaceId.value, currentSessionId.value);
@@ -984,13 +992,7 @@ async function sendMessage() {
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      conversationHistory.value.push({
-        role: "assistant",
-        content: collectAssistantText(responseStartIndex) || "(cancelled)",
-        ...(collectThinkingText(responseStartIndex)
-          ? { thinking: collectThinkingText(responseStartIndex) }
-          : {}),
-      });
+      // cancelled — server already notified via session/cancel
     } else {
       const errorMessage =
         error instanceof Error ? error.message : "AI generation failed";
@@ -1304,9 +1306,39 @@ onUnmounted(() => {
         </div>
         </template>
 
-        <!-- Waiting indicator: shown when generating but no active text/thinking/status is streaming -->
+        <!-- Tool-executing indicator -->
         <div
-          v-if="isGenerating && !['assistant', 'thinking', 'status'].includes(messages.at(-1)?.role ?? '')"
+          v-if="waitingState?.kind === 'tool_executing'"
+          class="flex gap-2 justify-start animate-message-slide-in"
+        >
+          <div class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5">
+            <svg class="w-4 h-4 tool-message-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 010 1.4l-1 1a4 4 0 005.7 5.6l1-1a1 1 0 011.4 1.5l-1 1a6 6 0 01-8.5-8.5l1-1a1 1 0 011.4 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.3 17.7a1 1 0 010-1.4l1-1a4 4 0 00-5.7-5.6l-1 1a1 1 0 01-1.4-1.5l1-1a6 6 0 018.5 8.5l-1 1a1 1 0 01-1.4 0z"/>
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0 tool-message-bg border border-neutral-200 rounded-xl overflow-hidden shadow-sm mt-0.5">
+            <div class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide flex items-center gap-1.5">
+              Running
+              <span class="normal-case tracking-normal font-semibold tool-message-name">
+                {{ waitingState.tool.toolName }}
+              </span>
+              <span class="ml-auto flex items-center gap-0.5">
+                <span class="typing-dot" />
+                <span class="typing-dot" style="animation-delay: 160ms" />
+                <span class="typing-dot" style="animation-delay: 320ms" />
+              </span>
+            </div>
+            <pre
+              v-if="formatToolPreview(waitingState.tool)"
+              class="px-3.5 py-2.5 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-500 max-h-20 overflow-hidden"
+            >{{ formatToolPreview(waitingState.tool) }}</pre>
+          </div>
+        </div>
+
+        <!-- Generic waiting indicator (before first event, or model processing a tool result) -->
+        <div
+          v-else-if="waitingState?.kind === 'waiting'"
           class="flex gap-2 justify-start animate-message-slide-in"
         >
           <div class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5">

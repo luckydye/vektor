@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatStreamEvent } from "../types.ts";
+import type { ChatStreamEvent } from "../types.ts";
 
 export async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,
@@ -35,59 +35,148 @@ export async function* parseSSEStream(
   }
 }
 
+/**
+ * Sends a JSON-RPC `session/prompt` request to the ACP endpoint and streams
+ * back `session/update` notifications, mapping each to a `ChatStreamEvent`.
+ *
+ * Request format (Agent Client Protocol):
+ *   { jsonrpc: "2.0", id, method: "session/prompt",
+ *     params: { sessionId, spaceId, documentId?, prompt: [{type:"text",text}] } }
+ *
+ * The server manages conversation history; the caller only provides the new
+ * user message.
+ */
 export async function fetchStreamingCompletion(options: {
   url: string;
-  model: string;
-  history: ChatMessage[];
-  onDelta: (text: string) => void;
+  sessionId: string;
+  spaceId: string;
+  documentId?: string;
+  userMessage: string;
   onEvent?: (event: ChatStreamEvent) => void;
-  body?: Record<string, unknown>;
   signal?: AbortSignal;
-}): Promise<{ content: string; thinking: string }> {
+}): Promise<{ stopReason: string }> {
+  const requestId = crypto.randomUUID();
+
   const response = await fetch(options.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     body: JSON.stringify({
-      ...(options.body ?? {}),
-      model: options.model,
-      messages: options.history,
-      stream: true,
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "session/prompt",
+      params: {
+        sessionId: options.sessionId,
+        spaceId: options.spaceId,
+        documentId: options.documentId,
+        prompt: [{ type: "text", text: options.userMessage }],
+      },
     }),
     signal: options.signal,
   });
 
   if (!response.ok) {
-    throw new Error(`API error ${response.status}: ${await response.text()}`);
+    throw new Error(`ACP error ${response.status}: ${await response.text()}`);
   }
-
   if (!response.body) throw new Error("No response body");
 
-  let content = "";
-  let thinking = "";
+  let stopReason = "end_turn";
 
   for await (const chunk of parseSSEStream(response.body)) {
-    const error = chunk.error;
-    if (typeof error === "string" && error) {
-      throw new Error(error);
+    // JSON-RPC error
+    if (chunk.error && typeof chunk.error === "object") {
+      const err = chunk.error as Record<string, unknown>;
+      throw new Error(typeof err.message === "string" ? err.message : "ACP error");
     }
 
-    const delta = (chunk as any).choices?.[0]?.delta;
-    const event = (chunk as { acp?: { event?: ChatStreamEvent } }).acp?.event;
-    if (event) {
-      options.onEvent?.(event);
-      if (event.type === "text") {
-        content += event.text;
-      } else if (event.type === "thinking") {
-        thinking += event.text;
+    // Final session/prompt result: { jsonrpc, id, result: { stopReason } }
+    if (chunk.id === requestId && chunk.result && typeof chunk.result === "object") {
+      const result = chunk.result as Record<string, unknown>;
+      if (typeof result.stopReason === "string") {
+        stopReason = result.stopReason;
       }
       continue;
     }
 
-    if (delta?.content) {
-      content += delta.content;
-      options.onDelta(delta.content);
+    // session/update notification
+    if (chunk.method !== "session/update") continue;
+    const params = chunk.params as Record<string, unknown> | undefined;
+    const update = params?.update as Record<string, unknown> | undefined;
+    if (!update) continue;
+
+    const kind = update.sessionUpdate as string;
+
+    if (kind === "agent_message_chunk") {
+      const content = update.content as Record<string, unknown> | undefined;
+      if (content?.type === "text" && typeof content.text === "string") {
+        options.onEvent?.({ type: "text", text: content.text });
+      }
+      continue;
+    }
+
+    if (kind === "generic") {
+      const generic = update.generic as Record<string, unknown> | undefined;
+      if (generic?.type === "thinking" && typeof generic.text === "string") {
+        options.onEvent?.({ type: "thinking", text: generic.text });
+      }
+      continue;
+    }
+
+    if (kind === "plan") {
+      const entries = update.entries as Array<Record<string, unknown>> | undefined;
+      const first = entries?.[0];
+      if (typeof first?.content === "string") {
+        options.onEvent?.({ type: "status", text: first.content });
+      }
+      continue;
+    }
+
+    if (kind === "tool_call") {
+      const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
+      const toolName = typeof update.title === "string" ? update.title : "";
+      const toolKind = typeof update.kind === "string" ? update.kind : "other";
+      const input = update.input;
+      const toolArguments =
+        input !== undefined && input !== null
+          ? JSON.stringify(input)
+          : "{}";
+      options.onEvent?.({
+        type: "tool_call",
+        toolCallId,
+        toolName,
+        toolArguments,
+        kind: toolKind as import("../types.ts").ToolCallKind,
+      });
+      continue;
+    }
+
+    if (kind === "tool_call_update") {
+      const toolCallId = typeof update.toolCallId === "string" ? update.toolCallId : "";
+      const toolName = typeof update.toolName === "string" ? update.toolName : "";
+      const status = update.status as string;
+
+      if (status === "in_progress") {
+        options.onEvent?.({ type: "tool_progress", toolCallId, toolName });
+        continue;
+      }
+
+      if (status === "completed" || status === "failed") {
+        const contentArr = update.content as Array<Record<string, unknown>> | undefined;
+        const first = contentArr?.[0];
+        const innerContent = first?.content as Record<string, unknown> | undefined;
+        const text =
+          typeof innerContent?.text === "string" ? innerContent.text : "";
+        options.onEvent?.({
+          type: "tool_result",
+          toolCallId,
+          toolName,
+          content: text,
+          isError: status === "failed",
+        });
+        continue;
+      }
     }
   }
 
-  return { content, thinking };
+  return { stopReason };
 }
