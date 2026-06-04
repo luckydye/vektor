@@ -18,6 +18,7 @@ export { runAgentPrompt } from "./core.ts";
 type AgentSession = {
   bash: Bash;
   mcpConfigRef: { current: VektorMcpConfig };
+  connectedProviders: string[];
   updatedAt: number;
 };
 
@@ -142,6 +143,7 @@ function getOrCreateSession(options: {
   spaceId: string;
   documentId?: string;
   jobToken: string;
+  connectedProviders: string[];
   shellSnapshot?: string | null;
 }): Promise<AgentSession> {
   const now = Date.now();
@@ -154,6 +156,7 @@ function getOrCreateSession(options: {
       spaceId: options.spaceId,
       jobToken: options.jobToken,
       documentId: options.documentId,
+      connectedProviders: options.connectedProviders,
     };
     existing.updatedAt = now;
     return Promise.resolve(existing);
@@ -169,11 +172,13 @@ function getOrCreateSession(options: {
       spaceId: options.spaceId,
       jobToken: options.jobToken,
       documentId: options.documentId,
+      connectedProviders: options.connectedProviders,
     } satisfies VektorMcpConfig,
   };
   const session = {
     bash: createAgentShell(mcpConfigRef, bootstrap, getAIProvider()),
     mcpConfigRef,
+    connectedProviders: options.connectedProviders,
     updatedAt: now,
   };
   sessionStore.set(key, session);
@@ -189,6 +194,8 @@ export async function runAgentInWorker(options: {
   apiUrl: string;
   spaceId: string;
   documentId?: string;
+  connectedProviders: string[];
+  userProfile?: string;
   jobToken: string;
   shellSnapshot?: string | null;
   signal?: AbortSignal;
@@ -197,6 +204,7 @@ export async function runAgentInWorker(options: {
   const session = await getOrCreateSession(options);
   const result = await runAgentPrompt({
     ...options,
+    connectedProviders: session.connectedProviders,
     bash: session.bash,
   });
   session.updatedAt = Date.now();

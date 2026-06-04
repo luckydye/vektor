@@ -62,15 +62,15 @@ export type AgentEvent =
       isError: boolean;
     };
 
-function buildCoreAgentSystemPrompt(documentId?: string) {
+function buildCoreAgentSystemPrompt(documentId?: string, connectedProviders?: string[], userProfile?: string) {
+  const gitlabConnected = !connectedProviders || connectedProviders.includes("gitlab");
   return `## Bash Tool Runtime
 - js-exec runs JavaScript/TypeScript in a QuickJS sandbox: \`js-exec -c "..."\` or \`js-exec script.js\`. Has \`console\` and \`process\`; no \`require\`, \`fetch\`, or Node built-ins.
 - zip/unzip/zipinfo operate on the virtual filesystem (zip is always recursive). Use \`zipinfo\` instead of \`unzip -l\`.
 - vektor CLI: \`vektor current\` (current doc), \`vektor read <id>\`, \`vektor list --json\`, \`vektor search "<q>" --json\`, \`vektor create --title "T" [--type type] [--parent id] [file]\`, \`vektor delete <id> [--permanent]\`. Pipe/redirect to/from virtual files as needed.
 - upload <file> uploads from the virtual filesystem and returns JSON with a URL. Never share sandbox paths — always upload first.
 - Only include final output files in zips; exclude intermediates.
-- ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.
-- gitlab sub-commands: \`gitlab api <path>\` raw API request via OAuth (paths relative to /api/v4, e.g. \`gitlab api '/projects?search=name'\`); \`gitlab ls <project> [path] [--ref <ref>]\` list repo directory; \`gitlab cat <project> <file> [--ref <ref>]\` file contents; \`gitlab tree <project> [path] [--ref <ref>]\` recursive listing. Use \`gitlab api\` to search/list projects — \`ls/cat/tree\` require an exact project ID or \`namespace/project\`.
+- ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.${gitlabConnected ? "\n- gitlab sub-commands: \`gitlab api <path>\` raw API request via OAuth (paths relative to /api/v4, e.g. \`gitlab api '/projects?search=name'\`); \`gitlab ls <project> [path] [--ref <ref>]\` list repo directory; \`gitlab cat <project> <file> [--ref <ref>]\` file contents; \`gitlab tree <project> [path] [--ref <ref>]\` recursive listing. Use \`gitlab api\` to search/list projects — \`ls/cat/tree\` require an exact project ID or \`namespace/project\`." : ""}
 - pandoc conversions: \`html -> csv\` (first table) and \`html-table -> csv\`.
 - Prefer built-in shell utilities. On failure, inspect stderr and adapt — don't retry blindly.
 - Loop over file lines with \`while read -r line; do ...; done < file.txt\` (\`<<\` is a heredoc, not a file).
@@ -94,7 +94,7 @@ function buildCoreAgentSystemPrompt(documentId?: string) {
 - Frontend entry exports \`activate(ctx)\`/\`deactivate(ctx)\`. \`ctx\` provides: \`ctx.actions.register\`, \`ctx.suggestions.register\`, \`ctx.views.register\`, \`ctx.api\`.
 - Jobs: declare in manifest \`"jobs":[{"id","name","entry","inputs","outputs"}]\`. Entry uses \`worker_threads\` and posts \`{type:"result",success:true,outputs:{...}}\`.
 
-${documentId ? `\n## Current Document\n- When the user refers to "this document" or "the page", inspect it first with \`vektor current\`.` : ""}`;
+${documentId ? `\n## Current Document\n- When the user refers to "this document" or "the page", inspect it first with \`vektor current\`.` : ""}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`; 
 }
 
 async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
@@ -307,7 +307,7 @@ function toAnthropicMessages(messages: ChatMessage[]): {
 
 type PartialToolCall = { id: string; name: string; arguments: string };
 
-async function callModel(options: {
+export async function callModel(options: {
   provider: AIProvider;
   messages: ChatMessage[];
   tools: unknown[];
@@ -561,6 +561,8 @@ export async function runAgentPrompt(options: {
   apiUrl: string;
   spaceId: string;
   documentId?: string;
+  connectedProviders?: string[];
+  userProfile?: string;
   jobToken: string;
   bash?: Bash;
   signal?: AbortSignal;
@@ -571,6 +573,8 @@ export async function runAgentPrompt(options: {
     messages,
     spaceId,
     documentId,
+    connectedProviders,
+    userProfile,
     jobToken,
     bash: providedBash,
     apiUrl,
@@ -581,7 +585,7 @@ export async function runAgentPrompt(options: {
 
   const provider = getAIProvider();
 
-  const mcpConfig: VektorMcpConfig = { apiUrl, spaceId, jobToken, documentId };
+  const mcpConfig: VektorMcpConfig = { apiUrl, spaceId, jobToken, documentId, connectedProviders };
   const bash = providedBash ?? createAgentShell({ current: mcpConfig }, undefined, provider);
   const tools = [
     {
@@ -599,7 +603,7 @@ export async function runAgentPrompt(options: {
   ];
 
   const agentMessages: ChatMessage[] = [
-    { role: "system", content: buildCoreAgentSystemPrompt(documentId) },
+    { role: "system", content: buildCoreAgentSystemPrompt(documentId, connectedProviders, userProfile) },
     ...messages,
   ];
   const allChunks: string[] = [];
@@ -710,7 +714,9 @@ export function createAgentShell(
       pandocCommand,
       uploadCommand(mcpConfigRef),
       aiCommand(completion),
-      gitlabCommand(mcpConfigRef),
+      ...(!mcpConfigRef.current.connectedProviders || mcpConfigRef.current.connectedProviders.includes("gitlab")
+        ? [gitlabCommand(mcpConfigRef)]
+        : []),
       extensionCommand(mcpConfigRef),
       curlCommand,
       jsExecCommand,

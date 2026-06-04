@@ -32,6 +32,7 @@ export type VektorMcpConfig = {
   spaceId: string;
   jobToken: string;
   documentId?: string;
+  connectedProviders?: string[];
 };
 
 function createResult(id: JsonRpcId, result: unknown): JsonRpcResponse {
@@ -354,25 +355,34 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["section"],
       },
     },
-    {
-      name: "integration_api_request",
-      description:
-        "Call a configured integration API using the current user's connected OAuth token. GitLab paths are relative to /api/v4, for example /user or /projects?membership=true.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          provider: { type: "string", enum: ["gitlab", "youtrack"] },
-          method: {
-            type: "string",
-            enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    ...((() => {
+      const allProviders = ["gitlab", "youtrack"];
+      const providers = config.connectedProviders
+        ? allProviders.filter((p) => config.connectedProviders!.includes(p))
+        : allProviders;
+      if (providers.length === 0) return [];
+      return [
+        {
+          name: "integration_api_request",
+          description:
+            "Call a configured integration API using the current user's connected OAuth token. GitLab paths are relative to /api/v4, for example /user or /projects?membership=true.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              provider: { type: "string", enum: providers },
+              method: {
+                type: "string",
+                enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+              },
+              path: { type: "string" },
+              headers: { type: "object" },
+              body: { type: "string" },
+            },
+            required: ["provider", "path"],
           },
-          path: { type: "string" },
-          headers: { type: "object" },
-          body: { type: "string" },
-        },
-        required: ["provider", "path"],
-      },
-    },
+        } satisfies McpTool,
+      ];
+    })()),
     ...(config.documentId
       ? [
           {

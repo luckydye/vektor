@@ -12,6 +12,9 @@ import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts
 import { getLocalOrigin } from "#config";
 import { runAgentInWorker, type AgentEvent, type ChatMessage } from "#agent/agent.ts";
 import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
+import { getUserProfile } from "#db/userProfiles.ts";
+import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
+import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import { appLogger } from "#observability/logger.ts";
 
 // ---------------------------------------------------------------------------
@@ -467,6 +470,8 @@ function getOrStartActiveChatTurn(options: {
   messages: ChatMessage[];
   /** History before this turn's user message was added. Non-null only when a pre-save was written. */
   preTurnHistory: ChatMessage[] | null;
+  userProfile?: string;
+  connectedProviders: string[];
   apiUrl: string;
   spaceId: string;
   documentId?: string;
@@ -498,6 +503,8 @@ function getOrStartActiveChatTurn(options: {
   turn.promise = runAgentInWorker({
     chatId: options.chatId,
     messages: options.messages,
+    userProfile: options.userProfile,
+    connectedProviders: options.connectedProviders,
     apiUrl: options.apiUrl,
     spaceId: options.spaceId,
     documentId: options.documentId,
@@ -520,6 +527,20 @@ function getOrStartActiveChatTurn(options: {
           events: turn.events,
           result,
         });
+        // Schedule a profile update after idle.  Fetch the freshly-persisted
+        // session so the updater has the complete display message history.
+        const updatedSession = await getAIChatSession(
+          options.spaceId,
+          options.chatId,
+          options.userId,
+        );
+        if (updatedSession) {
+          scheduleProfileUpdate({
+            spaceId: options.spaceId,
+            userId: options.userId,
+            sessionMessages: updatedSession.messages as unknown[],
+          });
+        }
       }
     })
     .catch(async (error) => {
@@ -628,10 +649,15 @@ export const POST: APIRoute = (context) =>
           jobToken = createJobToken(spaceId, Date.now().toString(), user.id);
         }
 
-        // Load existing conversation history from DB.
+        // Load existing conversation history, user profile, and connected integrations from DB.
         const persistedSession =
           userId === null ? null : await getAIChatSession(spaceId, sessionId, userId);
         const history = (persistedSession?.conversationHistory ?? []) as ChatMessage[];
+        const [userProfile, oauthIntegrations] = await Promise.all([
+          userId !== null ? getUserProfile(spaceId, userId).catch(() => null) : Promise.resolve(null),
+          userId !== null ? listOAuthIntegrationsForUser(spaceId, userId).catch(() => []) : Promise.resolve([]),
+        ]);
+        const connectedProviders = oauthIntegrations.map((i) => i.provider);
 
         // If the history already ends with a user message it means the session
         // was interrupted mid-turn (the user message was pre-saved below but
@@ -674,6 +700,8 @@ export const POST: APIRoute = (context) =>
           messages,
           preTurnHistory:
             userId !== null && persistedSession && lastHistoryRole !== "user" ? history : null,
+          userProfile: userProfile ?? undefined,
+          connectedProviders,
           apiUrl: getLocalOrigin(),
           spaceId,
           documentId: typeof documentId === "string" ? documentId : undefined,

@@ -21,27 +21,28 @@ import {
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "#utils/vektorMcp.ts";
+import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
 
-async function resolveJobToken(context: APIContext, spaceId: string): Promise<string> {
+async function resolveJobToken(context: APIContext, spaceId: string): Promise<{ jobToken: string; userId: string | null }> {
   // 1. X-Job-Token header (internal calls from agent workers)
   const providedJobToken = context.request.headers.get("X-Job-Token");
   if (providedJobToken) {
     const parsed = parseJobToken(providedJobToken, spaceId);
     if (!parsed) throw unauthorizedResponse();
-    return providedJobToken;
+    return { jobToken: providedJobToken, userId: parsed.userId };
   }
 
   // 2. Access token (Bearer at_... or at_...)
   const tokenResult = await authenticateWithToken(context, spaceId);
   if (tokenResult) {
     const userId = getTokenUserId(tokenResult.tokenId);
-    return createJobToken(spaceId, Date.now().toString(), userId);
+    return { jobToken: createJobToken(spaceId, Date.now().toString(), userId), userId };
   }
 
   // 3. Session cookie
   const user = requireUser(context);
   await verifySpaceRole(spaceId, user.id, "viewer");
-  return createJobToken(spaceId, Date.now().toString(), user.id);
+  return { jobToken: createJobToken(spaceId, Date.now().toString(), user.id), userId: user.id };
 }
 
 /** Verify caller has at least viewer access to the space. */
@@ -87,13 +88,19 @@ export const POST: APIRoute = (context) =>
       return jsonResponse(createParseErrorResponse());
     }
 
+    const { jobToken, userId } = await resolveJobToken(context, spaceId);
+    const connectedProviders = userId
+      ? (await listOAuthIntegrationsForUser(spaceId, userId).catch(() => [])).map((i) => i.provider)
+      : undefined;
+
     const response = await handleMcpRequest(
       {
         apiUrl: getLocalOrigin(),
         spaceId,
-        jobToken: await resolveJobToken(context, spaceId),
+        jobToken,
         documentId:
           context.request.headers.get("X-Vektor-Document-Id")?.trim() || undefined,
+        connectedProviders,
       },
       rpcRequest,
     );

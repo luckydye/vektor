@@ -98,7 +98,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
             exitCode: 2,
           };
         }
-        result = await callVektorTool(mcpConfigRef.current, "get_document", {
+        result = await callVektorTool(mcpConfigRef.current, "read_document", {
           documentId: rest[0],
         });
         if (!json) {
