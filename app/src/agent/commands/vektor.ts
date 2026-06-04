@@ -214,6 +214,63 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
         }
         break;
       }
+      case "update": {
+        const usage = "usage: vektor update <document-id> [file] [--json]\n";
+        const [documentId, ...updateRest] = rest;
+        if (!documentId) {
+          return { stdout: "", stderr: usage, exitCode: 2 };
+        }
+
+        let fileArg: string | undefined;
+        for (const arg of updateRest) {
+          if (!arg.startsWith("-")) {
+            fileArg = arg;
+          } else {
+            return {
+              stdout: "",
+              stderr: `vektor update: unknown flag '${arg}'\n${usage}`,
+              exitCode: 2,
+            };
+          }
+        }
+
+        let content: string;
+        if (fileArg) {
+          const filePath = _ctx.fs.resolvePath(_ctx.cwd, fileArg);
+          if (!(await _ctx.fs.exists(filePath))) {
+            return {
+              stdout: "",
+              stderr: `vektor update: ${fileArg}: No such file or directory\n`,
+              exitCode: 1,
+            };
+          }
+          content = Buffer.from(await _ctx.fs.readFileBuffer(filePath)).toString("utf-8");
+        } else {
+          content = _ctx.stdin;
+        }
+
+        if (!content.trim()) {
+          return {
+            stdout: "",
+            stderr: "vektor update: content is required from file or stdin\n",
+            exitCode: 2,
+          };
+        }
+
+        result = await callVektorTool(mcpConfigRef.current, "write_document", {
+          documentId,
+          content,
+        });
+
+        if (!json) {
+          return {
+            stdout: `updated ${documentId}\n`,
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        break;
+      }
       case "delete": {
         const [documentId, ...flags] = rest;
         if (!documentId) {
@@ -343,7 +400,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
       default:
         return {
           stdout: "",
-          stderr: `vektor: unknown subcommand '${subcommand}'\n`,
+          stderr: `vektor: unknown subcommand '${subcommand}'\nusage: vektor <list|read|current|search|create|update|delete|workflow> [args] [--json]\n`,
           exitCode: 2,
         };
     }
