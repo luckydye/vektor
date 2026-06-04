@@ -268,9 +268,17 @@ async function persistCompletedChatTurn(options: {
   // The last user-role entry in requestMessages is the message that triggered
   // this turn.  Use its content as the display message for the session log.
   const lastUserRequest = [...options.requestMessages].reverse().find((m) => m.role === "user");
-  const userMessage = lastUserRequest
-    ? { role: "user", content: lastUserRequest.content ?? "", timestamp: Date.now() }
-    : null;
+
+  // The pre-save step wrote the user message into session.messages before the
+  // agent started.  Only add it here if it wasn't already pre-saved (e.g. when
+  // running under a job token or when the pre-save was skipped), so we don't
+  // end up with duplicate user messages in the display log.
+  const existingMessages = session.messages as Array<{ role?: string }>;
+  const alreadyHasUserMessage = existingMessages.at(-1)?.role === "user";
+  const userMessage =
+    !alreadyHasUserMessage && lastUserRequest
+      ? { role: "user", content: lastUserRequest.content ?? "", timestamp: Date.now() }
+      : null;
 
   const conversationHistory = [
     ...options.requestMessages,
