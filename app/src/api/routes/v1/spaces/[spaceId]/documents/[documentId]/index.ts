@@ -234,21 +234,23 @@ export const GET: APIRoute = (context) =>
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "documentId");
     const revParam = context.url.searchParams.get("rev");
+    const draft = context.url.searchParams.get("draft") === "true";
 
     const jobToken = context.request.headers.get("X-Job-Token");
     if (!jobToken) {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
+      const requiredRole = draft ? "editor" : "viewer";
       if (auth.type === "token") {
         await verifyTokenPermission(
           auth.token,
           spaceId,
           ResourceType.DOCUMENT,
           id,
-          "viewer",
+          requiredRole,
         );
       } else {
-        await verifyDocumentRole(spaceId, id, auth.user.id, "viewer");
+        await verifyDocumentRole(spaceId, id, auth.user.id, requiredRole);
       }
     }
 
@@ -278,7 +280,7 @@ export const GET: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
-    if (document.publishedRev !== null) {
+    if (!draft && document.publishedRev !== null) {
       const publishedContent = await getPublishedContent(spaceId, id);
       if (publishedContent) {
         document = {

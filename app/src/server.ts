@@ -43,9 +43,54 @@ interface YRoom {
 
 const yRooms = new Map<string, YRoom>();
 
+type CanvasShape = {
+  id: string;
+  type?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  text?: string;
+  color?: string;
+  updatedAt?: number;
+};
+
+function loadCanvasYDoc(content: string): Y.Doc {
+  const ydoc = new Y.Doc();
+  const shapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
+  let parsed: { shapes?: CanvasShape[] };
+
+  try {
+    parsed = JSON.parse(content) as { shapes?: CanvasShape[] };
+  } catch {
+    return ydoc;
+  }
+
+  if (!Array.isArray(parsed.shapes)) return ydoc;
+
+  ydoc.transact(() => {
+    for (const shape of parsed.shapes) {
+      if (!shape || typeof shape.id !== "string") continue;
+      const map = new Y.Map<unknown>();
+      map.set("type", shape.type ?? "note");
+      map.set("x", shape.x ?? 0);
+      map.set("y", shape.y ?? 0);
+      map.set("width", shape.width ?? 240);
+      map.set("height", shape.height ?? 150);
+      map.set("text", shape.text ?? "");
+      map.set("color", shape.color ?? "#fef3c7");
+      map.set("updatedAt", shape.updatedAt ?? Date.now());
+      shapes.set(shape.id, map);
+    }
+  });
+
+  return ydoc;
+}
+
 async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
   const dbDoc = await getDocument(spaceId, documentId);
   if (!dbDoc?.content) return new Y.Doc();
+  if (dbDoc.type === "canvas") return loadCanvasYDoc(dbDoc.content);
 
   const extensions = contentExtensions(spaceId, documentId);
   const json = generateJSON(dbDoc.content, extensions);

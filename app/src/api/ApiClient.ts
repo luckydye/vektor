@@ -866,7 +866,11 @@ export class ApiClient {
     /**
      * Get a document by ID
      */
-    get: async (spaceId: string, documentId: string, query?: { rev?: number }) => {
+    get: async (
+      spaceId: string,
+      documentId: string,
+      query?: { rev?: number; draft?: boolean },
+    ) => {
       if (query?.rev) {
         const response = await this.apiGet<{ revision: RevisionWithContent }>(
           this.baseUrl,

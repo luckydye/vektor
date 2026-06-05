@@ -166,9 +166,16 @@ if (diffMins >= 1 && diffMins < 60) {
 
       <!-- Document Header -->
       <div class={twMerge(
-        (document.type === 'canvas' || document.type === 'app') ? 'hidden' : 'pt-s mb-xl'
+        document.type === 'app'
+          ? 'hidden'
+          : document.type === 'canvas'
+            ? 'absolute top-xs right-0 left-0 z-20 pointer-events-none'
+            : 'pt-s mb-xl'
       )}>
-        <div class="print:px-0 px-xs lg:px-xl min-h-7">
+        <div class={twMerge(
+          "print:px-0 px-xs lg:px-xl min-h-7",
+          document.type === 'canvas' && 'pointer-events-auto'
+        )}>
             {document.type === "workflow" ? (
                 <div id="workflow-breadcrumb-slot" />
             ) : (
@@ -181,7 +188,10 @@ if (diffMins >= 1 && diffMins < 60) {
             )}
         </div>
 
-        <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xl">
+        <div class={twMerge(
+          "flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xl",
+          document.type === 'canvas' && 'pointer-events-auto'
+        )}>
           <div>
             <div class="flex items-start justify-between">
               <TitleEditor client:load initialEditMode={false} title={title} documentId={document.id} />
@@ -197,7 +207,10 @@ if (diffMins >= 1 && diffMins < 60) {
           <DocumentActions documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} client:load />
         </div>
 
-        <div class="print:px-0 px-xs lg:px-xl mt-xs">
+        <div class={twMerge(
+          "print:px-0 px-xs lg:px-xl mt-xs",
+          document.type === 'canvas' && 'pointer-events-auto'
+        )}>
           <DocumentProperties client:load documentId={document.id} documentType={document.type ?? undefined} initialProperties={{ ...document.properties, parentId: document.parentId }} />
         </div>
       </div>

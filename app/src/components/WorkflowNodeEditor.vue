@@ -11,6 +11,7 @@ import {
 import { api } from "../api/client.ts";
 import type {
   DocumentWithProperties,
+  WorkflowNodeState,
   WorkflowRunStatus,
 } from "../api/ApiClient.ts";
 import {
@@ -90,8 +91,10 @@ const edges = ref<GraphEdge[]>([]);
 const availableJobs = ref<AvailableJob[]>([]);
 const docRefs = ref<DocRef[]>([]);
 const runStatus = ref<WorkflowRunStatus | null>(null);
+const latestRunId = ref<string | null>(null);
 const running = ref(false);
 const saving = ref(false);
+const savedAt = ref<number | null>(null);
 const error = ref<string | null>(null);
 const selectedNodeId = ref<string | null>(null);
 const mode = ref<"idle" | "placing" | "connecting">("idle");
@@ -104,6 +107,7 @@ const uploadErrors = reactive<Record<string, string>>({});
 let viewportControls: ViewportControls | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let savedTimer: ReturnType<typeof setTimeout> | null = null;
 let dpr = window.devicePixelRatio || 1;
 
 const selectedNode = computed(() =>
@@ -141,6 +145,31 @@ const sortedNodes = computed(() =>
 );
 
 const connectionsByNodeId = computed(() => buildNodeIoConnections());
+
+function getLastExecutedAt(status?: WorkflowNodeState): number {
+  const timestamps = [status?.startedAt, status?.completedAt].filter(
+    (value): value is string => value != null,
+  );
+  if (timestamps.length === 0) return -1;
+  return Math.max(
+    ...timestamps.map((timestamp) => {
+      const value = Date.parse(timestamp);
+      return Number.isNaN(value) ? -1 : value;
+    }),
+  );
+}
+
+const retryableFailedNodeId = computed(() => {
+  const failedEntries = Object.entries(runStatus.value?.nodes ?? {}).filter(
+    ([, status]) => status.status === "failed",
+  );
+  failedEntries.sort(([leftId, leftStatus], [rightId, rightStatus]) => {
+    const executedDiff = getLastExecutedAt(leftStatus) - getLastExecutedAt(rightStatus);
+    if (executedDiff !== 0) return executedDiff;
+    return leftId.localeCompare(rightId);
+  });
+  return failedEntries[0]?.[0] ?? null;
+});
 
 const agentToolOptions = computed(() =>
   availableJobs.value
@@ -231,7 +260,7 @@ async function load() {
   error.value = null;
   try {
     const [doc, docs, extResult, latestRun] = await Promise.all([
-      api.document.get(props.spaceId, props.documentId),
+      api.document.get(props.spaceId, props.documentId, { draft: true }),
       api.documents.get(props.spaceId),
       api.extensions.get(props.spaceId),
       api.workflows.getLatestRun(props.spaceId, props.documentId),
@@ -263,6 +292,7 @@ async function load() {
     availableJobs.value = jobs.toSorted((a, b) => a.jobName.localeCompare(b.jobName));
 
     if (latestRun?.runId) {
+      latestRunId.value = latestRun.runId;
       runStatus.value = await api.workflows.getRun(props.spaceId, latestRun.runId);
     }
 
@@ -277,29 +307,50 @@ async function load() {
 async function refreshRunStatus() {
   const latest = await api.workflows.getLatestRun(props.spaceId, props.documentId);
   if (!latest?.runId) {
+    latestRunId.value = null;
     runStatus.value = null;
     return;
   }
+  latestRunId.value = latest.runId;
   runStatus.value = await api.workflows.getRun(props.spaceId, latest.runId);
 }
 
 async function saveWorkflow(): Promise<boolean> {
+  if (saving.value) return false;
   saving.value = true;
   error.value = null;
+  savedAt.value = null;
   try {
+    const content = JSON.stringify(buildDefinition(), null, 2);
     const response = await fetch(`/api/v1/spaces/${props.spaceId}/documents/${props.documentId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: JSON.stringify(buildDefinition(), null, 2) }),
+      body: JSON.stringify({ content }),
     });
     if (!response.ok) {
       throw new Error(await response.text());
+    }
+    const revision = await api.document.post(props.spaceId, props.documentId, {
+      html: content,
+      message: "Workflow saved",
+    });
+    const draft = await api.document.get(props.spaceId, props.documentId, { draft: true });
+    if (draft.publishedRev !== revision.rev) {
+      await api.document.patch(props.spaceId, props.documentId, {
+        publishedRev: revision.rev,
+      });
     }
     if (title.value.trim()) {
       await api.document.patch(props.spaceId, props.documentId, {
         properties: { title: title.value.trim() },
       });
     }
+    savedAt.value = Date.now();
+    if (savedTimer) clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => {
+      savedAt.value = null;
+      savedTimer = null;
+    }, 1800);
     return true;
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
@@ -307,6 +358,10 @@ async function saveWorkflow(): Promise<boolean> {
   } finally {
     saving.value = false;
   }
+}
+
+function handleSaveClick() {
+  void saveWorkflow();
 }
 
 async function startRun(options?: { fromRunId?: string; fromNodeId?: string }) {
@@ -321,12 +376,21 @@ async function startRun(options?: { fromRunId?: string; fromNodeId?: string }) {
       {},
       options,
     );
+    latestRunId.value = runId;
     runStatus.value = await api.workflows.getRun(props.spaceId, runId);
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
     running.value = false;
   }
+}
+
+function retryFromFailure() {
+  if (!latestRunId.value || !retryableFailedNodeId.value) return;
+  void startRun({
+    fromRunId: latestRunId.value,
+    fromNodeId: retryableFailedNodeId.value,
+  });
 }
 
 function setMode(nextMode: typeof mode.value) {
@@ -898,6 +962,7 @@ onUnmounted(() => {
   window.removeEventListener("pointercancel", handlePointerUp);
   window.removeEventListener("keydown", handleKeydown);
   if (pollTimer) clearInterval(pollTimer);
+  if (savedTimer) clearTimeout(savedTimer);
 });
 </script>
 
@@ -910,6 +975,26 @@ onUnmounted(() => {
       @dblclick="addNodeAt(pointerWorld($event))"
     >
       <canvas ref="gridRef" class="workflow-grid"></canvas>
+      <div class="workflow-canvas-actions" @pointerdown.stop @dblclick.stop>
+        <button
+          type="button"
+          class="workflow-canvas-button"
+          :disabled="saving"
+          @click.stop.prevent="handleSaveClick"
+        >
+          {{ saving ? "Saving..." : savedAt ? "Saved" : "Save" }}
+        </button>
+        <button
+          v-if="runStatus?.status === 'failed' && latestRunId && retryableFailedNodeId"
+          type="button"
+          class="workflow-canvas-button retry"
+          :disabled="running"
+          :title="`Restart from failed node ${retryableFailedNodeId}`"
+          @click.stop="retryFromFailure"
+        >
+          {{ running ? "Starting..." : "Retry" }}
+        </button>
+      </div>
       <div v-if="error" class="workflow-error">{{ error }}</div>
       <div class="workflow-world-layer">
         <div ref="worldContentRef" class="workflow-world-content">
@@ -1237,6 +1322,48 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+.workflow-canvas-actions {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-canvas-button {
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 7px 12px;
+  color: #374151;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+}
+
+.workflow-canvas-button:hover {
+  background: #f8fafc;
+}
+
+.workflow-canvas-button.retry {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.workflow-canvas-button.retry:hover {
+  background: #fef3c7;
+}
+
+.workflow-canvas-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .workflow-input,
 .workflow-textarea {
   width: 100%;
@@ -1283,7 +1410,7 @@ onUnmounted(() => {
 
 .workflow-error {
   position: absolute;
-  top: 12px;
+  top: 52px;
   left: 12px;
   z-index: 5;
   max-width: min(520px, calc(100% - 24px));
