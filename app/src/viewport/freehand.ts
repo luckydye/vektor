@@ -268,30 +268,45 @@ function addVelocityWidths(
   const velocityScale = options.scale ?? 10;
   const smoothing = Math.max(0, Math.min(1, options.smoothing ?? 0.65));
   const range = Math.max(0, maxWidth - minWidth);
+
+  // When a point carries stylus pressure, width is driven by pressure directly.
+  // Otherwise it is derived from pointer velocity (slower strokes are thicker).
+  const targetWidthFor = (point: FreehandPoint, velocity: number): number => {
+    if (point.pressure !== undefined) {
+      const pressure = Math.max(0, Math.min(1, point.pressure));
+      return minWidth + range * pressure;
+    }
+    const normalized = Math.max(0, Math.min(1, velocity * velocityScale));
+    const t = options.invert ? normalized : 1 - normalized;
+    return minWidth + range * t;
+  };
+
   let previousWidth = style.width;
 
-  scaled[0].velocity = scaled[0].velocity ?? 0;
-  if (scaled.length > 1 && scaled[0].time !== undefined && scaled[1].time !== undefined) {
-    const firstDt = Math.max(1, scaled[1].time - scaled[0].time);
-    const firstVelocity = Math.sqrt(distanceSq(scaled[1], scaled[0])) / firstDt;
-    const firstNormalized = Math.max(0, Math.min(1, firstVelocity * velocityScale));
-    const firstT = options.invert ? firstNormalized : 1 - firstNormalized;
-    const firstTargetWidth = minWidth + range * firstT;
-    scaled[0].velocity = firstVelocity;
-    scaled[0].width = Math.max(minWidth, Math.min(maxWidth, firstTargetWidth));
-    previousWidth = scaled[0].width;
+  let firstVelocity = 0;
+  const hasFirstVelocity =
+    scaled.length > 1 && scaled[0].time !== undefined && scaled[1].time !== undefined;
+  if (hasFirstVelocity) {
+    const firstDt = Math.max(1, scaled[1].time! - scaled[0].time!);
+    firstVelocity = Math.sqrt(distanceSq(scaled[1], scaled[0])) / firstDt;
+  }
+  scaled[0].velocity = firstVelocity;
+  if (hasFirstVelocity || scaled[0].pressure !== undefined) {
+    scaled[0].width = Math.max(
+      minWidth,
+      Math.min(maxWidth, targetWidthFor(scaled[0], firstVelocity)),
+    );
   } else {
     scaled[0].width = Math.max(minWidth, Math.min(maxWidth, scaled[0].width ?? style.width));
   }
+  previousWidth = scaled[0].width;
 
   for (let i = 1; i < scaled.length; i++) {
     const previous = scaled[i - 1];
     const point = scaled[i];
     const dt = Math.max(1, (point.time ?? i) - (previous.time ?? i - 1));
     const velocity = Math.sqrt(distanceSq(point, previous)) / dt;
-    const normalized = Math.max(0, Math.min(1, velocity * velocityScale));
-    const t = options.invert ? normalized : 1 - normalized;
-    const targetWidth = minWidth + range * t;
+    const targetWidth = targetWidthFor(point, velocity);
     const width = previousWidth * smoothing + targetWidth * (1 - smoothing);
 
     point.velocity = velocity;

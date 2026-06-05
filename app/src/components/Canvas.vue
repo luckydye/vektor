@@ -107,18 +107,30 @@ const FREEHAND_STYLE: FreehandStrokeStyle = {
   lineCap: "round",
   lineJoin: "round",
 };
-const FREEHAND_OPTIONS = {
-  minDistance: 2,
-  simplifyTolerance: 0.75,
-  smoothing: 0.9,
-  style: FREEHAND_STYLE,
-  velocityWidth: {
-    minWidth: 5,
-    maxWidth: 14,
-    scale: 0.06,
-    smoothing: 0.7,
-  },
+// Width bounds are in world units; the renderer scales them by zoom.
+const FREEHAND_VELOCITY = {
+  minWidth: 5,
+  maxWidth: 14,
+  smoothing: 0.7,
 };
+// The stroke reaches its thinnest at roughly this pointer speed in screen px/ms.
+const SCREEN_VELOCITY_FULL = 4;
+
+// addVelocityWidths measures velocity in world units/ms, so it would otherwise
+// taper differently depending on zoom. Multiplying the scale by the current
+// world→screen scale makes the taper track on-screen pointer speed instead.
+function freehandOptions(style: FreehandStrokeStyle = FREEHAND_STYLE) {
+  return {
+    minDistance: 2,
+    simplifyTolerance: 0.75,
+    smoothing: 0.9,
+    style,
+    velocityWidth: {
+      ...FREEHAND_VELOCITY,
+      scale: (1 / SCREEN_VELOCITY_FULL) * transform.value.scale,
+    },
+  };
+}
 const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
 const MIN_NOTE_SIZE = { width: 140, height: 96 };
 const MIN_SECTION_SIZE = { width: 240, height: 160 };
@@ -129,6 +141,7 @@ const inkRef = ref<HTMLCanvasElement | null>(null);
 const shapes = ref<CanvasShape[]>([]);
 const strokes = ref<CanvasStroke[]>([]);
 const selectedShapeId = ref<string | null>(null);
+const selectedStrokeId = ref<string | null>(null);
 const activeTool = ref<CanvasTool>("select");
 const noteColor = ref<string>(NOTE_COLORS[0]);
 const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
@@ -292,10 +305,7 @@ function toStroke(id: string, source: Y.Map<unknown> | CanvasStrokeSnapshot): Ca
     typeof styleValue === "object" && styleValue !== null
       ? { ...FREEHAND_STYLE, ...(styleValue as Partial<FreehandStrokeStyle>) }
       : FREEHAND_STYLE;
-  const stroke = buildFreehandStroke(points, {
-    ...FREEHAND_OPTIONS,
-    style,
-  });
+  const stroke = buildFreehandStroke(points, freehandOptions(style));
   return {
     id,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
@@ -323,6 +333,9 @@ function syncStrokesFromY() {
   strokes.value = [...yStrokes.entries()]
     .map(([id, value]) => toStroke(id, value))
     .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
+  if (selectedStrokeId.value && !yStrokes.has(selectedStrokeId.value)) {
+    selectedStrokeId.value = null;
+  }
   renderInk();
 }
 
@@ -574,6 +587,40 @@ function renderInk() {
   if (activeFreehandStroke.value) {
     drawFreehandStroke(context, themedStroke(activeFreehandStroke.value), transform.value);
   }
+  drawStrokeSelection(context);
+}
+
+function drawStrokeSelection(context: CanvasRenderingContext2D) {
+  const id = selectedStrokeId.value;
+  if (!id) return;
+  const stroke = strokes.value.find((s) => s.id === id);
+  if (!stroke || stroke.points.length === 0) return;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of stroke.points) {
+    const screenPos = worldToScreen(point);
+    minX = Math.min(minX, screenPos.x);
+    minY = Math.min(minY, screenPos.y);
+    maxX = Math.max(maxX, screenPos.x);
+    maxY = Math.max(maxY, screenPos.y);
+  }
+
+  const halfWidth = (stroke.style.width / 2) * transform.value.scale;
+  const padding = halfWidth + 8;
+  const x = minX - padding;
+  const y = minY - padding;
+  const width = maxX - minX + padding * 2;
+  const height = maxY - minY + padding * 2;
+
+  context.save();
+  context.strokeStyle = "#2563eb";
+  context.lineWidth = 1.5;
+  context.setLineDash([6, 4]);
+  context.strokeRect(x, y, width, height);
+  context.restore();
 }
 
 function resize() {
@@ -773,6 +820,10 @@ function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
   };
   yShapes.set(id, createShapeMap(shape));
   selectedShapeId.value = id;
+  if (selectedStrokeId.value !== null) {
+    selectedStrokeId.value = null;
+    renderInk();
+  }
   activeTool.value = "select";
   nextTick(() => {
     const input = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
@@ -859,17 +910,62 @@ function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
 }
 
 function deleteSelectedShape() {
-  if (!selectedShapeId.value) return;
-  yShapes.delete(selectedShapeId.value);
-  selectedShapeId.value = null;
+  if (selectedShapeId.value) {
+    yShapes.delete(selectedShapeId.value);
+    selectedShapeId.value = null;
+  }
+  if (selectedStrokeId.value) {
+    yStrokes.delete(selectedStrokeId.value);
+    selectedStrokeId.value = null;
+  }
+}
+
+function distanceToSegment(
+  point: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq === 0) return Math.hypot(point.x - a.x, point.y - a.y);
+  let t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+}
+
+function strokeHitTest(world: { x: number; y: number }): string | null {
+  const scale = transform.value.scale || 1;
+  // Search topmost (last drawn) first.
+  for (let i = strokes.value.length - 1; i >= 0; i -= 1) {
+    const stroke = strokes.value[i];
+    const points = stroke.points;
+    const threshold = stroke.style.width / 2 + 8 / scale;
+    if (points.length === 1) {
+      if (Math.hypot(world.x - points[0].x, world.y - points[0].y) <= threshold) {
+        return stroke.id;
+      }
+      continue;
+    }
+    for (let j = 1; j < points.length; j += 1) {
+      if (distanceToSegment(world, points[j - 1], points[j]) <= threshold) {
+        return stroke.id;
+      }
+    }
+  }
+  return null;
 }
 
 function freehandPoint(event: PointerEvent): FreehandPoint {
   const point = screenToWorld(screenPoint(event));
+  // Only trust pressure from a stylus. Mice report a constant 0.5 while a button
+  // is held, and touch rarely reports meaningful pressure, so for those inputs
+  // width falls back to velocity-based tapering.
+  const hasStylusPressure = event.pointerType === "pen" && event.pressure > 0;
   return {
     x: point.x,
     y: point.y,
-    pressure: event.pressure > 0 ? event.pressure : undefined,
+    pressure: hasStylusPressure ? event.pressure : undefined,
     time: event.timeStamp,
   };
 }
@@ -877,8 +973,9 @@ function freehandPoint(event: PointerEvent): FreehandPoint {
 function startFreehand(event: PointerEvent) {
   if (event.button !== 0 || (event.pointerType === "touch" && !event.isPrimary)) return;
   selectedShapeId.value = null;
+  selectedStrokeId.value = null;
   freehandPointerId = event.pointerId;
-  freehandBuilder = createFreehandStrokeBuilder(FREEHAND_OPTIONS);
+  freehandBuilder = createFreehandStrokeBuilder(freehandOptions());
   activeFreehandStroke.value = freehandBuilder.startAt(freehandPoint(event));
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -905,6 +1002,10 @@ function finishFreehand(event: PointerEvent) {
 function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   if (event.button !== 0) return;
   selectedShapeId.value = shape.id;
+  if (selectedStrokeId.value !== null) {
+    selectedStrokeId.value = null;
+    renderInk();
+  }
   const sectionContents = shape.type === "section" ? getSectionContents(shape) : null;
   dragState = {
     type: "shape",
@@ -919,12 +1020,6 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   if (shape.type !== "text") {
     event.preventDefault();
   }
-}
-
-function handleSectionPointerDown(shape: CanvasShape, event: PointerEvent) {
-  if (shape.type !== "section") return;
-  event.stopPropagation();
-  startShapeDrag(shape, event);
 }
 
 function startShapeResize(shape: CanvasShape, event: PointerEvent) {
@@ -966,6 +1061,13 @@ function handleViewportPointerDown(event: PointerEvent) {
 
   if (activeTool.value === "select") {
     selectedShapeId.value = null;
+    const hitStroke = strokeHitTest(screenToWorld(point));
+    selectedStrokeId.value = hitStroke;
+    renderInk();
+    if (hitStroke) {
+      event.preventDefault();
+      return;
+    }
     if (event.pointerType !== "touch") startPan(event);
     return;
   }
@@ -1304,8 +1406,25 @@ onUnmounted(() => {
             height: `${shape.height}px`,
             background: shape.color,
           }"
-          @pointerdown="handleSectionPointerDown(shape, $event)"
         >
+          <template v-if="shape.type === 'section'">
+            <div
+              class="canvas-section-edge top"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            ></div>
+            <div
+              class="canvas-section-edge right"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            ></div>
+            <div
+              class="canvas-section-edge bottom"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            ></div>
+            <div
+              class="canvas-section-edge left"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            ></div>
+          </template>
           <div
             v-if="shape.type === 'section'"
             class="canvas-section-header"
@@ -1629,10 +1748,53 @@ onUnmounted(() => {
   border-radius: 10px;
   background: var(--canvas-section-bg) !important;
   box-shadow: none;
+  /* The inner fill is click-through; only the headline, border edges, and
+     resize handle select/drag the section. */
+  pointer-events: none;
 }
 
 .canvas-shape.section.selected {
   outline-offset: 4px;
+}
+
+.canvas-shape.section .canvas-section-header,
+.canvas-shape.section .canvas-section-title,
+.canvas-shape.section .canvas-section-edge,
+.canvas-shape.section .canvas-resize-handle {
+  pointer-events: auto;
+}
+
+.canvas-section-edge {
+  position: absolute;
+  cursor: move;
+}
+
+.canvas-section-edge.top {
+  top: -6px;
+  left: 0;
+  right: 0;
+  height: 12px;
+}
+
+.canvas-section-edge.bottom {
+  bottom: -6px;
+  left: 0;
+  right: 0;
+  height: 12px;
+}
+
+.canvas-section-edge.left {
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  width: 12px;
+}
+
+.canvas-section-edge.right {
+  top: 0;
+  bottom: 0;
+  right: -6px;
+  width: 12px;
 }
 
 .canvas-shape-handle {
