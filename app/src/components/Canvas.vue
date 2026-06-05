@@ -30,8 +30,8 @@ const props = defineProps<{
   documentId?: string;
 }>();
 
-type CanvasTool = "select" | "draw" | "note" | "box" | "text";
-type CanvasShapeType = "note" | "box" | "text" | "image";
+type CanvasTool = "select" | "draw" | "note" | "text" | "section";
+type CanvasShapeType = "note" | "text" | "image" | "section";
 
 type CanvasShape = {
   id: string;
@@ -81,6 +81,16 @@ type DragState =
       shapeId: string;
       startPointer: { x: number; y: number };
       startShape: { x: number; y: number };
+      containedShapes: { id: string; x: number; y: number }[];
+      containedStrokes: { id: string; points: FreehandPoint[] }[];
+    }
+  | {
+      type: "resize";
+      pointerId: number;
+      shapeId: string;
+      startPointer: { x: number; y: number };
+      startSize: { width: number; height: number };
+      minSize: { width: number; height: number };
     }
   | {
       type: "pan";
@@ -109,6 +119,10 @@ const FREEHAND_OPTIONS = {
     smoothing: 0.7,
   },
 };
+const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
+const MIN_NOTE_SIZE = { width: 140, height: 96 };
+const MIN_SECTION_SIZE = { width: 240, height: 160 };
+const MIN_TEXT_SIZE = { width: 32, height: 40 };
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
@@ -116,8 +130,10 @@ const shapes = ref<CanvasShape[]>([]);
 const strokes = ref<CanvasStroke[]>([]);
 const selectedShapeId = ref<string | null>(null);
 const activeTool = ref<CanvasTool>("select");
+const noteColor = ref<string>(NOTE_COLORS[0]);
 const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
 const saveError = ref<string | null>(null);
+const isDarkMode = ref(false);
 const localPointer = ref<{ x: number; y: number } | null>(null);
 const remotePresences = ref(new Map<string, PresenceEnvelope<CanvasPresenceState>>());
 
@@ -146,12 +162,19 @@ let isReady = false;
 let hasSeededInitialContent = false;
 let viewportControls: ViewportControls | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let themeObserver: MutationObserver | null = null;
+let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 
 const remoteCanvasPresences = computed(() =>
   [...remotePresences.value.values()].filter(
     (presence) => presence.state?.kind === "canvas" && presence.state.pointer,
   ),
+);
+const selectedShape = computed(() =>
+  selectedShapeId.value
+    ? shapes.value.find((shape) => shape.id === selectedShapeId.value) ?? null
+    : null,
 );
 
 function getPresenceColor(seed: string) {
@@ -167,23 +190,68 @@ function toNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function measureTextShape(text: string) {
+  if (typeof document === "undefined") {
+    return { ...MIN_TEXT_SIZE };
+  }
+
+  const measure = document.createElement("div");
+  measure.className = "canvas-text-measure";
+  measure.textContent = text || "Text";
+  document.body.appendChild(measure);
+  const rect = measure.getBoundingClientRect();
+  measure.remove();
+
+  return {
+    width: Math.max(MIN_TEXT_SIZE.width, Math.ceil(rect.width)),
+    height: Math.max(MIN_TEXT_SIZE.height, Math.ceil(rect.height)),
+  };
+}
+
+function resizeTextShapeToContent(id: string, text: string) {
+  const shape = yShapes.get(id);
+  if (!shape) return;
+
+  const nextSize = measureTextShape(text);
+  const width = toNumber(shape.get("width"), 0);
+  const height = toNumber(shape.get("height"), 0);
+  if (width === nextSize.width && height === nextSize.height) {
+    return;
+  }
+
+  updateShape(id, nextSize);
+}
+
+function resizeAllTextShapesToContent() {
+  for (const shape of shapes.value) {
+    if (shape.type === "text") {
+      resizeTextShapeToContent(shape.id, shape.text);
+    }
+  }
+}
+
 function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape {
   const read = (key: keyof CanvasShape) =>
     source instanceof Y.Map ? source.get(key) : source[key];
 
   const typeValue = read("type");
   const type: CanvasShapeType =
-    typeValue === "box" || typeValue === "text" || typeValue === "note" || typeValue === "image"
+    typeValue === "text" ||
+    typeValue === "note" ||
+    typeValue === "image" ||
+    typeValue === "section"
       ? typeValue
       : "note";
 
+  const defaultWidth = type === "text" ? 220 : type === "section" ? 560 : 240;
+  const defaultHeight = type === "text" ? 88 : type === "section" ? 340 : 150;
   return {
     id,
     type,
     x: toNumber(read("x"), 0),
     y: toNumber(read("y"), 0),
-    width: Math.max(80, toNumber(read("width"), type === "text" ? 220 : 240)),
-    height: Math.max(48, toNumber(read("height"), type === "text" ? 88 : 150)),
+    width: Math.max(80, toNumber(read("width"), defaultWidth)),
+    height: Math.max(48, toNumber(read("height"), defaultHeight)),
     text: typeof read("text") === "string" ? String(read("text")) : "",
     color: typeof read("color") === "string" ? String(read("color")) : defaultColor(type),
     src: typeof read("src") === "string" ? String(read("src")) : undefined,
@@ -238,11 +306,17 @@ function toStroke(id: string, source: Y.Map<unknown> | CanvasStrokeSnapshot): Ca
 function syncShapesFromY() {
   shapes.value = [...yShapes.entries()]
     .map(([id, value]) => toShape(id, value))
-    .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
+    .sort((a, b) => {
+      if (a.type === "section" && b.type !== "section") return -1;
+      if (a.type !== "section" && b.type === "section") return 1;
+      return a.updatedAt - b.updatedAt || a.id.localeCompare(b.id);
+    });
 
   if (selectedShapeId.value && !yShapes.has(selectedShapeId.value)) {
     selectedShapeId.value = null;
   }
+
+  void nextTick(resizeAllTextShapesToContent);
 }
 
 function syncStrokesFromY() {
@@ -254,14 +328,14 @@ function syncStrokesFromY() {
 
 function defaultColor(type: CanvasShapeType) {
   if (type === "image") return "#ffffff";
-  if (type === "box") return "#dbeafe";
+  if (type === "section") return "rgba(255, 255, 255, 0.02)";
   if (type === "text") return "#ffffff";
-  return "#fef3c7";
+  return NOTE_COLORS[0];
 }
 
 function defaultText(type: CanvasShapeType) {
   if (type === "image") return "";
-  if (type === "box") return "Box";
+  if (type === "section") return "Section";
   if (type === "text") return "Text";
   return "Note";
 }
@@ -420,6 +494,48 @@ function worldToScreen(point: { x: number; y: number }) {
   return viewportWorldToScreen(point.x, point.y, transform.value);
 }
 
+function canvasCssVar(name: string, fallback: string) {
+  if (typeof window === "undefined") return fallback;
+  const source = viewportRef.value ?? document.documentElement;
+  return getComputedStyle(source).getPropertyValue(name).trim() || fallback;
+}
+
+function resolveDarkMode() {
+  if (typeof window === "undefined") return false;
+  const theme = document.documentElement.getAttribute("data-theme");
+  if (theme === "dark") return true;
+  if (theme === "light") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function updateThemeMode() {
+  isDarkMode.value = resolveDarkMode();
+  void nextTick(renderThemeChanged);
+}
+
+function renderThemeChanged() {
+  renderGrid();
+  renderInk();
+}
+
+function defaultInkColor() {
+  return canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
+}
+
+function themedStroke(stroke: FreehandStroke): FreehandStroke {
+  if (stroke.style.color !== FREEHAND_STYLE.color) {
+    return stroke;
+  }
+
+  return {
+    ...stroke,
+    style: {
+      ...stroke.style,
+      color: defaultInkColor(),
+    },
+  };
+}
+
 function renderGrid() {
   const canvas = gridRef.value;
   const context = canvas?.getContext("2d");
@@ -429,8 +545,18 @@ function renderGrid() {
   context.clearRect(0, 0, screen.value.width, screen.value.height);
   drawWorldGrid(context, transform.value, screen.value, {
     levels: [
-      { size: 40, color: "rgba(15, 23, 42, 0.07)", lineWidth: 1, minScreenSpacing: 8 },
-      { size: 200, color: "rgba(15, 23, 42, 0.13)", lineWidth: 1, minScreenSpacing: 24 },
+      {
+        size: 40,
+        color: canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)"),
+        lineWidth: 1,
+        minScreenSpacing: 8,
+      },
+      {
+        size: 200,
+        color: canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)"),
+        lineWidth: 1,
+        minScreenSpacing: 24,
+      },
     ],
   });
 }
@@ -443,10 +569,10 @@ function renderInk() {
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, screen.value.width, screen.value.height);
   for (const stroke of strokes.value) {
-    drawFreehandStroke(context, stroke, transform.value);
+    drawFreehandStroke(context, themedStroke(stroke), transform.value);
   }
   if (activeFreehandStroke.value) {
-    drawFreehandStroke(context, activeFreehandStroke.value, transform.value);
+    drawFreehandStroke(context, themedStroke(activeFreehandStroke.value), transform.value);
   }
 }
 
@@ -632,25 +758,95 @@ async function addImageFiles(files: File[], at: { x: number; y: number }) {
 
 function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
   const id = `shape-${crypto.randomUUID()}`;
+  const text = defaultText(type);
+  const textSize = type === "text" ? measureTextShape(text) : null;
   const shape: CanvasShape = {
     id,
     type,
     x: Math.round(at.x),
     y: Math.round(at.y),
-    width: type === "text" ? 220 : 240,
-    height: type === "text" ? 88 : 150,
-    text: defaultText(type),
-    color: defaultColor(type),
+    width: textSize?.width ?? (type === "section" ? 560 : 240),
+    height: textSize?.height ?? (type === "section" ? 340 : 150),
+    text,
+    color: type === "note" ? noteColor.value : defaultColor(type),
     updatedAt: Date.now(),
   };
   yShapes.set(id, createShapeMap(shape));
   selectedShapeId.value = id;
   activeTool.value = "select";
   nextTick(() => {
-    const input = document.querySelector<HTMLTextAreaElement>(`[data-shape-text="${id}"]`);
+    const input = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+      type === "section" ? `[data-section-title="${id}"]` : `[data-shape-text="${id}"]`,
+    );
+    if (type === "text") resizeTextShapeToContent(id, shape.text);
     input?.focus();
     input?.select();
   });
+}
+
+function updateShapeText(shape: CanvasShape, text: string) {
+  updateShape(shape.id, { text });
+  if (shape.type === "text") {
+    void nextTick(() => resizeTextShapeToContent(shape.id, text));
+  }
+}
+
+function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
+  if (shape.id === section.id) return false;
+  return (
+    shape.x >= section.x &&
+    shape.y >= section.y &&
+    shape.x + shape.width <= section.x + section.width &&
+    shape.y + shape.height <= section.y + section.height
+  );
+}
+
+function isPointInsideSection(point: FreehandPoint, section: CanvasShape) {
+  return (
+    point.x >= section.x &&
+    point.y >= section.y &&
+    point.x <= section.x + section.width &&
+    point.y <= section.y + section.height
+  );
+}
+
+function isStrokeInsideSection(stroke: CanvasStroke, section: CanvasShape) {
+  return stroke.points.length > 0 && stroke.points.every((point) => isPointInsideSection(point, section));
+}
+
+function getSectionContents(section: CanvasShape) {
+  return {
+    shapes: shapes.value
+      .filter((shape) => isShapeInsideSection(shape, section))
+      .map((shape) => ({ id: shape.id, x: shape.x, y: shape.y })),
+    strokes: strokes.value
+      .filter((stroke) => isStrokeInsideSection(stroke, section))
+      .map((stroke) => ({
+        id: stroke.id,
+        points: stroke.points.map(cloneFreehandPoint),
+      })),
+  };
+}
+
+function translateStroke(id: string, points: FreehandPoint[], dx: number, dy: number) {
+  const stroke = yStrokes.get(id);
+  if (!stroke) return;
+  stroke.set("updatedAt", Date.now());
+  stroke.set(
+    "points",
+    points.map((point) => ({
+      ...point,
+      x: point.x + dx,
+      y: point.y + dy,
+    })),
+  );
+}
+
+function setNoteColor(color: string) {
+  noteColor.value = color;
+  if (selectedShape.value?.type === "note") {
+    updateShape(selectedShape.value.id, { color });
+  }
 }
 
 function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
@@ -709,12 +905,38 @@ function finishFreehand(event: PointerEvent) {
 function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   if (event.button !== 0) return;
   selectedShapeId.value = shape.id;
+  const sectionContents = shape.type === "section" ? getSectionContents(shape) : null;
   dragState = {
     type: "shape",
     pointerId: event.pointerId,
     shapeId: shape.id,
     startPointer: screenToWorld(screenPoint(event)),
     startShape: { x: shape.x, y: shape.y },
+    containedShapes: sectionContents?.shapes ?? [],
+    containedStrokes: sectionContents?.strokes ?? [],
+  };
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  if (shape.type !== "text") {
+    event.preventDefault();
+  }
+}
+
+function handleSectionPointerDown(shape: CanvasShape, event: PointerEvent) {
+  if (shape.type !== "section") return;
+  event.stopPropagation();
+  startShapeDrag(shape, event);
+}
+
+function startShapeResize(shape: CanvasShape, event: PointerEvent) {
+  if (event.button !== 0 || (shape.type !== "note" && shape.type !== "section")) return;
+  selectedShapeId.value = shape.id;
+  dragState = {
+    type: "resize",
+    pointerId: event.pointerId,
+    shapeId: shape.id,
+    startPointer: screenToWorld(screenPoint(event)),
+    startSize: { width: shape.width, height: shape.height },
+    minSize: shape.type === "section" ? MIN_SECTION_SIZE : MIN_NOTE_SIZE,
   };
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -786,9 +1008,42 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   const world = screenToWorld(point);
-  updateShape(dragState.shapeId, {
-    x: Math.round(dragState.startShape.x + world.x - dragState.startPointer.x),
-    y: Math.round(dragState.startShape.y + world.y - dragState.startPointer.y),
+  if (dragState.type === "resize") {
+    updateShape(dragState.shapeId, {
+      width: Math.round(
+        Math.max(
+          dragState.minSize.width,
+          dragState.startSize.width + world.x - dragState.startPointer.x,
+        ),
+      ),
+      height: Math.round(
+        Math.max(
+          dragState.minSize.height,
+          dragState.startSize.height + world.y - dragState.startPointer.y,
+        ),
+      ),
+    });
+    return;
+  }
+
+  const dx = world.x - dragState.startPointer.x;
+  const dy = world.y - dragState.startPointer.y;
+  ydoc.transact(() => {
+    updateShape(dragState.shapeId, {
+      x: Math.round(dragState.startShape.x + dx),
+      y: Math.round(dragState.startShape.y + dy),
+    });
+
+    for (const contained of dragState.containedShapes) {
+      updateShape(contained.id, {
+        x: Math.round(contained.x + dx),
+        y: Math.round(contained.y + dy),
+      });
+    }
+
+    for (const stroke of dragState.containedStrokes) {
+      translateStroke(stroke.id, stroke.points, dx, dy);
+    }
   });
 }
 
@@ -885,8 +1140,8 @@ function handleKeydown(event: KeyboardEvent) {
   if (key === "v") activeTool.value = "select";
   if (key === "d") activeTool.value = "draw";
   if (key === "n") activeTool.value = "note";
-  if (key === "b") activeTool.value = "box";
   if (key === "t") activeTool.value = "text";
+  if (key === "s") activeTool.value = "section";
   if (key === "f") fitView();
 }
 
@@ -942,6 +1197,15 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(resize);
   if (viewportRef.value) resizeObserver.observe(viewportRef.value);
 
+  updateThemeMode();
+  themeObserver = new MutationObserver(updateThemeMode);
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+  colorSchemeMedia.addEventListener("change", updateThemeMode);
+
   if (props.documentId) {
     leaveYjsRoom = joinYjsRoom(props.spaceId, props.documentId, ydoc);
   }
@@ -958,6 +1222,8 @@ onMounted(() => {
 onUnmounted(() => {
   viewportControls?.dispose();
   resizeObserver?.disconnect();
+  themeObserver?.disconnect();
+  colorSchemeMedia?.removeEventListener("change", updateThemeMode);
   leavePresenceRoom();
   leaveYjsRoom();
   ydoc.destroy();
@@ -973,10 +1239,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="canvas-root">
+  <div class="canvas-root" :class="{ 'is-dark': isDarkMode }">
     <div class="canvas-toolbar" @pointerdown.stop>
       <button
-        v-for="tool in (['select', 'draw', 'note', 'box', 'text'] as CanvasTool[])"
+        v-for="tool in (['select', 'draw', 'note', 'text', 'section'] as CanvasTool[])"
         :key="tool"
         type="button"
         class="canvas-tool"
@@ -985,9 +1251,24 @@ onUnmounted(() => {
       >
         {{ tool }}
       </button>
+      <span
+        v-if="activeTool === 'note' || selectedShape?.type === 'note'"
+        class="canvas-note-colors"
+        aria-label="Note color"
+      >
+        <button
+          v-for="color in NOTE_COLORS"
+          :key="color"
+          type="button"
+          class="canvas-color-swatch"
+          :class="{ active: (selectedShape?.type === 'note' ? selectedShape.color : noteColor) === color }"
+          :style="{ background: color }"
+          :aria-label="`Set note color ${color}`"
+          @click="setNoteColor(color)"
+        ></button>
+      </span>
       <span class="canvas-divider"></span>
       <button type="button" class="canvas-tool" @click="fitView">Fit</button>
-      <span v-if="saveState === 'saved'" class="canvas-save-state">Saved</span>
       <span v-if="saveState === 'error'" class="canvas-save-state error">{{ saveError }}</span>
     </div>
 
@@ -1023,8 +1304,29 @@ onUnmounted(() => {
             height: `${shape.height}px`,
             background: shape.color,
           }"
+          @pointerdown="handleSectionPointerDown(shape, $event)"
         >
-          <div class="canvas-shape-handle" @pointerdown.stop="startShapeDrag(shape, $event)"></div>
+          <div
+            v-if="shape.type === 'section'"
+            class="canvas-section-header"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+          >
+            <input
+              class="canvas-section-title"
+              :data-section-title="shape.id"
+              :value="shape.text"
+              spellcheck="false"
+              aria-label="Section headline"
+              @focus="selectedShapeId = shape.id"
+              @pointerdown.stop
+              @input="updateShapeText(shape, ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+          <div
+            v-else-if="shape.type !== 'text'"
+            class="canvas-shape-handle"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+          ></div>
           <img
             v-if="shape.type === 'image' && shape.src"
             class="canvas-shape-image"
@@ -1033,15 +1335,22 @@ onUnmounted(() => {
             draggable="false"
           />
           <textarea
-            v-else
+            v-else-if="shape.type !== 'section'"
             class="canvas-shape-text"
             :data-shape-text="shape.id"
             :value="shape.text"
             spellcheck="false"
             @focus="selectedShapeId = shape.id"
-            @pointerdown.stop
-            @input="updateShape(shape.id, { text: ($event.target as HTMLTextAreaElement).value })"
+            @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
+            @input="updateShapeText(shape, ($event.target as HTMLTextAreaElement).value)"
           ></textarea>
+          <button
+            v-if="(shape.type === 'note' || shape.type === 'section') && selectedShapeId === shape.id"
+            type="button"
+            class="canvas-resize-handle"
+            :aria-label="shape.type === 'section' ? 'Resize section' : 'Resize note'"
+            @pointerdown.stop="startShapeResize(shape, $event)"
+          ></button>
         </article>
       </div>
 
@@ -1060,7 +1369,7 @@ onUnmounted(() => {
 
       <div v-if="shapes.length === 0 && strokes.length === 0" class="canvas-empty">
         <strong>Blank canvas</strong>
-        <span>Choose Draw, Note, Box, or Text, then use the canvas.</span>
+        <span>Choose Draw, Note, Text, or Section, then use the canvas.</span>
       </div>
     </div>
   </div>
@@ -1068,13 +1377,106 @@ onUnmounted(() => {
 
 <style scoped>
 .canvas-root {
+  --canvas-bg: #f8fafc;
+  --canvas-text: #111827;
+  --canvas-muted: #6b7280;
+  --canvas-strong: #374151;
+  --canvas-toolbar-bg: rgba(255, 255, 255, 0.94);
+  --canvas-toolbar-border: #d1d5db;
+  --canvas-toolbar-shadow: rgba(15, 23, 42, 0.14);
+  --canvas-tool-text: #374151;
+  --canvas-tool-hover-bg: #f3f4f6;
+  --canvas-tool-active-bg: #dbeafe;
+  --canvas-tool-active-border: #bfdbfe;
+  --canvas-tool-active-text: #1d4ed8;
+  --canvas-divider-color: #e5e7eb;
+  --canvas-grid-minor: rgba(15, 23, 42, 0.07);
+  --canvas-grid-major: rgba(15, 23, 42, 0.13);
+  --canvas-ink-color: #111827;
+  --canvas-shape-border: rgba(15, 23, 42, 0.14);
+  --canvas-shape-shadow: rgba(15, 23, 42, 0.12);
+  --canvas-handle-bg: rgba(15, 23, 42, 0.08);
+  --canvas-section-bg: rgba(219, 234, 254, 0.08);
+  --canvas-section-border: rgba(37, 99, 235, 0.55);
+  --canvas-section-title-bg: #eff6ff;
+  --canvas-section-title-focus-bg: #ffffff;
+  --canvas-section-title-border: rgba(37, 99, 235, 0.28);
+  --canvas-section-title-text: #1e3a8a;
+  --canvas-image-bg: #ffffff;
+  --canvas-resize-border: rgba(15, 23, 42, 0.45);
+  --canvas-presence-text: #111827;
   position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #f8fafc;
-  color: #111827;
+  background: var(--canvas-bg);
+  color: var(--canvas-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .canvas-root {
+    --canvas-bg: #0f1115;
+    --canvas-text: #f3f4f6;
+    --canvas-muted: #9ca3af;
+    --canvas-strong: #e5e7eb;
+    --canvas-toolbar-bg: rgba(24, 24, 27, 0.94);
+    --canvas-toolbar-border: rgba(255, 255, 255, 0.12);
+    --canvas-toolbar-shadow: rgba(0, 0, 0, 0.38);
+    --canvas-tool-text: #d1d5db;
+    --canvas-tool-hover-bg: rgba(255, 255, 255, 0.08);
+    --canvas-tool-active-bg: rgba(37, 99, 235, 0.26);
+    --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
+    --canvas-tool-active-text: #bfdbfe;
+    --canvas-divider-color: rgba(255, 255, 255, 0.12);
+    --canvas-grid-minor: rgba(255, 255, 255, 0.07);
+    --canvas-grid-major: rgba(255, 255, 255, 0.13);
+    --canvas-ink-color: #f3f4f6;
+    --canvas-shape-border: rgba(255, 255, 255, 0.16);
+    --canvas-shape-shadow: rgba(0, 0, 0, 0.32);
+    --canvas-handle-bg: rgba(255, 255, 255, 0.12);
+    --canvas-section-bg: rgba(96, 165, 250, 0.09);
+    --canvas-section-border: rgba(147, 197, 253, 0.62);
+    --canvas-section-title-bg: #172033;
+    --canvas-section-title-focus-bg: #111827;
+    --canvas-section-title-border: rgba(147, 197, 253, 0.36);
+    --canvas-section-title-text: #dbeafe;
+    --canvas-image-bg: #111827;
+    --canvas-resize-border: rgba(255, 255, 255, 0.58);
+    --canvas-presence-text: #111827;
+  }
+}
+
+.canvas-root.is-dark,
+:global(:root[data-theme="dark"]) .canvas-root {
+  --canvas-bg: #0f1115;
+  --canvas-text: #f3f4f6;
+  --canvas-muted: #9ca3af;
+  --canvas-strong: #e5e7eb;
+  --canvas-toolbar-bg: rgba(24, 24, 27, 0.94);
+  --canvas-toolbar-border: rgba(255, 255, 255, 0.12);
+  --canvas-toolbar-shadow: rgba(0, 0, 0, 0.38);
+  --canvas-tool-text: #d1d5db;
+  --canvas-tool-hover-bg: rgba(255, 255, 255, 0.08);
+  --canvas-tool-active-bg: rgba(37, 99, 235, 0.26);
+  --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
+  --canvas-tool-active-text: #bfdbfe;
+  --canvas-divider-color: rgba(255, 255, 255, 0.12);
+  --canvas-grid-minor: rgba(255, 255, 255, 0.07);
+  --canvas-grid-major: rgba(255, 255, 255, 0.13);
+  --canvas-ink-color: #f3f4f6;
+  --canvas-shape-border: rgba(255, 255, 255, 0.16);
+  --canvas-shape-shadow: rgba(0, 0, 0, 0.32);
+  --canvas-handle-bg: rgba(255, 255, 255, 0.12);
+  --canvas-section-bg: rgba(96, 165, 250, 0.09);
+  --canvas-section-border: rgba(147, 197, 253, 0.62);
+  --canvas-section-title-bg: #172033;
+  --canvas-section-title-focus-bg: #111827;
+  --canvas-section-title-border: rgba(147, 197, 253, 0.36);
+  --canvas-section-title-text: #dbeafe;
+  --canvas-image-bg: #111827;
+  --canvas-resize-border: rgba(255, 255, 255, 0.58);
+  --canvas-presence-text: #111827;
 }
 
 .canvas-toolbar {
@@ -1088,11 +1490,11 @@ onUnmounted(() => {
   gap: 6px;
   max-width: calc(100% - 24px);
   overflow-x: auto;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--canvas-toolbar-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--canvas-toolbar-bg);
   padding: 6px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 10px 28px var(--canvas-toolbar-shadow);
 }
 
 .canvas-tool {
@@ -1100,7 +1502,7 @@ onUnmounted(() => {
   border-radius: 6px;
   background: transparent;
   padding: 6px 9px;
-  color: #374151;
+  color: var(--canvas-tool-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -1110,14 +1512,14 @@ onUnmounted(() => {
 }
 
 .canvas-tool:hover {
-  background: #f3f4f6;
+  background: var(--canvas-tool-hover-bg);
 }
 
 .canvas-tool.active,
 .canvas-tool.primary {
-  border-color: #bfdbfe;
-  background: #dbeafe;
-  color: #1d4ed8;
+  border-color: var(--canvas-tool-active-border);
+  background: var(--canvas-tool-active-bg);
+  color: var(--canvas-tool-active-text);
 }
 
 .canvas-tool.danger {
@@ -1132,7 +1534,27 @@ onUnmounted(() => {
 .canvas-divider {
   width: 1px;
   height: 24px;
-  background: #e5e7eb;
+  background: var(--canvas-divider-color);
+}
+
+.canvas-note-colors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 2px;
+}
+
+.canvas-color-swatch {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.canvas-color-swatch.active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
 .canvas-save-state {
@@ -1153,7 +1575,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background-color: #f8fafc;
+  background-color: var(--canvas-bg);
   cursor: grab;
   touch-action: none;
 }
@@ -1181,18 +1603,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.14);
+  border: 1px solid var(--canvas-shape-border);
   border-radius: 8px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 8px 22px var(--canvas-shape-shadow);
 }
 
 .canvas-shape.selected {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
-}
-
-.canvas-shape.box {
-  border-style: dashed;
 }
 
 .canvas-shape.text {
@@ -1202,19 +1620,55 @@ onUnmounted(() => {
 }
 
 .canvas-shape.image {
-  background: #ffffff;
+  background: var(--canvas-image-bg);
+}
+
+.canvas-shape.section {
+  overflow: visible;
+  border: 2px solid var(--canvas-section-border);
+  border-radius: 10px;
+  background: var(--canvas-section-bg) !important;
+  box-shadow: none;
+}
+
+.canvas-shape.section.selected {
+  outline-offset: 4px;
 }
 
 .canvas-shape-handle {
   height: 18px;
   flex: 0 0 auto;
   cursor: move;
-  background: rgba(15, 23, 42, 0.08);
+  background: var(--canvas-handle-bg);
 }
 
-.canvas-shape.text .canvas-shape-handle {
-  height: 12px;
-  background: rgba(37, 99, 235, 0.12);
+.canvas-section-header {
+  position: absolute;
+  left: 12px;
+  top: -16px;
+  display: flex;
+  max-width: calc(100% - 24px);
+  cursor: move;
+}
+
+.canvas-section-title {
+  min-width: 96px;
+  max-width: 100%;
+  border: 1px solid var(--canvas-section-title-border);
+  border-radius: 6px;
+  background: var(--canvas-section-title-bg);
+  padding: 3px 8px;
+  color: var(--canvas-section-title-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+  outline: none;
+}
+
+.canvas-section-title:focus {
+  border-color: #2563eb;
+  background: var(--canvas-section-title-focus-bg);
 }
 
 .canvas-shape-image {
@@ -1223,28 +1677,68 @@ onUnmounted(() => {
   min-width: 0;
   flex: 1 1 auto;
   object-fit: contain;
-  background: #ffffff;
+  background: var(--canvas-image-bg);
   user-select: none;
 }
 
 .canvas-shape-text {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   flex: 1 1 auto;
   border: 0;
   background: transparent;
   padding: 10px 12px;
-  color: #111827;
+  color: var(--canvas-text);
   font: inherit;
   font-size: 15px;
   line-height: 1.35;
   outline: none;
+  overflow: hidden;
   resize: none;
 }
 
 .canvas-shape.text .canvas-shape-text {
+  cursor: move;
   font-size: 20px;
   font-weight: 650;
+}
+
+.canvas-shape.note .canvas-shape-text {
+  color: #111827;
+}
+
+.canvas-resize-handle {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-right: 2px solid var(--canvas-resize-border);
+  border-bottom: 2px solid var(--canvas-resize-border);
+  background: transparent;
+  cursor: nwse-resize;
+}
+
+:global(.canvas-text-measure) {
+  position: fixed;
+  left: -10000px;
+  top: -10000px;
+  z-index: -1;
+  box-sizing: border-box;
+  display: inline-block;
+  min-width: 32px;
+  min-height: 40px;
+  border: 0;
+  padding: 10px 12px;
+  white-space: pre;
+  color: var(--canvas-text);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.35;
+  pointer-events: none;
 }
 
 .canvas-presence {
@@ -1271,7 +1765,7 @@ onUnmounted(() => {
   border-radius: 4px;
   background: var(--presence-color);
   padding: 3px 6px;
-  color: #111827;
+  color: var(--canvas-presence-text);
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
@@ -1286,13 +1780,13 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 6px;
   transform: translate(-50%, -50%);
-  color: #6b7280;
+  color: var(--canvas-muted);
   text-align: center;
   pointer-events: none;
 }
 
 .canvas-empty strong {
-  color: #374151;
+  color: var(--canvas-strong);
   font-size: 16px;
 }
 </style>
