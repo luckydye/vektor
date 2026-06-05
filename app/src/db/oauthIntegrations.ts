@@ -32,17 +32,10 @@ export interface OAuthIntegrationCredential extends OAuthIntegrationConnection {
   refreshToken: string | null;
 }
 
-export async function listOAuthIntegrationsForUser(
-  spaceId: string,
-  userId: string,
-): Promise<OAuthIntegrationConnection[]> {
-  const db = await getSpaceDb(spaceId);
-  const rows = await db
-    .select()
-    .from(oauthIntegration)
-    .where(eq(oauthIntegration.userId, userId));
-
-  return rows.map((row) => ({
+function rowToConnection(
+  row: typeof oauthIntegration.$inferSelect,
+): OAuthIntegrationConnection {
+  return {
     id: row.id,
     provider: row.provider as OAuthIntegrationProvider,
     userId: row.userId,
@@ -54,7 +47,20 @@ export async function listOAuthIntegrationsForUser(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     lastUsedAt: row.lastUsedAt ?? null,
-  }));
+  };
+}
+
+export async function listOAuthIntegrationsForUser(
+  spaceId: string,
+  userId: string,
+): Promise<OAuthIntegrationConnection[]> {
+  const db = await getSpaceDb(spaceId);
+  const rows = await db
+    .select()
+    .from(oauthIntegration)
+    .where(eq(oauthIntegration.userId, userId));
+
+  return rows.map(rowToConnection);
 }
 
 export async function getOAuthIntegrationForUser(
@@ -70,23 +76,7 @@ export async function getOAuthIntegrationForUser(
     .limit(1)
     .get();
 
-  if (!row) {
-    return null;
-  }
-
-  return {
-    id: row.id,
-    provider: row.provider as OAuthIntegrationProvider,
-    userId: row.userId,
-    externalAccountId: row.externalAccountId,
-    externalUsername: row.externalUsername ?? null,
-    instanceUrl: row.instanceUrl ?? null,
-    scope: row.scope ?? null,
-    accessTokenExpiresAt: row.accessTokenExpiresAt ?? null,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    lastUsedAt: row.lastUsedAt ?? null,
-  };
+  return row ? rowToConnection(row) : null;
 }
 
 export async function getOAuthIntegrationCredentialForUser(
@@ -113,16 +103,7 @@ export async function getOAuthIntegrationCredentialForUser(
     .where(eq(oauthIntegration.id, row.id));
 
   return {
-    id: row.id,
-    provider: row.provider as OAuthIntegrationProvider,
-    userId: row.userId,
-    externalAccountId: row.externalAccountId,
-    externalUsername: row.externalUsername ?? null,
-    instanceUrl: row.instanceUrl ?? null,
-    scope: row.scope ?? null,
-    accessTokenExpiresAt: row.accessTokenExpiresAt ?? null,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    ...rowToConnection(row),
     lastUsedAt: now,
     accessToken: decryptSecret({
       ciphertext: row.accessTokenCiphertext,
@@ -163,6 +144,17 @@ export async function upsertOAuthIntegrationForUser(
     ? encryptSecret(tokenSet.refreshToken)
     : null;
 
+  const connectionBase = {
+    provider,
+    userId,
+    externalAccountId,
+    externalUsername,
+    instanceUrl,
+    scope: tokenSet.scope,
+    accessTokenExpiresAt: tokenSet.expiresAt,
+    updatedAt: now,
+  };
+
   if (existing) {
     await db
       .update(oauthIntegration)
@@ -183,16 +175,9 @@ export async function upsertOAuthIntegrationForUser(
       .where(eq(oauthIntegration.id, existing.id));
 
     return {
+      ...connectionBase,
       id: existing.id,
-      provider,
-      userId,
-      externalAccountId,
-      externalUsername,
-      instanceUrl,
-      scope: tokenSet.scope,
-      accessTokenExpiresAt: tokenSet.expiresAt,
       createdAt: existing.createdAt,
-      updatedAt: now,
       lastUsedAt: existing.lastUsedAt ?? null,
     };
   }
@@ -219,16 +204,9 @@ export async function upsertOAuthIntegrationForUser(
   });
 
   return {
+    ...connectionBase,
     id,
-    provider,
-    userId,
-    externalAccountId,
-    externalUsername,
-    instanceUrl,
-    scope: tokenSet.scope,
-    accessTokenExpiresAt: tokenSet.expiresAt,
     createdAt: now,
-    updatedAt: now,
     lastUsedAt: null,
   };
 }

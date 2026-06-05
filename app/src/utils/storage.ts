@@ -100,129 +100,81 @@ export class IndexedDBStore<T extends Record<string, any>> {
   }
 
   /**
-   * Get a single item by key
+   * Open a transaction and return its object store
    */
-  async get(key: IDBValidKey): Promise<T | null> {
+  private async openStore(mode: IDBTransactionMode): Promise<IDBObjectStore> {
     await this.init();
 
     if (!this.db) throw new Error("Database not initialized");
 
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readonly");
-      const store = transaction.objectStore(this.config.storeName);
-      const request = store.get(key);
+    const transaction = this.db.transaction([this.config.storeName], mode);
+    return transaction.objectStore(this.config.storeName);
+  }
 
-      request.onsuccess = () => resolve(request.result || null);
+  /**
+   * Run a single request against the store and resolve with its result
+   */
+  private async request<R>(
+    mode: IDBTransactionMode,
+    op: (store: IDBObjectStore) => IDBRequest<R>,
+  ): Promise<R> {
+    const store = await this.openStore(mode);
+
+    return new Promise((resolve, reject) => {
+      const request = op(store);
+
+      request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+  }
+
+  /**
+   * Get a single item by key
+   */
+  async get(key: IDBValidKey): Promise<T | null> {
+    return (await this.request("readonly", (store) => store.get(key))) || null;
   }
 
   /**
    * Put (insert or update) an item
    */
   async put(value: T): Promise<void> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readwrite");
-      const store = transaction.objectStore(this.config.storeName);
-      const request = store.put(value);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    await this.request("readwrite", (store) => store.put(value));
   }
 
   /**
    * Delete an item by key
    */
   async delete(key: IDBValidKey): Promise<void> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readwrite");
-      const store = transaction.objectStore(this.config.storeName);
-      const request = store.delete(key);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    await this.request("readwrite", (store) => store.delete(key));
   }
 
   /**
    * Get all items
    */
   async getAll(): Promise<T[]> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readonly");
-      const store = transaction.objectStore(this.config.storeName);
-      const request = store.getAll();
-
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error);
-    });
+    return (await this.request("readonly", (store) => store.getAll())) || [];
   }
 
   /**
    * Clear all items
    */
   async clear(): Promise<void> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readwrite");
-      const store = transaction.objectStore(this.config.storeName);
-      const request = store.clear();
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    await this.request("readwrite", (store) => store.clear());
   }
 
   /**
    * Count total items
    */
   async count(): Promise<number> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readonly");
-      const store = transaction.objectStore(this.config.storeName);
-      const request = store.count();
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+    return this.request("readonly", (store) => store.count());
   }
 
   /**
    * Query items using a cursor with optional index
    */
   async query<R = T>(callback: (store: IDBObjectStore) => IDBRequest<R>): Promise<R> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readonly");
-      const store = transaction.objectStore(this.config.storeName);
-      const request = callback(store);
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+    return this.request("readonly", callback);
   }
 
   /**
@@ -233,14 +185,9 @@ export class IndexedDBStore<T extends Record<string, any>> {
     indexName?: string,
     direction: IDBCursorDirection = "next",
   ): Promise<void> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
+    const store = await this.openStore("readonly");
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readonly");
-      const store = transaction.objectStore(this.config.storeName);
-
       const source = indexName ? store.index(indexName) : store;
       const request = source.openCursor(null, direction);
 
@@ -265,19 +212,10 @@ export class IndexedDBStore<T extends Record<string, any>> {
     mode: IDBTransactionMode,
     callback: (store: IDBObjectStore) => Promise<R>,
   ): Promise<R> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
+    const store = await this.openStore(mode);
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], mode);
-      const store = transaction.objectStore(this.config.storeName);
-
-      transaction.oncomplete = () => {
-        // Transaction completed
-      };
-
-      transaction.onerror = () => reject(transaction.error);
+      store.transaction.onerror = () => reject(store.transaction.error);
 
       callback(store).then(resolve).catch(reject);
     });
@@ -292,13 +230,9 @@ export class IndexedDBStore<T extends Record<string, any>> {
     direction: IDBCursorDirection = "next",
     limit?: number,
   ): Promise<T[]> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
+    const store = await this.openStore("readonly");
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readonly");
-      const store = transaction.objectStore(this.config.storeName);
       const index = store.index(indexName);
 
       const results: T[] = [];
@@ -324,14 +258,9 @@ export class IndexedDBStore<T extends Record<string, any>> {
    * Batch put multiple items
    */
   async putBatch(items: T[]): Promise<void> {
-    await this.init();
-
-    if (!this.db) throw new Error("Database not initialized");
+    const store = await this.openStore("readwrite");
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.config.storeName], "readwrite");
-      const store = transaction.objectStore(this.config.storeName);
-
       let completed = 0;
       const errors: Error[] = [];
 

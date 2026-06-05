@@ -33,7 +33,7 @@ jobs:
         working-directory: app
         run: >
           bun build --compile --target=bun-linux-x64
-          ./vektor.ts ./src/agent/agentWorker.ts
+          ./vektor.ts
           --external lightningcss
           --outfile ./vektor-linux-x64
 
@@ -41,7 +41,7 @@ jobs:
         working-directory: app
         run: >
           bun build --compile --target=bun-darwin-arm64
-          ./vektor.ts ./src/agent/agentWorker.ts
+          ./vektor.ts
           --external lightningcss
           --outfile ./vektor-darwin-arm64
 

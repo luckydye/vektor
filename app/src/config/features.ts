@@ -19,6 +19,3 @@ function getEnvBoolean(key: string, defaultValue: boolean = false): boolean {
 export const features: FeatureFlags = {
   canvas: getEnvBoolean("FEATURE_CANVAS", false),
 };
-
-// Export individual flags for convenience
-export const FEATURE_CANVAS = features.canvas;

@@ -5,21 +5,12 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { prettyPrintHtml } from "../../utils/prettyHtml.ts";
 import { stripScriptTags } from "../../utils/utils.ts";
+import { hunkLinesToRows, type DiffLine, type DiffRow } from "../../utils/diffRows.ts";
 
 export interface InlineSuggestion {
   rev: number;
   message: string | null;
   patch: string;
-}
-
-interface DiffLine {
-  type: "add" | "remove" | "context" | "empty";
-  content: string;
-}
-
-interface DiffRow {
-  left: DiffLine;
-  right: DiffLine;
 }
 
 const INLINE_CONTEXT_ROWS = 1;
@@ -56,53 +47,7 @@ function parseSuggestionHunks(suggestions: InlineSuggestion[]): SuggestionHunk[]
 
     for (const file of patches) {
       file.hunks.forEach((hunk, hunkIndex) => {
-        const rows: DiffRow[] = [];
-        let pendingRemove: string[] = [];
-        let pendingAdd: string[] = [];
-
-        const flushPending = () => {
-          const rowCount = Math.max(pendingRemove.length, pendingAdd.length);
-          for (let index = 0; index < rowCount; index += 1) {
-            rows.push({
-              left: pendingRemove[index]
-                ? { type: "remove", content: pendingRemove[index] }
-                : { type: "empty", content: "" },
-              right: pendingAdd[index]
-                ? { type: "add", content: pendingAdd[index] }
-                : { type: "empty", content: "" },
-            });
-          }
-
-          pendingRemove = [];
-          pendingAdd = [];
-        };
-
-        for (const line of hunk.lines) {
-          const marker = line[0];
-          const content = line.slice(1);
-
-          if (marker === "-") {
-            pendingRemove.push(content);
-            continue;
-          }
-
-          if (marker === "+") {
-            pendingAdd.push(content);
-            continue;
-          }
-
-          if (marker === "\\") {
-            continue;
-          }
-
-          flushPending();
-          rows.push({
-            left: { type: "context", content },
-            right: { type: "context", content },
-          });
-        }
-
-        flushPending();
+        const rows = hunkLinesToRows(hunk.lines);
 
         hunks.push({
           revisionRev: suggestion.rev,

@@ -572,7 +572,7 @@ function createEditor(
   return editor;
 }
 
-export class DocumentView extends HTMLElement {
+class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   editor?: Editor;
   store?: IndexedDBStore<EditorStoreEntry>;

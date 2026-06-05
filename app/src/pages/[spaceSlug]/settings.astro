@@ -2,27 +2,14 @@
 import NoAccess from "../../components/NoAccess.vue";
 import SpaceSettings from "../../components/SpaceSettings.vue";
 import { hasPermission, ResourceType, getUserGroups } from "../../db/acl.ts";
-import { getSpaceBySlug } from "../../db/spaces.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
+import { resolveSpacePage } from "../../utils/spacePage.ts";
 
-if (!Astro.locals.session) {
-  return Astro.redirect("/login");
+const result = await resolveSpacePage(Astro);
+if (result.response) {
+  return result.response;
 }
-
-const { spaceSlug } = Astro.params;
-
-if (!spaceSlug) {
-  return Astro.redirect("/");
-}
-
-const space = await getSpaceBySlug(spaceSlug);
-
-if (!space) {
-  return new Response(null, {
-    status: 404,
-    statusText: "Space not found",
-  });
-}
+const { space } = result;
 
 // Check ACL permissions - user must be owner
 const userGroups = await getUserGroups(Astro.locals.user!.id);

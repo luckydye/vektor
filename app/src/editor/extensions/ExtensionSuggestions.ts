@@ -60,10 +60,6 @@ export function unregisterSuggestionProvider(id: string): void {
   providers.delete(id);
 }
 
-export function getSuggestionProviders(): Map<string, SuggestionProvider> {
-  return providers;
-}
-
 function createSuggestionPopup(): HTMLDivElement {
   const popup = document.createElement("div");
   popup.className = "extension-suggestions-popup";

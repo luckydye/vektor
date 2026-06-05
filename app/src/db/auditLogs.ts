@@ -250,32 +250,6 @@ export async function getAuditLogsForDocument(
     .limit(limit);
 }
 
-export async function getAuditLogsByUser(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
-  userId: string,
-  limit = 100,
-): Promise<AuditLog[]> {
-  return db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.userId, userId))
-    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
-    .limit(limit);
-}
-
-export async function getAuditLogsByEvent(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
-  event: AuditEvent,
-  limit = 100,
-): Promise<AuditLog[]> {
-  return db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.event, event))
-    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
-    .limit(limit);
-}
-
 export async function getRecentAuditLogs(
   db: Awaited<ReturnType<typeof getSpaceDb>>,
   limit = 100,
@@ -283,20 +257,6 @@ export async function getRecentAuditLogs(
   return db
     .select()
     .from(auditLog)
-    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
-    .limit(limit);
-}
-
-export async function getAuditLogsForDocumentByEvent(
-  db: Awaited<ReturnType<typeof getSpaceDb>>,
-  docId: string,
-  event: AuditEvent,
-  limit = 100,
-): Promise<AuditLog[]> {
-  return db
-    .select()
-    .from(auditLog)
-    .where(and(eq(auditLog.docId, docId), eq(auditLog.event, event)))
     .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
     .limit(limit);
 }

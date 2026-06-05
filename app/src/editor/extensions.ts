@@ -30,6 +30,23 @@ import { DatePicker } from "./extensions/DatePicker.ts";
 import type { Extensions } from "@tiptap/core";
 import { Mentions } from "./extensions/Mentions.ts";
 
+const colwidthAttribute = {
+  default: [200],
+  parseHTML: (element: HTMLElement) => {
+    const colwidth = element.getAttribute("colwidth");
+    return colwidth ? colwidth.split(",").map((w) => parseInt(w, 10)) : [200];
+  },
+  renderHTML: (attributes: Record<string, any>) => {
+    if (!attributes.colwidth) {
+      return { style: "width: 200px" };
+    }
+    return {
+      colwidth: attributes.colwidth.join(","),
+      style: `width: ${attributes.colwidth[0]}px`,
+    };
+  },
+};
+
 export function contentExtensions(spaceId: string, documentId?: string): Extensions {
   return [
     Document,
@@ -77,22 +94,7 @@ export function contentExtensions(spaceId: string, documentId?: string): Extensi
       addAttributes() {
         return {
           ...this.parent?.(),
-          colwidth: {
-            default: [200],
-            parseHTML: (element) => {
-              const colwidth = element.getAttribute("colwidth");
-              return colwidth ? colwidth.split(",").map((w) => parseInt(w, 10)) : [200];
-            },
-            renderHTML: (attributes) => {
-              if (!attributes.colwidth) {
-                return { style: "width: 200px" };
-              }
-              return {
-                colwidth: attributes.colwidth.join(","),
-                style: `width: ${attributes.colwidth[0]}px`,
-              };
-            },
-          },
+          colwidth: colwidthAttribute,
         };
       },
     }),
@@ -100,22 +102,7 @@ export function contentExtensions(spaceId: string, documentId?: string): Extensi
       addAttributes() {
         return {
           ...this.parent?.(),
-          colwidth: {
-            default: [200],
-            parseHTML: (element) => {
-              const colwidth = element.getAttribute("colwidth");
-              return colwidth ? colwidth.split(",").map((w) => parseInt(w, 10)) : [200];
-            },
-            renderHTML: (attributes) => {
-              if (!attributes.colwidth) {
-                return { style: "width: 200px" };
-              }
-              return {
-                colwidth: attributes.colwidth.join(","),
-                style: `width: ${attributes.colwidth[0]}px`,
-              };
-            },
-          },
+          colwidth: colwidthAttribute,
           backgroundColor: {
             default: null,
             parseHTML: (element) => element.style.backgroundColor || null,

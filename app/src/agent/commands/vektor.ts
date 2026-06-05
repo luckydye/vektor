@@ -58,8 +58,6 @@ function formatVektorValue(value: unknown, json: boolean): string {
   return JSON.stringify(record, null, 2);
 }
 
-export { formatVektorValue };
-
 export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
   return defineCommand("vektor", async (args, _ctx) => {
     const json = args.includes("--json");

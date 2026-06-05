@@ -7,7 +7,6 @@ import {
   grantPermission,
   revokePermission,
   listUserPermissions,
-  hasPermission,
   type ResourceType,
 } from "./acl.ts";
 import { createHash, randomBytes } from "node:crypto";
@@ -54,20 +53,6 @@ function hashToken(token: string): string {
  */
 export function getTokenUserId(tokenId: string): string {
   return `token:${tokenId}`;
-}
-
-/**
- * Check if a userId represents a token
- */
-export function isTokenUserId(userId: string): boolean {
-  return userId.startsWith("token:");
-}
-
-/**
- * Extract token ID from token user ID
- */
-export function extractTokenId(tokenUserId: string): string {
-  return tokenUserId.replace("token:", "");
 }
 
 /**
@@ -190,37 +175,6 @@ export async function listTokenResources(
 }
 
 /**
- * Check if token has permission for a resource
- *
- * @example
- * ```ts
- * const canEdit = await hasTokenPermission(
- *   "token_abc123",
- *   "space123",
- *   "document",
- *   "doc456",
- *   "editor"
- * );
- * ```
- */
-export async function hasTokenPermission(
-  tokenId: string,
-  spaceId: string,
-  resourceType: ResourceType,
-  resourceId: string,
-  requiredPermission: string,
-): Promise<boolean> {
-  const tokenUserId = getTokenUserId(tokenId);
-  return hasPermission(
-    spaceId,
-    resourceType,
-    resourceId,
-    tokenUserId,
-    requiredPermission,
-  );
-}
-
-/**
  * Validate an access token and return its details
  * Returns null if token is invalid, revoked, or expired
  *
@@ -229,14 +183,6 @@ export async function hasTokenPermission(
  * const result = await validateAccessToken("at_abc123...", "space123");
  * if (result) {
  *   console.log("Token valid:", result.tokenId);
- *   // Check permissions via ACL
- *   const canEdit = await hasTokenPermission(
- *     result.tokenId,
- *     "space123",
- *     "document",
- *     "doc456",
- *     "editor"
- *   );
  * }
  * ```
  */
@@ -397,38 +343,4 @@ export async function deleteAccessToken(
     .returning();
 
   return result.length > 0;
-}
-
-/**
- * Clean up expired tokens for a space
- * Permanently deletes tokens that have passed their expiration date
- *
- * @example
- * ```ts
- * const count = await cleanupExpiredTokens("space123");
- * console.log(`Cleaned up ${count} expired tokens`);
- * ```
- */
-export async function cleanupExpiredTokens(spaceId: string): Promise<number> {
-  const db = await getSpaceDb(spaceId);
-  if (!db) {
-    return 0;
-  }
-
-  const now = new Date();
-
-  // Get all tokens with expiration dates
-  const tokens = await db.select().from(accessToken);
-
-  // Filter expired tokens
-  const expiredTokens = tokens.filter((t) => t.expiresAt && t.expiresAt < now);
-
-  // Delete expired tokens one by one
-  let deletedCount = 0;
-  for (const token of expiredTokens) {
-    await db.delete(accessToken).where(eq(accessToken.id, token.id));
-    deletedCount++;
-  }
-
-  return deletedCount;
 }

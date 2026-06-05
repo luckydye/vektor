@@ -1,7 +1,7 @@
 import { Node, mergeAttributes, type Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import type { NodeView } from "@tiptap/pm/view";
+import type { EditorView, NodeView } from "@tiptap/pm/view";
 import { api } from "../../api/client.ts";
 
 export interface FileAttachmentOptions {
@@ -157,6 +157,26 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
     const spaceId = this.options.spaceId;
     const documentId = this.options.documentId;
 
+    function insertPlaceholderAndUpload(
+      view: EditorView,
+      file: File,
+      insertPos: number,
+    ): void {
+      const placeholderText = `⏳ Uploading ${file.name}...`;
+
+      const tr = view.state.tr;
+      tr.insertText(placeholderText, insertPos);
+      view.dispatch(tr);
+
+      uploadFile(file, spaceId, documentId)
+        .then((url) => {
+          replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
+        })
+        .catch((error) => {
+          replacePlaceholderWithError(editor, placeholderText, error);
+        });
+    }
+
     return [
       new Plugin({
         key: new PluginKey("fileAttachmentPlugin"),
@@ -176,25 +196,7 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
               const file = item.getAsFile();
               if (!file) continue;
 
-              const insertPos = view.state.selection.from;
-              const placeholderText = `⏳ Uploading ${file.name}...`;
-
-              const tr = view.state.tr;
-              tr.insertText(placeholderText, insertPos);
-              view.dispatch(tr);
-
-              uploadFile(file, spaceId, documentId)
-                .then((url) => {
-                  replacePlaceholderWithAttachment(
-                    editor,
-                    placeholderText,
-                    url,
-                    file.name,
-                  );
-                })
-                .catch((error) => {
-                  replacePlaceholderWithError(editor, placeholderText, error);
-                });
+              insertPlaceholderAndUpload(view, file, view.state.selection.from);
             }
 
             return true;
@@ -220,25 +222,7 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
             if (!coordinates) return false;
 
             for (const file of files) {
-              const insertPos = coordinates.pos;
-              const placeholderText = `⏳ Uploading ${file.name}...`;
-
-              const tr = view.state.tr;
-              tr.insertText(placeholderText, insertPos);
-              view.dispatch(tr);
-
-              uploadFile(file, spaceId, documentId)
-                .then((url) => {
-                  replacePlaceholderWithAttachment(
-                    editor,
-                    placeholderText,
-                    url,
-                    file.name,
-                  );
-                })
-                .catch((error) => {
-                  replacePlaceholderWithError(editor, placeholderText, error);
-                });
+              insertPlaceholderAndUpload(view, file, coordinates.pos);
             }
 
             return true;
@@ -323,37 +307,4 @@ function replacePlaceholderWithError(
       .insertContent(`❌ Failed to upload: ${message}`)
       .run();
   }
-}
-
-// Helper function for programmatic file upload (e.g., from toolbar button)
-export async function handleFileUpload(
-  editor: Editor,
-  spaceId: string,
-  documentId?: string,
-): Promise<void> {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".docx,.doc,.pptx,.ppt,.md,.txt,.pdf";
-  input.multiple = false;
-
-  input.onchange = async (event) => {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    if (!isSupportedDocumentFile(file)) {
-      throw new Error("Unsupported file type");
-    }
-
-    const placeholderText = `⏳ Uploading ${file.name}...`;
-    editor.chain().focus().insertContent(placeholderText).run();
-
-    try {
-      const url = await uploadFile(file, spaceId, documentId);
-      replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
-    } catch (error) {
-      replacePlaceholderWithError(editor, placeholderText, error);
-    }
-  };
-
-  input.click();
 }

@@ -1,4 +1,3 @@
-export { default as ButtonGhost } from "./ButtonGhost.vue";
 export { default as ButtonIconSmall } from "./ButtonIconSmall.vue";
 export { default as ButtonPrimary } from "./ButtonPrimary.vue";
 export { default as ButtonSecondary } from "./ButtonSecondary.vue";
@@ -11,9 +10,4 @@ export { default as PropertyPopover } from "./PropertyPopover.vue";
 export { default as ContextMenu } from "./ContextMenu.vue";
 export { default as ContextMenuItem } from "./ContextMenuItem.vue";
 export { default as Icon } from "./Icon.vue";
-export { default as SelectItem } from "./SelectItem.vue";
-export { default as SelectMenu, type SelectMenuItem } from "./SelectMenu.vue";
-export { default as DocumentOverlay } from "./DocumentOverlay.vue";
-export { default as DockedPanel } from "./DockedPanel.vue";
-export { default as DockedWindowLayout } from "./DockedWindowLayout.vue";
 export type { Property, PropertyType, SpaceProperty } from "./PropertyPopover.vue";

@@ -1,49 +1,23 @@
 ---
 import SpaceActivity from "../../components/SpaceActivity.vue";
 import ExtensionView from "../../components/ExtensionView.vue";
-import { hasPermission, ResourceType, getUserGroups } from "../../db/acl.ts";
 import { getDocument } from "../../db/documents.ts";
-import { getSpaceBySlug } from "../../db/spaces.ts";
 import { listExtensions } from "../../db/extensions.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
 import RunningWorkflows from "~/src/components/RunningWorkflows.vue";
 import PinnedDocument from "~/src/components/PinnedDocument.vue";
+import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
 
-if (!Astro.locals.session) {
-  return Astro.redirect("/login");
+const result = await resolveSpacePage(Astro);
+if (result.response) {
+  return result.response;
 }
-
-const { spaceSlug } = Astro.params;
-
-if (!spaceSlug) {
-  return Astro.redirect("/");
-}
-
-const space = await getSpaceBySlug(spaceSlug);
-
-if (!space) {
-  return new Response(null, {
-    status: 404,
-    statusText: "Space not found",
-  });
-}
+const { space } = result;
 
 // Check ACL permissions - user must be a member of the space
-const userGroups = await getUserGroups(Astro.locals.user!.id);
-const hasAccess = await hasPermission(
-  space.id,
-  ResourceType.SPACE,
-  space.id,
-  Astro.locals.user!.id,
-  "viewer",
-  userGroups,
-);
-
-if (!hasAccess) {
-  return new Response(null, {
-    status: 403,
-    statusText: "Forbidden",
-  });
+const accessDenied = await requireSpaceViewer(Astro, space);
+if (accessDenied) {
+  return accessDenied;
 }
 
 const document = await getDocument(space.id, space.id);

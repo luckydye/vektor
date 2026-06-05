@@ -4,14 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { extractFile } from "../db/extensions.ts";
-import {
-  config,
-  getConfiguredAnthropicModel,
-  getConfiguredOllamaBaseUrl,
-  getConfiguredOllamaModel,
-  getConfiguredOpenRouterModel,
-  getLocalOrigin,
-} from "../config.ts";
+import { getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildJobWrapper } from "./jobRuntime.ts";
 import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
@@ -181,12 +174,7 @@ export async function runJob(
 
         const workerData = {
           ...inputs,
-          openrouterApiKey: config().OPENROUTER_API_KEY,
-          openrouterModel: getConfiguredOpenRouterModel(),
-          anthropicApiKey: config().ANTHROPIC_API_KEY,
-          anthropicModel: getConfiguredAnthropicModel(),
-          ollamaBaseUrl: config().OLLAMA_BASE_URL ? getConfiguredOllamaBaseUrl() : null,
-          ollamaModel: config().OLLAMA_BASE_URL ? getConfiguredOllamaModel() : null,
+          ...getLlmWorkerConfig(),
           jobId: executionId,
           spaceId,
           // Job-side API calls must stay on internal backend origin.

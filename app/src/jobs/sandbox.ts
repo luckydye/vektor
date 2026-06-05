@@ -4,14 +4,7 @@ import { writeFile, unlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractFile } from "../db/extensions.ts";
-import {
-  config,
-  getConfiguredAnthropicModel,
-  getConfiguredOllamaBaseUrl,
-  getConfiguredOllamaModel,
-  getConfiguredOpenRouterModel,
-  getLocalOrigin,
-} from "../config.ts";
+import { getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildSandboxWrapper } from "./sandboxRuntime.ts";
 import { activeTraceHeaders } from "../observability/otel.ts";
@@ -65,12 +58,7 @@ export async function createSandbox(): Promise<Sandbox> {
 
       const workerData = {
         ...inputs,
-        openrouterApiKey: config().OPENROUTER_API_KEY,
-        openrouterModel: getConfiguredOpenRouterModel(),
-        anthropicApiKey: config().ANTHROPIC_API_KEY,
-        anthropicModel: getConfiguredAnthropicModel(),
-        ollamaBaseUrl: config().OLLAMA_BASE_URL ? getConfiguredOllamaBaseUrl() : null,
-        ollamaModel: config().OLLAMA_BASE_URL ? getConfiguredOllamaModel() : null,
+        ...getLlmWorkerConfig(),
         jobId: executionId,
         spaceId,
         apiUrl,

@@ -134,21 +134,3 @@ export async function deleteAIChatSession(
       and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)),
     );
 }
-
-export async function updateAIChatSessionShellSnapshot(
-  spaceId: string,
-  sessionId: string,
-  userId: string,
-  shellSnapshot: string | null,
-): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-  await db
-    .update(aiChatSession)
-    .set({
-      shellSnapshot,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)),
-    );
-}

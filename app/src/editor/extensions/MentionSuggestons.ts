@@ -1,6 +1,6 @@
-import Mention from "@tiptap/extension-mention";
 import { render, html } from "lit-html";
 import type { SpaceMember, DocumentWithProperties } from "~/src/api/ApiClient.ts";
+import { Mentions } from "./Mentions.ts";
 
 type MentionItem = {
   id: string;
@@ -16,41 +16,12 @@ export interface MentionOptions {
   documentId: string | undefined;
 }
 
-export const MentionSuggestons = Mention.extend<MentionOptions>({
+export const MentionSuggestons = Mentions.extend<MentionOptions>({
   name: "mention-suggestons",
-
-  parseHTML() {
-    return [
-      {
-        tag: "user-mention",
-        getAttrs: (element: any) => {
-          const email = element.getAttribute("email");
-          const label = element.textContent?.replace("@", "") || email;
-          return {
-            id: email,
-            label: label,
-          };
-        },
-      },
-    ];
-  },
-
-  renderHTML({ node }) {
-    return [
-      "user-mention",
-      {
-        email: node.attrs.id,
-      },
-      `@${node.attrs.label || node.attrs.id}`,
-    ];
-  },
 
   addOptions() {
     return {
       ...this.parent?.(),
-      HTMLAttributes: {
-        class: "mention",
-      },
       spaceId: "",
       documentId: undefined,
       suggestion: {

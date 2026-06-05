@@ -69,8 +69,4 @@ export function closeSpaceDb(spaceId: string) {
   }
 }
 
-export function clearSpaceDbCache() {
-  spaceDbCache.clear();
-}
-
 export { schema };

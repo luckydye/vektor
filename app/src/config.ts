@@ -152,6 +152,18 @@ export function getConfiguredOllamaModel(): string {
   return config().OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
 }
 
+/** LLM provider settings passed to job workers via workerData. */
+export function getLlmWorkerConfig() {
+  return {
+    openrouterApiKey: config().OPENROUTER_API_KEY,
+    openrouterModel: getConfiguredOpenRouterModel(),
+    anthropicApiKey: config().ANTHROPIC_API_KEY,
+    anthropicModel: getConfiguredAnthropicModel(),
+    ollamaBaseUrl: config().OLLAMA_BASE_URL ? getConfiguredOllamaBaseUrl() : null,
+    ollamaModel: config().OLLAMA_BASE_URL ? getConfiguredOllamaModel() : null,
+  };
+}
+
 export function getLocalOrigin(): string {
   const argv = globalThis.process?.argv ?? [];
   const portIdx = argv.findIndex((arg) => arg === "--port");

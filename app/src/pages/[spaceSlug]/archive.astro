@@ -1,27 +1,14 @@
 ---
 import ArchivedDocuments from "../../components/ArchivedDocuments.vue";
 import { verifySpaceRole } from "../../db/api.ts";
-import { getSpaceBySlug } from "../../db/spaces.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
+import { resolveSpacePage } from "../../utils/spacePage.ts";
 
-if (!Astro.locals.session) {
-  return Astro.redirect("/login");
+const result = await resolveSpacePage(Astro);
+if (result.response) {
+  return result.response;
 }
-
-const { spaceSlug } = Astro.params;
-
-if (!spaceSlug) {
-  return Astro.redirect("/");
-}
-
-const space = await getSpaceBySlug(spaceSlug);
-
-if (!space) {
-  return new Response(null, {
-    status: 404,
-    statusText: "Space not found",
-  });
-}
+const { space } = result;
 
 const user = Astro.locals.user;
 if (!user) {
@@ -34,6 +21,6 @@ await verifySpaceRole(space.id, user.id, "editor");
 <SpaceLayout title={`Archive - ${space.name} - Wiki`}>
   <div class="mx-auto pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl w-full">
     <h1 class="text-3xl font-bold mb-6">Archived Documents</h1>
-    <ArchivedDocuments client:load spaceId={space.id} spaceSlug={spaceSlug} />
+    <ArchivedDocuments client:load spaceId={space.id} spaceSlug={space.slug} />
   </div>
 </SpaceLayout>

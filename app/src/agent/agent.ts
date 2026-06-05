@@ -13,7 +13,6 @@ import { gzipSync, gunzipSync } from "node:zlib";
 
 export type { AgentResult, ChatMessage };
 export type { AgentEvent };
-export { runAgentPrompt } from "./core.ts";
 
 type AgentSession = {
   bash: Bash;

@@ -4,31 +4,19 @@
  */
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
 import DocumentContent from "../../components/DocumentContent.vue";
-import { getSpaceBySlug } from "../../db/spaces.ts";
 import Canvas from "~/src/components/Canvas.vue";
 import { twMerge } from "tailwind-merge";
 import TitleEditor from "~/src/components/TitleEditor.vue";
 import DocumentActions from "~/src/components/DocumentActions.vue";
 import DocumentProperties from "~/src/components/DocumentProperties.vue";
 import CommentManager from "~/src/components/CommentManager.vue";
+import { resolveSpacePage } from "../../utils/spacePage.ts";
 
-if (!Astro.locals.session) {
-  return Astro.redirect("/login");
+const result = await resolveSpacePage(Astro);
+if (result.response) {
+  return result.response;
 }
-
-const { spaceSlug } = Astro.params;
-if (!spaceSlug) {
-  return Astro.redirect("/");
-}
-
-const space = await getSpaceBySlug(spaceSlug);
-
-if (!space) {
-  return new Response(null, {
-    status: 404,
-    statusText: "Space not found",
-  });
-}
+const { space } = result;
 
 const type = Astro.url.searchParams.get("type") || "document";
 const category = Astro.url.searchParams.get("category") || undefined;

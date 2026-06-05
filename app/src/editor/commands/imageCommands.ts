@@ -1,27 +1,9 @@
 import type { Editor } from "@tiptap/core";
 
 /**
- * Set the width of the currently selected image
- *
- * @example
- * // Set to specific pixel width
- * setImageWidth(editor, 400);
- *
- * @example
- * // Set to percentage width
- * setImageWidth(editor, '50%');
- *
- * @example
- * // Clear width (reset to auto)
- * setImageWidth(editor, null);
- *
- * @example
- * // Use in a toolbar button
- * <button onclick={() => setImageWidth(globalThis.__editor, 300)}>
- *   Small (300px)
- * </button>
+ * Resolve the currently selected image node, or null if no image is selected
  */
-export function setImageWidth(editor: Editor, width: number | string | null) {
+function getSelectedImageNode(editor: Editor) {
   const { state } = editor;
   const { selection } = state;
   const { $from } = selection;
@@ -29,14 +11,7 @@ export function setImageWidth(editor: Editor, width: number | string | null) {
   const node =
     $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
 
-  if (!node || node.type.name !== "image") {
-    return false;
-  }
-
-  return editor.commands.updateAttributes("image", {
-    width,
-    display: null, // Clear display when setting specific width
-  });
+  return node?.type.name === "image" ? node : null;
 }
 
 /**
@@ -63,14 +38,9 @@ export function setImageWidth(editor: Editor, width: number | string | null) {
  * });
  */
 export function toggleImageFullWidth(editor: Editor) {
-  const { state } = editor;
-  const { selection } = state;
-  const { $from } = selection;
+  const node = getSelectedImageNode(editor);
 
-  const node =
-    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
-
-  if (!node || node.type.name !== "image") {
+  if (!node) {
     return false;
   }
 
@@ -80,27 +50,6 @@ export function toggleImageFullWidth(editor: Editor) {
   return editor.commands.updateAttributes("image", {
     display: newDisplay,
     width: null, // Clear width when setting display mode
-  });
-}
-
-/**
- * Set image to full width (100% of container)
- *
- * @example
- * setImageFullWidth(editor);
- *
- * @example
- * // Create multiple size buttons in toolbar
- * <div>
- *   <button onclick={() => setImageWidth(globalThis.__editor, 300)}>Small</button>
- *   <button onclick={() => setImageWidth(globalThis.__editor, 600)}>Medium</button>
- *   <button onclick={() => setImageFullWidth(globalThis.__editor)}>Full</button>
- * </div>
- */
-export function setImageFullWidth(editor: Editor) {
-  return editor.commands.updateAttributes("image", {
-    display: "full",
-    width: null,
   });
 }
 
@@ -139,20 +88,13 @@ export function resetImageSize(editor: Editor) {
  * // Disable toolbar button when no image is selected
  * <button
  *   disabled={!isImageSelected(editor)}
- *   onclick={() => setImageFullWidth(editor)}
+ *   onclick={() => toggleImageFullWidth(editor)}
  * >
  *   Full Width
  * </button>
  */
 export function isImageSelected(editor: Editor): boolean {
-  const { state } = editor;
-  const { selection } = state;
-  const { $from } = selection;
-
-  const node =
-    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
-
-  return node?.type.name === "image";
+  return getSelectedImageNode(editor) !== null;
 }
 
 /**
@@ -194,16 +136,5 @@ export function isImageSelected(editor: Editor): boolean {
  * }
  */
 export function getImageAttributes(editor: Editor) {
-  const { state } = editor;
-  const { selection } = state;
-  const { $from } = selection;
-
-  const node =
-    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
-
-  if (!node || node.type.name !== "image") {
-    return null;
-  }
-
-  return node.attrs;
+  return getSelectedImageNode(editor)?.attrs ?? null;
 }

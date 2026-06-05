@@ -1,49 +1,29 @@
 ---
 import ExtensionView from "../../../components/ExtensionView.vue";
 import AIChatPanel from "../../../components/AIChatPanel.vue";
-import { hasPermission, ResourceType, getUserGroups } from "../../../db/acl.ts";
 import { findExtensionForRoute } from "../../../db/extensions.ts";
-import { getSpaceBySlug } from "../../../db/spaces.ts";
 import SpaceLayout from "../../../layouts/SpaceLayout.astro";
+import { requireSpaceViewer, resolveSpacePage } from "../../../utils/spacePage.ts";
 
-if (!Astro.locals.session) {
-  return Astro.redirect("/login");
+const result = await resolveSpacePage(Astro);
+if (result.response) {
+  return result.response;
 }
+const { space } = result;
 
-const { spaceSlug, path } = Astro.params;
+const { path } = Astro.params;
 
-if (!spaceSlug || !path) {
+if (!path) {
   return new Response(null, {
     status: 404,
     statusText: "Not found",
   });
 }
 
-const space = await getSpaceBySlug(spaceSlug);
-
-if (!space) {
-  return new Response(null, {
-    status: 404,
-    statusText: "Space not found",
-  });
-}
-
 // Check ACL permissions - user must be a member of the space
-const userGroups = await getUserGroups(Astro.locals.user!.id);
-const hasAccess = await hasPermission(
-  space.id,
-  ResourceType.SPACE,
-  space.id,
-  Astro.locals.user!.id,
-  "viewer",
-  userGroups,
-);
-
-if (!hasAccess) {
-  return new Response(null, {
-    status: 403,
-    statusText: "Forbidden",
-  });
+const accessDenied = await requireSpaceViewer(Astro, space);
+if (accessDenied) {
+  return accessDenied;
 }
 
 // Find extension that handles this route

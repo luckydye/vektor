@@ -3,15 +3,6 @@ export interface ParseResult {
   notifications: Map<string, NotificationConfig[]>;
 }
 
-export function parseICalEvents(
-  icalText: string,
-  color: string,
-  calendar: string,
-): CalendarEvent[] {
-  const result = parseICalEventsWithNotifications(icalText, color, calendar);
-  return result.events;
-}
-
 export function parseICalEventsWithNotifications(
   icalText: string,
   color: string,
@@ -265,42 +256,6 @@ export function parseSingleICalEvent(icalText: string): Partial<CalendarEvent> {
   } as Partial<CalendarEvent>;
 }
 
-export async function fetchICalEvents(
-  credentials: CalendarCredentials,
-  color: string,
-  name: string,
-): Promise<CalendarEvent[]> {
-  const url = credentials.url;
-  const isExternal = url.startsWith("http://") || url.startsWith("https://");
-
-  const fetchUrl = isExternal ? `/ical-proxy?url=${encodeURIComponent(url)}` : url;
-
-  const response = await fetch(fetchUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch iCal: ${response.status}`);
-  }
-  const text = await response.text();
-  return parseICalEvents(text, color, name);
-}
-
-export async function fetchICalEventsWithNotifications(
-  credentials: CalendarCredentials,
-  color: string,
-  name: string,
-): Promise<ParseResult> {
-  const url = credentials.url;
-  const isExternal = url.startsWith("http://") || url.startsWith("https://");
-
-  const fetchUrl = isExternal ? `/ical-proxy?url=${encodeURIComponent(url)}` : url;
-
-  const response = await fetch(fetchUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch iCal: ${response.status}`);
-  }
-  const text = await response.text();
-  return parseICalEventsWithNotifications(text, color, name);
-}
-
 export function parseICalDate(dateStr: string, keyPart?: string): Date | null {
   if (!dateStr) return null;
   const clean = dateStr.replace(/[^0-9T]/g, "");
@@ -379,13 +334,6 @@ export function formatICalDate(date: Date): string {
   return `${year}${month}${day}T${hours}${minutes}${seconds}`;
 }
 
-export function formatICalDateOnly(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}${month}${day}`;
-}
-
 function parseICalPerson(line: string): Organizer {
   const colonIdx = line.indexOf(":");
   const keyPart = line.slice(0, colonIdx);
@@ -420,34 +368,3 @@ function parseICalAttendee(line: string): Attendee {
   return { email, name, role, status };
 }
 
-export function serializeEventsToICal(events: CalendarEvent[]): string {
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Calendar//EN"];
-
-  for (const event of events) {
-    lines.push("BEGIN:VEVENT");
-    lines.push(`UID:${event.id}`);
-    lines.push(`SUMMARY:${event.title}`);
-    if (event.isAllDay) {
-      lines.push(`DTSTART;VALUE=DATE:${formatICalDateOnly(event.start)}`);
-      lines.push(`DTEND;VALUE=DATE:${formatICalDateOnly(event.end)}`);
-    } else {
-      lines.push(`DTSTART:${formatICalDate(event.start)}`);
-      lines.push(`DTEND:${formatICalDate(event.end)}`);
-    }
-
-    if (event.description) {
-      lines.push(`DESCRIPTION:${event.description}`);
-    }
-    if (event.location) {
-      lines.push(`LOCATION:${event.location}`);
-    }
-    if (event.url) {
-      lines.push(`URL:${event.url}`);
-    }
-
-    lines.push("END:VEVENT");
-  }
-
-  lines.push("END:VCALENDAR");
-  return lines.join("\r\n");
-}

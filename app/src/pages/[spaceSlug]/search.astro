@@ -1,27 +1,14 @@
 ---
 import SearchComponent from "../../components/Search.vue";
 import { verifySpaceAccess } from "../../db/api.ts";
-import { getSpaceBySlug } from "../../db/spaces.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
+import { resolveSpacePage } from "../../utils/spacePage.ts";
 
-if (!Astro.locals.session) {
-  return Astro.redirect("/login");
+const result = await resolveSpacePage(Astro);
+if (result.response) {
+  return result.response;
 }
-
-const { spaceSlug } = Astro.params;
-
-if (!spaceSlug) {
-  return Astro.redirect("/");
-}
-
-const space = await getSpaceBySlug(spaceSlug);
-
-if (!space) {
-  return new Response(null, {
-    status: 404,
-    statusText: "Space not found",
-  });
-}
+const { space } = result;
 
 const user = Astro.locals.user;
 if (!user) {

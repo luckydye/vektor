@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { parsePatch } from "diff";
-
-interface DiffLine {
-  type: "add" | "remove" | "context" | "empty";
-  content: string;
-}
-
-interface DiffRow {
-  left: DiffLine;
-  right: DiffLine;
-}
+import { hunkLinesToRows, type DiffLine, type DiffRow } from "../utils/diffRows.ts";
 
 interface DiffHunk {
   header: string;
@@ -36,56 +27,9 @@ const hunks = computed<DiffHunk[]>(() => {
 
     for (const file of patches) {
       for (const hunk of file.hunks) {
-        const rows: DiffRow[] = [];
-        let pendingRemove: string[] = [];
-        let pendingAdd: string[] = [];
-
-        const flushPending = () => {
-          const maxLength = Math.max(pendingRemove.length, pendingAdd.length);
-          for (let index = 0; index < maxLength; index += 1) {
-            rows.push({
-              left: pendingRemove[index]
-                ? { type: "remove", content: pendingRemove[index] }
-                : { type: "empty", content: "" },
-              right: pendingAdd[index]
-                ? { type: "add", content: pendingAdd[index] }
-                : { type: "empty", content: "" },
-            });
-          }
-          pendingRemove = [];
-          pendingAdd = [];
-        };
-
-        for (const line of hunk.lines) {
-          const marker = line[0];
-          const content = line.slice(1);
-
-          if (marker === "-") {
-            pendingRemove.push(content);
-            continue;
-          }
-
-          if (marker === "+") {
-            pendingAdd.push(content);
-            continue;
-          }
-
-          if (marker === "\\") {
-            continue;
-          }
-
-          flushPending();
-          rows.push({
-            left: { type: "context", content },
-            right: { type: "context", content },
-          });
-        }
-
-        flushPending();
-
         result.push({
           header: hunk.content,
-          rows,
+          rows: hunkLinesToRows(hunk.lines),
         });
       }
     }

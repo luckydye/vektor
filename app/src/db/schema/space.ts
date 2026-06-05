@@ -131,15 +131,6 @@ export const acl = sqliteTable(
 export type AclEntry = typeof acl.$inferSelect;
 export type AclInsert = typeof acl.$inferInsert;
 
-export const connection = sqliteTable("connection", {
-  id: text("id").primaryKey(),
-  label: text("label").notNull(),
-  url: text("url"),
-  icon: text("icon"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
-
 export const spaceSecret = sqliteTable(
   "space_secret",
   {

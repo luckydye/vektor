@@ -11,6 +11,8 @@ export interface ImageUploadOptions {
   uploadUrl?: string;
 }
 
+const PLACEHOLDER_TEXT = "⏳ Uploading image...";
+
 async function uploadImage(
   file: File,
   spaceId: string,
@@ -38,6 +40,66 @@ async function uploadImage(
 
 function isImageFile(file: File): boolean {
   return file.type.startsWith("image/");
+}
+
+function findPlaceholder(editor: Editor): { from: number; to: number } | null {
+  let found: { from: number; to: number } | null = null;
+
+  editor.state.doc.descendants((node, pos) => {
+    if (node.isText && node.text?.includes(PLACEHOLDER_TEXT)) {
+      const textOffset = node.text.indexOf(PLACEHOLDER_TEXT);
+      const from = pos + textOffset;
+      found = { from, to: from + PLACEHOLDER_TEXT.length };
+      return false;
+    }
+  });
+
+  return found;
+}
+
+function replacePlaceholderWithImage(editor: Editor, url: string): void {
+  const range = findPlaceholder(editor);
+  if (range) {
+    editor
+      .chain()
+      .focus()
+      .deleteRange(range)
+      .insertContentAt(range.from, { type: "image", attrs: { src: url } })
+      .run();
+  } else {
+    editor.chain().focus().setImage({ src: url }).run();
+  }
+}
+
+function replacePlaceholderWithError(editor: Editor, error: unknown): void {
+  const range = findPlaceholder(editor);
+  if (range) {
+    editor
+      .chain()
+      .focus()
+      .deleteRange(range)
+      .insertContent(
+        `❌ Failed to upload image: ${error instanceof Error ? error.message : "Unknown error"}`,
+      )
+      .run();
+  }
+}
+
+function insertPlaceholderAndUpload(
+  editor: Editor,
+  view: EditorView,
+  file: File,
+  insertPos: number,
+  spaceId: string,
+  documentId?: string,
+): void {
+  const tr = view.state.tr;
+  tr.insertText(PLACEHOLDER_TEXT, insertPos);
+  view.dispatch(tr);
+
+  uploadImage(file, spaceId, documentId)
+    .then((url) => replacePlaceholderWithImage(editor, url))
+    .catch((error) => replacePlaceholderWithError(editor, error));
 }
 
 class ResizableImageView extends ResizableNodeView {
@@ -126,65 +188,14 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
             for (const item of imageItems) {
               const file = item.getAsFile();
               if (file) {
-                const insertPos = view.state.selection.from;
-                const placeholderText = "⏳ Uploading image...";
-
-                const tr = view.state.tr;
-                tr.insertText(placeholderText, insertPos);
-                view.dispatch(tr);
-
-                uploadImage(file, spaceId, documentId)
-                  .then((url) => {
-                    const state = editor.state;
-                    let foundPos = -1;
-                    let foundLength = 0;
-
-                    state.doc.descendants((node, pos) => {
-                      if (node.isText && node.text?.includes(placeholderText)) {
-                        const textOffset = node.text.indexOf(placeholderText);
-                        foundPos = pos + textOffset;
-                        foundLength = placeholderText.length;
-                        return false;
-                      }
-                    });
-
-                    if (foundPos >= 0) {
-                      editor
-                        .chain()
-                        .focus()
-                        .deleteRange({ from: foundPos, to: foundPos + foundLength })
-                        .insertContentAt(foundPos, {
-                          type: "image",
-                          attrs: { src: url },
-                        })
-                        .run();
-                    } else {
-                      editor.chain().focus().setImage({ src: url }).run();
-                    }
-                  })
-                  .catch((error) => {
-                    const state = editor.state;
-                    let foundPos = -1;
-                    let foundLength = 0;
-
-                    state.doc.descendants((node, pos) => {
-                      if (node.isText && node.text?.includes(placeholderText)) {
-                        const textOffset = node.text.indexOf(placeholderText);
-                        foundPos = pos + textOffset;
-                        foundLength = placeholderText.length;
-                        return false;
-                      }
-                    });
-
-                    if (foundPos >= 0) {
-                      editor
-                        .chain()
-                        .focus()
-                        .deleteRange({ from: foundPos, to: foundPos + foundLength })
-                        .insertContent(`❌ Failed to upload image: ${error.message}`)
-                        .run();
-                    }
-                  });
+                insertPlaceholderAndUpload(
+                  editor,
+                  view,
+                  file,
+                  view.state.selection.from,
+                  spaceId,
+                  documentId,
+                );
               }
             }
 
@@ -218,65 +229,14 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
             }
 
             for (const file of images) {
-              const insertPos = coordinates.pos;
-              const placeholderText = "⏳ Uploading image...";
-
-              const tr = view.state.tr;
-              tr.insertText(placeholderText, insertPos);
-              view.dispatch(tr);
-
-              uploadImage(file, spaceId, documentId)
-                .then((url) => {
-                  const state = editor.state;
-                  let foundPos = -1;
-                  let foundLength = 0;
-
-                  state.doc.descendants((node, pos) => {
-                    if (node.isText && node.text?.includes(placeholderText)) {
-                      const textOffset = node.text.indexOf(placeholderText);
-                      foundPos = pos + textOffset;
-                      foundLength = placeholderText.length;
-                      return false;
-                    }
-                  });
-
-                  if (foundPos >= 0) {
-                    editor
-                      .chain()
-                      .focus()
-                      .deleteRange({ from: foundPos, to: foundPos + foundLength })
-                      .insertContentAt(foundPos, {
-                        type: "image",
-                        attrs: { src: url },
-                      })
-                      .run();
-                  } else {
-                    editor.chain().focus().setImage({ src: url }).run();
-                  }
-                })
-                .catch((error) => {
-                  const state = editor.state;
-                  let foundPos = -1;
-                  let foundLength = 0;
-
-                  state.doc.descendants((node, pos) => {
-                    if (node.isText && node.text?.includes(placeholderText)) {
-                      const textOffset = node.text.indexOf(placeholderText);
-                      foundPos = pos + textOffset;
-                      foundLength = placeholderText.length;
-                      return false;
-                    }
-                  });
-
-                  if (foundPos >= 0) {
-                    editor
-                      .chain()
-                      .focus()
-                      .deleteRange({ from: foundPos, to: foundPos + foundLength })
-                      .insertContent(`❌ Failed to upload image: ${error.message}`)
-                      .run();
-                  }
-                });
+              insertPlaceholderAndUpload(
+                editor,
+                view,
+                file,
+                coordinates.pos,
+                spaceId,
+                documentId,
+              );
             }
 
             return true;
@@ -306,59 +266,13 @@ export async function handleImageUpload(
       return;
     }
 
-    const placeholderText = "⏳ Uploading image...";
-    editor.chain().focus().insertContent(placeholderText).run();
+    editor.chain().focus().insertContent(PLACEHOLDER_TEXT).run();
 
     try {
       const url = await uploadImage(file, spaceId, documentId);
-
-      const state = editor.state;
-      let foundPos = -1;
-      let foundLength = 0;
-
-      state.doc.descendants((node, pos) => {
-        if (node.isText && node.text?.includes(placeholderText)) {
-          const textOffset = node.text.indexOf(placeholderText);
-          foundPos = pos + textOffset;
-          foundLength = placeholderText.length;
-          return false;
-        }
-      });
-
-      if (foundPos >= 0) {
-        editor
-          .chain()
-          .focus()
-          .deleteRange({ from: foundPos, to: foundPos + foundLength })
-          .insertContentAt(foundPos, { type: "image", attrs: { src: url } })
-          .run();
-      } else {
-        editor.chain().focus().setImage({ src: url }).run();
-      }
+      replacePlaceholderWithImage(editor, url);
     } catch (error) {
-      const state = editor.state;
-      let foundPos = -1;
-      let foundLength = 0;
-
-      state.doc.descendants((node, pos) => {
-        if (node.isText && node.text?.includes(placeholderText)) {
-          const textOffset = node.text.indexOf(placeholderText);
-          foundPos = pos + textOffset;
-          foundLength = placeholderText.length;
-          return false;
-        }
-      });
-
-      if (foundPos >= 0) {
-        editor
-          .chain()
-          .focus()
-          .deleteRange({ from: foundPos, to: foundPos + foundLength })
-          .insertContent(
-            `❌ Failed to upload image: ${error instanceof Error ? error.message : "Unknown error"}`,
-          )
-          .run();
-      }
+      replacePlaceholderWithError(editor, error);
     }
   };
 

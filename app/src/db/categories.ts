@@ -69,14 +69,7 @@ export async function createCategory(
   };
 }
 
-export async function getCategory(spaceId: string, id: string): Promise<Category | null> {
-  const db = await getSpaceDb(spaceId);
-  const result = await db.select().from(category).where(eq(category.id, id)).get();
-
-  if (!result) {
-    return null;
-  }
-
+function rowToCategory(result: typeof category.$inferSelect): Category {
   return {
     id: result.id,
     name: result.name,
@@ -88,6 +81,13 @@ export async function getCategory(spaceId: string, id: string): Promise<Category
     createdAt: new Date(result.createdAt),
     updatedAt: new Date(result.updatedAt),
   };
+}
+
+export async function getCategory(spaceId: string, id: string): Promise<Category | null> {
+  const db = await getSpaceDb(spaceId);
+  const result = await db.select().from(category).where(eq(category.id, id)).get();
+
+  return result ? rowToCategory(result) : null;
 }
 
 export async function getCategoryBySlug(
@@ -97,40 +97,14 @@ export async function getCategoryBySlug(
   const db = await getSpaceDb(spaceId);
   const result = await db.select().from(category).where(eq(category.slug, slug)).get();
 
-  if (!result) {
-    return null;
-  }
-
-  return {
-    id: result.id,
-    name: result.name,
-    slug: result.slug,
-    description: result.description || undefined,
-    color: result.color || undefined,
-    icon: result.icon || undefined,
-    order: result.order,
-    createdAt: new Date(result.createdAt),
-    updatedAt: new Date(result.updatedAt),
-  };
+  return result ? rowToCategory(result) : null;
 }
 
 export async function listCategories(spaceId: string): Promise<Category[]> {
   const db = await getSpaceDb(spaceId);
   const results = await db.select().from(category).all();
 
-  return results
-    .map((result) => ({
-      id: result.id,
-      name: result.name,
-      slug: result.slug,
-      description: result.description || undefined,
-      color: result.color || undefined,
-      icon: result.icon || undefined,
-      order: result.order,
-      createdAt: new Date(result.createdAt),
-      updatedAt: new Date(result.updatedAt),
-    }))
-    .sort((a, b) => a.order - b.order);
+  return results.map(rowToCategory).sort((a, b) => a.order - b.order);
 }
 
 export async function updateCategory(

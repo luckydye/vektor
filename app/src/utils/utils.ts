@@ -2,13 +2,21 @@
  * Generates a color palette from a base color for light mode
  * Creates shades from 10 (lightest) to 950 (darkest)
  */
-export function generateColorPalette(baseColor: string): Record<string, string> {
-  const hex = baseColor.replace("#", "");
+function hexToHsl(color: string): [number, number, number] {
+  const hex = color.replace("#", "");
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
+  return rgbToHsl(r, g, b);
+}
 
-  const [h, s, l] = rgbToHsl(r, g, b);
+function hslToHex(h: number, s: number, l: number): string {
+  const [r, g, b] = hslToRgb(h, s, l);
+  return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`;
+}
+
+export function generateColorPalette(baseColor: string): Record<string, string> {
+  const [h, s] = hexToHsl(baseColor);
 
   const palette: Record<string, string> = {};
 
@@ -29,9 +37,7 @@ export function generateColorPalette(baseColor: string): Record<string, string> 
   ];
 
   for (const stop of stops) {
-    const [newR, newG, newB] = hslToRgb(h, s, stop.lightness / 100);
-    palette[stop.key] =
-      `#${componentToHex(newR)}${componentToHex(newG)}${componentToHex(newB)}`;
+    palette[stop.key] = hslToHex(h, s, stop.lightness / 100);
   }
 
   return palette;
@@ -42,12 +48,7 @@ export function generateColorPalette(baseColor: string): Record<string, string> 
  * Creates shades optimized for dark backgrounds
  */
 export function generateDarkColorPalette(baseColor: string): Record<string, string> {
-  const hex = baseColor.replace("#", "");
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  const [h, s, l] = rgbToHsl(r, g, b);
+  const [h, s] = hexToHsl(baseColor);
 
   const palette: Record<string, string> = {};
 
@@ -68,9 +69,7 @@ export function generateDarkColorPalette(baseColor: string): Record<string, stri
   ];
 
   for (const stop of stops) {
-    const [newR, newG, newB] = hslToRgb(h, stop.saturation, stop.lightness / 100);
-    palette[stop.key] =
-      `#${componentToHex(newR)}${componentToHex(newG)}${componentToHex(newB)}`;
+    palette[stop.key] = hslToHex(h, stop.saturation, stop.lightness / 100);
   }
 
   return palette;

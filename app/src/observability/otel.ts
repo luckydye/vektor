@@ -174,7 +174,6 @@ export async function shutdownTelemetry(): Promise<void> {
   await current.shutdown();
 }
 
-export const otelTrace = trace;
 export const otelMetrics = metrics;
 
 export function activeTraceHeaders(): { traceparent?: string; tracestate?: string } {

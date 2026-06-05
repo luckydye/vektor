@@ -212,68 +212,21 @@ export async function createRevision(
   };
 }
 
-export async function publishRevision(
-  spaceId: string,
-  documentId: string,
-  rev: number,
-): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-
-  const revisionRecord = await db
-    .select()
-    .from(revision)
-    .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)))
-    .get();
-
-  if (!revisionRecord) {
-    throw new Error("Revision not found");
-  }
-
-  const revisionContent = await getRevisionContent(
-    spaceId,
-    documentId,
-    revisionRecord.rev,
-  );
-
-  await db
-    .update(document)
-    .set({ publishedRev: rev, content: revisionContent || "" })
-    .where(eq(document.id, documentId));
-
-  invalidateMentionCache(documentId);
-
-  await createAuditLog(db, {
-    spaceId,
-    docId: documentId,
-    revisionId: rev,
-    userId: undefined,
-    event: "publish",
-    details: { message: `Published revision ${rev}` },
-  });
-
-  await triggerWebhooks(db, {
-    event: "document.published",
-    spaceId,
-    documentId,
-    revisionId: rev,
-    timestamp: new Date().toISOString(),
-  });
-
-  const mentionedEmails = getUniqueMentionedEmails(revisionContent || "");
-  if (mentionedEmails.length > 0) {
-    for (const email of mentionedEmails) {
-      await triggerWebhooks(db, {
-        event: "mention",
-        spaceId,
-        documentId,
-        revisionId: rev,
-        timestamp: new Date().toISOString(),
-        data: {
-          mentionedUser: email,
-        },
-      });
-    }
-  }
+function rowToRevisionMetadata(
+  r: Omit<typeof revision.$inferSelect, "snapshot">,
+): Omit<Revision, "snapshot"> {
+  return {
+    id: r.id,
+    documentId: r.documentId,
+    rev: r.rev,
+    slug: r.slug,
+    checksum: r.checksum,
+    parentRev: r.parentRev,
+    status: (r.status as Revision["status"] | null) ?? null,
+    message: r.message,
+    createdAt: new Date(r.createdAt),
+    createdBy: r.createdBy,
+  };
 }
 
 export async function getRevision(
@@ -294,17 +247,8 @@ export async function getRevision(
   }
 
   return {
-    id: revisionRecord.id,
-    documentId: revisionRecord.documentId,
-    rev: revisionRecord.rev,
-    slug: revisionRecord.slug,
+    ...rowToRevisionMetadata(revisionRecord),
     snapshot: revisionRecord.snapshot,
-    checksum: revisionRecord.checksum,
-    parentRev: revisionRecord.parentRev,
-    status: (revisionRecord.status as Revision["status"] | null) ?? null,
-    message: revisionRecord.message,
-    createdAt: new Date(revisionRecord.createdAt),
-    createdBy: revisionRecord.createdBy,
   };
 }
 
@@ -341,49 +285,6 @@ export async function getPublishedContent(
   }
 
   return getRevisionContent(spaceId, documentId, doc.publishedRev);
-}
-
-export async function getCurrentContent(
-  spaceId: string,
-  documentId: string,
-): Promise<string | null> {
-  const db = await getSpaceDb(spaceId);
-
-  const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
-
-  if (!doc || doc.currentRev === 0) {
-    return null;
-  }
-
-  return getRevisionContent(spaceId, documentId, doc.currentRev);
-}
-
-export async function listRevisions(
-  spaceId: string,
-  documentId: string,
-): Promise<Revision[]> {
-  const db = await getSpaceDb(spaceId);
-
-  const revisions = await db
-    .select()
-    .from(revision)
-    .where(eq(revision.documentId, documentId))
-    .orderBy(desc(revision.rev))
-    .all();
-
-  return revisions.map((r) => ({
-    id: r.id,
-    documentId: r.documentId,
-    rev: r.rev,
-    slug: r.slug,
-    snapshot: r.snapshot,
-    checksum: r.checksum,
-    parentRev: r.parentRev,
-    status: (r.status as Revision["status"] | null) ?? null,
-    message: r.message,
-    createdAt: new Date(r.createdAt),
-    createdBy: r.createdBy,
-  }));
 }
 
 export async function restoreRevision(
@@ -442,18 +343,7 @@ export async function getRevisionMetadata(
     return null;
   }
 
-  return {
-    id: revisionRecord.id,
-    documentId: revisionRecord.documentId,
-    rev: revisionRecord.rev,
-    slug: revisionRecord.slug,
-    checksum: revisionRecord.checksum,
-    parentRev: revisionRecord.parentRev,
-    status: (revisionRecord.status as Revision["status"] | null) ?? null,
-    message: revisionRecord.message,
-    createdAt: new Date(revisionRecord.createdAt),
-    createdBy: revisionRecord.createdBy,
-  };
+  return rowToRevisionMetadata(revisionRecord);
 }
 
 export async function listRevisionMetadata(
@@ -480,18 +370,7 @@ export async function listRevisionMetadata(
     .orderBy(desc(revision.rev))
     .all();
 
-  return revisions.map((r) => ({
-    id: r.id,
-    documentId: r.documentId,
-    rev: r.rev,
-    slug: r.slug,
-    checksum: r.checksum,
-    parentRev: r.parentRev,
-    status: (r.status as Revision["status"] | null) ?? null,
-    message: r.message,
-    createdAt: new Date(r.createdAt),
-    createdBy: r.createdBy,
-  }));
+  return revisions.map(rowToRevisionMetadata);
 }
 
 export async function createSuggestion(
@@ -522,18 +401,4 @@ export async function createSuggestion(
     status: "open",
     parentRev,
   });
-}
-
-export async function updateRevisionStatus(
-  spaceId: string,
-  documentId: string,
-  rev: number,
-  status: NonNullable<Revision["status"]>,
-): Promise<void> {
-  const db = await getSpaceDb(spaceId);
-
-  await db
-    .update(revision)
-    .set({ status })
-    .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)));
 }
