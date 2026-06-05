@@ -101,6 +101,18 @@ async function updateDocumentEmbedding(spaceId: string, documentId: string): Pro
     return;
   }
 
+  if (doc.type === "canvas") {
+    await db
+      .update(document)
+      .set({
+        searchText: null,
+        searchEmbedding: null,
+        searchUpdatedAt: null,
+      })
+      .where(eq(document.id, documentId));
+    return;
+  }
+
   const props = await db
     .select()
     .from(property)
@@ -204,14 +216,17 @@ export async function createDocument(
 
   await updateDocumentEmbedding(spaceId, id);
 
-  await createRevision(spaceId, id, content, createdBy, {
-    message: "Initial revision",
-  });
+  const draftOnly = type === "canvas";
+  if (!draftOnly) {
+    await createRevision(spaceId, id, content, createdBy, {
+      message: "Initial revision",
+    });
+  }
 
   await createAuditLog(await getSpaceDb(spaceId), {
     spaceId,
     docId: id,
-    revisionId: 1,
+    revisionId: draftOnly ? undefined : 1,
     userId: createdBy,
     event: "create",
     details: { message: "Document created" },
@@ -222,7 +237,7 @@ export async function createDocument(
     slug: uniqueSlug,
     type: type || null,
     content,
-    currentRev: 1,
+    currentRev: draftOnly ? 0 : 1,
     publishedRev: null,
     properties,
     createdAt: documentCreatedAt,
@@ -1262,6 +1277,7 @@ export async function searchDocuments(
       .from(document)
       .where(
         sql`(search_embedding IS NULL OR search_text IS NULL)
+          AND (type IS NULL OR type != 'canvas')
           AND ${nonArchivedDocumentCondition}`,
       )
       .all();
@@ -1503,6 +1519,9 @@ export async function rebuildSearchIndex(spaceId: string): Promise<void> {
   const docs = await db.select().from(document).all();
 
   for (const doc of docs) {
+    if (doc.type === "canvas") {
+      continue;
+    }
     await updateDocumentEmbedding(spaceId, doc.id);
   }
 }

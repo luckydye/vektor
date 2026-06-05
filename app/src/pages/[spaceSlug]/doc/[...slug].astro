@@ -92,7 +92,7 @@ const isReadonly =
   readOnlyDocumentTypes.includes(document.type ?? "");
 
 let htmlContent = document.content;
-if (document.publishedRev !== null) {
+if (document.type !== "canvas" && document.publishedRev !== null) {
   const publishedContent = await getPublishedContent(space.id, document.id);
   if (publishedContent) {
     htmlContent = publishedContent;
@@ -261,7 +261,9 @@ if (diffMins >= 1 && diffMins < 60) {
 
    	<!-- Revisions Sidebar -->
     <div slot="outer">
-        <RevisionsSidebar client:only documentId={document.id} />
+        {document.type !== "canvas" && (
+          <RevisionsSidebar client:only documentId={document.id} />
+        )}
         <AIChatPanel client:only documentId={document.id} />
     </div>
 </SpaceLayout>
