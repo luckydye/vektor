@@ -52,24 +52,34 @@ type CanvasShape = {
   height?: number;
   text?: string;
   color?: string;
+  src?: string;
+  alt?: string;
+  updatedAt?: number;
+};
+
+type CanvasStroke = {
+  id: string;
+  points?: unknown[];
+  style?: Record<string, unknown>;
   updatedAt?: number;
 };
 
 function loadCanvasYDoc(content: string): Y.Doc {
   const ydoc = new Y.Doc();
   const shapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
-  let parsed: { shapes?: CanvasShape[] };
+  const strokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
+  let parsed: { shapes?: CanvasShape[]; strokes?: CanvasStroke[] };
 
   try {
-    parsed = JSON.parse(content) as { shapes?: CanvasShape[] };
+    parsed = JSON.parse(content) as { shapes?: CanvasShape[]; strokes?: CanvasStroke[] };
   } catch {
     return ydoc;
   }
 
-  if (!Array.isArray(parsed.shapes)) return ydoc;
+  if (!Array.isArray(parsed.shapes) && !Array.isArray(parsed.strokes)) return ydoc;
 
   ydoc.transact(() => {
-    for (const shape of parsed.shapes) {
+    for (const shape of parsed.shapes ?? []) {
       if (!shape || typeof shape.id !== "string") continue;
       const map = new Y.Map<unknown>();
       map.set("type", shape.type ?? "note");
@@ -79,8 +89,19 @@ function loadCanvasYDoc(content: string): Y.Doc {
       map.set("height", shape.height ?? 150);
       map.set("text", shape.text ?? "");
       map.set("color", shape.color ?? "#fef3c7");
+      if (shape.src) map.set("src", shape.src);
+      if (shape.alt) map.set("alt", shape.alt);
       map.set("updatedAt", shape.updatedAt ?? Date.now());
       shapes.set(shape.id, map);
+    }
+
+    for (const stroke of parsed.strokes ?? []) {
+      if (!stroke || typeof stroke.id !== "string") continue;
+      const map = new Y.Map<unknown>();
+      map.set("points", Array.isArray(stroke.points) ? stroke.points : []);
+      map.set("style", stroke.style ?? {});
+      map.set("updatedAt", stroke.updatedAt ?? Date.now());
+      strokes.set(stroke.id, map);
     }
   });
 

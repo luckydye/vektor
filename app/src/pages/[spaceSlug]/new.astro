@@ -46,7 +46,7 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
       <div class={twMerge(
         type === 'canvas' ? 'absolute top-xs right-0 left-0 z-10' : 'pt-s mb-xl'
       )}>
-        <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xl">
+        <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xs">
           <div>
             <div class="flex items-start justify-between">
               <TitleEditor client:load initialEditMode={true} title={title} documentId={undefined} />
