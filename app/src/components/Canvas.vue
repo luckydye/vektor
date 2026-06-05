@@ -131,6 +131,54 @@ function freehandOptions(style: FreehandStrokeStyle = FREEHAND_STYLE) {
     },
   };
 }
+type ToolDef = {
+  id: CanvasTool;
+  label: string;
+  shortcut: string;
+  paths: string[];
+};
+
+// Outline (stroke) icon paths on a 24×24 grid, drawn with currentColor.
+const CANVAS_TOOLS: ToolDef[] = [
+  {
+    id: "select",
+    label: "Select",
+    shortcut: "V",
+    paths: [
+      "M4.5 4.2a.6.6 0 0 1 .77-.77l13.2 5.36a.6.6 0 0 1-.07 1.13l-5.05 1.3a1.6 1.6 0 0 0-1.15 1.15l-1.3 5.05a.6.6 0 0 1-1.13.07z",
+    ],
+  },
+  {
+    id: "draw",
+    label: "Draw",
+    shortcut: "D",
+    paths: ["M16.5 4.5l3 3L8 19l-4 1 1-4z", "M14.5 6.5l3 3"],
+  },
+  {
+    id: "note",
+    label: "Note",
+    shortcut: "N",
+    paths: ["M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8l6-6V6a2 2 0 0 0-2-2z", "M14 20v-6h6"],
+  },
+  {
+    id: "text",
+    label: "Text",
+    shortcut: "T",
+    paths: ["M5 6V4h14v2", "M9.5 20h5", "M12 4v16"],
+  },
+  {
+    id: "section",
+    label: "Section",
+    shortcut: "S",
+    paths: ["M4 9h16", "M4 15h16", "M9 4v16", "M15 4v16"],
+  },
+];
+const FIT_ICON_PATHS = [
+  "M8 3H5a2 2 0 0 0-2 2v3",
+  "M21 8V5a2 2 0 0 0-2-2h-3",
+  "M3 16v3a2 2 0 0 0 2 2h3",
+  "M16 21h3a2 2 0 0 0 2-2v-3",
+];
 const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
 const MIN_NOTE_SIZE = { width: 140, height: 96 };
 const MIN_SECTION_SIZE = { width: 240, height: 160 };
@@ -1354,14 +1402,28 @@ onUnmounted(() => {
   <div class="canvas-root" :class="{ 'is-dark': isDarkMode }">
     <div class="canvas-toolbar" @pointerdown.stop>
       <button
-        v-for="tool in (['select', 'draw', 'note', 'text', 'section'] as CanvasTool[])"
-        :key="tool"
+        v-for="tool in CANVAS_TOOLS"
+        :key="tool.id"
         type="button"
         class="canvas-tool"
-        :class="{ active: activeTool === tool }"
-        @click="activeTool = tool"
+        :class="{ active: activeTool === tool.id }"
+        :aria-label="tool.label"
+        :aria-pressed="activeTool === tool.id"
+        :data-tooltip="`${tool.label} · ${tool.shortcut}`"
+        @click="activeTool = tool.id"
       >
-        {{ tool }}
+        <svg
+          class="canvas-tool-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path v-for="(d, i) in tool.paths" :key="i" :d="d" />
+        </svg>
       </button>
       <span
         v-if="activeTool === 'note' || selectedShape?.type === 'note'"
@@ -1380,7 +1442,26 @@ onUnmounted(() => {
         ></button>
       </span>
       <span class="canvas-divider"></span>
-      <button type="button" class="canvas-tool" @click="fitView">Fit</button>
+      <button
+        type="button"
+        class="canvas-tool"
+        aria-label="Fit to view"
+        data-tooltip="Fit to view · F"
+        @click="fitView"
+      >
+        <svg
+          class="canvas-tool-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path v-for="(d, i) in FIT_ICON_PATHS" :key="i" :d="d" />
+        </svg>
+      </button>
       <span v-if="saveState === 'error'" class="canvas-save-state error">{{ saveError }}</span>
     </div>
 
@@ -1520,6 +1601,8 @@ onUnmounted(() => {
   --canvas-tool-active-border: #bfdbfe;
   --canvas-tool-active-text: #1d4ed8;
   --canvas-divider-color: #e5e7eb;
+  --canvas-tooltip-bg: #111827;
+  --canvas-tooltip-text: #f9fafb;
   --canvas-grid-minor: rgba(15, 23, 42, 0.07);
   --canvas-grid-major: rgba(15, 23, 42, 0.13);
   --canvas-ink-color: #111827;
@@ -1559,6 +1642,8 @@ onUnmounted(() => {
     --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
     --canvas-tool-active-text: #bfdbfe;
     --canvas-divider-color: rgba(255, 255, 255, 0.12);
+    --canvas-tooltip-bg: #e5e7eb;
+    --canvas-tooltip-text: #111827;
     --canvas-grid-minor: rgba(255, 255, 255, 0.07);
     --canvas-grid-major: rgba(255, 255, 255, 0.13);
     --canvas-ink-color: #f3f4f6;
@@ -1592,6 +1677,8 @@ onUnmounted(() => {
   --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
   --canvas-tool-active-text: #bfdbfe;
   --canvas-divider-color: rgba(255, 255, 255, 0.12);
+  --canvas-tooltip-bg: #e5e7eb;
+  --canvas-tooltip-text: #111827;
   --canvas-grid-minor: rgba(255, 255, 255, 0.07);
   --canvas-grid-major: rgba(255, 255, 255, 0.13);
   --canvas-ink-color: #f3f4f6;
@@ -1617,32 +1704,80 @@ onUnmounted(() => {
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   max-width: calc(100% - 24px);
-  overflow-x: auto;
   border: 1px solid var(--canvas-toolbar-border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--canvas-toolbar-bg);
   padding: 6px;
   box-shadow: 0 10px 28px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
 }
 
 .canvas-tool {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
-  padding: 6px 9px;
+  padding: 0;
   color: var(--canvas-tool-text);
   cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
-  text-transform: capitalize;
-  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.canvas-tool-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .canvas-tool:hover {
   background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+/* Hover tooltip that escapes the toolbar (above the button). */
+.canvas-tool[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--canvas-tooltip-bg);
+  color: var(--canvas-tooltip-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.canvas-tool[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  border: 5px solid transparent;
+  border-top-color: var(--canvas-tooltip-bg);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.canvas-tool[data-tooltip]:hover::after,
+.canvas-tool[data-tooltip]:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .canvas-tool.active,
