@@ -52,6 +52,18 @@ interface LastTouchGesture extends TouchGestureState {
   zoom: number;
 }
 
+function targetPoint(target: Window | HTMLElement, clientX: number, clientY: number) {
+  if (target instanceof Window) {
+    return { x: clientX, y: clientY };
+  }
+
+  const rect = target.getBoundingClientRect();
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top,
+  };
+}
+
 export function panCameraByScreenDelta({
   camera,
   screen,
@@ -110,10 +122,13 @@ export function createViewportControls({
     if (pointers.length < 2) return null;
 
     const [a, b] = pointers;
-    const centerX = (a.clientX + b.clientX) / 2;
-    const centerY = (a.clientY + b.clientY) / 2;
+    const center = targetPoint(
+      target,
+      (a.clientX + b.clientX) / 2,
+      (a.clientY + b.clientY) / 2,
+    );
     const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    return { centerX, centerY, distance };
+    return { centerX: center.x, centerY: center.y, distance };
   }
 
   function beginTouchPointer(e: PointerEvent) {
@@ -189,6 +204,7 @@ export function createViewportControls({
     const camera = getCamera();
     const screen = getScreen();
     const fit = getFit();
+    const pointer = targetPoint(target, e.clientX, e.clientY);
 
     if (e.ctrlKey || e.metaKey) {
       setCamera(
@@ -196,8 +212,8 @@ export function createViewportControls({
           camera,
           screen,
           fit,
-          screenX: e.clientX,
-          screenY: e.clientY,
+          screenX: pointer.x,
+          screenY: pointer.y,
           zoom: camera.zoom * Math.exp(-e.deltaY * wheelZoomSpeed),
           minZoom,
           maxZoom,

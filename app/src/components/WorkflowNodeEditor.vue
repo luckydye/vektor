@@ -11,7 +11,6 @@ import {
 import { api } from "../api/client.ts";
 import type {
   DocumentWithProperties,
-  WorkflowNodeState,
   WorkflowRunStatus,
 } from "../api/ApiClient.ts";
 import {
@@ -93,11 +92,9 @@ const docRefs = ref<DocRef[]>([]);
 const runStatus = ref<WorkflowRunStatus | null>(null);
 const running = ref(false);
 const saving = ref(false);
-const loading = ref(true);
 const error = ref<string | null>(null);
 const selectedNodeId = ref<string | null>(null);
 const mode = ref<"idle" | "placing" | "connecting">("idle");
-const search = ref("");
 const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
 const pendingConnection = ref<PendingConnection | null>(null);
@@ -115,16 +112,7 @@ const selectedNode = computed(() =>
 
 const groupedJobs = computed(() => {
   const groups = new Map<string, AvailableJob[]>();
-  const query = search.value.trim().toLowerCase();
   for (const job of availableJobs.value) {
-    if (
-      query &&
-      !job.jobName.toLowerCase().includes(query) &&
-      !job.jobId.toLowerCase().includes(query) &&
-      !job.extensionName.toLowerCase().includes(query)
-    ) {
-      continue;
-    }
     const group = groups.get(job.extensionName);
     if (group) {
       group.push(job);
@@ -152,33 +140,17 @@ const sortedNodes = computed(() =>
   [...nodes.values()].toSorted((a, b) => a.id.localeCompare(b.id)),
 );
 
-const selectedJob = computed(() => {
-  const node = selectedNode.value;
-  if (!node) return null;
-  return jobsByKey.value.get(`${node.extensionId}::${node.jobId}`) ?? null;
-});
-
-const retryableFailedNodeId = computed(() => {
-  const entries = Object.entries(runStatus.value?.nodes ?? {}).filter(
-    ([, state]) => state.status === "failed",
-  );
-  if (entries.length === 0) return null;
-  entries.sort(([leftId, left], [rightId, right]) => {
-    const diff = getLastExecutedAt(left) - getLastExecutedAt(right);
-    return diff || leftId.localeCompare(rightId);
-  });
-  return entries[0]?.[0] ?? null;
-});
-
-const statusText = computed(() => {
-  const edgeCount = edges.value.length;
-  const zoom = camera.value.zoom.toFixed(2);
-  if (mode.value === "placing") return `${nodes.size} nodes, ${edgeCount} edges, click canvas to place`;
-  if (mode.value === "connecting") return `${nodes.size} nodes, ${edgeCount} edges, choose an input port`;
-  return `${nodes.size} nodes, ${edgeCount} edges, zoom ${zoom}`;
-});
-
 const connectionsByNodeId = computed(() => buildNodeIoConnections());
+
+const agentToolOptions = computed(() =>
+  availableJobs.value
+    .filter((job) => !(job.extensionId === "workflow-builder" && job.jobId === "agent"))
+    .map((job) => ({
+      value: toolNameForJob(job),
+      label: `${job.jobName} (${job.extensionName})`,
+    }))
+    .toSorted((a, b) => a.label.localeCompare(b.label)),
+);
 
 function transform() {
   return buildTransform(camera.value, screen.value, FIT_REFERENCE);
@@ -189,14 +161,6 @@ function pointerWorld(event: PointerEvent | MouseEvent) {
   const x = event.clientX - (rect?.left ?? 0);
   const y = event.clientY - (rect?.top ?? 0);
   return screenToWorld(x, y, transform());
-}
-
-function getLastExecutedAt(status?: WorkflowNodeState): number {
-  const timestamps = [status?.startedAt, status?.completedAt].filter(
-    (value): value is string => value != null,
-  );
-  if (timestamps.length === 0) return -1;
-  return Math.max(...timestamps.map((value) => Date.parse(value) || -1));
 }
 
 function readDefinition(content: string | null | undefined): WorkflowDef {
@@ -264,7 +228,6 @@ function buildDefinition(): WorkflowDef {
 }
 
 async function load() {
-  loading.value = true;
   error.value = null;
   try {
     const [doc, docs, extResult, latestRun] = await Promise.all([
@@ -308,8 +271,6 @@ async function load() {
     fitGraph(false);
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    loading.value = false;
   }
 }
 
@@ -368,12 +329,6 @@ async function startRun(options?: { fromRunId?: string; fromNodeId?: string }) {
   }
 }
 
-async function cancelRun() {
-  if (!runStatus.value?.runId) return;
-  await api.workflows.cancelRun(props.spaceId, runStatus.value.runId);
-  await refreshRunStatus();
-}
-
 function setMode(nextMode: typeof mode.value) {
   mode.value = nextMode;
   if (nextMode !== "connecting") pendingConnection.value = null;
@@ -415,28 +370,6 @@ function removeNode(id: string) {
   render();
 }
 
-function duplicateSelectedNode() {
-  const source = selectedNode.value;
-  if (!source) return;
-  const id = nextNodeId();
-  nodes.set(id, {
-    ...source,
-    id,
-    inputs: source.inputs.map((input) => ({ ...input })),
-    x: source.x + 40,
-    y: source.y + 40,
-  });
-  selectedNodeId.value = id;
-  render();
-}
-
-function updateSelectedNode(update: Partial<WorkflowNodeDef>) {
-  const node = selectedNode.value;
-  if (!node) return;
-  Object.assign(node, update);
-  render();
-}
-
 function renameSelectedNode(nextId: string) {
   const node = selectedNode.value;
   const oldId = selectedNodeId.value;
@@ -454,15 +387,41 @@ function renameSelectedNode(nextId: string) {
   render();
 }
 
-function setJobForSelected(value: string) {
-  const node = selectedNode.value;
-  if (!node) return;
+function setJobForNode(node: WorkflowNodeDef, value: string) {
   const job = jobsByKey.value.get(value);
-  updateSelectedNode({
-    extensionId: job?.extensionId ?? "",
-    jobId: job?.jobId ?? "",
-    inputs: [],
+  node.extensionId = job?.extensionId ?? "";
+  node.jobId = job?.jobId ?? "";
+  node.inputs = [];
+  render();
+}
+
+function jobForNode(node: WorkflowNodeDef): AvailableJob | null {
+  return jobsByKey.value.get(`${node.extensionId}::${node.jobId}`) ?? null;
+}
+
+function renameNode(node: GraphNode, nextId: string) {
+  if (node.id === selectedNodeId.value) {
+    renameSelectedNode(nextId);
+    return;
+  }
+
+  const oldId = node.id;
+  const trimmed = nextId.trim();
+  if (!trimmed || trimmed === oldId || nodes.has(trimmed)) return;
+  nodes.delete(oldId);
+  node.id = trimmed;
+  nodes.set(trimmed, node);
+  edges.value = edges.value.map((edge) => {
+    const source = edge.source === oldId ? trimmed : edge.source;
+    const target = edge.target === oldId ? trimmed : edge.target;
+    return { id: `${source}->${target}`, source, target };
   });
+  render();
+}
+
+function updateNode(node: WorkflowNodeDef, update: Partial<WorkflowNodeDef>) {
+  Object.assign(node, update);
+  render();
 }
 
 function getInputValue(node: WorkflowNodeDef, key: string) {
@@ -612,6 +571,83 @@ function hasInputConnection(nodeId: string, inputKey: string) {
   return Boolean(connectionsByNodeId.value[nodeId]?.[inputKey]?.length);
 }
 
+function inputConnections(nodeId: string, inputKey: string) {
+  return connectionsByNodeId.value[nodeId]?.[inputKey] ?? [];
+}
+
+function subJobForNode(node: WorkflowNodeDef): AvailableJob | null {
+  if (node.extensionId !== "workflow-builder" || node.jobId !== "for-each-file") {
+    return null;
+  }
+  const subJobId = getInputValue(node, "subJobId");
+  if (!subJobId) return null;
+  return availableJobs.value.find((job) => job.jobId === subJobId) ?? null;
+}
+
+function primaryInputEntries(node: WorkflowNodeDef): [string, JobIOField][] {
+  return Object.entries(jobForNode(node)?.inputs ?? {});
+}
+
+function subJobInputEntries(node: WorkflowNodeDef): [string, JobIOField][] {
+  const subJob = subJobForNode(node);
+  if (!subJob?.inputs) return [];
+  const inputKey = getInputValue(node, "inputKey");
+  return Object.entries(subJob.inputs).filter(([key]) => key !== inputKey);
+}
+
+function outputEntries(node: WorkflowNodeDef): [string, JobIOField | null, unknown][] {
+  const job = jobForNode(node);
+  const statusOutputs = runStatus.value?.nodes?.[node.id]?.outputs ?? {};
+  const keys = new Set<string>(Object.keys(statusOutputs));
+
+  if (job) {
+    for (const key of outputKeysForNode(node, job)) keys.add(key);
+  }
+
+  return [...keys]
+    .toSorted((a, b) => a.localeCompare(b))
+    .map((key) => [key, job?.outputs?.[key] ?? null, statusOutputs[key]]);
+}
+
+function parseToolSelection(value: string): Set<string> {
+  const trimmed = value.trim();
+  if (!trimmed) return new Set();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return new Set(parsed.map(String));
+  } catch {
+    // Support older comma-separated values.
+  }
+  return new Set(
+    trimmed
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean),
+  );
+}
+
+function toggleAllowedTool(node: WorkflowNodeDef, key: string, tool: string) {
+  const selected = parseToolSelection(getInputValue(node, key));
+  if (selected.has(tool)) {
+    selected.delete(tool);
+  } else {
+    selected.add(tool);
+  }
+  const next = [...selected];
+  setInputValue(node, key, next.length ? JSON.stringify(next) : "");
+}
+
+function encodeToolSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_]/g, (char) => {
+    const hex = char.charCodeAt(0).toString(16).padStart(2, "0");
+    return `_x${hex}_`;
+  });
+}
+
+function toolNameForJob(job: AvailableJob): string {
+  return `job__${encodeToolSegment(job.extensionId)}__${encodeToolSegment(job.jobId)}`;
+}
+
 function beginDrag(nodeId: string, event: PointerEvent) {
   const node = nodes.get(nodeId);
   if (!node) return;
@@ -660,11 +696,6 @@ function completeConnection(nodeId: string, event: PointerEvent) {
   mode.value = "idle";
   event.preventDefault();
   event.stopPropagation();
-  render();
-}
-
-function removeEdge(edgeId: string) {
-  edges.value = edges.value.filter((edge) => edge.id !== edgeId);
   render();
 }
 
@@ -790,9 +821,22 @@ function handlePointerUp(event: PointerEvent) {
 function handleKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("input, textarea, select")) return;
+  const key = event.key.toLowerCase();
+  if ((event.metaKey || event.ctrlKey) && key === "s") {
+    event.preventDefault();
+    void saveWorkflow();
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    event.preventDefault();
+    void startRun();
+    return;
+  }
   if (event.key === "Delete" || event.key === "Backspace") {
     if (selectedNodeId.value) removeNode(selectedNodeId.value);
   }
+  if (key === "a") addNodeAt();
+  if (key === "f") fitGraph();
   if (event.key === "Escape") setMode("idle");
 }
 
@@ -859,324 +903,340 @@ onUnmounted(() => {
 
 <template>
   <div class="workflow-node-editor">
-    <header class="workflow-toolbar">
-      <input v-model="title" class="workflow-title-input" placeholder="Workflow name" />
-      <button type="button" class="workflow-button" :disabled="saving" @click="saveWorkflow">
-        {{ saving ? "Saving..." : "Save" }}
-      </button>
-      <button
-        v-if="runStatus?.status === 'running' || runStatus?.status === 'pending'"
-        type="button"
-        class="workflow-button danger"
-        @click="cancelRun"
-      >
-        Cancel
-      </button>
-      <button v-else type="button" class="workflow-button primary" :disabled="running" @click="startRun()">
-        {{ running ? "Starting..." : "Run" }}
-      </button>
-      <button
-        v-if="runStatus?.status === 'failed' && runStatus.runId && retryableFailedNodeId"
-        type="button"
-        class="workflow-button"
-        :disabled="running"
-        @click="startRun({ fromRunId: runStatus.runId!, fromNodeId: retryableFailedNodeId! })"
-      >
-        Retry
-      </button>
-      <button type="button" class="workflow-button" @click="addNodeAt()">Add Node</button>
-      <button type="button" class="workflow-button" @click="fitGraph()">Fit</button>
-    </header>
-
-    <div v-if="error" class="workflow-error">{{ error }}</div>
-
-    <main class="workflow-body">
-      <aside class="workflow-sidebar">
-        <div class="workflow-sidebar-section">
-          <label class="workflow-label">Jobs</label>
-          <input v-model="search" class="workflow-input" placeholder="Search jobs" />
-          <div class="workflow-job-list">
-            <div v-for="group in groupedJobs" :key="group.name" class="workflow-job-group">
-              <div class="workflow-job-group-title">{{ group.name }}</div>
-              <button
-                v-for="job in group.jobs"
-                :key="`${job.extensionId}::${job.jobId}`"
-                type="button"
-                class="workflow-job"
-                @click="addNodeAt(undefined, job)"
-              >
-                <span>{{ job.jobName }}</span>
-                <small>{{ job.jobId }}</small>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="selectedNode" class="workflow-sidebar-section editor-section">
-          <label class="workflow-label">Selected Node</label>
-          <input
-            class="workflow-input"
-            :value="selectedNode.id"
-            @change="renameSelectedNode(($event.target as HTMLInputElement).value)"
-          />
-          <select
-            class="workflow-input"
-            :value="`${selectedNode.extensionId}::${selectedNode.jobId}`"
-            @change="setJobForSelected(($event.target as HTMLSelectElement).value)"
+    <div
+      ref="viewportRef"
+      class="workflow-viewport"
+      @pointerdown="handleViewportPointerDown"
+      @dblclick="addNodeAt(pointerWorld($event))"
+    >
+      <canvas ref="gridRef" class="workflow-grid"></canvas>
+      <div v-if="error" class="workflow-error">{{ error }}</div>
+      <div class="workflow-world-layer">
+        <div ref="worldContentRef" class="workflow-world-content">
+          <svg ref="edgeSvgRef" class="workflow-edge-layer"></svg>
+          <article
+            v-for="node in sortedNodes"
+            :key="node.id"
+            class="workflow-node-card"
+            :class="[
+              { selected: node.id === selectedNodeId, disabled: node.disabled },
+              nodeStatusClass(node.id),
+            ]"
+            :style="{
+              left: `${node.x}px`,
+              top: `${node.y}px`,
+              width: `${node.width}px`,
+              minHeight: `${node.height}px`,
+            }"
+            @pointerdown.stop="selectedNodeId = node.id"
+            @dblclick.stop
           >
-            <option value="::">Select job...</option>
-            <optgroup v-for="group in groupedJobs" :key="group.name" :label="group.name">
-              <option
-                v-for="job in group.jobs"
-                :key="`${job.extensionId}::${job.jobId}`"
-                :value="`${job.extensionId}::${job.jobId}`"
-              >
-                {{ job.jobName }}
-              </option>
-            </optgroup>
-          </select>
-
-          <label class="workflow-toggle">
-            <input
-              type="checkbox"
-              :checked="!selectedNode.disabled"
-              @change="updateSelectedNode({ disabled: !($event.target as HTMLInputElement).checked })"
-            />
-            <span>Enabled</span>
-          </label>
-
-          <div v-if="selectedJob?.inputs" class="workflow-fields">
-            <div v-for="[key, meta] in Object.entries(selectedJob.inputs)" :key="key" class="workflow-field">
-              <label class="workflow-field-label">
-                {{ key }}<span v-if="meta.required">*</span>
-              </label>
-              <div v-if="hasInputConnection(selectedNode.id, key)" class="workflow-connected">
-                From
-                {{
-                  connectionsByNodeId[selectedNode.id][key]
-                    .map((connection) => connection.nodeId)
-                    .join(", ")
-                }}
-              </div>
-              <template v-else-if="selectedNode.extensionId === 'workflow-builder' && selectedNode.jobId === 'workflow-inputs' && key === 'mappings'">
-                <div
-                  v-for="(mapping, index) in readWorkflowInputMappings(getInputValue(selectedNode, key))"
-                  :key="index"
-                  class="workflow-mapping"
-                >
-                  <input
-                    class="workflow-input"
-                    :value="mapping.inputKey"
-                    placeholder="Input key"
-                    @input="updateWorkflowInputMapping(selectedNode, key, index, 'inputKey', ($event.target as HTMLInputElement).value)"
-                  />
-                  <input
-                    class="workflow-input"
-                    :value="mapping.alias"
-                    placeholder="Alias"
-                    @input="updateWorkflowInputMapping(selectedNode, key, index, 'alias', ($event.target as HTMLInputElement).value)"
-                  />
-                  <button type="button" class="workflow-mini-button" @click="removeWorkflowInputMapping(selectedNode, key, index)">
-                    Remove
-                  </button>
-                </div>
-                <button type="button" class="workflow-mini-button" @click="addWorkflowInputMapping(selectedNode, key)">
-                  Add Mapping
-                </button>
-              </template>
-              <select
-                v-else-if="key === 'documentId'"
-                class="workflow-input"
-                :value="getInputValue(selectedNode, key)"
-                @change="setInputValue(selectedNode, key, ($event.target as HTMLSelectElement).value)"
-              >
-                <option value="">Select document...</option>
-                <option
-                  v-for="doc in (selectedNode.extensionId === 'workflow-builder' && selectedNode.jobId === 'run-workflow' ? docRefs.filter((d) => d.type === 'workflow') : docRefs)"
-                  :key="doc.id"
-                  :value="doc.id"
-                >
-                  {{ doc.title || doc.slug }}
-                </option>
-              </select>
-              <select
-                v-else-if="meta.options?.length"
-                class="workflow-input"
-                :value="getInputValue(selectedNode, key)"
-                @change="setInputValue(selectedNode, key, ($event.target as HTMLSelectElement).value)"
-              >
-                <option value="">Select...</option>
-                <option v-for="option in meta.options" :key="option" :value="option">
-                  {{ option }}
-                </option>
-              </select>
-              <label v-else-if="meta.type === 'boolean'" class="workflow-toggle">
-                <input
-                  type="checkbox"
-                  :checked="getInputValue(selectedNode, key) === 'true'"
-                  @change="setInputValue(selectedNode, key, String(($event.target as HTMLInputElement).checked))"
-                />
-                <span>{{ getInputValue(selectedNode, key) === "true" ? "True" : "False" }}</span>
-              </label>
-              <div v-else-if="meta.type === 'file'" class="workflow-file-control">
-                <input
-                  class="workflow-input"
-                  :value="getInputValue(selectedNode, key)"
-                  placeholder="File URL"
-                  @input="setInputValue(selectedNode, key, ($event.target as HTMLInputElement).value)"
-                />
-                <label class="workflow-mini-button">
-                  Upload
-                  <input type="file" hidden @change="uploadFile(selectedNode.id, key, $event)" />
-                </label>
-                <small v-if="uploadErrors[`${selectedNode.id}:${key}`]" class="workflow-upload-error">
-                  {{ uploadErrors[`${selectedNode.id}:${key}`] }}
-                </small>
-              </div>
-              <textarea
-                v-else-if="meta.type === 'object'"
-                class="workflow-textarea"
-                :value="getInputValue(selectedNode, key)"
-                :placeholder="meta.description || meta.type"
-                @input="setInputValue(selectedNode, key, ($event.target as HTMLTextAreaElement).value)"
-              />
-              <input
-                v-else
-                class="workflow-input"
-                :value="getInputValue(selectedNode, key)"
-                :placeholder="meta.description || meta.type"
-                @input="setInputValue(selectedNode, key, ($event.target as HTMLInputElement).value)"
-              />
-            </div>
-          </div>
-
-          <div v-if="runStatus?.nodes?.[selectedNode.id]" class="workflow-run-card">
-            <strong>{{ runStatus.nodes[selectedNode.id].status }}</strong>
-            <p v-if="runStatus.nodes[selectedNode.id].error">{{ runStatus.nodes[selectedNode.id].error }}</p>
-            <pre v-if="runStatus.nodes[selectedNode.id].logs?.length">{{ runStatus.nodes[selectedNode.id].logs?.join('\n') }}</pre>
-          </div>
-
-          <div class="workflow-node-actions">
-            <button type="button" class="workflow-mini-button" @click="duplicateSelectedNode">Duplicate</button>
-            <button type="button" class="workflow-mini-button danger" @click="removeNode(selectedNode.id)">Delete</button>
-          </div>
-        </div>
-      </aside>
-
-      <section class="workflow-canvas-shell">
-        <div ref="viewportRef" class="workflow-viewport" @pointerdown="handleViewportPointerDown">
-          <canvas ref="gridRef" class="workflow-grid"></canvas>
-          <div class="workflow-world-layer">
-            <div ref="worldContentRef" class="workflow-world-content">
-              <svg ref="edgeSvgRef" class="workflow-edge-layer"></svg>
-              <article
-                v-for="node in sortedNodes"
-                :key="node.id"
-                class="workflow-node-card"
-                :class="[
-                  { selected: node.id === selectedNodeId, disabled: node.disabled },
-                  nodeStatusClass(node.id),
-                ]"
-                :style="{
-                  left: `${node.x}px`,
-                  top: `${node.y}px`,
-                  width: `${node.width}px`,
-                  minHeight: `${node.height}px`,
-                }"
-                @pointerdown.stop="selectedNodeId = node.id"
-              >
-                <button
-                  type="button"
-                  class="workflow-port input"
-                  title="Input"
-                  @pointerdown.stop="completeConnection(node.id, $event)"
-                />
-                <button
-                  type="button"
-                  class="workflow-port output"
-                  title="Output"
-                  @pointerdown.stop="beginConnection(node.id, $event)"
-                />
-                <div class="workflow-node-header" @pointerdown="beginDrag(node.id, $event)">
-                  <span class="workflow-node-id">{{ node.id }}</span>
-                  <span class="workflow-node-state">{{ runStatus?.nodes?.[node.id]?.status ?? "" }}</span>
-                </div>
-                <div class="workflow-node-main">
-                  <strong>{{ jobsByKey.get(`${node.extensionId}::${node.jobId}`)?.jobName || "Unconfigured node" }}</strong>
-                  <span>{{ jobsByKey.get(`${node.extensionId}::${node.jobId}`)?.extensionName || "Select a job" }}</span>
-                  <small>{{ node.inputs.length }} inputs, {{ edges.filter((edge) => edge.target === node.id).length }} dependencies</small>
-                </div>
-              </article>
-            </div>
-          </div>
-        </div>
-        <footer class="workflow-canvas-status">
-          <span>{{ loading ? "Loading..." : statusText }}</span>
-          <div class="workflow-edge-list">
-            <button
-              v-for="edge in edges"
-              :key="edge.id"
-              type="button"
-              class="workflow-edge-chip"
-              title="Remove dependency"
-              @click="removeEdge(edge.id)"
+            <label
+              class="workflow-enable-toggle"
+              :title="node.disabled ? 'Enable node' : 'Disable node'"
+              @pointerdown.stop
             >
-              {{ edge.source }} -> {{ edge.target }}
+              <input
+                type="checkbox"
+                :checked="!node.disabled"
+                @change="updateNode(node, { disabled: !($event.target as HTMLInputElement).checked })"
+              />
+            </label>
+            <button
+              type="button"
+              class="workflow-node-delete"
+              title="Delete node"
+              @pointerdown.stop
+              @click.stop="removeNode(node.id)"
+            >
+              ×
             </button>
-          </div>
-        </footer>
-      </section>
+            <button
+              type="button"
+              class="workflow-port input"
+              title="Input"
+              @pointerdown.stop="completeConnection(node.id, $event)"
+            />
+            <button
+              type="button"
+              class="workflow-port output"
+              title="Output"
+              @pointerdown.stop="beginConnection(node.id, $event)"
+            />
 
-      <aside class="workflow-logs">
-        <div class="workflow-sidebar-section">
-          <label class="workflow-label">Latest Run</label>
-          <div v-if="!runStatus" class="workflow-empty">No run yet.</div>
-          <template v-else>
-            <div class="workflow-run-summary">
-              <strong>{{ runStatus.status }}</strong>
-              <span>{{ runStatus.runId }}</span>
+            <div class="workflow-node-header" @pointerdown="beginDrag(node.id, $event)">
+              <input
+                class="workflow-node-id-input"
+                :value="node.id"
+                @pointerdown.stop
+                @change="renameNode(node, ($event.target as HTMLInputElement).value)"
+              />
+              <span class="workflow-node-state">
+                {{ runStatus?.nodes?.[node.id]?.status ?? "" }}
+              </span>
             </div>
-            <div class="workflow-log-list">
-              <details v-for="[nodeId, state] in Object.entries(runStatus.nodes ?? {})" :key="nodeId">
-                <summary>{{ nodeId }} · {{ state.status }}</summary>
-                <p v-if="state.error" class="workflow-upload-error">{{ state.error }}</p>
-                <pre v-if="state.logs?.length">{{ state.logs.join('\n') }}</pre>
-                <div v-if="state.outputs" class="workflow-output-list">
-                  <div v-for="[key, value] in Object.entries(state.outputs)" :key="key">
-                    <strong>{{ key }}</strong>
-                    <span>{{ outputValueText(value).slice(0, 220) }}</span>
+
+            <div class="workflow-node-body">
+              <select
+                class="workflow-input workflow-job-select"
+                :value="`${node.extensionId}::${node.jobId}`"
+                @pointerdown.stop
+                @change="setJobForNode(node, ($event.target as HTMLSelectElement).value)"
+              >
+                <option value="::">Select job...</option>
+                <optgroup v-for="group in groupedJobs" :key="group.name" :label="group.name">
+                  <option
+                    v-for="job in group.jobs"
+                    :key="`${job.extensionId}::${job.jobId}`"
+                    :value="`${job.extensionId}::${job.jobId}`"
+                  >
+                    {{ job.jobName }}
+                  </option>
+                </optgroup>
+              </select>
+
+              <div class="workflow-section" v-if="primaryInputEntries(node).length">
+                <div class="workflow-section-title">Inputs</div>
+                <div v-for="[key, meta] in primaryInputEntries(node)" :key="key" class="workflow-field">
+                  <label class="workflow-field-label">
+                    {{ key }}<span v-if="meta.required">*</span>
+                  </label>
+                  <div v-if="hasInputConnection(node.id, key)" class="workflow-connected">
+                    From {{ inputConnections(node.id, key).map((connection) => connection.nodeId).join(", ") }}
                   </div>
+                  <template v-else-if="node.extensionId === 'workflow-builder' && node.jobId === 'workflow-inputs' && key === 'mappings'">
+                    <div
+                      v-for="(mapping, index) in readWorkflowInputMappings(getInputValue(node, key))"
+                      :key="index"
+                      class="workflow-mapping"
+                    >
+                      <input
+                        class="workflow-input"
+                        :value="mapping.inputKey"
+                        placeholder="Input key"
+                        @pointerdown.stop
+                        @input="updateWorkflowInputMapping(node, key, index, 'inputKey', ($event.target as HTMLInputElement).value)"
+                      />
+                      <input
+                        class="workflow-input"
+                        :value="mapping.alias"
+                        placeholder="Alias"
+                        @pointerdown.stop
+                        @input="updateWorkflowInputMapping(node, key, index, 'alias', ($event.target as HTMLInputElement).value)"
+                      />
+                      <button type="button" class="workflow-mini-button" @click.stop="removeWorkflowInputMapping(node, key, index)">
+                        Remove
+                      </button>
+                    </div>
+                    <button type="button" class="workflow-mini-button" @click.stop="addWorkflowInputMapping(node, key)">
+                      Add Mapping
+                    </button>
+                  </template>
+                  <select
+                    v-else-if="key === 'documentId'"
+                    class="workflow-input"
+                    :value="getInputValue(node, key)"
+                    @pointerdown.stop
+                    @change="setInputValue(node, key, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Select document...</option>
+                    <option
+                      v-for="doc in (node.extensionId === 'workflow-builder' && node.jobId === 'run-workflow' ? docRefs.filter((d) => d.type === 'workflow') : docRefs)"
+                      :key="doc.id"
+                      :value="doc.id"
+                    >
+                      {{ doc.title || doc.slug }}
+                    </option>
+                  </select>
+                  <div v-else-if="key === 'allowedTools'" class="workflow-tool-list">
+                    <label
+                      v-for="tool in agentToolOptions"
+                      :key="tool.value"
+                      class="workflow-tool-option"
+                      @pointerdown.stop
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="parseToolSelection(getInputValue(node, key)).has(tool.value)"
+                        @change="toggleAllowedTool(node, key, tool.value)"
+                      />
+                      <span>{{ tool.label }}</span>
+                    </label>
+                  </div>
+                  <select
+                    v-else-if="key === 'subJobId'"
+                    class="workflow-input"
+                    :value="getInputValue(node, key)"
+                    @pointerdown.stop
+                    @change="setInputValue(node, key, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Select sub-job...</option>
+                    <option
+                      v-for="job in availableJobs"
+                      :key="`${job.extensionId}::${job.jobId}`"
+                      :value="job.jobId"
+                    >
+                      {{ job.jobName }} ({{ job.extensionName }})
+                    </option>
+                  </select>
+                  <select
+                    v-else-if="key === 'inputKey' && subJobForNode(node)?.inputs"
+                    class="workflow-input"
+                    :value="getInputValue(node, key)"
+                    @pointerdown.stop
+                    @change="setInputValue(node, key, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Select sub-job input...</option>
+                    <option
+                      v-for="inputName in Object.keys(subJobForNode(node)?.inputs ?? {})"
+                      :key="inputName"
+                      :value="inputName"
+                    >
+                      {{ inputName }}
+                    </option>
+                  </select>
+                  <select
+                    v-else-if="meta.options?.length"
+                    class="workflow-input"
+                    :value="getInputValue(node, key)"
+                    @pointerdown.stop
+                    @change="setInputValue(node, key, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Select...</option>
+                    <option v-for="option in meta.options" :key="option" :value="option">
+                      {{ option }}
+                    </option>
+                  </select>
+                  <label v-else-if="meta.type === 'boolean'" class="workflow-toggle" @pointerdown.stop>
+                    <input
+                      type="checkbox"
+                      :checked="getInputValue(node, key) === 'true'"
+                      @change="setInputValue(node, key, String(($event.target as HTMLInputElement).checked))"
+                    />
+                    <span>{{ getInputValue(node, key) === "true" ? "True" : "False" }}</span>
+                  </label>
+                  <div v-else-if="meta.type === 'file'" class="workflow-file-control">
+                    <input
+                      class="workflow-input"
+                      :value="getInputValue(node, key)"
+                      placeholder="File URL"
+                      @pointerdown.stop
+                      @input="setInputValue(node, key, ($event.target as HTMLInputElement).value)"
+                    />
+                    <label class="workflow-mini-button" @pointerdown.stop>
+                      Upload
+                      <input type="file" hidden @change="uploadFile(node.id, key, $event)" />
+                    </label>
+                    <small v-if="uploadErrors[`${node.id}:${key}`]" class="workflow-upload-error">
+                      {{ uploadErrors[`${node.id}:${key}`] }}
+                    </small>
+                  </div>
+                  <textarea
+                    v-else-if="meta.type === 'object'"
+                    class="workflow-textarea"
+                    :value="getInputValue(node, key)"
+                    :placeholder="meta.description || meta.type"
+                    @pointerdown.stop
+                    @input="setInputValue(node, key, ($event.target as HTMLTextAreaElement).value)"
+                  />
+                  <input
+                    v-else
+                    class="workflow-input"
+                    :value="getInputValue(node, key)"
+                    :placeholder="meta.description || meta.type"
+                    @pointerdown.stop
+                    @input="setInputValue(node, key, ($event.target as HTMLInputElement).value)"
+                  />
                 </div>
-              </details>
+              </div>
+
+              <div class="workflow-section" v-if="subJobInputEntries(node).length">
+                <div class="workflow-section-title">{{ subJobForNode(node)?.jobName }} Inputs</div>
+                <div v-for="[key, meta] in subJobInputEntries(node)" :key="key" class="workflow-field">
+                  <label class="workflow-field-label">
+                    {{ key }}<span v-if="meta.required">*</span>
+                  </label>
+                  <div v-if="hasInputConnection(node.id, key)" class="workflow-connected">
+                    From {{ inputConnections(node.id, key).map((connection) => connection.nodeId).join(", ") }}
+                  </div>
+                  <select
+                    v-else-if="meta.options?.length"
+                    class="workflow-input"
+                    :value="getInputValue(node, key)"
+                    @pointerdown.stop
+                    @change="setInputValue(node, key, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">Select...</option>
+                    <option v-for="option in meta.options" :key="option" :value="option">
+                      {{ option }}
+                    </option>
+                  </select>
+                  <label v-else-if="meta.type === 'boolean'" class="workflow-toggle" @pointerdown.stop>
+                    <input
+                      type="checkbox"
+                      :checked="getInputValue(node, key) === 'true'"
+                      @change="setInputValue(node, key, String(($event.target as HTMLInputElement).checked))"
+                    />
+                    <span>{{ getInputValue(node, key) === "true" ? "True" : "False" }}</span>
+                  </label>
+                  <input
+                    v-else
+                    class="workflow-input"
+                    :value="getInputValue(node, key)"
+                    :placeholder="meta.description || meta.type"
+                    @pointerdown.stop
+                    @input="setInputValue(node, key, ($event.target as HTMLInputElement).value)"
+                  />
+                </div>
+              </div>
+
+              <div class="workflow-section" v-if="outputEntries(node).length">
+                <div class="workflow-section-title">Outputs</div>
+                <div v-for="[key, meta, value] in outputEntries(node)" :key="key" class="workflow-output-row">
+                  <span class="workflow-output-key">{{ key }}</span>
+                  <span class="workflow-output-value">
+                    {{ value == null ? (meta?.type ?? "text") : outputValueText(value).slice(0, 300) }}
+                  </span>
+                </div>
+              </div>
+
+              <div v-if="runStatus?.nodes?.[node.id]" class="workflow-run-card">
+                <strong>{{ runStatus.nodes[node.id].status }}</strong>
+                <p v-if="runStatus.nodes[node.id].error">{{ runStatus.nodes[node.id].error }}</p>
+                <pre v-if="runStatus.nodes[node.id].logs?.length">{{ runStatus.nodes[node.id].logs?.join('\n') }}</pre>
+              </div>
             </div>
-          </template>
+          </article>
         </div>
-      </aside>
-    </main>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .workflow-node-editor {
-  display: flex;
-  flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: #f8fafc;
+  background: #eef2f7;
   color: #111827;
 }
 
-.workflow-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #ffffff;
+.workflow-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #eef2f7;
+  touch-action: none;
 }
 
-.workflow-title-input,
+.workflow-grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
 .workflow-input,
 .workflow-textarea {
   width: 100%;
@@ -1189,25 +1249,19 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
-.workflow-title-input {
-  flex: 1 1 220px;
-  font-weight: 600;
-}
-
 .workflow-textarea {
   min-height: 76px;
   resize: vertical;
 }
 
-.workflow-button,
 .workflow-mini-button {
   border: 1px solid #d1d5db;
   border-radius: 7px;
   background: #ffffff;
-  padding: 7px 10px;
+  padding: 5px 8px;
   color: #374151;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1215,27 +1269,12 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
-  font-size: 12px;
 }
 
-.workflow-button:hover,
 .workflow-mini-button:hover {
   background: #f3f4f6;
 }
 
-.workflow-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.workflow-button.primary {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #ffffff;
-}
-
-.workflow-button.danger,
 .workflow-mini-button.danger {
   border-color: #fecaca;
   background: #fff1f2;
@@ -1243,47 +1282,20 @@ onUnmounted(() => {
 }
 
 .workflow-error {
-  margin: 8px 10px 0;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  max-width: min(520px, calc(100% - 24px));
   border: 1px solid #fecaca;
   border-radius: 7px;
   background: #fff1f2;
   padding: 8px 10px;
   color: #b91c1c;
   font-size: 13px;
+  pointer-events: none;
 }
 
-.workflow-body {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 260px;
-  min-height: 0;
-  flex: 1;
-}
-
-.workflow-sidebar,
-.workflow-logs {
-  min-height: 0;
-  overflow: auto;
-  border-right: 1px solid #e5e7eb;
-  background: #ffffff;
-}
-
-.workflow-logs {
-  border-right: 0;
-  border-left: 1px solid #e5e7eb;
-}
-
-.workflow-sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-}
-
-.editor-section {
-  border-top: 1px solid #e5e7eb;
-}
-
-.workflow-label,
 .workflow-field-label {
   color: #6b7280;
   font-size: 11px;
@@ -1292,52 +1304,10 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
-.workflow-job-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.workflow-job-group-title {
-  margin-bottom: 4px;
-  color: #9ca3af;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.workflow-job {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  background: #ffffff;
-  padding: 8px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.workflow-job:hover {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.workflow-job small,
-.workflow-node-main span,
-.workflow-node-main small,
-.workflow-run-summary span {
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.workflow-fields,
 .workflow-field,
 .workflow-file-control,
-.workflow-node-actions,
-.workflow-log-list,
-.workflow-output-list {
+.workflow-section,
+.workflow-tool-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1369,59 +1339,6 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.workflow-canvas-shell {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex-direction: column;
-}
-
-.workflow-viewport {
-  position: relative;
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
-  background: #eef2f7;
-  touch-action: none;
-}
-
-.workflow-grid {
-  position: absolute;
-  inset: 0;
-  display: block;
-  pointer-events: none;
-}
-
-.workflow-canvas-status {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border-top: 1px solid #e5e7eb;
-  background: #ffffff;
-  padding: 7px 10px;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.workflow-edge-list {
-  display: flex;
-  overflow: auto;
-  gap: 6px;
-}
-
-.workflow-edge-chip {
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  background: #f8fafc;
-  padding: 3px 8px;
-  color: #475569;
-  cursor: pointer;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
 .workflow-node-card {
   position: absolute;
   z-index: 2;
@@ -1432,6 +1349,54 @@ onUnmounted(() => {
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
   pointer-events: auto;
   user-select: none;
+}
+
+.workflow-enable-toggle {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.16);
+  cursor: pointer;
+}
+
+.workflow-enable-toggle input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.workflow-node-delete {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.16);
+}
+
+.workflow-node-delete:hover {
+  background: #ffe4e6;
 }
 
 .workflow-node-card.selected {
@@ -1457,6 +1422,10 @@ onUnmounted(() => {
   border-color: #ef4444;
 }
 
+.workflow-node-card.status-skipped {
+  border-color: #94a3b8;
+}
+
 .workflow-node-header {
   display: flex;
   align-items: center;
@@ -1467,13 +1436,17 @@ onUnmounted(() => {
   cursor: grab;
 }
 
-.workflow-node-id {
+.workflow-node-id-input {
+  min-width: 0;
+  max-width: 140px;
+  border: 0;
   border-radius: 5px;
   background: #f1f5f9;
   padding: 3px 6px;
   color: #475569;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
+  outline: none;
 }
 
 .workflow-node-state {
@@ -1483,11 +1456,62 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
-.workflow-node-main {
+.workflow-node-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
   padding: 12px;
+  max-height: 620px;
+  overflow: auto;
+  user-select: text;
+}
+
+.workflow-job-select {
+  font-weight: 650;
+}
+
+.workflow-section {
+  border-top: 1px solid #edf0f5;
+  padding-top: 10px;
+}
+
+.workflow-section-title {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.workflow-tool-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.workflow-output-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+}
+
+.workflow-output-key {
+  overflow: hidden;
+  color: #64748b;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-output-value {
+  min-width: 0;
+  overflow: hidden;
+  color: #334155;
+  overflow-wrap: anywhere;
 }
 
 .workflow-port {
@@ -1517,7 +1541,6 @@ onUnmounted(() => {
 }
 
 .workflow-run-card,
-.workflow-run-summary,
 .workflow-empty {
   border: 1px solid #e5e7eb;
   border-radius: 7px;
@@ -1526,26 +1549,12 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.workflow-run-card pre,
-.workflow-log-list pre {
+.workflow-run-card pre {
   max-height: 180px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 11px;
-}
-
-.workflow-log-list details {
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  background: #ffffff;
-  padding: 8px;
-  font-size: 12px;
-}
-
-.workflow-output-list > div {
-  display: grid;
-  gap: 2px;
 }
 
 .workflow-world-layer {
@@ -1600,15 +1609,5 @@ onUnmounted(() => {
 :global(.workflow-edge-path.preview) {
   stroke: #2563eb;
   stroke-dasharray: 6 6;
-}
-
-@media (max-width: 1050px) {
-  .workflow-body {
-    grid-template-columns: 220px minmax(0, 1fr);
-  }
-
-  .workflow-logs {
-    display: none;
-  }
 }
 </style>
