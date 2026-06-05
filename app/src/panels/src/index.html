@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Layered Panel Workspace</title>
+    <script src="./index.ts" type="module"></script>
+    <link rel="stylesheet" href="./index.css" />
+  </head>
+  <body>
+    <panel-workspace>
+      <!-- Background layer: any static content -->
+      <panel-layer interactive="false" z-index="0">
+        <div class="bg">
+          <h1>Layered Panel Workspace</h1>
+          <p>Background layer — non-interactive.</p>
+        </div>
+      </panel-layer>
+
+      <!-- Dynamic panel layer -->
+      <panel-layer z-index="1">
+        <panel-host>
+          <panel-dock id="left-sidebar" anchor="left" width="240px"></panel-dock>
+          <panel-dock id="right-sidebar" anchor="right" width="320px"></panel-dock>
+          <panel-dock id="bottom" anchor="bottom" height="160px"></panel-dock>
+
+          <panel-item id="inspector" panel-title="Inspector">
+            <div class="body">
+              <p>Properties of the selected object.</p>
+              <label>Opacity <input type="range" /></label>
+            </div>
+          </panel-item>
+
+          <panel-item id="tools" panel-title="Tools">
+            <div class="body">
+              <button>Brush</button>
+              <button>Eraser</button>
+              <button>Move</button>
+            </div>
+          </panel-item>
+
+          <panel-item id="color-picker" panel-title="Color Picker">
+            <div class="body">
+              <input type="color" />
+            </div>
+          </panel-item>
+        </panel-host>
+      </panel-layer>
+    </panel-workspace>
+
+    <aside id="hud">
+      <button id="toggle-inspector">toggle inspector</button>
+      <button id="float-tools">float tools</button>
+      <button id="dock-tools">dock tools left</button>
+      <button id="open-histogram">open histogram</button>
+      <label><input type="checkbox" id="toggle-debug" /> show dock areas</label>
+      <details>
+        <summary>state</summary>
+        <pre id="state"></pre>
+      </details>
+    </aside>
+  </body>
+</html>
