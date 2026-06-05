@@ -842,6 +842,16 @@ function updateShapeText(shape: CanvasShape, text: string) {
   }
 }
 
+function handleTextBlur(shape: CanvasShape, event: FocusEvent) {
+  // A text element with no content has nothing to anchor it, so remove it once
+  // editing ends. Notes and sections keep their box even when empty.
+  if (shape.type !== "text") return;
+  const value = (event.target as HTMLTextAreaElement).value;
+  if (value.trim() !== "") return;
+  yShapes.delete(shape.id);
+  if (selectedShapeId.value === shape.id) selectedShapeId.value = null;
+}
+
 function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
   if (shape.id === section.id) return false;
   return (
@@ -1460,6 +1470,7 @@ onUnmounted(() => {
             :value="shape.text"
             spellcheck="false"
             @focus="selectedShapeId = shape.id"
+            @blur="handleTextBlur(shape, $event)"
             @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
             @input="updateShapeText(shape, ($event.target as HTMLTextAreaElement).value)"
           ></textarea>
