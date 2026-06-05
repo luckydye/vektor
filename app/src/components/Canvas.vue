@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import "./components/CanvasElement.ts";
-import type CanvasElement from "./components/CanvasElement.ts";
+// import "./components/CanvasElement.ts";
+// import type CanvasElement from "./components/CanvasElement.ts";
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import { useDocument } from "../composeables/useDocument.ts";

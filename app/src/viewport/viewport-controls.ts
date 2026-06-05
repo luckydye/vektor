@@ -1,0 +1,266 @@
+import type { FitReference, ViewportCamera } from "./types.ts";
+import {
+  buildTransform,
+  computeFitScale,
+  screenToWorld,
+  type ScreenSize,
+} from "./transform.ts";
+
+export interface ViewportZoomLimits {
+  minZoom?: number;
+  maxZoom?: number;
+}
+
+export interface PanCameraByScreenDeltaOptions {
+  camera: ViewportCamera;
+  screen: ScreenSize;
+  fit: FitReference;
+  dxPx: number;
+  dyPx: number;
+}
+
+export interface ZoomCameraAtPointOptions extends ViewportZoomLimits {
+  camera: ViewportCamera;
+  screen: ScreenSize;
+  fit: FitReference;
+  screenX: number;
+  screenY: number;
+  zoom: number;
+}
+
+export interface ViewportControlsOptions extends ViewportZoomLimits {
+  target: Window | HTMLElement;
+  getCamera: () => ViewportCamera;
+  setCamera: (camera: ViewportCamera) => void;
+  getScreen: () => ScreenSize;
+  getFit: () => FitReference;
+  onTouchGestureStart?: () => void;
+  wheelZoomSpeed?: number;
+}
+
+export interface ViewportControls {
+  dispose: () => void;
+}
+
+interface TouchGestureState {
+  centerX: number;
+  centerY: number;
+  distance: number;
+}
+
+interface LastTouchGesture extends TouchGestureState {
+  zoom: number;
+}
+
+export function panCameraByScreenDelta({
+  camera,
+  screen,
+  fit,
+  dxPx,
+  dyPx,
+}: PanCameraByScreenDeltaOptions): ViewportCamera {
+  const transform = buildTransform(camera, screen, fit);
+  return {
+    zoom: camera.zoom,
+    centerX: camera.centerX + dxPx / transform.scale,
+    centerY: camera.centerY + dyPx / transform.scale,
+  };
+}
+
+export function zoomCameraAtPoint({
+  camera,
+  screen,
+  fit,
+  screenX,
+  screenY,
+  zoom,
+  minZoom = 0.2,
+  maxZoom = 20,
+}: ZoomCameraAtPointOptions): ViewportCamera {
+  const before = buildTransform(camera, screen, fit);
+  const anchor = screenToWorld(screenX, screenY, before);
+  const nextZoom = Math.max(minZoom, Math.min(maxZoom, zoom));
+  const fitScale = computeFitScale(screen, fit);
+  const newScale = fitScale * nextZoom;
+
+  return {
+    zoom: nextZoom,
+    centerX: anchor.x - (screenX - screen.width / 2) / newScale,
+    centerY: anchor.y - (screenY - screen.height / 2) / newScale,
+  };
+}
+
+export function createViewportControls({
+  target,
+  getCamera,
+  setCamera,
+  getScreen,
+  getFit,
+  onTouchGestureStart,
+  minZoom = 0.2,
+  maxZoom = 20,
+  wheelZoomSpeed = 0.01,
+}: ViewportControlsOptions): ViewportControls {
+  const touchPointers = new Map<number, PointerEvent>();
+  let lastTouchGesture: LastTouchGesture | null = null;
+  let touchGestureActive = false;
+
+  function touchGestureState(): TouchGestureState | null {
+    const pointers = Array.from(touchPointers.values());
+    if (pointers.length < 2) return null;
+
+    const [a, b] = pointers;
+    const centerX = (a.clientX + b.clientX) / 2;
+    const centerY = (a.clientY + b.clientY) / 2;
+    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    return { centerX, centerY, distance };
+  }
+
+  function beginTouchPointer(e: PointerEvent) {
+    if (e.pointerType !== "touch") return;
+
+    touchPointers.set(e.pointerId, e);
+    if (touchPointers.size < 2) return;
+
+    const gesture = touchGestureState();
+    if (gesture) {
+      touchGestureActive = true;
+      lastTouchGesture = { ...gesture, zoom: getCamera().zoom };
+      onTouchGestureStart?.();
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function moveTouchPointer(e: PointerEvent) {
+    if (e.pointerType !== "touch" || !touchPointers.has(e.pointerId)) return;
+
+    touchPointers.set(e.pointerId, e);
+    const gesture = touchGestureState();
+    if (!gesture || !touchGestureActive || !lastTouchGesture) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const screen = getScreen();
+    const fit = getFit();
+    const panned = panCameraByScreenDelta({
+      camera: getCamera(),
+      screen,
+      fit,
+      dxPx: lastTouchGesture.centerX - gesture.centerX,
+      dyPx: lastTouchGesture.centerY - gesture.centerY,
+    });
+    const zoomed = zoomCameraAtPoint({
+      camera: panned,
+      screen,
+      fit,
+      screenX: gesture.centerX,
+      screenY: gesture.centerY,
+      zoom: lastTouchGesture.zoom * (gesture.distance / lastTouchGesture.distance),
+      minZoom,
+      maxZoom,
+    });
+    setCamera(zoomed);
+    lastTouchGesture = { ...gesture, zoom: zoomed.zoom };
+  }
+
+  function endTouchPointer(e: PointerEvent) {
+    if (e.pointerType !== "touch" || !touchPointers.has(e.pointerId)) return;
+
+    const wasGestureActive = touchGestureActive;
+    touchPointers.delete(e.pointerId);
+    if (touchPointers.size >= 2) {
+      const gesture = touchGestureState();
+      lastTouchGesture = gesture ? { ...gesture, zoom: getCamera().zoom } : null;
+    } else {
+      touchGestureActive = false;
+      lastTouchGesture = null;
+    }
+
+    if (wasGestureActive) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  function handleViewportWheel(e: WheelEvent) {
+    e.preventDefault();
+    const camera = getCamera();
+    const screen = getScreen();
+    const fit = getFit();
+
+    if (e.ctrlKey || e.metaKey) {
+      setCamera(
+        zoomCameraAtPoint({
+          camera,
+          screen,
+          fit,
+          screenX: e.clientX,
+          screenY: e.clientY,
+          zoom: camera.zoom * Math.exp(-e.deltaY * wheelZoomSpeed),
+          minZoom,
+          maxZoom,
+        }),
+      );
+    } else {
+      setCamera(
+        panCameraByScreenDelta({
+          camera,
+          screen,
+          fit,
+          dxPx: e.deltaX,
+          dyPx: e.deltaY,
+        }),
+      );
+    }
+  }
+
+  function preventNativeViewportGesture(e: Event) {
+    e.preventDefault();
+  }
+
+  target.addEventListener("pointerdown", beginTouchPointer, {
+    capture: true,
+    passive: false,
+  });
+  target.addEventListener("pointermove", moveTouchPointer, {
+    capture: true,
+    passive: false,
+  });
+  target.addEventListener("pointerup", endTouchPointer, {
+    capture: true,
+    passive: false,
+  });
+  target.addEventListener("pointercancel", endTouchPointer, {
+    capture: true,
+    passive: false,
+  });
+  target.addEventListener("wheel", handleViewportWheel, {
+    capture: true,
+    passive: false,
+  });
+  target.addEventListener("gesturestart", preventNativeViewportGesture, {
+    passive: false,
+  });
+  target.addEventListener("gesturechange", preventNativeViewportGesture, {
+    passive: false,
+  });
+  target.addEventListener("gestureend", preventNativeViewportGesture, { passive: false });
+
+  return {
+    dispose() {
+      target.removeEventListener("pointerdown", beginTouchPointer, { capture: true });
+      target.removeEventListener("pointermove", moveTouchPointer, { capture: true });
+      target.removeEventListener("pointerup", endTouchPointer, { capture: true });
+      target.removeEventListener("pointercancel", endTouchPointer, { capture: true });
+      target.removeEventListener("wheel", handleViewportWheel, { capture: true });
+      target.removeEventListener("gesturestart", preventNativeViewportGesture);
+      target.removeEventListener("gesturechange", preventNativeViewportGesture);
+      target.removeEventListener("gestureend", preventNativeViewportGesture);
+      touchPointers.clear();
+      touchGestureActive = false;
+      lastTouchGesture = null;
+    },
+  };
+}
