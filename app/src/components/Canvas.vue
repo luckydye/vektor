@@ -19,6 +19,7 @@ import {
   type FreehandPoint,
   type FreehandStroke,
   type FreehandStrokeBuilder,
+  type FreehandStrokeOptions,
   type FreehandStrokeStyle,
   type ScreenSize,
   type ViewportCamera,
@@ -31,7 +32,7 @@ const props = defineProps<{
 }>();
 
 type CanvasTool = "select" | "draw" | "note" | "text" | "section";
-type CanvasShapeType = "note" | "text" | "image" | "section";
+type CanvasShapeType = "note" | "text" | "image" | "video" | "section";
 
 type CanvasShape = {
   id: string;
@@ -119,7 +120,7 @@ const SCREEN_VELOCITY_FULL = 4;
 // addVelocityWidths measures velocity in world units/ms, so it would otherwise
 // taper differently depending on zoom. Multiplying the scale by the current
 // world→screen scale makes the taper track on-screen pointer speed instead.
-function freehandOptions(style: FreehandStrokeStyle = FREEHAND_STYLE) {
+function freehandOptions(style: FreehandStrokeStyle = FREEHAND_STYLE): FreehandStrokeOptions {
   return {
     minDistance: 2,
     simplifyTolerance: 0.75,
@@ -300,6 +301,7 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
     typeValue === "text" ||
     typeValue === "note" ||
     typeValue === "image" ||
+    typeValue === "video" ||
     typeValue === "section"
       ? typeValue
       : "note";
@@ -353,7 +355,15 @@ function toStroke(id: string, source: Y.Map<unknown> | CanvasStrokeSnapshot): Ca
     typeof styleValue === "object" && styleValue !== null
       ? { ...FREEHAND_STYLE, ...(styleValue as Partial<FreehandStrokeStyle>) }
       : FREEHAND_STYLE;
-  const stroke = buildFreehandStroke(points, freehandOptions(style));
+  // Persisted points already carry the widths computed while drawing.
+  // Recomputing velocity widths here would depend on the viewer's current
+  // zoom (and on the pre-layout 1×1 screen during initial load), so only
+  // derive widths when none were stored.
+  const options = freehandOptions(style);
+  if (points.some((point) => point.width !== undefined)) {
+    options.velocityWidth = undefined;
+  }
+  const stroke = buildFreehandStroke(points, options);
   return {
     id,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
@@ -389,13 +399,14 @@ function syncStrokesFromY() {
 
 function defaultColor(type: CanvasShapeType) {
   if (type === "image") return "#ffffff";
+  if (type === "video") return "#000000";
   if (type === "section") return "rgba(255, 255, 255, 0.02)";
   if (type === "text") return "#ffffff";
   return NOTE_COLORS[0];
 }
 
 function defaultText(type: CanvasShapeType) {
-  if (type === "image") return "";
+  if (type === "image" || type === "video") return "";
   if (type === "section") return "Section";
   if (type === "text") return "Text";
   return "Note";
@@ -754,6 +765,15 @@ function isImageFile(file: File) {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name);
 }
 
+function isVideoFile(file: File) {
+  if (file.type.startsWith("video/")) return true;
+  return /\.(mp4|webm|mov|m4v|ogv)$/i.test(file.name);
+}
+
+function isMediaFile(file: File) {
+  return isVideoFile(file) || isImageFile(file);
+}
+
 function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   if (event) return screenToWorld(screenPoint(event));
   if (localPointer.value) return localPointer.value;
@@ -763,9 +783,9 @@ function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   });
 }
 
-async function uploadImageFile(file: File): Promise<string> {
+async function uploadMediaFile(file: File): Promise<string> {
   const formData = new FormData();
-  formData.append("file", file, file.name || "image");
+  formData.append("file", file, file.name || "upload");
   if (props.documentId) formData.append("documentId", props.documentId);
 
   const response = await fetch(`/api/v1/spaces/${props.spaceId}/uploads`, {
@@ -793,6 +813,20 @@ function imageSize(src: string): Promise<{ width: number; height: number }> {
   });
 }
 
+function videoSize(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.onloadedmetadata = () => resolve({
+      width: video.videoWidth || 320,
+      height: video.videoHeight || 220,
+    });
+    video.onerror = () => resolve({ width: 320, height: 220 });
+    video.src = src;
+  });
+}
+
 function fitImageSize(width: number, height: number) {
   const maxWidth = 480;
   const maxHeight = 360;
@@ -803,26 +837,27 @@ function fitImageSize(width: number, height: number) {
   };
 }
 
-async function addImageFile(file: File, at: { x: number; y: number }) {
-  if (!isImageFile(file)) return;
+async function addMediaFile(file: File, at: { x: number; y: number }) {
+  if (!isMediaFile(file)) return;
+  const type: CanvasShapeType = isVideoFile(file) ? "video" : "image";
   saveState.value = "saving";
   saveError.value = null;
   dispatchSaveStatus();
 
   try {
-    const src = await uploadImageFile(file);
-    const naturalSize = await imageSize(src);
+    const src = await uploadMediaFile(file);
+    const naturalSize = await (type === "video" ? videoSize(src) : imageSize(src));
     const size = fitImageSize(naturalSize.width, naturalSize.height);
     const id = `shape-${crypto.randomUUID()}`;
     const shape: CanvasShape = {
       id,
-      type: "image",
+      type,
       x: Math.round(at.x - size.width / 2),
       y: Math.round(at.y - size.height / 2),
       width: size.width,
       height: size.height,
       text: "",
-      color: defaultColor("image"),
+      color: defaultColor(type),
       src,
       alt: file.name,
       updatedAt: Date.now(),
@@ -839,14 +874,14 @@ async function addImageFile(file: File, at: { x: number; y: number }) {
   }
 }
 
-function imageFilesFromList(files: FileList | File[]) {
-  return Array.from(files).filter(isImageFile);
+function mediaFilesFromList(files: FileList | File[]) {
+  return Array.from(files).filter(isMediaFile);
 }
 
-async function addImageFiles(files: File[], at: { x: number; y: number }) {
+async function addMediaFiles(files: File[], at: { x: number; y: number }) {
   let offset = 0;
   for (const file of files) {
-    await addImageFile(file, { x: at.x + offset, y: at.y + offset });
+    await addMediaFile(file, { x: at.x + offset, y: at.y + offset });
     offset += 24;
   }
 }
@@ -1219,20 +1254,36 @@ function handlePointerLeave() {
   updatePresence();
 }
 
+// During dragover the browser hides file contents (dataTransfer.files is
+// empty); only item kind/type metadata is available to decide acceptance.
+function dragHasMediaFiles(transfer: DataTransfer | null) {
+  if (!transfer) return false;
+  if (transfer.items.length > 0) {
+    return Array.from(transfer.items).some(
+      (item) =>
+        item.kind === "file" &&
+        (item.type === "" ||
+          item.type.startsWith("image/") ||
+          item.type.startsWith("video/")),
+    );
+  }
+  return transfer.types.includes("Files");
+}
+
 function handleDragOver(event: DragEvent) {
-  const files = event.dataTransfer?.files;
-  if (!files || imageFilesFromList(files).length === 0) return;
+  if (!dragHasMediaFiles(event.dataTransfer)) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
 }
 
 function handleDrop(event: DragEvent) {
-  const files = event.dataTransfer?.files;
-  if (!files) return;
-  const images = imageFilesFromList(files);
-  if (images.length === 0) return;
+  if (!dragHasMediaFiles(event.dataTransfer)) return;
+  // Prevent the browser from navigating to the file even when the dropped
+  // files turn out not to be media we can place.
   event.preventDefault();
-  void addImageFiles(images, insertionPointFromEvent(event));
+  const media = mediaFilesFromList(event.dataTransfer?.files ?? []);
+  if (media.length === 0) return;
+  void addMediaFiles(media, insertionPointFromEvent(event));
 }
 
 function handlePaste(event: ClipboardEvent) {
@@ -1240,11 +1291,11 @@ function handlePaste(event: ClipboardEvent) {
   if (target?.closest("textarea, input, select")) return;
 
   const files = Array.from(event.clipboardData?.files ?? []);
-  const images = imageFilesFromList(files);
-  if (images.length === 0) return;
+  const media = mediaFilesFromList(files);
+  if (media.length === 0) return;
 
   event.preventDefault();
-  void addImageFiles(images, insertionPointFromEvent());
+  void addMediaFiles(media, insertionPointFromEvent());
 }
 
 function fitView() {
@@ -1544,6 +1595,18 @@ onUnmounted(() => {
             :alt="shape.alt || ''"
             draggable="false"
           />
+          <video
+            v-else-if="shape.type === 'video' && shape.src"
+            class="canvas-shape-image"
+            :src="shape.src"
+            :aria-label="shape.alt || ''"
+            autoplay
+            muted
+            loop
+            playsinline
+            draggable="false"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+          ></video>
           <textarea
             v-else-if="shape.type !== 'section'"
             class="canvas-shape-text"

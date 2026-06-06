@@ -25,6 +25,12 @@ const ALLOWED_TYPES = [
   "image/gif",
   "image/webp",
   "image/svg+xml",
+  // Videos
+  "video/mp4",
+  "video/webm",
+  "video/quicktime", // .mov
+  "video/x-m4v",
+  "video/ogg",
   // Documents
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
   "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
@@ -47,6 +53,11 @@ const ALLOWED_EXTENSIONS = [
   "gif",
   "webp",
   "svg",
+  "mp4",
+  "webm",
+  "mov",
+  "m4v",
+  "ogv",
   "docx",
   "doc",
   "pdf",

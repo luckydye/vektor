@@ -1,5 +1,7 @@
 import type { APIRoute } from "astro";
-import { readFile, unlink } from "node:fs/promises";
+import { stat, unlink } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { resolve } from "node:path";
 import { requireParam, withApiErrorHandling } from "#db/api.ts";
 import {
@@ -17,6 +19,12 @@ const MIME_TYPES: Record<string, string> = {
   gif: "image/gif",
   webp: "image/webp",
   svg: "image/svg+xml",
+  // Videos
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  m4v: "video/x-m4v",
+  ogv: "video/ogg",
   // Documents
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -62,22 +70,66 @@ export const GET: APIRoute = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
+      let fileSize: number;
       try {
-        const fileBuffer = await readFile(filePath);
-
-        return new Response(fileBuffer, {
-          status: 200,
-          headers: {
-            "Content-Type": mimeType,
-            "Cache-Control": "public, max-age=31536000, immutable",
-          },
-        });
+        const fileStat = await stat(filePath);
+        if (!fileStat.isFile()) {
+          return new Response("File not found", { status: 404 });
+        }
+        fileSize = fileStat.size;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           return new Response("File not found", { status: 404 });
         }
         throw error;
       }
+
+      const baseHeaders: Record<string, string> = {
+        "Content-Type": mimeType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        // Range support is required for video playback (Safari probes with
+        // a byte-range request and refuses to play without a 206 response).
+        "Accept-Ranges": "bytes",
+      };
+
+      const rangeHeader = context.request.headers.get("range");
+      if (rangeHeader) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+        const start = match?.[1]
+          ? Number(match[1])
+          : match?.[2]
+            ? Math.max(0, fileSize - Number(match[2]))
+            : Number.NaN;
+        const end = match?.[1] && match[2] ? Math.min(Number(match[2]), fileSize - 1) : fileSize - 1;
+
+        if (!match || Number.isNaN(start) || start >= fileSize || start > end) {
+          return new Response("Range not satisfiable", {
+            status: 416,
+            headers: { "Content-Range": `bytes */${fileSize}` },
+          });
+        }
+
+        const stream = Readable.toWeb(
+          createReadStream(filePath, { start, end }),
+        ) as ReadableStream;
+        return new Response(stream, {
+          status: 206,
+          headers: {
+            ...baseHeaders,
+            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+            "Content-Length": String(end - start + 1),
+          },
+        });
+      }
+
+      const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream;
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          ...baseHeaders,
+          "Content-Length": String(fileSize),
+        },
+      });
     },
     {
       fallbackMessage: "Failed to serve file",
