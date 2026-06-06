@@ -657,6 +657,39 @@ export async function callModel(options: {
   };
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Turns a model tool call into a shell command for the bash sandbox. `bash`
+ * carries the full command line in `command`. Small models frequently name a
+ * CLI command directly as the tool (js-exec, vektor, recipes, …) and put the
+ * payload in `command`/`code`/`script`/`input`; rebuild a runnable line from
+ * the tool name and that payload instead of rejecting it.
+ */
+export function buildShellCommand(toolName: string, args: unknown): string {
+  const record = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
+  if (toolName === "bash") return str(record.command);
+
+  const payload =
+    str(record.command) ||
+    str(record.code) ||
+    str(record.script) ||
+    str(record.input) ||
+    str(record.query) ||
+    str(record.args) ||
+    (typeof args === "string" ? (args as string).trim() : "");
+
+  if (!payload) return toolName;
+  if (payload === toolName || payload.startsWith(`${toolName} `)) return payload;
+  // js-exec runs inline code with -c; a bare positional would be read as a path.
+  if (toolName === "js-exec") return `js-exec -c ${shellQuote(payload)}`;
+  return `${toolName} ${payload}`;
+}
+
 /** Best-effort lookup of a document's type for prompt tailoring. */
 async function fetchDocumentType(
   apiUrl: string,
@@ -786,26 +819,29 @@ export async function runAgentPrompt(options: {
       let result: unknown;
       let isError = false;
       try {
-        const args = JSON.parse(toolCall.function.arguments) as unknown;
-        if (toolCall.function.name === "bash") {
-          const cmd = (args as { command: string }).command;
-          const res = await bash.exec(cmd);
-          const stdout = res.stdout.trim();
-          const stderr = res.stderr.trim();
-          const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
-            .filter(Boolean)
-            .join("\n");
-          if (res.exitCode !== 0) {
-            result =
-              output ||
-              `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
-          } else {
-            result = output || "(no output)";
-          }
-          isError = res.exitCode !== 0;
-        } else {
-          throw new Error(`Unknown tool: ${toolCall.function.name}`);
+        const args = JSON.parse(toolCall.function.arguments || "{}") as unknown;
+        // The only real tool is `bash`. Small models often call a shell
+        // command directly as a "tool" (e.g. js-exec, vektor, recipes); route
+        // any tool call through bash by reconstructing the command line rather
+        // than failing with "Unknown tool".
+        const cmd = buildShellCommand(toolCall.function.name, args);
+        if (!cmd) {
+          throw new Error("No command provided. Call bash with {\"command\": \"…\"}.");
         }
+        const res = await bash.exec(cmd);
+        const stdout = res.stdout.trim();
+        const stderr = res.stderr.trim();
+        const output = [stdout, stderr ? `stderr: ${stderr}` : ""]
+          .filter(Boolean)
+          .join("\n");
+        if (res.exitCode !== 0) {
+          result =
+            output ||
+            `Command failed with exit code ${res.exitCode}. Command may have redirected stderr or command may not exist.`;
+        } else {
+          result = output || "(no output)";
+        }
+        isError = res.exitCode !== 0;
       } catch (error) {
         isError = true;
         result = error instanceof Error ? error.message : String(error);
