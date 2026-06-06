@@ -1,10 +1,15 @@
 import { defineCommand } from "just-bash";
 
-type Recipe = {
+export type Recipe = {
   title: string;
   keywords: string[];
   body: string;
 };
+
+/** Returns a recipe's title + body for inlining into prompts. Null if unknown. */
+export function getRecipe(name: string): Recipe | null {
+  return RECIPES[name] ?? null;
+}
 
 /**
  * Task-oriented recipes the agent can look up on demand, instead of carrying

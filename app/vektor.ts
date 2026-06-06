@@ -28,7 +28,10 @@ import {
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
 import { commandAgent } from "./src/cli/agent.ts";
 
-function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string> } {
+function parseFlags(args: string[]): {
+  positional: string[];
+  flags: Record<string, string>;
+} {
   const positional: string[] = [];
   const flags: Record<string, string> = {};
   for (let i = 0; i < args.length; i++) {
@@ -111,7 +114,9 @@ async function main(): Promise<void> {
     }
 
     for (const [nodeId, node] of Object.entries(result.nodes)) {
-      process.stdout.write(`${nodeId}: ${node.status}${node.error ? ` — ${node.error}` : ""}\n`);
+      process.stdout.write(
+        `${nodeId}: ${node.status}${node.error ? ` — ${node.error}` : ""}\n`,
+      );
     }
     if (result.output) {
       process.stdout.write(`Output: ${JSON.stringify(result.output, null, 2)}\n`);
@@ -138,12 +143,19 @@ async function main(): Promise<void> {
       const { flags } = parseFlags(rest.slice(extensionId?.startsWith("--") ? 0 : 1));
       const url = flags.url ?? process.env.WIKI_URL ?? resolveHost();
       const token = flags.token ?? process.env.WIKI_TOKEN;
-      const space = flags.space ?? await resolveSpaceId(url, token);
-      await commandUpload(extensionId?.startsWith("--") ? undefined : extensionId, url, space, token!);
+      const space = flags.space ?? (await resolveSpaceId(url, token));
+      await commandUpload(
+        extensionId?.startsWith("--") ? undefined : extensionId,
+        url,
+        space,
+        token!,
+      );
       return;
     }
 
-    throw new Error(`Unknown extension subcommand: ${subcommand}\n\nTry: create, package, upload`);
+    throw new Error(
+      `Unknown extension subcommand: ${subcommand}\n\nTry: create, package, upload`,
+    );
   }
 
   if (command === "document") {
@@ -178,10 +190,14 @@ async function main(): Promise<void> {
       return;
     }
 
-    throw new Error(`Unknown document subcommand: ${subcommand}\n\nTry: cat, write, create, ls, search`);
+    throw new Error(
+      `Unknown document subcommand: ${subcommand}\n\nTry: cat, write, create, ls, search`,
+    );
   }
 
-  throw new Error(`Unknown command: ${command}\n\nTry: serve, workflow, extension, document`);
+  throw new Error(
+    `Unknown command: ${command}\n\nTry: serve, workflow, extension, document`,
+  );
 }
 
 main().catch((err) => {

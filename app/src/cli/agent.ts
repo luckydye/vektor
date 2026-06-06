@@ -61,7 +61,9 @@ async function resolveDocumentId(
     const data = (await listRes.json()) as {
       documents?: Array<{ id: string; slug?: string }>;
     };
-    const match = (data.documents ?? []).find((d) => d.slug === docArg || d.id === docArg);
+    const match = (data.documents ?? []).find(
+      (d) => d.slug === docArg || d.id === docArg,
+    );
     if (match) return match.id;
   }
 
@@ -84,7 +86,9 @@ function renderEvent(event: AgentEvent): void {
       } catch {
         // keep raw arguments
       }
-      process.stdout.write(`\n${c.cyan("⏺")} ${c.bold(event.toolName)} ${c.dim(display)}\n`);
+      process.stdout.write(
+        `\n${c.cyan("⏺")} ${c.bold(event.toolName)} ${c.dim(display)}\n`,
+      );
       break;
     }
     case "tool_result": {
@@ -131,7 +135,9 @@ async function runTurn(
     if (controller.signal.aborted) {
       process.stdout.write(c.dim("\n[interrupted]\n"));
     } else {
-      process.stdout.write(c.red(`\n[error] ${error instanceof Error ? error.message : String(error)}\n`));
+      process.stdout.write(
+        c.red(`\n[error] ${error instanceof Error ? error.message : String(error)}\n`),
+      );
     }
   } finally {
     process.removeListener("SIGINT", onInterrupt);
@@ -152,7 +158,8 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
 
   const spaceId = options.space ?? (await resolveSpaceId(host, undefined));
   const userId = options.user ?? null;
-  const jobToken = options.token ?? createJobToken(spaceId, Date.now().toString(), userId);
+  const jobToken =
+    options.token ?? createJobToken(spaceId, Date.now().toString(), userId);
   const authHeaders = { "X-Job-Token": jobToken, "X-Space-Id": spaceId };
 
   let documentId: string | undefined;
@@ -184,7 +191,9 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
   }
 
   // Interactive REPL.
-  process.stdout.write(c.dim("\nType a message. Ctrl-C interrupts a turn, Ctrl-D or /exit quits.\n"));
+  process.stdout.write(
+    c.dim("\nType a message. Ctrl-C interrupts a turn, Ctrl-D or /exit quits.\n"),
+  );
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = () =>
     new Promise<string | null>((resolve) => {

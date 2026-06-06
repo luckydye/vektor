@@ -9,7 +9,7 @@ import {
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
 import { zipCommand, zipinfoCommand, unzipCommand } from "./commands/zip.ts";
 import { vektorCommand } from "./commands/vektor.ts";
-import { recipesCommand } from "./commands/recipes.ts";
+import { recipesCommand, getRecipe } from "./commands/recipes.ts";
 import { pandocCommand } from "./commands/pandoc.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { aiCommand } from "./commands/ai.ts";
@@ -84,11 +84,40 @@ function buildCoreAgentSystemPrompt(
 - Never install extensions unless the user explicitly asks.
 
 ## Recipes
-- \`recipes\` lists step-by-step instructions for common tasks; \`recipes <name>\` prints one (e.g. \`recipes edit-text\`, \`recipes canvas\`); \`recipes search <words>\` finds by keyword.
-- IMPORTANT: before editing a document or canvas, creating documents/apps, building extensions, or running workflows, run the matching recipe FIRST and follow it exactly.
+- \`recipes\` lists step-by-step instructions for common tasks; \`recipes <name>\` prints one (e.g. \`recipes canvas\`, \`recipes create-doc\`); \`recipes search <words>\` finds by keyword.
+- Before creating documents/apps, building extensions, or running workflows, run the matching recipe FIRST and follow it exactly.
 - Quick map: edit-text, edit-json, canvas, create-doc, find-docs, app-doc, workflow, upload, extension, large-output.
+${documentEditingSection(documentId)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+}
 
-${documentId ? `\n## Current Document\n- When the user refers to "this document" or "the page", inspect it first with \`vektor current\`.` : ""}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+/**
+ * When a document is in context, inline the editing playbook directly instead
+ * of making the model discover it via \`recipes\`. Small models skip the lookup
+ * step, so the most common task gets its instructions up front.
+ */
+function documentEditingSection(documentId?: string): string {
+  if (!documentId) return "";
+  const recipe = getRecipe("edit-text");
+  return `
+## Editing the current document
+- "this document" / "the page" = the current document. Read it first with \`vektor current -n\`.
+- To change document content, ALWAYS use \`vektor edit current <op>\`. NEVER edit document
+  content with sed, perl, python, js-exec, or by piping through grep/awk — those corrupt
+  unicode (emoji, umlauts) and bypass collaborative editing. There is no temp-file step.
+- Common edits in one command:
+  - remove/replace text anywhere: \`vektor edit current sub '<pattern>' '<replacement>'\`
+  - replace a block: \`vektor edit current replace <line> -c '<p>new</p>'\`
+  - insert/append: \`vektor edit current insert <line|$> -c '<p>added</p>'\`
+  - delete a block: \`vektor edit current delete <line>\`
+${
+  recipe
+    ? `- Full reference (\`recipes edit-text\`):\n${recipe.body
+        .split("\n")
+        .map((l) => `  ${l}`)
+        .join("\n")}`
+    : ""
+}
+- For JSON documents see \`recipes edit-json\`; for canvases see \`recipes canvas\`.`;
 }
 
 async function* parseSSE(
