@@ -39,32 +39,36 @@ type AgentCliOptions = {
   once?: boolean;
 };
 
-/** Resolves a `--doc` value (id or slug) to a concrete document id. */
-async function resolveDocumentId(
+/** Resolves a `--doc` value (id or slug) to a document id + type. */
+async function resolveDocument(
   host: string,
   spaceId: string,
   headers: Record<string, string>,
   docArg: string,
-): Promise<string> {
+): Promise<{ id: string; type: string | null }> {
   const res = await fetch(
     `${host}/api/v1/spaces/${spaceId}/documents/${encodeURIComponent(docArg)}`,
     { headers },
   );
   if (res.ok) {
-    const data = (await res.json()) as { document?: { id?: string } };
-    if (data.document?.id) return data.document.id;
+    const data = (await res.json()) as {
+      document?: { id?: string; type?: string | null };
+    };
+    if (data.document?.id) {
+      return { id: data.document.id, type: data.document.type ?? null };
+    }
   }
 
   // Fall back to matching by slug in the document list.
   const listRes = await fetch(`${host}/api/v1/spaces/${spaceId}/documents`, { headers });
   if (listRes.ok) {
     const data = (await listRes.json()) as {
-      documents?: Array<{ id: string; slug?: string }>;
+      documents?: Array<{ id: string; slug?: string; type?: string | null }>;
     };
     const match = (data.documents ?? []).find(
       (d) => d.slug === docArg || d.id === docArg,
     );
-    if (match) return match.id;
+    if (match) return { id: match.id, type: match.type ?? null };
   }
 
   throw new Error(`Could not resolve document '${docArg}' in space ${spaceId}`);
@@ -113,6 +117,7 @@ async function runTurn(
     apiUrl: string;
     spaceId: string;
     documentId?: string;
+    documentType?: string | null;
     jobToken: string;
   },
 ): Promise<void> {
@@ -125,6 +130,7 @@ async function runTurn(
       apiUrl: ctx.apiUrl,
       spaceId: ctx.spaceId,
       documentId: ctx.documentId,
+      documentType: ctx.documentType,
       jobToken: ctx.jobToken,
       signal: controller.signal,
       onEvent: (event) => renderEvent(event),
@@ -163,17 +169,20 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
   const authHeaders = { "X-Job-Token": jobToken, "X-Space-Id": spaceId };
 
   let documentId: string | undefined;
+  let documentType: string | null | undefined;
   if (options.doc) {
-    documentId = await resolveDocumentId(host, spaceId, authHeaders, options.doc);
+    const resolved = await resolveDocument(host, spaceId, authHeaders, options.doc);
+    documentId = resolved.id;
+    documentType = resolved.type;
   }
 
-  const ctx = { apiUrl: host, spaceId, documentId, jobToken };
+  const ctx = { apiUrl: host, spaceId, documentId, documentType, jobToken };
   const messages: ChatMessage[] = [];
 
   process.stdout.write(
     c.dim(
       `vektor agent · ${providerLabel} · ${host}\n` +
-        `space ${spaceId}${documentId ? ` · doc ${documentId}` : ""}\n`,
+        `space ${spaceId}${documentId ? ` · doc ${documentId}${documentType ? ` (${documentType})` : ""}` : ""}\n`,
     ),
   );
 

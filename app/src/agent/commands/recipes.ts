@@ -6,11 +6,6 @@ export type Recipe = {
   body: string;
 };
 
-/** Returns a recipe's title + body for inlining into prompts. Null if unknown. */
-export function getRecipe(name: string): Recipe | null {
-  return RECIPES[name] ?? null;
-}
-
 /**
  * Task-oriented recipes the agent can look up on demand, instead of carrying
  * all instructions in the system prompt. Keep each recipe short and
@@ -140,6 +135,11 @@ For paginated APIs, loop pages and append to a file; stop when a page is empty.
 Read large files in slices: sed -n '100,160p' out.json`,
   },
 };
+
+/** Returns a recipe's title + body for inlining into prompts. Null if unknown. */
+export function getRecipe(name: string): Recipe | null {
+  return RECIPES[name] ?? null;
+}
 
 function listRecipes(): string {
   const lines = Object.entries(RECIPES).map(

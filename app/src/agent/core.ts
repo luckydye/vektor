@@ -63,6 +63,7 @@ function buildCoreAgentSystemPrompt(
   documentId?: string,
   connectedProviders?: string[],
   userProfile?: string,
+  documentType?: string | null,
 ) {
   const gitlabConnected = !connectedProviders || connectedProviders.includes("gitlab");
   return `## Bash Tool Runtime
@@ -87,37 +88,55 @@ function buildCoreAgentSystemPrompt(
 - \`recipes\` lists step-by-step instructions for common tasks; \`recipes <name>\` prints one (e.g. \`recipes canvas\`, \`recipes create-doc\`); \`recipes search <words>\` finds by keyword.
 - Before creating documents/apps, building extensions, or running workflows, run the matching recipe FIRST and follow it exactly.
 - Quick map: edit-text, edit-json, canvas, create-doc, find-docs, app-doc, workflow, upload, extension, large-output.
-${documentEditingSection(documentId)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+${documentEditingSection(documentId, documentType)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+}
+
+const READONLY_DOC_TYPES = new Set(["csv"]);
+
+/** Maps a document type to the recipe that best explains how to edit it. */
+function recipeForDocumentType(documentType?: string | null): string {
+  if (documentType === "canvas") return "canvas";
+  if (documentType === "app") return "app-doc";
+  return "edit-text";
 }
 
 /**
  * When a document is in context, inline the editing playbook directly instead
  * of making the model discover it via \`recipes\`. Small models skip the lookup
- * step, so the most common task gets its instructions up front.
+ * step, so the most common task gets its instructions up front. The inlined
+ * recipe is chosen by document type (canvas / app / html).
  */
-function documentEditingSection(documentId?: string): string {
+function documentEditingSection(documentId?: string, documentType?: string | null): string {
   if (!documentId) return "";
-  const recipe = getRecipe("edit-text");
+
+  if (documentType && READONLY_DOC_TYPES.has(documentType)) {
+    return `
+## Current document
+- The current document is read-only (type "${documentType}") and cannot be edited.
+  If the user asks to change it, explain that it is read-only.`;
+  }
+
+  const isCanvas = documentType === "canvas";
+  const recipeName = recipeForDocumentType(documentType);
+  const recipe = getRecipe(recipeName);
+  const readHint = isCanvas
+    ? "`vektor current` (shapes/strokes as JSON)"
+    : "`vektor current -n` (line-numbered)";
+
   return `
 ## Editing the current document
-- "this document" / "the page" = the current document. Read it first with \`vektor current -n\`.
-- To change document content, ALWAYS use \`vektor edit current <op>\`. NEVER edit document
-  content with sed, perl, python, js-exec, or by piping through grep/awk — those corrupt
-  unicode (emoji, umlauts) and bypass collaborative editing. There is no temp-file step.
-- Common edits in one command:
-  - remove/replace text anywhere: \`vektor edit current sub '<pattern>' '<replacement>'\`
-  - replace a block: \`vektor edit current replace <line> -c '<p>new</p>'\`
-  - insert/append: \`vektor edit current insert <line|$> -c '<p>added</p>'\`
-  - delete a block: \`vektor edit current delete <line>\`
+- "this document" / "the page" = the current document. Read it first with ${readHint}.
+- To change it, ALWAYS use \`vektor edit current <op>\`. NEVER edit document content with
+  sed, perl, python, js-exec, or by piping through grep/awk — those corrupt unicode (emoji,
+  umlauts) and bypass collaborative editing. There is no temp-file step.
 ${
   recipe
-    ? `- Full reference (\`recipes edit-text\`):\n${recipe.body
+    ? `- Playbook (\`recipes ${recipeName}\`):\n${recipe.body
         .split("\n")
         .map((l) => `  ${l}`)
         .join("\n")}`
     : ""
-}
-- For JSON documents see \`recipes edit-json\`; for canvases see \`recipes canvas\`.`;
+}`;
 }
 
 async function* parseSSE(
@@ -638,11 +657,32 @@ export async function callModel(options: {
   };
 }
 
+/** Best-effort lookup of a document's type for prompt tailoring. */
+async function fetchDocumentType(
+  apiUrl: string,
+  spaceId: string,
+  documentId: string,
+  jobToken: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/documents/${encodeURIComponent(documentId)}`,
+      { headers: { "X-Job-Token": jobToken } },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { document?: { type?: string | null } };
+    return data.document?.type ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runAgentPrompt(options: {
   messages: ChatMessage[];
   apiUrl: string;
   spaceId: string;
   documentId?: string;
+  documentType?: string | null;
   connectedProviders?: string[];
   userProfile?: string;
   jobToken: string;
@@ -666,6 +706,14 @@ export async function runAgentPrompt(options: {
   } = options;
 
   const provider = getAIProvider();
+
+  // Resolve the document type so the system prompt can inline the right
+  // editing playbook. Use the caller-provided type, else fetch once
+  // (best-effort — a failure just falls back to the generic HTML playbook).
+  let documentType = options.documentType;
+  if (documentType === undefined && documentId) {
+    documentType = await fetchDocumentType(apiUrl, spaceId, documentId, jobToken);
+  }
 
   const mcpConfig: VektorMcpConfig = {
     apiUrl,
@@ -694,7 +742,12 @@ export async function runAgentPrompt(options: {
   const agentMessages: ChatMessage[] = [
     {
       role: "system",
-      content: buildCoreAgentSystemPrompt(documentId, connectedProviders, userProfile),
+      content: buildCoreAgentSystemPrompt(
+        documentId,
+        connectedProviders,
+        userProfile,
+        documentType,
+      ),
     },
     ...messages,
   ];
