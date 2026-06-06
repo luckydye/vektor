@@ -4,6 +4,13 @@ import {
   useDockedWindows,
   type DockedWindowState,
 } from "../composeables/useDockedWindows.ts";
+import {
+  dragDotsIcon,
+  panelRightIcon,
+  windowRestoreIcon,
+  closeXIcon,
+  resizeHandleIcon,
+} from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   id: string;
@@ -337,10 +344,7 @@ onUnmounted(() => {
       @mousedown="onDragStart"
     >
       <!-- Drag dots -->
-      <svg class="w-3.5 h-3.5 text-neutral-400 shrink-0" viewBox="0 0 10 16" fill="currentColor">
-        <circle cx="2" cy="3" r="1.3" /><circle cx="2" cy="8" r="1.3" /><circle cx="2" cy="13" r="1.3" />
-        <circle cx="8" cy="3" r="1.3" /><circle cx="8" cy="8" r="1.3" /><circle cx="8" cy="13" r="1.3" />
-      </svg>
+      <div class="svg-icon w-3.5 h-3.5 text-neutral-400 shrink-0" v-html="dragDotsIcon" />
       <span class="text-sm text-neutral-800 font-semibold flex-1">{{ title }}</span>
       <!-- Right controls -->
       <div class="panel-close flex items-center gap-0.5">
@@ -351,10 +355,7 @@ onUnmounted(() => {
           title="Dock panel"
           @click="onDock"
         >
-          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <line x1="15" y1="3" x2="15" y2="21" />
-          </svg>
+          <div class="svg-icon w-3.5 h-3.5" v-html="panelRightIcon" />
         </button>
         <button
           v-else
@@ -362,19 +363,14 @@ onUnmounted(() => {
           title="Undock panel"
           @click="onUndock"
         >
-          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="5" y="5" width="14" height="14" rx="2" />
-            <path d="M3 10V4a1 1 0 011-1h6" />
-          </svg>
+          <div class="svg-icon w-3.5 h-3.5" v-html="windowRestoreIcon" />
         </button>
         <!-- Close -->
         <button
           class="p-1 text-neutral-500 hover:text-neutral-800 rounded transition-colors"
           @click="onClose"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
         </button>
       </div>
     </div>
@@ -396,11 +392,7 @@ onUnmounted(() => {
       class="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
       @mousedown="onResizeCornerStart"
     >
-      <svg class="w-4 h-4 text-neutral-400" viewBox="0 0 16 16" fill="currentColor">
-        <circle cx="12" cy="12" r="1.2" />
-        <circle cx="8" cy="12" r="1.2" />
-        <circle cx="12" cy="8" r="1.2" />
-      </svg>
+      <div class="svg-icon w-4 h-4 text-neutral-400" v-html="resizeHandleIcon" />
     </div>
   </div>
 </template>

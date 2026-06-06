@@ -25,6 +25,7 @@ import {
   type ViewportCamera,
   type ViewportControls,
 } from "../viewport/index.ts";
+import { undoArrowIcon, redoArrowIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -1689,19 +1690,7 @@ onUnmounted(() => {
         :disabled="!canUndo"
         @click="undo"
       >
-        <svg
-          class="canvas-tool-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M9 14L4 9l5-5" />
-          <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
-        </svg>
+        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="undoArrowIcon" />
       </button>
       <button
         type="button"
@@ -1711,19 +1700,7 @@ onUnmounted(() => {
         :disabled="!canRedo"
         @click="redo"
       >
-        <svg
-          class="canvas-tool-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M15 14l5-5-5-5" />
-          <path d="M20 9H9a5 5 0 0 0 0 10h1" />
-        </svg>
+        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="redoArrowIcon" />
       </button>
       <span class="canvas-divider"></span>
       <button

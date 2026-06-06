@@ -3,6 +3,16 @@ import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { api } from "../api/client.ts";
 import type { WorkflowRunStatus, WorkflowNodeState } from "../api/ApiClient.ts";
 import DataTable from "./DataTable.vue";
+import {
+  chevronLeftThinIcon,
+  spinnerQuarterIcon,
+  closeXIcon,
+  playCircleFilledIcon,
+  checkBoldIcon,
+  clipboardDocumentIcon,
+  arrowDownTrayIcon,
+  chevronRightSmallIcon,
+} from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   documentId: string;
@@ -311,9 +321,7 @@ const statusBadgeClass: Record<string, string> = {
       :href="sourceExtensionHref"
       class="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-600 transition-colors"
     >
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-      </svg>
+      <div class="svg-icon w-4 h-4" v-html="chevronLeftThinIcon" />
       Back
     </a>
   </Teleport>
@@ -330,10 +338,7 @@ const statusBadgeClass: Record<string, string> = {
           class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium capitalize"
           :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
         >
-        <svg v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-        </svg>
+        <div v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'" class="svg-icon w-3 h-3 animate-spin" v-html="spinnerQuarterIcon" />
         {{ selectedRunDetail.status }}
       </span>
       <span v-if="selectedRun" class="text-xs text-neutral-400">
@@ -348,13 +353,8 @@ const statusBadgeClass: Record<string, string> = {
           :disabled="cancelling"
           @click="cancelRun"
         >
-          <svg v-if="cancelling" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-          </svg>
-          <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <div v-if="cancelling" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
+          <div v-else class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
           {{ cancelling ? "Cancelling…" : "Cancel" }}
         </button>
         <button
@@ -363,13 +363,8 @@ const statusBadgeClass: Record<string, string> = {
           :disabled="starting"
           @click="openRunDialog"
         >
-          <svg v-if="starting" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-          </svg>
-          <svg v-else class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
-          </svg>
+          <div v-if="starting" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
+          <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
           {{ starting ? "Starting…" : "Run Workflow" }}
         </button>
       </div>
@@ -393,16 +388,9 @@ const statusBadgeClass: Record<string, string> = {
               'bg-neutral-200 ring-neutral-100 text-neutral-400': node.status === 'cancelled' || node.status === 'skipped',
             }"
           >
-            <svg v-if="node.status === 'running'" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" />
-              <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-            </svg>
-            <svg v-else-if="node.status === 'completed'" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
-            <svg v-else-if="node.status === 'failed'" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <div v-if="node.status === 'running'" class="svg-icon w-4 h-4 animate-spin" v-html="spinnerQuarterIcon" />
+            <div v-else-if="node.status === 'completed'" class="svg-icon w-4 h-4" v-html="checkBoldIcon" />
+            <div v-else-if="node.status === 'failed'" class="svg-icon w-4 h-4" v-html="closeXIcon" />
             <span v-else class="w-2 h-2 rounded-full bg-current opacity-40" />
           </div>
         </template>
@@ -443,9 +431,7 @@ const statusBadgeClass: Record<string, string> = {
           :href="outputDocumentHref"
           class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
         >
-          <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-          </svg>
+          <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
           {{ outputDocumentTitle ?? "Open document" }}
         </a>
         <button
@@ -453,9 +439,7 @@ const statusBadgeClass: Record<string, string> = {
           title="Download as Markdown"
           @click="downloadDocument(outputDocumentHref!, outputDocumentTitle ?? 'document')"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-          </svg>
+          <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
         </button>
       </div>
 
@@ -467,9 +451,7 @@ const statusBadgeClass: Record<string, string> = {
           rel="noreferrer"
           class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
         >
-          <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-          </svg>
+          <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
           {{ selectedRunFileName }}
         </a>
         <button
@@ -477,12 +459,10 @@ const statusBadgeClass: Record<string, string> = {
           title="Download"
           @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!)"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-          </svg>
+          <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
         </button>
       </div>
-      
+
       <div class="pt-10"></div>
 
       <!-- Input fields -->
@@ -521,9 +501,7 @@ const statusBadgeClass: Record<string, string> = {
         class="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
         @click="logsExpanded = !logsExpanded"
       >
-        <svg class="w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-        </svg>
+        <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
         Logs
       </button>
       <div v-if="logsExpanded" class="mt-2 w-full rounded-lg bg-neutral-950 dark:bg-neutral-50 p-4 overflow-x-auto">
@@ -559,9 +537,7 @@ const statusBadgeClass: Record<string, string> = {
               class="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 transition-colors ml-2"
               @click="toggleHistoryRun(run.runId)"
             >
-              <svg class="w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
+              <div class="svg-icon w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
               Results
             </button>
           </div>
@@ -579,9 +555,7 @@ const statusBadgeClass: Record<string, string> = {
                   :href="historyOutputDocumentHref(run.runId)!"
                   class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
                 >
-                  <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                  </svg>
+                  <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
                   {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
                 </a>
                 <button
@@ -589,9 +563,7 @@ const statusBadgeClass: Record<string, string> = {
                   title="Download as Markdown"
                   @click="downloadDocument(historyOutputDocumentHref(run.runId)!, historyOutputDocumentTitle(run.runId) ?? 'document')"
                 >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
+                  <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
                 </button>
               </div>
               <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-xs text-neutral-400">No output</p>

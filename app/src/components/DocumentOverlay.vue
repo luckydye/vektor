@@ -24,6 +24,12 @@ import { api } from "../api/client.ts";
 import docStyles from "../styles/document.css?inline";
 import { useComments } from "../composeables/useComments.ts";
 import type { Comment } from "../api/ApiClient.ts";
+import {
+  documentIcon,
+  closeXIcon,
+  warningTriangleIcon,
+  commentIcon,
+} from "~/src/assets/icons.ts";
 
 interface OverlayState {
   documentId: string;
@@ -213,9 +219,7 @@ function formatCommentTime(date: Date | string): string {
                     <!-- Header -->
                     <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0">
                       <div class="flex items-center gap-3 min-w-0">
-                        <svg class="w-5 h-5 text-neutral-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
+                        <div class="svg-icon w-5 h-5 text-neutral-400 shrink-0" v-html="documentIcon" />
                         <h2 v-if="documentData" class="text-lg font-semibold text-foreground truncate">
                           {{ documentData.title }}
                         </h2>
@@ -236,9 +240,7 @@ function formatCommentTime(date: Date | string): string {
                           class="p-1.5 text-neutral-400 hover:text-foreground hover:bg-neutral-100 rounded transition-colors"
                           title="Close (Esc)"
                         >
-                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
+                          <div class="svg-icon w-5 h-5" v-html="closeXIcon" />
                         </button>
                       </div>
                     </div>
@@ -256,9 +258,7 @@ function formatCommentTime(date: Date | string): string {
                       <!-- Error state -->
                       <div v-else-if="error" class="p-6 text-center">
                         <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
-                          <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
+                          <div class="svg-icon w-6 h-6 text-red-600" v-html="warningTriangleIcon" />
                         </div>
                         <p class="text-neutral-600">{{ error }}</p>
                         <button
@@ -276,9 +276,7 @@ function formatCommentTime(date: Date | string): string {
                       <div v-if="documentData" class="border-t border-neutral-100 bg-neutral-50">
                         <!-- Comments Header -->
                         <div class="px-6 py-4 flex items-center gap-2">
-                          <svg class="w-4 h-4 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2h-2.586a1 1 0 00-.707.293l-4.414 4.414z" />
-                          </svg>
+                          <div class="svg-icon w-4 h-4 text-neutral-600" v-html="commentIcon" />
                           <h3 class="text-sm font-semibold text-foreground">
                             Comments ({{ comments.length }})
                           </h3>

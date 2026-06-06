@@ -6,6 +6,7 @@ import CommentOverlays, {
 } from "./CommentOverlays.vue";
 import { useComments } from "../composeables/useComments.ts";
 import type { Comment as ApiComment } from "../api/ApiClient.ts";
+import { plusSmallIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -208,9 +209,7 @@ onUnmounted(() => {
         class="w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md flex items-center justify-center text-neutral-500 hover:text-primary-600 hover:border-primary-300 hover:shadow-lg transition-all"
         title="Add comment"
       >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
+        <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
       </button>
     </div>
 

@@ -6,6 +6,9 @@
   @apply [&_svg]:align-middle [&_svg]:w-[1.35em] [&_svg]:h-[1.35em] [&_svg]:block [&_svg]:text-inherit;
   @apply [&_.icon+span]:ml-3xs;
 }
+@utility svg-icon {
+  @apply inline-block flex-none [&_svg]:block [&_svg]:w-full [&_svg]:h-full;
+}
 @utility button-disabled {
   @apply opacity-50 cursor-not-allowed;
 }

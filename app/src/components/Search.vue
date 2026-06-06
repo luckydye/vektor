@@ -10,6 +10,16 @@ import {
 } from "../api/client.ts";
 import SearchFilters from "./SearchFilters.vue";
 import DocumentListItem from "./DocumentListItem.vue";
+import {
+  searchMagnifierIcon,
+  closeXIcon,
+  spinnerIcon,
+  closeCircleFilledIcon,
+  chevronLeftLargeIcon,
+  chevronRightThinIcon,
+  chevronDownThinIcon,
+  documentIcon,
+} from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -243,9 +253,7 @@ const canSearch = computed(() => {
     <!-- Search Box -->
     <div class="flex gap-3 mb-4">
       <div class="relative flex-1">
-        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-        </svg>
+        <div class="svg-icon absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none" v-html="searchMagnifierIcon" />
         <input
           v-model="searchQuery"
           type="text"
@@ -262,9 +270,7 @@ const canSearch = computed(() => {
           :disabled="isLoading"
           title="Clear all"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
+          <div class="svg-icon w-5 h-5" v-html="closeXIcon" />
         </button>
       </div>
 
@@ -273,13 +279,8 @@ const canSearch = computed(() => {
         :disabled="isLoading || !canSearch"
         class="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all whitespace-nowrap"
       >
-        <svg v-if="!isLoading" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-        </svg>
-        <svg v-else class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
+        <div v-if="!isLoading" class="svg-icon w-5 h-5" v-html="searchMagnifierIcon" />
+        <div v-else class="svg-icon w-5 h-5 animate-spin" v-html="spinnerIcon" />
         {{ isLoading ? "Searching..." : "Search" }}
       </button>
     </div>
@@ -295,9 +296,7 @@ const canSearch = computed(() => {
 
     <!-- Error Message -->
     <div v-if="error" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-sm">
-      <svg class="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
-      </svg>
+      <div class="svg-icon w-5 h-5 shrink-0" v-html="closeCircleFilledIcon" />
       {{ error }}
     </div>
 
@@ -332,9 +331,7 @@ const canSearch = computed(() => {
           :disabled="offset === 0 || isLoading"
           class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-          </svg>
+          <div class="svg-icon w-5 h-5" v-html="chevronLeftLargeIcon" />
           Previous
         </button>
         <span class="text-sm text-neutral-500">
@@ -347,18 +344,14 @@ const canSearch = computed(() => {
           class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Next
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-          </svg>
+          <div class="svg-icon w-5 h-5" v-html="chevronRightThinIcon" />
         </button>
       </div>
     </div>
 
     <!-- No Results -->
     <div v-else-if="hasSearched && !isLoading && !error">
-      <svg class="w-16 h-16 mx-auto mb-6 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-      </svg>
+      <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300" v-html="searchMagnifierIcon" />
       <h3 class="text-2xl font-semibold text-neutral-800 mb-2">No results found</h3>
       <p class="text-neutral-600 mb-8">
         <span v-if="searchQuery.trim()">
@@ -416,13 +409,8 @@ const canSearch = computed(() => {
           :disabled="isFetchingNextPage"
           class="flex items-center gap-2 px-6 py-3 bg-background border-2 border-neutral-100 rounded-lg font-medium text-sm hover:border-blue-500 hover:text-blue-600 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all"
         >
-          <svg v-if="!isFetchingNextPage" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-          </svg>
-          <svg v-else class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+          <div v-if="!isFetchingNextPage" class="svg-icon w-5 h-5" v-html="chevronDownThinIcon" />
+          <div v-else class="svg-icon w-5 h-5 animate-spin" v-html="spinnerIcon" />
           {{ isFetchingNextPage ? "Loading more..." : "Load more documents" }}
         </button>
       </div>
@@ -430,18 +418,13 @@ const canSearch = computed(() => {
 
     <!-- Loading Documents -->
     <div v-else-if="!hasSearched && isLoadingDocuments">
-      <svg class="w-16 h-16 mx-auto mb-6 text-neutral-300 animate-spin" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
+      <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300 animate-spin" v-html="spinnerIcon" />
       <h3 class="text-center text-xl font-semibold text-neutral-700">Loading documents...</h3>
     </div>
 
     <!-- No Documents -->
     <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length === 0">
-      <svg class="w-16 h-16 mx-auto mb-6 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-      </svg>
+      <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300" v-html="documentIcon" />
       <h3 class="text-center text-xl font-semibold text-neutral-700 mb-2">No documents yet</h3>
       <p class="text-center text-neutral-500">There are no documents in this space yet</p>
     </div>

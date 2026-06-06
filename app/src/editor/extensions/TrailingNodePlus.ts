@@ -2,6 +2,7 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { render, html } from "lit-html";
+import { addIcon } from "~/src/assets/icons.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 
 export interface TrailingNodePlusOptions {
@@ -266,9 +267,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                 widget.className = "trailing-node-plus-button";
                 widget.contentEditable = "false";
                 widget.innerHTML = `
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                  </svg>
+                  ${addIcon}
                   <span>Add content</span>
                 `;
 

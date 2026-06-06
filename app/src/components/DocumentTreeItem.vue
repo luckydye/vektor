@@ -4,10 +4,7 @@
     <div class="pl-3 flex items-center gap-1">
       <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded"
         :aria-label="isExpanded ? 'Collapse' : 'Expand'">
-        <svg class="w-3 h-3 transition-transform text-neutral" :class="{ 'rotate-90': isExpanded }" fill="none"
-          stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
+        <div class="svg-icon w-3 h-3 transition-transform text-neutral" :class="{ 'rotate-90': isExpanded }" v-html="chevronRightThinIcon" />
       </button>
       
       <div v-else class="flex-none w-4"></div>
@@ -35,6 +32,7 @@
 <script setup>
 import { computed } from "vue";
 import { useSpace } from "../composeables/useSpace.ts";
+import { chevronRightThinIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps({
   doc: {

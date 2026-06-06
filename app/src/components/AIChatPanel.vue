@@ -10,6 +10,20 @@ import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
+  plusThinIcon,
+  trashSmallIcon,
+  thinkingIcon,
+  robotIcon,
+  copyOutlineIcon,
+  linkChainIcon,
+  pencilSquareIcon,
+  clockIcon,
+  closeSmallIcon,
+  paperclipIcon,
+  stopIcon,
+  sendPlaneIcon,
+} from "~/src/assets/icons.ts";
+import {
   getSessionsForSpace,
   getSession,
   saveSession,
@@ -1149,9 +1163,7 @@ onUnmounted(() => {
                   @click="startNewChat"
                   class="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium transition-colors"
                 >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/>
-                  </svg>
+                  <div class="svg-icon w-3.5 h-3.5" v-html="plusThinIcon" />
                   New chat
                 </button>
               </div>
@@ -1195,9 +1207,7 @@ onUnmounted(() => {
               class="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-red-500 transition-all shrink-0"
               title="Delete"
             >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
-              </svg>
+              <div class="svg-icon w-3.5 h-3.5" v-html="trashSmallIcon" />
             </button>
           </div>
         </div>
@@ -1239,11 +1249,7 @@ onUnmounted(() => {
           </div>
           <template v-else-if="message.role === 'thinking'">
             <div class="w-7 h-7 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 mt-0.5">
-              <svg class="w-4 h-4 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3a9 9 0 019 9c0 3.1-1.57 5.55-3.46 7.2-.92.8-1.54 1.92-1.54 3.1V23H8v-.7c0-1.18-.62-2.3-1.54-3.1C4.57 17.55 3 15.1 3 12a9 9 0 019-9z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 10a3 3 0 116 0c0 1.39-.94 2.1-1.73 2.7-.7.53-1.27.97-1.27 1.8"/>
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01"/>
-              </svg>
+              <div class="svg-icon w-4 h-4 text-neutral-500" v-html="thinkingIcon" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="bg-neutral-100 border border-neutral-200 rounded-xl overflow-hidden shadow-sm max-h-72 flex flex-col">
@@ -1261,9 +1267,7 @@ onUnmounted(() => {
           <template v-else-if="message.role === 'assistant'">
             <!-- Robot avatar -->
             <div class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5">
-              <svg class="w-4 h-4 text-primary-500" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2a2 2 0 012 2v1h3a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h3V4a2 2 0 012-2zm-3 7a1 1 0 100 2 1 1 0 000-2zm6 0a1 1 0 100 2 1 1 0 000-2zm-6 4h6v1H9v-1z"/>
-              </svg>
+              <div class="svg-icon w-4 h-4 text-primary-500" v-html="robotIcon" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm">
@@ -1277,9 +1281,7 @@ onUnmounted(() => {
                 </span>
                 <div class="flex items-center gap-1">
                   <button class="p-0.5 text-neutral-400 hover:text-neutral-600 transition-colors" title="Copy" @click="navigator.clipboard.writeText(message.content)">
-                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                    </svg>
+                    <div class="svg-icon w-3.5 h-3.5" v-html="copyOutlineIcon" />
                   </button>
                 </div>
               </div>
@@ -1287,10 +1289,7 @@ onUnmounted(() => {
           </template>
           <template v-else-if="message.role === 'tool'">
             <div class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5">
-              <svg class="w-4 h-4 tool-message-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 010 1.4l-1 1a4 4 0 005.7 5.6l1-1a1 1 0 011.4 1.5l-1 1a6 6 0 01-8.5-8.5l1-1a1 1 0 011.4 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.3 17.7a1 1 0 010-1.4l1-1a4 4 0 00-5.7-5.6l-1 1a1 1 0 01-1.4-1.5l1-1a6 6 0 018.5 8.5l-1 1a1 1 0 01-1.4 0z"/>
-              </svg>
+              <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkChainIcon" />
             </div>
             <div class="flex-1 min-w-0">
               <button
@@ -1354,10 +1353,7 @@ onUnmounted(() => {
           class="flex gap-2 justify-start animate-message-slide-in"
         >
           <div class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5">
-            <svg class="w-4 h-4 tool-message-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 010 1.4l-1 1a4 4 0 005.7 5.6l1-1a1 1 0 011.4 1.5l-1 1a6 6 0 01-8.5-8.5l1-1a1 1 0 011.4 0z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.3 17.7a1 1 0 010-1.4l1-1a4 4 0 00-5.7-5.6l-1 1a1 1 0 01-1.4-1.5l1-1a6 6 0 018.5 8.5l-1 1a1 1 0 01-1.4 0z"/>
-            </svg>
+            <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkChainIcon" />
           </div>
           <div class="flex-1 min-w-0 tool-message-bg border border-neutral-200 rounded-xl overflow-hidden shadow-sm mt-0.5">
             <div class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide flex items-center gap-1.5">
@@ -1384,9 +1380,7 @@ onUnmounted(() => {
           class="flex gap-2 justify-start animate-message-slide-in"
         >
           <div class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5">
-            <svg class="w-4 h-4 text-primary-500" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2a2 2 0 012 2v1h3a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h3V4a2 2 0 012-2zm-3 7a1 1 0 100 2 1 1 0 000-2zm6 0a1 1 0 100 2 1 1 0 000-2zm-6 4h6v1H9v-1z"/>
-            </svg>
+            <div class="svg-icon w-4 h-4 text-primary-500" v-html="robotIcon" />
           </div>
           <div class="flex items-center bg-neutral-10 border border-neutral-100 rounded-xl px-3.5 py-3 gap-1 mt-0.5">
             <span class="typing-dot" />
@@ -1404,10 +1398,7 @@ onUnmounted(() => {
           class="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           title="New chat"
         >
-          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-            <path stroke-linecap="round" stroke-linejoin="round" d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
+          <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
           New chat
         </button>
         <div class="flex-1"/>
@@ -1417,9 +1408,7 @@ onUnmounted(() => {
           class="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-700 transition-colors"
           title="Recent conversations"
         >
-          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
+          <div class="svg-icon w-3.5 h-3.5" v-html="clockIcon" />
           History
         </button>
       </div>
@@ -1466,9 +1455,7 @@ onUnmounted(() => {
                 class="text-neutral-400 hover:text-red-500 transition-colors"
                 @click="removePendingAttachment(attachment.id)"
               >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/>
-                </svg>
+                <div class="svg-icon w-3.5 h-3.5" v-html="closeSmallIcon" />
               </button>
             </div>
           </div>
@@ -1479,9 +1466,7 @@ onUnmounted(() => {
             title="Attach files"
             class="shrink-0 text-neutral-400 hover:text-neutral-700 transition-colors mb-0.5"
           >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21.44 11.05l-8.49 8.49a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 014.95 4.95l-8.5 8.49a2 2 0 01-2.82-2.82l7.78-7.78"/>
-            </svg>
+            <div class="svg-icon w-4 h-4" v-html="paperclipIcon" />
           </button>
           <textarea
             ref="messageInputEl"
@@ -1502,9 +1487,7 @@ onUnmounted(() => {
             class="shrink-0 text-neutral-500 hover:text-red-500 transition-colors mb-0.5"
             title="Stop generating"
           >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"/>
-            </svg>
+            <div class="svg-icon w-4 h-4" v-html="stopIcon" />
           </button>
           <button
             v-else
@@ -1513,9 +1496,7 @@ onUnmounted(() => {
             class="shrink-0 text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors mb-0.5"
             title="Send (⌘↵)"
           >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/>
-            </svg>
+            <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
           </button>
         </div>
           <p v-if="isUploadingFiles" class="mt-2 text-xs text-neutral-500">Uploading files...</p>

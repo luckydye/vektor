@@ -4,6 +4,7 @@ import { api, type DocumentWithProperties } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import docStyles from "../styles/document.css?inline";
+import { pinPushpinIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -58,9 +59,7 @@ async function unpin() {
         :href="doc ? `/${spaceSlug}/doc/${doc.slug}` : undefined"
         class="flex items-center gap-2 group"
       >
-        <svg class="w-3.5 h-3.5 text-amber-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
-        </svg>
+        <div class="svg-icon w-3.5 h-3.5 text-amber-500 shrink-0" v-html="pinPushpinIcon" />
         <span class="text-xs font-semibold text-amber-600 uppercase tracking-wide">Pinned</span>
         <span v-if="doc" class="text-sm font-semibold text-neutral-800 group-hover:text-blue-600 transition-colors">
           {{ doc.properties?.title || 'Untitled' }}

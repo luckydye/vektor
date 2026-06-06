@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { api, type PropertyFilter } from "../api/client.ts";
+import { closeXIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -90,9 +91,7 @@ const addHasPropertyFilter = () => {
           class="ml-1 p-0.5 hover:bg-blue-200 rounded-full"
           title="Remove filter"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
+          <div class="svg-icon w-4 h-4" v-html="closeXIcon" />
         </button>
       </div>
     </div>

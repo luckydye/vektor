@@ -11,6 +11,26 @@ import "@sv/elements/popover";
 import { useMembers } from "../composeables/useMembers.ts";
 import DockedPanel from "./DockedPanel.vue";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
+import {
+  documentIcon,
+  eyeIcon,
+  publishIcon,
+  documentTextIcon,
+  refreshIcon,
+  trashCanIcon,
+  lockIcon,
+  plusSmallIcon,
+  unlockIcon,
+  editOutlineIcon,
+  closeCircleIcon,
+  checkCircleOutlineIcon,
+  infoIcon,
+  clockIcon,
+  timelineNowDotIcon,
+  dotsVerticalIcon,
+  clipboardIcon,
+  copyIcon,
+} from "~/src/assets/icons.ts";
 
 const props = defineProps({
   documentId: {
@@ -87,38 +107,25 @@ const activityEvents = computed(() => {
 
 function getEventIcon(iconType: string) {
   const icons: Record<string, string> = {
-    revision:
-      '<svg class="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>',
-    view: '<svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>',
-    publish:
-      '<svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>',
-    suggest:
-      '<svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h8M8 14h5m5 7H6a2 2 0 01-2-2V5a2 2 0 012-2h8l6 6v10a2 2 0 01-2 2z" /></svg>',
-    restore:
-      '<svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>',
-    delete:
-      '<svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>',
-    acl_grant:
-      '<svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>',
-    acl_revoke:
-      '<svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>',
-    create:
-      '<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>',
-    lock: '<svg class="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>',
-    unlock:
-      '<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>',
-    property_update:
-      '<svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>',
-    property_delete:
-      '<svg class="w-4 h-4 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>',
-    webhook_success:
-      '<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>',
-    webhook_failed:
-      '<svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>',
+    revision: `<span class="svg-icon w-4 h-4 text-neutral-500">${documentIcon}</span>`,
+    view: `<span class="svg-icon w-4 h-4 text-neutral-400">${eyeIcon}</span>`,
+    publish: `<span class="svg-icon w-4 h-4 text-blue-500">${publishIcon}</span>`,
+    suggest: `<span class="svg-icon w-4 h-4 text-amber-500">${documentTextIcon}</span>`,
+    restore: `<span class="svg-icon w-4 h-4 text-orange-500">${refreshIcon}</span>`,
+    delete: `<span class="svg-icon w-4 h-4 text-red-500">${trashCanIcon}</span>`,
+    acl_grant: `<span class="svg-icon w-4 h-4 text-purple-500">${lockIcon}</span>`,
+    acl_revoke: `<span class="svg-icon w-4 h-4 text-purple-500">${lockIcon}</span>`,
+    create: `<span class="svg-icon w-4 h-4 text-green-500">${plusSmallIcon}</span>`,
+    lock: `<span class="svg-icon w-4 h-4 text-yellow-500">${lockIcon}</span>`,
+    unlock: `<span class="svg-icon w-4 h-4 text-green-500">${unlockIcon}</span>`,
+    property_update: `<span class="svg-icon w-4 h-4 text-indigo-500">${editOutlineIcon}</span>`,
+    property_delete: `<span class="svg-icon w-4 h-4 text-pink-500">${closeCircleIcon}</span>`,
+    webhook_success: `<span class="svg-icon w-4 h-4 text-green-500">${checkCircleOutlineIcon}</span>`,
+    webhook_failed: `<span class="svg-icon w-4 h-4 text-red-500">${closeCircleIcon}</span>`,
   };
   return (
     icons[iconType] ||
-    '<svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>'
+    `<span class="svg-icon w-4 h-4 text-neutral-400">${infoIcon}</span>`
   );
 }
 
@@ -313,9 +320,7 @@ function exitPopover(e: Event) {
                 class="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors disabled:opacity-50"
                 title="Refresh"
             >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
+                <div class="svg-icon w-4 h-4" v-html="refreshIcon" />
             </button>
         </div>
     
@@ -330,9 +335,7 @@ function exitPopover(e: Event) {
         class="flex-1 flex items-center justify-center"
       >
         <div class="text-center">
-          <svg class="w-8 h-8 mx-auto mb-2 text-neutral-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          <div class="svg-icon w-8 h-8 mx-auto mb-2 text-neutral-400 animate-spin" v-html="refreshIcon" />
           <p class="text-sm text-neutral-600">Loading history...</p>
         </div>
       </div>
@@ -340,9 +343,7 @@ function exitPopover(e: Event) {
       <!-- Empty State -->
       <div v-else-if="activityEvents.length === 0" class="flex-1 flex items-center justify-center">
         <div class="text-center px-4">
-          <svg class="w-12 h-12 mx-auto mb-3 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <div class="svg-icon w-12 h-12 mx-auto mb-3 text-neutral-300" v-html="clockIcon" />
           <p class="font-medium text-neutral-600">No activity yet</p>
           <p class="text-sm text-neutral-500 mt-1">Activity will appear here as you work</p>
         </div>
@@ -354,10 +355,7 @@ function exitPopover(e: Event) {
           <!-- Now indicator -->
           <div class="flex flex-row gap-2xs mb-4xs">
             <div class="w-[11px] h-[35px] shrink-0 flex items-start justify-center">
-              <svg width="11" height="35" viewBox="0 0 11 35" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="5.5" cy="5.5" r="5.5" fill="currentColor" class="text-neutral-200" />
-                <line x1="5.5" y1="11" x2="5.5" y2="35" stroke="currentColor" class="text-neutral-200" stroke-width="1" />
-              </svg>
+              <div class="svg-icon w-[11px] h-[35px]" v-html="timelineNowDotIcon" />
             </div>
             <div class="text-label text-neutral-700">Now</div>
           </div>
@@ -384,9 +382,7 @@ function exitPopover(e: Event) {
                     class="inline-flex items-center justify-center gap-5xs px-3xs h-9 border border-primary-100 rounded-sm hover:bg-primary-10 active:bg-primary-50 transition-colors"
                     title="Revision actions"
                   >
-                    <svg class="w-[12px] h-[18px] text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                    </svg>
+                    <div class="svg-icon w-[12px] h-[18px] text-primary-600" v-html="dotsVerticalIcon" />
                   </button>
 
                   <a-popover @exit="console.error" class="group" placements="bottom-end">
@@ -396,28 +392,21 @@ function exitPopover(e: Event) {
                           @click="e => { exitPopover(e); handleRevisionAction(event.revisionNumber); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
+                          <div class="svg-icon w-4 h-4" v-html="eyeIcon" />
                           View Revision
                         </button>
                         <button
                           @click="e => { exitPopover(e); showDiff(event.revisionNumber); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                          </svg>
+                          <div class="svg-icon w-4 h-4" v-html="clipboardIcon" />
                           Show Diff
                         </button>
                         <button
                           @click="e => { exitPopover(e); copyRevisionLink(event.id); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
+                          <div class="svg-icon w-4 h-4" v-html="copyIcon" />
                           Copy Link
                         </button>
                         <button
@@ -426,9 +415,7 @@ function exitPopover(e: Event) {
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           :disabled="isPublishing"
                         >
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
+                          <div class="svg-icon w-4 h-4" v-html="publishIcon" />
                           Publish Revision
                         </button>
                       </div>

@@ -4,6 +4,12 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import { getUserInitials, formatDate } from "../utils/utils.ts";
 import { api } from "../api/client.ts";
+import {
+  usersIcon,
+  checkThinIcon,
+  copyIcon,
+  usersGroupIcon,
+} from "~/src/assets/icons.ts";
 
 const { currentSpace } = useSpace();
 const user = useUserProfile();
@@ -375,9 +381,7 @@ async function copyMemberId(memberId) {
                   <span v-if="perm.permission.userId" class="text-white text-sm font-medium">
                     {{ getUserInitials(getMemberName(perm)) }}
                   </span>
-                  <svg v-else class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
+                  <div v-else class="svg-icon w-5 h-5 text-white" v-html="usersIcon" />
                 </div>
                 <div>
                   <div class="text-sm font-medium text-neutral-900">{{ getMemberName(perm) }}</div>
@@ -389,12 +393,8 @@ async function copyMemberId(memberId) {
                   :title="copiedUserId === perm.permission.userId ? 'Copied!' : 'Copy ID'"
                   class="ml-2 p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
                 >
-                  <svg v-if="copiedUserId === perm.permission.userId" class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
+                  <div v-if="copiedUserId === perm.permission.userId" class="svg-icon w-4 h-4 text-green-600" v-html="checkThinIcon" />
+                  <div v-else class="svg-icon w-4 h-4" v-html="copyIcon" />
                 </button>
               </div>
             </td>
@@ -438,9 +438,7 @@ async function copyMemberId(memberId) {
 
     <!-- Empty State -->
     <div v-if="!isLoading && !loadingUsers && rolePermissions.length === 0" class="text-center py-12 border border-neutral-100 rounded-lg">
-      <svg class="mx-auto h-12 w-12 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-      </svg>
+      <div class="svg-icon mx-auto h-12 w-12 text-neutral-400" v-html="usersGroupIcon" />
       <p class="mt-4 text-neutral-500">No members yet. Add your first member to get started.</p>
     </div>
   </div>

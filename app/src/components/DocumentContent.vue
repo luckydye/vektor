@@ -23,6 +23,7 @@ import { useUserProfile } from "../composeables/useUserProfile.ts";
 import { useQuery } from "@tanstack/vue-query";
 import { api } from "../api/client.ts";
 import docStyles from "../styles/document.css?inline";
+import { clockIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps({
   documentId: {
@@ -531,9 +532,7 @@ useSync(
       :style="{ marginRight: sidebarOpen ? '432px' : '0' }"
     >
       <div class="flex items-center gap-3">
-        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+        <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
         <div>
             <p class="text-sm font-semibold text-amber-900">
             Viewing {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}

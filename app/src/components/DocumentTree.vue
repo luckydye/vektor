@@ -8,6 +8,14 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { api } from "../api/client.ts";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
+import {
+  pencilIcon,
+  checkThinIcon,
+  chevronRightThinIcon,
+  plusSmallIcon,
+  editOutlineIcon,
+  trashCanIcon,
+} from "~/src/assets/icons.ts";
 
 const { currentSpace } = useSpace();
 const {
@@ -329,12 +337,8 @@ onUnmounted(() => {
         class="p-1 text-neutral-900 hover:text-neutral rounded transition-colors"
         :title="isEditMode ? 'Done editing' : 'Edit categories'"
       >
-        <svg v-if="!isEditMode" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-        </svg>
-        <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-        </svg>
+        <div v-if="!isEditMode" class="svg-icon w-4 h-4" v-html="pencilIcon" />
+        <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
       </button>
     </div>
 
@@ -362,11 +366,8 @@ onUnmounted(() => {
             }"
           >
             <button @click="toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1 py-2">
-              <svg class="flex-none w-4 h-4 transition-transform"
-                :class="{ 'rotate-90': expandedItems.has(category.id) }" fill="none" stroke="currentColor"
-                viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
+              <div class="svg-icon flex-none w-4 h-4 transition-transform"
+                :class="{ 'rotate-90': expandedItems.has(category.id) }" v-html="chevronRightThinIcon" />
 
               <div class="flex-none w-6 h-6 rounded flex items-center justify-center text-xs font-semibold" :style="{
                 backgroundColor: category.color || '#E5E7EB',
@@ -386,9 +387,7 @@ onUnmounted(() => {
               title="New document in this category"
               @click.stop
             >
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-              </svg>
+              <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
             </a>
 
             <!-- Edit/Delete Buttons (shown in edit mode) -->
@@ -398,9 +397,7 @@ onUnmounted(() => {
                 class="p-1 text-neutral-900 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                 title="Edit"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
+                <div class="svg-icon w-4 h-4" v-html="editOutlineIcon" />
               </button>
               <button
                 @click="handleDelete(category)"
@@ -408,9 +405,7 @@ onUnmounted(() => {
                 class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                 title="Delete"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+                <div class="svg-icon w-4 h-4" v-html="trashCanIcon" />
               </button>
             </div>
           </div>
@@ -428,9 +423,7 @@ onUnmounted(() => {
         @click="startCreating"
         class="w-full flex items-center gap-3 px-3 py-2 text-sm text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
       >
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
+        <div class="svg-icon w-4 h-4 shrink-0" v-html="plusSmallIcon" />
         <span>Add category</span>
       </button>
     </div>

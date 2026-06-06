@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SearchResult, DocumentWithProperties } from "../api/client.ts";
 import { formatDate } from "../utils/utils.ts";
+import { clockIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   document: SearchResult | DocumentWithProperties;
@@ -49,9 +50,7 @@ const isSearchResult = (
         
         <div class="flex items-center gap-4 flex-wrap text-xs text-neutral-500 mb-3">
           <span class="flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
+            <div class="svg-icon w-4 h-4" v-html="clockIcon" />
             Updated {{ formatDate(document.updatedAt) }}
           </span>
           <span

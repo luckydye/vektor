@@ -1,5 +1,7 @@
 import { render, html } from "lit-html";
+import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import type { SpaceMember, DocumentWithProperties } from "~/src/api/ApiClient.ts";
+import { documentIcon } from "~/src/assets/icons.ts";
 import { Mentions } from "./Mentions.ts";
 
 type MentionItem = {
@@ -228,7 +230,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                         @click=${(e: MouseEvent) => onItemClick(e, props, gi)}
                       >
                         <div class="w-6 h-6 rounded flex items-center justify-center text-xs text-neutral-500 bg-neutral-100">
-                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                          <span class="svg-icon w-3.5 h-3.5">${unsafeHTML(documentIcon)}</span>
                         </div>
                         <span class="font-medium leading-4 truncate">${item.label}</span>
                       </li>`;

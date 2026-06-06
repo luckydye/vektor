@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { api } from "../api/client.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
+import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
 
 type WorkflowRun = {
   runId: string;
@@ -161,10 +162,7 @@ const groupedRuns = computed(() => {
               class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold text-[11px] uppercase tracking-[0.08em] flex-shrink-0"
               :class="statusBadge(run.status)"
             >
-              <svg v-if="run.status === 'running'" class="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-              </svg>
+              <div v-if="run.status === 'running'" class="svg-icon w-2.5 h-2.5 animate-spin" v-html="spinnerQuarterIcon" />
               <span v-else class="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
               <span class="leading-none capitalize">{{ run.status }}</span>
             </span>
