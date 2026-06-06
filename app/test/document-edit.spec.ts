@@ -42,10 +42,14 @@ async function apiRequest(path: string, options: RequestInit = {}): Promise<Resp
   return fetch(`${BASE_URL}${path}`, { ...options, headers });
 }
 
-async function createDocument(content: string): Promise<string> {
+async function createDocument(content: string, type?: string): Promise<string> {
   const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
     method: "POST",
-    body: JSON.stringify({ content, properties: { title: "Edit Test" } }),
+    body: JSON.stringify({
+      content,
+      properties: { title: "Edit Test" },
+      ...(type ? { type } : {}),
+    }),
   });
   expect(response.status).toBe(201);
   const data = await response.json();
@@ -258,6 +262,91 @@ describe("Document edit operations", () => {
 
     expect(await readContent(documentId, "?live=true")).toContain("unsaved change");
     expect(await readContent(documentId)).not.toContain("unsaved change");
+
+    ws.close();
+  });
+
+  it("applies canvas edits through a live Yjs room", async () => {
+    const documentId = await createDocument(
+      JSON.stringify({
+        version: 1,
+        shapes: [
+          {
+            id: "shape-1",
+            type: "note",
+            x: 0,
+            y: 0,
+            width: 240,
+            height: 150,
+            text: "existing",
+            color: "#fef3c7",
+            updatedAt: 1,
+          },
+        ],
+        strokes: [],
+      }),
+      "canvas",
+    );
+
+    const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`, {
+      headers: { Cookie: `better-auth.session_token=${sessionToken}` },
+    });
+    ws.binaryType = "arraybuffer";
+    const received: Uint8Array[] = [];
+    ws.addEventListener("message", (event) => {
+      const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
+      if (frame.type === WsMsgType.YjsUpdate) received.push(frame.payload);
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.addEventListener("open", () => resolve());
+      ws.addEventListener("error", () => reject(new Error("websocket error")));
+    });
+
+    ws.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+    while (received.length < 1) await new Promise((resolve) => setTimeout(resolve, 50));
+    const clientDoc = new Y.Doc();
+    Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(received[0]!).update);
+
+    // Push a new note shape through the edit endpoint while the room is open.
+    const response = await editDocument(documentId, [
+      {
+        op: "push",
+        path: ".shapes",
+        value: {
+          id: "shape-story",
+          type: "note",
+          x: 300,
+          y: 100,
+          width: 240,
+          height: 150,
+          text: "a short story",
+          color: "#fff7ed",
+          updatedAt: 2,
+        },
+      },
+      { op: "set", path: ".shapes[0].text", value: "updated" },
+    ]);
+    expect(response.status).toBe(200);
+    expect((await response.json()).live).toBe(true);
+
+    // The change is broadcast to the connected client as a Yjs update.
+    while (received.length < 2) await new Promise((resolve) => setTimeout(resolve, 50));
+    for (const payload of received.slice(1)) {
+      Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(payload).update);
+    }
+    const clientShapes = clientDoc.getMap<Y.Map<unknown>>("canvas.shapes");
+    expect(clientShapes.get("shape-story")?.get("text")).toBe("a short story");
+    expect(clientShapes.get("shape-1")?.get("text")).toBe("updated");
+
+    // Persisted and live content both reflect the edit.
+    const persisted = JSON.parse(await readContent(documentId));
+    expect(persisted.shapes.map((shape: { id: string }) => shape.id).sort()).toEqual([
+      "shape-1",
+      "shape-story",
+    ]);
+    expect(JSON.parse(await readContent(documentId, "?live=true")).shapes).toHaveLength(
+      2,
+    );
 
     ws.close();
   });

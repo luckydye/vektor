@@ -139,19 +139,77 @@ function toCleanHtml(
     .join("\n");
 }
 
+/** Serializes a canvas room doc back to the snapshot content format. */
+function canvasSnapshotFromDoc(doc: Y.Doc): {
+  version: 1;
+  shapes: Record<string, unknown>[];
+  strokes: Record<string, unknown>[];
+} {
+  const collect = (name: string) =>
+    [...doc.getMap<Y.Map<unknown>>(name).entries()].map(([id, map]) => ({
+      id,
+      ...(map instanceof Y.Map ? map.toJSON() : {}),
+    }));
+  return {
+    version: 1,
+    shapes: collect("canvas.shapes"),
+    strokes: collect("canvas.strokes"),
+  };
+}
+
+/**
+ * Diffs an edited item list into a canvas Y.Map collection (keyed by item id),
+ * so only actual changes produce Yjs updates. Items without a string id are
+ * ignored. Must run inside a transaction.
+ */
+function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): void {
+  const byId = new Map<string, Record<string, unknown>>();
+  if (Array.isArray(items)) {
+    for (const item of items) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof (item as { id?: unknown }).id === "string"
+      ) {
+        byId.set((item as { id: string }).id, item as Record<string, unknown>);
+      }
+    }
+  }
+
+  for (const id of [...target.keys()]) {
+    if (!byId.has(id)) target.delete(id);
+  }
+
+  for (const [id, item] of byId) {
+    let map = target.get(id);
+    if (!(map instanceof Y.Map)) {
+      map = new Y.Map<unknown>();
+      target.set(id, map);
+    }
+    for (const [key, value] of Object.entries(item)) {
+      if (key === "id" || value === undefined) continue;
+      if (JSON.stringify(map.get(key)) !== JSON.stringify(value)) {
+        map.set(key, value);
+      }
+    }
+    for (const key of [...map.keys()]) {
+      if (!(key in item)) map.delete(key);
+    }
+  }
+}
+
 /**
  * Returns the current content of a document's live Yjs room, or null when no
- * room is open (the persisted content is authoritative then). Canvas rooms are
- * not serialized back to content here.
+ * room is open (the persisted content is authoritative then).
  */
 export function getLiveDocumentContent(
   spaceId: string,
   documentId: string,
   type: string | null | undefined,
 ): string | null {
-  if (type === "canvas") return null;
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) return null;
+  if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
   return toCleanHtml(room.doc, contentExtensions(spaceId, documentId));
 }
 
@@ -297,11 +355,39 @@ export async function transformDocumentContent(
     return { content: transform(dbDoc.content ?? ""), live: false };
   }
 
+  const doc = room.doc;
+  const updates: Uint8Array[] = [];
+  const captureUpdate = (update: Uint8Array) => updates.push(update);
+
   if (dbDoc.type === "canvas") {
-    throw new Error("canvas documents cannot be edited while open in the editor");
+    const nextRaw = transform(JSON.stringify(canvasSnapshotFromDoc(doc), null, 2));
+    let next: { shapes?: unknown; strokes?: unknown };
+    try {
+      next = JSON.parse(nextRaw) as { shapes?: unknown; strokes?: unknown };
+    } catch {
+      throw new Error("canvas edit must produce valid JSON");
+    }
+    if (!next || typeof next !== "object" || Array.isArray(next)) {
+      throw new Error("canvas content must be an object with shapes and strokes");
+    }
+
+    doc.on("update", captureUpdate);
+    try {
+      doc.transact(() => {
+        syncCanvasCollection(doc.getMap<Y.Map<unknown>>("canvas.shapes"), next.shapes);
+        syncCanvasCollection(doc.getMap<Y.Map<unknown>>("canvas.strokes"), next.strokes);
+      }, "server-edit");
+    } finally {
+      doc.off("update", captureUpdate);
+    }
+
+    for (const update of updates) {
+      broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
+    }
+
+    return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
   }
 
-  const doc = room.doc;
   const extensions = contentExtensions(spaceId, documentId);
   const schema = getSchema(extensions);
 
@@ -309,8 +395,6 @@ export async function transformDocumentContent(
   const nextHtml = transform(currentHtml);
   const nextPmDoc = Node.fromJSON(schema, generateJSON(nextHtml, extensions));
 
-  const updates: Uint8Array[] = [];
-  const captureUpdate = (update: Uint8Array) => updates.push(update);
   doc.on("update", captureUpdate);
   try {
     doc.transact(() => {

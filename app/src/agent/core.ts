@@ -7,12 +7,9 @@ import {
   getConfiguredOpenRouterModel,
 } from "../config.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
-import {
-  zipCommand,
-  zipinfoCommand,
-  unzipCommand,
-} from "./commands/zip.ts";
+import { zipCommand, zipinfoCommand, unzipCommand } from "./commands/zip.ts";
 import { vektorCommand } from "./commands/vektor.ts";
+import { recipesCommand } from "./commands/recipes.ts";
 import { pandocCommand } from "./commands/pandoc.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { aiCommand } from "./commands/ai.ts";
@@ -62,7 +59,11 @@ export type AgentEvent =
       isError: boolean;
     };
 
-function buildCoreAgentSystemPrompt(documentId?: string, connectedProviders?: string[], userProfile?: string) {
+function buildCoreAgentSystemPrompt(
+  documentId?: string,
+  connectedProviders?: string[],
+  userProfile?: string,
+) {
   const gitlabConnected = !connectedProviders || connectedProviders.includes("gitlab");
   return `## Bash Tool Runtime
 - js-exec runs JavaScript/TypeScript in a QuickJS sandbox: \`js-exec -c "..."\` or \`js-exec script.js\`. Has \`console\` and \`process\`; no \`require\`, \`fetch\`, or Node built-ins.
@@ -70,41 +71,29 @@ function buildCoreAgentSystemPrompt(documentId?: string, connectedProviders?: st
 - vektor CLI: \`vektor current\` (current doc), \`vektor read <id>\`, \`vektor list --json\`, \`vektor search "<q>" --json\`, \`vektor create --title "T" [--type type] [--parent id] [file]\`, \`vektor edit <id|current> <op>\` (partial edits, see Editing Documents), \`vektor delete <id> [--permanent]\`. Pipe/redirect to/from virtual files as needed.
 - upload <file> uploads from the virtual filesystem and returns JSON with a URL. Never share sandbox paths — always upload first.
 - Only include final output files in zips; exclude intermediates.
-- ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.${gitlabConnected ? "\n- gitlab sub-commands: \`gitlab api <path>\` raw API request via OAuth (paths relative to /api/v4, e.g. \`gitlab api '/projects?search=name'\`); \`gitlab ls <project> [path] [--ref <ref>]\` list repo directory; \`gitlab cat <project> <file> [--ref <ref>]\` file contents; \`gitlab tree <project> [path] [--ref <ref>]\` recursive listing. Use \`gitlab api\` to search/list projects — \`ls/cat/tree\` require an exact project ID or \`namespace/project\`." : ""}
+- ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.${gitlabConnected ? "\n- gitlab sub-commands: `gitlab api <path>` raw API request via OAuth (paths relative to /api/v4, e.g. `gitlab api '/projects?search=name'`); `gitlab ls <project> [path] [--ref <ref>]` list repo directory; `gitlab cat <project> <file> [--ref <ref>]` file contents; `gitlab tree <project> [path] [--ref <ref>]` recursive listing. Use `gitlab api` to search/list projects — `ls/cat/tree` require an exact project ID or `namespace/project`." : ""}
 - pandoc conversions: \`html -> csv\` (first table) and \`html-table -> csv\`.
 - Prefer built-in shell utilities. On failure, inspect stderr and adapt — don't retry blindly.
 - Loop over file lines with \`while read -r line; do ...; done < file.txt\` (\`<<\` is a heredoc, not a file).
 - Don't use \`awk -F,\` for CSV column extraction — use \`grep -oE\` instead.
 
-## Handling Large Output
-- Tool output is capped at ~6 000 chars. If truncated, redirect to a file and process: \`command > out.json && jq ... out.json\`.
-- For paginated APIs, loop over pages and append to a file; stop when a page is empty.
-- Never install extensions unless the user explicitly asks.
-
 ## Behavior
 - Outline a short plan before starting. Verify each step before proceeding.
 - Don't report results until verified. Don't restate visible tool output — only add interpretation, summaries, or next steps.
+- Tool output is capped at ~6 000 chars — when truncated, see \`recipes large-output\`.
+- Never install extensions unless the user explicitly asks.
 
-## Editing Documents
-- Prefer \`vektor edit\` over \`vektor update\` for changing existing documents: edits are applied server-side through the collaboration channel, so they merge with concurrent changes from other users instead of overwriting them.
-- Line ops (HTML/text): \`vektor edit <id|current> insert <line> [file]\` (insert before line, \`$\` = append), \`replace <start>[:<end>] [file]\`, \`delete <start>[:<end>]\`. Lines are 1-based; content comes from the file argument or stdin.
-- JSON ops (JSON documents): \`vektor edit <id|current> set <path> <value>\`, \`unset <path>\`, \`push <path> <value>\`. Paths are simplified jq (\`.config.timeout\`, \`.items[0].name\`); values are parsed as JSON, falling back to plain strings.
-- Always \`vektor read\`/\`vektor current\` first and take line numbers from that output — reads return the live draft, matching exactly what edit operates on.
-- Use \`vektor update\` only for full-content rewrites (e.g. replacing an app document's HTML).
+## Recipes
+- \`recipes\` lists step-by-step instructions for common tasks; \`recipes <name>\` prints one (e.g. \`recipes edit-text\`, \`recipes canvas\`); \`recipes search <words>\` finds by keyword.
+- IMPORTANT: before editing a document or canvas, creating documents/apps, building extensions, or running workflows, run the matching recipe FIRST and follow it exactly.
+- Quick map: edit-text, edit-json, canvas, create-doc, find-docs, app-doc, workflow, upload, extension, large-output.
 
-## App Documents
-- Type "app" documents are HTML apps in sandboxed iframes. Create with full HTML and \`--type app\`; update by replacing the HTML content.
-
-## Extensions
-- ZIP packages with \`manifest.json\` at root and \`dist/\` plain ESM JS. Install with \`extension install <zip>\`.
-- Minimum manifest: \`{"id":"my-ext","name":"My Extension","version":"1.0.0","entries":{"frontend":"dist/main.js"}}\`. IDs: lowercase alphanumeric + hyphens.
-- Frontend entry exports \`activate(ctx)\`/\`deactivate(ctx)\`. \`ctx\` provides: \`ctx.actions.register\`, \`ctx.suggestions.register\`, \`ctx.views.register\`, \`ctx.api\`.
-- Jobs: declare in manifest \`"jobs":[{"id","name","entry","inputs","outputs"}]\`. Entry uses \`worker_threads\` and posts \`{type:"result",success:true,outputs:{...}}\`.
-
-${documentId ? `\n## Current Document\n- When the user refers to "this document" or "the page", inspect it first with \`vektor current\`.` : ""}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`; 
+${documentId ? `\n## Current Document\n- When the user refers to "this document" or "the page", inspect it first with \`vektor current\`.` : ""}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
 }
 
-async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
+async function* parseSSE(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<Record<string, unknown>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -133,7 +122,9 @@ async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<Recor
   }
 }
 
-async function* parseNDJSON(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
+async function* parseNDJSON(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<Record<string, unknown>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -183,15 +174,29 @@ export type AIProvider =
 export function getAIProvider(): AIProvider {
   const cfg = config();
   if (cfg.OLLAMA_BASE_URL) {
-    return { provider: "ollama", baseUrl: getConfiguredOllamaBaseUrl(), model: getConfiguredOllamaModel() };
+    return {
+      provider: "ollama",
+      baseUrl: getConfiguredOllamaBaseUrl(),
+      model: getConfiguredOllamaModel(),
+    };
   }
   if (cfg.ANTHROPIC_API_KEY) {
-    return { provider: "anthropic", apiKey: cfg.ANTHROPIC_API_KEY, model: getConfiguredAnthropicModel() };
+    return {
+      provider: "anthropic",
+      apiKey: cfg.ANTHROPIC_API_KEY,
+      model: getConfiguredAnthropicModel(),
+    };
   }
   if (cfg.OPENROUTER_API_KEY) {
-    return { provider: "openrouter", apiKey: cfg.OPENROUTER_API_KEY, model: getConfiguredOpenRouterModel() };
+    return {
+      provider: "openrouter",
+      apiKey: cfg.OPENROUTER_API_KEY,
+      model: getConfiguredOpenRouterModel(),
+    };
   }
-  throw new Error("No AI provider configured. Set OLLAMA_BASE_URL, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY.");
+  throw new Error(
+    "No AI provider configured. Set OLLAMA_BASE_URL, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY.",
+  );
 }
 
 export function getOpenAICompatibleChatCompletionsUrl(
@@ -248,7 +253,9 @@ function toOllamaMessages(messages: ChatMessage[]): Array<Record<string, unknown
       }
       const toolName = toolNames.get(message.tool_call_id);
       if (!toolName) {
-        throw new Error(`Ollama tool message references unknown tool_call_id: ${message.tool_call_id}`);
+        throw new Error(
+          `Ollama tool message references unknown tool_call_id: ${message.tool_call_id}`,
+        );
       }
       return {
         role: "tool",
@@ -285,7 +292,11 @@ function toAnthropicMessages(messages: ChatMessage[]): {
       const toolResults: unknown[] = [];
       while (i < messages.length && messages[i]!.role === "tool") {
         const m = messages[i]!;
-        toolResults.push({ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content ?? "" });
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: m.tool_call_id,
+          content: m.content ?? "",
+        });
         i++;
       }
       result.push({ role: "user", content: toolResults });
@@ -297,10 +308,18 @@ function toAnthropicMessages(messages: ChatMessage[]): {
       if (msg.content) content.push({ type: "text", text: msg.content });
       for (const tc of msg.tool_calls ?? []) {
         let input: unknown;
-        try { input = JSON.parse(tc.function.arguments || "{}"); } catch { input = {}; }
+        try {
+          input = JSON.parse(tc.function.arguments || "{}");
+        } catch {
+          input = {};
+        }
         content.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
       }
-      result.push({ role: "assistant", content: content.length === 1 && !msg.tool_calls?.length ? (msg.content ?? "") : content });
+      result.push({
+        role: "assistant",
+        content:
+          content.length === 1 && !msg.tool_calls?.length ? (msg.content ?? "") : content,
+      });
       i++;
       continue;
     }
@@ -309,7 +328,10 @@ function toAnthropicMessages(messages: ChatMessage[]): {
     i++;
   }
 
-  return { system: systemParts.length ? systemParts.join("\n\n") : undefined, messages: result };
+  return {
+    system: systemParts.length ? systemParts.join("\n\n") : undefined,
+    messages: result,
+  };
 }
 
 type PartialToolCall = { id: string; name: string; arguments: string };
@@ -324,9 +346,11 @@ export async function callModel(options: {
 }): Promise<{ message: ChatMessage; finishReason: string }> {
   if (options.provider.provider === "anthropic") {
     const { system, messages: anthropicMessages } = toAnthropicMessages(options.messages);
-    const anthropicTools = (options.tools as Array<{
-      function: { name: string; description?: string; parameters: unknown };
-    }>).map(t => ({
+    const anthropicTools = (
+      options.tools as Array<{
+        function: { name: string; description?: string; parameters: unknown };
+      }>
+    ).map((t) => ({
       name: t.function.name,
       description: t.function.description,
       input_schema: t.function.parameters,
@@ -364,20 +388,29 @@ export async function callModel(options: {
       const type = (chunk as { type?: string }).type;
 
       if (type === "content_block_start") {
-        const block = (chunk as { content_block?: { type: string; id?: string; name?: string } }).content_block;
+        const block = (
+          chunk as { content_block?: { type: string; id?: string; name?: string } }
+        ).content_block;
         if (block?.type === "tool_use") {
           toolCalls.push({ id: block.id ?? "", name: block.name ?? "", arguments: "" });
         }
       } else if (type === "content_block_delta") {
-        const delta = (chunk as { delta?: { type?: string; text?: string; partial_json?: string } }).delta;
+        const delta = (
+          chunk as { delta?: { type?: string; text?: string; partial_json?: string } }
+        ).delta;
         if (delta?.type === "text_delta" && delta.text) {
           textContent += delta.text;
           await options.onText?.(delta.text);
-        } else if (delta?.type === "input_json_delta" && delta.partial_json && toolCalls.length > 0) {
+        } else if (
+          delta?.type === "input_json_delta" &&
+          delta.partial_json &&
+          toolCalls.length > 0
+        ) {
           toolCalls[toolCalls.length - 1]!.arguments += delta.partial_json;
         }
       } else if (type === "message_delta") {
-        const stopReason = (chunk as { delta?: { stop_reason?: string } }).delta?.stop_reason;
+        const stopReason = (chunk as { delta?: { stop_reason?: string } }).delta
+          ?.stop_reason;
         if (stopReason === "tool_use") finishReason = "tool_calls";
         else if (stopReason) finishReason = stopReason;
       }
@@ -387,9 +420,15 @@ export async function callModel(options: {
       message: {
         role: "assistant",
         content: textContent || null,
-        ...(toolCalls.length ? {
-          tool_calls: toolCalls.map(tc => ({ id: tc.id, type: "function" as const, function: { name: tc.name, arguments: tc.arguments } })),
-        } : {}),
+        ...(toolCalls.length
+          ? {
+              tool_calls: toolCalls.map((tc) => ({
+                id: tc.id,
+                type: "function" as const,
+                function: { name: tc.name, arguments: tc.arguments },
+              })),
+            }
+          : {}),
       },
       finishReason,
     };
@@ -434,12 +473,15 @@ export async function callModel(options: {
       }
 
       const toolCalls = Array.isArray(message.tool_calls)
-        ? (message.tool_calls as Array<{ function?: { index?: number; name?: string; arguments?: unknown } }>)
+        ? (message.tool_calls as Array<{
+            function?: { index?: number; name?: string; arguments?: unknown };
+          }>)
         : [];
       for (const toolCall of toolCalls) {
-        const index = typeof toolCall.function?.index === "number"
-          ? toolCall.function.index
-          : pendingCalls.size;
+        const index =
+          typeof toolCall.function?.index === "number"
+            ? toolCall.function.index
+            : pendingCalls.size;
         const pending = pendingCalls.get(index) ?? {
           id: `ollama_tool_${index}_${crypto.randomUUID()}`,
           name: "",
@@ -535,7 +577,11 @@ export async function callModel(options: {
     for (const tc of delta.tool_calls ?? []) {
       let pending = pendingCalls.get(tc.index);
       if (!pending) {
-        pending = { id: tc.id ?? "", name: tc.function?.name ?? "", arguments: tc.function?.arguments ?? "" };
+        pending = {
+          id: tc.id ?? "",
+          name: tc.function?.name ?? "",
+          arguments: tc.function?.arguments ?? "",
+        };
         pendingCalls.set(tc.index, pending);
       } else {
         if (tc.id) pending.id = tc.id;
@@ -592,8 +638,15 @@ export async function runAgentPrompt(options: {
 
   const provider = getAIProvider();
 
-  const mcpConfig: VektorMcpConfig = { apiUrl, spaceId, jobToken, documentId, connectedProviders };
-  const bash = providedBash ?? createAgentShell({ current: mcpConfig }, undefined, provider);
+  const mcpConfig: VektorMcpConfig = {
+    apiUrl,
+    spaceId,
+    jobToken,
+    documentId,
+    connectedProviders,
+  };
+  const bash =
+    providedBash ?? createAgentShell({ current: mcpConfig }, undefined, provider);
   const tools = [
     {
       type: "function",
@@ -610,7 +663,10 @@ export async function runAgentPrompt(options: {
   ];
 
   const agentMessages: ChatMessage[] = [
-    { role: "system", content: buildCoreAgentSystemPrompt(documentId, connectedProviders, userProfile) },
+    {
+      role: "system",
+      content: buildCoreAgentSystemPrompt(documentId, connectedProviders, userProfile),
+    },
     ...messages,
   ];
   const allChunks: string[] = [];
@@ -692,7 +748,7 @@ export async function runAgentPrompt(options: {
       const MAX_TOOL_RESULT_CHARS = 6_000;
       const modelContent =
         content.length > MAX_TOOL_RESULT_CHARS
-          ? `${content.slice(0, MAX_TOOL_RESULT_CHARS)}\n\n[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} more characters not shown. Redirect to a file and process it there: e.g. \`command > output.json && jq \'...\'  output.json\`]`
+          ? `${content.slice(0, MAX_TOOL_RESULT_CHARS)}\n\n[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} more characters not shown. Redirect to a file and process it there: e.g. \`command > output.json && jq '...'  output.json\`]`
           : content;
 
       agentMessages.push({
@@ -718,10 +774,12 @@ export function createAgentShell(
       zipinfoCommand,
       unzipCommand,
       vektorCommand(mcpConfigRef),
+      recipesCommand(),
       pandocCommand,
       uploadCommand(mcpConfigRef),
       aiCommand(completion),
-      ...(!mcpConfigRef.current.connectedProviders || mcpConfigRef.current.connectedProviders.includes("gitlab")
+      ...(!mcpConfigRef.current.connectedProviders ||
+      mcpConfigRef.current.connectedProviders.includes("gitlab")
         ? [gitlabCommand(mcpConfigRef)]
         : []),
       extensionCommand(mcpConfigRef),
