@@ -238,6 +238,21 @@ const remoteCanvasPresences = computed(() =>
     (presence) => presence.state?.kind === "canvas" && presence.state.pointer,
   ),
 );
+
+// Remote pointers arrive in discrete ~120ms presence updates; a CSS
+// transition on the cursor smooths the jumps. While the local camera moves,
+// the transition is suspended so cursors stay locked to the canvas instead
+// of lagging behind the pan/zoom.
+const isCameraMoving = ref(false);
+let cameraMoveTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(camera, () => {
+  isCameraMoving.value = true;
+  if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
+  cameraMoveTimer = setTimeout(() => {
+    isCameraMoving.value = false;
+  }, 150);
+});
 const selectedShape = computed(() =>
   selectedShapeId.value
     ? shapes.value.find((shape) => shape.id === selectedShapeId.value) ?? null
@@ -257,44 +272,52 @@ function toNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function measureTextShape(text: string) {
-  if (typeof document === "undefined") {
-    return { ...MIN_TEXT_SIZE };
-  }
+// Text shapes lay themselves out with CSS (the box auto-sizes to its content),
+// but the resulting size still has to live in the shape data: section
+// containment, fit-to-content bounds, and remote clients all read it. A
+// ResizeObserver on each text shape element writes the layout size back.
+let textShapeObserver: ResizeObserver | null = null;
+const observedTextShapes = new Map<Element, string>();
 
-  const measure = document.createElement("div");
-  measure.className = "canvas-text-measure";
-  measure.textContent = text || "Text";
-  document.body.appendChild(measure);
-  const rect = measure.getBoundingClientRect();
-  measure.remove();
-
-  return {
-    width: Math.max(MIN_TEXT_SIZE.width, Math.ceil(rect.width)),
-    height: Math.max(MIN_TEXT_SIZE.height, Math.ceil(rect.height)),
-  };
-}
-
-function resizeTextShapeToContent(id: string, text: string) {
+function syncTextShapeSize(id: string, element: HTMLElement) {
   const shape = yShapes.get(id);
   if (!shape) return;
 
-  const nextSize = measureTextShape(text);
-  const width = toNumber(shape.get("width"), 0);
-  const height = toNumber(shape.get("height"), 0);
-  if (width === nextSize.width && height === nextSize.height) {
+  const width = Math.max(MIN_TEXT_SIZE.width, Math.ceil(element.offsetWidth));
+  const height = Math.max(MIN_TEXT_SIZE.height, Math.ceil(element.offsetHeight));
+  if (
+    toNumber(shape.get("width"), 0) === width &&
+    toNumber(shape.get("height"), 0) === height
+  ) {
     return;
   }
 
-  updateShape(id, nextSize);
+  updateShape(id, { width, height });
 }
 
-function resizeAllTextShapesToContent() {
-  for (const shape of shapes.value) {
-    if (shape.type === "text") {
-      resizeTextShapeToContent(shape.id, shape.text);
+function trackTextShapeSize(element: unknown, shape: CanvasShape) {
+  if (shape.type !== "text") return;
+
+  if (!(element instanceof HTMLElement)) {
+    for (const [observed, id] of observedTextShapes) {
+      if (id !== shape.id) continue;
+      textShapeObserver?.unobserve(observed);
+      observedTextShapes.delete(observed);
     }
+    return;
   }
+
+  if (observedTextShapes.get(element) === shape.id) return;
+  if (!textShapeObserver && typeof ResizeObserver !== "undefined") {
+    textShapeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const id = observedTextShapes.get(entry.target);
+        if (id) syncTextShapeSize(id, entry.target as HTMLElement);
+      }
+    });
+  }
+  observedTextShapes.set(element, shape.id);
+  textShapeObserver?.observe(element);
 }
 
 function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape {
@@ -388,8 +411,6 @@ function syncShapesFromY() {
   if (selectedShapeId.value && !yShapes.has(selectedShapeId.value)) {
     selectedShapeId.value = null;
   }
-
-  void nextTick(resizeAllTextShapesToContent);
 }
 
 function syncStrokesFromY() {
@@ -896,14 +917,15 @@ async function addMediaFiles(files: File[], at: { x: number; y: number }) {
 function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
   const id = `shape-${crypto.randomUUID()}`;
   const text = defaultText(type);
-  const textSize = type === "text" ? measureTextShape(text) : null;
   const shape: CanvasShape = {
     id,
     type,
     x: Math.round(at.x),
     y: Math.round(at.y),
-    width: textSize?.width ?? (type === "section" ? 560 : 240),
-    height: textSize?.height ?? (type === "section" ? 340 : 150),
+    // Text shapes auto-size to their content; the observer corrects this
+    // placeholder right after mount.
+    width: type === "text" ? MIN_TEXT_SIZE.width : type === "section" ? 560 : 240,
+    height: type === "text" ? MIN_TEXT_SIZE.height : type === "section" ? 340 : 150,
     text,
     color: type === "note" ? noteColor.value : defaultColor(type),
     updatedAt: Date.now(),
@@ -919,7 +941,6 @@ function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
     const input = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
       type === "section" ? `[data-section-title="${id}"]` : `[data-shape-text="${id}"]`,
     );
-    if (type === "text") resizeTextShapeToContent(id, shape.text);
     input?.focus();
     input?.select();
   });
@@ -927,9 +948,6 @@ function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
 
 function updateShapeText(shape: CanvasShape, text: string) {
   updateShape(shape.id, { text });
-  if (shape.type === "text") {
-    void nextTick(() => resizeTextShapeToContent(shape.id, text));
-  }
 }
 
 function handleTextBlur(shape: CanvasShape, event: FocusEvent) {
@@ -1619,6 +1637,8 @@ onMounted(() => {
 onUnmounted(() => {
   viewportControls?.dispose();
   resizeObserver?.disconnect();
+  textShapeObserver?.disconnect();
+  observedTextShapes.clear();
   themeObserver?.disconnect();
   colorSchemeMedia?.removeEventListener("change", updateThemeMode);
   leavePresenceRoom();
@@ -1635,6 +1655,7 @@ onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
   if (presenceTimer) clearInterval(presenceTimer);
+  if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
 });
 </script>
 
@@ -1754,10 +1775,12 @@ onUnmounted(() => {
           :style="{
             left: `${shape.x}px`,
             top: `${shape.y}px`,
-            width: `${shape.width}px`,
-            height: `${shape.height}px`,
+            ...(shape.type === 'text'
+              ? {}
+              : { width: `${shape.width}px`, height: `${shape.height}px` }),
             background: shape.color,
           }"
+          :ref="(el) => trackTextShapeSize(el, shape)"
         >
           <template v-if="shape.type === 'section'">
             <div
@@ -1817,17 +1840,22 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
-          <textarea
+          <div
             v-else-if="shape.type !== 'section'"
-            class="canvas-shape-text"
-            :data-shape-text="shape.id"
-            :value="shape.text"
-            spellcheck="false"
-            @focus="selectedShapeId = shape.id"
-            @blur="handleTextBlur(shape, $event)"
-            @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
-            @input="updateShapeText(shape, ($event.target as HTMLTextAreaElement).value)"
-          ></textarea>
+            class="canvas-shape-textwrap"
+            :data-replicated-value="shape.text"
+          >
+            <textarea
+              class="canvas-shape-text"
+              :data-shape-text="shape.id"
+              :value="shape.text"
+              spellcheck="false"
+              @focus="selectedShapeId = shape.id"
+              @blur="handleTextBlur(shape, $event)"
+              @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
+              @input="updateShapeText(shape, ($event.target as HTMLTextAreaElement).value)"
+            ></textarea>
+          </div>
           <button
             v-if="(shape.type === 'note' || shape.type === 'section') && selectedShapeId === shape.id"
             type="button"
@@ -1842,6 +1870,7 @@ onUnmounted(() => {
         v-for="presence in remoteCanvasPresences"
         :key="presence.clientId"
         class="canvas-presence"
+        :class="{ 'is-instant': isCameraMoving }"
         :style="{
           transform: `translate(${worldToScreen(presence.state!.pointer!).x}px, ${worldToScreen(presence.state!.pointer!).y}px)`,
           '--presence-color': presence.user.color || getPresenceColor(presence.user.id),
@@ -2157,6 +2186,8 @@ onUnmounted(() => {
 }
 
 .canvas-shape.text {
+  min-width: 32px;
+  min-height: 40px;
   border-color: transparent;
   background: transparent !important;
   box-shadow: none;
@@ -2267,6 +2298,13 @@ onUnmounted(() => {
   user-select: none;
 }
 
+.canvas-shape-textwrap {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
 .canvas-shape-text {
   box-sizing: border-box;
   width: 100%;
@@ -2284,10 +2322,37 @@ onUnmounted(() => {
   resize: none;
 }
 
-.canvas-shape.text .canvas-shape-text {
-  cursor: move;
+/* Text shapes auto-size to their content: a hidden replica of the text (the
+   ::after) sizes the box, and the textarea is overlaid on top of it. Both
+   share the same styles, so the box always fits the text exactly. */
+.canvas-shape.text .canvas-shape-textwrap {
+  position: relative;
+  display: block;
+}
+
+.canvas-shape.text .canvas-shape-textwrap::after {
+  content: attr(data-replicated-value) " ";
+  display: block;
+  visibility: hidden;
+  white-space: pre;
+}
+
+.canvas-shape.text .canvas-shape-text,
+.canvas-shape.text .canvas-shape-textwrap::after {
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font: inherit;
   font-size: 20px;
   font-weight: 650;
+  line-height: 1.35;
+}
+
+.canvas-shape.text .canvas-shape-text {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: move;
 }
 
 .canvas-shape.note .canvas-shape-text {
@@ -2307,32 +2372,17 @@ onUnmounted(() => {
   cursor: nwse-resize;
 }
 
-:global(.canvas-text-measure) {
-  position: fixed;
-  left: -10000px;
-  top: -10000px;
-  z-index: -1;
-  box-sizing: border-box;
-  display: inline-block;
-  min-width: 32px;
-  min-height: 40px;
-  border: 0;
-  padding: 10px 12px;
-  white-space: pre;
-  color: var(--canvas-text);
-  font: inherit;
-  font-size: 20px;
-  font-weight: 650;
-  line-height: 1.35;
-  pointer-events: none;
-}
-
 .canvas-presence {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 8;
   pointer-events: none;
+  transition: transform 120ms linear;
+}
+
+.canvas-presence.is-instant {
+  transition: none;
 }
 
 .canvas-presence-cursor {
