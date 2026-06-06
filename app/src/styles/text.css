@@ -105,7 +105,9 @@ input[type="checkbox"]:checked::before {
 
 p {
   margin-bottom: 1rem;
-  min-height: 1rem;
+  /* 1lh = one line box, same height the ProseMirror trailing <br> produces
+     in edit mode, so empty paragraphs don't jump when toggling modes */
+  min-height: 1lh;
 }
 
 p:not(:first-child) {
