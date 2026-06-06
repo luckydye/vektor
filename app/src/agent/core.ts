@@ -17,6 +17,7 @@ import { gitlabCommand } from "./commands/gitlab.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { jsExecCommand } from "./commands/jsExec.ts";
+import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";
@@ -67,7 +68,7 @@ function buildCoreAgentSystemPrompt(
 ) {
   const gitlabConnected = !connectedProviders || connectedProviders.includes("gitlab");
   return `## Bash Tool Runtime
-- js-exec runs JavaScript/TypeScript in a QuickJS sandbox: \`js-exec -c "..."\` or \`js-exec script.js\`. Has \`console\` and \`process\`; no \`require\`, \`fetch\`, or Node built-ins.
+- js-exec runs JavaScript/TypeScript in a QuickJS sandbox: \`js-exec -c "..."\` or \`js-exec script.js\`. Has \`console\` and \`process\`; no \`require\`, \`fetch\`, or Node built-ins. NOTE: node, npm, python, and python3 are NOT installed — js-exec is the only scripting runtime. Don't write a script file and run it with node; use \`js-exec -c "..."\` directly.
 - zip/unzip/zipinfo operate on the virtual filesystem (zip is always recursive). Use \`zipinfo\` instead of \`unzip -l\`.
 - vektor CLI: \`vektor current\` (current doc), \`vektor read <id> [-n]\` (-n = line numbers), \`vektor list --json\`, \`vektor search "<q>" --json\`, \`vektor create --title "T" [--type type] [--parent id] [file]\`, \`vektor edit <id|current> <op>\` (partial edits — see \`recipes edit-text\`), \`vektor delete <id> [--permanent]\`. Pipe/redirect to/from virtual files as needed.
 - upload <file> uploads from the virtual filesystem and returns JSON with a URL. Never share sandbox paths — always upload first.
@@ -106,7 +107,10 @@ function recipeForDocumentType(documentType?: string | null): string {
  * step, so the most common task gets its instructions up front. The inlined
  * recipe is chosen by document type (canvas / app / html).
  */
-function documentEditingSection(documentId?: string, documentType?: string | null): string {
+function documentEditingSection(
+  documentId?: string,
+  documentType?: string | null,
+): string {
   if (!documentId) return "";
 
   if (documentType && READONLY_DOC_TYPES.has(documentType)) {
@@ -669,7 +673,10 @@ function shellQuote(value: string): string {
  * the tool name and that payload instead of rejecting it.
  */
 export function buildShellCommand(toolName: string, args: unknown): string {
-  const record = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  const record = (args && typeof args === "object" ? args : {}) as Record<
+    string,
+    unknown
+  >;
   const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
   if (toolName === "bash") return str(record.command);
@@ -826,7 +833,7 @@ export async function runAgentPrompt(options: {
         // than failing with "Unknown tool".
         const cmd = buildShellCommand(toolCall.function.name, args);
         if (!cmd) {
-          throw new Error("No command provided. Call bash with {\"command\": \"…\"}.");
+          throw new Error('No command provided. Call bash with {"command": "…"}.');
         }
         const res = await bash.exec(cmd);
         const stdout = res.stdout.trim();
@@ -903,6 +910,7 @@ export function createAgentShell(
       extensionCommand(mcpConfigRef),
       curlCommand,
       jsExecCommand,
+      ...runtimeStubCommands,
     ],
   });
 }

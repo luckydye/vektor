@@ -298,10 +298,45 @@ function clearAgentPresence(key: string, documentId: string): void {
 }
 
 /**
+ * Registers a presence for "Agent" in the room, broadcasts it, and arms a TTL
+ * that removes it (refreshed by subsequent edits). Shared by the HTML and
+ * canvas edit paths. Best-effort: failures are swallowed.
+ */
+function setAgentPresence(
+  key: string,
+  documentId: string,
+  room: YRoom,
+  state: unknown,
+): void {
+  try {
+    const presence: PresenceEnvelope = {
+      room: documentId,
+      clientId: AGENT_CLIENT_ID,
+      user: AGENT_PRESENCE_USER,
+      state,
+      updatedAt: new Date().toISOString(),
+    };
+
+    room.presences.set(AGENT_CLIENT_ID, presence);
+    broadcastToRoom(room, wsEncode(WsMsgType.PresenceUpdate, { presence }));
+
+    const existingTimer = agentPresenceTimers.get(key);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(
+      () => clearAgentPresence(key, documentId),
+      AGENT_PRESENCE_TTL_MS,
+    );
+    timer.unref?.();
+    agentPresenceTimers.set(key, timer);
+  } catch {
+    // Presence is cosmetic — never fail the edit over it.
+  }
+}
+
+/**
  * Shows a presence cursor for "Agent" spanning the top-level blocks that
- * changed between the two serialized contents, so other users see where the
- * agent edited. The presence is removed automatically after a short TTL
- * (refreshed by subsequent edits). Best-effort: failures are swallowed.
+ * changed between the two serialized HTML contents, so other users see where
+ * the agent edited.
  */
 function broadcastAgentPresence(
   key: string,
@@ -344,35 +379,61 @@ function broadcastAgentPresence(
     const toJson = (index: number) =>
       Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(fragment, index));
 
-    const presence: PresenceEnvelope = {
-      room: documentId,
-      clientId: AGENT_CLIENT_ID,
-      user: AGENT_PRESENCE_USER,
-      state: {
-        kind: "editor",
-        focused: true,
-        selection: {
-          anchor: toJson(anchorIndex),
-          head: toJson(headIndex),
-        },
-      },
-      updatedAt: new Date().toISOString(),
-    };
-
-    room.presences.set(AGENT_CLIENT_ID, presence);
-    broadcastToRoom(room, wsEncode(WsMsgType.PresenceUpdate, { presence }));
-
-    const existingTimer = agentPresenceTimers.get(key);
-    if (existingTimer) clearTimeout(existingTimer);
-    const timer = setTimeout(
-      () => clearAgentPresence(key, documentId),
-      AGENT_PRESENCE_TTL_MS,
-    );
-    timer.unref?.();
-    agentPresenceTimers.set(key, timer);
+    setAgentPresence(key, documentId, room, {
+      kind: "editor",
+      focused: true,
+      selection: { anchor: toJson(anchorIndex), head: toJson(headIndex) },
+    });
   } catch {
     // Presence is cosmetic — never fail the edit over it.
   }
+}
+
+type CanvasShapePosition = { id: string; x: number; y: number };
+
+/**
+ * Shows a presence cursor for "Agent" on a canvas, pointing at the shapes it
+ * just added or changed (cursor parked at the last one, all of them selected),
+ * mirroring the canvas client's own presence shape.
+ */
+function broadcastCanvasAgentPresence(
+  key: string,
+  documentId: string,
+  room: YRoom,
+  changed: CanvasShapePosition[],
+): void {
+  if (changed.length === 0) return;
+  const last = changed[changed.length - 1]!;
+  setAgentPresence(key, documentId, room, {
+    kind: "canvas",
+    pointer: { x: last.x, y: last.y },
+    view: { x: last.x, y: last.y, scale: 1 },
+    selectionIds: changed.map((shape) => shape.id),
+    focusedNodeId: last.id,
+    activeTool: null,
+  });
+}
+
+/** Shapes added or changed between two canvas snapshots, with their positions. */
+function changedCanvasShapes(
+  before: Record<string, unknown>[],
+  after: Record<string, unknown>[],
+): CanvasShapePosition[] {
+  const beforeById = new Map(
+    before.map((shape) => [String(shape.id), JSON.stringify(shape)]),
+  );
+  const result: CanvasShapePosition[] = [];
+  for (const shape of after) {
+    const id = typeof shape.id === "string" ? shape.id : null;
+    if (!id) continue;
+    if (beforeById.get(id) === JSON.stringify(shape)) continue; // unchanged
+    result.push({
+      id,
+      x: typeof shape.x === "number" ? shape.x : 0,
+      y: typeof shape.y === "number" ? shape.y : 0,
+    });
+  }
+  return result;
 }
 
 /**
@@ -423,6 +484,8 @@ export async function transformDocumentContent(
       throw new Error("canvas content must be an object with shapes and strokes");
     }
 
+    const shapesBefore = canvasSnapshotFromDoc(doc).shapes;
+
     doc.on("update", captureUpdate);
     try {
       doc.transact(() => {
@@ -436,6 +499,14 @@ export async function transformDocumentContent(
     for (const update of updates) {
       broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
     }
+
+    const shapesAfter = canvasSnapshotFromDoc(doc).shapes;
+    broadcastCanvasAgentPresence(
+      roomKey(spaceId, documentId),
+      documentId,
+      room,
+      changedCanvasShapes(shapesBefore, shapesAfter),
+    );
 
     return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
   }

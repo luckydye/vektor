@@ -330,9 +330,11 @@ describe("Document edit operations", () => {
     });
     ws.binaryType = "arraybuffer";
     const received: Uint8Array[] = [];
+    const presenceFrames: Uint8Array[] = [];
     ws.addEventListener("message", (event) => {
       const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
       if (frame.type === WsMsgType.YjsUpdate) received.push(frame.payload);
+      else if (frame.type === WsMsgType.PresenceUpdate) presenceFrames.push(frame.payload);
     });
     await new Promise<void>((resolve, reject) => {
       ws.addEventListener("open", () => resolve());
@@ -384,6 +386,27 @@ describe("Document edit operations", () => {
     expect(JSON.parse(await readContent(documentId, "?live=true")).shapes).toHaveLength(
       2,
     );
+
+    // An "Agent" canvas presence is broadcast, pointing at the changed shapes.
+    while (presenceFrames.length < 1) await new Promise((resolve) => setTimeout(resolve, 50));
+    const { presence } = JSON.parse(
+      new TextDecoder().decode(presenceFrames[presenceFrames.length - 1]!),
+    ) as {
+      presence: {
+        clientId: string;
+        user: { name: string };
+        state: {
+          kind: string;
+          pointer: { x: number; y: number } | null;
+          selectionIds: string[];
+        };
+      };
+    };
+    expect(presence.clientId).toBe("agent");
+    expect(presence.user.name).toBe("Agent");
+    expect(presence.state.kind).toBe("canvas");
+    expect(presence.state.pointer).not.toBeNull();
+    expect(presence.state.selectionIds).toContain("shape-story");
 
     ws.close();
   });

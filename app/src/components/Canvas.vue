@@ -209,6 +209,10 @@ const presenceClientId = crypto.randomUUID();
 const ydoc = new Y.Doc();
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
+// Tracks only local edits (default trackedOrigins = {null}); remote/agent
+// updates arrive with origin "remote" and are excluded, so undo/redo only
+// reverts this user's own changes.
+const undoManager = new Y.UndoManager([yShapes, yStrokes]);
 
 let leaveYjsRoom = () => {};
 let leavePresenceRoom = () => {};
@@ -466,6 +470,8 @@ function parseSnapshot(content: string | null | undefined): CanvasSnapshot | nul
 
 function seedFromSnapshot(snapshot: CanvasSnapshot | null) {
   if (!snapshot || yShapes.size > 0 || yStrokes.size > 0) return;
+  // Origin "seed" keeps this out of the undo history (UndoManager tracks only
+  // origin null) while still broadcasting to the room (origin !== "remote").
   ydoc.transact(() => {
     for (const shape of snapshot.shapes) {
       yShapes.set(shape.id, createShapeMap(shape));
@@ -473,7 +479,7 @@ function seedFromSnapshot(snapshot: CanvasSnapshot | null) {
     for (const stroke of snapshot.strokes ?? []) {
       yStrokes.set(stroke.id, createStrokeMap(stroke));
     }
-  });
+  }, "seed");
   syncShapesFromY();
   syncStrokesFromY();
 }
@@ -1286,9 +1292,156 @@ function handleDrop(event: DragEvent) {
   void addMediaFiles(media, insertionPointFromEvent(event));
 }
 
+// Portable clipboard payload — written to the system clipboard as JSON so a
+// copy in one tab/browser can be pasted into another. Kept as an in-memory
+// fallback for non-secure contexts where the Clipboard API is unavailable.
+const CANVAS_CLIPBOARD_MARKER = "vektor-canvas-clipboard";
+type CanvasClipboard = {
+  "vektor-canvas-clipboard": 1;
+  shapes: CanvasShape[];
+  strokes: CanvasStrokeSnapshot[];
+};
+let internalClipboard: string | null = null;
+
+function collectSelection(): { shapes: CanvasShape[]; strokes: CanvasStrokeSnapshot[] } {
+  const selShapes = selectedShapeId.value
+    ? shapes.value.filter((shape) => shape.id === selectedShapeId.value).map((shape) => ({ ...shape }))
+    : [];
+  const selStrokes = selectedStrokeId.value
+    ? strokes.value
+        .filter((stroke) => stroke.id === selectedStrokeId.value)
+        .map((stroke) => ({
+          id: stroke.id,
+          points: stroke.points.map(cloneFreehandPoint),
+          style: { ...stroke.style },
+          updatedAt: stroke.updatedAt,
+        }))
+    : [];
+  return { shapes: selShapes, strokes: selStrokes };
+}
+
+/** Serializes the current selection to a portable JSON string, or null if nothing is selected. */
+function serializeSelection(): string | null {
+  const selection = collectSelection();
+  if (selection.shapes.length === 0 && selection.strokes.length === 0) return null;
+  return JSON.stringify({
+    [CANVAS_CLIPBOARD_MARKER]: 1,
+    ...selection,
+  } satisfies CanvasClipboard);
+}
+
+/** True when the user has a real text selection (let the browser copy that instead). */
+function hasActiveTextSelection(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (el?.closest("textarea, input, select")) return true;
+  const selection = window.getSelection?.();
+  return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
+}
+
+// Native clipboard events: synchronous, no permission prompt, and the JSON
+// lands in the system clipboard so it pastes across tabs and browsers.
+function handleCopy(event: ClipboardEvent) {
+  if (hasActiveTextSelection(event.target)) return;
+  const json = serializeSelection();
+  if (!json) return;
+  event.preventDefault();
+  event.clipboardData?.setData("text/plain", json);
+  internalClipboard = json;
+}
+
+function handleCut(event: ClipboardEvent) {
+  if (hasActiveTextSelection(event.target)) return;
+  const json = serializeSelection();
+  if (!json) return;
+  event.preventDefault();
+  event.clipboardData?.setData("text/plain", json);
+  internalClipboard = json;
+  deleteSelectedShape();
+}
+
+function parseCanvasClipboard(text: string | null | undefined): CanvasClipboard | null {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as Partial<CanvasClipboard>;
+    if (!parsed || parsed[CANVAS_CLIPBOARD_MARKER] !== 1) return null;
+    if (!Array.isArray(parsed.shapes) || !Array.isArray(parsed.strokes)) return null;
+    return parsed as CanvasClipboard;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recreates clipboard shapes/strokes with fresh ids, translated so the group's
+ * top-left lands at the insertion point. One transaction = one undo step.
+ */
+function pasteCanvasClipboard(
+  payload: CanvasClipboard,
+  at: { x: number; y: number },
+): void {
+  const xs = [
+    ...payload.shapes.map((shape) => shape.x),
+    ...payload.strokes.flatMap((stroke) => stroke.points.map((point) => point.x)),
+  ];
+  const ys = [
+    ...payload.shapes.map((shape) => shape.y),
+    ...payload.strokes.flatMap((stroke) => stroke.points.map((point) => point.y)),
+  ];
+  if (xs.length === 0 || ys.length === 0) return;
+  const dx = at.x - Math.min(...xs);
+  const dy = at.y - Math.min(...ys);
+  const now = Date.now();
+  let firstShapeId: string | null = null;
+  let firstStrokeId: string | null = null;
+
+  ydoc.transact(() => {
+    for (const shape of payload.shapes) {
+      const id = `shape-${crypto.randomUUID()}`;
+      if (!firstShapeId) firstShapeId = id;
+      yShapes.set(
+        id,
+        createShapeMap({
+          ...shape,
+          id,
+          x: Math.round(shape.x + dx),
+          y: Math.round(shape.y + dy),
+          updatedAt: now,
+        }),
+      );
+    }
+    for (const stroke of payload.strokes) {
+      const id = `stroke-${crypto.randomUUID()}`;
+      if (!firstStrokeId) firstStrokeId = id;
+      yStrokes.set(
+        id,
+        createStrokeMap({
+          id,
+          points: stroke.points.map((point) => ({ ...point, x: point.x + dx, y: point.y + dy })),
+          style: { ...stroke.style },
+          updatedAt: now,
+        }),
+      );
+    }
+  });
+
+  selectedStrokeId.value = firstShapeId ? null : firstStrokeId;
+  selectedShapeId.value = firstShapeId;
+  activeTool.value = "select";
+}
+
 function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select")) return;
+
+  // Canvas elements first (portable JSON in the clipboard text).
+  const payload =
+    parseCanvasClipboard(event.clipboardData?.getData("text/plain")) ??
+    parseCanvasClipboard(internalClipboard);
+  if (payload) {
+    event.preventDefault();
+    pasteCanvasClipboard(payload, insertionPointFromEvent());
+    return;
+  }
 
   const files = Array.from(event.clipboardData?.files ?? []);
   const media = mediaFilesFromList(files);
@@ -1332,6 +1485,21 @@ function fitView() {
   };
 }
 
+const canUndo = ref(false);
+const canRedo = ref(false);
+function refreshUndoState() {
+  canUndo.value = undoManager.canUndo();
+  canRedo.value = undoManager.canRedo();
+}
+
+function undo() {
+  if (undoManager.canUndo()) undoManager.undo();
+}
+
+function redo() {
+  if (undoManager.canRedo()) undoManager.redo();
+}
+
 function handleKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select")) return;
@@ -1340,6 +1508,19 @@ function handleKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && key === "s") {
     event.preventDefault();
     void manualSave();
+    return;
+  }
+
+  // Undo / redo: Cmd/Ctrl+Z, redo via Cmd/Ctrl+Shift+Z or Ctrl+Y.
+  if ((event.metaKey || event.ctrlKey) && key === "z") {
+    event.preventDefault();
+    if (event.shiftKey) redo();
+    else undo();
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && key === "y") {
+    event.preventDefault();
+    redo();
     return;
   }
 
@@ -1377,10 +1558,12 @@ onMounted(() => {
   yShapes.observeDeep(() => {
     syncShapesFromY();
     scheduleSave();
+    refreshUndoState();
   });
   yStrokes.observeDeep(() => {
     syncStrokesFromY();
     scheduleSave();
+    refreshUndoState();
   });
   syncShapesFromY();
   syncStrokesFromY();
@@ -1427,6 +1610,8 @@ onMounted(() => {
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerUp);
+  window.addEventListener("copy", handleCopy);
+  window.addEventListener("cut", handleCut);
   window.addEventListener("paste", handlePaste);
 });
 
@@ -1437,11 +1622,14 @@ onUnmounted(() => {
   colorSchemeMedia?.removeEventListener("change", updateThemeMode);
   leavePresenceRoom();
   leaveYjsRoom();
+  undoManager.destroy();
   ydoc.destroy();
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("pointermove", handlePointerMove);
   window.removeEventListener("pointerup", handlePointerUp);
   window.removeEventListener("pointercancel", handlePointerUp);
+  window.removeEventListener("copy", handleCopy);
+  window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
@@ -1492,6 +1680,51 @@ onUnmounted(() => {
           @click="setNoteColor(color)"
         ></button>
       </span>
+      <span class="canvas-divider"></span>
+      <button
+        type="button"
+        class="canvas-tool"
+        aria-label="Undo"
+        data-tooltip="Undo · ⌘Z"
+        :disabled="!canUndo"
+        @click="undo"
+      >
+        <svg
+          class="canvas-tool-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M9 14L4 9l5-5" />
+          <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="canvas-tool"
+        aria-label="Redo"
+        data-tooltip="Redo · ⌘⇧Z"
+        :disabled="!canRedo"
+        @click="redo"
+      >
+        <svg
+          class="canvas-tool-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M15 14l5-5-5-5" />
+          <path d="M20 9H9a5 5 0 0 0 0 10h1" />
+        </svg>
+      </button>
       <span class="canvas-divider"></span>
       <button
         type="button"
@@ -1793,12 +2026,17 @@ onUnmounted(() => {
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
+.canvas-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .canvas-tool-icon {
   width: 20px;
   height: 20px;
 }
 
-.canvas-tool:hover {
+.canvas-tool:hover:not(:disabled) {
   background: var(--canvas-tool-hover-bg);
   color: var(--canvas-text);
 }
