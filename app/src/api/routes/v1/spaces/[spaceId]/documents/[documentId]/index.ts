@@ -9,12 +9,14 @@ import {
   requireParam,
   requireUser,
   successResponse,
+  unauthorizedResponse,
   verifyDocumentAccess,
   verifyDocumentRole,
   authenticateRequest,
   verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { verifyJobToken } from "#jobs/jobToken.ts";
 import { ResourceType } from "#db/acl.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import {
@@ -241,7 +243,11 @@ export const GET: APIRoute = (context) =>
     const live = context.url.searchParams.get("live") === "true";
 
     const jobToken = context.request.headers.get("X-Job-Token");
-    if (!jobToken) {
+    if (jobToken) {
+      if (!verifyJobToken(jobToken, spaceId)) {
+        throw unauthorizedResponse();
+      }
+    } else {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
       const requiredRole = draft || live ? "editor" : "viewer";
@@ -319,7 +325,11 @@ export const PUT: APIRoute = (context) =>
 
     const jobToken = context.request.headers.get("X-Job-Token");
     const isJobRequest = Boolean(jobToken);
-    if (!jobToken) {
+    if (jobToken) {
+      if (!verifyJobToken(jobToken, spaceId)) {
+        throw unauthorizedResponse();
+      }
+    } else {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
       if (auth.type === "token") {
