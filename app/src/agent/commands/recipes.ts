@@ -15,14 +15,15 @@ const RECIPES: Record<string, Recipe> = {
   "edit-text": {
     title: "Edit an HTML/text document by line numbers",
     keywords: ["edit", "html", "text", "line", "insert", "replace", "delete", "document"],
-    body: `1. Read the document first — line numbers come from this output (it returns the live draft):
-   vektor read <id>        # or: vektor current
+    body: `1. Read the document with line numbers (returns the live draft):
+   vektor read <id> -n        # or: vektor current -n
 2. Apply one operation per call (1-based lines, $ = end):
-   echo "<p>new paragraph</p>" | vektor edit <id> insert 3     # insert before line 3
-   echo "<p>replacement</p>" | vektor edit <id> replace 2:4    # replace lines 2-4
-   vektor edit <id> delete 5                                   # delete line 5
-   echo "<p>appended</p>" | vektor edit <id> insert $          # append at end
-3. Content can also come from a file: vektor edit <id> replace 2 fix.html
+   vektor edit <id> insert 3 --content '<p>new paragraph</p>'   # insert before line 3
+   vektor edit <id> replace 2:4 --content '<p>replacement</p>'  # replace lines 2-4
+   vektor edit <id> delete 5                                    # delete line 5
+   vektor edit <id> insert $ --content '<p>appended</p>'        # append at end
+3. Longer content can come from a file (vektor edit <id> replace 2 fix.html) or stdin.
+4. Re-read with -n after each edit — line numbers shift.
 Edits merge with concurrent changes from other users — never rewrite the whole
 document with 'vektor update' unless replacing everything is the goal.`,
   },
@@ -37,7 +38,7 @@ document with 'vektor update' unless replacing everything is the goal.`,
    vektor edit <id> unset .items[2]                       # remove element/key
 Quoted keys work too: set '.["weird key"].x' 1`,
   },
-  "canvas": {
+  canvas: {
     title: "Add or edit notes/shapes on a canvas document",
     keywords: ["canvas", "note", "shape", "sticky", "stroke", "board"],
     body: `Canvas documents are JSON: {version, shapes: [...], strokes: [...]}.
@@ -80,7 +81,7 @@ Update (full rewrite is correct for apps):
    vektor update <id> app.html
 For small fixes prefer line edits: vektor read <id>, then vektor edit <id> replace <n> ...`,
   },
-  "workflow": {
+  workflow: {
     title: "Run a workflow and check its results",
     keywords: ["workflow", "run", "status", "logs", "automation"],
     body: `   vektor workflow run <workflow-document-id> [--inputs '{"key":"value"}']
@@ -88,14 +89,14 @@ For small fixes prefer line edits: vektor read <id>, then vektor edit <id> repla
    vektor workflow logs <run-id> [--node <node-id>]
    vektor workflow list [--document-id <id>]  # past runs`,
   },
-  "upload": {
+  upload: {
     title: "Upload and share a file",
     keywords: ["upload", "share", "file", "artifact", "url", "image"],
     body: `   upload report.pdf      # prints JSON with a shareable URL
 Never share sandbox file paths with the user — always upload first and share the URL.
 Only include final output files in zips; exclude intermediates.`,
   },
-  "extension": {
+  extension: {
     title: "Build and install an extension",
     keywords: ["extension", "plugin", "install", "manifest", "activate"],
     body: `ZIP layout: manifest.json at root + dist/ with plain ESM JS.

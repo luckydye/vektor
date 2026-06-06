@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, ref } from "vue";
+import { onMounted, onUnmounted, computed, ref, watch, nextTick } from "vue";
 import CommentThread, { type Comment as CommentThreadType } from "./CommentThread.vue";
 import CommentOverlays, {
   type Comment as CommentOverlaysType,
@@ -39,6 +39,47 @@ const fadeAddBubble = ref(false);
 
 const EDGE_THRESHOLD_PX = 60;
 const COMMENT_BUBBLE_PROXIMITY_PX = 20;
+const THREAD_GAP_PX = 8;
+
+// Thread anchor derived from the comment bubble the thread belongs to,
+// so the thread stays attached to the bubble instead of the viewport edge.
+const threadAnchor = ref<{ top: number; right: number } | null>(null);
+
+function bubbleForReference(reference: string): HTMLElement | null {
+  const bubbles = document.querySelectorAll<HTMLElement>(
+    "[data-comment-overlay-bubble='true']",
+  );
+  return (
+    Array.from(bubbles).find((b) => b.dataset.commentReference === reference) ?? null
+  );
+}
+
+function updateThreadAnchor() {
+  if (!activeReference.value) {
+    threadAnchor.value = null;
+    return;
+  }
+  const bubble = bubbleForReference(activeReference.value);
+  if (!bubble) {
+    threadAnchor.value = null;
+    return;
+  }
+  const rect = bubble.getBoundingClientRect();
+  threadAnchor.value = {
+    top: rect.top,
+    right: window.innerWidth - rect.left + THREAD_GAP_PX,
+  };
+}
+
+function handleThreadReposition() {
+  if (!activeReference.value) return;
+  requestAnimationFrame(updateThreadAnchor);
+}
+
+watch(activeReference, () => {
+  // Wait for the bubble overlay to render before measuring it.
+  void nextTick(updateThreadAnchor);
+});
 
 const commentsForOverlays = computed(() =>
   comments.value.map(
@@ -135,12 +176,19 @@ onMounted(() => {
   setupListeners();
   window.addEventListener("mousemove", handleMouseMove);
   document.documentElement.addEventListener("mouseleave", handleMouseLeave);
+  // Capture phase so scrolls inside nested containers also re-anchor the thread.
+  window.addEventListener("scroll", handleThreadReposition, true);
+  window.addEventListener("resize", handleThreadReposition);
+  window.addEventListener("editor-update", handleThreadReposition);
 });
 
 onUnmounted(() => {
   cleanupListeners();
   window.removeEventListener("mousemove", handleMouseMove);
   document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
+  window.removeEventListener("scroll", handleThreadReposition, true);
+  window.removeEventListener("resize", handleThreadReposition);
+  window.removeEventListener("editor-update", handleThreadReposition);
 });
 </script>
 
@@ -166,11 +214,13 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <!-- Thread for existing comment reference -->
+    <!-- Thread for existing comment reference — anchored to its comment bubble -->
     <div
       v-if="activeReference"
-      class="fixed right-4 z-40"
-      :style="{ top: `${threadPosition}px` }"
+      class="fixed z-40"
+      :style="threadAnchor
+        ? { top: `${threadAnchor.top}px`, right: `${threadAnchor.right}px` }
+        : { top: `${threadPosition}px`, right: '1rem' }"
     >
       <CommentThread
         :comments="commentsForThread"

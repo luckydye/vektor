@@ -74,8 +74,19 @@ const LINE_RANGE_RE = /^(\d+|\$)(:(\d+|\$))?$/;
 export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
   return defineCommand("vektor", async (args, _ctx) => {
     const json = args.includes("--json");
-    const commandArgs = args.filter((arg) => arg !== "--json");
+    const lineNumbers = args.includes("-n") || args.includes("--line-numbers");
+    const commandArgs = args.filter(
+      (arg) => arg !== "--json" && arg !== "-n" && arg !== "--line-numbers",
+    );
     const [subcommand, ...rest] = commandArgs;
+
+    const formatContent = (html: string): string =>
+      lineNumbers
+        ? html
+            .split("\n")
+            .map((line, index) => `${String(index + 1).padStart(5)}\t${line}`)
+            .join("\n")
+        : html;
 
     if (!subcommand) {
       return {
@@ -107,7 +118,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
         if (!rest[0]) {
           return {
             stdout: "",
-            stderr: "usage: vektor read <document-id> [--json]\n",
+            stderr: "usage: vektor read <document-id> [-n] [--json]\n",
             exitCode: 2,
           };
         }
@@ -120,7 +131,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
             | undefined;
           const html = typeof doc?.content === "string" ? doc.content : null;
           if (html !== null) {
-            return { stdout: `${html}\n`, stderr: "", exitCode: 0 };
+            return { stdout: `${formatContent(html)}\n`, stderr: "", exitCode: 0 };
           }
         }
         break;
@@ -133,7 +144,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
             | undefined;
           const html = typeof doc?.content === "string" ? doc.content : null;
           if (html !== null) {
-            return { stdout: `${html}\n`, stderr: "", exitCode: 0 };
+            return { stdout: `${formatContent(html)}\n`, stderr: "", exitCode: 0 };
           }
         }
         break;
@@ -292,17 +303,28 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
         const usage =
           "usage: vektor edit <document-id|current> <op> [args] [--json]\n" +
           "line ops (html/text):\n" +
-          "  insert <line> [file]            insert content before line (use $ to append)\n" +
-          "  replace <start>[:<end>] [file]  replace line range with content\n" +
+          "  insert <line> [-c '<html>'|file]            insert content before line ($ = append)\n" +
+          "  replace <start>[:<end>] [-c '<html>'|file]  replace line range with content\n" +
           "  delete <start>[:<end>]          delete line range\n" +
           "json ops (simplified jq paths like .a.b[0]):\n" +
           "  set <path> <value>              set value at path (value parsed as JSON, else string)\n" +
           "  unset <path>                    remove key or array element at path\n" +
           "  push <path> <value>             append value to array at path\n" +
-          "content for insert/replace comes from [file] or stdin\n";
+          "content for insert/replace comes from --content '<html>', [file], or stdin\n";
         const [documentId, op, ...editRest] = rest;
         if (!documentId || !op) {
           return { stdout: "", stderr: usage, exitCode: 2 };
+        }
+
+        let inlineContent: string | undefined;
+        const positional: string[] = [];
+        for (let index = 0; index < editRest.length; index++) {
+          const arg = editRest[index]!;
+          if (arg === "--content" || arg === "-c") {
+            inlineContent = editRest[++index];
+            continue;
+          }
+          positional.push(arg);
         }
 
         let targetId = documentId;
@@ -328,6 +350,9 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
         const readEditContent = async (
           fileArg: string | undefined,
         ): Promise<string | null> => {
+          if (inlineContent !== undefined) {
+            return inlineContent;
+          }
           if (fileArg) {
             const filePath = _ctx.fs.resolvePath(_ctx.cwd, fileArg);
             if (!(await _ctx.fs.exists(filePath))) return null;
@@ -339,7 +364,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
         let operation: EditOperation;
         switch (op) {
           case "insert": {
-            const [lineRef, fileArg] = editRest;
+            const [lineRef, fileArg] = positional;
             if (!lineRef || !LINE_REF_RE.test(lineRef)) {
               return {
                 stdout: "",
@@ -367,7 +392,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
           }
           case "replace":
           case "delete": {
-            const [rangeRef, fileArg] = editRest;
+            const [rangeRef, fileArg] = positional;
             if (!rangeRef || !LINE_RANGE_RE.test(rangeRef)) {
               return {
                 stdout: "",
@@ -400,7 +425,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
           case "set":
           case "unset":
           case "push": {
-            const [pathArg, valueArg] = editRest;
+            const [pathArg, valueArg] = positional;
             if (!pathArg || !parseJsonPath(pathArg)) {
               return {
                 stdout: "",

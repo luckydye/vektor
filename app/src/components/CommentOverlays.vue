@@ -188,6 +188,7 @@ onUnmounted(() => {
         @pointercancel="drag = null"
         @click.stop="handleClick(overlay.reference)"
         data-comment-overlay-bubble="true"
+        :data-comment-reference="overlay.reference"
         class="absolute right-0 pointer-events-auto touch-none select-none
                flex items-center justify-center min-w-[40px] h-[40px] px-1.5 rounded-full
                bg-primary-200 border border-neutral-100

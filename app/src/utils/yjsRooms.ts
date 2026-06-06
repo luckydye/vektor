@@ -227,7 +227,7 @@ const AGENT_PRESENCE_USER: PresenceUser = {
   name: "Agent",
   color: "#8b5cf6",
 };
-const AGENT_PRESENCE_TTL_MS = 30_000;
+const AGENT_PRESENCE_TTL_MS = 10_000;
 const agentPresenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function clearAgentPresence(key: string, documentId: string): void {
