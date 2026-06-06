@@ -67,7 +67,7 @@ function buildCoreAgentSystemPrompt(documentId?: string, connectedProviders?: st
   return `## Bash Tool Runtime
 - js-exec runs JavaScript/TypeScript in a QuickJS sandbox: \`js-exec -c "..."\` or \`js-exec script.js\`. Has \`console\` and \`process\`; no \`require\`, \`fetch\`, or Node built-ins.
 - zip/unzip/zipinfo operate on the virtual filesystem (zip is always recursive). Use \`zipinfo\` instead of \`unzip -l\`.
-- vektor CLI: \`vektor current\` (current doc), \`vektor read <id>\`, \`vektor list --json\`, \`vektor search "<q>" --json\`, \`vektor create --title "T" [--type type] [--parent id] [file]\`, \`vektor delete <id> [--permanent]\`. Pipe/redirect to/from virtual files as needed.
+- vektor CLI: \`vektor current\` (current doc), \`vektor read <id>\`, \`vektor list --json\`, \`vektor search "<q>" --json\`, \`vektor create --title "T" [--type type] [--parent id] [file]\`, \`vektor edit <id|current> <op>\` (partial edits, see Editing Documents), \`vektor delete <id> [--permanent]\`. Pipe/redirect to/from virtual files as needed.
 - upload <file> uploads from the virtual filesystem and returns JSON with a URL. Never share sandbox paths — always upload first.
 - Only include final output files in zips; exclude intermediates.
 - ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.${gitlabConnected ? "\n- gitlab sub-commands: \`gitlab api <path>\` raw API request via OAuth (paths relative to /api/v4, e.g. \`gitlab api '/projects?search=name'\`); \`gitlab ls <project> [path] [--ref <ref>]\` list repo directory; \`gitlab cat <project> <file> [--ref <ref>]\` file contents; \`gitlab tree <project> [path] [--ref <ref>]\` recursive listing. Use \`gitlab api\` to search/list projects — \`ls/cat/tree\` require an exact project ID or \`namespace/project\`." : ""}
@@ -84,6 +84,13 @@ function buildCoreAgentSystemPrompt(documentId?: string, connectedProviders?: st
 ## Behavior
 - Outline a short plan before starting. Verify each step before proceeding.
 - Don't report results until verified. Don't restate visible tool output — only add interpretation, summaries, or next steps.
+
+## Editing Documents
+- Prefer \`vektor edit\` over \`vektor update\` for changing existing documents: edits are applied server-side through the collaboration channel, so they merge with concurrent changes from other users instead of overwriting them.
+- Line ops (HTML/text): \`vektor edit <id|current> insert <line> [file]\` (insert before line, \`$\` = append), \`replace <start>[:<end>] [file]\`, \`delete <start>[:<end>]\`. Lines are 1-based; content comes from the file argument or stdin.
+- JSON ops (JSON documents): \`vektor edit <id|current> set <path> <value>\`, \`unset <path>\`, \`push <path> <value>\`. Paths are simplified jq (\`.config.timeout\`, \`.items[0].name\`); values are parsed as JSON, falling back to plain strings.
+- Always \`vektor read\`/\`vektor current\` first and take line numbers from that output — reads return the live draft, matching exactly what edit operates on.
+- Use \`vektor update\` only for full-content rewrites (e.g. replacing an app document's HTML).
 
 ## App Documents
 - Type "app" documents are HTML apps in sandboxed iframes. Create with full HTML and \`--type app\`; update by replacing the HTML content.

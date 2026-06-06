@@ -241,13 +241,37 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       inputSchema: {
         type: "object",
         properties: {
-          documentId: { type: "string", description: "Document ID to update. Omit to create a new document." },
+          documentId: {
+            type: "string",
+            description: "Document ID to update. Omit to create a new document.",
+          },
           content: { type: "string", description: "Document content (HTML or Markdown)" },
           title: { type: "string", description: "Document title (used when creating)" },
           type: { type: "string", description: "Document type (used when creating)" },
-          parentId: { type: "string", description: "Parent document ID (used when creating)" },
+          parentId: {
+            type: "string",
+            description: "Parent document ID (used when creating)",
+          },
         },
         required: ["content"],
+      },
+    },
+    {
+      name: "edit_document",
+      description:
+        "Apply partial edit operations to a document. Edits go through the collaboration channel, so they merge with concurrent changes from other users instead of overwriting them. Line operations (insert/replace/delete) edit HTML/text content by 1-based line numbers; json operations (set/unset/push) edit JSON content via simplified jq paths like .a.b[0].",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string", description: "Document ID to edit" },
+          operations: {
+            type: "array",
+            description:
+              'Edit operations, applied in order. Line ops: {op:"insert", line:"5"|"$", content}, {op:"replace", range:"10:14", content}, {op:"delete", range:"3"}. Json ops: {op:"set", path:".a.b[0]", value}, {op:"unset", path}, {op:"push", path, value}.',
+            items: { type: "object" },
+          },
+        },
+        required: ["documentId", "operations"],
       },
     },
     {
@@ -258,7 +282,10 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         type: "object",
         properties: {
           documentId: { type: "string", description: "Document ID to delete" },
-          permanent: { type: "boolean", description: "Permanently delete instead of archiving" },
+          permanent: {
+            type: "boolean",
+            description: "Permanently delete instead of archiving",
+          },
         },
         required: ["documentId"],
       },
@@ -287,7 +314,10 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         properties: {
           documentId: { type: "string", description: "Workflow document ID" },
           inputs: { type: "object", description: "Runtime inputs for workflow nodes" },
-          sourceExtensionId: { type: "string", description: "Extension that initiated the run" },
+          sourceExtensionId: {
+            type: "string",
+            description: "Extension that initiated the run",
+          },
         },
         required: ["documentId"],
       },
@@ -323,7 +353,10 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         type: "object",
         properties: {
           documentId: { type: "string", description: "Filter by workflow document ID" },
-          sourceExtensionId: { type: "string", description: "Filter by source extension" },
+          sourceExtensionId: {
+            type: "string",
+            description: "Filter by source extension",
+          },
         },
       },
     },
@@ -342,7 +375,8 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "get_documentation",
-      description: "Get Vektor documentation for a specific section (api, extensions, workflows).",
+      description:
+        "Get Vektor documentation for a specific section (api, extensions, workflows).",
       inputSchema: {
         type: "object",
         properties: {
@@ -355,7 +389,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         required: ["section"],
       },
     },
-    ...((() => {
+    ...(() => {
       const allProviders = ["gitlab", "youtrack"];
       const providers = config.connectedProviders
         ? allProviders.filter((p) => config.connectedProviders!.includes(p))
@@ -382,7 +416,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           },
         } satisfies McpTool,
       ];
-    })()),
+    })(),
     ...(config.documentId
       ? [
           {
@@ -425,10 +459,13 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     case "read_document": {
       const documentId = expectString(args, "documentId")!;
       const rev = expectNumber(args, "rev", { optional: true });
+      // Without an explicit revision, read the live draft content (including
+      // unsaved changes in the collaboration room) so partial edits via
+      // edit_document reference the same state.
       return await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}${buildQuery(
-          { rev },
+          rev !== undefined ? { rev } : { live: "true" },
         )}`,
       );
     }
@@ -438,7 +475,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       }
       return await apiRequest(
         config,
-        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(config.documentId)}`,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(config.documentId)}?live=true`,
       );
     case "write_document": {
       const documentId = expectString(args, "documentId", { optional: true });
@@ -473,6 +510,25 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         body: JSON.stringify(body),
       });
     }
+    case "edit_document": {
+      const documentId = expectString(args, "documentId")!;
+      const operations = args.operations;
+      if (!Array.isArray(operations) || operations.length === 0) {
+        throw new Error("operations must be a non-empty array");
+      }
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}/edit`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: new URL(config.apiUrl).origin,
+          },
+          body: JSON.stringify({ operations }),
+        },
+      );
+    }
     case "delete_document": {
       const documentId = expectString(args, "documentId")!;
       const permanent = args.permanent === true;
@@ -504,7 +560,9 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     case "run_workflow": {
       const documentId = expectString(args, "documentId")!;
       const inputs = expectObject(args, "inputs", { optional: true });
-      const sourceExtensionId = expectString(args, "sourceExtensionId", { optional: true });
+      const sourceExtensionId = expectString(args, "sourceExtensionId", {
+        optional: true,
+      });
       const body: Record<string, unknown> = { documentId };
       if (inputs) body.inputs = inputs;
       if (sourceExtensionId) body.sourceExtensionId = sourceExtensionId;
@@ -530,13 +588,18 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       const run = (await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
-      )) as { nodes: Record<string, { logs: string[]; error: string | null; status: string }> };
+      )) as {
+        nodes: Record<string, { logs: string[]; error: string | null; status: string }>;
+      };
       if (nodeId) {
         const node = run.nodes[nodeId];
         if (!node) throw new Error(`Node not found: ${nodeId}`);
         return { nodeId, status: node.status, error: node.error, logs: node.logs };
       }
-      const result: Record<string, { status: string; error: string | null; logs: string[] }> = {};
+      const result: Record<
+        string,
+        { status: string; error: string | null; logs: string[] }
+      > = {};
       for (const [id, node] of Object.entries(run.nodes)) {
         if (node.logs.length > 0 || node.error) {
           result[id] = { status: node.status, error: node.error, logs: node.logs };
@@ -546,7 +609,9 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     }
     case "list_workflow_runs": {
       const documentId = expectString(args, "documentId", { optional: true });
-      const sourceExtensionId = expectString(args, "sourceExtensionId", { optional: true });
+      const sourceExtensionId = expectString(args, "sourceExtensionId", {
+        optional: true,
+      });
       return await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/workflows/runs${buildQuery({ documentId, sourceExtensionId })}`,
@@ -557,7 +622,8 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       const filename = expectString(args, "filename")!;
       const content = expectString(args, "content")!;
       const contentType =
-        expectString(args, "contentType", { optional: true }) ?? "application/octet-stream";
+        expectString(args, "contentType", { optional: true }) ??
+        "application/octet-stream";
       const encoding = expectString(args, "encoding", { optional: true });
       const bytes =
         encoding === "base64"

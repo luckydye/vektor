@@ -33,6 +33,7 @@ import * as documentChildren from "./routes/v1/spaces/[spaceId]/documents/[docum
 import * as documentComments from "./routes/v1/spaces/[spaceId]/documents/[documentId]/comments.ts";
 import * as documentContributors from "./routes/v1/spaces/[spaceId]/documents/[documentId]/contributors.ts";
 import * as documentDiff from "./routes/v1/spaces/[spaceId]/documents/[documentId]/diff.ts";
+import * as documentEdit from "./routes/v1/spaces/[spaceId]/documents/[documentId]/edit.ts";
 import * as document from "./routes/v1/spaces/[spaceId]/documents/[documentId]/index.ts";
 import * as documentRevisions from "./routes/v1/spaces/[spaceId]/documents/[documentId]/revisions.ts";
 import * as documentsArchived from "./routes/v1/spaces/[spaceId]/documents/archived.ts";
@@ -152,6 +153,7 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/comments", module: documentComments },
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/contributors", module: documentContributors },
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/diff", module: documentDiff },
+  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit", module: documentEdit },
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/revisions", module: documentRevisions },
 
   { pattern: "/api/v1/spaces/[spaceId]/extensions", module: extensions },

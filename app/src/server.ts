@@ -25,114 +25,11 @@ import {
 } from "./utils/realtime.ts";
 
 import * as Y from "yjs";
-import { prosemirrorToYDoc } from "y-prosemirror";
-import { getSchema } from "@tiptap/core";
-import { Node } from "@tiptap/pm/model";
-import { generateJSON } from "@tiptap/html";
-import { contentExtensions } from "./editor/extensions.ts";
-import { getDocument } from "./db/documents.ts";
+import { getRoom, loadYDoc, yRooms, type YRoom } from "./utils/yjsRooms.ts";
 
 import type { dev } from "astro";
 import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
-
-interface YRoom {
-  doc?: Y.Doc;
-  clients: Set<any>;
-  presences: Map<string, PresenceEnvelope>;
-}
-
-const yRooms = new Map<string, YRoom>();
-
-type CanvasShape = {
-  id: string;
-  type?: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  text?: string;
-  color?: string;
-  src?: string;
-  alt?: string;
-  updatedAt?: number;
-};
-
-type CanvasStroke = {
-  id: string;
-  points?: unknown[];
-  style?: Record<string, unknown>;
-  updatedAt?: number;
-};
-
-function loadCanvasYDoc(content: string): Y.Doc {
-  const ydoc = new Y.Doc();
-  const shapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
-  const strokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
-  let parsed: { shapes?: CanvasShape[]; strokes?: CanvasStroke[] };
-
-  try {
-    parsed = JSON.parse(content) as { shapes?: CanvasShape[]; strokes?: CanvasStroke[] };
-  } catch {
-    return ydoc;
-  }
-
-  if (!Array.isArray(parsed.shapes) && !Array.isArray(parsed.strokes)) return ydoc;
-
-  ydoc.transact(() => {
-    for (const shape of parsed.shapes ?? []) {
-      if (!shape || typeof shape.id !== "string") continue;
-      const map = new Y.Map<unknown>();
-      map.set("type", shape.type ?? "note");
-      map.set("x", shape.x ?? 0);
-      map.set("y", shape.y ?? 0);
-      map.set("width", shape.width ?? 240);
-      map.set("height", shape.height ?? 150);
-      map.set("text", shape.text ?? "");
-      map.set("color", shape.color ?? "#fef3c7");
-      if (shape.src) map.set("src", shape.src);
-      if (shape.alt) map.set("alt", shape.alt);
-      map.set("updatedAt", shape.updatedAt ?? Date.now());
-      shapes.set(shape.id, map);
-    }
-
-    for (const stroke of parsed.strokes ?? []) {
-      if (!stroke || typeof stroke.id !== "string") continue;
-      const map = new Y.Map<unknown>();
-      map.set("points", Array.isArray(stroke.points) ? stroke.points : []);
-      map.set("style", stroke.style ?? {});
-      map.set("updatedAt", stroke.updatedAt ?? Date.now());
-      strokes.set(stroke.id, map);
-    }
-  });
-
-  return ydoc;
-}
-
-async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
-  const dbDoc = await getDocument(spaceId, documentId);
-  if (!dbDoc?.content) return new Y.Doc();
-  if (dbDoc.type === "canvas") return loadCanvasYDoc(dbDoc.content);
-
-  const extensions = contentExtensions(spaceId, documentId);
-  const json = generateJSON(dbDoc.content, extensions);
-  const schema = getSchema(extensions);
-  const pmDoc = Node.fromJSON(schema, json);
-  return prosemirrorToYDoc(pmDoc, "default");
-}
-
-function getRoom(spaceId: string, documentId: string): YRoom {
-  const roomKey = `${spaceId}:${documentId}`;
-  let room = yRooms.get(roomKey);
-  if (!room) {
-    room = {
-      clients: new Set(),
-      presences: new Map(),
-    };
-    yRooms.set(roomKey, room);
-  }
-  return room;
-}
 
 function broadcastPresence(room: YRoom, sender: any, type: WsMsgType, payload: object) {
   const frame = wsEncode(type, payload);
@@ -415,7 +312,9 @@ async function handleRealtimeWebSocket(
 
       if (authorizedTopics.size !== topics.length) {
         websocket.send(
-          wsEncode(WsMsgType.Error, { message: "One or more realtime topics are forbidden" }),
+          wsEncode(WsMsgType.Error, {
+            message: "One or more realtime topics are forbidden",
+          }),
         );
       }
 
@@ -472,12 +371,17 @@ async function handleRealtimeWebSocket(
 // body (JSON, multipart, binary uploads, MCP, …).
 app.use(apiRouter);
 
-app.use(express.json({ limit: "100mb", type: (req: any) => {
-  // Skip express.json for MCP routes — they parse the body themselves
-  if (req.url?.includes("/mcp")) return false;
-  const ct = req.headers["content-type"] ?? "";
-  return ct.includes("application/json");
-} }));
+app.use(
+  express.json({
+    limit: "100mb",
+    type: (req: any) => {
+      // Skip express.json for MCP routes — they parse the body themselves
+      if (req.url?.includes("/mcp")) return false;
+      const ct = req.headers["content-type"] ?? "";
+      return ct.includes("application/json");
+    },
+  }),
+);
 app.post("/sync", (req: any, res: any) => {
   const events = Array.isArray(req.body) ? req.body : [req.body];
   publishSyncEvents(events);
@@ -506,8 +410,8 @@ if (!apiOnly) {
       root: "./",
       logLevel: "error",
       server: {
-        host: true
-      }
+        host: true,
+      },
     });
   } else {
     import("../dist/server/entry.mjs").then(({ handler }) => {

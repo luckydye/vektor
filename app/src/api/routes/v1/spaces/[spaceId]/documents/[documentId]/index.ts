@@ -50,6 +50,7 @@ import { eq } from "drizzle-orm";
 import { createAuditLog } from "#db/auditLogs.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { getLiveDocumentContent } from "#utils/yjsRooms.ts";
 
 type PropertyPatchValue =
   | null
@@ -235,12 +236,15 @@ export const GET: APIRoute = (context) =>
     const id = requireParam(context.params, "documentId");
     const revParam = context.url.searchParams.get("rev");
     const draft = context.url.searchParams.get("draft") === "true";
+    // live=true returns the draft content as currently held in the document's
+    // collaboration room (if open), so partial edits reference the same state.
+    const live = context.url.searchParams.get("live") === "true";
 
     const jobToken = context.request.headers.get("X-Job-Token");
     if (!jobToken) {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
-      const requiredRole = draft ? "editor" : "viewer";
+      const requiredRole = draft || live ? "editor" : "viewer";
       if (auth.type === "token") {
         await verifyTokenPermission(
           auth.token,
@@ -280,7 +284,15 @@ export const GET: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
-    if (!draft && document.publishedRev !== null) {
+    if (live) {
+      const liveContent = getLiveDocumentContent(spaceId, id, document.type);
+      if (liveContent !== null) {
+        document = {
+          ...document,
+          content: liveContent,
+        };
+      }
+    } else if (!draft && document.publishedRev !== null) {
       const publishedContent = await getPublishedContent(spaceId, id);
       if (publishedContent) {
         document = {
@@ -354,7 +366,11 @@ export const PUT: APIRoute = (context) =>
         }
 
         await restoreDocument(spaceId, id, userId);
-        sendSyncEvent(spaceId, realtimeTopics.categoryDocuments, realtimeTopics.documentTree);
+        sendSyncEvent(
+          spaceId,
+          realtimeTopics.categoryDocuments,
+          realtimeTopics.documentTree,
+        );
         return jsonResponse({ success: true });
       }
 
@@ -391,7 +407,13 @@ export const PUT: APIRoute = (context) =>
     // TODO: propper sanitization needed, parse html doc and only use allowed elements and attributes.
     const contentSanitized = stripScriptTags(content);
 
-    const document = await updateDocument(spaceId, id, contentSanitized, userId, nextType);
+    const document = await updateDocument(
+      spaceId,
+      id,
+      contentSanitized,
+      userId,
+      nextType,
+    );
     return jsonResponse({ document });
   }, "Failed to update document");
 
@@ -416,7 +438,11 @@ export const PATCH: APIRoute = (context) =>
     await verifyDocumentRole(spaceId, id, userId, "editor");
 
     if (properties !== undefined) {
-      if (parentId !== undefined || publishedRev !== undefined || readonly !== undefined) {
+      if (
+        parentId !== undefined ||
+        publishedRev !== undefined ||
+        readonly !== undefined
+      ) {
         throw badRequestResponse(
           "Properties patch cannot be combined with parentId, publishedRev, or readonly",
         );
