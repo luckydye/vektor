@@ -267,7 +267,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
           operations: {
             type: "array",
             description:
-              'Edit operations, applied in order. Line ops: {op:"insert", line:"5"|"$", content}, {op:"replace", range:"10:14", content}, {op:"delete", range:"3"}. Json ops: {op:"set", path:".a.b[0]", value}, {op:"unset", path}, {op:"push", path, value}.',
+              'Edit operations, applied in order. Line ops: {op:"insert", line:"5"|"$", content}, {op:"replace", range:"10:14", content}, {op:"delete", range:"3"}. Regex: {op:"sub", pattern, replacement} (JS regex, flags gs, fails if nothing matches). Json ops: {op:"set", path:".a.b[0]", value}, {op:"unset", path}, {op:"push", path, value}.',
             items: { type: "object" },
           },
         },

@@ -291,13 +291,15 @@ export const GET: APIRoute = (context) =>
     }
 
     if (live) {
-      const liveContent = getLiveDocumentContent(spaceId, id, document.type);
-      if (liveContent !== null) {
-        document = {
-          ...document,
-          content: liveContent,
-        };
-      }
+      document = {
+        ...document,
+        content: getLiveDocumentContent(
+          spaceId,
+          id,
+          document.type,
+          document.content ?? "",
+        ),
+      };
     } else if (!draft && document.publishedRev !== null) {
       const publishedContent = await getPublishedContent(spaceId, id);
       if (publishedContent) {

@@ -114,6 +114,43 @@ describe("Document edit operations", () => {
     );
   });
 
+  it("normalizes compact single-line html for line edits and live reads", async () => {
+    const documentId = await createDocument("<h1>Title</h1><p>one</p><p>two</p>");
+
+    // Live read splits compact content into one block per line.
+    expect(await readContent(documentId, "?live=true")).toBe(
+      "<h1>Title</h1>\n<p>one</p>\n<p>two</p>",
+    );
+
+    // Line edits operate on the same normalized structure.
+    const response = await editDocument(documentId, [{ op: "delete", range: "2" }]);
+    expect(response.status).toBe(200);
+    expect(await readContent(documentId)).toBe("<h1>Title</h1>\n<p>two</p>");
+  });
+
+  it("applies regex substitutions and preserves unicode", async () => {
+    const documentId = await createDocument(
+      "<p>Antworte mit&nbsp;🔴 ROT oder 🟢 GRÜN für die Seite.</p>\n" +
+        '<p><user-mention email="t@v.de">@Tim</user-mention> is cool.</p>',
+    );
+
+    const response = await editDocument(documentId, [
+      { op: "sub", pattern: "<user-mention[^>]*>.*?</user-mention>", replacement: "" },
+    ]);
+    expect(response.status).toBe(200);
+
+    const content = await readContent(documentId);
+    expect(content).not.toContain("user-mention");
+    expect(content).toContain("🔴 ROT oder 🟢 GRÜN für die Seite");
+    expect(content).toContain("<p> is cool.</p>");
+
+    // A pattern that matches nothing fails loudly instead of pretending success.
+    const miss = await editDocument(documentId, [
+      { op: "sub", pattern: "does-not-exist-anywhere", replacement: "x" },
+    ]);
+    expect(miss.status).toBe(400);
+  });
+
   it("applies json operations", async () => {
     const documentId = await createDocument(
       JSON.stringify({ config: { timeout: 10 }, items: [1, 2] }),

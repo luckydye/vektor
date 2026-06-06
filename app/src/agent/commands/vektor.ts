@@ -306,6 +306,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
           "  insert <line> [-c '<html>'|file]            insert content before line ($ = append)\n" +
           "  replace <start>[:<end>] [-c '<html>'|file]  replace line range with content\n" +
           "  delete <start>[:<end>]          delete line range\n" +
+          "  sub <pattern> [replacement]     regex replace across the whole document (JS regex, flags gs)\n" +
           "json ops (simplified jq paths like .a.b[0]):\n" +
           "  set <path> <value>              set value at path (value parsed as JSON, else string)\n" +
           "  unset <path>                    remove key or array element at path\n" +
@@ -420,6 +421,18 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
               };
             }
             operation = { op: "replace", range: rangeRef, content };
+            break;
+          }
+          case "sub": {
+            const [pattern, replacement] = positional;
+            if (!pattern) {
+              return {
+                stdout: "",
+                stderr: `vektor edit: sub requires a pattern\n${usage}`,
+                exitCode: 2,
+              };
+            }
+            operation = { op: "sub", pattern, replacement: replacement ?? "" };
             break;
           }
           case "set":

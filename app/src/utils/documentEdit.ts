@@ -2,6 +2,7 @@ export type EditOperation =
   | { op: "insert"; line: string; content: string }
   | { op: "replace"; range: string; content: string }
   | { op: "delete"; range: string }
+  | { op: "sub"; pattern: string; replacement: string }
   | { op: "set"; path: string; value: unknown }
   | { op: "unset"; path: string }
   | { op: "push"; path: string; value: unknown };
@@ -161,6 +162,20 @@ export function applyEditOperations(
         current = lines.join("\n");
         break;
       }
+      case "sub": {
+        let regex: RegExp;
+        try {
+          regex = new RegExp(operation.pattern, "gs");
+        } catch {
+          throw new Error(`invalid pattern '${operation.pattern}'`);
+        }
+        const next = current.replace(regex, operation.replacement);
+        if (next === current) {
+          throw new Error(`pattern '${operation.pattern}' did not match anything`);
+        }
+        current = next;
+        break;
+      }
       case "set":
       case "unset":
       case "push": {
@@ -210,6 +225,14 @@ export function parseEditOperations(raw: unknown): EditOperation[] {
           );
         }
         return { op, range: record.range, content: record.content };
+      case "sub":
+        if (typeof record.pattern !== "string" || !record.pattern) {
+          throw new Error(`operations[${index}]: sub requires a pattern string`);
+        }
+        if (record.replacement !== undefined && typeof record.replacement !== "string") {
+          throw new Error(`operations[${index}]: sub replacement must be a string`);
+        }
+        return { op, pattern: record.pattern, replacement: record.replacement ?? "" };
       case "delete":
         if (typeof record.range !== "string") {
           throw new Error(`operations[${index}]: delete requires a range string`);

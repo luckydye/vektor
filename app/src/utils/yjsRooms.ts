@@ -198,19 +198,66 @@ function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): vo
   }
 }
 
+function isJsonContent(content: string): boolean {
+  const trimmed = content.trimStart();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
+  try {
+    JSON.parse(content);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Returns the current content of a document's live Yjs room, or null when no
- * room is open (the persisted content is authoritative then).
+ * Re-serializes persisted HTML to one top-level block per line (documents are
+ * often stored as a single compact line), so line-based edits and reads use
+ * the same deterministic line structure as the live-room path. Returns the
+ * input unchanged if it cannot be parsed.
+ */
+function normalizeHtmlContent(
+  spaceId: string,
+  documentId: string,
+  content: string,
+): string {
+  if (!content.trim()) return content;
+  try {
+    const extensions = contentExtensions(spaceId, documentId);
+    const json = generateJSON(content, extensions) as {
+      type: string;
+      content?: unknown[];
+    };
+    return (json.content ?? [])
+      .map((node) =>
+        generateHTML({ type: json.type, content: [node] }, extensions).replaceAll(
+          ' xmlns="http://www.w3.org/1999/xhtml"',
+          "",
+        ),
+      )
+      .join("\n");
+  } catch {
+    return content;
+  }
+}
+
+/**
+ * Returns the document content as edit operations see it: the live Yjs room
+ * state when one is open, otherwise the persisted content — with HTML
+ * normalized to one top-level block per line in both cases.
  */
 export function getLiveDocumentContent(
   spaceId: string,
   documentId: string,
   type: string | null | undefined,
-): string | null {
+  persisted: string,
+): string {
   const room = yRooms.get(roomKey(spaceId, documentId));
-  if (!room?.doc) return null;
-  if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
-  return toCleanHtml(room.doc, contentExtensions(spaceId, documentId));
+  if (room?.doc) {
+    if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
+    return toCleanHtml(room.doc, contentExtensions(spaceId, documentId));
+  }
+  if (type === "canvas" || isJsonContent(persisted)) return persisted;
+  return normalizeHtmlContent(spaceId, documentId, persisted);
 }
 
 function broadcastToRoom(room: YRoom, frame: Uint8Array): void {
@@ -352,7 +399,12 @@ export async function transformDocumentContent(
 
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
-    return { content: transform(dbDoc.content ?? ""), live: false };
+    const persisted = dbDoc.content ?? "";
+    const base =
+      dbDoc.type === "canvas" || isJsonContent(persisted)
+        ? persisted
+        : normalizeHtmlContent(spaceId, documentId, persisted);
+    return { content: transform(base), live: false };
   }
 
   const doc = room.doc;
