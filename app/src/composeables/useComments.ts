@@ -4,6 +4,10 @@ import { api } from "../api/client.ts";
 import type { Comment } from "../api/ApiClient.ts";
 import { useSync } from "./useSync.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
+import {
+  isPositionReference,
+  resolveReferenceSelector,
+} from "../utils/commentReference.ts";
 
 export function useComments(options: {
   spaceId: Ref<string | undefined>;
@@ -47,7 +51,9 @@ export function useComments(options: {
       const hasCommentEvent = event.events.some(
         ({ data }) =>
           typeof data?.kind === "string" &&
-          (data.kind === "comment_created" || data.kind === "comment_deleted"),
+          (data.kind === "comment_created" ||
+            data.kind === "comment_deleted" ||
+            data.kind === "comment_updated"),
       );
 
       if (hasCommentEvent) {
@@ -127,15 +133,50 @@ export function useComments(options: {
 
   const activeComments = computed(() => {
     if (!activeReference.value) return [];
-    return comments.value.filter((c: Comment) => {
-      let ref = c.reference;
-      try {
-        if (ref?.startsWith("{")) {
-          ref = JSON.parse(ref).selector;
-        }
-      } catch {}
-      return ref === activeReference.value;
-    });
+    return comments.value.filter(
+      (c: Comment) =>
+        c.reference && resolveReferenceSelector(c.reference) === activeReference.value,
+    );
+  });
+
+  const moveThreadMutation = useMutation({
+    mutationFn: async ({ reference, y }: { reference: string; y: number }) => {
+      if (!options.spaceId.value || !options.documentId.value) {
+        throw new Error("Space ID and Document ID are required");
+      }
+      const commentIds = comments.value
+        .filter(
+          (c: Comment) =>
+            c.reference && resolveReferenceSelector(c.reference) === reference,
+        )
+        .map((c: Comment) => c.id);
+      if (commentIds.length === 0) return null;
+
+      const newReference = String(Math.round(y));
+      await api.documentComments.patch(options.spaceId.value, options.documentId.value, {
+        commentIds,
+        reference: newReference,
+      });
+      return { reference, commentIds, newReference };
+    },
+    onSuccess: (result) => {
+      if (!result) return;
+      queryClient.setQueryData(
+        ["wiki_comments", options.spaceId.value, options.documentId.value],
+        (old: Comment[] | undefined) =>
+          old?.map((c: Comment) =>
+            result.commentIds.includes(c.id)
+              ? { ...c, reference: result.newReference }
+              : c,
+          ),
+      );
+      if (activeReference.value === result.reference) {
+        activeReference.value = result.newReference;
+      }
+    },
+    onError: (error) => {
+      console.error("Error moving comment thread:", error);
+    },
   });
 
   function handleOpenComment(event: Event) {
@@ -153,8 +194,11 @@ export function useComments(options: {
       const docContent = document.querySelector("document-view");
       const root = docContent?.shadowRoot || document;
 
-      if (!Number.isNaN(activeReference.value)) {
-        threadPosition.value = Number(activeReference.value);
+      if (isPositionReference(ref)) {
+        // Position references are y offsets relative to the document content;
+        // convert to viewport coordinates for the fixed-positioned thread.
+        const docTop = docContent ? docContent.getBoundingClientRect().top : 0;
+        threadPosition.value = docTop + Number(ref);
       } else {
         let element = null;
         if (ref.startsWith("#")) {
@@ -189,6 +233,10 @@ export function useComments(options: {
     return await deleteCommentMutation.mutateAsync(commentId);
   }
 
+  async function moveThread(reference: string, y: number) {
+    return await moveThreadMutation.mutateAsync({ reference, y });
+  }
+
   return {
     comments,
     activeReference,
@@ -201,6 +249,7 @@ export function useComments(options: {
     refetch,
     submitComment,
     deleteComment,
+    moveThread,
     handleOpenComment,
     setupListeners,
     cleanupListeners,

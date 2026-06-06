@@ -22,6 +22,7 @@ const {
   activeComments,
   submitComment,
   deleteComment,
+  moveThread,
   setupListeners,
   cleanupListeners,
 } = useComments({
@@ -33,6 +34,7 @@ const {
 const showAddBubble = ref(false);
 const bubbleY = ref(0);
 const addingCommentY = ref<number | null>(null);
+const addingCommentRef = ref<string | null>(null);
 const fadeAddBubble = ref(false);
 
 const EDGE_THRESHOLD_PX = 60;
@@ -95,7 +97,13 @@ function isNearCommentBubble(cursorX: number, cursorY: number) {
 }
 
 function handleAddComment() {
+  // Viewport y for the fixed-positioned thread popup
   addingCommentY.value = bubbleY.value;
+  // Stored reference is the y offset relative to the document content,
+  // so the bubble stays anchored regardless of scroll position.
+  const docView = document.querySelector("document-view");
+  const docTop = docView ? docView.getBoundingClientRect().top : 0;
+  addingCommentRef.value = String(Math.max(0, Math.round(bubbleY.value - docTop)));
   showAddBubble.value = false;
   fadeAddBubble.value = false;
 }
@@ -107,6 +115,11 @@ async function handleSubmit(payload: { content: string; reference: string | null
 async function handleSubmitNew(payload: { content: string; reference: string | null }) {
   await submitComment(payload.content, payload.reference);
   addingCommentY.value = null;
+  addingCommentRef.value = null;
+}
+
+async function handleMoveThread(payload: { reference: string; y: number }) {
+  await moveThread(payload.reference, payload.y);
 }
 
 async function handleDeleteComment(commentId: string) {
@@ -133,7 +146,7 @@ onUnmounted(() => {
 
 <template>
   <div class="contents">
-    <CommentOverlays :comments="commentsForOverlays" />
+    <CommentOverlays :comments="commentsForOverlays" @move="handleMoveThread" />
 
     <!-- Add comment bubble — appears near right viewport edge -->
     <div
@@ -178,12 +191,12 @@ onUnmounted(() => {
     >
       <CommentThread
         :comments="[]"
-        :activeReference="String(addingCommentY)"
+        :activeReference="addingCommentRef"
         :isSubmitting="isSubmitting"
         :isDeletingComment="isDeletingComment"
         @submit="handleSubmitNew"
         @delete="handleDeleteComment"
-        @close="addingCommentY = null"
+        @close="addingCommentY = null; addingCommentRef = null"
       />
     </div>
   </div>

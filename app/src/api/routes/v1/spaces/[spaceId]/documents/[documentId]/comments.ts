@@ -17,6 +17,7 @@ import {
   listComments,
   getComment,
   archiveComment,
+  updateCommentReferences,
 } from "#db/comments.ts";
 import { ResourceType, Feature } from "#db/acl.ts";
 import { getAuthDb } from "#db/db.ts";
@@ -120,6 +121,53 @@ export const POST: APIRoute = (context) =>
 
     return jsonResponse({ comment });
   }, "Failed to create comment");
+
+export const PATCH: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const spaceId = requireParam(context.params, "spaceId");
+    const documentId = requireParam(context.params, "documentId");
+
+    await verifyDocumentAccess(spaceId, documentId, user.id);
+    await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
+
+    const body = await parseJsonBody(context.request);
+    const { commentIds, reference } = body;
+
+    if (
+      !Array.isArray(commentIds) ||
+      commentIds.length === 0 ||
+      !commentIds.every((id) => typeof id === "string")
+    ) {
+      throw badRequestResponse("Comment IDs are required");
+    }
+
+    if (!reference || typeof reference !== "string" || !reference.trim()) {
+      throw badRequestResponse("Reference is required");
+    }
+
+    // Only re-reference comments that belong to this document
+    const comments = await listComments(spaceId, ResourceType.DOCUMENT, documentId);
+    const documentCommentIds = new Set(comments.map((c) => c.id));
+    const validIds = commentIds.filter((id) => documentCommentIds.has(id));
+    if (validIds.length === 0) {
+      throw notFoundResponse("Comment");
+    }
+
+    await updateCommentReferences(spaceId, validIds, reference);
+
+    sendSyncEvent(spaceId, {
+      topic: realtimeTopics.document(documentId),
+      data: {
+        kind: "comment_updated",
+        commentIds: validIds,
+        documentId,
+        reference,
+      },
+    });
+
+    return jsonResponse({ success: true });
+  }, "Failed to update comments");
 
 export const DELETE: APIRoute = (context) =>
   withApiErrorHandling(async () => {

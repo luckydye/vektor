@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import { comment } from "./schema/space.ts";
@@ -72,6 +72,18 @@ export async function getComment(
   const [foundComment] = await db.select().from(comment).where(eq(comment.id, commentId));
 
   return foundComment;
+}
+
+export async function updateCommentReferences(
+  spaceId: string,
+  commentIds: string[],
+  reference: string,
+): Promise<void> {
+  const db = await getSpaceDb(spaceId);
+  await db
+    .update(comment)
+    .set({ reference, updatedAt: new Date() })
+    .where(inArray(comment.id, commentIds));
 }
 
 export async function archiveComment(spaceId: string, commentId: string): Promise<void> {

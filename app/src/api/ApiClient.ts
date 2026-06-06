@@ -1613,6 +1613,24 @@ export class ApiClient {
     },
 
     /**
+     * Update the reference (anchor) of one or more comments
+     */
+    patch: async (
+      spaceId: string,
+      documentId: string,
+      body: {
+        commentIds: string[];
+        reference: string;
+      },
+    ) => {
+      await this.apiPatch<{ success: boolean }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`,
+        body,
+      );
+    },
+
+    /**
      * Delete a comment
      */
     delete: async (spaceId: string, documentId: string, commentId: string) => {
