@@ -58,6 +58,81 @@ function formatVektorValue(value: unknown, json: boolean): string {
   return JSON.stringify(record, null, 2);
 }
 
+type JsonPathSegment = string | number;
+
+/** Parses a simplified jq path like `.a.b[0]["weird key"]` into segments. */
+function parseJsonPath(path: string): JsonPathSegment[] | null {
+  if (path === ".") return [];
+  if (!path.startsWith(".") && !path.startsWith("[")) return null;
+  const segments: JsonPathSegment[] = [];
+  const segmentRe = /\.([A-Za-z_$][\w$-]*)|\["((?:[^"\\]|\\.)*)"\]|\[(\d+)\]/y;
+  let index = 0;
+  while (index < path.length) {
+    segmentRe.lastIndex = index;
+    const match = segmentRe.exec(path);
+    if (!match) return null;
+    if (match[1] !== undefined) segments.push(match[1]);
+    else if (match[2] !== undefined) segments.push(match[2].replace(/\\(.)/g, "$1"));
+    else segments.push(Number(match[3]));
+    index = segmentRe.lastIndex;
+  }
+  return segments.length > 0 ? segments : null;
+}
+
+/** Walks to the parent of the final segment. Returns null if the path doesn't resolve. */
+function resolveJsonParent(
+  root: unknown,
+  segments: JsonPathSegment[],
+): { parent: Record<string, unknown> | unknown[]; key: JsonPathSegment } | null {
+  let current: unknown = root;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const segment = segments[i]!;
+    if (Array.isArray(current) && typeof segment === "number") {
+      current = current[segment];
+    } else if (current && typeof current === "object" && !Array.isArray(current)) {
+      current = (current as Record<string, unknown>)[String(segment)];
+    } else {
+      return null;
+    }
+  }
+  const key = segments[segments.length - 1]!;
+  if (Array.isArray(current)) {
+    return typeof key === "number" ? { parent: current, key } : null;
+  }
+  if (current && typeof current === "object") {
+    return { parent: current as Record<string, unknown>, key };
+  }
+  return null;
+}
+
+/** Parses a value argument as JSON, falling back to a plain string. */
+function parseValueArg(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/** Parses a 1-based line reference (`5`, `$` for last line). */
+function parseLineRef(ref: string, lineCount: number): number | null {
+  if (ref === "$") return lineCount;
+  if (!/^\d+$/.test(ref)) return null;
+  const line = Number(ref);
+  return line >= 1 && line <= lineCount ? line : null;
+}
+
+/** Parses `<start>[:<end>]` into a 1-based inclusive range. */
+function parseLineRange(ref: string, lineCount: number): { start: number; end: number } | null {
+  const [startRef, endRef, ...extra] = ref.split(":");
+  if (extra.length > 0 || !startRef) return null;
+  const start = parseLineRef(startRef, lineCount);
+  if (start === null) return null;
+  const end = endRef === undefined ? start : parseLineRef(endRef, lineCount);
+  if (end === null || end < start) return null;
+  return { start, end };
+}
+
 export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
   return defineCommand("vektor", async (args, _ctx) => {
     const json = args.includes("--json");
@@ -68,10 +143,12 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
       return {
         stdout: "",
         stderr:
-          "usage: vektor <list|read|current|search|create|delete|workflow> [args] [--json]\n" +
+          "usage: vektor <list|read|current|search|create|update|edit|delete|workflow> [args] [--json]\n" +
           "fetch other docs: vektor search \"query\" --json -> take id -> vektor read <id>\n" +
           "fetch current doc: vektor current\n" +
           "create doc: vektor create --title \"Title\" [--type type] [--parent document-id] [file]\n" +
+          "edit doc (lines): vektor edit <id|current> insert <line> [file] | replace <start>[:<end>] [file] | delete <start>[:<end>]\n" +
+          "edit doc (json): vektor edit <id|current> set <path> <value> | unset <path> | push <path> <value>\n" +
           "archive doc: vektor delete <id>\n" +
           "permanently delete doc: vektor delete <id> --permanent\n" +
           "save to file: vektor read <id> > doc.md\n" +
@@ -269,6 +346,161 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
         }
         break;
       }
+      case "edit": {
+        const usage =
+          "usage: vektor edit <document-id|current> <op> [args] [--json]\n" +
+          "line ops (html/text):\n" +
+          "  insert <line> [file]            insert content before line (use $ to append)\n" +
+          "  replace <start>[:<end>] [file]  replace line range with content\n" +
+          "  delete <start>[:<end>]          delete line range\n" +
+          "json ops (simplified jq paths like .a.b[0]):\n" +
+          "  set <path> <value>              set value at path (value parsed as JSON, else string)\n" +
+          "  unset <path>                    remove key or array element at path\n" +
+          "  push <path> <value>             append value to array at path\n" +
+          "content for insert/replace comes from [file] or stdin\n";
+        const [documentId, op, ...editRest] = rest;
+        if (!documentId || !op) {
+          return { stdout: "", stderr: usage, exitCode: 2 };
+        }
+
+        const readResult =
+          documentId === "current"
+            ? await callVektorTool(mcpConfigRef.current, "get_current_document", {})
+            : await callVektorTool(mcpConfigRef.current, "read_document", { documentId });
+        const doc = (readResult as Record<string, unknown>)?.document as
+          | Record<string, unknown>
+          | undefined;
+        const targetId =
+          typeof doc?.id === "string" ? doc.id : documentId === "current" ? null : documentId;
+        const original = typeof doc?.content === "string" ? doc.content : null;
+        if (original === null || !targetId) {
+          return {
+            stdout: "",
+            stderr: `vektor edit: could not read document '${documentId}'\n`,
+            exitCode: 1,
+          };
+        }
+
+        const readEditContent = async (fileArg: string | undefined): Promise<string | null> => {
+          if (fileArg) {
+            const filePath = _ctx.fs.resolvePath(_ctx.cwd, fileArg);
+            if (!(await _ctx.fs.exists(filePath))) return null;
+            return Buffer.from(await _ctx.fs.readFileBuffer(filePath)).toString("utf-8");
+          }
+          return _ctx.stdin;
+        };
+
+        let next: string;
+        switch (op) {
+          case "insert": {
+            const [lineRef, fileArg] = editRest;
+            const lines = original.split("\n");
+            const line = lineRef ? parseLineRef(lineRef, lines.length + 1) : null;
+            if (line === null) {
+              return { stdout: "", stderr: `vektor edit: invalid line '${lineRef ?? ""}'\n${usage}`, exitCode: 2 };
+            }
+            const content = await readEditContent(fileArg);
+            if (content === null) {
+              return { stdout: "", stderr: `vektor edit: ${fileArg}: No such file or directory\n`, exitCode: 1 };
+            }
+            if (!content) {
+              return { stdout: "", stderr: "vektor edit: content is required from file or stdin\n", exitCode: 2 };
+            }
+            lines.splice(line - 1, 0, ...content.replace(/\n$/, "").split("\n"));
+            next = lines.join("\n");
+            break;
+          }
+          case "replace":
+          case "delete": {
+            const [rangeRef, fileArg] = editRest;
+            const lines = original.split("\n");
+            const range = rangeRef ? parseLineRange(rangeRef, lines.length) : null;
+            if (range === null) {
+              return { stdout: "", stderr: `vektor edit: invalid range '${rangeRef ?? ""}'\n${usage}`, exitCode: 2 };
+            }
+            let replacement: string[] = [];
+            if (op === "replace") {
+              const content = await readEditContent(fileArg);
+              if (content === null) {
+                return { stdout: "", stderr: `vektor edit: ${fileArg}: No such file or directory\n`, exitCode: 1 };
+              }
+              if (!content) {
+                return { stdout: "", stderr: "vektor edit: content is required from file or stdin\n", exitCode: 2 };
+              }
+              replacement = content.replace(/\n$/, "").split("\n");
+            }
+            lines.splice(range.start - 1, range.end - range.start + 1, ...replacement);
+            next = lines.join("\n");
+            break;
+          }
+          case "set":
+          case "unset":
+          case "push": {
+            const [pathArg, valueArg] = editRest;
+            const segments = pathArg ? parseJsonPath(pathArg) : null;
+            if (segments === null || !segments) {
+              return { stdout: "", stderr: `vektor edit: invalid path '${pathArg ?? ""}'\n${usage}`, exitCode: 2 };
+            }
+            if (op !== "unset" && valueArg === undefined) {
+              return { stdout: "", stderr: `vektor edit: ${op} requires a value\n${usage}`, exitCode: 2 };
+            }
+            let root: unknown;
+            try {
+              root = JSON.parse(original);
+            } catch {
+              return { stdout: "", stderr: "vektor edit: document is not valid JSON\n", exitCode: 1 };
+            }
+            const resolved = resolveJsonParent(root, segments);
+            if (!resolved) {
+              return { stdout: "", stderr: `vektor edit: path '${pathArg}' does not resolve\n`, exitCode: 1 };
+            }
+            const { parent, key } = resolved;
+            if (op === "set") {
+              if (Array.isArray(parent)) {
+                if (typeof key !== "number" || key > parent.length) {
+                  return { stdout: "", stderr: `vektor edit: index out of bounds at '${pathArg}'\n`, exitCode: 1 };
+                }
+                parent[key] = parseValueArg(valueArg!);
+              } else {
+                parent[String(key)] = parseValueArg(valueArg!);
+              }
+            } else if (op === "unset") {
+              if (Array.isArray(parent)) {
+                if (typeof key !== "number" || key >= parent.length) {
+                  return { stdout: "", stderr: `vektor edit: index out of bounds at '${pathArg}'\n`, exitCode: 1 };
+                }
+                parent.splice(key, 1);
+              } else if (String(key) in parent) {
+                delete parent[String(key)];
+              } else {
+                return { stdout: "", stderr: `vektor edit: path '${pathArg}' does not resolve\n`, exitCode: 1 };
+              }
+            } else {
+              const target = Array.isArray(parent)
+                ? parent[key as number]
+                : parent[String(key)];
+              if (!Array.isArray(target)) {
+                return { stdout: "", stderr: `vektor edit: '${pathArg}' is not an array\n`, exitCode: 1 };
+              }
+              target.push(parseValueArg(valueArg!));
+            }
+            next = JSON.stringify(root, null, 2);
+            break;
+          }
+          default:
+            return { stdout: "", stderr: `vektor edit: unknown op '${op}'\n${usage}`, exitCode: 2 };
+        }
+
+        result = await callVektorTool(mcpConfigRef.current, "write_document", {
+          documentId: targetId,
+          content: next,
+        });
+
+        if (!json) {
+          return { stdout: `edited ${targetId}\n`, stderr: "", exitCode: 0 };
+        }
+        break;
+      }
       case "delete": {
         const [documentId, ...flags] = rest;
         if (!documentId) {
@@ -398,7 +630,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
       default:
         return {
           stdout: "",
-          stderr: `vektor: unknown subcommand '${subcommand}'\nusage: vektor <list|read|current|search|create|update|delete|workflow> [args] [--json]\n`,
+          stderr: `vektor: unknown subcommand '${subcommand}'\nusage: vektor <list|read|current|search|create|update|edit|delete|workflow> [args] [--json]\n`,
           exitCode: 2,
         };
     }

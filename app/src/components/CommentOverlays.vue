@@ -192,7 +192,7 @@ onUnmounted(() => {
                flex items-center justify-center min-w-[40px] h-[40px] px-1.5 rounded-full
                bg-primary-200 border border-neutral-100
                hover:border-primary-300 hover:ring-2 hover:ring-primary-100 hover:text-primary-600
-               transition-color duration-200 z-20"
+               transition-colors duration-200 z-20"
         :class="drag?.reference === overlay.reference && drag?.moved
           ? 'cursor-grabbing shadow-lg'
           : 'cursor-pointer'"
