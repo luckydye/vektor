@@ -8,6 +8,13 @@ import { getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildJobWrapper } from "./jobRuntime.ts";
 import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
+import {
+  classifyJobError,
+  recordJobRunFinished,
+  recordJobRunQueued,
+  recordJobRunStarted,
+  type JobRunTrigger,
+} from "../db/jobRuns.ts";
 import type { Sandbox } from "./sandbox.ts";
 
 /**
@@ -111,6 +118,10 @@ export async function runJob(
     jobType?: string;
     jobId?: string;
     sandbox?: Sandbox | null;
+    /** How this run was initiated; persisted to the job_run table. */
+    trigger?: JobRunTrigger;
+    /** job_schedule id when the run was fired by the cron scheduler. */
+    scheduleId?: string | null;
   },
 ): Promise<Record<string, unknown>> {
   const {
@@ -120,23 +131,53 @@ export async function runJob(
     jobType,
     jobId: logicalJobId,
     sandbox,
+    trigger = "manual",
+    scheduleId,
   } = options ?? {};
 
+  const executionId = crypto.randomUUID();
+  await recordJobRunQueued(spaceId, {
+    id: executionId,
+    scheduleId: scheduleId ?? null,
+    jobId: logicalJobId ?? entryPath,
+    trigger,
+    initiatedBy: initiatedByUserId ?? null,
+  });
+
   if (sandbox) {
-    return sandbox.runJob(zipBuffer, entryPath, inputs, spaceId, onLog, {
-      timeoutMs,
-      signal,
-      initiatedByUserId,
-    });
+    await recordJobRunStarted(spaceId, executionId);
+    try {
+      const outputs = await sandbox.runJob(zipBuffer, entryPath, inputs, spaceId, onLog, {
+        timeoutMs,
+        signal,
+        initiatedByUserId,
+      });
+      await recordJobRunFinished(spaceId, executionId, { status: "success" });
+      return outputs;
+    } catch (error) {
+      await recordJobRunFinished(spaceId, executionId, {
+        status: classifyJobError(error),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 
-  if (signal?.aborted) throw new Error("Job cancelled");
-
   const fileBuffer = extractFile(zipBuffer, entryPath);
-  if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
-
   const queuedAt = Date.now();
-  await acquireJobSlot(signal);
+  try {
+    if (signal?.aborted) throw new Error("Job cancelled");
+    if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
+
+    await acquireJobSlot(signal);
+  } catch (error) {
+    await recordJobRunFinished(spaceId, executionId, {
+      status: classifyJobError(error),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+  await recordJobRunStarted(spaceId, executionId);
   const queueWait = Date.now() - queuedAt;
   jobsStartedCounter.add(1, { entry_path: entryPath });
   jobQueueWaitMs.record(queueWait, { entry_path: entryPath });
@@ -160,7 +201,6 @@ export async function runJob(
       },
       async (span) => {
         span.setAttribute("wiki.job.inputs_json", toSpanJson(inputs));
-        const executionId = crypto.randomUUID();
         span.setAttribute("wiki.job.execution_id", executionId);
         jobPath = join(tmpdir(), `wiki-job-${executionId}.mjs`);
         wrapperPath = join(tmpdir(), `wiki-wrapper-${executionId}.mjs`);
@@ -278,11 +318,16 @@ export async function runJob(
       },
     );
     completed = true;
+    await recordJobRunFinished(spaceId, executionId, { status: "success" });
     return outputs;
   } catch (error) {
     jobsFailedCounter.add(1, {
       entry_path: entryPath,
       status: "failed",
+    });
+    await recordJobRunFinished(spaceId, executionId, {
+      status: classifyJobError(error),
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   } finally {

@@ -150,6 +150,43 @@ export interface Webhook {
   createdBy: string;
 }
 
+export interface JobSchedule {
+  id: string;
+  jobId: string;
+  cronExpression: string;
+  timezone: string | null;
+  inputs: Record<string, unknown>;
+  enabled: boolean;
+  nextRunAt: Date | string | null;
+  lastRunAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  createdBy: string;
+}
+
+export type JobRunTrigger = "cron" | "manual" | "workflow";
+
+export type JobRunStatus =
+  | "queued"
+  | "running"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "timeout";
+
+export interface JobRun {
+  id: string;
+  scheduleId: string | null;
+  jobId: string;
+  trigger: JobRunTrigger;
+  status: JobRunStatus;
+  error: string | null;
+  queuedAt: Date | string;
+  startedAt: Date | string | null;
+  finishedAt: Date | string | null;
+  initiatedBy: string | null;
+}
+
 export type WorkflowNodeStatus = "pending" | "running" | "completed" | "failed";
 
 export interface WorkflowNodeState {
@@ -1710,6 +1747,84 @@ export class ApiClient {
         body: JSON.stringify({ jobId, inputs, stream: true }),
         signal,
       });
+    },
+
+    /**
+     * List job execution history (newest first)
+     */
+    listRuns: async (
+      spaceId: string,
+      options?: { jobId?: string; scheduleId?: string; limit?: number },
+    ) => {
+      const params = new URLSearchParams();
+      if (options?.jobId) params.set("jobId", options.jobId);
+      if (options?.scheduleId) params.set("scheduleId", options.scheduleId);
+      if (options?.limit) params.set("limit", String(options.limit));
+      const query = params.size > 0 ? `?${params}` : "";
+      return await this.apiGet<{ runs: JobRun[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/jobs/runs${query}`,
+      );
+    },
+
+    /**
+     * List job schedules in a space
+     */
+    listSchedules: async (spaceId: string) => {
+      return await this.apiGet<{ schedules: JobSchedule[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/jobs/schedules`,
+      );
+    },
+
+    /**
+     * Create a job schedule
+     */
+    createSchedule: async (
+      spaceId: string,
+      body: {
+        jobId: string;
+        cronExpression: string;
+        timezone?: string;
+        inputs?: Record<string, unknown>;
+        enabled?: boolean;
+      },
+    ) => {
+      return await this.apiPost<{ schedule: JobSchedule }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/jobs/schedules`,
+        body,
+      );
+    },
+
+    /**
+     * Update a job schedule
+     */
+    updateSchedule: async (
+      spaceId: string,
+      scheduleId: string,
+      body: {
+        cronExpression?: string;
+        timezone?: string | null;
+        inputs?: Record<string, unknown> | null;
+        enabled?: boolean;
+      },
+    ) => {
+      return await this.apiPatch<{ schedule: JobSchedule }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/jobs/schedules/${scheduleId}`,
+        body,
+      );
+    },
+
+    /**
+     * Delete a job schedule (run history is preserved)
+     */
+    deleteSchedule: async (spaceId: string, scheduleId: string) => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/jobs/schedules/${scheduleId}`,
+      );
     },
   };
 

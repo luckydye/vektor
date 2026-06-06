@@ -54,6 +54,9 @@ import * as integration from "./routes/v1/spaces/[spaceId]/integrations/[provide
 import * as integrations from "./routes/v1/spaces/[spaceId]/integrations/index.ts";
 
 import * as jobsRun from "./routes/v1/spaces/[spaceId]/jobs/run.ts";
+import * as jobRuns from "./routes/v1/spaces/[spaceId]/jobs/runs.ts";
+import * as jobSchedule from "./routes/v1/spaces/[spaceId]/jobs/schedules/[scheduleId].ts";
+import * as jobSchedules from "./routes/v1/spaces/[spaceId]/jobs/schedules/index.ts";
 import * as mcp from "./routes/v1/spaces/[spaceId]/mcp.ts";
 import * as members from "./routes/v1/spaces/[spaceId]/members.ts";
 
@@ -123,6 +126,9 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/properties", module: properties },
   { pattern: "/api/v1/spaces/[spaceId]/mcp", module: mcp },
   { pattern: "/api/v1/spaces/[spaceId]/jobs/run", module: jobsRun },
+  { pattern: "/api/v1/spaces/[spaceId]/jobs/runs", module: jobRuns },
+  { pattern: "/api/v1/spaces/[spaceId]/jobs/schedules", module: jobSchedules },
+  { pattern: "/api/v1/spaces/[spaceId]/jobs/schedules/[scheduleId]", module: jobSchedule },
 
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens", module: accessTokens },
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]", module: accessToken },

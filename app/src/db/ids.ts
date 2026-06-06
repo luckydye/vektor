@@ -3,6 +3,7 @@ const idPrefixes = {
   category: "category",
   comment: "comment",
   document: "doc",
+  jobSchedule: "sched",
   oauthIntegration: "oauth",
   oauthIntegrationState: "oauth_state",
   preference: "pref",

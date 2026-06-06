@@ -524,6 +524,11 @@
       <ExtensionSettings />
     </section>
 
+    <!-- Jobs -->
+    <section v-if="activeTab === 'jobs'">
+      <JobsSettings />
+    </section>
+
     <!-- Archive -->
     <section v-if="activeTab === 'archive'">
       <h2 class="text-sm font-semibold text-neutral-900 mb-4">Archived Documents</h2>
@@ -589,6 +594,7 @@ const tabs = [
   { id: "api", label: "API & Webhooks" },
   { id: "secrets", label: "Secrets" },
   { id: "extensions", label: "Extensions" },
+  { id: "jobs", label: "Jobs" },
   { id: "archive", label: "Archive" },
 ] as const;
 
@@ -604,6 +610,7 @@ import {
 } from "../api/client.ts";
 import SpaceMembers from "./SpaceMembers.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
+import JobsSettings from "./JobsSettings.vue";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
 
 const emit = defineEmits(["saved"]);

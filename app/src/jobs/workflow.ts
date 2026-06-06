@@ -219,6 +219,7 @@ export async function executeWorkflow(
                   initiatedByUserId: run.initiatedByUserId,
                   jobType: "workflow_node",
                   jobId: nodeDef.jobId,
+                  trigger: "workflow",
                   sandbox,
                 },
               );

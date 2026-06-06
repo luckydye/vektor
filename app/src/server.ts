@@ -34,6 +34,7 @@ import { getDocument } from "./db/documents.ts";
 
 import type { dev } from "astro";
 import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
+import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
 
 interface YRoom {
   doc?: Y.Doc;
@@ -529,6 +530,8 @@ const server = app.listen(port, host, () => {
   appLogger.info("Server listening", { host, port });
 });
 
+startCronScheduler();
+
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url ?? "/", "http://localhost");
   const match = url.pathname.match(/^\/events\/([^/]+)$/);
@@ -552,6 +555,8 @@ async function shutdown(reason: string, exitCode = 0) {
   isShuttingDown = true;
 
   appLogger.info("Shutdown initiated", { reason, exitCode });
+
+  stopCronScheduler();
 
   forcedShutdownTimer = setTimeout(() => {
     appLogger.error("Forced shutdown timeout reached", { reason, timeoutMs: 10_000 });

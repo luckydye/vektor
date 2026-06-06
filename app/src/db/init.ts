@@ -109,6 +109,20 @@ export async function prepareSpaceDb(spaceId: string) {
   await spaceDb.run(sql.raw(aiChatSessionSQL));
   await ensureColumnExists(spaceDb, "ai_chat_session", "shell_snapshot", "TEXT");
 
+  const jobScheduleSQL = generateCreateTableSQL(spaceSchema.jobSchedule);
+  await spaceDb.run(sql.raw(jobScheduleSQL));
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS job_schedule_next_run_at_idx ON job_schedule (enabled, next_run_at)",
+    ),
+  );
+
+  const jobRunSQL = generateCreateTableSQL(spaceSchema.jobRun);
+  await spaceDb.run(sql.raw(jobRunSQL));
+  await spaceDb.run(
+    sql.raw("CREATE INDEX IF NOT EXISTS job_run_queued_at_idx ON job_run (queued_at)"),
+  );
+
   const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
   await spaceDb.run(sql.raw(spaceSecretSQL));
   const oauthIntegrationSQL = generateCreateTableSQL(spaceSchema.oauthIntegration);
