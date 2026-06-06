@@ -26,6 +26,7 @@ import {
   commandSearch,
 } from "./src/cli/document.ts";
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
+import { commandAgent } from "./src/cli/agent.ts";
 
 function parseFlags(args: string[]): { positional: string[]; flags: Record<string, string> } {
   const positional: string[] = [];
@@ -51,6 +52,7 @@ function printUsage(): void {
   console.log(`
 Usage:
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--email-auth]
+  vektor agent [prompt...] [--doc <slug|id>] [--space <id>] [--url <host>] [--token <tok>] [--once]
   vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
   vektor extension create <id>
   vektor extension package [id]
@@ -82,6 +84,20 @@ async function main(): Promise<void> {
     if ("no-auth" in flags) process.env.VEKTOR_NO_AUTH = "1";
     if ("email-auth" in flags) process.env.VEKTOR_EMAIL_AUTH = "1";
     await import("./src/server.ts");
+    return;
+  }
+
+  if (command === "agent") {
+    const { positional, flags } = parseFlags(rest);
+    await commandAgent({
+      prompt: positional.length > 0 ? positional.join(" ") : undefined,
+      doc: flags.doc,
+      space: flags.space,
+      url: flags.url,
+      token: flags.token,
+      user: flags.user,
+      once: "once" in flags,
+    });
     return;
   }
 
