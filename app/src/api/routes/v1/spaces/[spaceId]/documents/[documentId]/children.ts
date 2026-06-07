@@ -7,6 +7,7 @@ import {
   verifyDocumentAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { getUserGroups } from "#db/acl.ts";
 import { getDocument, getDocumentChildren } from "#db/documents.ts";
 
 export const GET: APIRoute = (context) =>
@@ -21,6 +22,9 @@ export const GET: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const children = await getDocumentChildren(spaceId, id);
+    const children = await getDocumentChildren(spaceId, id, {
+      userId: user.id,
+      userGroups: await getUserGroups(user.id),
+    });
     return jsonResponse({ children });
   }, "Failed to list child documents");

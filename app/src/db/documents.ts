@@ -587,10 +587,11 @@ export async function listDocuments(
 
 export async function listArchivedDocuments(
   spaceId: string,
+  viewer?: AclViewer | null,
 ): Promise<DocumentWithProperties[]> {
   const db = await getSpaceDb(spaceId);
 
-  const docs = await db
+  let docs = await db
     .select({
       id: document.id,
       createdAt: document.createdAt,
@@ -607,6 +608,19 @@ export async function listArchivedDocuments(
     .from(document)
     .where(archivedDocumentCondition)
     .all();
+
+  // Per-document ACL filtering, mirroring listDocuments. Space access alone
+  // must not expose archived documents the caller cannot read.
+  if (viewer) {
+    const readable = await filterReadableResources(
+      spaceId,
+      ResourceType.DOCUMENT,
+      docs.map((doc) => doc.id),
+      viewer.userId,
+      viewer.userGroups,
+    );
+    docs = docs.filter((doc) => readable.has(doc.id));
+  }
 
   const allProps = await db.select().from(property).all();
 
@@ -1074,13 +1088,28 @@ export async function setDocumentParent(
 export async function getDocumentChildren(
   spaceId: string,
   parentId: string,
+  viewer?: AclViewer | null,
 ): Promise<DocumentWithProperties[]> {
   const db = await getSpaceDb(spaceId);
-  const docs = await db
+  let docs = await db
     .select()
     .from(document)
     .where(and(eq(document.parentId, parentId), nonArchivedDocumentCondition))
     .all();
+
+  // Per-document ACL filtering: a caller with access to the parent must not be
+  // able to enumerate (or read the content of) children they cannot access.
+  // A null viewer is a trusted system caller and sees everything.
+  if (viewer) {
+    const readable = await filterReadableResources(
+      spaceId,
+      ResourceType.DOCUMENT,
+      docs.map((doc) => doc.id),
+      viewer.userId,
+      viewer.userGroups,
+    );
+    docs = docs.filter((doc) => readable.has(doc.id));
+  }
 
   const results: DocumentWithProperties[] = [];
 

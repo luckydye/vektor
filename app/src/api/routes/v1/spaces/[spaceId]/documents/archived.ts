@@ -6,6 +6,7 @@ import {
   verifySpaceAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { getUserGroups } from "#db/acl.ts";
 import { listArchivedDocuments } from "#db/documents.ts";
 
 export const GET: APIRoute = (context) =>
@@ -13,6 +14,9 @@ export const GET: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     await verifySpaceAccess(spaceId, user.id);
-    const documents = await listArchivedDocuments(spaceId, user.id);
+    const documents = await listArchivedDocuments(spaceId, {
+      userId: user.id,
+      userGroups: await getUserGroups(user.id),
+    });
     return jsonResponse({ documents });
   }, "Failed to list archived documents");

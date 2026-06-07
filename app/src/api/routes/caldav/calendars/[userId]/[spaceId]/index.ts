@@ -62,7 +62,13 @@ ${eventEntries}
   }
 
   if (method === "PROPFIND") {
-    const { total } = await listDocuments(spaceId);
+    // Scope the collection tag to the documents this user can actually read,
+    // matching the REPORT feed — otherwise the ctag leaks the space-wide
+    // document count and desyncs from the filtered event list.
+    const { total } = await listDocuments(spaceId, undefined, undefined, undefined, {
+      userId: caldavUser.id,
+      userGroups: await getUserGroups(caldavUser.id),
+    });
 
     const body = `<?xml version="1.0" encoding="utf-8" ?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">

@@ -13,6 +13,11 @@ import {
 } from "#db/api.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import {
+  filterReadableResources,
+  getUserGroups,
+  ResourceType,
+} from "#db/acl.ts";
+import {
   createRun,
   getRun,
   latestRunByDoc,
@@ -34,7 +39,23 @@ import { appLogger } from "#observability/logger.ts";
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.params, "spaceId");
-    await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
+    // A run is keyed to a document; its status/title must only be visible to a
+    // caller who can read that document. User-less system tokens (userId null)
+    // see everything.
+    const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
+    const viewerGroups = aclUserId ? await getUserGroups(aclUserId) : undefined;
+    const canReadDocument = async (docId: string): Promise<boolean> => {
+      if (!aclUserId) return true;
+      const readable = await filterReadableResources(
+        spaceId,
+        ResourceType.DOCUMENT,
+        [docId],
+        aclUserId,
+        viewerGroups,
+      );
+      return readable.has(docId);
+    };
 
     const documentId = context.url.searchParams.get("documentId");
     const sourceExtensionId = context.url.searchParams.get("sourceExtensionId");
@@ -44,16 +65,22 @@ export const GET: APIRoute = (context) =>
       if (!runId) return notFoundResponse("Run");
       const run = runs.get(runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
+      if (!(await canReadDocument(run.documentId))) return notFoundResponse("Run");
       return jsonResponse({ runId, status: run.status });
     }
 
     // List all runs for this space, newest first
+    const spaceRuns = [...runs.entries()].filter(
+      ([, run]) =>
+        run.spaceId === spaceId &&
+        (!sourceExtensionId || run.sourceExtensionId === sourceExtensionId),
+    );
+    const readableRuns: typeof spaceRuns = [];
+    for (const entry of spaceRuns) {
+      if (await canReadDocument(entry[1].documentId)) readableRuns.push(entry);
+    }
     const allRuns = await Promise.all(
-      [...runs.entries()]
-        .filter(([, run]) =>
-          run.spaceId === spaceId &&
-          (!sourceExtensionId || run.sourceExtensionId === sourceExtensionId)
-        )
+      readableRuns
         .map(async ([runId, run]) => {
           const doc = await getDocument(spaceId, run.documentId);
           const nodeList = [...run.nodes.values()];

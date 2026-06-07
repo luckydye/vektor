@@ -8,9 +8,12 @@ import {
   verifyTokenPermission,
 } from "../../../db/api.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
+import { getUserGroups } from "../../../db/acl.ts";
+import { getTokenUserId } from "../../../db/accessTokens.ts";
 import {
   getDocumentBySlug,
   getDocumentChildren,
+  type AclViewer,
   type DocumentWithProperties,
 } from "../../../db/documents.ts";
 import * as html5parser from "html5parser";
@@ -233,8 +236,9 @@ function htmlToMarkdown(html: string): string {
 async function documentToMarkdown(
   spaceId: string,
   document: DocumentWithProperties,
+  viewer: AclViewer,
 ): Promise<string> {
-  const children = await getDocumentChildren(spaceId, document.id);
+  const children = await getDocumentChildren(spaceId, document.id, viewer);
   const childrenSlugs = children.map((child) => child.slug).join(", ");
   const markdownContent = htmlToMarkdown(document.content || "");
 
@@ -282,6 +286,7 @@ export const GET: APIRoute = async (context) => {
     const auth = await authenticateRequest(context, space.id);
 
     // Handle token-based authentication
+    let viewerId: string;
     if (auth.type === "token") {
       await verifyTokenPermission(
         auth.token,
@@ -290,12 +295,19 @@ export const GET: APIRoute = async (context) => {
         document.id,
         "viewer",
       );
+      viewerId = getTokenUserId(auth.token.tokenId);
     } else {
       // Handle user-based authentication
       await verifyDocumentRole(space.id, document.id, auth.user.id, "viewer");
+      viewerId = auth.user.id;
     }
 
-    return new Response(await documentToMarkdown(space.id, document), {
+    const viewer: AclViewer = {
+      userId: viewerId,
+      userGroups: await getUserGroups(viewerId),
+    };
+
+    return new Response(await documentToMarkdown(space.id, document, viewer), {
       status: 200,
       headers: { "Content-Type": "text/markdown; charset=utf-8" },
     });

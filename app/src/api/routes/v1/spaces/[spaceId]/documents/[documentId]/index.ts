@@ -16,7 +16,7 @@ import {
   verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { verifyJobToken } from "#jobs/jobToken.ts";
+import { parseJobToken } from "#jobs/jobToken.ts";
 import { ResourceType } from "#db/acl.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import {
@@ -242,15 +242,24 @@ export const GET: APIRoute = (context) =>
     // collaboration room (if open), so partial edits reference the same state.
     const live = context.url.searchParams.get("live") === "true";
 
+    // Draft/live content is unpublished, so it requires editor; the published
+    // view only requires viewer.
+    const requiredRole = draft || live ? "editor" : "viewer";
+
     const jobToken = context.request.headers.get("X-Job-Token");
     if (jobToken) {
-      if (!verifyJobToken(jobToken, spaceId)) {
+      const parsed = parseJobToken(jobToken, spaceId);
+      if (!parsed) {
         throw unauthorizedResponse();
+      }
+      // Scope the token to the user who initiated it; only user-less system
+      // tokens read without a per-document check.
+      if (parsed.userId) {
+        await verifyDocumentRole(spaceId, id, parsed.userId, requiredRole);
       }
     } else {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
-      const requiredRole = draft || live ? "editor" : "viewer";
       if (auth.type === "token") {
         await verifyTokenPermission(
           auth.token,
@@ -328,9 +337,16 @@ export const PUT: APIRoute = (context) =>
     const jobToken = context.request.headers.get("X-Job-Token");
     const isJobRequest = Boolean(jobToken);
     if (jobToken) {
-      if (!verifyJobToken(jobToken, spaceId)) {
+      const parsed = parseJobToken(jobToken, spaceId);
+      if (!parsed) {
         throw unauthorizedResponse();
       }
+      // Scope the token to the initiating user; user-less system tokens stay
+      // trusted. Either way carry the id forward for authorship/restore.
+      if (parsed.userId) {
+        await verifyDocumentRole(spaceId, id, parsed.userId, "editor");
+      }
+      userId = parsed.userId ?? undefined;
     } else {
       // Authenticate with either user session or access token
       const auth = await authenticateRequest(context, spaceId);
