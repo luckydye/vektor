@@ -22,7 +22,7 @@ Usage:
 -->
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { normalizeTimestamp } from "../utils/utils.ts";
 
 interface AuditLogEntry {
@@ -211,12 +211,15 @@ const groupedActivities = computed(() => {
   let currentGroup: AuditLogEntry[] = [];
 
   for (const activity of activities.value) {
-    const activityDate = normalizeTimestamp(activity.createdAt).toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    const activityDate = normalizeTimestamp(activity.createdAt).toLocaleDateString(
+      "en-US",
+      {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      },
+    );
 
     if (activityDate !== currentDate) {
       if (currentGroup.length > 0) {

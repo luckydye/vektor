@@ -23,11 +23,11 @@ import {
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { listExtensions, getExtensionPackage } from "#db/extensions.ts";
-import { appLogger } from "#observability/logger.ts";
-import { runJob } from "#jobs/scheduler.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { getExtensionPackage, listExtensions } from "#db/extensions.ts";
 import { resolveJobSandbox } from "#jobs/sandbox.ts";
+import { runJob } from "#jobs/scheduler.ts";
+import { appLogger } from "#observability/logger.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(

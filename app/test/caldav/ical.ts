@@ -367,4 +367,3 @@ function parseICalAttendee(line: string): Attendee {
 
   return { email, name, role, status };
 }
-

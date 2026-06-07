@@ -107,7 +107,7 @@ export const WsMsgType = {
   PresenceSnapshot: 9,
 } as const;
 
-export type WsMsgType = typeof WsMsgType[keyof typeof WsMsgType];
+export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -138,7 +138,10 @@ export function wsDecodeJson<T>(payload: Uint8Array): T {
   return JSON.parse(dec.decode(payload)) as T;
 }
 
-export function wsDecodeYjsUpdate(payload: Uint8Array): { documentId: string; update: Uint8Array } {
+export function wsDecodeYjsUpdate(payload: Uint8Array): {
+  documentId: string;
+  update: Uint8Array;
+} {
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const idLength = view.getUint32(0, false);
   return {

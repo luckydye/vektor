@@ -1,14 +1,14 @@
 import type { APIContext } from "astro";
-import {
-  forbiddenResponse,
-  requireUser,
-  verifySpaceRole,
-  verifyDocumentRole,
-  authenticateWithToken,
-  verifyTokenPermission,
-} from "#db/api.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import { ResourceType } from "#db/acl.ts";
+import {
+  authenticateWithToken,
+  forbiddenResponse,
+  requireUser,
+  verifyDocumentRole,
+  verifySpaceRole,
+  verifyTokenPermission,
+} from "#db/api.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
 /**

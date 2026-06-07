@@ -1,6 +1,6 @@
-import type { Artboard, FitReference, ViewportCamera } from "./types";
 import type { ScreenSize, WorldTransform } from "./transform";
 import { buildTransform, screenToWorld } from "./transform";
+import type { Artboard, FitReference, ViewportCamera } from "./types";
 
 export type SnapGuideAxis = "x" | "y";
 export type SnapGuideKind = "edge" | "center" | "custom";
@@ -196,8 +196,7 @@ function isBetterSnapCandidate(
   }
 
   if (
-    Math.abs(candidate.guide.value - current.guide.value) >
-    SNAP_GUIDE_DISTANCE_EPSILON
+    Math.abs(candidate.guide.value - current.guide.value) > SNAP_GUIDE_DISTANCE_EPSILON
   ) {
     return candidate.guide.value < current.guide.value;
   }

@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
-import { webhook, type Webhook, type WebhookInsert } from "./schema/space.ts";
-import type { getSpaceDb } from "./db.ts";
-import { createAuditLog } from "./auditLogs.ts";
-import { createId } from "./ids.ts";
 import { assertPublicUrl, isPublicUrl, safeFetch } from "../utils/ssrf.ts";
+import { createAuditLog } from "./auditLogs.ts";
+import type { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
+import { type Webhook, type WebhookInsert, webhook } from "./schema/space.ts";
 
 /**
  * Validate a user-supplied webhook destination, rejecting non-public targets

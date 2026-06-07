@@ -1,6 +1,6 @@
 import { type Ref, ref, watchEffect } from "vue";
-import { useSpace } from "./useSpace.ts";
 import { api, type DocumentContributor } from "../api/client.ts";
+import { useSpace } from "./useSpace.ts";
 
 export function useContributors(documentId?: string) {
   const { currentSpaceId } = useSpace();

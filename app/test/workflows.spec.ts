@@ -1,10 +1,10 @@
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { rmSync, readFileSync } from "node:fs";
+import { createHmac } from "node:crypto";
+import { readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
-import { createHmac } from "node:crypto";
 
 const DATA_DIR = "./data";
 const BASE_URL = "http://127.0.0.1:4321";
@@ -145,7 +145,10 @@ function buildTestExtensionZip(): Buffer {
     { name: "jobs/append.mjs", data: Buffer.from(APPEND_JOB) },
     { name: "jobs/fail.mjs", data: Buffer.from(FAIL_JOB) },
     { name: "jobs/cached.mjs", data: Buffer.from(CACHED_JOB) },
-    { name: "jobs/create-document-string-title.mjs", data: Buffer.from(CREATE_DOCUMENT_WITH_STRING_TITLE_JOB) },
+    {
+      name: "jobs/create-document-string-title.mjs",
+      data: Buffer.from(CREATE_DOCUMENT_WITH_STRING_TITLE_JOB),
+    },
   ]);
 }
 
@@ -598,18 +601,24 @@ describe("Workflow runs — source extension filtering", () => {
       },
     });
 
-    const { runId: empcoRunId } = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
-      method: "POST",
-      body: JSON.stringify({
-        documentId: docId,
-        sourceExtensionId: "empco-linter",
-      }),
-    }).then((r) => r.json() as Promise<{ runId: string }>);
+    const { runId: empcoRunId } = await api(
+      `/api/v1/spaces/${testSpaceId}/workflows/runs`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          documentId: docId,
+          sourceExtensionId: "empco-linter",
+        }),
+      },
+    ).then((r) => r.json() as Promise<{ runId: string }>);
 
-    const { runId: plainRunId } = await api(`/api/v1/spaces/${testSpaceId}/workflows/runs`, {
-      method: "POST",
-      body: JSON.stringify({ documentId: docId }),
-    }).then((r) => r.json() as Promise<{ runId: string }>);
+    const { runId: plainRunId } = await api(
+      `/api/v1/spaces/${testSpaceId}/workflows/runs`,
+      {
+        method: "POST",
+        body: JSON.stringify({ documentId: docId }),
+      },
+    ).then((r) => r.json() as Promise<{ runId: string }>);
 
     await pollRun(testSpaceId, empcoRunId);
     await pollRun(testSpaceId, plainRunId);

@@ -22,14 +22,14 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { getSpaceDb } from "#db/db.ts";
+import { listExtensions } from "#db/extensions.ts";
 import {
   createJobSchedule,
   listJobSchedules,
   toJobScheduleDto,
   validateCronExpression,
 } from "#db/jobSchedules.ts";
-import { listExtensions } from "#db/extensions.ts";
-import { getSpaceDb } from "#db/db.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

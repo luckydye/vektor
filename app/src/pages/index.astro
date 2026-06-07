@@ -1,7 +1,7 @@
 ---
 import FirstSpacePrompt from "../components/FirstSpacePrompt.vue";
 import { config } from "../config.ts";
-import { listUserSpaces, getSpaceBySlug } from "../db/spaces.ts";
+import { getSpaceBySlug, listUserSpaces } from "../db/spaces.ts";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
 if (!Astro.locals.session) {

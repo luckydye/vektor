@@ -1,6 +1,6 @@
 import { type Ref, ref } from "vue";
-import { useSpace } from "./useSpace.ts";
 import { api, type RevisionMetadata, type RevisionWithContent } from "../api/client.ts";
+import { useSpace } from "./useSpace.ts";
 
 export type RevisionStatus = "idle" | "saving" | "saved" | "error";
 

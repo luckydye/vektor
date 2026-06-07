@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
 import { useInfiniteQuery } from "@tanstack/vue-query";
-import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
+import { computed, onMounted, ref } from "vue";
+import {
+  chevronDownThinIcon,
+  chevronLeftLargeIcon,
+  chevronRightThinIcon,
+  closeCircleFilledIcon,
+  closeXIcon,
+  documentIcon,
+  searchMagnifierIcon,
+  spinnerIcon,
+} from "~/src/assets/icons.ts";
 import {
   api,
   type DocumentWithProperties,
   type PropertyFilter,
   type SearchResult,
 } from "../api/client.ts";
-import SearchFilters from "./SearchFilters.vue";
+import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import DocumentListItem from "./DocumentListItem.vue";
-import {
-  searchMagnifierIcon,
-  closeXIcon,
-  spinnerIcon,
-  closeCircleFilledIcon,
-  chevronLeftLargeIcon,
-  chevronRightThinIcon,
-  chevronDownThinIcon,
-  documentIcon,
-} from "~/src/assets/icons.ts";
+import SearchFilters from "./SearchFilters.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -114,7 +114,8 @@ const groupedDocuments = computed(() => {
   for (const key of Object.keys(groups)) {
     groups[key as keyof typeof groups].sort(
       (a, b) =>
-        normalizeTimestamp(b.updatedAt).getTime() - normalizeTimestamp(a.updatedAt).getTime(),
+        normalizeTimestamp(b.updatedAt).getTime() -
+        normalizeTimestamp(a.updatedAt).getTime(),
     );
   }
 

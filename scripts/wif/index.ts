@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 
-import { join, relative, dirname, basename, extname } from "node:path";
-import { mkdir, writeFile, copyFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, join, relative } from "node:path";
 import type {
   WIFDocument,
-  WIFMediaFile,
-  WIFManifest,
-  WIFFrontmatter,
   WIFExport,
+  WIFFrontmatter,
+  WIFManifest,
+  WIFMediaFile,
 } from "./types.ts";
 
 export const WIF_VERSION = "1.0";
@@ -211,4 +211,4 @@ export async function writeWIFExport(
   await writeFile(manifestPath, JSON.stringify(wifExport.manifest, null, 2), "utf-8");
 }
 
-export type { WIFDocument, WIFMediaFile, WIFManifest, WIFFrontmatter, WIFExport };
+export type { WIFDocument, WIFExport, WIFFrontmatter, WIFManifest, WIFMediaFile };

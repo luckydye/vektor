@@ -1,7 +1,7 @@
-import { defineCommand } from "just-bash";
 import { posix } from "node:path";
-import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
+import { defineCommand } from "just-bash";
 import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
+import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
 
 export function extensionCommand(mcpConfigRef: { current: VektorMcpConfig }) {
   return defineCommand("extension", async (args, ctx) => {
@@ -14,7 +14,11 @@ export function extensionCommand(mcpConfigRef: { current: VektorMcpConfig }) {
 
     const filePath = ctx.fs.resolvePath(ctx.cwd, fileArg);
     if (!(await ctx.fs.exists(filePath))) {
-      return { stdout: "", stderr: `extension: ${fileArg}: No such file or directory\n`, exitCode: 1 };
+      return {
+        stdout: "",
+        stderr: `extension: ${fileArg}: No such file or directory\n`,
+        exitCode: 1,
+      };
     }
 
     const bytes = await ctx.fs.readFileBuffer(filePath);

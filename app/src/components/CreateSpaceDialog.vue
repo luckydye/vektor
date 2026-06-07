@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { Input, ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
 import { checkIcon, closeIcon } from "~/src/assets/icons.ts";
+import { ButtonPrimary, ButtonSecondary, Input } from "~/src/components/index.ts";
 import { slugify } from "../utils/utils.ts";
 
 interface Props {

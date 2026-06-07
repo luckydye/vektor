@@ -34,11 +34,16 @@ async function apiFetch(
 ): Promise<unknown> {
   const res = await fetch(apiUrl(host, path), {
     ...init,
-    headers: { ...authHeaders(token), ...(init?.headers as Record<string, string> | undefined) },
+    headers: {
+      ...authHeaders(token),
+      ...(init?.headers as Record<string, string> | undefined),
+    },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
-    throw new Error(`API ${init?.method ?? "GET"} ${path} failed (${res.status}): ${text}`);
+    throw new Error(
+      `API ${init?.method ?? "GET"} ${path} failed (${res.status}): ${text}`,
+    );
   }
   return res.json();
 }
@@ -74,7 +79,10 @@ export async function commandWrite(docId: string): Promise<void> {
   });
 }
 
-export async function commandCreate(flags: { slug?: string; type?: string }): Promise<void> {
+export async function commandCreate(flags: {
+  slug?: string;
+  type?: string;
+}): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
 
   const content = await Bun.stdin.text();
@@ -110,7 +118,9 @@ export async function commandSearch(query: string): Promise<void> {
     host,
     token,
     `/api/v1/spaces/${spaceId}/search?q=${encodeURIComponent(query)}`,
-  )) as { results: Array<{ id: string; slug: string; title?: string; snippet?: string }> };
+  )) as {
+    results: Array<{ id: string; slug: string; title?: string; snippet?: string }>;
+  };
 
   for (const r of data.results) {
     process.stdout.write(`${r.id}\t${r.slug}\t${r.title ?? ""}\t${r.snippet ?? ""}\n`);

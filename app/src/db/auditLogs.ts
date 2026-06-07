@@ -1,8 +1,8 @@
-import { eq, desc, and } from "drizzle-orm";
-import { auditLog, type AuditLog } from "./schema.ts";
-import type { getSpaceDb } from "./db.ts";
-import { sendSyncEvent } from "./ws.ts";
+import { and, desc, eq } from "drizzle-orm";
 import { realtimeTopics } from "../utils/realtime.ts";
+import type { getSpaceDb } from "./db.ts";
+import { type AuditLog, auditLog } from "./schema.ts";
+import { sendSyncEvent } from "./ws.ts";
 
 /**
  * Types of audit events that can be logged

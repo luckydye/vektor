@@ -2,19 +2,19 @@ import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import path, { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
 import { slugify } from "../utils/utils.ts";
 import {
   countSpaceMembers,
+  getUserGroups,
   grantPermission,
   listUserPermissions,
-  getUserGroups,
   ResourceType,
 } from "./acl.ts";
 import { closeSpaceDb, getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
-import { preference, spaceMetadata } from "./schema/space.ts";
 import { prepareSpaceDb } from "./init.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
+import { preference, spaceMetadata } from "./schema/space.ts";
 
 const DATA_DIR = "./data";
 const SPACES_DIR = join(DATA_DIR, "spaces");

@@ -52,7 +52,10 @@ export async function getSessionsForSpace(spaceId: string): Promise<ChatSession[
   return sessions;
 }
 
-export async function getSession(spaceId: string, sessionId: string): Promise<ChatSession | null> {
+export async function getSession(
+  spaceId: string,
+  sessionId: string,
+): Promise<ChatSession | null> {
   const response = await fetch(getSessionPath(spaceId, sessionId), {
     credentials: "same-origin",
   });

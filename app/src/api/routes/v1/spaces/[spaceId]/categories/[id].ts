@@ -10,11 +10,7 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  deleteCategory,
-  getCategory,
-  updateCategory,
-} from "#db/categories.ts";
+import { deleteCategory, getCategory, updateCategory } from "#db/categories.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

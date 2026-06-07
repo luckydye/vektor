@@ -1,6 +1,6 @@
-import { render, html } from "lit-html";
+import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
-import type { SpaceMember, DocumentWithProperties } from "~/src/api/ApiClient.ts";
+import type { DocumentWithProperties, SpaceMember } from "~/src/api/ApiClient.ts";
 import { documentIcon } from "~/src/assets/icons.ts";
 import { Mentions } from "./Mentions.ts";
 
@@ -33,57 +33,64 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
           let cachedMembers: SpaceMember[] | null = null;
           let cachedDocs: DocumentWithProperties[] | null = null;
 
-          return async ({ query, editor }: { query: string; editor: any }): Promise<MentionItem[]> => {
-          const options = editor.extensionManager.extensions.find(
-            (ext: any) => ext.name === "mention-suggestons",
-          )?.options;
+          return async ({
+            query,
+            editor,
+          }: {
+            query: string;
+            editor: any;
+          }): Promise<MentionItem[]> => {
+            const options = editor.extensionManager.extensions.find(
+              (ext: any) => ext.name === "mention-suggestons",
+            )?.options;
 
-          if (!cachedMembers || !cachedDocs) {
-            const [members, docsResponse] = await Promise.all([
-              api.spaceMembers.get(options.spaceId).catch(() => []),
-              api.documents.get(options.spaceId).catch(() => ({ documents: [] })),
-            ]);
-            cachedMembers = members || [];
-            cachedDocs = docsResponse?.documents || [];
-          }
+            if (!cachedMembers || !cachedDocs) {
+              const [members, docsResponse] = await Promise.all([
+                api.spaceMembers.get(options.spaceId).catch(() => []),
+                api.documents.get(options.spaceId).catch(() => ({ documents: [] })),
+              ]);
+              cachedMembers = members || [];
+              cachedDocs = docsResponse?.documents || [];
+            }
 
-          const q = query.toLowerCase();
+            const q = query.toLowerCase();
 
-          const people: MentionItem[] = cachedMembers
-            .filter((member: SpaceMember) => {
-              if (!member.user?.name) return false;
-              const userName = member.user.name;
-              const userEmail = member.user.email || "";
-              return (
-                userName.toLowerCase().includes(q) ||
-                userEmail.toLowerCase().includes(q)
-              );
-            })
-            .slice(0, 5)
-            .map((member: SpaceMember) => ({
-              id: member.user?.email || member.userId,
-              label: member.user?.name || "Unknown User",
-              email: member.user?.email || "",
-              image: member.user?.image || null,
-              type: "person" as const,
-            }));
+            const people: MentionItem[] = cachedMembers
+              .filter((member: SpaceMember) => {
+                if (!member.user?.name) return false;
+                const userName = member.user.name;
+                const userEmail = member.user.email || "";
+                return (
+                  userName.toLowerCase().includes(q) ||
+                  userEmail.toLowerCase().includes(q)
+                );
+              })
+              .slice(0, 5)
+              .map((member: SpaceMember) => ({
+                id: member.user?.email || member.userId,
+                label: member.user?.name || "Unknown User",
+                email: member.user?.email || "",
+                image: member.user?.image || null,
+                type: "person" as const,
+              }));
 
-          const docs: MentionItem[] = cachedDocs
-            .filter((doc: DocumentWithProperties) => {
-              if (doc.id === options.documentId) return false;
-              const title = doc.properties?.title || "";
-              return title.toLowerCase().includes(q);
-            })
-            .slice(0, 5)
-            .map((doc: DocumentWithProperties) => ({
-              id: doc.id,
-              label: doc.properties?.title || "Untitled",
-              slug: doc.slug,
-              type: "document" as const,
-            }));
+            const docs: MentionItem[] = cachedDocs
+              .filter((doc: DocumentWithProperties) => {
+                if (doc.id === options.documentId) return false;
+                const title = doc.properties?.title || "";
+                return title.toLowerCase().includes(q);
+              })
+              .slice(0, 5)
+              .map((doc: DocumentWithProperties) => ({
+                id: doc.id,
+                label: doc.properties?.title || "Untitled",
+                slug: doc.slug,
+                type: "document" as const,
+              }));
 
-          return [...people, ...docs];
-        } })(),
+            return [...people, ...docs];
+          };
+        })(),
 
         render: () => {
           let popup: HTMLDivElement | null = null;
@@ -195,7 +202,9 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
               html`
               <div class="w-72 bg-background border border-neutral-100 rounded shadow-lg overflow-hidden text-sm" role="listbox" @keydown=${(e: Event) => e.stopPropagation()}>
                 <ul class="max-h-64 overflow-auto" @mousedown=${onItemMouseDown}>
-                  ${people.length > 0 ? html`
+                  ${
+                    people.length > 0
+                      ? html`
                     <li class="px-3 py-1.5 text-xs font-medium text-neutral-400 uppercase tracking-wider select-none">People</li>
                     ${people.map((item) => {
                       const gi = getGlobalIndex(item);
@@ -217,8 +226,12 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                         </div>
                       </li>`;
                     })}
-                  ` : ""}
-                  ${docs.length > 0 ? html`
+                  `
+                      : ""
+                  }
+                  ${
+                    docs.length > 0
+                      ? html`
                     <li class="px-3 py-1.5 text-xs font-medium text-neutral-400 uppercase tracking-wider select-none ${people.length > 0 ? "border-t border-neutral-100" : ""}">Documents</li>
                     ${docs.map((item) => {
                       const gi = getGlobalIndex(item);
@@ -235,7 +248,9 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                         <span class="font-medium leading-4 truncate">${item.label}</span>
                       </li>`;
                     })}
-                  ` : ""}
+                  `
+                      : ""
+                  }
                 </ul>
               </div>
             `,

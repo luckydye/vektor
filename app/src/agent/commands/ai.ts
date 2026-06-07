@@ -1,8 +1,8 @@
 import { defineCommand } from "just-bash";
 import {
+  type AIProvider,
   getOpenAICompatibleChatCompletionsUrl,
   getOpenAICompatibleHeaders,
-  type AIProvider,
 } from "../core.ts";
 
 export function aiCommand(completion?: AIProvider) {
@@ -12,7 +12,11 @@ export function aiCommand(completion?: AIProvider) {
     }
     const prompt = args.join(" ") || ctx.stdin;
     if (!prompt.trim()) {
-      return { stdout: "", stderr: "usage: ai <prompt> or echo <prompt> | ai\n", exitCode: 2 };
+      return {
+        stdout: "",
+        stderr: "usage: ai <prompt> or echo <prompt> | ai\n",
+        exitCode: 2,
+      };
     }
     let text: string;
     if (completion.provider === "anthropic") {
@@ -32,8 +36,13 @@ export function aiCommand(completion?: AIProvider) {
       if (!response.ok) {
         throw new Error(`Anthropic ${response.status}: ${await response.text()}`);
       }
-      const data = await response.json() as { content: Array<{ type: string; text?: string }> };
-      text = data.content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
+      const data = (await response.json()) as {
+        content: Array<{ type: string; text?: string }>;
+      };
+      text = data.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text ?? "")
+        .join("");
     } else if (completion.provider === "ollama") {
       const response = await fetch(`${completion.baseUrl}/api/chat`, {
         method: "POST",
@@ -50,7 +59,7 @@ export function aiCommand(completion?: AIProvider) {
       if (!response.ok) {
         throw new Error(`Ollama ${response.status}: ${await response.text()}`);
       }
-      const data = await response.json() as { message?: { content?: string } };
+      const data = (await response.json()) as { message?: { content?: string } };
       text = data.message?.content ?? "";
     } else {
       const response = await fetch(getOpenAICompatibleChatCompletionsUrl(completion), {
@@ -65,7 +74,9 @@ export function aiCommand(completion?: AIProvider) {
         const label = completion.provider === "openrouter" ? "OpenRouter" : "Ollama";
         throw new Error(`${label} ${response.status}: ${await response.text()}`);
       }
-      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+      const data = (await response.json()) as {
+        choices: Array<{ message: { content: string } }>;
+      };
       text = data.choices[0]?.message?.content ?? "";
     }
     return { stdout: `${text}\n`, stderr: "", exitCode: 0 };

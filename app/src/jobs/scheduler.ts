@@ -1,20 +1,20 @@
-import { Worker } from "node:worker_threads";
-import { writeFile, unlink } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { extractFile } from "../db/extensions.ts";
+import { Worker } from "node:worker_threads";
 import { getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
-import { createJobToken } from "./jobToken.ts";
-import { buildJobWrapper } from "./jobRuntime.ts";
-import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
+import { extractFile } from "../db/extensions.ts";
 import {
   classifyJobError,
+  type JobRunTrigger,
   recordJobRunFinished,
   recordJobRunQueued,
   recordJobRunStarted,
-  type JobRunTrigger,
 } from "../db/jobRuns.ts";
+import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
+import { buildJobWrapper } from "./jobRuntime.ts";
+import { createJobToken } from "./jobToken.ts";
 import type { Sandbox } from "./sandbox.ts";
 import { isUnsandboxedExecutionAllowed, SandboxRequiredError } from "./sandbox.ts";
 
@@ -272,7 +272,9 @@ export async function runJob(
           let timer = setTimeout(() => {
             span.setAttribute("wiki.job.timeout", true);
             cancelWorker();
-            settleReject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
+            settleReject(
+              new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`),
+            );
           }, timeoutMs);
 
           const resetTimer = () => {
@@ -280,7 +282,9 @@ export async function runJob(
             timer = setTimeout(() => {
               span.setAttribute("wiki.job.timeout", true);
               cancelWorker();
-              settleReject(new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`));
+              settleReject(
+                new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`),
+              );
             }, timeoutMs);
           };
 
@@ -314,7 +318,9 @@ export async function runJob(
                   span.setAttribute("wiki.job.outputs_json", toSpanJson(outputs));
                   settleResolve(outputs);
                 } else {
-                  settleReject(new Error(msg.error ?? "Job failed without error message"));
+                  settleReject(
+                    new Error(msg.error ?? "Job failed without error message"),
+                  );
                 }
               }
             },

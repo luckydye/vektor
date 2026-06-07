@@ -18,9 +18,9 @@
 //     },
 //   });
 
+import type { Editor } from "@tiptap/core";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { Editor } from "@tiptap/core";
 
 export type SuggestionItem = {
   id: string;

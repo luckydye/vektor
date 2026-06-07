@@ -1,28 +1,28 @@
 import {
-  SpanStatusCode,
-  context,
-  diag,
-  DiagConsoleLogger,
-  DiagLogLevel,
-  metrics,
-  propagation,
-  trace,
   type Attributes,
   type Context,
+  context,
+  DiagConsoleLogger,
+  DiagLogLevel,
+  diag,
+  metrics,
+  propagation,
   type Span,
+  SpanStatusCode,
+  trace,
 } from "@opentelemetry/api";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
-import { NodeSDK } from "@opentelemetry/sdk-node";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   AlwaysOffSampler,
   AlwaysOnSampler,
   ParentBasedSampler,
-  TraceIdRatioBasedSampler,
   type Sampler,
+  TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 import { config } from "../config.ts";
 

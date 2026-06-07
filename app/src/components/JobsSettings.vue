@@ -284,7 +284,8 @@ async function handleCreateSchedule() {
     isCreatingSchedule.value = false;
     await loadSchedules();
   } catch (err) {
-    scheduleError.value = err instanceof Error ? err.message : "Failed to create schedule";
+    scheduleError.value =
+      err instanceof Error ? err.message : "Failed to create schedule";
   } finally {
     isSubmittingSchedule.value = false;
   }
@@ -299,7 +300,8 @@ async function handleToggleSchedule(schedule: JobSchedule) {
     });
     await loadSchedules();
   } catch (err) {
-    scheduleError.value = err instanceof Error ? err.message : "Failed to update schedule";
+    scheduleError.value =
+      err instanceof Error ? err.message : "Failed to update schedule";
   }
 }
 
@@ -311,7 +313,8 @@ async function handleDeleteSchedule(scheduleId: string) {
     await api.jobs.deleteSchedule(currentSpace.value.id, scheduleId);
     await loadSchedules();
   } catch (err) {
-    scheduleError.value = err instanceof Error ? err.message : "Failed to delete schedule";
+    scheduleError.value =
+      err instanceof Error ? err.message : "Failed to delete schedule";
   }
 }
 

@@ -137,9 +137,7 @@ export async function fetchStreamingCompletion(options: {
       const toolKind = typeof update.kind === "string" ? update.kind : "other";
       const input = update.input;
       const toolArguments =
-        input !== undefined && input !== null
-          ? JSON.stringify(input)
-          : "{}";
+        input !== undefined && input !== null ? JSON.stringify(input) : "{}";
       options.onEvent?.({
         type: "tool_call",
         toolCallId,
@@ -164,8 +162,7 @@ export async function fetchStreamingCompletion(options: {
         const contentArr = update.content as Array<Record<string, unknown>> | undefined;
         const first = contentArr?.[0];
         const innerContent = first?.content as Record<string, unknown> | undefined;
-        const text =
-          typeof innerContent?.text === "string" ? innerContent.text : "";
+        const text = typeof innerContent?.text === "string" ? innerContent.text : "";
         options.onEvent?.({
           type: "tool_result",
           toolCallId,
@@ -173,7 +170,6 @@ export async function fetchStreamingCompletion(options: {
           content: text,
           isError: status === "failed",
         });
-        continue;
       }
     }
   }

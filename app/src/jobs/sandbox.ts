@@ -1,13 +1,13 @@
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { writeFile, unlink, mkdir } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractFile } from "../db/extensions.ts";
+import { promisify } from "node:util";
 import { config, getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
+import { extractFile } from "../db/extensions.ts";
+import { activeTraceHeaders } from "../observability/otel.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildSandboxWrapper } from "./sandboxRuntime.ts";
-import { activeTraceHeaders } from "../observability/otel.ts";
 
 const exec = promisify(execFile);
 
@@ -106,13 +106,7 @@ export async function createSandbox(): Promise<Sandbox> {
         await writeFile(dataPath, JSON.stringify(workerData));
 
         // Upload staging dir to sandbox
-        await exec("openshell", [
-          "sandbox",
-          "upload",
-          name,
-          stagingDir,
-          "/sandbox/job",
-        ]);
+        await exec("openshell", ["sandbox", "upload", name, stagingDir, "/sandbox/job"]);
 
         // Execute inside sandbox
         const result = await new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -137,7 +131,9 @@ export async function createSandbox(): Promise<Sandbox> {
                     if (msg.success) {
                       outputs = msg.outputs ?? {};
                     } else {
-                      return reject(new Error(msg.error ?? "Job failed without error message"));
+                      return reject(
+                        new Error(msg.error ?? "Job failed without error message"),
+                      );
                     }
                   }
                 } catch {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
-import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
 
 type WorkflowRun = {
   runId: string;
@@ -38,7 +38,9 @@ async function fetchRuns() {
 onMounted(() => {
   fetchRuns();
   pollInterval = setInterval(fetchRuns, 3000);
-  tickInterval = setInterval(() => { now.value = Date.now(); }, 1000);
+  tickInterval = setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
 });
 
 onUnmounted(() => {
@@ -56,16 +58,23 @@ function isActive(run: WorkflowRun): boolean {
 }
 
 const statusGradients: Record<string, string> = {
-  completed: "bg-[linear-gradient(145deg,rgba(16,185,129,0.12)_0%,rgba(5,150,105,0.06)_40%,transparent_75%)]",
-  running: "bg-[linear-gradient(145deg,rgba(14,165,233,0.14)_0%,rgba(37,99,235,0.07)_40%,transparent_75%)]",
-  failed: "bg-[linear-gradient(145deg,rgba(244,63,94,0.12)_0%,rgba(225,29,72,0.06)_40%,transparent_75%)]",
-  pending: "bg-[linear-gradient(145deg,rgba(148,163,184,0.1)_0%,rgba(100,116,139,0.05)_40%,transparent_75%)]",
+  completed:
+    "bg-[linear-gradient(145deg,rgba(16,185,129,0.12)_0%,rgba(5,150,105,0.06)_40%,transparent_75%)]",
+  running:
+    "bg-[linear-gradient(145deg,rgba(14,165,233,0.14)_0%,rgba(37,99,235,0.07)_40%,transparent_75%)]",
+  failed:
+    "bg-[linear-gradient(145deg,rgba(244,63,94,0.12)_0%,rgba(225,29,72,0.06)_40%,transparent_75%)]",
+  pending:
+    "bg-[linear-gradient(145deg,rgba(148,163,184,0.1)_0%,rgba(100,116,139,0.05)_40%,transparent_75%)]",
 };
 
 const statusBadgeColors: Record<string, string> = {
-  completed: "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400",
-  running: "border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-400",
-  failed: "border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400",
+  completed:
+    "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400",
+  running:
+    "border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-400",
+  failed:
+    "border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400",
   pending: "border-neutral-200 bg-neutral-100 text-neutral-500",
   cancelled: "border-neutral-200 bg-neutral-100 text-neutral-400",
 };
@@ -79,7 +88,9 @@ function statusBadge(status: string): string {
 }
 
 function durationMs(start: string, end: number | string): number {
-  return (typeof end === "number" ? end : new Date(end).getTime()) - new Date(start).getTime();
+  return (
+    (typeof end === "number" ? end : new Date(end).getTime()) - new Date(start).getTime()
+  );
 }
 
 function formatMs(ms: number): string {
@@ -99,15 +110,24 @@ function durationLabel(run: WorkflowRun): string {
 
 function startedAtLabel(run: WorkflowRun): string {
   const start = run.startedAt ?? run.createdAt;
-  return "Started " + new Intl.DateTimeFormat(undefined, {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  }).format(new Date(start));
+  return (
+    "Started " +
+    new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(start))
+  );
 }
 
 function fullTimestamp(iso: string): string {
   return new Date(iso).toLocaleString([], {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -118,10 +138,14 @@ const groupedRuns = computed(() => {
 
   for (const run of runs.value) {
     const date = normalizeTimestamp(run.createdAt).toLocaleDateString("en-US", {
-      weekday: "long", year: "numeric", month: "long", day: "numeric",
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
     if (date !== currentDate) {
-      if (currentGroup.length > 0) groups.push({ date: currentDate, items: currentGroup });
+      if (currentGroup.length > 0)
+        groups.push({ date: currentDate, items: currentGroup });
       currentDate = date;
       currentGroup = [run];
     } else {

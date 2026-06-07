@@ -1,7 +1,7 @@
-import { computed } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { useSpace } from "./useSpace.ts";
+import { computed } from "vue";
 import { api } from "../api/client.ts";
+import { useSpace } from "./useSpace.ts";
 
 export function useDocuments() {
   const { currentSpaceId: spaceId } = useSpace();

@@ -1,6 +1,6 @@
-import { defineCommand } from "just-bash";
-import * as html5parser from "html5parser";
 import { posix } from "node:path";
+import * as html5parser from "html5parser";
+import { defineCommand } from "just-bash";
 
 type HtmlTagNode = html5parser.ITag;
 type HtmlNode = html5parser.INode;
@@ -62,7 +62,7 @@ function collectChildTags(node: HtmlTagNode, names: string[]): HtmlTagNode[] {
 
 function escapeCsvCell(value: string): string {
   if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, "\"\"")}"`;
+    return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
 }
@@ -95,13 +95,13 @@ function convertHtmlTableToCsv(html: string): string {
 }
 
 export {
-  isTag,
-  getNodeText,
-  normalizeHtmlText,
-  findFirstTag,
   collectChildTags,
-  escapeCsvCell,
   convertHtmlTableToCsv,
+  escapeCsvCell,
+  findFirstTag,
+  getNodeText,
+  isTag,
+  normalizeHtmlText,
 };
 
 export const pandocCommand = defineCommand("pandoc", async (args, ctx) => {
@@ -142,9 +142,7 @@ export const pandocCommand = defineCommand("pandoc", async (args, ctx) => {
   }
   from ??= "html";
 
-  const inputPath = positional[0]
-    ? ctx.fs.resolvePath(ctx.cwd, positional[0])
-    : null;
+  const inputPath = positional[0] ? ctx.fs.resolvePath(ctx.cwd, positional[0]) : null;
   const inputBytes = inputPath
     ? await ctx.fs.readFileBuffer(inputPath)
     : new TextEncoder().encode(ctx.stdin);

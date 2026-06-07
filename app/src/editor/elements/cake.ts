@@ -1,4 +1,4 @@
-import { render, html, svg } from "lit-html";
+import { html, render, svg } from "lit-html";
 
 // Palette cycles through these colors for each slice
 const COLORS = [

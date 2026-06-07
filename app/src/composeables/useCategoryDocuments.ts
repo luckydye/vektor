@@ -1,10 +1,10 @@
-import { computed, type Ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { useSpace } from "./useSpace.ts";
-import { api } from "../api/client.ts";
+import { computed, type Ref } from "vue";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
-import { useSync } from "./useSync.ts";
+import { api } from "../api/client.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
+import { useSpace } from "./useSpace.ts";
+import { useSync } from "./useSync.ts";
 
 export function useCategoryDocuments(categorySlugs: Ref<string[]>) {
   const { currentSpaceId } = useSpace();

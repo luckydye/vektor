@@ -1,7 +1,7 @@
-import type { APIRoute } from "astro";
-import { writeFile, mkdir, readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { APIRoute } from "astro";
 import {
   badRequestResponse,
   errorResponse,
@@ -11,11 +11,8 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  isSafeUploadIdPart,
-  isWithinUploadsRoot,
-} from "#utils/uploads.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { isSafeUploadIdPart, isWithinUploadsRoot } from "#utils/uploads.ts";
 
 const ALLOWED_TYPES = [
   // Images

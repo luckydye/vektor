@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { inArray } from "drizzle-orm";
+import { Feature, ResourceType } from "#db/acl.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -13,13 +14,12 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import {
-  createComment,
-  listComments,
-  getComment,
   archiveComment,
+  createComment,
+  getComment,
+  listComments,
   updateCommentReferences,
 } from "#db/comments.ts";
-import { ResourceType, Feature } from "#db/acl.ts";
 import { getAuthDb } from "#db/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { sendSyncEvent } from "#db/ws.ts";

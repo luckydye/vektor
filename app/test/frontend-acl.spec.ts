@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { getAuthDb } from "../src/db/db.ts";
 import { user as userTable } from "../src/db/schema/auth.ts";
-import { eq } from "drizzle-orm";
 
 const DATA_DIR = "./data";
 const BASE_URL = "http://127.0.0.1:4321";

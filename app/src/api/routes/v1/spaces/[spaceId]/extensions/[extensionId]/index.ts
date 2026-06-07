@@ -9,8 +9,8 @@ import {
   verifySpaceOwnership,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getSpace } from "#db/spaces.ts";
 import { deleteExtension, getExtension } from "#db/extensions.ts";
+import { getSpace } from "#db/spaces.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 /**

@@ -1,29 +1,29 @@
 <script setup lang="ts">
+import { useQuery } from "@tanstack/vue-query";
+import { applyPatch, parsePatch } from "diff";
 import {
+  computed,
   defineAsyncComponent,
+  nextTick,
   onMounted,
   onUnmounted,
   ref,
-  computed,
   watch,
-  nextTick,
 } from "vue";
-import ToolbarFormatting from "./ToolbarFormatting.vue";
-import ToolbarTable from "./ToolbarTable.vue";
-import DiffView from "./DiffView.vue";
-import CommentManager from "./CommentManager.vue";
-import { applyPatch, parsePatch } from "diff";
-import { prettyPrintHtml } from "../utils/prettyHtml.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { useSync } from "../composeables/useSync.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { clockIcon } from "~/src/assets/icons.ts";
+import { api } from "../api/client.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { useSync } from "../composeables/useSync.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { useQuery } from "@tanstack/vue-query";
-import { api } from "../api/client.ts";
 import docStyles from "../styles/document.css?inline";
-import { clockIcon } from "~/src/assets/icons.ts";
+import { prettyPrintHtml } from "../utils/prettyHtml.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
+import CommentManager from "./CommentManager.vue";
+import DiffView from "./DiffView.vue";
+import ToolbarFormatting from "./ToolbarFormatting.vue";
+import ToolbarTable from "./ToolbarTable.vue";
 
 const props = defineProps({
   documentId: {
@@ -189,9 +189,7 @@ function syncInlineSuggestions() {
 }
 
 const openSuggestions = computed(() => {
-  return revisions.value.filter(
-    (revision) => revision.status === "open",
-  );
+  return revisions.value.filter((revision) => revision.status === "open");
 });
 
 async function loadSuggestionPatches() {
@@ -294,23 +292,31 @@ watch(user, (newUser) => {
   }
 });
 
-watch(isEditing, async (editing) => {
-  if (!editing || !props.documentId) {
-    suggestionPatches.value = {};
-    getEditor()?.commands.clearInlineSuggestions();
-    return;
-  }
+watch(
+  isEditing,
+  async (editing) => {
+    if (!editing || !props.documentId) {
+      suggestionPatches.value = {};
+      getEditor()?.commands.clearInlineSuggestions();
+      return;
+    }
 
-  await loadSuggestionPatches();
-}, { immediate: true });
+    await loadSuggestionPatches();
+  },
+  { immediate: true },
+);
 
-watch([suggestionPatches, isEditingReady], () => {
-  if (!isEditingReady.value) {
-    return;
-  }
+watch(
+  [suggestionPatches, isEditingReady],
+  () => {
+    if (!isEditingReady.value) {
+      return;
+    }
 
-  syncInlineSuggestions();
-}, { deep: true });
+    syncInlineSuggestions();
+  },
+  { deep: true },
+);
 
 function handleRevisionView(event) {
   viewingRevision.value = true;
@@ -461,7 +467,14 @@ watch(documentData, (doc) => {
   if (typeof doc.content === "string") {
     renderedHtml.value = doc.content;
   }
-  applyLayout(doc.properties?.layout || (props.documentType === "csv" || props.documentType === "canvas" || props.documentType === "workflow" ? "full" : "document"));
+  applyLayout(
+    doc.properties?.layout ||
+      (props.documentType === "csv" ||
+      props.documentType === "canvas" ||
+      props.documentType === "workflow"
+        ? "full"
+        : "document"),
+  );
 });
 
 function renderTableView() {
@@ -472,7 +485,12 @@ function renderTableView() {
 function renderReadView() {
   if (!readViewEl.value) return;
   if (isEditing.value || viewingRevision.value) return;
-  if (props.documentType === "canvas" || props.documentType === "app" || props.documentType === "workflow") return;
+  if (
+    props.documentType === "canvas" ||
+    props.documentType === "app" ||
+    props.documentType === "workflow"
+  )
+    return;
 
   const container = readViewEl.value;
   const root = container.shadowRoot;

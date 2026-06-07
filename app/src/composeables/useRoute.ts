@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, ref, watch, computed } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
 export function useRoute() {
   const pathname = ref("");

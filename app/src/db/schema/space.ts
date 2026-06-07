@@ -1,9 +1,9 @@
 import {
   blob,
   integer,
+  primaryKey,
   sqliteTable,
   text,
-  primaryKey,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 

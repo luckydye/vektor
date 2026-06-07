@@ -16,17 +16,17 @@
  *   vektor document search <query>
  */
 
-import { parseArgs, runWorkflow } from "./src/cli/workflow.ts";
-import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
+import { commandAgent } from "./src/cli/agent.ts";
 import {
   commandCat,
-  commandWrite,
   commandCreate as commandDocCreate,
   commandLs,
   commandSearch,
+  commandWrite,
 } from "./src/cli/document.ts";
+import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
-import { commandAgent } from "./src/cli/agent.ts";
+import { parseArgs, runWorkflow } from "./src/cli/workflow.ts";
 
 function parseFlags(args: string[]): {
   positional: string[];

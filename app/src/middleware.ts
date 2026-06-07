@@ -2,8 +2,8 @@ import "./observability/bootstrap.ts";
 import { defineMiddleware } from "astro:middleware";
 import { auth } from "./auth.ts";
 import { getPublicEnv } from "./config.ts";
+import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "./noAuth.ts";
 import { appLogger } from "./observability/logger.ts";
-import { isNoAuthMode, LOCAL_USER, LOCAL_SESSION } from "./noAuth.ts";
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const startTime = Date.now();

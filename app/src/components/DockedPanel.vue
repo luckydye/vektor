@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
-  useDockedWindows,
-  type DockedWindowState,
-} from "../composeables/useDockedWindows.ts";
-import {
+  closeXIcon,
   dragDotsIcon,
   panelRightIcon,
-  windowRestoreIcon,
-  closeXIcon,
   resizeHandleIcon,
+  windowRestoreIcon,
 } from "~/src/assets/icons.ts";
+import {
+  type DockedWindowState,
+  useDockedWindows,
+} from "../composeables/useDockedWindows.ts";
 
 const props = defineProps<{
   id: string;

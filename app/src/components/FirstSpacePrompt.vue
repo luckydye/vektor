@@ -127,8 +127,8 @@
 
 <script setup>
 import { onMounted, ref, watch } from "vue";
-import { slugify } from "../utils/utils.ts";
 import { folderLargeIcon } from "~/src/assets/icons.ts";
+import { slugify } from "../utils/utils.ts";
 
 const showPrompt = ref(false);
 const spaceName = ref("");

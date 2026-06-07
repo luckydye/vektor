@@ -1,14 +1,14 @@
 import type { APIRoute } from "astro";
+import { Feature } from "#db/acl.ts";
 import {
   jsonResponse,
   parseQueryInt,
   requireParam,
   requireUser,
-  verifySpaceAccess,
   verifyFeatureAccess,
+  verifySpaceAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { Feature } from "#db/acl.ts";
 import { getRecentAuditLogs, parseAuditDetails } from "#db/auditLogs.ts";
 import { getSpaceDb } from "#db/db.ts";
 

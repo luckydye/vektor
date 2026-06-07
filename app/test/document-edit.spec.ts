@@ -334,7 +334,8 @@ describe("Document edit operations", () => {
     ws.addEventListener("message", (event) => {
       const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
       if (frame.type === WsMsgType.YjsUpdate) received.push(frame.payload);
-      else if (frame.type === WsMsgType.PresenceUpdate) presenceFrames.push(frame.payload);
+      else if (frame.type === WsMsgType.PresenceUpdate)
+        presenceFrames.push(frame.payload);
     });
     await new Promise<void>((resolve, reject) => {
       ws.addEventListener("open", () => resolve());
@@ -388,7 +389,8 @@ describe("Document edit operations", () => {
     );
 
     // An "Agent" canvas presence is broadcast, pointing at the changed shapes.
-    while (presenceFrames.length < 1) await new Promise((resolve) => setTimeout(resolve, 50));
+    while (presenceFrames.length < 1)
+      await new Promise((resolve) => setTimeout(resolve, 50));
     const { presence } = JSON.parse(
       new TextDecoder().decode(presenceFrames[presenceFrames.length - 1]!),
     ) as {

@@ -6,7 +6,7 @@ import {
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { searchDocuments, type PropertyFilter } from "#db/documents.ts";
+import { type PropertyFilter, searchDocuments } from "#db/documents.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>

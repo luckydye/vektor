@@ -1,14 +1,14 @@
 <script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
+import { homeIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
+import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
+import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
+import { useRoute } from "../composeables/useRoute.ts";
+import { type Space as ApiSpace, useSpace } from "../composeables/useSpace.ts";
+import { extensions } from "../utils/extensions.ts";
+import CreateSpaceDialog from "./CreateSpaceDialog.vue";
 import DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
-import { computed, ref, Teleport, onMounted, onUnmounted } from "vue";
-import { SpaceSelector, MenuLink } from "~/src/components/index.ts";
-import { homeIcon, searchIcon, puzzleIcon, settingsIcon } from "~/src/assets/icons.ts";
-import { useSpace, type Space as ApiSpace } from "../composeables/useSpace.ts";
-import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
-import CreateSpaceDialog from "./CreateSpaceDialog.vue";
-import { extensions } from "../utils/extensions.ts";
-import { useRoute } from "../composeables/useRoute.ts";
 
 // UI-specific Space interface for the selector component
 interface UiSpace {

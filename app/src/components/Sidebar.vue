@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, watchEffect } from "vue";
+import { twMerge } from "tailwind-merge";
+import { nextTick, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { Actions } from "../utils/actions.ts";
 import { Icon } from "./index.ts";
-import { twMerge } from "tailwind-merge";
 import Navigation from "./Navigation.vue";
 import UserProfile from "./UserProfile.vue";
 

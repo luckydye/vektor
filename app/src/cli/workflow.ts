@@ -62,7 +62,10 @@ function usage(): string {
 export function parseArgs(argv: string[]): CliOptions {
   assert(argv.length > 0, usage());
   const documentId = argv[0];
-  assert(!documentId.startsWith("--"), `Expected a document ID, got: ${documentId}\n\n${usage()}`);
+  assert(
+    !documentId.startsWith("--"),
+    `Expected a document ID, got: ${documentId}\n\n${usage()}`,
+  );
 
   const inputs: Record<string, unknown> = {};
   const filePaths: Record<string, string> = {};
@@ -91,20 +94,48 @@ export function parseArgs(argv: string[]): CliOptions {
       i++;
       continue;
     }
-    if (arg === "--json") { json = true; continue; }
-    if (arg === "--url") { urlFlag = argv[++i]; assert(urlFlag, "--url requires a value"); continue; }
-    if (arg === "--space") { spaceFlag = argv[++i]; assert(spaceFlag, "--space requires a value"); continue; }
-    if (arg === "--token") { tokenFlag = argv[++i]; assert(tokenFlag, "--token requires a value"); continue; }
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg === "--url") {
+      urlFlag = argv[++i];
+      assert(urlFlag, "--url requires a value");
+      continue;
+    }
+    if (arg === "--space") {
+      spaceFlag = argv[++i];
+      assert(spaceFlag, "--space requires a value");
+      continue;
+    }
+    if (arg === "--token") {
+      tokenFlag = argv[++i];
+      assert(tokenFlag, "--token requires a value");
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}\n\n${usage()}`);
   }
 
   const url = urlFlag ?? resolveHost();
   const spaceId = spaceFlag ?? config().CLI_SPACE_ID;
 
-  return { documentId, inputs, filePaths, json, url, spaceId: spaceId || undefined, token: tokenFlag ?? config().CLI_ACCESS_TOKEN };
+  return {
+    documentId,
+    inputs,
+    filePaths,
+    json,
+    url,
+    spaceId: spaceId || undefined,
+    token: tokenFlag ?? config().CLI_ACCESS_TOKEN,
+  };
 }
 
-async function apiFetch(url: string, token: string | undefined, path: string, init?: RequestInit): Promise<unknown> {
+async function apiFetch(
+  url: string,
+  token: string | undefined,
+  path: string,
+  init?: RequestInit,
+): Promise<unknown> {
   const res = await fetch(`${url.replace(/\/$/, "")}${path}`, {
     ...init,
     headers: {
@@ -114,19 +145,35 @@ async function apiFetch(url: string, token: string | undefined, path: string, in
   });
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
-    throw new Error(`API ${init?.method ?? "GET"} ${path} failed (${res.status}): ${text}`);
+    throw new Error(
+      `API ${init?.method ?? "GET"} ${path} failed (${res.status}): ${text}`,
+    );
   }
   return res.json();
 }
 
-async function uploadFile(url: string, spaceId: string, token: string | undefined, filePath: string): Promise<string> {
+async function uploadFile(
+  url: string,
+  spaceId: string,
+  token: string | undefined,
+  filePath: string,
+): Promise<string> {
   const file = Bun.file(filePath);
   const name = filePath.split("/").pop() ?? "upload";
   const form = new FormData();
-  form.append("file", new Blob([await file.arrayBuffer()], { type: file.type || "application/octet-stream" }), name);
+  form.append(
+    "file",
+    new Blob([await file.arrayBuffer()], {
+      type: file.type || "application/octet-stream",
+    }),
+    name,
+  );
   const res = await fetch(`${url.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/uploads`, {
     method: "POST",
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), Origin: new URL(url).origin },
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Origin: new URL(url).origin,
+    },
     body: form,
   });
   if (!res.ok) {
@@ -139,7 +186,7 @@ async function uploadFile(url: string, spaceId: string, token: string | undefine
 
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
   const { url, token, documentId, inputs, filePaths, json } = options;
-  const spaceId = options.spaceId ?? await resolveSpaceId(url, token);
+  const spaceId = options.spaceId ?? (await resolveSpaceId(url, token));
 
   for (const [key, filePath] of Object.entries(filePaths)) {
     if (!json) process.stderr.write(`Uploading ${filePath}…\n`);
@@ -147,11 +194,19 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
     if (!json) process.stderr.write(`Uploaded: ${inputs[key]}\n`);
   }
 
-  const { runId } = (await apiFetch(url, token, `/api/v1/spaces/${spaceId}/workflows/runs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ documentId, inputs: Object.keys(inputs).length > 0 ? inputs : undefined }),
-  })) as { runId: string };
+  const { runId } = (await apiFetch(
+    url,
+    token,
+    `/api/v1/spaces/${spaceId}/workflows/runs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        documentId,
+        inputs: Object.keys(inputs).length > 0 ? inputs : undefined,
+      }),
+    },
+  )) as { runId: string };
 
   if (!json) process.stderr.write(`Run started: ${runId}\n`);
 
@@ -160,7 +215,11 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
   while (true) {
     await new Promise((r) => setTimeout(r, 2000));
 
-    const run = (await apiFetch(url, token, `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`)) as RunResponse;
+    const run = (await apiFetch(
+      url,
+      token,
+      `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
+    )) as RunResponse;
 
     if (!json) {
       for (const [nodeId, node] of Object.entries(run.nodes)) {

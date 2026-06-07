@@ -1146,7 +1146,7 @@ describe("ACL API Tests - Properties Access Control", () => {
         method: "PATCH",
         body: JSON.stringify({
           properties: {
-            "status": null,
+            status: null,
           },
         }),
       },
@@ -1163,7 +1163,7 @@ describe("ACL API Tests - Properties Access Control", () => {
         method: "PATCH",
         body: JSON.stringify({
           properties: {
-            "title": null,
+            title: null,
           },
         }),
       },

@@ -1,5 +1,8 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
+import { slugify } from "../utils/utils.ts";
 import {
   filterReadableResources,
   grantPermission,
@@ -8,16 +11,11 @@ import {
   ResourceType,
 } from "./acl.ts";
 import { createAuditLog } from "./auditLogs.ts";
-import { sendSyncEvent } from "./ws.ts";
 import { getSpaceDb } from "./db.ts";
-import { createRevision } from "./revisions.ts";
-import { document, property, revision } from "./schema/space.ts";
-import { slugify } from "../utils/utils.ts";
-import { triggerWebhooks } from "./webhooks.ts";
+import { createId } from "./ids.ts";
 import { extractMentionsFromHtml } from "./mentions.ts";
-import { decompressHtml } from "./revisions.ts";
-import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { createRevision, decompressHtml } from "./revisions.ts";
+import { document, property, revision } from "./schema/space.ts";
 import {
   buildDocumentSearchText,
   buildSearchSnippet,
@@ -27,7 +25,8 @@ import {
   scoreKeywordOverlap,
   serializeEmbedding,
 } from "./searchEmbeddings.ts";
-import { createId } from "./ids.ts";
+import { triggerWebhooks } from "./webhooks.ts";
+import { sendSyncEvent } from "./ws.ts";
 
 const nonArchivedDocumentCondition = sql`
   (
@@ -93,7 +92,10 @@ async function generateUniqueSlug(
   return slug;
 }
 
-async function updateDocumentEmbedding(spaceId: string, documentId: string): Promise<void> {
+async function updateDocumentEmbedding(
+  spaceId: string,
+  documentId: string,
+): Promise<void> {
   const db = await getSpaceDb(spaceId);
 
   const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
@@ -542,7 +544,8 @@ export async function listDocuments(
     const visible = allDocs.filter((doc) => readable.has(doc.id));
     total = visible.length;
     const start = offset ?? 0;
-    docs = limit !== undefined ? visible.slice(start, start + limit) : visible.slice(start);
+    docs =
+      limit !== undefined ? visible.slice(start, start + limit) : visible.slice(start);
   } else if (limit !== undefined && offset !== undefined) {
     docs = await baseQuery.limit(limit).offset(offset).all();
   } else if (limit !== undefined) {
@@ -964,22 +967,21 @@ export async function listAllDocumentsByCategories(
     propsByDocId.get(prop.documentId)![prop.key] = prop.value;
   }
 
-  const typeFilteredResults: DocumentWithProperties[] = docs
-    .map((doc) => ({
-      id: doc.id,
-      slug: doc.slug,
-      type: doc.type || "document",
-      content: "",
-      currentRev: doc.currentRev,
-      publishedRev: doc.publishedRev,
-      properties: propsByDocId.get(doc.id) || {},
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-      createdBy: doc.createdBy,
-      parentId: doc.parentId || null,
-      readonly: doc.readonly,
-      archived: doc.archived,
-    }));
+  const typeFilteredResults: DocumentWithProperties[] = docs.map((doc) => ({
+    id: doc.id,
+    slug: doc.slug,
+    type: doc.type || "document",
+    content: "",
+    currentRev: doc.currentRev,
+    publishedRev: doc.publishedRev,
+    properties: propsByDocId.get(doc.id) || {},
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+    createdBy: doc.createdBy,
+    parentId: doc.parentId || null,
+    readonly: doc.readonly,
+    archived: doc.archived,
+  }));
 
   const childrenByParentId = new Map<string, string[]>();
   for (const doc of typeFilteredResults) {
@@ -1060,7 +1062,11 @@ export async function setDocumentParent(
   spaceId: string,
   documentId: string,
   parentId: string | null,
-): Promise<{ documentId: string; previousParentId: string | null; parentId: string | null }> {
+): Promise<{
+  documentId: string;
+  previousParentId: string | null;
+  parentId: string | null;
+}> {
   const db = await getSpaceDb(spaceId);
   const now = new Date();
   const existing = await db
@@ -1466,9 +1472,7 @@ export async function getAllPropertiesWithValues(
     .filter((v, i, a) => a.indexOf(v) === i)
     .sort();
 
-  const result: PropertyInfo[] = [
-    { name: "type", type: "select", values: typeValues },
-  ];
+  const result: PropertyInfo[] = [{ name: "type", type: "select", values: typeValues }];
   for (const [key, data] of Object.entries(propertyMap)) {
     result.push({
       name: key,

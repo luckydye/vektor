@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { Feature } from "#db/acl.ts";
 import {
   jsonResponse,
   parseQueryInt,
@@ -8,11 +9,7 @@ import {
   verifyFeatureAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { Feature } from "#db/acl.ts";
-import {
-  getAuditLogsForDocument,
-  parseAuditDetails,
-} from "#db/auditLogs.ts";
+import { getAuditLogsForDocument, parseAuditDetails } from "#db/auditLogs.ts";
 import { getSpaceDb } from "#db/db.ts";
 
 export const GET: APIRoute = (context) =>

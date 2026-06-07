@@ -1,13 +1,13 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { getSpaceDb } from "../db/db.ts";
-import { listExtensions, getExtensionPackage } from "../db/extensions.ts";
-import { claimDueJobSchedules, parseJobScheduleInputs } from "../db/jobSchedules.ts";
+import { getExtensionPackage, listExtensions } from "../db/extensions.ts";
 import { failStaleJobRuns } from "../db/jobRuns.ts";
+import { claimDueJobSchedules, parseJobScheduleInputs } from "../db/jobSchedules.ts";
 import type { JobSchedule } from "../db/schema/space.ts";
 import { appLogger } from "../observability/logger.ts";
-import { runJob } from "./scheduler.ts";
 import { resolveJobSandbox } from "./sandbox.ts";
+import { runJob } from "./scheduler.ts";
 
 const SPACES_DIR = join("./data", "spaces");
 const TICK_INTERVAL_MS = 30_000;

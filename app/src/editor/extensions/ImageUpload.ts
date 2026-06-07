@@ -1,9 +1,9 @@
-import Image from "@tiptap/extension-image";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { type Editor, mergeAttributes } from "@tiptap/core";
+import Image from "@tiptap/extension-image";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { ResizableNodeView, createResizableAttributes } from "./resizable.ts";
+import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
 export interface ImageUploadOptions {
   spaceId: string;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { SearchResult, DocumentWithProperties } from "../api/client.ts";
-import { formatDate } from "../utils/utils.ts";
 import { clockIcon } from "~/src/assets/icons.ts";
+import type { DocumentWithProperties, SearchResult } from "../api/client.ts";
+import { formatDate } from "../utils/utils.ts";
 
 const props = defineProps<{
   document: SearchResult | DocumentWithProperties;

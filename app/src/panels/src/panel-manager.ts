@@ -144,7 +144,8 @@ export class PanelDockElement extends HTMLElement {
   // ---- splitter for live resize -------------------------------------------
 
   private _ensureSplitter() {
-    const allowed = this.getAttribute("resizable") !== "false" && this.anchor !== "center";
+    const allowed =
+      this.getAttribute("resizable") !== "false" && this.anchor !== "center";
     if (!allowed) {
       this._splitter?.remove();
       this._splitter = null;
@@ -208,16 +209,28 @@ export class PanelDockElement extends HTMLElement {
     const move = (e: PointerEvent) => {
       switch (this.anchor) {
         case "left":
-          this.setAttribute("width", clampN(startW + (e.clientX - startX), minW, maxW) + "px");
+          this.setAttribute(
+            "width",
+            clampN(startW + (e.clientX - startX), minW, maxW) + "px",
+          );
           break;
         case "right":
-          this.setAttribute("width", clampN(startW - (e.clientX - startX), minW, maxW) + "px");
+          this.setAttribute(
+            "width",
+            clampN(startW - (e.clientX - startX), minW, maxW) + "px",
+          );
           break;
         case "top":
-          this.setAttribute("height", clampN(startH + (e.clientY - startY), minH, maxH) + "px");
+          this.setAttribute(
+            "height",
+            clampN(startH + (e.clientY - startY), minH, maxH) + "px",
+          );
           break;
         case "bottom":
-          this.setAttribute("height", clampN(startH - (e.clientY - startY), minH, maxH) + "px");
+          this.setAttribute(
+            "height",
+            clampN(startH - (e.clientY - startY), minH, maxH) + "px",
+          );
           break;
       }
     };
@@ -308,7 +321,9 @@ export class PanelItemElement extends HTMLElement {
 
   // Build a default titlebar if the user didn't supply slot="titlebar".
   private ensureTitleBar() {
-    const existing = this.querySelector(':scope > [slot="titlebar"]') as HTMLElement | null;
+    const existing = this.querySelector(
+      ':scope > [slot="titlebar"]',
+    ) as HTMLElement | null;
     if (existing) {
       this._titleBar = existing;
       this.wireTitleBar(existing);
@@ -415,8 +430,7 @@ export class PanelHostElement extends HTMLElement {
       // Sides-win (IDE-style): l and r are single spanning cells through all
       // three rows, so left/right docks claim the corners. Top/bottom docks
       // live only in the center column.
-      gridTemplate:
-        '"l t r" auto "l c r" 1fr "l b r" auto / auto 1fr auto',
+      gridTemplate: '"l t r" auto "l c r" 1fr "l b r" auto / auto 1fr auto',
       pointerEvents: "none",
     } as CSSStyleDeclaration);
 
@@ -565,7 +579,11 @@ export class PanelHostElement extends HTMLElement {
   // calls into dock/float.
   private _suppressTransitions = false;
 
-  private _withTransition(panel: PanelItemElement, mutate: () => void, after?: () => void) {
+  private _withTransition(
+    panel: PanelItemElement,
+    mutate: () => void,
+    after?: () => void,
+  ) {
     const doc = document as Document & {
       startViewTransition?: (cb: () => void) => { finished: Promise<unknown> };
     };
@@ -601,7 +619,9 @@ export class PanelHostElement extends HTMLElement {
     let panel = this._panels.get(id);
     if (!panel) {
       // Late binding: maybe the user has a template/element with this id elsewhere.
-      panel = (this.querySelector(`panel-item#${CSS.escape(id)}`) as PanelItemElement | null) ?? undefined;
+      panel =
+        (this.querySelector(`panel-item#${CSS.escape(id)}`) as PanelItemElement | null) ??
+        undefined;
       if (panel) this._adoptPanel(panel);
     }
     if (!panel) {
@@ -614,14 +634,21 @@ export class PanelHostElement extends HTMLElement {
     panel._state.visibility = "open";
     panel.style.display = "";
 
-    const dockId = opts.preferredDock && this._findDock(opts.preferredDock) ? opts.preferredDock : null;
+    const dockId =
+      opts.preferredDock && this._findDock(opts.preferredDock)
+        ? opts.preferredDock
+        : null;
     // Initial placement shouldn't animate from the panel's transient
     // first-mount position into its target dock/float.
     this._suppressTransitions = true;
     try {
       if (dockId) {
         this.dock(id, dockId);
-      } else if (opts.fallback && opts.fallback !== "floating" && this._findDock(opts.fallback)) {
+      } else if (
+        opts.fallback &&
+        opts.fallback !== "floating" &&
+        this._findDock(opts.fallback)
+      ) {
         this.dock(id, opts.fallback);
       } else {
         const fp: FloatingPlacement = {
@@ -704,7 +731,10 @@ export class PanelHostElement extends HTMLElement {
   float(id: string, placement: Partial<Omit<FloatingPlacement, "type">> = {}) {
     const p = this._panels.get(id);
     if (!p) return;
-    const cur = p._state.placement.type === "floating" ? (p._state.placement as FloatingPlacement) : null;
+    const cur =
+      p._state.placement.type === "floating"
+        ? (p._state.placement as FloatingPlacement)
+        : null;
     const fp: FloatingPlacement = {
       type: "floating",
       x: placement.x ?? cur?.x ?? 40,
@@ -797,7 +827,15 @@ export class PanelHostElement extends HTMLElement {
   private _placeDock(dock: PanelDockElement) {
     const a = dock.anchor;
     const area =
-      a === "left" ? "l" : a === "right" ? "r" : a === "top" ? "t" : a === "bottom" ? "b" : "c";
+      a === "left"
+        ? "l"
+        : a === "right"
+          ? "r"
+          : a === "top"
+            ? "t"
+            : a === "bottom"
+              ? "b"
+              : "c";
     dock.style.gridArea = area;
     dock.style.pointerEvents = "auto";
     if (dock.parentElement !== this._docksWrap) this._docksWrap.append(dock);
@@ -977,7 +1015,10 @@ export class PanelHostElement extends HTMLElement {
         return;
       }
       if (torn) {
-        this._emit("panel-moved", { id: panel.panelId, placement: panel._state.placement });
+        this._emit("panel-moved", {
+          id: panel.panelId,
+          placement: panel._state.placement,
+        });
         this._emitLayout();
       }
     };
@@ -1065,7 +1106,9 @@ export class PanelHostElement extends HTMLElement {
     const hostRect = this.getBoundingClientRect();
     for (const dock of this.querySelectorAll<PanelDockElement>("panel-dock")) {
       const hasOpen = Array.from(dock.children).some(
-        (c) => c instanceof PanelItemElement && (c as PanelItemElement)._state.visibility === "open",
+        (c) =>
+          c instanceof PanelItemElement &&
+          (c as PanelItemElement)._state.visibility === "open",
       );
       if (!hasOpen) continue;
       const r = dock.getBoundingClientRect();
@@ -1143,9 +1186,12 @@ export function definePanelElements() {
     customElements.define("panel-workspace", PanelWorkspaceElement);
   if (!customElements.get("panel-layer"))
     customElements.define("panel-layer", PanelLayerElement);
-  if (!customElements.get("panel-host")) customElements.define("panel-host", PanelHostElement);
-  if (!customElements.get("panel-dock")) customElements.define("panel-dock", PanelDockElement);
-  if (!customElements.get("panel-item")) customElements.define("panel-item", PanelItemElement);
+  if (!customElements.get("panel-host"))
+    customElements.define("panel-host", PanelHostElement);
+  if (!customElements.get("panel-dock"))
+    customElements.define("panel-dock", PanelDockElement);
+  if (!customElements.get("panel-item"))
+    customElements.define("panel-item", PanelItemElement);
 }
 
 definePanelElements();

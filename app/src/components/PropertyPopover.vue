@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, watchEffect, computed, onMounted } from "vue";
+import { computed, onMounted, ref, watchEffect } from "vue";
 import "@sv/elements/blur";
-import SelectMenu, { type SelectMenuItem } from "./SelectMenu.vue";
-import ButtonPrimary from "./ButtonPrimary.vue";
 import { plusIcon } from "~/src/assets/icons.ts";
+import ButtonPrimary from "./ButtonPrimary.vue";
+import SelectMenu, { type SelectMenuItem } from "./SelectMenu.vue";
 
 export type PropertyType = "text" | "select" | "date" | "user";
 

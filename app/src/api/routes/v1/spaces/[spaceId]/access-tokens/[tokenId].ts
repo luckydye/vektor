@@ -1,5 +1,11 @@
 import type { APIRoute } from "astro";
 import {
+  deleteAccessToken,
+  getAccessToken,
+  listTokenResources,
+  revokeAccessToken,
+} from "#db/accessTokens.ts";
+import {
   jsonResponse,
   notFoundResponse,
   requireParam,
@@ -8,12 +14,6 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  revokeAccessToken,
-  deleteAccessToken,
-  listTokenResources,
-  getAccessToken,
-} from "#db/accessTokens.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens/:tokenId

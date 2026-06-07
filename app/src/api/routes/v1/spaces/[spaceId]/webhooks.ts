@@ -8,15 +8,15 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { getSpaceDb } from "#db/db.ts";
 import {
   createWebhook,
   listWebhooks,
+  SsrfError,
   toWebhookDto,
   validateWebhookEventsInput,
   validateWebhookUrl,
-  SsrfError,
 } from "#db/webhooks.ts";
-import { getSpaceDb } from "#db/db.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

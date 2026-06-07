@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { eq, inArray } from "drizzle-orm";
+import { getSpaceMemberIds } from "#db/acl.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -11,7 +12,6 @@ import {
 } from "#db/api.ts";
 import { getAuthDb } from "#db/db.ts";
 import { user } from "#db/schema/auth.ts";
-import { getSpaceMemberIds } from "#db/acl.ts";
 
 /**
  * GET /api/v1/users
@@ -41,7 +41,11 @@ export const GET: APIRoute = (context) =>
     } as const;
 
     if (id) {
-      const result = await db.select(publicFields).from(user).where(eq(user.id, id)).get();
+      const result = await db
+        .select(publicFields)
+        .from(user)
+        .where(eq(user.id, id))
+        .get();
       if (!result) {
         throw notFoundResponse("User");
       }

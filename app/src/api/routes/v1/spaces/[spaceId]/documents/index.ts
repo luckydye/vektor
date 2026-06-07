@@ -1,4 +1,6 @@
 import type { APIRoute } from "astro";
+import { getTokenUserId } from "#db/accessTokens.ts";
+import { getUserGroups, ResourceType } from "#db/acl.ts";
 import {
   authenticateRequest,
   badRequestResponse,
@@ -13,19 +15,17 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import {
+  type AclViewer,
   createDocument,
   listAllDocumentsByCategories,
   listDocuments,
-  type AclViewer,
 } from "#db/documents.ts";
-import { getUserGroups, ResourceType } from "#db/acl.ts";
-import { getTokenUserId } from "#db/accessTokens.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import {
   getDocumentTypeForContentType,
   getMimeType,
   toHtmlIfMarkdown,
 } from "#utils/documentContent.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

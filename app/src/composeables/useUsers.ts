@@ -1,5 +1,5 @@
-import { computed, toValue, type MaybeRef } from "vue";
 import { useQuery } from "@tanstack/vue-query";
+import { computed, type MaybeRef, toValue } from "vue";
 import { api } from "../api/client.ts";
 
 export function useUser(id: MaybeRef<string | undefined>) {

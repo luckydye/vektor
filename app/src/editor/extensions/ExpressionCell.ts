@@ -1,7 +1,6 @@
-import { mergeAttributes, Node } from "@tiptap/core";
 import type { CommandProps } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { TextSelection } from "@tiptap/pm/state";
+import { mergeAttributes, Node } from "@tiptap/core";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {

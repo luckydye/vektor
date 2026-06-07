@@ -1,15 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import {
-  hasPermission,
-  canView,
-  canEdit,
-  isOwner,
   canAccessSettings,
-  hasFeature,
   canComment,
-  canViewHistory,
-  canViewAudit,
+  canEdit,
   canManageExtensions,
+  canView,
+  canViewAudit,
+  canViewHistory,
+  hasFeature,
+  hasPermission,
+  isOwner,
 } from "../src/composeables/usePermissions.ts";
 
 describe("Permission Utilities", () => {

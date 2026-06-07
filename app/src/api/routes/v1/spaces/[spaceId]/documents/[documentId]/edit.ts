@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { ResourceType } from "#db/acl.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -10,12 +11,11 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocument, updateDocument } from "#db/documents.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { applyEditOperations, parseEditOperations } from "#utils/documentEdit.ts";
-import { transformDocumentContent } from "#utils/yjsRooms.ts";
 import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
 import { stripScriptTags } from "#utils/utils.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import { ResourceType } from "#db/acl.ts";
+import { transformDocumentContent } from "#utils/yjsRooms.ts";
 
 /**
  * Applies partial edit operations to a document through the collaboration

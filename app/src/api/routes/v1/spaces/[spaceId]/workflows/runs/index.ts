@@ -1,7 +1,5 @@
 import type { APIRoute } from "astro";
-import { getDocument } from "#db/documents.ts";
-import { getPublishedContent } from "#db/revisions.ts";
-import { getExtension } from "#db/extensions.ts";
+import { filterReadableResources, getUserGroups, ResourceType } from "#db/acl.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -11,24 +9,14 @@ import {
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import {
-  filterReadableResources,
-  getUserGroups,
-  ResourceType,
-} from "#db/acl.ts";
-import {
-  createRun,
-  getRun,
-  latestRunByDoc,
-  runs,
-} from "#jobs/runStore.ts";
-import {
-  executeWorkflow,
-  type WorkflowDefinition,
-} from "#jobs/workflow.ts";
-import { activeTraceHeaders } from "#observability/otel.ts";
+import { getDocument } from "#db/documents.ts";
+import { getExtension } from "#db/extensions.ts";
+import { getPublishedContent } from "#db/revisions.ts";
+import { createRun, getRun, latestRunByDoc, runs } from "#jobs/runStore.ts";
+import { executeWorkflow, type WorkflowDefinition } from "#jobs/workflow.ts";
 import { appLogger } from "#observability/logger.ts";
+import { activeTraceHeaders } from "#observability/otel.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
@@ -80,36 +68,36 @@ export const GET: APIRoute = (context) =>
       if (await canReadDocument(entry[1].documentId)) readableRuns.push(entry);
     }
     const allRuns = await Promise.all(
-      readableRuns
-        .map(async ([runId, run]) => {
-          const doc = await getDocument(spaceId, run.documentId);
-          const nodeList = [...run.nodes.values()];
-          const startedAt = nodeList.reduce<Date | null>((min, n) => {
-            if (!n.startedAt) return min;
-            return min === null || n.startedAt < min ? n.startedAt : min;
-          }, null);
-          const finishedAt = nodeList.reduce<Date | null>((max, n) => {
-            if (!n.completedAt) return max;
-            return max === null || n.completedAt > max ? n.completedAt : max;
-          }, null);
-          const completedNodes = nodeList.filter(
-            (n) => n.status === "completed" || n.status === "failed" || n.status === "cancelled",
-          ).length;
-          return {
-            runId,
-            documentId: run.documentId,
-            documentSlug: doc?.slug ?? null,
-            documentTitle: doc?.properties.title ?? run.documentId,
-            status: run.status,
-            createdAt: run.createdAt.toISOString(),
-            startedAt: startedAt?.toISOString() ?? null,
-            finishedAt: finishedAt?.toISOString() ?? null,
-            totalNodes: nodeList.length,
-            completedNodes,
-            sourceExtensionId: run.sourceExtensionId,
-            runtimeInputs: run.runtimeInputs,
-          };
-        }),
+      readableRuns.map(async ([runId, run]) => {
+        const doc = await getDocument(spaceId, run.documentId);
+        const nodeList = [...run.nodes.values()];
+        const startedAt = nodeList.reduce<Date | null>((min, n) => {
+          if (!n.startedAt) return min;
+          return min === null || n.startedAt < min ? n.startedAt : min;
+        }, null);
+        const finishedAt = nodeList.reduce<Date | null>((max, n) => {
+          if (!n.completedAt) return max;
+          return max === null || n.completedAt > max ? n.completedAt : max;
+        }, null);
+        const completedNodes = nodeList.filter(
+          (n) =>
+            n.status === "completed" || n.status === "failed" || n.status === "cancelled",
+        ).length;
+        return {
+          runId,
+          documentId: run.documentId,
+          documentSlug: doc?.slug ?? null,
+          documentTitle: doc?.properties.title ?? run.documentId,
+          status: run.status,
+          createdAt: run.createdAt.toISOString(),
+          startedAt: startedAt?.toISOString() ?? null,
+          finishedAt: finishedAt?.toISOString() ?? null,
+          totalNodes: nodeList.length,
+          completedNodes,
+          sourceExtensionId: run.sourceExtensionId,
+          runtimeInputs: run.runtimeInputs,
+        };
+      }),
     );
 
     return jsonResponse({ runs: allRuns });

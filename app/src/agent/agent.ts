@@ -1,18 +1,17 @@
-import { Bash } from "just-bash";
+import { gunzipSync, gzipSync } from "node:zlib";
+import type { Bash } from "just-bash";
+import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
 import {
-  type AgentShellBootstrap,
-  createAgentShell,
-  getAIProvider,
   type AgentEvent,
   type AgentResult,
+  type AgentShellBootstrap,
   type ChatMessage,
+  createAgentShell,
+  getAIProvider,
   runAgentPrompt,
 } from "./core.ts";
-import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
-import { gzipSync, gunzipSync } from "node:zlib";
 
-export type { AgentResult, ChatMessage };
-export type { AgentEvent };
+export type { AgentEvent, AgentResult, ChatMessage };
 
 type AgentSession = {
   bash: Bash;
@@ -112,11 +111,15 @@ async function captureShellState(bash: Bash): Promise<string> {
 }
 
 function parseShellState(snapshot: string): SerializedShellState {
-  return JSON.parse(gunzipSync(Buffer.from(snapshot, "base64")).toString("utf-8")) as SerializedShellState;
+  return JSON.parse(
+    gunzipSync(Buffer.from(snapshot, "base64")).toString("utf-8"),
+  ) as SerializedShellState;
 }
 
 async function restoreShellState(bash: Bash, state: SerializedShellState) {
-  const sortedEntries = [...state.entries].sort((left, right) => left.path.localeCompare(right.path));
+  const sortedEntries = [...state.entries].sort((left, right) =>
+    left.path.localeCompare(right.path),
+  );
   for (const entry of sortedEntries) {
     if (entry.type === "directory") {
       await bash.fs.mkdir(entry.path, { recursive: true });
@@ -130,7 +133,11 @@ async function restoreShellState(bash: Bash, state: SerializedShellState) {
       await bash.fs.utimes(entry.path, new Date(entry.mtime), new Date(entry.mtime));
       continue;
     }
-    await bash.fs.writeFile(entry.path, Buffer.from(entry.contentBase64, "base64"), "binary");
+    await bash.fs.writeFile(
+      entry.path,
+      Buffer.from(entry.contentBase64, "base64"),
+      "binary",
+    );
     await bash.fs.chmod(entry.path, entry.mode);
     await bash.fs.utimes(entry.path, new Date(entry.mtime), new Date(entry.mtime));
   }
@@ -161,9 +168,14 @@ function getOrCreateSession(options: {
     return Promise.resolve(existing);
   }
 
-  const parsedShellState = options.shellSnapshot ? parseShellState(options.shellSnapshot) : null;
+  const parsedShellState = options.shellSnapshot
+    ? parseShellState(options.shellSnapshot)
+    : null;
   const bootstrap = parsedShellState
-    ? ({ cwd: parsedShellState.cwd, env: parsedShellState.env } satisfies AgentShellBootstrap)
+    ? ({
+        cwd: parsedShellState.cwd,
+        env: parsedShellState.env,
+      } satisfies AgentShellBootstrap)
     : undefined;
   const mcpConfigRef = {
     current: {

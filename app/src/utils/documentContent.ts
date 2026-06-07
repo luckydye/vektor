@@ -16,7 +16,9 @@ export const CSV_TYPES: readonly string[] = [
 const CSV_TYPE_SET = new Set<string>(CSV_TYPES);
 const APP_TYPES = new Set<string>(["application/vnd.wiki.app+html"]);
 
-export function getDocumentTypeForContentType(contentType: string | null): string | undefined {
+export function getDocumentTypeForContentType(
+  contentType: string | null,
+): string | undefined {
   const mimeType = getMimeType(contentType);
   if (!mimeType) return undefined;
   if (CSV_TYPE_SET.has(mimeType)) return "csv";

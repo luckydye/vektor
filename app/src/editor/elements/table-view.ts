@@ -268,7 +268,9 @@ export class TableViewElement extends HTMLElement {
       };
 
       const onMouseDown = (e: MouseEvent) => {
-        const handle = (e.target as HTMLElement).closest<HTMLElement>(".col-resize-handle");
+        const handle = (e.target as HTMLElement).closest<HTMLElement>(
+          ".col-resize-handle",
+        );
         if (!handle) return;
         const th = handle.parentElement as HTMLElement;
         const colIndex = parseInt(th.dataset.colIndex ?? "0");
@@ -320,7 +322,9 @@ export class TableViewElement extends HTMLElement {
       };
 
       const onMouseDown = (e: MouseEvent) => {
-        const handle = (e.target as HTMLElement).closest<HTMLElement>(".row-resize-handle");
+        const handle = (e.target as HTMLElement).closest<HTMLElement>(
+          ".row-resize-handle",
+        );
         if (!handle) return;
         const td = handle.parentElement as HTMLElement;
         rowEl = td.parentElement as HTMLElement;

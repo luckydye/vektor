@@ -1,4 +1,8 @@
 import type { APIRoute } from "astro";
+import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
+import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
+import { getLocalOrigin } from "#config";
+import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -8,13 +12,9 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
-import { getLocalOrigin } from "#config";
-import { runAgentInWorker, type AgentEvent, type ChatMessage } from "#agent/agent.ts";
-import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
-import { getUserProfile } from "#db/userProfiles.ts";
 import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
-import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
+import { getUserProfile } from "#db/userProfiles.ts";
+import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 
 // ---------------------------------------------------------------------------
@@ -267,7 +267,9 @@ async function persistCompletedChatTurn(options: {
 
   // The last user-role entry in requestMessages is the message that triggered
   // this turn.  Use its content as the display message for the session log.
-  const lastUserRequest = [...options.requestMessages].reverse().find((m) => m.role === "user");
+  const lastUserRequest = [...options.requestMessages]
+    .reverse()
+    .find((m) => m.role === "user");
 
   // The pre-save step wrote the user message into session.messages before the
   // agent started.  Only add it here if it wasn't already pre-saved (e.g. when
@@ -563,15 +565,22 @@ function getOrStartActiveChatTurn(options: {
               preTurnHistory: options.preTurnHistory,
             });
           } catch (rollbackError) {
-            appLogger.warn("Failed to rollback pre-saved user message after cancellation", {
-              chatId: options.chatId,
-              spaceId: options.spaceId,
-              error: rollbackError,
-            });
+            appLogger.warn(
+              "Failed to rollback pre-saved user message after cancellation",
+              {
+                chatId: options.chatId,
+                spaceId: options.spaceId,
+                error: rollbackError,
+              },
+            );
           }
         }
       } else {
-        appLogger.error("Chat turn failed", { chatId: options.chatId, spaceId: options.spaceId, error });
+        appLogger.error("Chat turn failed", {
+          chatId: options.chatId,
+          spaceId: options.spaceId,
+          error,
+        });
         turn.error = error instanceof Error ? error.message : "Agent request failed";
       }
       turn.updatedAt = Date.now();
@@ -662,8 +671,12 @@ export const POST: APIRoute = (context) =>
           userId === null ? null : await getAIChatSession(spaceId, sessionId, userId);
         const history = (persistedSession?.conversationHistory ?? []) as ChatMessage[];
         const [userProfile, oauthIntegrations] = await Promise.all([
-          userId !== null ? getUserProfile(spaceId, userId).catch(() => null) : Promise.resolve(null),
-          userId !== null ? listOAuthIntegrationsForUser(spaceId, userId).catch(() => []) : Promise.resolve([]),
+          userId !== null
+            ? getUserProfile(spaceId, userId).catch(() => null)
+            : Promise.resolve(null),
+          userId !== null
+            ? listOAuthIntegrationsForUser(spaceId, userId).catch(() => [])
+            : Promise.resolve([]),
         ]);
         const connectedProviders = oauthIntegrations.map((i) => i.provider);
 
@@ -707,7 +720,9 @@ export const POST: APIRoute = (context) =>
           chatId: sessionId,
           messages,
           preTurnHistory:
-            userId !== null && persistedSession && lastHistoryRole !== "user" ? history : null,
+            userId !== null && persistedSession && lastHistoryRole !== "user"
+              ? history
+              : null,
           userProfile: userProfile ?? undefined,
           connectedProviders,
           apiUrl: getLocalOrigin(),
@@ -762,7 +777,11 @@ export const POST: APIRoute = (context) =>
           activeChatTurns.delete(key);
         }
 
-        return Response.json({ jsonrpc: "2.0", id: requestId, result: { cancelled: true } });
+        return Response.json({
+          jsonrpc: "2.0",
+          id: requestId,
+          result: { cancelled: true },
+        });
       }
 
       return badRequestResponse(`Unknown method: ${body.method}`);
@@ -770,6 +789,9 @@ export const POST: APIRoute = (context) =>
     {
       fallbackMessage: "Agent request failed",
       onError: (error) =>
-        errorResponse(error instanceof Error ? error.message : "Agent request failed", 500),
+        errorResponse(
+          error instanceof Error ? error.message : "Agent request failed",
+          500,
+        ),
     },
   );

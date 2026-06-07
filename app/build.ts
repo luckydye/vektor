@@ -5,9 +5,7 @@ const appDir = join(import.meta.dir);
 const clientDir = join(appDir, "dist/client");
 const outputFile = join(appDir, "generated/client-assets.ts");
 
-export async function collectClientAssetFiles(
-  directory: string,
-): Promise<string[]> {
+export async function collectClientAssetFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const files: string[] = [];
 
@@ -46,9 +44,7 @@ export async function generateClientAssetsModule() {
     const importPath = relative(dirname(outputFile), filePath).split(sep).join("/");
     const publicPath = `/${relative(clientDir, filePath).split(sep).join("/")}`;
 
-    importLines.push(
-      `import ${importName} from "${importPath}" with { type: "file" };`,
-    );
+    importLines.push(`import ${importName} from "${importPath}" with { type: "file" };`);
     mapEntries.push(`  ["${publicPath}", ${importName}]`);
   }
 

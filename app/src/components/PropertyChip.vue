@@ -6,9 +6,9 @@ import SelectMenu from "./SelectMenu.vue";
 import Tooltip from "./Tooltip.vue";
 import "@sv/elements/blur";
 import "@sv/elements/calendar";
+import { twMerge } from "tailwind-merge";
 import { plusIcon } from "~/src/assets/icons.ts";
 import Icon from "./Icon.vue";
-import { twMerge } from "tailwind-merge";
 
 const inputElement = ref();
 

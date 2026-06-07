@@ -1,9 +1,9 @@
 import { config } from "../config.ts";
 import {
-  toRealtimeTopicEvent,
   type RealtimeEventInput,
   type RealtimeTopic,
   type RealtimeTopicEvent,
+  toRealtimeTopicEvent,
 } from "../utils/realtime.ts";
 
 export interface RealtimeEventEnvelope {
@@ -87,7 +87,8 @@ export function sendSyncEvent(spaceId: string, ...events: RealtimeEventInput[]) 
     return;
   }
 
-  const pendingTopicEvents = pendingEvents.get(spaceId) ?? new Map<RealtimeTopic, RealtimeTopicEvent>();
+  const pendingTopicEvents =
+    pendingEvents.get(spaceId) ?? new Map<RealtimeTopic, RealtimeTopicEvent>();
   for (const event of events) {
     const normalizedEvent = toRealtimeTopicEvent(event);
     pendingTopicEvents.set(normalizedEvent.topic, normalizedEvent);

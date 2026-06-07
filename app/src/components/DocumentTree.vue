@@ -1,21 +1,20 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { Teleport } from "vue";
-import { useCategories } from "../composeables/useCategories.ts";
-import { useCategoryDocuments } from "../composeables/useCategoryDocuments.ts";
-import { getTextColor } from "../utils/utils.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { canEdit } from "../composeables/usePermissions.ts";
-import { api } from "../api/client.ts";
-import DocumentTreeItem from "./DocumentTreeItem.vue";
+import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
 import {
-  pencilIcon,
   checkThinIcon,
   chevronRightThinIcon,
-  plusSmallIcon,
   editOutlineIcon,
+  pencilIcon,
+  plusSmallIcon,
   trashCanIcon,
 } from "~/src/assets/icons.ts";
+import { api } from "../api/client.ts";
+import { useCategories } from "../composeables/useCategories.ts";
+import { useCategoryDocuments } from "../composeables/useCategoryDocuments.ts";
+import { canEdit } from "../composeables/usePermissions.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { getTextColor } from "../utils/utils.ts";
+import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();
 const {

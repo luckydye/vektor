@@ -1,6 +1,6 @@
+import { dirname, posix } from "node:path";
 import AdmZip from "adm-zip";
 import { defineCommand } from "just-bash";
-import { dirname, posix } from "node:path";
 
 async function addPathToZip(
   zip: AdmZip,
@@ -73,7 +73,11 @@ export const zipinfoCommand = defineCommand("zipinfo", async (args, ctx) => {
   }
   const archivePath = ctx.fs.resolvePath(ctx.cwd, args[0]!);
   if (!(await ctx.fs.exists(archivePath))) {
-    return { stdout: "", stderr: `zipinfo: ${args[0]}: No such file or directory\n`, exitCode: 1 };
+    return {
+      stdout: "",
+      stderr: `zipinfo: ${args[0]}: No such file or directory\n`,
+      exitCode: 1,
+    };
   }
   const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
   const lines = zip.getEntries().map((e) => {
@@ -126,9 +130,9 @@ export const unzipCommand = defineCommand("unzip", async (args, ctx) => {
   const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
 
   if (list) {
-    const lines = zip.getEntries().map((e) =>
-      `${e.header.size.toString().padStart(10)} ${e.entryName}`
-    );
+    const lines = zip
+      .getEntries()
+      .map((e) => `${e.header.size.toString().padStart(10)} ${e.entryName}`);
     return { stdout: lines.join("\n") + "\n", stderr: "", exitCode: 0 };
   }
 

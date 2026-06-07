@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
-import { api } from "../api/client.ts";
-import type { WorkflowRunStatus, WorkflowNodeState } from "../api/ApiClient.ts";
-import DataTable from "./DataTable.vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
+  arrowDownTrayIcon,
+  checkBoldIcon,
   chevronLeftThinIcon,
-  spinnerQuarterIcon,
+  chevronRightSmallIcon,
+  clipboardDocumentIcon,
   closeXIcon,
   playCircleFilledIcon,
-  checkBoldIcon,
-  clipboardDocumentIcon,
-  arrowDownTrayIcon,
-  chevronRightSmallIcon,
+  spinnerQuarterIcon,
 } from "~/src/assets/icons.ts";
+import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
+import { api } from "../api/client.ts";
+import DataTable from "./DataTable.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -57,7 +57,10 @@ async function fetchRuns() {
 
 async function fetchSelectedRunDetail() {
   if (!selectedRunId.value) return;
-  selectedRunDetail.value = await api.workflows.getRun(props.spaceId, selectedRunId.value);
+  selectedRunDetail.value = await api.workflows.getRun(
+    props.spaceId,
+    selectedRunId.value,
+  );
 }
 
 async function selectRun(runId: string) {
@@ -108,7 +111,9 @@ async function startRun(runtimeInputs: Record<string, string>) {
 }
 
 async function cancelRun() {
-  const activeRun = runList.value.find((r) => r.status === "running" || r.status === "pending");
+  const activeRun = runList.value.find(
+    (r) => r.status === "running" || r.status === "pending",
+  );
   if (!activeRun || cancelling.value) return;
   cancelling.value = true;
   try {
@@ -120,7 +125,9 @@ async function cancelRun() {
   }
 }
 
-const selectedRun = computed(() => runList.value.find((r) => r.runId === selectedRunId.value));
+const selectedRun = computed(() =>
+  runList.value.find((r) => r.runId === selectedRunId.value),
+);
 
 const selectedRunTitle = computed(() => {
   const title = selectedRun.value?.runtimeInputs?.["title"];
@@ -160,7 +167,9 @@ const isActiveRun = computed(() =>
 
 onMounted(async () => {
   const doc = await api.document.get(props.spaceId, props.documentId);
-  try { workflowDef.value = JSON.parse(doc.content ?? "{}"); } catch {}
+  try {
+    workflowDef.value = JSON.parse(doc.content ?? "{}");
+  } catch {}
 
   await fetchRuns();
   if (runList.value[0]) await selectRun(runList.value[0].runId);
@@ -169,7 +178,8 @@ onMounted(async () => {
   if (sourceExtId) {
     const ext = await api.extensions.getById(props.spaceId, sourceExtId);
     const firstRoute = ext.routes?.[0];
-    if (firstRoute) sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
+    if (firstRoute)
+      sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
   }
 
   pollInterval = setInterval(async () => {
@@ -208,12 +218,18 @@ const outputDocumentId = computed<string | null>(() =>
   unwrapOutputValue(selectedRunDetail.value?.output?.["documentId"]),
 );
 
-function extractTableData(output: Record<string, unknown> | null | undefined): Record<string, unknown>[] | null {
+function extractTableData(
+  output: Record<string, unknown> | null | undefined,
+): Record<string, unknown>[] | null {
   let raw: unknown = output?.["data"] ?? output?.["result"];
   // unwrap { type: "text", value: "..." } envelope
   const str = unwrapOutputValue(raw);
   if (str !== null) {
-    try { raw = JSON.parse(str); } catch { return null; }
+    try {
+      raw = JSON.parse(str);
+    } catch {
+      return null;
+    }
   }
   if (!Array.isArray(raw) || raw.length === 0) return null;
   if (typeof raw[0] !== "object" || raw[0] === null) return null;
@@ -226,7 +242,11 @@ const outputDocumentHref = ref<string | null>(null);
 const outputDocumentTitle = ref<string | null>(null);
 
 watch(outputDocumentId, async (id) => {
-  if (!id) { outputDocumentHref.value = null; outputDocumentTitle.value = null; return; }
+  if (!id) {
+    outputDocumentHref.value = null;
+    outputDocumentTitle.value = null;
+    return;
+  }
   const doc = await api.document.get(props.spaceId, id);
   outputDocumentHref.value = `/${props.spaceSlug}/doc/${doc.slug}`;
   outputDocumentTitle.value = (doc as any).properties?.title || doc.slug;
@@ -240,7 +260,9 @@ const historyRunDocTitles = ref<Map<string, string>>(new Map());
 
 async function toggleHistoryRun(runId: string) {
   if (expandedHistoryRuns.value.has(runId)) {
-    expandedHistoryRuns.value = new Set([...expandedHistoryRuns.value].filter((id) => id !== runId));
+    expandedHistoryRuns.value = new Set(
+      [...expandedHistoryRuns.value].filter((id) => id !== runId),
+    );
     return;
   }
   expandedHistoryRuns.value = new Set([...expandedHistoryRuns.value, runId]);
@@ -250,8 +272,14 @@ async function toggleHistoryRun(runId: string) {
   const docId = unwrapOutputValue(detail.output?.["documentId"]);
   if (docId) {
     const doc = await api.document.get(props.spaceId, docId);
-    historyRunDocHrefs.value = new Map([...historyRunDocHrefs.value, [runId, `/${props.spaceSlug}/doc/${doc.slug}`]]);
-    historyRunDocTitles.value = new Map([...historyRunDocTitles.value, [runId, (doc as any).properties?.title || doc.slug]]);
+    historyRunDocHrefs.value = new Map([
+      ...historyRunDocHrefs.value,
+      [runId, `/${props.spaceSlug}/doc/${doc.slug}`],
+    ]);
+    historyRunDocTitles.value = new Map([
+      ...historyRunDocTitles.value,
+      [runId, (doc as any).properties?.title || doc.slug],
+    ]);
   }
 }
 
@@ -284,7 +312,8 @@ async function downloadDocument(href: string, title: string) {
 }
 
 const runFailureError = computed<{ nodeId: string; error: string } | null>(() => {
-  if (!selectedRunDetail.value || selectedRunDetail.value.status !== "failed") return null;
+  if (!selectedRunDetail.value || selectedRunDetail.value.status !== "failed")
+    return null;
   for (const [nodeId, node] of Object.entries(selectedRunDetail.value.nodes)) {
     if (node.status === "failed" && node.error) return { nodeId, error: node.error };
   }
@@ -294,23 +323,27 @@ const runFailureError = computed<{ nodeId: string; error: string } | null>(() =>
 // All node logs for the expand section
 const allLogs = computed(() => {
   if (!selectedRunDetail.value) return [];
-  return Object.entries(selectedRunDetail.value.nodes)
-    .flatMap(([nodeId, node]) => [
-      ...(node.logs ?? []).map((line) => ({ nodeId, line, isError: false })),
-      ...(node.error ? [{ nodeId, line: node.error, isError: true }] : []),
-    ]);
+  return Object.entries(selectedRunDetail.value.nodes).flatMap(([nodeId, node]) => [
+    ...(node.logs ?? []).map((line) => ({ nodeId, line, isError: false })),
+    ...(node.error ? [{ nodeId, line: node.error, isError: true }] : []),
+  ]);
 });
 
-
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 const statusBadgeClass: Record<string, string> = {
-  pending:   "bg-neutral-100 text-neutral-500",
-  running:   "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400",
-  completed: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400",
-  failed:    "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400",
+  pending: "bg-neutral-100 text-neutral-500",
+  running: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400",
+  completed:
+    "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400",
+  failed: "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400",
   cancelled: "bg-neutral-100 text-neutral-400",
 };
 </script>

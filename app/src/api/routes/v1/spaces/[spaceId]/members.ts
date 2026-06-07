@@ -1,19 +1,19 @@
 import type { APIRoute } from "astro";
 import { inArray } from "drizzle-orm";
 import {
+  getSpaceMembersWithGroups,
+  getUserGroups,
+  hasPermission,
+  listPermissions,
+  ResourceType,
+} from "#db/acl.ts";
+import {
   jsonResponse,
   requireParam,
   requireUser,
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  getUserGroups,
-  hasPermission,
-  listPermissions,
-  ResourceType,
-  getSpaceMembersWithGroups,
-} from "#db/acl.ts";
 import { getAuthDb } from "#db/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { getSpace } from "#db/spaces.ts";

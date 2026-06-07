@@ -9,16 +9,16 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { getSpaceDb } from "#db/db.ts";
 import {
-  getWebhook,
-  updateWebhook,
   deleteWebhook,
+  getWebhook,
+  SsrfError,
   toWebhookDto,
+  updateWebhook,
   validateWebhookEventsInput,
   validateWebhookUrl,
-  SsrfError,
 } from "#db/webhooks.ts";
-import { getSpaceDb } from "#db/db.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

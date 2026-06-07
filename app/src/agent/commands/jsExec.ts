@@ -1,10 +1,11 @@
 import RELEASE_SYNC from "@jitl/quickjs-wasmfile-release-sync";
+// @ts-expect-error -- Bun bundles .wasm imports as assets in --compile binaries
+import wasmPath from "@jitl/quickjs-wasmfile-release-sync/wasm";
 import { decodeBytesToUtf8, defineCommand } from "just-bash";
 import { newQuickJSWASMModuleFromVariant, newVariant } from "quickjs-emscripten";
-// @ts-ignore -- Bun bundles .wasm imports as assets in --compile binaries
-import wasmPath from "@jitl/quickjs-wasmfile-release-sync/wasm";
 
-let quickJSModulePromise: ReturnType<typeof newQuickJSWASMModuleFromVariant> | null = null;
+let quickJSModulePromise: ReturnType<typeof newQuickJSWASMModuleFromVariant> | null =
+  null;
 function getQuickJSModule() {
   if (!quickJSModulePromise) {
     const variant = newVariant(RELEASE_SYNC, { wasmLocation: wasmPath });
@@ -23,7 +24,7 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
     "  --strip-types      Strip TypeScript types before execution\n" +
     "\n" +
     "Examples:\n" +
-    "  js-exec -c \"console.log(1 + 2)\"\n" +
+    '  js-exec -c "console.log(1 + 2)"\n' +
     "  js-exec script.js\n";
 
   let code: string | null = null;
@@ -44,7 +45,11 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
     }
     if (arg === "-c" || arg === "--code") {
       if (i + 1 >= args.length) {
-        return { stdout: "", stderr: "js-exec: option requires an argument -- 'c'\n", exitCode: 2 };
+        return {
+          stdout: "",
+          stderr: "js-exec: option requires an argument -- 'c'\n",
+          exitCode: 2,
+        };
       }
       code = args[++i]!;
       scriptPath = "-c";
@@ -58,13 +63,21 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
       return { stdout: usage, stderr: "", exitCode: 0 };
     }
     if (arg.startsWith("-") && arg !== "-" && arg !== "--") {
-      return { stdout: "", stderr: `js-exec: unrecognized option '${arg}'\n`, exitCode: 2 };
+      return {
+        stdout: "",
+        stderr: `js-exec: unrecognized option '${arg}'\n`,
+        exitCode: 2,
+      };
     }
     if (arg === "--") {
       if (i + 1 < args.length) {
         const filePath = ctx.fs.resolvePath(ctx.cwd, args[i + 1]!);
         if (!(await ctx.fs.exists(filePath))) {
-          return { stdout: "", stderr: `js-exec: can't open file '${args[i + 1]}': No such file or directory\n`, exitCode: 2 };
+          return {
+            stdout: "",
+            stderr: `js-exec: can't open file '${args[i + 1]}': No such file or directory\n`,
+            exitCode: 2,
+          };
         }
         code = await ctx.fs.readFile(filePath, "utf8");
         scriptPath = args[i + 1]!;
@@ -75,7 +88,11 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
     if (!arg.startsWith("-")) {
       const filePath = ctx.fs.resolvePath(ctx.cwd, arg);
       if (!(await ctx.fs.exists(filePath))) {
-        return { stdout: "", stderr: `js-exec: can't open file '${arg}': No such file or directory\n`, exitCode: 2 };
+        return {
+          stdout: "",
+          stderr: `js-exec: can't open file '${arg}': No such file or directory\n`,
+          exitCode: 2,
+        };
       }
       code = await ctx.fs.readFile(filePath, "utf8");
       scriptPath = arg;
@@ -90,12 +107,20 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
       code = stdinText;
       scriptPath = "<stdin>";
     } else {
-      return { stdout: "", stderr: "js-exec: no input provided (use -c CODE or provide a script file)\n", exitCode: 2 };
+      return {
+        stdout: "",
+        stderr: "js-exec: no input provided (use -c CODE or provide a script file)\n",
+        exitCode: 2,
+      };
     }
   }
 
   // Auto-detect module mode and TypeScript
-  if (scriptPath.endsWith(".mjs") || scriptPath.endsWith(".mts") || scriptPath.endsWith(".ts")) {
+  if (
+    scriptPath.endsWith(".mjs") ||
+    scriptPath.endsWith(".mts") ||
+    scriptPath.endsWith(".ts")
+  ) {
     isModule = true;
   }
   if (scriptPath.endsWith(".ts") || scriptPath.endsWith(".mts")) {
@@ -108,10 +133,20 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
   // Strip TypeScript types if needed
   if (stripTypes) {
     try {
-      const transpiler = new (Bun as unknown as { Transpiler: new (opts: { loader: string }) => { transformSync: (code: string) => string } }).Transpiler({ loader: "ts" });
+      const transpiler = new (
+        Bun as unknown as {
+          Transpiler: new (opts: {
+            loader: string;
+          }) => { transformSync: (code: string) => string };
+        }
+      ).Transpiler({ loader: "ts" });
       code = transpiler.transformSync(code);
     } catch (e) {
-      return { stdout: "", stderr: `js-exec: TypeScript transpilation failed: ${e instanceof Error ? e.message : String(e)}\n`, exitCode: 1 };
+      return {
+        stdout: "",
+        stderr: `js-exec: TypeScript transpilation failed: ${e instanceof Error ? e.message : String(e)}\n`,
+        exitCode: 1,
+      };
     }
   }
 
@@ -128,15 +163,18 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
 
     // Helper to create a console method
     const makeConsoleMethod = (sink: "stdout" | "stderr") => {
-      return context.newFunction(`console.${sink === "stdout" ? "log" : "error"}`, (...handles) => {
-        for (const h of handles) {
-          if (sink === "stdout") stdout += context.getString(h);
-          else stderr += context.getString(h);
-        }
-        if (sink === "stdout") stdout += "\n";
-        else stderr += "\n";
-        return context.undefined;
-      });
+      return context.newFunction(
+        `console.${sink === "stdout" ? "log" : "error"}`,
+        (...handles) => {
+          for (const h of handles) {
+            if (sink === "stdout") stdout += context.getString(h);
+            else stderr += context.getString(h);
+          }
+          if (sink === "stdout") stdout += "\n";
+          else stderr += "\n";
+          return context.undefined;
+        },
+      );
     };
 
     const consoleObj = context.newObject();
@@ -162,7 +200,9 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
       handle.dispose();
     }
     context.setProp(processObj, "argv", processArgv);
-    const processCwd = context.newFunction("process.cwd", () => context.newString(ctx.cwd));
+    const processCwd = context.newFunction("process.cwd", () =>
+      context.newString(ctx.cwd),
+    );
     context.setProp(processObj, "cwd", processCwd);
     const processEnv = context.newObject();
     for (const [key, value] of ctx.env) {

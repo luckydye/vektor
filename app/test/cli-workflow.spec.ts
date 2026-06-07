@@ -5,15 +5,23 @@ describe("workflow cli", () => {
   it("parses document id and flags", () => {
     const options = parseArgs([
       "abc123",
-      "--input", "file=https://example.com/data.xlsx",
-      "--input", "title=My Run",
+      "--input",
+      "file=https://example.com/data.xlsx",
+      "--input",
+      "title=My Run",
       "--json",
-      "--url", "http://localhost:3000",
-      "--space", "my-space",
-      "--token", "tok123",
+      "--url",
+      "http://localhost:3000",
+      "--space",
+      "my-space",
+      "--token",
+      "tok123",
     ]);
     expect(options.documentId).toBe("abc123");
-    expect(options.inputs).toEqual({ file: "https://example.com/data.xlsx", title: "My Run" });
+    expect(options.inputs).toEqual({
+      file: "https://example.com/data.xlsx",
+      title: "My Run",
+    });
     expect(options.json).toBe(true);
     expect(options.url).toBe("http://localhost:3000");
     expect(options.spaceId).toBe("my-space");

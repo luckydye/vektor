@@ -5,48 +5,10 @@
     "clientKind": "git",
     "useIgnoreFile": true
   },
-  "assist": {
-    "actions": {
-      "source": {
-        "organizeImports": "off"
-      }
-    }
-  },
   "linter": {
     "rules": {
-      "correctness": {
-        "useImportExtensions": {
-          "fix": "safe",
-          "level": "warn"
-        },
-        "useExhaustiveDependencies": "warn"
-      },
       "style": {
-        "noDefaultExport": "warn",
-        "useExponentiationOperator": "warn"
-      },
-      "complexity": {
-        "noStaticOnlyClass": "warn",
-        "noForEach": "warn"
-      },
-      "a11y": {
-        "useGenericFontNames": "warn",
-        "useKeyWithClickEvents": "off"
-      },
-      "suspicious": {
-        "noArrayIndexKey": "off",
-        "noExplicitAny": "warn",
-        "noConsole": {
-          "level": "error",
-          "options": {
-            "allow": [
-              "debug",
-              "warn",
-              "error",
-              "info"
-            ]
-          }
-        }
+        "noDefaultExport": "error"
       },
       "nursery": {
         "useSortedClasses": {
@@ -74,36 +36,6 @@
     "indentStyle": "space",
     "formatWithErrors": true,
     "lineEnding": "lf"
-  },
-  "javascript": {
-    "formatter": {
-      "quoteStyle": "double",
-      "semicolons": "always",
-      "trailingCommas": "all",
-      "quoteProperties": "asNeeded",
-      "jsxQuoteStyle": "double"
-    }
-  },
-  "css": {
-    "formatter": {
-      "enabled": true,
-      "lineWidth": 90,
-      "quoteStyle": "double",
-      "indentStyle": "space",
-      "indentWidth": 2
-    },
-    "parser": {
-      "cssModules": true,
-      "tailwindDirectives": true
-    },
-    "linter": {
-      "enabled": true
-    }
-  },
-  "html": {
-    "formatter": {
-      "enabled": true
-    }
   },
   "json": {
     "parser": {

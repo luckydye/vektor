@@ -1,17 +1,17 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from "vue";
+import { twMerge } from "tailwind-merge";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import {
+  boltIcon,
+  chevronRightThinIcon,
+  documentIcon,
+  searchMagnifierIcon,
+} from "~/src/assets/icons.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { Actions } from "../utils/actions.ts";
 import { history } from "../utils/history.ts";
 import { formatRelativeTime } from "../utils/utils.ts";
-import { twMerge } from "tailwind-merge";
-import {
-  searchMagnifierIcon,
-  documentIcon,
-  boltIcon,
-  chevronRightThinIcon,
-} from "~/src/assets/icons.ts";
 
 const { documents } = useDocuments();
 const { spaceSlug } = useRoute();

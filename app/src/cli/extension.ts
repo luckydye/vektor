@@ -52,9 +52,7 @@ function createManifest(id: string, name: string): string {
       version: "1.0.0",
       description: `${name} extension`,
       entries: { frontend: "dist/main.js", view: "dist/view.js" },
-      routes: [
-        { path: id, title: name, menuItem: { title: name } },
-      ],
+      routes: [{ path: id, title: name, menuItem: { title: name } }],
     },
     null,
     2,
@@ -103,8 +101,14 @@ export function commandCreate(extensionId: string): void {
   }
 
   mkdirSync(join(extensionDir, "src"), { recursive: true });
-  writeFileSync(join(extensionDir, "manifest.json"), createManifest(extensionId, extensionName));
-  writeFileSync(join(extensionDir, "src", "view.ts"), createViewTs(extensionId, extensionName));
+  writeFileSync(
+    join(extensionDir, "manifest.json"),
+    createManifest(extensionId, extensionName),
+  );
+  writeFileSync(
+    join(extensionDir, "src", "view.ts"),
+    createViewTs(extensionId, extensionName),
+  );
   writeFileSync(join(extensionDir, "package.json"), createPackageJson(extensionId));
 
   console.log(`Created ${extensionDir}`);
@@ -162,7 +166,8 @@ export async function commandPackage(extensionId: string | undefined): Promise<v
       entry === "node_modules" ||
       entry === `${id}.zip` ||
       entry.startsWith(".")
-    ) continue;
+    )
+      continue;
     if (statSync(fullPath).isFile()) {
       zipEntries.push({ name: entry, data: readFileSync(fullPath) });
     }
@@ -182,7 +187,9 @@ export async function commandUpload(
   const zipPath = join(extensionDir, `${id}.zip`);
 
   if (!existsSync(zipPath)) {
-    throw new Error(`Package not found at ${zipPath} — run 'extension package ${id}' first`);
+    throw new Error(
+      `Package not found at ${zipPath} — run 'extension package ${id}' first`,
+    );
   }
 
   const url = `${wikiUrl.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/extensions`;
@@ -201,7 +208,9 @@ export async function commandUpload(
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`Upload failed: ${response.status} ${response.statusText}${body ? `\n${body}` : ""}`);
+    throw new Error(
+      `Upload failed: ${response.status} ${response.statusText}${body ? `\n${body}` : ""}`,
+    );
   }
 
   const result = (await response.json()) as { id: string; name: string; version: string };

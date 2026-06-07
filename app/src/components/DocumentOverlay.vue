@@ -19,17 +19,17 @@
  *     window.viewDocument?.(spaceId, docId);
  *   });
  */
-import { ref, onMounted, onUnmounted, watch, nextTick, computed, watchEffect } from "vue";
-import { api } from "../api/client.ts";
-import docStyles from "../styles/document.css?inline";
-import { useComments } from "../composeables/useComments.ts";
-import type { Comment } from "../api/ApiClient.ts";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
 import {
-  documentIcon,
   closeXIcon,
-  warningTriangleIcon,
   commentIcon,
+  documentIcon,
+  warningTriangleIcon,
 } from "~/src/assets/icons.ts";
+import type { Comment } from "../api/ApiClient.ts";
+import { api } from "../api/client.ts";
+import { useComments } from "../composeables/useComments.ts";
+import docStyles from "../styles/document.css?inline";
 
 interface OverlayState {
   documentId: string;

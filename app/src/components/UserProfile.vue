@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import "@sv/elements/popover";
 import { onMounted, ref } from "vue";
+import { cogIcon, mailIcon, signOutIcon } from "~/src/assets/icons.ts";
 import { authClient } from "../composeables/auth-client.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { cogIcon, mailIcon, signOutIcon } from "~/src/assets/icons.ts";
 import Avatar from "./Avatar.vue";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 

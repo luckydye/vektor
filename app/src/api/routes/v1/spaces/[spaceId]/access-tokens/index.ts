@@ -1,22 +1,22 @@
 import type { APIRoute } from "astro";
 import {
-  badRequestResponse,
-  createdResponse,
-  jsonResponse,
-  parseJsonBody,
-  requireParam,
-  requireUser,
-  verifySpaceRole,
-  verifyCanGrantTokenAccess,
-  withApiErrorHandling,
-} from "#db/api.ts";
-import {
   createAccessToken,
   grantTokenAccess,
   listAccessTokens,
   listTokenResources,
 } from "#db/accessTokens.ts";
 import { ResourceType, type ResourceType as ResourceTypeValue } from "#db/acl.ts";
+import {
+  badRequestResponse,
+  createdResponse,
+  jsonResponse,
+  parseJsonBody,
+  requireParam,
+  requireUser,
+  verifyCanGrantTokenAccess,
+  verifySpaceRole,
+  withApiErrorHandling,
+} from "#db/api.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens

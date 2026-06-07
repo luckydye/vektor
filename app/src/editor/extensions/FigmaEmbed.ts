@@ -21,12 +21,12 @@
 //
 // Note: Relies on the <figma-embed> custom element defined in utils/elements.ts
 
-import { mergeAttributes, Node } from "@tiptap/core";
 import type { CommandProps } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { mergeAttributes, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { ResizableNodeView, createResizableAttributes } from "./resizable.ts";
+import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {

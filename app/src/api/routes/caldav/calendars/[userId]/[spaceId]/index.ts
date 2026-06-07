@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { getUserGroups } from "#db/acl.ts";
 import {
   documentToICal,
   optionsPreflight,
@@ -6,7 +7,6 @@ import {
   xmlResponse,
 } from "#db/caldav.ts";
 import { listDocuments } from "#db/documents.ts";
-import { getUserGroups } from "#db/acl.ts";
 
 /**
  * CalDAV calendar endpoint for a specific space.

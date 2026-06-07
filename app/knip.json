@@ -12,8 +12,21 @@
     "test/**/*.spec.ts",
     "src/**/*.test.ts"
   ],
-  "project": ["src/**", "test/**", "*.ts", "public/sw.js"],
-  "ignore": ["dist/**", "generated/**", "examples/**", "data/**"],
+  "project": [
+    "src/**",
+    "test/**",
+    "*.ts",
+    "public/sw.js"
+  ],
+  "ignore": [
+    "dist/**",
+    "generated/**",
+    "examples/**",
+    "data/**"
+  ],
   "ignoreExportsUsedInFile": true,
-  "exclude": ["types", "enumMembers"]
+  "exclude": [
+    "types",
+    "enumMembers"
+  ]
 }

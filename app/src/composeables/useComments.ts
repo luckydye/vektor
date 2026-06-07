@@ -1,13 +1,13 @@
-import { computed, ref, type Ref } from "vue";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { api } from "../api/client.ts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { computed, type Ref, ref } from "vue";
 import type { Comment } from "../api/ApiClient.ts";
-import { useSync } from "./useSync.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { api } from "../api/client.ts";
 import {
   isPositionReference,
   resolveReferenceSelector,
 } from "../utils/commentReference.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
+import { useSync } from "./useSync.ts";
 
 export function useComments(options: {
   spaceId: Ref<string | undefined>;

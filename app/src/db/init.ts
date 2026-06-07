@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
 import { sql } from "drizzle-orm";
-import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
 
 import * as authSchema from "./schema/auth.ts";
 import * as spaceSchema from "./schema/space.ts";
@@ -9,10 +9,7 @@ import { generateCreateTableSQL } from "./schemaUtils.ts";
 
 const DATA_DIR = "./data";
 
-export async function getExistingColumnNames(
-  db: BunSQLiteDatabase,
-  tableName: string,
-) {
+export async function getExistingColumnNames(db: BunSQLiteDatabase, tableName: string) {
   const rows = await db.all<{ name: string }>(
     sql.raw(`SELECT name FROM pragma_table_info('${tableName}')`),
   );

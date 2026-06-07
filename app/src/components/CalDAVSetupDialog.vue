@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onUnmounted, computed } from "vue";
-import { Actions } from "../utils/actions.ts";
-import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { ButtonSecondary } from "~/src/components/index.ts";
+import { computed, onUnmounted, ref } from "vue";
 import { closeIcon } from "~/src/assets/icons.ts";
+import { ButtonSecondary } from "~/src/components/index.ts";
+import { useUserProfile } from "../composeables/useUserProfile.ts";
+import { Actions } from "../utils/actions.ts";
 
 const show = ref(false);
 const user = useUserProfile();

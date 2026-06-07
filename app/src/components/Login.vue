@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { config } from "#config";
 import {
   ButtonPrimary,
   ButtonSecondary,
-  Input,
   FormField,
+  Input,
 } from "~/src/components/index.ts";
 import { authClient } from "../composeables/auth-client.ts";
-import { config } from "#config";
 
 const conf = config();
 const showPasswordLogin = conf.AUTH_LOGIN !== "false";
@@ -24,7 +24,7 @@ async function onOAuthLogin() {
   if (!conf.OAUTH_PROVIDER_ID) {
     throw new Error("OAUTH_PROVIDER_ID is not configured");
   }
-  
+
   await authClient.signIn.oauth2({
     providerId: conf.OAUTH_PROVIDER_ID,
     callbackURL: "/",

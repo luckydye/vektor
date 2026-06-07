@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import type { LinkMetadata } from "../api/routes/v1/url-metadata.ts";
+import { onMounted, onUnmounted, ref } from "vue";
 import { documentIcon } from "~/src/assets/icons.ts";
+import type { LinkMetadata } from "../api/routes/v1/url-metadata.ts";
 
 const activePreview = ref<{
   url: string;

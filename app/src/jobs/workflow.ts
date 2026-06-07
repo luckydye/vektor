@@ -1,6 +1,5 @@
 import { getExtension, getExtensionPackage } from "../db/extensions.ts";
 import { otelMetrics, withSpan } from "../observability/otel.ts";
-import { runJob } from "./scheduler.ts";
 import {
   appendNodeLog,
   finalizeRun,
@@ -10,6 +9,7 @@ import {
   setRunStatus,
 } from "./runStore.ts";
 import { resolveJobSandbox } from "./sandbox.ts";
+import { runJob } from "./scheduler.ts";
 
 export type WorkflowInput = { key: string; value: unknown };
 
@@ -23,7 +23,6 @@ export type WorkflowDefinition = Record<
     disabled?: boolean;
   }
 >;
-
 
 const meter = otelMetrics.getMeter("wiki.workflows");
 const workflowRunsCounter = meter.createCounter("wiki_workflow_runs_total");
@@ -123,141 +122,143 @@ export async function executeWorkflow(
       const sandbox = await resolveJobSandbox();
 
       try {
-      for (const nodeId of order) {
-        if (controller.signal.aborted) break;
-        const nodeDef = definition[nodeId];
-        const nodeStartedAt = Date.now();
+        for (const nodeId of order) {
+          if (controller.signal.aborted) break;
+          const nodeDef = definition[nodeId];
+          const nodeStartedAt = Date.now();
 
-        if (nodeDef.disabled) {
-          setNodeStatus(runId, nodeId, { status: "skipped", completedAt: new Date() });
-          nodeOutputs.set(nodeId, {});
-          workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
-            extension_id: nodeDef.extensionId,
-            job_id: nodeDef.jobId,
-            status: "skipped",
-          });
-          continue;
-        }
+          if (nodeDef.disabled) {
+            setNodeStatus(runId, nodeId, { status: "skipped", completedAt: new Date() });
+            nodeOutputs.set(nodeId, {});
+            workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
+              extension_id: nodeDef.extensionId,
+              job_id: nodeDef.jobId,
+              status: "skipped",
+            });
+            continue;
+          }
 
-        const seeded = preSeeded?.get(nodeId);
-        if (seeded) {
-          nodeOutputs.set(nodeId, seeded);
+          const seeded = preSeeded?.get(nodeId);
+          if (seeded) {
+            nodeOutputs.set(nodeId, seeded);
+            setNodeStatus(runId, nodeId, {
+              status: "completed",
+              outputs: seeded,
+              completedAt: new Date(),
+            });
+            workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
+              extension_id: nodeDef.extensionId,
+              job_id: nodeDef.jobId,
+              status: "seeded",
+            });
+            continue;
+          }
+
+          // Build resolved inputs:
+          // 1. Node-configured inputs (static defaults from workflow builder, lowest priority)
+          // 2. Runtime inputs from caller (e.g. form submissions — override node config)
+          // 3. Dependency outputs (actual computed values, highest priority)
+          // JobOutputValue typed objects are unwrapped to their raw scalar before passing to the next job.
+          const resolvedInputs: Record<string, unknown> = {};
+          for (const { key, value } of nodeDef.inputs) {
+            if (value !== "") resolvedInputs[key] = value;
+          }
+          Object.assign(resolvedInputs, options?.runtimeInputs ?? {});
+          for (const depId of nodeDef.depends) {
+            for (const [key, val] of Object.entries(nodeOutputs.get(depId) ?? {})) {
+              const typed = val as { type?: string; url?: string; value?: unknown };
+              if (typed.type === "file") resolvedInputs[key] = typed.url;
+              else if (typed.type === "text") resolvedInputs[key] = typed.value;
+              else resolvedInputs[key] = val;
+            }
+          }
+
           setNodeStatus(runId, nodeId, {
-            status: "completed",
-            outputs: seeded,
-            completedAt: new Date(),
+            status: "running",
+            inputs: resolvedInputs,
+            startedAt: new Date(),
           });
-          workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
-            extension_id: nodeDef.extensionId,
-            job_id: nodeDef.jobId,
-            status: "seeded",
-          });
-          continue;
-        }
 
-        // Build resolved inputs:
-        // 1. Node-configured inputs (static defaults from workflow builder, lowest priority)
-        // 2. Runtime inputs from caller (e.g. form submissions — override node config)
-        // 3. Dependency outputs (actual computed values, highest priority)
-        // JobOutputValue typed objects are unwrapped to their raw scalar before passing to the next job.
-        const resolvedInputs: Record<string, unknown> = {};
-        for (const { key, value } of nodeDef.inputs) {
-          if (value !== "") resolvedInputs[key] = value;
-        }
-        Object.assign(resolvedInputs, options?.runtimeInputs ?? {});
-        for (const depId of nodeDef.depends) {
-          for (const [key, val] of Object.entries(nodeOutputs.get(depId) ?? {})) {
-            const typed = val as { type?: string; url?: string; value?: unknown };
-            if (typed.type === "file") resolvedInputs[key] = typed.url;
-            else if (typed.type === "text") resolvedInputs[key] = typed.value;
-            else resolvedInputs[key] = val;
+          try {
+            const outputs = await withSpan(
+              "wiki.workflow.node",
+              {
+                attributes: {
+                  "wiki.workflow.run_id": runId,
+                  "wiki.workflow.node_id": nodeId,
+                  "wiki.extension.id": nodeDef.extensionId,
+                  "wiki.job.id": nodeDef.jobId,
+                },
+              },
+              async () => {
+                const ext = await getExtension(spaceId, nodeDef.extensionId);
+                if (!ext) throw new Error(`Extension not found: ${nodeDef.extensionId}`);
+
+                const jobDef = ext.manifest.jobs?.find((j) => j.id === nodeDef.jobId);
+                if (!jobDef) {
+                  throw new Error(
+                    `Job "${nodeDef.jobId}" not found in extension "${nodeDef.extensionId}"`,
+                  );
+                }
+
+                const zipBuffer = await getExtensionPackage(spaceId, nodeDef.extensionId);
+                if (!zipBuffer)
+                  throw new Error(`Extension package not found: ${nodeDef.extensionId}`);
+
+                return await runJob(
+                  zipBuffer,
+                  jobDef.entry,
+                  resolvedInputs,
+                  spaceId,
+                  (message) => appendNodeLog(runId, nodeId, message),
+                  {
+                    signal: controller.signal,
+                    initiatedByUserId: run.initiatedByUserId,
+                    jobType: "workflow_node",
+                    jobId: nodeDef.jobId,
+                    trigger: "workflow",
+                    sandbox,
+                  },
+                );
+              },
+            );
+
+            nodeOutputs.set(nodeId, outputs);
+            setNodeStatus(runId, nodeId, {
+              status: "completed",
+              outputs,
+              completedAt: new Date(),
+            });
+            workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
+              extension_id: nodeDef.extensionId,
+              job_id: nodeDef.jobId,
+              status: "completed",
+            });
+          } catch (err) {
+            const error = err instanceof Error ? err.message : String(err);
+            setNodeStatus(runId, nodeId, {
+              status: "failed",
+              error,
+              completedAt: new Date(),
+            });
+            workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
+              extension_id: nodeDef.extensionId,
+              job_id: nodeDef.jobId,
+              status: "failed",
+            });
+            setRunStatus(runId, "failed");
+            finalizeRun(runId);
+            workflowRunsCounter.add(1, { status: "failed" });
+            workflowRunDurationMs.record(Date.now() - workflowStart, {
+              status: "failed",
+            });
+            return;
           }
         }
 
-        setNodeStatus(runId, nodeId, {
-          status: "running",
-          inputs: resolvedInputs,
-          startedAt: new Date(),
-        });
-
-        try {
-          const outputs = await withSpan(
-            "wiki.workflow.node",
-            {
-              attributes: {
-                "wiki.workflow.run_id": runId,
-                "wiki.workflow.node_id": nodeId,
-                "wiki.extension.id": nodeDef.extensionId,
-                "wiki.job.id": nodeDef.jobId,
-              },
-            },
-            async () => {
-              const ext = await getExtension(spaceId, nodeDef.extensionId);
-              if (!ext) throw new Error(`Extension not found: ${nodeDef.extensionId}`);
-
-              const jobDef = ext.manifest.jobs?.find((j) => j.id === nodeDef.jobId);
-              if (!jobDef) {
-                throw new Error(
-                  `Job "${nodeDef.jobId}" not found in extension "${nodeDef.extensionId}"`,
-                );
-              }
-
-              const zipBuffer = await getExtensionPackage(spaceId, nodeDef.extensionId);
-              if (!zipBuffer)
-                throw new Error(`Extension package not found: ${nodeDef.extensionId}`);
-
-              return await runJob(
-                zipBuffer,
-                jobDef.entry,
-                resolvedInputs,
-                spaceId,
-                (message) => appendNodeLog(runId, nodeId, message),
-                {
-                  signal: controller.signal,
-                  initiatedByUserId: run.initiatedByUserId,
-                  jobType: "workflow_node",
-                  jobId: nodeDef.jobId,
-                  trigger: "workflow",
-                  sandbox,
-                },
-              );
-            },
-          );
-
-          nodeOutputs.set(nodeId, outputs);
-          setNodeStatus(runId, nodeId, {
-            status: "completed",
-            outputs,
-            completedAt: new Date(),
-          });
-          workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
-            extension_id: nodeDef.extensionId,
-            job_id: nodeDef.jobId,
-            status: "completed",
-          });
-        } catch (err) {
-          const error = err instanceof Error ? err.message : String(err);
-          setNodeStatus(runId, nodeId, {
-            status: "failed",
-            error,
-            completedAt: new Date(),
-          });
-          workflowNodeDurationMs.record(Date.now() - nodeStartedAt, {
-            extension_id: nodeDef.extensionId,
-            job_id: nodeDef.jobId,
-            status: "failed",
-          });
-          setRunStatus(runId, "failed");
-          finalizeRun(runId);
-          workflowRunsCounter.add(1, { status: "failed" });
-          workflowRunDurationMs.record(Date.now() - workflowStart, { status: "failed" });
-          return;
-        }
-      }
-
-      finalizeRun(runId);
-      workflowRunsCounter.add(1, { status: run.status });
-      workflowRunDurationMs.record(Date.now() - workflowStart, { status: run.status });
+        finalizeRun(runId);
+        workflowRunsCounter.add(1, { status: run.status });
+        workflowRunDurationMs.record(Date.now() - workflowStart, { status: run.status });
       } finally {
         await sandbox?.destroy();
       }

@@ -1,15 +1,15 @@
-import { eq, and, isNull } from "drizzle-orm";
-import { getSpaceDb } from "./db.ts";
-import { createId } from "./ids.ts";
-import { accessToken } from "./schema/space.ts";
-import type { AccessToken, AccessTokenInsert } from "./schema/space.ts";
+import { createHash, randomBytes } from "node:crypto";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   grantPermission,
-  revokePermission,
   listUserPermissions,
   type ResourceType,
+  revokePermission,
 } from "./acl.ts";
-import { createHash, randomBytes } from "node:crypto";
+import { getSpaceDb } from "./db.ts";
+import { createId } from "./ids.ts";
+import type { AccessToken, AccessTokenInsert } from "./schema/space.ts";
+import { accessToken } from "./schema/space.ts";
 
 export interface CreateAccessTokenOptions {
   spaceId: string;

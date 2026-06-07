@@ -70,10 +70,7 @@ function resolveBrowserSocketHost(
  */
 export const api = new ApiClient({
   baseUrl: resolveBrowserBaseUrl(config().API_URL),
-  socketHost: resolveBrowserSocketHost(
-    config().COLLABORATION_HOST,
-    config().API_URL,
-  ),
+  socketHost: resolveBrowserSocketHost(config().COLLABORATION_HOST, config().API_URL),
 });
 
 // @ts-expect-error

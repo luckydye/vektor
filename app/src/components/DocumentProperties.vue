@@ -1,25 +1,25 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import {
+  calendarIcon,
+  layoutDocumentIcon,
+  layoutFullIcon,
+  peopleIcon,
+  plusIcon,
+  propertyIcon,
+} from "~/src/assets/icons.ts";
+import {
   ButtonIconSmall,
+  type Property,
   PropertyChip,
   PropertyPopover,
-  type Property,
 } from "~/src/components/index.ts";
-import {
-  plusIcon,
-  peopleIcon,
-  calendarIcon,
-  propertyIcon,
-  layoutFullIcon,
-  layoutDocumentIcon,
-} from "~/src/assets/icons.ts";
 
 import { useCategories } from "../composeables/useCategories.ts";
-import { getTextColor } from "../utils/utils.ts";
-import { useProperties } from "../composeables/useProperties.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useMembers } from "../composeables/useMembers.ts";
+import { useProperties } from "../composeables/useProperties.ts";
+import { getTextColor } from "../utils/utils.ts";
 
 const props = defineProps<{
   documentId?: string;

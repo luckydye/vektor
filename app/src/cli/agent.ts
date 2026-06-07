@@ -15,8 +15,8 @@
  */
 
 import { createInterface } from "node:readline";
-import type { ChatMessage, AgentEvent } from "../agent/core.ts";
-import { runAgentPrompt, getAIProvider } from "../agent/core.ts";
+import type { AgentEvent, ChatMessage } from "../agent/core.ts";
+import { getAIProvider, runAgentPrompt } from "../agent/core.ts";
 import { createJobToken } from "../jobs/jobToken.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 

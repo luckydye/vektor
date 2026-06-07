@@ -1,7 +1,5 @@
 export { makeBrushCursor } from "./brush-cursor";
 export { compositeArtboard, releaseTileSurface } from "./compositor";
-export type { DrawWorldGridOptions, WorldGridLevel } from "./grid";
-export { drawWorldGrid } from "./grid";
 export type {
   FreehandBezierSegment,
   FreehandPath,
@@ -21,6 +19,17 @@ export {
   filterFreehandPoints,
   simplifyFreehandPoints,
 } from "./freehand";
+export type { DrawWorldGridOptions, WorldGridLevel } from "./grid";
+export { drawWorldGrid } from "./grid";
+export type {
+  Anchor,
+  AnchorLayer,
+  AnchorOptions,
+  AnchorPlacement,
+  AnchorTarget,
+  UnitPoint,
+} from "./overlay-anchor";
+export { createAnchorLayer } from "./overlay-anchor";
 export type {
   DrawSnapGuideOptions,
   SnapGuide,
@@ -39,15 +48,6 @@ export {
   snapRectToGuides,
   worldViewportBounds,
 } from "./snap-guides";
-export type {
-  Anchor,
-  AnchorLayer,
-  AnchorOptions,
-  AnchorPlacement,
-  AnchorTarget,
-  UnitPoint,
-} from "./overlay-anchor";
-export { createAnchorLayer } from "./overlay-anchor";
 export type { ScreenSize, WorldTransform } from "./transform";
 export {
   buildTransform,
@@ -56,6 +56,14 @@ export {
   screenToWorld,
   worldToScreen,
 } from "./transform";
+export type {
+  Artboard,
+  ArtboardClip,
+  FitReference,
+  PlacedRect,
+  RenderedTile,
+  ViewportCamera,
+} from "./types";
 export type {
   PanCameraByScreenDeltaOptions,
   ViewportControls,
@@ -70,11 +78,3 @@ export {
 } from "./viewport-controls";
 export type { WorldOverlayLayer, WorldOverlayOptions } from "./world-overlay";
 export { createWorldOverlayLayer } from "./world-overlay";
-export type {
-  Artboard,
-  ArtboardClip,
-  FitReference,
-  PlacedRect,
-  RenderedTile,
-  ViewportCamera,
-} from "./types";

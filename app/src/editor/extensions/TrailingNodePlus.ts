@@ -1,7 +1,7 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { render, html } from "lit-html";
+import { html, render } from "lit-html";
 import { addIcon } from "~/src/assets/icons.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 

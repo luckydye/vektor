@@ -1,16 +1,13 @@
 import type { APIRoute } from "astro";
+import { getAIProvider, getOpenAICompatibleChatCompletionsUrl } from "#agent/core.ts";
 import {
   errorResponse,
   parseJsonBody,
   unauthorizedResponse,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { appLogger } from "#observability/logger.ts";
 import { verifyJobToken } from "#jobs/jobToken.ts";
-import {
-  getAIProvider,
-  getOpenAICompatibleChatCompletionsUrl,
-} from "#agent/core.ts";
+import { appLogger } from "#observability/logger.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -27,10 +24,20 @@ export const POST: APIRoute = (context) =>
       const bodyJson = await parseJsonBody(context.request);
 
       if (provider.provider === "anthropic") {
-        return proxyToAnthropic(provider.apiKey, provider.model, bodyJson, context.request.signal);
+        return proxyToAnthropic(
+          provider.apiKey,
+          provider.model,
+          bodyJson,
+          context.request.signal,
+        );
       }
       if (provider.provider === "ollama") {
-        return proxyToOllama(provider.baseUrl, provider.model, bodyJson, context.request.signal);
+        return proxyToOllama(
+          provider.baseUrl,
+          provider.model,
+          bodyJson,
+          context.request.signal,
+        );
       }
 
       bodyJson.model = provider.model;
@@ -78,7 +85,10 @@ async function logChatCompletionUpstreamFailure(
   try {
     responseBody = await response.clone().text();
   } catch (error) {
-    responseBody = error instanceof Error ? `failed to read upstream body: ${error.message}` : "failed to read upstream body";
+    responseBody =
+      error instanceof Error
+        ? `failed to read upstream body: ${error.message}`
+        : "failed to read upstream body";
   }
 
   appLogger.error("Chat completions upstream error", {
@@ -90,7 +100,12 @@ async function logChatCompletionUpstreamFailure(
   });
 }
 
-type OpenAIMessage = { role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown[] };
+type OpenAIMessage = {
+  role: string;
+  content: string | null;
+  tool_call_id?: string;
+  tool_calls?: unknown[];
+};
 
 async function* parseNDJSONStream(
   body: ReadableStream<Uint8Array>,
@@ -124,10 +139,16 @@ async function* parseNDJSONStream(
   }
 }
 
-function toAnthropicRequestBody(model: string, body: Record<string, unknown>): Record<string, unknown> {
+function toAnthropicRequestBody(
+  model: string,
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   const messages = (body.messages as OpenAIMessage[] | undefined) ?? [];
   const systemParts: string[] = [];
-  const anthropicMessages: Array<{ role: "user" | "assistant"; content: string | unknown[] }> = [];
+  const anthropicMessages: Array<{
+    role: "user" | "assistant";
+    content: string | unknown[];
+  }> = [];
 
   let i = 0;
   while (i < messages.length) {
@@ -141,7 +162,11 @@ function toAnthropicRequestBody(model: string, body: Record<string, unknown>): R
       const toolResults: unknown[] = [];
       while (i < messages.length && messages[i]!.role === "tool") {
         const m = messages[i]!;
-        toolResults.push({ type: "tool_result", tool_use_id: m.tool_call_id, content: m.content ?? "" });
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: m.tool_call_id,
+          content: m.content ?? "",
+        });
         i++;
       }
       anthropicMessages.push({ role: "user", content: toolResults });
@@ -150,12 +175,23 @@ function toAnthropicRequestBody(model: string, body: Record<string, unknown>): R
     if (msg.role === "assistant") {
       const content: unknown[] = [];
       if (msg.content) content.push({ type: "text", text: msg.content });
-      for (const tc of (msg.tool_calls ?? []) as Array<{ id: string; function: { name: string; arguments: string } }>) {
+      for (const tc of (msg.tool_calls ?? []) as Array<{
+        id: string;
+        function: { name: string; arguments: string };
+      }>) {
         let input: unknown;
-        try { input = JSON.parse(tc.function.arguments || "{}"); } catch { input = {}; }
+        try {
+          input = JSON.parse(tc.function.arguments || "{}");
+        } catch {
+          input = {};
+        }
         content.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
       }
-      anthropicMessages.push({ role: "assistant", content: content.length === 1 && !msg.tool_calls?.length ? (msg.content ?? "") : content });
+      anthropicMessages.push({
+        role: "assistant",
+        content:
+          content.length === 1 && !msg.tool_calls?.length ? (msg.content ?? "") : content,
+      });
       i++;
       continue;
     }
@@ -163,7 +199,10 @@ function toAnthropicRequestBody(model: string, body: Record<string, unknown>): R
     i++;
   }
 
-  const tools = (body.tools as Array<{ function: { name: string; description?: string; parameters: unknown } }> | undefined) ?? [];
+  const tools =
+    (body.tools as
+      | Array<{ function: { name: string; description?: string; parameters: unknown } }>
+      | undefined) ?? [];
 
   const result: Record<string, unknown> = {
     model,
@@ -172,7 +211,12 @@ function toAnthropicRequestBody(model: string, body: Record<string, unknown>): R
     stream: body.stream ?? false,
   };
   if (systemParts.length) result.system = systemParts.join("\n\n");
-  if (tools.length) result.tools = tools.map(t => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters }));
+  if (tools.length)
+    result.tools = tools.map((t) => ({
+      name: t.function.name,
+      description: t.function.description,
+      input_schema: t.function.parameters,
+    }));
   return result;
 }
 
@@ -195,33 +239,51 @@ async function proxyToAnthropic(
   });
 
   if (!response.ok) {
-    return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+    return new Response(response.body, {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   if (!body.stream) {
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       id: string;
-      content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
+      content: Array<{
+        type: string;
+        text?: string;
+        id?: string;
+        name?: string;
+        input?: unknown;
+      }>;
       stop_reason: string;
     };
-    const textContent = data.content.filter(b => b.type === "text").map(b => b.text ?? "").join("");
+    const textContent = data.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join("");
     const toolCalls = data.content
-      .filter(b => b.type === "tool_use")
-      .map(b => ({ id: b.id, type: "function", function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } }));
+      .filter((b) => b.type === "tool_use")
+      .map((b) => ({
+        id: b.id,
+        type: "function",
+        function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) },
+      }));
     return Response.json({
       id: data.id,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model,
-      choices: [{
-        index: 0,
-        message: {
-          role: "assistant",
-          content: textContent || null,
-          ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: textContent || null,
+            ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+          },
+          finish_reason: data.stop_reason === "tool_use" ? "tool_calls" : "stop",
         },
-        finish_reason: data.stop_reason === "tool_use" ? "tool_calls" : "stop",
-      }],
+      ],
     });
   }
 
@@ -252,17 +314,45 @@ async function proxyToAnthropic(
             for (const line of part.split("\n")) {
               if (!line.startsWith("data: ")) continue;
               try {
-                const chunk = JSON.parse(line.slice(6)) as { type?: string; delta?: { type?: string; text?: string; stop_reason?: string } };
-                if (chunk.type === "content_block_delta" && chunk.delta?.type === "text_delta" && chunk.delta.text) {
-                  send({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content: chunk.delta.text }, finish_reason: null }] });
+                const chunk = JSON.parse(line.slice(6)) as {
+                  type?: string;
+                  delta?: { type?: string; text?: string; stop_reason?: string };
+                };
+                if (
+                  chunk.type === "content_block_delta" &&
+                  chunk.delta?.type === "text_delta" &&
+                  chunk.delta.text
+                ) {
+                  send({
+                    id,
+                    object: "chat.completion.chunk",
+                    created,
+                    model,
+                    choices: [
+                      {
+                        index: 0,
+                        delta: { content: chunk.delta.text },
+                        finish_reason: null,
+                      },
+                    ],
+                  });
                 } else if (chunk.type === "message_delta" && chunk.delta?.stop_reason) {
-                  finishReason = chunk.delta.stop_reason === "tool_use" ? "tool_calls" : "stop";
+                  finishReason =
+                    chunk.delta.stop_reason === "tool_use" ? "tool_calls" : "stop";
                 }
-              } catch { /* skip malformed */ }
+              } catch {
+                /* skip malformed */
+              }
             }
           }
         }
-        send({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: finishReason ?? "stop" }] });
+        send({
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [{ index: 0, delta: {}, finish_reason: finishReason ?? "stop" }],
+        });
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } finally {
         reader.releaseLock();
@@ -300,11 +390,14 @@ async function proxyToOllama(
   });
 
   if (!response.ok) {
-    return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+    return new Response(response.body, {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   if (!body.stream) {
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       message?: {
         content?: string;
         thinking?: string;
@@ -325,16 +418,21 @@ async function proxyToOllama(
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model,
-      choices: [{
-        index: 0,
-        message: {
-          role: "assistant",
-          content: data.message?.content ?? null,
-          ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: data.message?.content ?? null,
+            ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+          },
+          finish_reason:
+            toolCalls.length > 0 ? "tool_calls" : (data.done_reason ?? "stop"),
         },
-        finish_reason: toolCalls.length > 0 ? "tool_calls" : data.done_reason ?? "stop",
-      }],
-      acp: data.message?.thinking ? { event: { type: "thinking", text: data.message.thinking } } : undefined,
+      ],
+      acp: data.message?.thinking
+        ? { event: { type: "thinking", text: data.message.thinking } }
+        : undefined,
     });
   }
 
@@ -368,7 +466,9 @@ async function proxyToOllama(
               object: "chat.completion.chunk",
               created,
               model,
-              choices: [{ index: 0, delta: { content: message.content }, finish_reason: null }],
+              choices: [
+                { index: 0, delta: { content: message.content }, finish_reason: null },
+              ],
             });
           }
         }

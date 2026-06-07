@@ -15,9 +15,9 @@
 
 <script setup>
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useSpace } from "../composeables/useSpace.ts";
-import { api } from "../api/client.ts";
 import { starFilledIcon } from "~/src/assets/icons.ts";
+import { api } from "../api/client.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
 

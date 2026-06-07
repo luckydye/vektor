@@ -1,29 +1,28 @@
 import type { APIContext, APIRoute } from "astro";
+import { getLocalOrigin } from "#config";
+import { getTokenUserId } from "#db/accessTokens.ts";
 import {
+  authenticateWithToken,
   jsonResponse,
   requireParam,
   requireUser,
   unauthorizedResponse,
   verifySpaceRole,
   withApiErrorHandling,
-  authenticateWithToken,
 } from "#db/api.ts";
-import { getLocalOrigin } from "#config";
-import {
-  createJobToken,
-  parseJobToken,
-  verifyJobToken,
-} from "#jobs/jobToken.ts";
-import { getTokenUserId } from "#db/accessTokens.ts";
+import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
+import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
 import {
   createParseErrorResponse,
   handleMcpRequest,
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "#utils/vektorMcp.ts";
-import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
 
-async function resolveJobToken(context: APIContext, spaceId: string): Promise<{ jobToken: string; userId: string | null }> {
+async function resolveJobToken(
+  context: APIContext,
+  spaceId: string,
+): Promise<{ jobToken: string; userId: string | null }> {
   // 1. X-Job-Token header (internal calls from agent workers)
   const providedJobToken = context.request.headers.get("X-Job-Token");
   if (providedJobToken) {
@@ -42,7 +41,10 @@ async function resolveJobToken(context: APIContext, spaceId: string): Promise<{ 
   // 3. Session cookie
   const user = requireUser(context);
   await verifySpaceRole(spaceId, user.id, "viewer");
-  return { jobToken: createJobToken(spaceId, Date.now().toString(), user.id), userId: user.id };
+  return {
+    jobToken: createJobToken(spaceId, Date.now().toString(), user.id),
+    userId: user.id,
+  };
 }
 
 /** Verify caller has at least viewer access to the space. */
@@ -90,7 +92,9 @@ export const POST: APIRoute = (context) =>
 
     const { jobToken, userId } = await resolveJobToken(context, spaceId);
     const connectedProviders = userId
-      ? (await listOAuthIntegrationsForUser(spaceId, userId).catch(() => [])).map((i) => i.provider)
+      ? (await listOAuthIntegrationsForUser(spaceId, userId).catch(() => [])).map(
+          (i) => i.provider,
+        )
       : undefined;
 
     const response = await handleMcpRequest(

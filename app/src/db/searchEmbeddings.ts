@@ -54,9 +54,9 @@ function localEmbedding(text: string): number[] {
 
 async function remoteEmbedding(text: string): Promise<number[]> {
   const runtimeConfig = config();
-  const apiKey = runtimeConfig.SEARCH_EMBEDDINGS_API_KEY || runtimeConfig.OPENROUTER_API_KEY;
-  const model =
-    runtimeConfig.SEARCH_EMBEDDINGS_MODEL || "text-embedding-3-small";
+  const apiKey =
+    runtimeConfig.SEARCH_EMBEDDINGS_API_KEY || runtimeConfig.OPENROUTER_API_KEY;
+  const model = runtimeConfig.SEARCH_EMBEDDINGS_MODEL || "text-embedding-3-small";
   const baseUrl =
     runtimeConfig.SEARCH_EMBEDDINGS_BASE_URL || "https://openrouter.ai/api/v1";
 
@@ -188,10 +188,7 @@ export function scoreKeywordOverlap(query: string, text: string): number {
 }
 
 function escapeHtml(input: string): string {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+  return input.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 export function buildSearchSnippet(query: string, text: string): string {

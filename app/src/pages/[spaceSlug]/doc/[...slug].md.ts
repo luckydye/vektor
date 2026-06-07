@@ -1,4 +1,8 @@
 import type { APIRoute } from "astro";
+import * as html5parser from "html5parser";
+import { ResourceType } from "~/src/db/acl.ts";
+import { getTokenUserId } from "../../../db/accessTokens.ts";
+import { getUserGroups } from "../../../db/acl.ts";
 import {
   authenticateRequest,
   requireParam,
@@ -7,17 +11,13 @@ import {
   verifyDocumentRole,
   verifyTokenPermission,
 } from "../../../db/api.ts";
-import { getSpaceBySlug } from "../../../db/spaces.ts";
-import { getUserGroups } from "../../../db/acl.ts";
-import { getTokenUserId } from "../../../db/accessTokens.ts";
 import {
-  getDocumentBySlug,
-  getDocumentChildren,
   type AclViewer,
   type DocumentWithProperties,
+  getDocumentBySlug,
+  getDocumentChildren,
 } from "../../../db/documents.ts";
-import * as html5parser from "html5parser";
-import { ResourceType } from "~/src/db/acl.ts";
+import { getSpaceBySlug } from "../../../db/spaces.ts";
 
 type TagNode = html5parser.ITag;
 type TextNode = html5parser.IText;

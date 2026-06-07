@@ -1,18 +1,18 @@
 import type { APIRoute } from "astro";
 import {
+  Feature,
+  getPermission,
+  getUserGroups,
+  hasFeature,
+  ResourceType,
+} from "#db/acl.ts";
+import {
   jsonResponse,
   requireParam,
   requireUser,
   verifySpaceAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  Feature,
-  hasFeature,
-  getUserGroups,
-  getPermission,
-  ResourceType,
-} from "#db/acl.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

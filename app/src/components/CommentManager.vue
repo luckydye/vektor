@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, ref, watch, nextTick } from "vue";
-import CommentThread, { type Comment as CommentThreadType } from "./CommentThread.vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { plusSmallIcon } from "~/src/assets/icons.ts";
+import type { Comment as ApiComment } from "../api/ApiClient.ts";
+import { useComments } from "../composeables/useComments.ts";
 import CommentOverlays, {
   type Comment as CommentOverlaysType,
 } from "./CommentOverlays.vue";
-import { useComments } from "../composeables/useComments.ts";
-import type { Comment as ApiComment } from "../api/ApiClient.ts";
-import { plusSmallIcon } from "~/src/assets/icons.ts";
+import CommentThread, { type Comment as CommentThreadType } from "./CommentThread.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -125,7 +125,9 @@ function handleMouseMove(e: MouseEvent) {
 }
 
 function isNearCommentBubble(cursorX: number, cursorY: number) {
-  const bubbles = document.querySelectorAll<HTMLElement>("[data-comment-overlay-bubble='true']");
+  const bubbles = document.querySelectorAll<HTMLElement>(
+    "[data-comment-overlay-bubble='true']",
+  );
 
   return Array.from(bubbles).some((bubble) => {
     const rect = bubble.getBoundingClientRect();

@@ -257,7 +257,8 @@ describe("API Tests - Documents", () => {
       method: "POST",
       body: JSON.stringify({
         type: "workflow",
-        content: "{\"node1\":{\"extensionId\":\"test\",\"jobId\":\"noop\",\"inputs\":[],\"depends\":[]}}",
+        content:
+          '{"node1":{"extensionId":"test","jobId":"noop","inputs":[],"depends":[]}}',
         properties: {
           title: "Workflow Filter Test",
         },
@@ -276,9 +277,9 @@ describe("API Tests - Documents", () => {
     const data = await response.json();
     expect(Array.isArray(data.documents)).toBe(true);
     expect(data.documents.length).toBeGreaterThan(0);
-    expect(data.documents.some((doc: { id: string }) => doc.id === workflowDocumentId)).toBe(
-      true,
-    );
+    expect(
+      data.documents.some((doc: { id: string }) => doc.id === workflowDocumentId),
+    ).toBe(true);
     expect(data.documents.some((doc: { id: string }) => doc.id === testDocumentId)).toBe(
       false,
     );
@@ -617,7 +618,7 @@ describe("API Tests - Document Properties", () => {
         method: "PATCH",
         body: JSON.stringify({
           properties: {
-            "status": null,
+            status: null,
           },
         }),
       },
@@ -710,7 +711,7 @@ describe("API Tests - Document Properties", () => {
         method: "PATCH",
         body: JSON.stringify({
           properties: {
-            "testProperty": null,
+            testProperty: null,
           },
         }),
       },

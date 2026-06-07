@@ -585,7 +585,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { config } from "../config.ts";
 
 const tabs = [
@@ -600,15 +600,7 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 const activeTab = ref<TabId>("general");
-import { useSpace } from "../composeables/useSpace.ts";
-import {
-  api,
-  type WebhookEvent,
-  type Webhook,
-  type AccessToken,
-  type SpaceSecret,
-} from "../api/client.ts";
-import SpaceMembers from "./SpaceMembers.vue";
+
 import {
   closeXIcon,
   editOutlineIcon,
@@ -616,9 +608,18 @@ import {
   playCircleIcon,
   trashCanIcon,
 } from "~/src/assets/icons.ts";
+import {
+  type AccessToken,
+  api,
+  type SpaceSecret,
+  type Webhook,
+  type WebhookEvent,
+} from "../api/client.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import ArchivedDocuments from "./ArchivedDocuments.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
 import JobsSettings from "./JobsSettings.vue";
-import ArchivedDocuments from "./ArchivedDocuments.vue";
+import SpaceMembers from "./SpaceMembers.vue";
 
 const emit = defineEmits(["saved"]);
 
@@ -643,15 +644,19 @@ function mcpOrigin(): string {
 
 function mcpConfigWithToken(token: string): string {
   const id = currentSpace.value?.id ?? "";
-  return JSON.stringify({
-    "vektor": {
-      "type": "streamable-http",
-      "url": `${mcpOrigin()}/api/v1/spaces/${id}/mcp`,
-      "headers": {
-        "Authorization": `Bearer ${token}`
-      }
-    }
-  }, null, 2);
+  return JSON.stringify(
+    {
+      vektor: {
+        type: "streamable-http",
+        url: `${mcpOrigin()}/api/v1/spaces/${id}/mcp`,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    },
+    null,
+    2,
+  );
 }
 
 const mcpConfigJson = computed(() => mcpConfigWithToken("<your-access-token>"));
@@ -669,7 +674,9 @@ async function handleCopyMcpConfig() {
     await loadAccessTokens();
     await navigator.clipboard.writeText(mcpConfigWithToken(result.token));
     mcpConfigCopied.value = true;
-    setTimeout(() => { mcpConfigCopied.value = false; }, 3000);
+    setTimeout(() => {
+      mcpConfigCopied.value = false;
+    }, 3000);
   } catch (err) {
     tokenError.value = err instanceof Error ? err.message : "Failed to create token";
   } finally {

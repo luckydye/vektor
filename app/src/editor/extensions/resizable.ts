@@ -18,7 +18,7 @@
 //   }
 
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import type { NodeView, EditorView } from "@tiptap/pm/view";
+import type { EditorView, NodeView } from "@tiptap/pm/view";
 
 export interface ResizableAttrs {
   width?: number | null;

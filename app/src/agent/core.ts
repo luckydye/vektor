@@ -7,17 +7,17 @@ import {
   getConfiguredOpenRouterModel,
 } from "../config.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
-import { zipCommand, zipinfoCommand, unzipCommand } from "./commands/zip.ts";
-import { vektorCommand } from "./commands/vektor.ts";
-import { recipesCommand, getRecipe } from "./commands/recipes.ts";
-import { pandocCommand } from "./commands/pandoc.ts";
-import { uploadCommand } from "./commands/upload.ts";
 import { aiCommand } from "./commands/ai.ts";
-import { gitlabCommand } from "./commands/gitlab.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
+import { gitlabCommand } from "./commands/gitlab.ts";
 import { jsExecCommand } from "./commands/jsExec.ts";
+import { pandocCommand } from "./commands/pandoc.ts";
+import { getRecipe, recipesCommand } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
+import { uploadCommand } from "./commands/upload.ts";
+import { vektorCommand } from "./commands/vektor.ts";
+import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant" | "tool";

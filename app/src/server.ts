@@ -1,36 +1,33 @@
 import "./observability/bootstrap.ts";
-import express from "express";
-import { WebSocketServer, type WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
-import { appLogger } from "./observability/logger.ts";
-import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
-
+import type { dev } from "astro";
+import express from "express";
+import { type WebSocket, WebSocketServer } from "ws";
+import * as Y from "yjs";
+import { apiRouter } from "./api/server/router.ts";
 import { auth } from "./auth.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
-import { apiRouter } from "./api/server/router.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
 import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
+import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
+import { appLogger } from "./observability/logger.ts";
+import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
 import {
   isDocumentRealtimeTopic,
-  realtimeTopics,
   type PresenceEnvelope,
   type PresenceJoinPayload,
   type PresenceLeavePayload,
   type PresenceUpdatePayload,
+  realtimeTopics,
   WsMsgType,
-  wsEncode,
-  wsEncodeYjsUpdate,
   wsDecode,
   wsDecodeJson,
   wsDecodeYjsUpdate,
+  wsEncode,
+  wsEncodeYjsUpdate,
 } from "./utils/realtime.ts";
-
-import * as Y from "yjs";
-import { getRoom, loadYDoc, yRooms, type YRoom } from "./utils/yjsRooms.ts";
-
-import type { dev } from "astro";
-import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
-import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
+import { getRoom, loadYDoc, type YRoom, yRooms } from "./utils/yjsRooms.ts";
 
 function broadcastPresence(room: YRoom, sender: any, type: WsMsgType, payload: object) {
   const frame = wsEncode(type, payload);

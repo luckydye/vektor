@@ -1,18 +1,18 @@
-import type { APIContext } from "astro";
 import type { Attributes, Span } from "@opentelemetry/api";
+import type { APIContext } from "astro";
 import { appLogger } from "#observability/logger.ts";
-import {
-  hasPermission,
-  hasFeature,
-  getUserGroups,
-  ResourceType,
-  type Feature,
-} from "./acl.ts";
-import { getSpace } from "./spaces.ts";
-import { validateAccessToken, getTokenUserId } from "./accessTokens.ts";
-import type { ValidateTokenResult } from "./accessTokens.ts";
 import { withSpan } from "#observability/otel.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
+import type { ValidateTokenResult } from "./accessTokens.ts";
+import { getTokenUserId, validateAccessToken } from "./accessTokens.ts";
+import {
+  type Feature,
+  getUserGroups,
+  hasFeature,
+  hasPermission,
+  ResourceType,
+} from "./acl.ts";
+import { getSpace } from "./spaces.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
   const body = JSON.stringify(data);

@@ -8,13 +8,13 @@
 //   <file-attachment src="/api/v1/spaces/xxx/uploads/file.md" filename="readme.md"></file-attachment>
 
 import {
+  archiveBoxIcon,
   fileIcon,
   fileLinesIcon,
   fileSpreadsheetIcon,
   fileTextIcon,
-  presentationIcon,
-  archiveBoxIcon,
   imageIcon,
+  presentationIcon,
 } from "~/src/assets/icons.ts";
 
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];

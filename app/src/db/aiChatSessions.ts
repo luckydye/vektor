@@ -42,10 +42,7 @@ function toStoredAIChatSession(
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     messages: parseJsonArray(row.messages, "messages"),
-    conversationHistory: parseJsonArray(
-      row.conversationHistory,
-      "conversationHistory",
-    ),
+    conversationHistory: parseJsonArray(row.conversationHistory, "conversationHistory"),
     shellSnapshot: row.shellSnapshot ?? null,
   };
 }
@@ -73,9 +70,7 @@ export async function getAIChatSession(
   const [row] = await db
     .select()
     .from(aiChatSession)
-    .where(
-      and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)),
-    );
+    .where(and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)));
 
   return row ? toStoredAIChatSession(spaceId, row) : null;
 }
@@ -97,7 +92,7 @@ export async function upsertAIChatSession(
     conversationHistory: JSON.stringify(session.conversationHistory),
     shellSnapshot:
       session.shellSnapshot === undefined
-        ? existing?.shellSnapshot ?? null
+        ? (existing?.shellSnapshot ?? null)
         : session.shellSnapshot,
   };
 
@@ -105,9 +100,7 @@ export async function upsertAIChatSession(
     const [updated] = await db
       .update(aiChatSession)
       .set(values)
-      .where(
-        and(eq(aiChatSession.id, session.id), eq(aiChatSession.createdBy, userId)),
-      )
+      .where(and(eq(aiChatSession.id, session.id), eq(aiChatSession.createdBy, userId)))
       .returning();
     if (!updated) {
       throw new Error("Failed to update AI chat session");
@@ -130,7 +123,5 @@ export async function deleteAIChatSession(
   const db = await getSpaceDb(spaceId);
   await db
     .delete(aiChatSession)
-    .where(
-      and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)),
-    );
+    .where(and(eq(aiChatSession.id, sessionId), eq(aiChatSession.createdBy, userId)));
 }

@@ -150,11 +150,7 @@ function formatNode(node: AnyNode, depth: number): string[] {
     return [`${indent}<${tag.name}${attrs}>${childLines[0].trim()}</${tag.name}>`];
   }
 
-  return [
-    `${indent}<${tag.name}${attrs}>`,
-    ...childLines,
-    `${indent}</${tag.name}>`,
-  ];
+  return [`${indent}<${tag.name}${attrs}>`, ...childLines, `${indent}</${tag.name}>`];
 }
 
 export function prettyPrintHtml(html: string): string {

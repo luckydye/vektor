@@ -1,4 +1,4 @@
-import { render, html } from "lit-html";
+import { html, render } from "lit-html";
 import * as ICON from "../../assets/icons.ts";
 
 const OS = navigator.platform;

@@ -13,9 +13,9 @@ import {
 } from "#db/api.ts";
 import {
   deleteSpaceSecret,
+  getSpaceSecretMetadata,
   getSpaceSecretValueForUser,
   hasSpaceSecret,
-  getSpaceSecretMetadata,
   sanitizeSecretName,
   upsertSpaceSecret,
 } from "#db/spaceSecrets.ts";

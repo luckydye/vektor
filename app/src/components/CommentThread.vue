@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from "vue";
-import Avatar from "./Avatar.vue";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import ButtonGhost from "./ButtonGhost.vue";
-import Icon from "./Icon.vue";
+import { nextTick, onMounted, ref, watch } from "vue";
+import { closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
 import { useMembers } from "../composeables/useMembers.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
+import Avatar from "./Avatar.vue";
+import ButtonGhost from "./ButtonGhost.vue";
+import ButtonPrimary from "./ButtonPrimary.vue";
+import Icon from "./Icon.vue";
 
 export interface Comment {
   id: string;

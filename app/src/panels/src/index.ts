@@ -19,15 +19,23 @@ host.open("color-picker", {
 // Demo buttons
 document.getElementById("toggle-inspector")?.addEventListener("click", () => {
   const s = host.getState().panels["inspector"];
-  if (!s || s.visibility !== "open") host.open("inspector", { preferredDock: "right-sidebar" });
+  if (!s || s.visibility !== "open")
+    host.open("inspector", { preferredDock: "right-sidebar" });
   else host.hide("inspector");
 });
-document.getElementById("float-tools")?.addEventListener("click", () =>
-  host.float("tools", { x: 80, y: 80, width: 240, height: 320 }),
-);
-document.getElementById("dock-tools")?.addEventListener("click", () => host.dock("tools", "left-sidebar"));
+document
+  .getElementById("float-tools")
+  ?.addEventListener("click", () =>
+    host.float("tools", { x: 80, y: 80, width: 240, height: 320 }),
+  );
+document
+  .getElementById("dock-tools")
+  ?.addEventListener("click", () => host.dock("tools", "left-sidebar"));
 document.getElementById("open-histogram")?.addEventListener("click", () =>
-  host.open("histogram", { title: "Histogram", placement: { x: 300, y: 200, width: 280, height: 180 } }),
+  host.open("histogram", {
+    title: "Histogram",
+    placement: { x: 300, y: 200, width: 280, height: 180 },
+  }),
 );
 const debugBox = document.getElementById("toggle-debug") as HTMLInputElement | null;
 debugBox?.addEventListener("change", () => host.setDebug(!!debugBox.checked));

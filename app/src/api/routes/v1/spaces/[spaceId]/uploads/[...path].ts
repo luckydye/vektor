@@ -1,16 +1,12 @@
-import type { APIRoute } from "astro";
-import { stat, unlink } from "node:fs/promises";
 import { createReadStream } from "node:fs";
-import { Readable } from "node:stream";
+import { stat, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
+import { Readable } from "node:stream";
+import type { APIRoute } from "astro";
 import { requireParam, withApiErrorHandling } from "#db/api.ts";
-import {
-  getUploadsRoot,
-  isSafeUploadPath,
-  isWithinUploadsRoot,
-} from "#utils/uploads.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
+import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#utils/uploads.ts";
 
 const MIME_TYPES: Record<string, string> = {
   // Images
@@ -106,7 +102,10 @@ export const GET: APIRoute = (context) =>
           : match?.[2]
             ? Math.max(0, fileSize - Number(match[2]))
             : Number.NaN;
-        const end = match?.[1] && match[2] ? Math.min(Number(match[2]), fileSize - 1) : fileSize - 1;
+        const end =
+          match?.[1] && match[2]
+            ? Math.min(Number(match[2]), fileSize - 1)
+            : fileSize - 1;
 
         if (!match || Number.isNaN(start) || start >= fileSize || start > end) {
           return new Response("Range not satisfiable", {

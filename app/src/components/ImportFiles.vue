@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { alertCircleIcon, uploadIcon } from "~/src/assets/icons.ts";
 import { useImport } from "../composeables/useImport.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
-import { uploadIcon, alertCircleIcon } from "~/src/assets/icons.ts";
 
 const show = ref(false);
 

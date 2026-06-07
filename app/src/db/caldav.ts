@@ -1,11 +1,11 @@
-import { eq } from "drizzle-orm";
 import type { APIContext } from "astro";
-import type { DocumentWithProperties } from "./documents.ts";
-import { getAuthDb } from "./db.ts";
-import { user } from "./schema/auth.ts";
-import { listUserSpaces } from "./spaces.ts";
+import { eq } from "drizzle-orm";
 import { validateAccessToken } from "./accessTokens.ts";
 import { verifySpaceAccess, verifySpaceRole } from "./api.ts";
+import { getAuthDb } from "./db.ts";
+import type { DocumentWithProperties } from "./documents.ts";
+import { user } from "./schema/auth.ts";
+import { listUserSpaces } from "./spaces.ts";
 
 export interface CalDAVUser {
   id: string;

@@ -1,36 +1,36 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRevisions } from "../composeables/useRevisions.ts";
 import { useAuditLogs } from "../composeables/useAuditLogs.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import { useRevisions } from "../composeables/useRevisions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
-import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
+import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import ActivityEvent from "./ActivityEvent.vue";
 import "@sv/elements/popover";
-import { useMembers } from "../composeables/useMembers.ts";
-import DockedPanel from "./DockedPanel.vue";
-import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import {
+  checkCircleOutlineIcon,
+  clipboardIcon,
+  clockIcon,
+  closeCircleIcon,
+  copyIcon,
   documentIcon,
-  eyeIcon,
-  publishIcon,
   documentTextIcon,
-  refreshIcon,
-  trashCanIcon,
+  dotsVerticalIcon,
+  editOutlineIcon,
+  eyeIcon,
+  infoIcon,
   lockIcon,
   plusSmallIcon,
-  unlockIcon,
-  editOutlineIcon,
-  closeCircleIcon,
-  checkCircleOutlineIcon,
-  infoIcon,
-  clockIcon,
+  publishIcon,
+  refreshIcon,
   timelineNowDotIcon,
-  dotsVerticalIcon,
-  clipboardIcon,
-  copyIcon,
+  trashCanIcon,
+  unlockIcon,
 } from "~/src/assets/icons.ts";
+import { useDockedWindows } from "../composeables/useDockedWindows.ts";
+import { useMembers } from "../composeables/useMembers.ts";
+import DockedPanel from "./DockedPanel.vue";
 
 const props = defineProps({
   documentId: {
@@ -86,14 +86,14 @@ const activityEvents = computed(() => {
         "Unknown user"
       : "Unknown user";
     const description = formatEventName(userName, item.event);
-    const revision = item.revisionId ? revisionsByNumber.value.get(item.revisionId) : null;
+    const revision = item.revisionId
+      ? revisionsByNumber.value.get(item.revisionId)
+      : null;
     const isSuggestion = revision?.status !== null;
 
     return {
       variant: (item.revisionId ? "default" : "no-action") as "default" | "no-action",
-      date: formatDate(
-        item.createdAt,
-      ),
+      date: formatDate(item.createdAt),
       description,
       revisionNumber: item.revisionId ?? undefined,
       id: item.id,
@@ -160,7 +160,11 @@ async function viewRevision(rev: number | undefined) {
     window.history.replaceState({}, "", url);
 
     const event = new CustomEvent("revision:view", {
-      detail: { revision: rev, content: revision.content, isSuggestion: revision.status !== null },
+      detail: {
+        revision: rev,
+        content: revision.content,
+        isSuggestion: revision.status !== null,
+      },
       bubbles: true,
       composed: true,
     });

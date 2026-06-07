@@ -1,16 +1,16 @@
-import { createPatch } from "diff";
 import type { APIRoute } from "astro";
+import { createPatch } from "diff";
+import { ResourceType } from "#db/acl.ts";
 import {
+  authenticateRequest,
   badRequestResponse,
   notFoundResponse,
   parseQueryInt,
   requireParam,
   verifyDocumentRole,
-  authenticateRequest,
   verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { ResourceType } from "#db/acl.ts";
 import { getDocument } from "#db/documents.ts";
 import {
   getPublishedContent,
@@ -75,7 +75,9 @@ export const GET: APIRoute = (context) =>
     }
 
     const compareBaseRev =
-      revisionMetadata.status !== null ? revisionMetadata.parentRev : document.publishedRev;
+      revisionMetadata.status !== null
+        ? revisionMetadata.parentRev
+        : document.publishedRev;
     if (!compareBaseRev) {
       throw badRequestResponse("Document has no comparable base revision");
     }
@@ -86,10 +88,6 @@ export const GET: APIRoute = (context) =>
     }
 
     return new Response(
-      createPatch(
-        id,
-        prettyPrintHtml(baseContent),
-        prettyPrintHtml(revisionContent),
-      ),
+      createPatch(id, prettyPrintHtml(baseContent), prettyPrintHtml(revisionContent)),
     );
   }, "Failed to compute revision diff");

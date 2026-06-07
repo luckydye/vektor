@@ -1,16 +1,12 @@
 import type { APIRoute } from "astro";
 import {
+  CORS_HEADERS,
   documentToICal,
   optionsPreflight,
   parseICalEvent,
   requireCalDAVUserAndAccess,
-  CORS_HEADERS,
 } from "#db/caldav.ts";
-import {
-  createDocument,
-  getDocument,
-  updateDocumentProperty,
-} from "#db/documents.ts";
+import { createDocument, getDocument, updateDocumentProperty } from "#db/documents.ts";
 
 /**
  * CalDAV individual event endpoint.

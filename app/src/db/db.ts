@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { prepareSpaceDb, prepateAuthDb } from "./init.ts";
 import * as schema from "./schema.ts";
-import { prepateAuthDb, prepareSpaceDb } from "./init.ts";
 
 const DATA_DIR = "./data";
 const AUTH_DB_PATH = join(DATA_DIR, "auth.db");

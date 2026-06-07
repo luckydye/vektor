@@ -1,4 +1,4 @@
-import { parseSingleICalEvent, formatICalDate } from "./ical.ts";
+import { formatICalDate, parseSingleICalEvent } from "./ical.ts";
 
 /**
  * CalDAV credentials.

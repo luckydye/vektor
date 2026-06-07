@@ -1,26 +1,18 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onMounted,
-  onUnmounted,
-  reactive,
-  ref,
-  watch,
-} from "vue";
-import { api } from "../api/client.ts";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type {
   DocumentWithProperties,
   WorkflowNodeState,
   WorkflowRunStatus,
 } from "../api/ApiClient.ts";
+import { api } from "../api/client.ts";
 import {
   buildTransform,
   createViewportControls,
   drawWorldGrid,
-  screenToWorld,
   type FitReference,
   type ScreenSize,
+  screenToWorld,
   type ViewportCamera,
   type ViewportControls,
 } from "../viewport/index.ts";
@@ -111,7 +103,7 @@ let savedTimer: ReturnType<typeof setTimeout> | null = null;
 let dpr = window.devicePixelRatio || 1;
 
 const selectedNode = computed(() =>
-  selectedNodeId.value ? nodes.get(selectedNodeId.value) ?? null : null,
+  selectedNodeId.value ? (nodes.get(selectedNodeId.value) ?? null) : null,
 );
 
 const groupedJobs = computed(() => {
@@ -132,12 +124,7 @@ const groupedJobs = computed(() => {
 
 const jobsByKey = computed(
   () =>
-    new Map(
-      availableJobs.value.map((job) => [
-        `${job.extensionId}::${job.jobId}`,
-        job,
-      ]),
-    ),
+    new Map(availableJobs.value.map((job) => [`${job.extensionId}::${job.jobId}`, job])),
 );
 
 const sortedNodes = computed(() =>
@@ -322,11 +309,14 @@ async function saveWorkflow(): Promise<boolean> {
   savedAt.value = null;
   try {
     const content = JSON.stringify(buildDefinition(), null, 2);
-    const response = await fetch(`/api/v1/spaces/${props.spaceId}/documents/${props.documentId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
+    const response = await fetch(
+      `/api/v1/spaces/${props.spaceId}/documents/${props.documentId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      },
+    );
     if (!response.ok) {
       throw new Error(await response.text());
     }
@@ -334,7 +324,9 @@ async function saveWorkflow(): Promise<boolean> {
       html: content,
       message: "Workflow saved",
     });
-    const draft = await api.document.get(props.spaceId, props.documentId, { draft: true });
+    const draft = await api.document.get(props.spaceId, props.documentId, {
+      draft: true,
+    });
     if (draft.publishedRev !== revision.rev) {
       await api.document.patch(props.spaceId, props.documentId, {
         publishedRev: revision.rev,
@@ -529,7 +521,10 @@ function updateWorkflowInputMapping(
   value: string,
 ) {
   const mappings = readWorkflowInputMappings(getInputValue(node, key));
-  mappings[index] = { ...(mappings[index] ?? { inputKey: "", alias: "" }), [field]: value };
+  mappings[index] = {
+    ...(mappings[index] ?? { inputKey: "", alias: "" }),
+    [field]: value,
+  };
   setInputValue(node, key, JSON.stringify(mappings));
 }
 
@@ -552,7 +547,12 @@ async function uploadFile(nodeId: string, key: string, event: Event) {
   if (!file) return;
   uploadErrors[`${nodeId}:${key}`] = "";
   try {
-    const result = await api.uploads.post(props.spaceId, file, file.name, props.documentId);
+    const result = await api.uploads.post(
+      props.spaceId,
+      file,
+      file.name,
+      props.documentId,
+    );
     const url = typeof result?.url === "string" ? result.url : "";
     if (!url) throw new Error("Upload did not return a URL");
     const node = nodes.get(nodeId);
@@ -608,7 +608,10 @@ function inputKeysForNode(node: WorkflowNodeDef, job: AvailableJob): Set<string>
 }
 
 function buildNodeIoConnections() {
-  const result: Record<string, Record<string, { nodeId: string; jobName: string }[]>> = {};
+  const result: Record<
+    string,
+    Record<string, { nodeId: string; jobName: string }[]>
+  > = {};
   for (const node of nodes.values()) result[node.id] = {};
   for (const edge of edges.value) {
     const source = nodes.get(edge.source);
@@ -773,7 +776,10 @@ function renderEdges() {
     if (!source || !target) continue;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.classList.add("workflow-edge-path");
-    path.setAttribute("d", edgePath(portPosition(source, "output"), portPosition(target, "input")));
+    path.setAttribute(
+      "d",
+      edgePath(portPosition(source, "output"), portPosition(target, "input")),
+    );
     svg.appendChild(path);
   }
   if (pendingConnection.value) {
@@ -781,7 +787,10 @@ function renderEdges() {
     if (source) {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.classList.add("workflow-edge-path", "preview");
-      path.setAttribute("d", edgePath(portPosition(source, "output"), pendingConnection.value.toPointer));
+      path.setAttribute(
+        "d",
+        edgePath(portPosition(source, "output"), pendingConnection.value.toPointer),
+      );
       svg.appendChild(path);
     }
   }

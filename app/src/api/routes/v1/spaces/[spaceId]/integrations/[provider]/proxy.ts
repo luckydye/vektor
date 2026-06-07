@@ -11,15 +11,15 @@ import {
 } from "#db/api.ts";
 import {
   getOAuthIntegrationCredentialForUser,
-  updateOAuthIntegrationTokenSet,
   type OAuthIntegrationCredential,
   type OAuthIntegrationProvider,
+  updateOAuthIntegrationTokenSet,
 } from "#db/oauthIntegrations.ts";
 import {
   getOAuthProviderConfiguration,
-  refreshOAuthToken,
-  type OAuthProviderConfiguration,
   isOAuthIntegrationProvider,
+  type OAuthProviderConfiguration,
+  refreshOAuthToken,
 } from "#integrations/oauthProviders.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 
@@ -162,9 +162,9 @@ export const POST: APIRoute = (context) =>
 
     const userId = await resolveUserId(context, spaceId);
 
-    const body = (await context.request.json().catch(() => null)) as
-      | IntegrationProxyRequest
-      | null;
+    const body = (await context.request
+      .json()
+      .catch(() => null)) as IntegrationProxyRequest | null;
     if (!body || typeof body !== "object") {
       throw badRequestResponse("Invalid JSON body");
     }

@@ -74,6 +74,7 @@ mock.module("#db/aiChatSessions.ts", () => ({
 // ---------------------------------------------------------------------------
 
 const { POST } = await import("./acp.ts");
+
 import { createJobToken } from "#jobs/jobToken.ts";
 
 // ---------------------------------------------------------------------------
@@ -390,26 +391,24 @@ describe("request validation", () => {
   });
 
   it("returns 401 when X-Job-Token is missing", async () => {
-    const response = await POST(
-      {
-        request: new Request("http://localhost/api/v1/chat/acp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "session/prompt",
-            params: {
-              sessionId: SESSION_ID,
-              spaceId: SPACE_ID,
-              prompt: [{ type: "text", text: "hi" }],
-            },
-          }),
+    const response = await POST({
+      request: new Request("http://localhost/api/v1/chat/acp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "session/prompt",
+          params: {
+            sessionId: SESSION_ID,
+            spaceId: SPACE_ID,
+            prompt: [{ type: "text", text: "hi" }],
+          },
         }),
-        locals: { user: null },
-        params: {},
-        url: new URL("http://localhost/api/v1/chat/acp"),
-      } as Parameters<typeof POST>[0],
-    );
+      }),
+      locals: { user: null },
+      params: {},
+      url: new URL("http://localhost/api/v1/chat/acp"),
+    } as Parameters<typeof POST>[0]);
     expect(response.status).toBe(401);
   });
 });
@@ -449,9 +448,7 @@ describe("session/prompt — mid-turn reload (regression: history cut off + stop
 
   it("starts a fresh turn when the interrupted session has no in-progress turn on server", async () => {
     // History ends with user message (pre-saved state after an interrupted turn).
-    mockConversationHistory = [
-      { role: "user", content: "my message" },
-    ];
+    mockConversationHistory = [{ role: "user", content: "my message" }];
 
     // No in-progress turn exists (server restarted, turn expired, etc.).
     // The handler should start a fresh agent run without duplicating the message.

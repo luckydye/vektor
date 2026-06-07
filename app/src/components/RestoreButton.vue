@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useSpace } from "../composeables/useSpace.ts";
 import { api } from "../api/client.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 
 const props = defineProps<{
   documentId: string;

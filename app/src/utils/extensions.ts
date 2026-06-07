@@ -1,14 +1,14 @@
-import { Actions, type ActionOptions } from "./actions.ts";
-import { api, type ExtensionRoute } from "../api/client.ts";
 import type { Editor } from "@tiptap/core";
+import { api, type ExtensionRoute } from "../api/client.ts";
 import {
   registerSuggestionProvider,
-  unregisterSuggestionProvider,
-  type SuggestionProvider,
   type SuggestionItem,
+  type SuggestionProvider,
+  unregisterSuggestionProvider,
 } from "../editor/extensions/ExtensionSuggestions.ts";
+import { type ActionOptions, Actions } from "./actions.ts";
 
-export type { SuggestionProvider, SuggestionItem };
+export type { SuggestionItem, SuggestionProvider };
 
 /**
  * Extension API surface exposed to extension code

@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
-import { jobRun, type JobRun, type JobRunInsert } from "./schema/space.ts";
-import { getSpaceDb } from "./db.ts";
 import { appLogger } from "../observability/logger.ts";
+import { getSpaceDb } from "./db.ts";
+import { type JobRun, type JobRunInsert, jobRun } from "./schema/space.ts";
 
 export type JobRunTrigger = "cron" | "manual" | "workflow";
 

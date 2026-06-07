@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { Feature } from "#db/acl.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -7,15 +8,11 @@ import {
   requireParam,
   requireUser,
   verifyDocumentAccess,
-  verifyFeatureAccess,
   verifyDocumentRole,
+  verifyFeatureAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  listRevisionMetadata,
-  restoreRevision,
-} from "#db/revisions.ts";
-import { Feature } from "#db/acl.ts";
+import { listRevisionMetadata, restoreRevision } from "#db/revisions.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

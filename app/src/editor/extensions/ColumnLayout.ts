@@ -1,5 +1,5 @@
-import { mergeAttributes, Node } from "@tiptap/core";
 import type { CommandProps } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 
 export interface ColumnLayoutOptions {
   columns: number;

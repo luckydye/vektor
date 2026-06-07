@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { listAIChatSessions } from "#db/aiChatSessions.ts";
 import {
   jsonResponse,
   requireParam,
@@ -6,7 +7,6 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { listAIChatSessions } from "#db/aiChatSessions.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

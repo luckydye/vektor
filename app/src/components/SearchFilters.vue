@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { api, type PropertyFilter } from "../api/client.ts";
+import { ref } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
+import { api, type PropertyFilter } from "../api/client.ts";
 
 const props = defineProps<{
   spaceId: string;

@@ -1,5 +1,5 @@
-import { render, html } from "lit-html";
-import { Actions, type ActionOptions } from "../../utils/actions.ts";
+import { html, render } from "lit-html";
+import { type ActionOptions, Actions } from "../../utils/actions.ts";
 
 customElements.define(
   "document-statusbar",

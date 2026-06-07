@@ -1,6 +1,4 @@
 import type { APIRoute } from "astro";
-import { getDocument } from "#db/documents.ts";
-import { getPublishedContent } from "#db/revisions.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -10,9 +8,11 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import { getRun, cancelRun } from "#jobs/runStore.ts";
+import { getDocument } from "#db/documents.ts";
+import { getPublishedContent } from "#db/revisions.ts";
+import { cancelRun, getRun } from "#jobs/runStore.ts";
 import type { WorkflowDefinition } from "#jobs/workflow.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 function getTerminalNodeIds(definition: WorkflowDefinition): string[] {
   const enabledEntries = Object.entries(definition).filter(([, node]) => !node.disabled);
@@ -28,7 +28,11 @@ function getTerminalNodeIds(definition: WorkflowDefinition): string[] {
     .filter((nodeId) => !dependedOn.has(nodeId));
 }
 
-async function getWorkflowOutput(spaceId: string, documentId: string, nodes: Record<string, unknown>) {
+async function getWorkflowOutput(
+  spaceId: string,
+  documentId: string,
+  nodes: Record<string, unknown>,
+) {
   const doc = await getDocument(spaceId, documentId);
   if (!doc || doc.type !== "workflow") return null;
 
@@ -48,8 +52,9 @@ async function getWorkflowOutput(spaceId: string, documentId: string, nodes: Rec
   if (terminalNodeIds.length === 0) return null;
 
   const output = terminalNodeIds.reduce<Record<string, unknown>>((acc, nodeId) => {
-    const nodeOutputs = (nodes[nodeId] as { outputs?: Record<string, unknown> | null } | undefined)
-      ?.outputs;
+    const nodeOutputs = (
+      nodes[nodeId] as { outputs?: Record<string, unknown> | null } | undefined
+    )?.outputs;
     if (nodeOutputs && typeof nodeOutputs === "object") {
       Object.assign(acc, nodeOutputs);
     }
@@ -74,16 +79,21 @@ export const GET: APIRoute = (context) =>
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
 
     const doc = await getDocument(spaceId, run.documentId);
-    const content = doc?.publishedRev !== null && doc
-      ? ((await getPublishedContent(spaceId, run.documentId)) ?? doc.content)
-      : doc?.content;
+    const content =
+      doc?.publishedRev !== null && doc
+        ? ((await getPublishedContent(spaceId, run.documentId)) ?? doc.content)
+        : doc?.content;
 
     let definition: WorkflowDefinition = {};
-    try { definition = JSON.parse(content ?? "{}") as WorkflowDefinition; } catch {}
+    try {
+      definition = JSON.parse(content ?? "{}") as WorkflowDefinition;
+    } catch {}
 
     // Topological sort (Kahn's algorithm) to return nodes in execution order
     const ids = [...run.nodes.keys()];
-    const inDegree = new Map<string, number>(ids.map((id) => [id, definition[id]?.depends.length ?? 0]));
+    const inDegree = new Map<string, number>(
+      ids.map((id) => [id, definition[id]?.depends.length ?? 0]),
+    );
     const adj = new Map<string, string[]>(ids.map((id) => [id, []]));
     for (const id of ids) {
       for (const dep of definition[id]?.depends ?? []) adj.get(dep)?.push(id);
@@ -99,7 +109,9 @@ export const GET: APIRoute = (context) =>
         if (deg === 0) queue.push(next);
       }
     }
-    for (const id of ids) { if (!order.includes(id)) order.push(id); }
+    for (const id of ids) {
+      if (!order.includes(id)) order.push(id);
+    }
 
     const nodes: Record<string, unknown> = {};
     for (const id of order) {

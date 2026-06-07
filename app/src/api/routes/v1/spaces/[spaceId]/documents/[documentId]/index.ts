@@ -1,8 +1,12 @@
 import type { APIRoute } from "astro";
+import { eq } from "drizzle-orm";
+import { getTokenUserId } from "#db/accessTokens.ts";
+import { ResourceType } from "#db/acl.ts";
 import {
+  authenticateRequest,
   badRequestResponse,
-  jsonResponse,
   forbiddenResponse,
+  jsonResponse,
   notFoundResponse,
   parseJsonBody,
   parseQueryInt,
@@ -12,13 +16,11 @@ import {
   unauthorizedResponse,
   verifyDocumentAccess,
   verifyDocumentRole,
-  authenticateRequest,
   verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { parseJobToken } from "#jobs/jobToken.ts";
-import { ResourceType } from "#db/acl.ts";
-import { getTokenUserId } from "#db/accessTokens.ts";
+import { createAuditLog } from "#db/auditLogs.ts";
+import { getSpaceDb } from "#db/db.ts";
 import {
   archiveDocument,
   deleteDocument,
@@ -26,32 +28,30 @@ import {
   getDocument,
   restoreDocument,
   setDocumentParent,
-  updateDocumentProperty,
   updateDocument,
+  updateDocumentProperty,
 } from "#db/documents.ts";
-import { triggerWebhooks } from "#db/webhooks.ts";
-import { stripScriptTags } from "#utils/utils.ts";
+import { getUniqueMentionedEmails } from "#db/mentions.ts";
 import {
+  createRevision,
   createSuggestion,
   getPublishedContent,
   getRevisionContent,
   getRevisionMetadata,
 } from "#db/revisions.ts";
-import { createRevision } from "#db/revisions.ts";
-import { getUniqueMentionedEmails } from "#db/mentions.ts";
+import { document as documentTable } from "#db/schema/space.ts";
+import { triggerWebhooks } from "#db/webhooks.ts";
 import { sendSyncEvent } from "#db/ws.ts";
+import { parseJobToken } from "#jobs/jobToken.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import {
   getDocumentTypeForContentType,
   getMimeType,
   toHtmlIfMarkdown,
 } from "#utils/documentContent.ts";
 import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
-import { getSpaceDb } from "#db/db.ts";
-import { document as documentTable } from "#db/schema/space.ts";
-import { eq } from "drizzle-orm";
-import { createAuditLog } from "#db/auditLogs.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { stripScriptTags } from "#utils/utils.ts";
 import { getLiveDocumentContent } from "#utils/yjsRooms.ts";
 
 type PropertyPatchValue =

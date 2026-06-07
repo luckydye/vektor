@@ -6,10 +6,7 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  getAllPropertiesWithValues,
-  type PropertyInfo,
-} from "#db/documents.ts";
+import { getAllPropertiesWithValues, type PropertyInfo } from "#db/documents.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

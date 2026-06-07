@@ -1,11 +1,11 @@
 ---
-import SpaceActivity from "../../components/SpaceActivity.vue";
+import PinnedDocument from "~/src/components/PinnedDocument.vue";
+import RunningWorkflows from "~/src/components/RunningWorkflows.vue";
 import ExtensionView from "../../components/ExtensionView.vue";
+import SpaceActivity from "../../components/SpaceActivity.vue";
 import { getDocument } from "../../db/documents.ts";
 import { listExtensions } from "../../db/extensions.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
-import RunningWorkflows from "~/src/components/RunningWorkflows.vue";
-import PinnedDocument from "~/src/components/PinnedDocument.vue";
 import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);

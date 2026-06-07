@@ -1,5 +1,16 @@
 import type { APIRoute } from "astro";
 import {
+  denyFeature,
+  Feature,
+  grantFeature,
+  grantPermission,
+  listFeaturePermissions,
+  listPermissions,
+  ResourceType,
+  revokeFeature,
+  revokePermission,
+} from "#db/acl.ts";
+import {
   badRequestResponse,
   jsonResponse,
   parseJsonBody,
@@ -8,17 +19,6 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  Feature,
-  grantPermission,
-  grantFeature,
-  denyFeature,
-  revokePermission,
-  revokeFeature,
-  listPermissions,
-  listFeaturePermissions,
-  ResourceType,
-} from "#db/acl.ts";
 
 // GET /api/v1/spaces/:spaceId/permissions
 // List all permissions (roles and feature overrides)

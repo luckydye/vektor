@@ -1,11 +1,11 @@
 import { Extension } from "@tiptap/core";
-import { parsePatch } from "diff";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { parsePatch } from "diff";
+import { type DiffLine, type DiffRow, hunkLinesToRows } from "../../utils/diffRows.ts";
 import { prettyPrintHtml } from "../../utils/prettyHtml.ts";
 import { stripScriptTags } from "../../utils/utils.ts";
-import { hunkLinesToRows, type DiffLine, type DiffRow } from "../../utils/diffRows.ts";
 
 export interface InlineSuggestion {
   rev: number;
@@ -28,7 +28,9 @@ interface InlineSuggestionsState {
   suggestions: InlineSuggestion[];
 }
 
-const inlineSuggestionsPluginKey = new PluginKey<InlineSuggestionsState>("inlineSuggestions");
+const inlineSuggestionsPluginKey = new PluginKey<InlineSuggestionsState>(
+  "inlineSuggestions",
+);
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -66,7 +68,9 @@ function parseSuggestionHunks(suggestions: InlineSuggestion[]): SuggestionHunk[]
 
 function buildTopLevelBlocks(view: EditorView, doc: ProseMirrorNode) {
   const domChildren = Array.from(view.dom.children).filter((child) => {
-    return !(child instanceof HTMLElement && child.classList.contains("wiki-inline-suggestion"));
+    return !(
+      child instanceof HTMLElement && child.classList.contains("wiki-inline-suggestion")
+    );
   });
   const blocks: Array<{
     lineStart: number;
@@ -311,12 +315,14 @@ function renderSuggestionWidget(hunk: SuggestionHunk) {
   acceptButton.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    window.dispatchEvent(new CustomEvent("inline-suggestion:accept", {
-      detail: {
-        revisionRev: hunk.revisionRev,
-        hunkIndex: hunk.hunkIndex,
-      },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("inline-suggestion:accept", {
+        detail: {
+          revisionRev: hunk.revisionRev,
+          hunkIndex: hunk.hunkIndex,
+        },
+      }),
+    );
   });
 
   header.append(heading, message, acceptButton);
@@ -354,22 +360,26 @@ export const InlineSuggestions = Extension.create({
 
   addCommands() {
     return {
-      setInlineSuggestions: (suggestions) => ({ tr, dispatch }) => {
-        dispatch?.(
-          tr.setMeta(inlineSuggestionsPluginKey, {
-            suggestions,
-          }),
-        );
-        return true;
-      },
-      clearInlineSuggestions: () => ({ tr, dispatch }) => {
-        dispatch?.(
-          tr.setMeta(inlineSuggestionsPluginKey, {
-            suggestions: [],
-          }),
-        );
-        return true;
-      },
+      setInlineSuggestions:
+        (suggestions) =>
+        ({ tr, dispatch }) => {
+          dispatch?.(
+            tr.setMeta(inlineSuggestionsPluginKey, {
+              suggestions,
+            }),
+          );
+          return true;
+        },
+      clearInlineSuggestions:
+        () =>
+        ({ tr, dispatch }) => {
+          dispatch?.(
+            tr.setMeta(inlineSuggestionsPluginKey, {
+              suggestions: [],
+            }),
+          );
+          return true;
+        },
     };
   },
 
@@ -409,14 +419,10 @@ export const InlineSuggestions = Extension.create({
                   return null;
                 }
 
-                return Decoration.widget(
-                  pos,
-                  () => renderSuggestionWidget(hunk),
-                  {
-                    side: 1,
-                    key: `${hunk.revisionRev}:${hunk.hunkIndex}:${pos}`,
-                  },
-                );
+                return Decoration.widget(pos, () => renderSuggestionWidget(hunk), {
+                  side: 1,
+                  key: `${hunk.revisionRev}:${hunk.hunkIndex}:${pos}`,
+                });
               })
               .filter((decoration): decoration is Decoration => decoration !== null);
 

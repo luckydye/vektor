@@ -1,7 +1,7 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { computed, watch } from "vue";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { useSpace } from "./useSpace.ts";
 import { api, type Category } from "../api/client.ts";
+import { useSpace } from "./useSpace.ts";
 
 export function useCategories() {
   const { currentSpaceId: spaceId } = useSpace();

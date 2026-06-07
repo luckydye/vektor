@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { ResourceType } from "#db/acl.ts";
 import {
   authenticateRequest,
   badRequestResponse,
@@ -12,17 +13,16 @@ import {
   verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { ResourceType } from "#db/acl.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import { parseJobToken } from "#jobs/jobToken.ts";
-import { getSpace } from "#db/spaces.ts";
 import {
   createExtension,
-  listExtensionsWithErrors,
-  getExtension,
-  updateExtension,
   type ExtensionManifest,
+  getExtension,
+  listExtensionsWithErrors,
+  updateExtension,
 } from "#db/extensions.ts";
+import { getSpace } from "#db/spaces.ts";
+import { parseJobToken } from "#jobs/jobToken.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions
@@ -34,10 +34,8 @@ export const GET: APIRoute = (context) =>
     const spaceId = requireParam(context.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
-    const {
-      extensions: allExtensions,
-      errors: manifestErrors,
-    } = await listExtensionsWithErrors(spaceId);
+    const { extensions: allExtensions, errors: manifestErrors } =
+      await listExtensionsWithErrors(spaceId);
 
     const extensions =
       auth.type === "job"
@@ -150,8 +148,7 @@ export const POST: APIRoute = (context) =>
           ? await updateExtension(spaceId, extensionId, buffer)
           : await createExtension(spaceId, extensionId, buffer, createdBy);
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Invalid extension package";
+        const message = err instanceof Error ? err.message : "Invalid extension package";
         return badRequestResponse(`Invalid extension package: ${message}`);
       }
 

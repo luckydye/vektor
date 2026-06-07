@@ -31,8 +31,8 @@
 
 <script setup>
 import { computed } from "vue";
-import { useSpace } from "../composeables/useSpace.ts";
 import { chevronRightThinIcon } from "~/src/assets/icons.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 
 const props = defineProps({
   doc: {

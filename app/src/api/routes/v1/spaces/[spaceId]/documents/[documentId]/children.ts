@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { getUserGroups } from "#db/acl.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -7,7 +8,6 @@ import {
   verifyDocumentAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getUserGroups } from "#db/acl.ts";
 import { getDocument, getDocumentChildren } from "#db/documents.ts";
 
 export const GET: APIRoute = (context) =>

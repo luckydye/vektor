@@ -1,5 +1,5 @@
 import { context, trace } from "@opentelemetry/api";
-import { logs, SeverityNumber, type LogAttributes } from "@opentelemetry/api-logs";
+import { type LogAttributes, logs, SeverityNumber } from "@opentelemetry/api-logs";
 
 const logger = logs.getLogger("wiki.app");
 
@@ -8,9 +8,11 @@ function serializeError(error: Error): Record<string, unknown> {
     name: error.name,
     message: error.message,
     stack: error.stack,
-    ...(error.cause === undefined ? {} : {
-      cause: error.cause instanceof Error ? serializeError(error.cause) : error.cause,
-    }),
+    ...(error.cause === undefined
+      ? {}
+      : {
+          cause: error.cause instanceof Error ? serializeError(error.cause) : error.cause,
+        }),
   };
 }
 

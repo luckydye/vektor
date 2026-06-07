@@ -1,10 +1,11 @@
+import type { Extensions } from "@tiptap/core";
 import Bold from "@tiptap/extension-bold";
 import BulletList from "@tiptap/extension-bullet-list";
 import Code from "@tiptap/extension-code";
 import CodeBlock from "@tiptap/extension-code-block";
 import Document from "@tiptap/extension-document";
-import Heading from "@tiptap/extension-heading";
 import HardBreak from "@tiptap/extension-hard-break";
+import Heading from "@tiptap/extension-heading";
 import Italic from "@tiptap/extension-italic";
 import Link from "@tiptap/extension-link";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
@@ -14,21 +15,20 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Strike from "@tiptap/extension-strike";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
-import TextAlign from "@tiptap/extension-text-align";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import Text from "@tiptap/extension-text";
+import TextAlign from "@tiptap/extension-text-align";
 import { BackgroundColor, Color, TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
-import { ImageUpload } from "./extensions/ImageUpload.ts";
-import { FileAttachment } from "./extensions/FileAttachment.ts";
-import { TicketLink } from "./extensions/TicketLink.ts";
+import { ColumnItem, ColumnLayout } from "./extensions/ColumnLayout.ts";
+import { DatePicker } from "./extensions/DatePicker.ts";
 import { ExpressionCell } from "./extensions/ExpressionCell.ts";
 import { FigmaEmbed } from "./extensions/FigmaEmbed.ts";
-import { ColumnLayout, ColumnItem } from "./extensions/ColumnLayout.ts";
+import { FileAttachment } from "./extensions/FileAttachment.ts";
 import { HtmlBlock } from "./extensions/HtmlBlock.ts";
-import { DatePicker } from "./extensions/DatePicker.ts";
-import type { Extensions } from "@tiptap/core";
+import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { Mentions } from "./extensions/Mentions.ts";
+import { TicketLink } from "./extensions/TicketLink.ts";
 
 const colwidthAttribute = {
   default: [200],

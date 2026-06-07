@@ -4,11 +4,11 @@ import { and, desc, eq } from "drizzle-orm";
 import { notFoundResponse } from "../db/api.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
+import { invalidateMentionCache } from "./documents.ts";
 import { createId } from "./ids.ts";
+import { getUniqueMentionedEmails } from "./mentions.ts";
 import { document, revision } from "./schema/space.ts";
 import { triggerWebhooks } from "./webhooks.ts";
-import { getUniqueMentionedEmails } from "./mentions.ts";
-import { invalidateMentionCache } from "./documents.ts";
 
 export interface Revision {
   id: string;

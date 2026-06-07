@@ -1,6 +1,5 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { Actions } from "../utils/actions.ts";
 import {
   cellMergeIcon,
   closeThickIcon,
@@ -19,6 +18,7 @@ import {
   tableRowIcon,
   tableSplitCellIcon,
 } from "~/src/assets/icons.ts";
+import { Actions } from "../utils/actions.ts";
 
 const getEditor = () => globalThis.__editor;
 

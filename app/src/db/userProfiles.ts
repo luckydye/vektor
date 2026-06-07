@@ -1,11 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { getSpaceDb } from "./db.ts";
-import { preference } from "./schema/space.ts";
 import { createId } from "./ids.ts";
+import { preference } from "./schema/space.ts";
 
 const PROFILE_KEY = "ai_user_profile";
 
-export async function getUserProfile(spaceId: string, userId: string): Promise<string | null> {
+export async function getUserProfile(
+  spaceId: string,
+  userId: string,
+): Promise<string | null> {
   const db = await getSpaceDb(spaceId);
   const row = await db
     .select()

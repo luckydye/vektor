@@ -1,8 +1,8 @@
-import type { APIRoute } from "astro";
-import { mkdir, readdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
-import { join, extname, dirname, relative, resolve, sep } from "node:path";
 import { randomBytes } from "node:crypto";
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import AdmZip from "adm-zip";
+import type { APIRoute } from "astro";
 import {
   badRequestResponse,
   errorResponse,
@@ -12,9 +12,9 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { createDocument, setDocumentParent } from "#db/documents.ts";
 import { createCategory, getCategoryBySlug } from "#db/categories.ts";
 import { getSpaceDb } from "#db/db.ts";
+import { createDocument, setDocumentParent } from "#db/documents.ts";
 import { document } from "#db/schema/space.ts";
 
 const MAX_UPLOAD_SIZE = 100 * 1024 * 1024; // 100MB

@@ -1,5 +1,11 @@
 import type { APIRoute } from "astro";
 import {
+  type AIChatSessionInput,
+  deleteAIChatSession,
+  getAIChatSession,
+  upsertAIChatSession,
+} from "#db/aiChatSessions.ts";
+import {
   badRequestResponse,
   jsonResponse,
   notFoundResponse,
@@ -9,12 +15,6 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  deleteAIChatSession,
-  getAIChatSession,
-  upsertAIChatSession,
-  type AIChatSessionInput,
-} from "#db/aiChatSessions.ts";
 
 function parseSessionInput(
   spaceId: string,

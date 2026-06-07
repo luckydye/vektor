@@ -16,6 +16,7 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { getSpaceDb } from "#db/db.ts";
 import {
   deleteJobSchedule,
   getJobSchedule,
@@ -23,7 +24,6 @@ import {
   updateJobSchedule,
   validateCronExpression,
 } from "#db/jobSchedules.ts";
-import { getSpaceDb } from "#db/db.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {

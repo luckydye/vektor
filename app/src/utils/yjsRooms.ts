@@ -1,17 +1,17 @@
-import * as Y from "yjs";
-import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import { getSchema } from "@tiptap/core";
-import { Node } from "@tiptap/pm/model";
 import { generateHTML, generateJSON } from "@tiptap/html";
-import { contentExtensions } from "../editor/extensions.ts";
+import { Node } from "@tiptap/pm/model";
+import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
+import * as Y from "yjs";
 import { getDocument } from "#db/documents.ts";
 import {
+  type PresenceEnvelope,
+  type PresenceUser,
   WsMsgType,
   wsEncode,
   wsEncodeYjsUpdate,
-  type PresenceEnvelope,
-  type PresenceUser,
 } from "#utils/realtime.ts";
+import { contentExtensions } from "../editor/extensions.ts";
 
 export interface YRoom {
   doc?: Y.Doc;

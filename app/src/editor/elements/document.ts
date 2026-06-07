@@ -5,25 +5,25 @@ import "./textarea.ts";
 import "./expression.ts";
 import "./file-attachment.ts";
 import { Editor } from "@tiptap/core";
-import { ExtensionSuggestions } from "../extensions/ExtensionSuggestions.ts";
-import * as Y from "yjs";
-import { Dropcursor } from "@tiptap/extensions";
-import DragHandle from "@tiptap/extension-drag-handle";
-import type { User } from "../../api/client.ts";
 import Collaboration from "@tiptap/extension-collaboration";
-import { contentExtensions } from "../extensions.ts";
-import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
-import { InlineSuggestions } from "../extensions/InlineSuggestions.ts";
-import type { IndexedDBStore } from "../../utils/storage.ts";
-import { joinPresenceRoom, joinYjsRoom } from "../../utils/sync.ts";
-import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
+import DragHandle from "@tiptap/extension-drag-handle";
+import { Dropcursor } from "@tiptap/extensions";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import {
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
 } from "y-prosemirror";
+import * as Y from "yjs";
+import type { User } from "../../api/client.ts";
 import type { PresenceEnvelope, PresenceUser } from "../../utils/realtime.ts";
+import type { IndexedDBStore } from "../../utils/storage.ts";
+import { joinPresenceRoom, joinYjsRoom } from "../../utils/sync.ts";
+import { ExtensionSuggestions } from "../extensions/ExtensionSuggestions.ts";
+import { InlineSuggestions } from "../extensions/InlineSuggestions.ts";
+import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
+import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
+import { contentExtensions } from "../extensions.ts";
 
 declare global {
   interface Window {
@@ -145,50 +145,54 @@ function createPresencePlugin(
           }
 
           decorations.push(
-            Decoration.widget(head, () => {
-              const caret = document.createElement("span");
-              caret.className = "collaboration-carets__caret";
-              Object.assign(caret.style, {
-                borderLeft: `2px solid ${color}`,
-                marginLeft: "-1px",
-                marginRight: "-1px",
-                pointerEvents: "none",
-                position: "relative",
-                display: "inline-block",
-                height: "1.1em",
-                verticalAlign: "text-top",
-              });
-              if (!remoteState.focused) {
-                caret.style.opacity = "0.65";
-              }
+            Decoration.widget(
+              head,
+              () => {
+                const caret = document.createElement("span");
+                caret.className = "collaboration-carets__caret";
+                Object.assign(caret.style, {
+                  borderLeft: `2px solid ${color}`,
+                  marginLeft: "-1px",
+                  marginRight: "-1px",
+                  pointerEvents: "none",
+                  position: "relative",
+                  display: "inline-block",
+                  height: "1.1em",
+                  verticalAlign: "text-top",
+                });
+                if (!remoteState.focused) {
+                  caret.style.opacity = "0.65";
+                }
 
-              const label = document.createElement("span");
-              label.className = "collaboration-carets__label";
-              Object.assign(label.style, {
-                position: "absolute",
-                left: "-1px",
-                top: "-1.45em",
-                backgroundColor: color,
-                color: "#111",
-                fontSize: "12px",
-                fontWeight: "600",
-                lineHeight: "1",
-                whiteSpace: "nowrap",
-                borderRadius: "3px 3px 3px 0",
-                padding: "0.15rem 0.35rem",
-                boxShadow: "0 1px 2px rgb(0 0 0 / 0.18)",
-              });
-              label.textContent = presence.user.name;
-              if (!remoteState.focused) {
-                label.style.opacity = "0.75";
-              }
+                const label = document.createElement("span");
+                label.className = "collaboration-carets__label";
+                Object.assign(label.style, {
+                  position: "absolute",
+                  left: "-1px",
+                  top: "-1.45em",
+                  backgroundColor: color,
+                  color: "#111",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  lineHeight: "1",
+                  whiteSpace: "nowrap",
+                  borderRadius: "3px 3px 3px 0",
+                  padding: "0.15rem 0.35rem",
+                  boxShadow: "0 1px 2px rgb(0 0 0 / 0.18)",
+                });
+                label.textContent = presence.user.name;
+                if (!remoteState.focused) {
+                  label.style.opacity = "0.75";
+                }
 
-              caret.appendChild(label);
-              return caret;
-            }, {
-              key: `${presence.clientId}:${presence.updatedAt}`,
-              side: -1,
-            }),
+                caret.appendChild(label);
+                return caret;
+              },
+              {
+                key: `${presence.clientId}:${presence.updatedAt}`,
+                side: -1,
+              },
+            ),
           );
         }
 
@@ -219,9 +223,16 @@ function createEditor(
   let dragHandleElement: HTMLElement | null = null;
 
   let editor: Editor;
-  const presencePlugin = createPresencePlugin(ydoc, presenceClientId, () => remotePresences);
+  const presencePlugin = createPresencePlugin(
+    ydoc,
+    presenceClientId,
+    () => remotePresences,
+  );
   let leavePresenceRoom = () => {};
-  let presenceHandle: { update: (state: EditorPresenceState) => void; leave: () => void } | null = null;
+  let presenceHandle: {
+    update: (state: EditorPresenceState) => void;
+    leave: () => void;
+  } | null = null;
 
   const refreshPresenceDecorations = () => {
     if (!editor?.view) return;
@@ -245,16 +256,20 @@ function createEditor(
       kind: "editor",
       focused: editor.isFocused,
       selection: {
-        anchor: serializeRelativePosition(absolutePositionToRelativePosition(
-          selection.anchor,
-          ydoc.getXmlFragment("default"),
-          mapping as any,
-        )),
-        head: serializeRelativePosition(absolutePositionToRelativePosition(
-          selection.head,
-          ydoc.getXmlFragment("default"),
-          mapping as any,
-        )),
+        anchor: serializeRelativePosition(
+          absolutePositionToRelativePosition(
+            selection.anchor,
+            ydoc.getXmlFragment("default"),
+            mapping as any,
+          ),
+        ),
+        head: serializeRelativePosition(
+          absolutePositionToRelativePosition(
+            selection.head,
+            ydoc.getXmlFragment("default"),
+            mapping as any,
+          ),
+        ),
       },
     };
   };
@@ -269,11 +284,7 @@ function createEditor(
     trackPointerPosition(event.clientX, event.clientY);
   };
 
-  const isPointInsideRect = (
-    clientX: number,
-    clientY: number,
-    rect: DOMRect,
-  ) => {
+  const isPointInsideRect = (clientX: number, clientY: number, rect: DOMRect) => {
     return (
       clientX >= rect.left &&
       clientX <= rect.right &&
@@ -558,7 +569,9 @@ function createEditor(
   });
 
   editor.view.dom.addEventListener("mousemove", handleEditorMouseMove);
-  editor.view.dom.addEventListener("mousemove", handleTrackedPointerMove, { passive: true });
+  editor.view.dom.addEventListener("mousemove", handleTrackedPointerMove, {
+    passive: true,
+  });
   editor.view.dom.addEventListener("mouseleave", clearTrackedPointerPosition);
   editor.view.dom.addEventListener("dragover", handleEditorDragOver);
   editor.view.dom.addEventListener("drop", hideBlockDropIndicator);

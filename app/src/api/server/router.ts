@@ -1,9 +1,9 @@
-import type { NextFunction, Request as ExRequest, Response as ExResponse } from "express";
+import type { Request as ExRequest, Response as ExResponse, NextFunction } from "express";
 import { authTrustedOrigins } from "#auth";
 import { appLogger } from "#observability/logger.ts";
 import { apiRoutes } from "../routes.ts";
 import { buildApiContext, PayloadTooLargeError, sendWebResponse } from "./adapter.ts";
-import { compileRoute, matchRoute, sortRoutes, type CompiledRoute } from "./matcher.ts";
+import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiRouteMethod, ApiRouteModule } from "./types.ts";
 
 const compiledRoutes: CompiledRoute[] = sortRoutes(

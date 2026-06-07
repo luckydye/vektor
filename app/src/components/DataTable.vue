@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
 
 const PAGE_SIZE = 10;
@@ -17,7 +17,9 @@ const sortCol = ref<string | null>(null);
 const sortAsc = ref(true);
 const focusedRow = ref<number | null>(null);
 
-watch(filter, () => { page.value = 0; });
+watch(filter, () => {
+  page.value = 0;
+});
 
 function toggleSort(col: string) {
   if (sortCol.value === col) {
@@ -38,7 +40,11 @@ const filtered = computed(() => {
   const q = filter.value.trim().toLowerCase();
   let rows = q
     ? props.data.filter((row) =>
-        Object.values(row).some((v) => String(v ?? "").toLowerCase().includes(q)),
+        Object.values(row).some((v) =>
+          String(v ?? "")
+            .toLowerCase()
+            .includes(q),
+        ),
       )
     : props.data;
   if (sortCol.value) {
@@ -54,8 +60,12 @@ const filtered = computed(() => {
   return rows;
 });
 
-const pageCount = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)));
-const paginated = computed(() => filtered.value.slice(page.value * PAGE_SIZE, (page.value + 1) * PAGE_SIZE));
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)),
+);
+const paginated = computed(() =>
+  filtered.value.slice(page.value * PAGE_SIZE, (page.value + 1) * PAGE_SIZE),
+);
 
 function cellText(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -65,8 +75,10 @@ function cellText(v: unknown): string {
 
 function downloadCsv() {
   const csvCols = columns.value;
-  const escape = (s: string) => s.includes(",") || s.includes('"') || s.includes("\n")
-    ? `"${s.replace(/"/g, '""')}"` : s;
+  const escape = (s: string) =>
+    s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
   const header = csvCols.map(escape).join(",");
   const rows = filtered.value.map((row) =>
     csvCols.map((col) => escape(cellText(row[col]))).join(","),
@@ -91,7 +103,9 @@ function documentHref(column: string, value: unknown): string | null {
 }
 
 // Column resizing
-const storageKey = computed(() => props.documentId ? `datatable-col-widths-${props.documentId}` : null);
+const storageKey = computed(() =>
+  props.documentId ? `datatable-col-widths-${props.documentId}` : null,
+);
 const columnWidths = ref<Record<string, number>>({});
 
 onMounted(() => {

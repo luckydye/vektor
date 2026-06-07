@@ -1,6 +1,6 @@
 import { defineCommand } from "just-bash";
-import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
 import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
+import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
 
 async function gitlabApiRequest(
   mcpConfigRef: { current: VektorMcpConfig },
@@ -98,7 +98,11 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
 
       if (subcommand === "cat") {
         if (!filePath) {
-          return { stdout: "", stderr: `gitlab cat: missing <file-path>\n${usage}`, exitCode: 2 };
+          return {
+            stdout: "",
+            stderr: `gitlab cat: missing <file-path>\n${usage}`,
+            exitCode: 2,
+          };
         }
         const encodedPath = encodeURIComponent(filePath);
         const result = await gitlabApiRequest(
@@ -114,7 +118,11 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
           };
         }
         const body = result.body ?? "";
-        return { stdout: body.endsWith("\n") ? body : `${body}\n`, stderr: "", exitCode: 0 };
+        return {
+          stdout: body.endsWith("\n") ? body : `${body}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
       }
 
       // ls and tree share the repository tree API
@@ -141,7 +149,11 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
       try {
         entries = JSON.parse(result.body ?? "[]") as TreeEntry[];
       } catch {
-        return { stdout: "", stderr: `gitlab ${subcommand}: failed to parse response\n`, exitCode: 1 };
+        return {
+          stdout: "",
+          stderr: `gitlab ${subcommand}: failed to parse response\n`,
+          exitCode: 1,
+        };
       }
 
       if (subcommand === "ls") {
@@ -158,7 +170,11 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
 
     // --- api sub-command: raw API request ---
     if (subcommand !== "api") {
-      return { stdout: "", stderr: `gitlab: unknown sub-command '${subcommand}'\n${usage}`, exitCode: 2 };
+      return {
+        stdout: "",
+        stderr: `gitlab: unknown sub-command '${subcommand}'\n${usage}`,
+        exitCode: 2,
+      };
     }
 
     let method = "GET";
@@ -187,12 +203,15 @@ export function gitlabCommand(mcpConfigRef: { current: VektorMcpConfig }) {
       }
       if (!arg.startsWith("-")) {
         path = arg;
-        continue;
       }
     }
 
     if (!path) {
-      return { stdout: "", stderr: `usage: gitlab api [-X METHOD] [-H 'Header: value'] [-d data] <path>\n`, exitCode: 2 };
+      return {
+        stdout: "",
+        stderr: `usage: gitlab api [-X METHOD] [-H 'Header: value'] [-d data] <path>\n`,
+        exitCode: 2,
+      };
     }
 
     const result = await gitlabApiRequest(mcpConfigRef, method, path, headers, body);

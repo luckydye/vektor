@@ -1,7 +1,7 @@
-import { mergeAttributes, Node } from "@tiptap/core";
 import type { CommandProps } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
+import { html, render } from "lit-html";
 import { stripScriptTags } from "~/src/utils/utils.ts";
-import { render, html } from "lit-html";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {

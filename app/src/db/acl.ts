@@ -1,10 +1,9 @@
 import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
-import { createAuditLog } from "./auditLogs.ts";
-import { getSpaceDb, getAuthDb } from "./db.ts";
-import { acl } from "./schema/space.ts";
-import { document, spaceMetadata } from "./schema/space.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
+import { createAuditLog } from "./auditLogs.ts";
+import { getAuthDb, getSpaceDb } from "./db.ts";
 import { user } from "./schema/auth.ts";
+import { acl, document, spaceMetadata } from "./schema/space.ts";
 
 export interface AclEntry {
   resourceType: string;

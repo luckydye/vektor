@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from "vue";
-import { api, type DocumentWithProperties } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { canEdit } from "../composeables/usePermissions.ts";
-import docStyles from "../styles/document.css?inline";
+import { computed, onMounted, ref, watch } from "vue";
 import { pinPushpinIcon } from "~/src/assets/icons.ts";
+import { api, type DocumentWithProperties } from "../api/client.ts";
+import { canEdit } from "../composeables/usePermissions.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import docStyles from "../styles/document.css?inline";
 
 const props = defineProps<{
   spaceId: string;

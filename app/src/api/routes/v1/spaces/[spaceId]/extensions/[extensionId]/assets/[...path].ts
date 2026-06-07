@@ -6,10 +6,7 @@ import {
   verifyExtensionAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import {
-  extractFile,
-  getExtensionPackage,
-} from "#db/extensions.ts";
+import { extractFile, getExtensionPackage } from "#db/extensions.ts";
 import { EXTENSION_ASSET_CSP } from "#utils/servedFiles.ts";
 
 const MIME_TYPES: Record<string, string> = {

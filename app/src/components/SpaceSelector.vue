@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import "@sv/elements/popover";
-import { ref, watch, computed } from "vue";
+import { computed, ref, watch } from "vue";
 import homeIcon from "../assets/icons/home.svg?raw";
 import settingsIcon from "../assets/icons/settings.svg?raw";
+import ButtonPrimary from "./ButtonPrimary.vue";
 import ButtonSecondary from "./ButtonSecondary.vue";
 import Icon from "./Icon.vue";
-import ButtonPrimary from "./ButtonPrimary.vue";
 
 // UI-specific Space interface for the selector
 interface Space {

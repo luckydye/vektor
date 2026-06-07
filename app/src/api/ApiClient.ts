@@ -1,3 +1,4 @@
+import { applyUpdate, type Doc as YDoc } from "yjs";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -6,17 +7,16 @@ import {
   type PresenceUpdateMessage,
   type PresenceUpdatePayload,
   type PresenceUser,
+  type RealtimeEventMessage,
+  type RealtimeTopic,
   realtimeTopics,
   WsMsgType,
-  wsEncode,
-  wsEncodeYjsUpdate,
   wsDecode,
   wsDecodeJson,
   wsDecodeYjsUpdate,
-  type RealtimeEventMessage,
-  type RealtimeTopic,
+  wsEncode,
+  wsEncodeYjsUpdate,
 } from "../utils/realtime.ts";
-import { applyUpdate, type Doc as YDoc } from "yjs";
 
 export interface User {
   id: string;
@@ -1876,9 +1876,13 @@ export class ApiClient {
       socket,
       ready: new Promise<void>((resolve, reject) => {
         socket.addEventListener("open", () => resolve(), { once: true });
-        socket.addEventListener("error", () => reject(new Error("Realtime socket failed")), {
-          once: true,
-        });
+        socket.addEventListener(
+          "error",
+          () => reject(new Error("Realtime socket failed")),
+          {
+            once: true,
+          },
+        );
       }),
       topicRefCounts: new Map(),
       subscriptions: new Set(),
@@ -1949,9 +1953,11 @@ export class ApiClient {
   ) {
     if (topics.length === 0) return;
 
-    void connection.ready.then(() => {
-      connection.socket.send(wsEncode(type, { topics }));
-    }).catch(() => {});
+    void connection.ready
+      .then(() => {
+        connection.socket.send(wsEncode(type, { topics }));
+      })
+      .catch(() => {});
   }
 
   subscribeToTopics(
@@ -2014,7 +2020,11 @@ export class ApiClient {
     documentId: string,
     callback: (event: RealtimeEventMessage) => void,
   ): () => void {
-    return this.subscribeToTopics(spaceId, [realtimeTopics.document(documentId)], callback);
+    return this.subscribeToTopics(
+      spaceId,
+      [realtimeTopics.document(documentId)],
+      callback,
+    );
   }
 
   subscribeToDocumentTree(
@@ -2024,17 +2034,15 @@ export class ApiClient {
     return this.subscribeToTopics(spaceId, [realtimeTopics.documentTree], callback);
   }
 
-  joinYjsRoom(
-    spaceId: string,
-    documentId: string,
-    ydoc: YDoc,
-  ): () => void {
+  joinYjsRoom(spaceId: string, documentId: string, ydoc: YDoc): () => void {
     const connection = this.getRealtimeConnection(spaceId);
     connection.socket.binaryType = "arraybuffer";
 
-    void connection.ready.then(() => {
-      connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
-    }).catch(() => {});
+    void connection.ready
+      .then(() => {
+        connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+      })
+      .catch(() => {});
 
     const handleMessage = (event: MessageEvent) => {
       if (!(event.data instanceof ArrayBuffer)) return;
@@ -2052,9 +2060,11 @@ export class ApiClient {
     const handleUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === "remote") return;
 
-      void connection.ready.then(() => {
-        connection.socket.send(wsEncodeYjsUpdate(documentId, update));
-      }).catch(() => {});
+      void connection.ready
+        .then(() => {
+          connection.socket.send(wsEncodeYjsUpdate(documentId, update));
+        })
+        .catch(() => {});
     };
 
     ydoc.on("update", handleUpdate);
@@ -2084,15 +2094,17 @@ export class ApiClient {
     connection.presenceRoomRefCounts.set(room, roomRefCount);
 
     if (roomRefCount === 1) {
-      void connection.ready.then(() => {
-        const joinPayload: PresenceJoinPayload<TState> = {
-          room,
-          clientId,
-          user,
-          state: initialState,
-        };
-        connection.socket.send(wsEncode(WsMsgType.PresenceJoin, joinPayload));
-      }).catch(() => {});
+      void connection.ready
+        .then(() => {
+          const joinPayload: PresenceJoinPayload<TState> = {
+            room,
+            clientId,
+            user,
+            state: initialState,
+          };
+          connection.socket.send(wsEncode(WsMsgType.PresenceJoin, joinPayload));
+        })
+        .catch(() => {});
     }
 
     const update = (state: TState) => {
@@ -2101,9 +2113,11 @@ export class ApiClient {
         clientId,
         state,
       };
-      void connection.ready.then(() => {
-        connection.socket.send(wsEncode(WsMsgType.PresenceUpdate, updatePayload));
-      }).catch(() => {});
+      void connection.ready
+        .then(() => {
+          connection.socket.send(wsEncode(WsMsgType.PresenceUpdate, updatePayload));
+        })
+        .catch(() => {});
     };
 
     const leave = () => {
@@ -2112,12 +2126,16 @@ export class ApiClient {
       const currentCount = connection.presenceRoomRefCounts.get(room) ?? 0;
       if (currentCount <= 1) {
         connection.presenceRoomRefCounts.delete(room);
-        void connection.ready.then(() => {
-          connection.socket.send(wsEncode(WsMsgType.PresenceLeave, {
-            room,
-            clientId,
-          }));
-        }).catch(() => {});
+        void connection.ready
+          .then(() => {
+            connection.socket.send(
+              wsEncode(WsMsgType.PresenceLeave, {
+                room,
+                clientId,
+              }),
+            );
+          })
+          .catch(() => {});
       } else {
         connection.presenceRoomRefCounts.set(room, currentCount - 1);
       }

@@ -1,31 +1,31 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as Y from "yjs";
-import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
+import { redoArrowIcon, undoArrowIcon } from "~/src/assets/icons.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
+import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import {
-  buildTransform,
   buildFreehandStroke,
-  createViewportControls,
+  buildTransform,
   createFreehandStrokeBuilder,
+  createViewportControls,
   drawFreehandStroke,
   drawWorldGrid,
-  panCameraByScreenDelta,
-  screenToWorld as viewportScreenToWorld,
-  worldToScreen as viewportWorldToScreen,
   type FitReference,
   type FreehandPoint,
   type FreehandStroke,
   type FreehandStrokeBuilder,
   type FreehandStrokeOptions,
   type FreehandStrokeStyle,
+  panCameraByScreenDelta,
   type ScreenSize,
   type ViewportCamera,
   type ViewportControls,
+  screenToWorld as viewportScreenToWorld,
+  worldToScreen as viewportWorldToScreen,
 } from "../viewport/index.ts";
-import { undoArrowIcon, redoArrowIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -121,7 +121,9 @@ const SCREEN_VELOCITY_FULL = 4;
 // addVelocityWidths measures velocity in world units/ms, so it would otherwise
 // taper differently depending on zoom. Multiplying the scale by the current
 // world→screen scale makes the taper track on-screen pointer speed instead.
-function freehandOptions(style: FreehandStrokeStyle = FREEHAND_STYLE): FreehandStrokeOptions {
+function freehandOptions(
+  style: FreehandStrokeStyle = FREEHAND_STYLE,
+): FreehandStrokeOptions {
   return {
     minDistance: 2,
     simplifyTolerance: 0.75,
@@ -160,7 +162,10 @@ const CANVAS_TOOLS: ToolDef[] = [
     id: "note",
     label: "Note",
     shortcut: "N",
-    paths: ["M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8l6-6V6a2 2 0 0 0-2-2z", "M14 20v-6h6"],
+    paths: [
+      "M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8l6-6V6a2 2 0 0 0-2-2z",
+      "M14 20v-6h6",
+    ],
   },
   {
     id: "text",
@@ -217,7 +222,10 @@ const undoManager = new Y.UndoManager([yShapes, yStrokes]);
 
 let leaveYjsRoom = () => {};
 let leavePresenceRoom = () => {};
-let presenceHandle: { update: (state: CanvasPresenceState) => void; leave: () => void } | null = null;
+let presenceHandle: {
+  update: (state: CanvasPresenceState) => void;
+  leave: () => void;
+} | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saveStateTimer: ReturnType<typeof setTimeout> | null = null;
 let presenceTimer: ReturnType<typeof setInterval> | null = null;
@@ -255,7 +263,7 @@ watch(camera, () => {
 });
 const selectedShape = computed(() =>
   selectedShapeId.value
-    ? shapes.value.find((shape) => shape.id === selectedShapeId.value) ?? null
+    ? (shapes.value.find((shape) => shape.id === selectedShapeId.value) ?? null)
     : null,
 );
 
@@ -371,7 +379,10 @@ function cloneFreehandPoint(point: FreehandPoint): FreehandPoint {
   };
 }
 
-function toStroke(id: string, source: Y.Map<unknown> | CanvasStrokeSnapshot): CanvasStroke {
+function toStroke(
+  id: string,
+  source: Y.Map<unknown> | CanvasStrokeSnapshot,
+): CanvasStroke {
   const read = (key: keyof CanvasStrokeSnapshot) =>
     source instanceof Y.Map ? source.get(key) : source[key];
   const pointsValue = read("points");
@@ -469,7 +480,9 @@ function parseSnapshot(content: string | null | undefined): CanvasSnapshot | nul
     const strokes = Array.isArray(parsed.strokes)
       ? parsed.strokes
           .filter((stroke): stroke is CanvasStrokeSnapshot =>
-            Boolean(stroke && typeof stroke.id === "string" && Array.isArray(stroke.points)),
+            Boolean(
+              stroke && typeof stroke.id === "string" && Array.isArray(stroke.points),
+            ),
           )
           .map((stroke) => ({
             id: stroke.id,
@@ -481,7 +494,9 @@ function parseSnapshot(content: string | null | undefined): CanvasSnapshot | nul
     return {
       version: 1,
       shapes: parsed.shapes
-        .filter((shape): shape is CanvasShape => Boolean(shape && typeof shape.id === "string"))
+        .filter((shape): shape is CanvasShape =>
+          Boolean(shape && typeof shape.id === "string"),
+        )
         .map((shape) => toShape(shape.id, shape)),
       strokes,
     };
@@ -672,7 +687,11 @@ function renderInk() {
     drawFreehandStroke(context, themedStroke(stroke), transform.value);
   }
   if (activeFreehandStroke.value) {
-    drawFreehandStroke(context, themedStroke(activeFreehandStroke.value), transform.value);
+    drawFreehandStroke(
+      context,
+      themedStroke(activeFreehandStroke.value),
+      transform.value,
+    );
   }
   drawStrokeSelection(context);
 }
@@ -771,7 +790,8 @@ function setupPresence() {
       if (event.type === "presence-snapshot") {
         next.clear();
         for (const presence of event.presences) {
-          if (presence.clientId !== presenceClientId) next.set(presence.clientId, presence);
+          if (presence.clientId !== presenceClientId)
+            next.set(presence.clientId, presence);
         }
       } else if (event.type === "presence-update") {
         if (event.presence.clientId !== presenceClientId) {
@@ -832,10 +852,11 @@ async function uploadMediaFile(file: File): Promise<string> {
 function imageSize(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve) => {
     const image = new Image();
-    image.onload = () => resolve({
-      width: image.naturalWidth || 320,
-      height: image.naturalHeight || 220,
-    });
+    image.onload = () =>
+      resolve({
+        width: image.naturalWidth || 320,
+        height: image.naturalHeight || 220,
+      });
     image.onerror = () => resolve({ width: 320, height: 220 });
     image.src = src;
   });
@@ -846,10 +867,11 @@ function videoSize(src: string): Promise<{ width: number; height: number }> {
     const video = document.createElement("video");
     video.preload = "metadata";
     video.muted = true;
-    video.onloadedmetadata = () => resolve({
-      width: video.videoWidth || 320,
-      height: video.videoHeight || 220,
-    });
+    video.onloadedmetadata = () =>
+      resolve({
+        width: video.videoWidth || 320,
+        height: video.videoHeight || 220,
+      });
     video.onerror = () => resolve({ width: 320, height: 220 });
     video.src = src;
   });
@@ -858,7 +880,11 @@ function videoSize(src: string): Promise<{ width: number; height: number }> {
 function fitImageSize(width: number, height: number) {
   const maxWidth = 480;
   const maxHeight = 360;
-  const scale = Math.min(1, maxWidth / Math.max(1, width), maxHeight / Math.max(1, height));
+  const scale = Math.min(
+    1,
+    maxWidth / Math.max(1, width),
+    maxHeight / Math.max(1, height),
+  );
   return {
     width: Math.max(80, Math.round(width * scale)),
     height: Math.max(60, Math.round(height * scale)),
@@ -980,7 +1006,10 @@ function isPointInsideSection(point: FreehandPoint, section: CanvasShape) {
 }
 
 function isStrokeInsideSection(stroke: CanvasStroke, section: CanvasShape) {
-  return stroke.points.length > 0 && stroke.points.every((point) => isPointInsideSection(point, section));
+  return (
+    stroke.points.length > 0 &&
+    stroke.points.every((point) => isPointInsideSection(point, section))
+  );
 }
 
 function getSectionContents(section: CanvasShape) {
@@ -1104,12 +1133,15 @@ function finishFreehand(event: PointerEvent) {
   const finished = freehandBuilder.finish();
   if (finished.points.length > 0) {
     const id = `stroke-${crypto.randomUUID()}`;
-    yStrokes.set(id, createStrokeMap({
+    yStrokes.set(
       id,
-      points: finished.points.map(cloneFreehandPoint),
-      style: { ...finished.style },
-      updatedAt: Date.now(),
-    }));
+      createStrokeMap({
+        id,
+        points: finished.points.map(cloneFreehandPoint),
+        style: { ...finished.style },
+        updatedAt: Date.now(),
+      }),
+    );
   }
   freehandBuilder = null;
   freehandPointerId = null;
@@ -1324,7 +1356,9 @@ let internalClipboard: string | null = null;
 
 function collectSelection(): { shapes: CanvasShape[]; strokes: CanvasStrokeSnapshot[] } {
   const selShapes = selectedShapeId.value
-    ? shapes.value.filter((shape) => shape.id === selectedShapeId.value).map((shape) => ({ ...shape }))
+    ? shapes.value
+        .filter((shape) => shape.id === selectedShapeId.value)
+        .map((shape) => ({ ...shape }))
     : [];
   const selStrokes = selectedStrokeId.value
     ? strokes.value
@@ -1435,7 +1469,11 @@ function pasteCanvasClipboard(
         id,
         createStrokeMap({
           id,
-          points: stroke.points.map((point) => ({ ...point, x: point.x + dx, y: point.y + dy })),
+          points: stroke.points.map((point) => ({
+            ...point,
+            x: point.x + dx,
+            y: point.y + dy,
+          })),
           style: { ...stroke.style },
           updatedAt: now,
         }),
@@ -1567,11 +1605,15 @@ watch(
 );
 
 watch(user, setupPresence);
-watch([camera, screen], () => {
-  renderGrid();
-  renderInk();
-  updatePresence();
-}, { deep: true });
+watch(
+  [camera, screen],
+  () => {
+    renderGrid();
+    renderInk();
+    updatePresence();
+  },
+  { deep: true },
+);
 
 onMounted(() => {
   yShapes.observeDeep(() => {

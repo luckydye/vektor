@@ -1,37 +1,37 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { marked } from "marked";
-import { Actions } from "../utils/actions.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { api } from "../api/client.ts";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  clockIcon,
+  closeSmallIcon,
+  copyOutlineIcon,
+  linkChainIcon,
+  paperclipIcon,
+  pencilSquareIcon,
+  plusThinIcon,
+  robotIcon,
+  sendPlaneIcon,
+  stopIcon,
+  thinkingIcon,
+  trashSmallIcon,
+} from "~/src/assets/icons.ts";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
+import { api } from "../api/client.ts";
+import {
+  type ChatSession,
+  deleteSession,
+  getSession,
+  getSessionsForSpace,
+  saveSession,
+  type UIMessage,
+} from "../composeables/useChatSessions.ts";
+import { useDockedWindows } from "../composeables/useDockedWindows.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { Actions } from "../utils/actions.ts";
+import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
-import { useDockedWindows } from "../composeables/useDockedWindows.ts";
-import {
-  plusThinIcon,
-  trashSmallIcon,
-  thinkingIcon,
-  robotIcon,
-  copyOutlineIcon,
-  linkChainIcon,
-  pencilSquareIcon,
-  clockIcon,
-  closeSmallIcon,
-  paperclipIcon,
-  stopIcon,
-  sendPlaneIcon,
-} from "~/src/assets/icons.ts";
-import {
-  getSessionsForSpace,
-  getSession,
-  saveSession,
-  deleteSession,
-  type ChatSession,
-  type UIMessage,
-} from "../composeables/useChatSessions.ts";
-import { normalizeTimestamp } from "../utils/utils.ts";
 
 const props = defineProps({
   documentId: {
@@ -125,7 +125,6 @@ function loadUIState() {
   }
 }
 
-
 const canSend = computed(() => {
   return !!(
     !isGenerating.value &&
@@ -141,17 +140,23 @@ const canSend = computed(() => {
  *              processing a tool result before responding)
  * - null: not generating, or content is actively streaming (text / thinking / status)
  */
-const waitingState = computed((): { kind: 'tool_executing'; tool: UIMessage } | { kind: 'waiting' } | null => {
-  if (!isGenerating.value) return null;
-  const last = messages.value.at(-1);
-  if (last?.role === 'tool' && last.toolPhase === 'call') {
-    return { kind: 'tool_executing', tool: last };
-  }
-  if (last?.role === 'assistant' || last?.role === 'thinking' || last?.role === 'status') {
-    return null;
-  }
-  return { kind: 'waiting' };
-});
+const waitingState = computed(
+  (): { kind: "tool_executing"; tool: UIMessage } | { kind: "waiting" } | null => {
+    if (!isGenerating.value) return null;
+    const last = messages.value.at(-1);
+    if (last?.role === "tool" && last.toolPhase === "call") {
+      return { kind: "tool_executing", tool: last };
+    }
+    if (
+      last?.role === "assistant" ||
+      last?.role === "thinking" ||
+      last?.role === "status"
+    ) {
+      return null;
+    }
+    return { kind: "waiting" };
+  },
+);
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -663,7 +668,9 @@ function summarizeDocumentLikeResult(value: unknown): string | null {
         : null;
   const id = typeof record.id === "string" ? record.id : null;
   const type = typeof record.type === "string" ? record.type : null;
-  const parts = [title, id ? `id: ${id}` : null, type ? `type: ${type}` : null].filter(Boolean);
+  const parts = [title, id ? `id: ${id}` : null, type ? `type: ${type}` : null].filter(
+    Boolean,
+  );
   if (parts.length === 0) {
     return null;
   }
@@ -680,9 +687,12 @@ function summarizeCollectionResult(value: unknown): string | null {
     if (!Array.isArray(items)) continue;
     const lines = items.slice(0, 5).map((item, index) => {
       const summary = summarizeDocumentLikeResult(item);
-      return summary ? `${index + 1}. ${summary.replace(/\n/g, " · ")}` : `${index + 1}. ${formatValuePreview(item)}`;
+      return summary
+        ? `${index + 1}. ${summary.replace(/\n/g, " · ")}`
+        : `${index + 1}. ${formatValuePreview(item)}`;
     });
-    const extra = items.length > lines.length ? `\n+${items.length - lines.length} more` : "";
+    const extra =
+      items.length > lines.length ? `\n+${items.length - lines.length} more` : "";
     return lines.join("\n") + extra;
   }
   return null;
@@ -725,7 +735,10 @@ function formatToolPreview(message: UIMessage): string {
     return formatBashResultPreview(message, result);
   }
 
-  if (message.toolName === "get_document" || message.toolName === "get_current_document") {
+  if (
+    message.toolName === "get_document" ||
+    message.toolName === "get_current_document"
+  ) {
     const summary = summarizeDocumentLikeResult(result);
     if (summary) {
       const record = result as Record<string, unknown>;
@@ -874,7 +887,10 @@ function resumeSession(session: ChatSession) {
   // If the session was interrupted while the agent was responding, the history
   // will end with a user message (pre-saved before the agent started).  Connect
   // back to the in-progress turn (or restart it if the server already finished).
-  const conversationArr = session.conversationHistory as Array<{ role: string; content?: string }>;
+  const conversationArr = session.conversationHistory as Array<{
+    role: string;
+    content?: string;
+  }>;
   const lastHistoryMsg = conversationArr.at(-1);
   if (lastHistoryMsg?.role === "user" && typeof lastHistoryMsg.content === "string") {
     void nextTick(() => void reconnectSession(lastHistoryMsg.content!));
@@ -898,7 +914,8 @@ async function reconnectSession(pendingUserMessage: string) {
     }
   } catch (error) {
     if (!(error instanceof DOMException && error.name === "AbortError")) {
-      const errorMessage = error instanceof Error ? error.message : "AI generation failed";
+      const errorMessage =
+        error instanceof Error ? error.message : "AI generation failed";
       messages.value.push({
         role: "assistant",
         content: `Sorry, I encountered an error: ${errorMessage}`,

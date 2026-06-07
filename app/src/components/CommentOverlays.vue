@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import {
   isPositionReference,
   resolveReferenceSelector,
@@ -14,9 +14,8 @@ const props = defineProps<{
   comments: Comment[];
 }>();
 
-const emit = defineEmits<{
-  (e: "move", payload: { reference: string; y: number }): void;
-}>();
+const emit =
+  defineEmits<(e: "move", payload: { reference: string; y: number }) => void>();
 
 const containerEl = ref<HTMLElement | null>(null);
 const overlays = ref<{ top: number; count: number; reference: string }[]>([]);

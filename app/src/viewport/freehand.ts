@@ -82,7 +82,9 @@ const DEFAULT_STYLE: FreehandStrokeStyle = {
   lineJoin: "round",
 };
 
-function resolveStyle(style: Partial<FreehandStrokeStyle> | undefined): FreehandStrokeStyle {
+function resolveStyle(
+  style: Partial<FreehandStrokeStyle> | undefined,
+): FreehandStrokeStyle {
   return { ...DEFAULT_STYLE, ...style };
 }
 
@@ -107,7 +109,11 @@ function distance(a: FreehandPoint, b: FreehandPoint): number {
   return Math.sqrt(distanceSq(a, b));
 }
 
-function cornerDamping(previous: FreehandPoint, current: FreehandPoint, next: FreehandPoint): number {
+function cornerDamping(
+  previous: FreehandPoint,
+  current: FreehandPoint,
+  next: FreehandPoint,
+): number {
   const inX = current.x - previous.x;
   const inY = current.y - previous.y;
   const outX = next.x - current.x;
@@ -143,7 +149,11 @@ function clampedHandle(
   };
 }
 
-function pointSegmentDistanceSq(point: FreehandPoint, start: FreehandPoint, end: FreehandPoint): number {
+function pointSegmentDistanceSq(
+  point: FreehandPoint,
+  start: FreehandPoint,
+  end: FreehandPoint,
+): number {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const lenSq = dx * dx + dy * dy;
@@ -160,12 +170,19 @@ function pointSegmentDistanceSq(point: FreehandPoint, start: FreehandPoint, end:
   return ox * ox + oy * oy;
 }
 
-function pointSegmentT(point: FreehandPoint, start: FreehandPoint, end: FreehandPoint): number {
+function pointSegmentT(
+  point: FreehandPoint,
+  start: FreehandPoint,
+  end: FreehandPoint,
+): number {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const lenSq = dx * dx + dy * dy;
   if (lenSq === 0) return 0;
-  return Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq));
+  return Math.max(
+    0,
+    Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lenSq),
+  );
 }
 
 function widthInterpolationError(
@@ -173,7 +190,8 @@ function widthInterpolationError(
   start: FreehandPoint,
   end: FreehandPoint,
 ): number {
-  if (point.width === undefined || start.width === undefined || end.width === undefined) return 0;
+  if (point.width === undefined || start.width === undefined || end.width === undefined)
+    return 0;
   const t = pointSegmentT(point, start, end);
   const interpolatedWidth = start.width + (end.width - start.width) * t;
   return Math.abs(point.width - interpolatedWidth);
@@ -223,10 +241,22 @@ export function simplifyFreehandPoints(
     let maxIndex = -1;
 
     for (let i = startIndex + 1; i < endIndex; i++) {
-      const distSq = pointSegmentDistanceSq(points[i], points[startIndex], points[endIndex]);
-      const widthError = widthInterpolationError(points[i], points[startIndex], points[endIndex]);
+      const distSq = pointSegmentDistanceSq(
+        points[i],
+        points[startIndex],
+        points[endIndex],
+      );
+      const widthError = widthInterpolationError(
+        points[i],
+        points[startIndex],
+        points[endIndex],
+      );
       const distanceScore =
-        tolerance > 0 ? Math.sqrt(distSq) / tolerance : distSq > 0 ? Number.POSITIVE_INFINITY : 0;
+        tolerance > 0
+          ? Math.sqrt(distSq) / tolerance
+          : distSq > 0
+            ? Number.POSITIVE_INFINITY
+            : 0;
       const widthScore =
         Number.isFinite(widthTolerance) && widthTolerance > 0
           ? widthError / widthTolerance
@@ -297,7 +327,10 @@ function addVelocityWidths(
       Math.min(maxWidth, targetWidthFor(scaled[0], firstVelocity)),
     );
   } else {
-    scaled[0].width = Math.max(minWidth, Math.min(maxWidth, scaled[0].width ?? style.width));
+    scaled[0].width = Math.max(
+      minWidth,
+      Math.min(maxWidth, scaled[0].width ?? style.width),
+    );
   }
   previousWidth = scaled[0].width;
 
@@ -419,7 +452,8 @@ export function createFreehandStrokeBuilder(
       const minDistance = options.minDistance ?? 0;
       if (pendingStart) {
         const farEnough =
-          minDistance <= 0 || distanceSq(point, pendingStart) >= minDistance * minDistance;
+          minDistance <= 0 ||
+          distanceSq(point, pendingStart) >= minDistance * minDistance;
         if (!farEnough) return makeStroke();
 
         points.push(clonePoint(pendingStart), clonePoint(point));
@@ -470,7 +504,10 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function addEdgeCurve(ctx: CanvasRenderingContext2D, edge: readonly { x: number; y: number }[]) {
+function addEdgeCurve(
+  ctx: CanvasRenderingContext2D,
+  edge: readonly { x: number; y: number }[],
+) {
   if (edge.length === 0) return;
   ctx.lineTo(edge[0].x, edge[0].y);
   if (edge.length === 1) {
@@ -511,7 +548,10 @@ function sampleFreehandPath(
       Math.hypot(segment.cp1x - from.x, segment.cp1y - from.y) +
       Math.hypot(segment.cp2x - segment.cp1x, segment.cp2y - segment.cp1y) +
       Math.hypot(segment.x - segment.cp2x, segment.y - segment.cp2y);
-    const sampleCount = Math.max(3, Math.min(32, Math.ceil((controlLength * transform.scale) / 8)));
+    const sampleCount = Math.max(
+      3,
+      Math.min(32, Math.ceil((controlLength * transform.scale) / 8)),
+    );
     const toWidth = segment.width ?? style.width;
 
     for (let i = 1; i <= sampleCount; i++) {
@@ -535,7 +575,9 @@ function sampleFreehandPath(
   return samples;
 }
 
-function filterScreenSamples(samples: readonly ScreenStrokeSample[]): ScreenStrokeSample[] {
+function filterScreenSamples(
+  samples: readonly ScreenStrokeSample[],
+): ScreenStrokeSample[] {
   if (samples.length <= 2) return samples.slice();
 
   const filtered: ScreenStrokeSample[] = [samples[0]];
@@ -562,10 +604,18 @@ function tangentForSample(samples: readonly ScreenStrokeSample[], index: number)
   let previous = samples[Math.max(0, index - 1)];
   let next = samples[Math.min(samples.length - 1, index + 1)];
 
-  for (let i = index - 2; i >= 0 && Math.hypot(sample.x - previous.x, sample.y - previous.y) < 1; i--) {
+  for (
+    let i = index - 2;
+    i >= 0 && Math.hypot(sample.x - previous.x, sample.y - previous.y) < 1;
+    i--
+  ) {
     previous = samples[i];
   }
-  for (let i = index + 2; i < samples.length && Math.hypot(next.x - sample.x, next.y - sample.y) < 1; i++) {
+  for (
+    let i = index + 2;
+    i < samples.length && Math.hypot(next.x - sample.x, next.y - sample.y) < 1;
+    i++
+  ) {
     next = samples[i];
   }
 

@@ -1,7 +1,7 @@
 ---
 import { eq } from "drizzle-orm";
 import { getSpaceDb } from "../../../db/db.ts";
-import { revision, document } from "../../../db/schema.ts";
+import { document, revision } from "../../../db/schema.ts";
 import { requireSpaceViewer, resolveSpacePage } from "../../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);

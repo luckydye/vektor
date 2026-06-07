@@ -1,8 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createId } from "../db/ids.ts";
 import { config } from "../config.ts";
+import { createId } from "../db/ids.ts";
 
 export type NodeStatus =
   | "pending"
@@ -62,8 +69,8 @@ const MAX_LOG_ENTRIES = 200;
 const MAX_RUNS = 20;
 const REDACTED_VALUE = "[redacted]";
 
-let runStoreFilePath = config().WORKFLOW_RUN_STORE_FILE ??
-  join(tmpdir(), "vektor-workflow-runs.json");
+let runStoreFilePath =
+  config().WORKFLOW_RUN_STORE_FILE ?? join(tmpdir(), "vektor-workflow-runs.json");
 
 function ensureRunStoreDirectory(): void {
   mkdirSync(dirname(runStoreFilePath), { recursive: true });
@@ -276,7 +283,9 @@ function persistRunStoreSync(): void {
   ensureRunStoreDirectory();
   const tempFilePath = `${runStoreFilePath}.${process.pid}.tmp`;
   const serialized: PersistedRunStore = {
-    runs: Object.fromEntries([...runs.entries()].map(([runId, run]) => [runId, serializeRun(run)])),
+    runs: Object.fromEntries(
+      [...runs.entries()].map(([runId, run]) => [runId, serializeRun(run)]),
+    ),
     latestRunByDoc: Object.fromEntries(latestRunByDoc),
   };
   writeFileSync(tempFilePath, JSON.stringify(serialized), "utf-8");
@@ -343,7 +352,9 @@ export function reloadRunStoreFromDisk(): void {
   runs.clear();
   latestRunByDoc.clear();
   if (!existsSync(runStoreFilePath)) return;
-  const serialized = JSON.parse(readFileSync(runStoreFilePath, "utf-8")) as PersistedRunStore;
+  const serialized = JSON.parse(
+    readFileSync(runStoreFilePath, "utf-8"),
+  ) as PersistedRunStore;
   for (const [runId, run] of Object.entries(serialized.runs)) {
     runs.set(runId, normalizeRunState(deserializeRun(run)));
   }
@@ -437,7 +448,8 @@ export function setNodeStatus(
     sanitizedUpdate.error = summarizeString(sanitizedUpdate.error);
   }
   Object.assign(node, sanitizedUpdate);
-  const isTerminal = sanitizedUpdate.status &&
+  const isTerminal =
+    sanitizedUpdate.status &&
     sanitizedUpdate.status !== "pending" &&
     sanitizedUpdate.status !== "running";
   if (isTerminal) {

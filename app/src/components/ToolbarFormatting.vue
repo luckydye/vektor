@@ -1,22 +1,22 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import Icon from "./Icon.vue";
+import {
+  closeThickIcon,
+  imageFullWidthIcon,
+  restoreArrowIcon,
+} from "~/src/assets/icons.ts";
+import {
+  getImageAttributes,
+  isImageSelected,
+  resetImageSize,
+  toggleImageFullWidth,
+} from "../editor/commands/imageCommands.ts";
 import { Actions } from "../utils/actions.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
 } from "../utils/formattingActions.ts";
-import {
-  toggleImageFullWidth,
-  resetImageSize,
-  isImageSelected,
-  getImageAttributes,
-} from "../editor/commands/imageCommands.ts";
-import {
-  imageFullWidthIcon,
-  restoreArrowIcon,
-  closeThickIcon,
-} from "~/src/assets/icons.ts";
+import Icon from "./Icon.vue";
 
 const getEditor = () => {
   return globalThis.__editor;
