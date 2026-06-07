@@ -14,6 +14,7 @@ import { transformDocumentContent } from "#utils/yjsRooms.ts";
 import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
 import { stripScriptTags } from "#utils/utils.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { ResourceType } from "#db/acl.ts";
 
 /**
  * Applies partial edit operations to a document through the collaboration
@@ -31,7 +32,10 @@ export const POST: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor", {
+      type: ResourceType.DOCUMENT,
+      id,
+    });
     const isJobRequest = auth.type === "job";
     const userId = auth.type === "user" ? auth.user.id : auth.userId;
 

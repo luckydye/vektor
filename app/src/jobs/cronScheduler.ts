@@ -6,9 +6,8 @@ import { claimDueJobSchedules, parseJobScheduleInputs } from "../db/jobSchedules
 import { failStaleJobRuns } from "../db/jobRuns.ts";
 import type { JobSchedule } from "../db/schema/space.ts";
 import { appLogger } from "../observability/logger.ts";
-import { config } from "../config.ts";
 import { runJob } from "./scheduler.ts";
-import { createSandbox } from "./sandbox.ts";
+import { resolveJobSandbox } from "./sandbox.ts";
 
 const SPACES_DIR = join("./data", "spaces");
 const TICK_INTERVAL_MS = 30_000;
@@ -97,7 +96,7 @@ async function runScheduledJob(spaceId: string, schedule: JobSchedule): Promise<
     jobId: schedule.jobId,
   });
 
-  const sandbox = config().JOB_SANDBOX === "openshell" ? await createSandbox() : null;
+  const sandbox = await resolveJobSandbox();
 
   try {
     // Resolve the job across all extensions, same as POST /jobs/run.

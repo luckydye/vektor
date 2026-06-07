@@ -27,8 +27,7 @@ import { listExtensions, getExtensionPackage } from "#db/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { runJob } from "#jobs/scheduler.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import { config } from "#config";
-import { createSandbox } from "#jobs/sandbox.ts";
+import { resolveJobSandbox } from "#jobs/sandbox.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -68,8 +67,7 @@ export const POST: APIRoute = (context) =>
       if (!zipBuffer)
         return badRequestResponse(`Extension package not found for job "${jobId}"`);
 
-      const useSandbox = config().JOB_SANDBOX === "openshell";
-      const sandbox = useSandbox ? await createSandbox() : null;
+      const sandbox = await resolveJobSandbox();
 
       if (body.stream) {
         const encoder = new TextEncoder();

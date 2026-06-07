@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { mkdir, readdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
-import { join, extname, dirname, relative } from "node:path";
+import { join, extname, dirname, relative, resolve, sep } from "node:path";
 import { randomBytes } from "node:crypto";
 import AdmZip from "adm-zip";
 import {
@@ -67,10 +67,49 @@ async function ensureTempDir(): Promise<void> {
   await mkdir(TEMP_DIR, { recursive: true });
 }
 
+// Guard rails against zip bombs.
+const MAX_EXTRACTED_BYTES = 500 * 1024 * 1024; // 500MB uncompressed
+const MAX_ENTRIES = 10_000;
+
+/**
+ * Safely extract a zip, defending against:
+ *  - zip-slip: an entry name like `../../etc/x` or an absolute path that would
+ *    write outside `extractDir` (adm-zip's extractAllTo does not reliably block
+ *    this);
+ *  - zip bombs: excessive entry count or total uncompressed size.
+ */
 async function extractZipFile(zipPath: string, extractDir: string): Promise<void> {
   await mkdir(extractDir, { recursive: true });
+  const root = resolve(extractDir);
   const zip = new AdmZip(zipPath);
-  zip.extractAllTo(extractDir, true);
+  const entries = zip.getEntries();
+
+  if (entries.length > MAX_ENTRIES) {
+    throw new Error(`Archive has too many entries (max ${MAX_ENTRIES})`);
+  }
+
+  let totalBytes = 0;
+  for (const entry of entries) {
+    // Resolve the destination and ensure it stays within the extraction root.
+    const destPath = resolve(root, entry.entryName);
+    if (destPath !== root && !destPath.startsWith(root + sep)) {
+      throw new Error(`Unsafe path in archive: ${entry.entryName}`);
+    }
+
+    if (entry.isDirectory) {
+      await mkdir(destPath, { recursive: true });
+      continue;
+    }
+
+    const data = entry.getData();
+    totalBytes += data.length;
+    if (totalBytes > MAX_EXTRACTED_BYTES) {
+      throw new Error("Archive exceeds maximum uncompressed size");
+    }
+
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, data);
+  }
 }
 
 async function parseWIFManifest(extractDir: string): Promise<WIFManifest | null> {

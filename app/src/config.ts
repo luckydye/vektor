@@ -96,6 +96,10 @@ export function config() {
       SEARCH_EMBEDDINGS_API_KEY: process.env.WIKI_SEARCH_EMBEDDINGS_API_KEY,
       SECRETS_ENCRYPTION_KEY: process.env.WIKI_SECRETS_ENCRYPTION_KEY,
       JOB_SANDBOX: process.env.WIKI_JOB_SANDBOX,
+      // Escape hatch to run extension jobs in-process (NO isolation). Jobs can
+      // read host files, env vars/secrets, and reach internal services, so this
+      // must only ever be enabled for trusted local development.
+      JOB_ALLOW_UNSANDBOXED: process.env.WIKI_JOB_ALLOW_UNSANDBOXED,
 
       // OpenTelemetry
       OTEL_ENABLED: process.env.WIKI_OTEL_ENABLED,

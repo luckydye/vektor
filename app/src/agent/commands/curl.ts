@@ -1,4 +1,31 @@
 import { defineCommand } from "just-bash";
+import { assertPublicUrl, SsrfError } from "../../utils/ssrf.ts";
+
+const MAX_REDIRECTS = 5;
+
+/**
+ * SSRF-safe fetch for the agent sandbox: validates the target (and every
+ * redirect hop) against the private/blocked-IP denylist before connecting, so
+ * the agent cannot reach internal services or cloud metadata endpoints.
+ */
+async function safeFetch(
+  url: string,
+  init: RequestInit & { method: string },
+): Promise<Response> {
+  let target = (await assertPublicUrl(url)).toString();
+  for (let i = 0; i <= MAX_REDIRECTS; i += 1) {
+    const response = await fetch(target, { ...init, redirect: "manual" });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) return response;
+      if (i === MAX_REDIRECTS) throw new SsrfError("Too many redirects");
+      target = (await assertPublicUrl(new URL(location, target).toString())).toString();
+      continue;
+    }
+    return response;
+  }
+  throw new SsrfError("Too many redirects");
+}
 
 export const curlCommand = defineCommand("curl", async (args, ctx) => {
   let silent = false;
@@ -28,12 +55,19 @@ export const curlCommand = defineCommand("curl", async (args, ctx) => {
     return { stdout: "", stderr: "curl: no URL specified\nusage: curl [-s] [-o file] [-X method] [-H header] [-d data] <url>\n", exitCode: 2 };
   }
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    ...(body != null ? { body } : {}),
-    redirect: "follow",
-  });
+  let response: Response;
+  try {
+    response = await safeFetch(url, {
+      method,
+      headers,
+      ...(body != null ? { body } : {}),
+    });
+  } catch (error) {
+    if (error instanceof SsrfError) {
+      return { stdout: "", stderr: `curl: ${error.message}\n`, exitCode: 6 };
+    }
+    throw error;
+  }
 
   const bytes = new Uint8Array(await response.arrayBuffer());
 

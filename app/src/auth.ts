@@ -20,6 +20,36 @@ if (!authDb) {
   throw new Error("Failed to get authDb");
 }
 
+// Cookies must be Secure whenever the app is served over HTTPS.
+const useSecureCookies = (appConfig.SITE_URL ?? "").startsWith("https://");
+
+// Optional allowlist of group claims the IdP is permitted to assign. When set
+// (comma-separated), any group outside the list is dropped.
+const OAUTH_ALLOWED_GROUPS = (process.env.OAUTH_ALLOWED_GROUPS ?? "")
+  .split(",")
+  .map((g) => g.trim())
+  .filter(Boolean);
+
+const GROUP_NAME_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+/**
+ * Sanitize the `wiki_groups` claim from an OAuth IdP before it is persisted and
+ * used for authorization. Group membership drives ACL access, so a compromised
+ * or loosely-configured IdP must not be able to inject arbitrary/privileged
+ * group names. We keep only well-formed string entries, cap the count, and
+ * (when configured) intersect with an explicit allowlist.
+ */
+function sanitizeOAuthGroups(raw: unknown): string {
+  if (!Array.isArray(raw)) return "[]";
+  let groups = raw
+    .filter((g): g is string => typeof g === "string" && GROUP_NAME_PATTERN.test(g))
+    .slice(0, 100);
+  if (OAUTH_ALLOWED_GROUPS.length > 0) {
+    groups = groups.filter((g) => OAUTH_ALLOWED_GROUPS.includes(g));
+  }
+  return JSON.stringify([...new Set(groups)]);
+}
+
 export const auth = betterAuth({
   baseURL: appConfig.SITE_URL || "http://localhost:8080",
 
@@ -43,6 +73,27 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: !!import.meta.env.DEV || process.env.VEKTOR_EMAIL_AUTH === "1",
+    minPasswordLength: 12,
+    // Require verified email before login when an email sender is wired up.
+    requireEmailVerification: process.env.VEKTOR_REQUIRE_EMAIL_VERIFICATION === "1",
+  },
+
+  // Throttle abuse (credential stuffing, enumeration) with stricter limits on
+  // the sensitive auth endpoints.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-up/email": { window: 60, max: 5 },
+      "/forget-password": { window: 60, max: 3 },
+    },
+  },
+
+  advanced: {
+    useSecureCookies,
+    cookiePrefix: "vektor",
   },
 
   trustedOrigins: authTrustedOrigins,
@@ -60,18 +111,13 @@ export const auth = betterAuth({
           tokenUrl: appConfig.OAUTH_TOKEN_URL,
           userInfoUrl: appConfig.OAUTH_USERINFO_URL,
           mapProfileToUser: async (profile) => {
-            const groups = profile.wiki_groups || [];
-            const groupsString = Array.isArray(groups)
-              ? JSON.stringify(groups)
-              : JSON.stringify([]);
-
             return {
               id: profile.id,
               email: profile.email,
               name: profile.name,
               image: profile.image,
               emailVerified: profile.emailVerified || false,
-              groups: groupsString,
+              groups: sanitizeOAuthGroups(profile.wiki_groups),
             };
           },
         },

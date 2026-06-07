@@ -41,7 +41,11 @@ export const GET: APIRoute = async (context) => {
 
 export const PUT: APIRoute = async (context) => {
   const { userId, spaceId, eventId } = context.params;
-  const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
+  const caldavUser = await requireCalDAVUserAndAccess(context, {
+    userId,
+    spaceId,
+    requiredRole: "editor",
+  });
   if (caldavUser instanceof Response) return caldavUser;
 
   const icalText = await context.request.text();

@@ -10,6 +10,7 @@ import {
   isWithinUploadsRoot,
 } from "#utils/uploads.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
 
 const MIME_TYPES: Record<string, string> = {
   // Images
@@ -90,6 +91,11 @@ export const GET: APIRoute = (context) =>
         // Range support is required for video playback (Safari probes with
         // a byte-range request and refuses to play without a 206 response).
         "Accept-Ranges": "bytes",
+        // Prevent stored XSS: force download for active types (svg/html),
+        // disallow MIME sniffing, and sandbox any rendered content.
+        "Content-Disposition": contentDisposition(extension),
+        "Content-Security-Policy": SERVED_FILE_CSP,
+        "X-Content-Type-Options": "nosniff",
       };
 
       const rangeHeader = context.request.headers.get("range");

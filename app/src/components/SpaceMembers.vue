@@ -49,9 +49,10 @@ async function fetchPermissions() {
 }
 
 async function fetchUsers() {
+  if (!currentSpace.value) return;
   loadingUsers.value = true;
   try {
-    const users = await api.users.get();
+    const users = await api.users.get(currentSpace.value.id);
 
     const map = new Map();
     users.forEach((u) => {
@@ -68,9 +69,10 @@ async function fetchUsers() {
 }
 
 async function fetchAvailableUsers() {
+  if (!currentSpace.value) return;
   loadingAvailableUsers.value = true;
   try {
-    const users = await fetchUsers();
+    const users = await api.users.candidates(currentSpace.value.id);
     if (!users) {
       throw new Error("Failed to fetch users");
     }

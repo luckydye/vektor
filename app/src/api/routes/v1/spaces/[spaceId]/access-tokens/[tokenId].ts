@@ -47,7 +47,7 @@ export const PATCH: APIRoute = (context) =>
     const spaceId = requireParam(context.params, "spaceId");
     const tokenId = requireParam(context.params, "tokenId");
 
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     const success = await revokeAccessToken(spaceId, tokenId);
     if (!success) {
@@ -67,7 +67,7 @@ export const DELETE: APIRoute = (context) =>
     const spaceId = requireParam(context.params, "spaceId");
     const tokenId = requireParam(context.params, "tokenId");
 
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     const success = await deleteAccessToken(spaceId, tokenId);
     if (!success) {

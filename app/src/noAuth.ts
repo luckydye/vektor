@@ -24,3 +24,12 @@ export const LOCAL_SESSION = {
 export function isNoAuthMode(): boolean {
   return process.env.VEKTOR_NO_AUTH === "1";
 }
+
+// No-auth mode makes LOCAL_USER an unauthenticated super-user that bypasses
+// every permission check. It must never be enabled in production — fail fast at
+// startup rather than silently exposing all data.
+if (isNoAuthMode() && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with NODE_ENV=production",
+  );
+}

@@ -415,7 +415,7 @@ interface PresenceSubscription<TState = unknown> {
  * Main API client class with fluent interface
  * @example
  * const api = new ApiClient();
- * const users = await api.users.get();
+ * const users = await api.users.get("space-123");
  * const document = await api.document.get("space-123", "doc-456");
  */
 export class ApiClient {
@@ -571,10 +571,22 @@ export class ApiClient {
 
   users = {
     /**
-     * List all users
+     * List the members of a space (minimal profiles: id, name, image).
      */
-    get: async () => {
-      return await this.apiGet<User[]>(this.baseUrl, "/api/v1/users");
+    get: async (spaceId: string) => {
+      return await this.apiGet<User[]>(
+        this.baseUrl,
+        `/api/v1/users?spaceId=${encodeURIComponent(spaceId)}`,
+      );
+    },
+    /**
+     * List candidate users to add to a space. Owner-only; includes email.
+     */
+    candidates: async (spaceId: string) => {
+      return await this.apiGet<User[]>(
+        this.baseUrl,
+        `/api/v1/users?spaceId=${encodeURIComponent(spaceId)}&scope=candidates`,
+      );
     },
     /**
      * Get a user by ID

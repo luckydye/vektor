@@ -7,6 +7,7 @@ import {
   requireParam,
   requireUser,
   verifySpaceRole,
+  verifyCanGrantTokenAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
 import {
@@ -15,7 +16,7 @@ import {
   listAccessTokens,
   listTokenResources,
 } from "#db/accessTokens.ts";
-import { ResourceType } from "#db/acl.ts";
+import { ResourceType, type ResourceType as ResourceTypeValue } from "#db/acl.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/access-tokens
@@ -60,7 +61,8 @@ export const POST: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, "editor");
+    // Token creation is a privileged delegation; restrict to space owners.
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     const body = await parseJsonBody(context.request);
     const { name, resourceType, resourceId, permission, expiresInDays } = body;
@@ -83,12 +85,14 @@ export const POST: APIRoute = (context) =>
       throw badRequestResponse("Permission is required");
     }
 
-    const validPermissions = ["viewer", "editor", "extensions"];
-    if (!validPermissions.includes(permission)) {
-      throw badRequestResponse(
-        `Permission must be one of: ${validPermissions.join(", ")}`,
-      );
-    }
+    // Validate the grant and ensure the caller cannot delegate more than they hold.
+    await verifyCanGrantTokenAccess(
+      spaceId,
+      user.id,
+      resourceType as ResourceTypeValue,
+      resourceId,
+      permission,
+    );
 
     let expiresAt: Date | undefined;
     if (expiresInDays !== undefined) {

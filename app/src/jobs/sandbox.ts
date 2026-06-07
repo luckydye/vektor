@@ -4,12 +4,45 @@ import { writeFile, unlink, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractFile } from "../db/extensions.ts";
-import { getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
+import { config, getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildSandboxWrapper } from "./sandboxRuntime.ts";
 import { activeTraceHeaders } from "../observability/otel.ts";
 
 const exec = promisify(execFile);
+
+/** Thrown when no isolation is configured and unsandboxed execution is not
+ * explicitly permitted — extension jobs must never run on the host by default. */
+export class SandboxRequiredError extends Error {
+  constructor() {
+    super(
+      "Refusing to run extension job: no sandbox is configured. Set WIKI_JOB_SANDBOX=openshell, " +
+        "or WIKI_JOB_ALLOW_UNSANDBOXED=1 only in trusted local development.",
+    );
+    this.name = "SandboxRequiredError";
+  }
+}
+
+/** True when in-process (unsandboxed) job execution is explicitly allowed. */
+export function isUnsandboxedExecutionAllowed(): boolean {
+  return config().JOB_ALLOW_UNSANDBOXED === "1";
+}
+
+/**
+ * Single source of truth for how a job should be isolated. Returns a sandbox
+ * when one is configured; returns `null` ONLY when in-process execution is
+ * explicitly opted into. Otherwise fails closed with {@link SandboxRequiredError}
+ * so a misconfiguration can never silently downgrade to host-level execution.
+ */
+export async function resolveJobSandbox(): Promise<Sandbox | null> {
+  if (config().JOB_SANDBOX === "openshell") {
+    return createSandbox();
+  }
+  if (isUnsandboxedExecutionAllowed()) {
+    return null;
+  }
+  throw new SandboxRequiredError();
+}
 
 export interface Sandbox {
   name: string;

@@ -16,6 +16,7 @@ import {
   type JobRunTrigger,
 } from "../db/jobRuns.ts";
 import type { Sandbox } from "./sandbox.ts";
+import { isUnsandboxedExecutionAllowed, SandboxRequiredError } from "./sandbox.ts";
 
 /**
  * Extract a job entry file from a zip Buffer, run it as a worker thread,
@@ -161,6 +162,17 @@ export async function runJob(
       });
       throw error;
     }
+  }
+
+  // Defense in depth: never execute job code in-process unless that has been
+  // explicitly opted into. Callers normally pass a sandbox via resolveJobSandbox().
+  if (!isUnsandboxedExecutionAllowed()) {
+    const error = new SandboxRequiredError();
+    await recordJobRunFinished(spaceId, executionId, {
+      status: classifyJobError(error),
+      error: error.message,
+    });
+    throw error;
   }
 
   const fileBuffer = extractFile(zipBuffer, entryPath);

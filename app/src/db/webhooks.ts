@@ -3,6 +3,18 @@ import { webhook, type Webhook, type WebhookInsert } from "./schema/space.ts";
 import type { getSpaceDb } from "./db.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { createId } from "./ids.ts";
+import { assertPublicUrl, isPublicUrl } from "../utils/ssrf.ts";
+
+/**
+ * Validate a user-supplied webhook destination, rejecting non-public targets
+ * (SSRF). Throws {@link SsrfError} with a human-readable message on failure.
+ * Call this on create/update; the fire path re-checks because DNS can change.
+ */
+export async function validateWebhookUrl(url: string): Promise<void> {
+  await assertPublicUrl(url);
+}
+
+export { SsrfError } from "../utils/ssrf.ts";
 
 export type WebhookEvent =
   | "document.published"
@@ -162,6 +174,25 @@ export async function triggerWebhooks(
 
   const promises = webhooks.map(async (wh) => {
     try {
+      // Re-validate at fire time: a previously-public host could now resolve to
+      // an internal address (DNS rebinding) and the URL may predate validation.
+      if (!(await isPublicUrl(wh.url))) {
+        console.error(`Webhook ${wh.id} skipped: destination is not a public URL`);
+        await createAuditLog(db, {
+          docId: payload.documentId,
+          revisionId: payload.revisionId,
+          userId: undefined,
+          event: "webhook_failed",
+          details: {
+            webhookId: wh.id,
+            webhookUrl: wh.url,
+            webhookEvent: payload.event,
+            errorMessage: "Destination blocked (non-public URL)",
+          },
+        });
+        return;
+      }
+
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "User-Agent": "Wiki-Webhook/1.0",

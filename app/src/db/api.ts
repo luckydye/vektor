@@ -424,6 +424,56 @@ export async function verifyExtensionAccess(
   }
 }
 
+/** Permission levels a token may be granted (real ACL hierarchy values). */
+const TOKEN_GRANTABLE_PERMISSIONS = ["viewer", "editor", "owner"];
+
+/** Resource types a token grant may target. Secrets/features are intentionally
+ * excluded — those have dedicated, more tightly-scoped grant flows. */
+const TOKEN_GRANTABLE_RESOURCE_TYPES: ResourceType[] = [
+  ResourceType.SPACE,
+  ResourceType.DOCUMENT,
+  ResourceType.CATEGORY,
+  ResourceType.EXTENSION,
+];
+
+/**
+ * Authorize a request to grant an access token `permission` on a resource.
+ *
+ * Enforces two invariants that were previously missing (privilege escalation):
+ *  1. `permission` / `resourceType` are valid values (rejects bogus inputs like
+ *     the old "extensions" pseudo-permission that resolved to level 0).
+ *  2. The caller may not grant a token MORE authority than the caller holds on
+ *     that resource — a token is a delegation of the issuer's own access.
+ *
+ * Throws a 400/403 Response on violation.
+ */
+export async function verifyCanGrantTokenAccess(
+  spaceId: string,
+  callerUserId: string,
+  resourceType: ResourceType,
+  resourceId: string,
+  permission: string,
+): Promise<void> {
+  if (!TOKEN_GRANTABLE_PERMISSIONS.includes(permission)) {
+    throw badRequestResponse(
+      `Permission must be one of: ${TOKEN_GRANTABLE_PERMISSIONS.join(", ")}`,
+    );
+  }
+  if (!TOKEN_GRANTABLE_RESOURCE_TYPES.includes(resourceType)) {
+    throw badRequestResponse(
+      `Token access cannot be granted for resource type: ${resourceType}`,
+    );
+  }
+
+  if (resourceType === ResourceType.DOCUMENT) {
+    await verifyDocumentRole(spaceId, resourceId, callerUserId, permission);
+  } else {
+    // Space, category, and extension grants are gated on the caller's
+    // space-level role (the level that lets them manage those resources).
+    await verifySpaceRole(spaceId, callerUserId, permission);
+  }
+}
+
 /**
  * Extract access token from Authorization header
  * Supports: "Bearer at_xxxxx" or "at_xxxxx"

@@ -7,6 +7,7 @@ import {
   requireUser,
   successResponse,
   verifySpaceRole,
+  verifyCanGrantTokenAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
 import {
@@ -30,7 +31,8 @@ export const PUT: APIRoute = (context) =>
     const resourceType = requireParam(context.params, "resourceType");
     const resourceId = requireParam(context.params, "resourceId");
 
-    await verifySpaceRole(spaceId, user.id, "editor");
+    // Granting token access is a privileged delegation; restrict to owners.
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     if (!Object.values(ResourceType).includes(resourceType as ResourceTypeValue)) {
       throw badRequestResponse(
@@ -45,12 +47,14 @@ export const PUT: APIRoute = (context) =>
       throw badRequestResponse("Permission is required");
     }
 
-    const validPermissions = ["viewer", "editor"];
-    if (!validPermissions.includes(permission)) {
-      throw badRequestResponse(
-        `Permission must be one of: ${validPermissions.join(", ")}`,
-      );
-    }
+    // Validate the grant and ensure the caller cannot delegate more than they hold.
+    await verifyCanGrantTokenAccess(
+      spaceId,
+      user.id,
+      resourceType as ResourceTypeValue,
+      resourceId,
+      permission,
+    );
 
     await grantTokenAccess({
       tokenId,
@@ -77,7 +81,7 @@ export const DELETE: APIRoute = (context) =>
     const resourceType = requireParam(context.params, "resourceType");
     const resourceId = requireParam(context.params, "resourceId");
 
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     if (!Object.values(ResourceType).includes(resourceType as ResourceTypeValue)) {
       throw badRequestResponse(

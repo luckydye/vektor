@@ -398,9 +398,15 @@ export function meetsPermissionLevel(
   userPermission: string,
   requiredPermission: string,
 ): boolean {
-  const userLevel = PERMISSION_HIERARCHY[userPermission] || 0;
-  const requiredLevel = PERMISSION_HIERARCHY[requiredPermission] || 0;
+  const requiredLevel = PERMISSION_HIERARCHY[requiredPermission];
+  // Fail closed on an unknown required permission. Otherwise `|| 0` would make
+  // the required level 0 and grant access to every user (this is exactly how a
+  // typo'd role like "admin" silently became a no-op gate).
+  if (requiredLevel === undefined) {
+    return false;
+  }
 
+  const userLevel = PERMISSION_HIERARCHY[userPermission] ?? 0;
   return userLevel >= requiredLevel;
 }
 

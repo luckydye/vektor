@@ -13,6 +13,8 @@ import {
   listWebhooks,
   toWebhookDto,
   validateWebhookEventsInput,
+  validateWebhookUrl,
+  SsrfError,
 } from "#db/webhooks.ts";
 import { getSpaceDb } from "#db/db.ts";
 
@@ -34,13 +36,22 @@ export const POST: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, "admin");
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     const body = await parseJsonBody(context.request);
     const { url, events, documentId, secret } = body;
 
     if (!url || typeof url !== "string") {
       throw badRequestResponse("URL is required and must be a string");
+    }
+
+    try {
+      await validateWebhookUrl(url);
+    } catch (error) {
+      if (error instanceof SsrfError) {
+        throw badRequestResponse(`Invalid webhook URL: ${error.message}`);
+      }
+      throw error;
     }
 
     if (!events || !Array.isArray(events) || events.length === 0) {

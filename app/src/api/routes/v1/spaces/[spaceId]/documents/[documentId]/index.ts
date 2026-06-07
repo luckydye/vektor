@@ -438,7 +438,10 @@ export const PATCH: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
-    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor", {
+      type: ResourceType.DOCUMENT,
+      id,
+    });
     const userId = auth.type === "user" ? auth.user.id : auth.userId;
     if (!userId) {
       throw forbiddenResponse("Job token is missing user context");
@@ -526,7 +529,10 @@ export const DELETE: APIRoute = (context) =>
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "documentId");
     const permanent = context.url.searchParams.get("permanent") === "true";
-    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor", {
+      type: ResourceType.DOCUMENT,
+      id,
+    });
     const userId = auth.type === "user" ? auth.user.id : auth.userId;
     if (!userId) {
       throw forbiddenResponse("Job token is missing user context");

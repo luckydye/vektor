@@ -9,8 +9,7 @@ import {
   setRunAbort,
   setRunStatus,
 } from "./runStore.ts";
-import { config } from "../config.ts";
-import { createSandbox } from "./sandbox.ts";
+import { resolveJobSandbox } from "./sandbox.ts";
 
 export type WorkflowInput = { key: string; value: unknown };
 
@@ -121,8 +120,7 @@ export async function executeWorkflow(
       setRunAbort(runId, () => controller.abort());
 
       const nodeOutputs = new Map<string, Record<string, unknown>>();
-      const sandbox =
-        config().JOB_SANDBOX === "openshell" ? await createSandbox() : null;
+      const sandbox = await resolveJobSandbox();
 
       try {
       for (const nodeId of order) {

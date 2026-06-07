@@ -66,7 +66,7 @@ function resolveBrowserSocketHost(
  * Default API client instance
  * @example
  * import { api } from "@/api/client";
- * const users = await api.users.get();
+ * const users = await api.users.get("space-123");
  */
 export const api = new ApiClient({
   baseUrl: resolveBrowserBaseUrl(config().API_URL),

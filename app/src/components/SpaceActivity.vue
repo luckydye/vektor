@@ -99,7 +99,7 @@ async function fetchActivities() {
 
     const [logsResponse, usersResponse] = await Promise.all([
       fetch(`/api/v1/spaces/${props.spaceId}/audit-logs?limit=${props.limit}`),
-      fetch("/api/v1/users"),
+      fetch(`/api/v1/users?spaceId=${encodeURIComponent(props.spaceId)}`),
     ]);
 
     if (!logsResponse.ok) {

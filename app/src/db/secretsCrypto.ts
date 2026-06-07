@@ -31,8 +31,21 @@ function getEncryptionKey(): Buffer {
     throw new Error("AUTH_SECRET (or WIKI_SECRETS_ENCRYPTION_KEY) must be configured");
   }
 
+  // Deriving the secrets key from AUTH_SECRET reuses signing entropy for
+  // encryption. Tolerated for dev, but warn loudly in production so operators
+  // provision a dedicated WIKI_SECRETS_ENCRYPTION_KEY.
+  if (!warnedAboutFallbackKey && process.env.NODE_ENV === "production") {
+    warnedAboutFallbackKey = true;
+    console.warn(
+      "[secrets] WIKI_SECRETS_ENCRYPTION_KEY is not set; deriving the encryption " +
+        "key from AUTH_SECRET. Set a dedicated 32-byte key in production.",
+    );
+  }
+
   return createHash("sha256").update(fallback).digest();
 }
+
+let warnedAboutFallbackKey = false;
 
 export function encryptSecret(value: string): EncryptedValue {
   const iv = randomBytes(12);

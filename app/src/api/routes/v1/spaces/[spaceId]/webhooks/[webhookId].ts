@@ -15,6 +15,8 @@ import {
   deleteWebhook,
   toWebhookDto,
   validateWebhookEventsInput,
+  validateWebhookUrl,
+  SsrfError,
 } from "#db/webhooks.ts";
 import { getSpaceDb } from "#db/db.ts";
 
@@ -42,7 +44,7 @@ export const PATCH: APIRoute = (context) =>
     const spaceId = requireParam(context.params, "spaceId");
     const webhookId = requireParam(context.params, "webhookId");
 
-    await verifySpaceRole(spaceId, user.id, "admin");
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     const db = await getSpaceDb(spaceId);
     const existingWebhook = await getWebhook(db, webhookId);
@@ -57,6 +59,17 @@ export const PATCH: APIRoute = (context) =>
 
     if (url !== undefined && typeof url !== "string") {
       throw badRequestResponse("URL must be a string");
+    }
+
+    if (typeof url === "string") {
+      try {
+        await validateWebhookUrl(url);
+      } catch (error) {
+        if (error instanceof SsrfError) {
+          throw badRequestResponse(`Invalid webhook URL: ${error.message}`);
+        }
+        throw error;
+      }
     }
 
     if (events !== undefined) {
@@ -100,7 +113,7 @@ export const DELETE: APIRoute = (context) =>
     const spaceId = requireParam(context.params, "spaceId");
     const webhookId = requireParam(context.params, "webhookId");
 
-    await verifySpaceRole(spaceId, user.id, "admin");
+    await verifySpaceRole(spaceId, user.id, "owner");
 
     const db = await getSpaceDb(spaceId);
     const webhook = await getWebhook(db, webhookId);

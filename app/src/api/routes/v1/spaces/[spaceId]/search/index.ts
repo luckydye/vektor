@@ -14,11 +14,13 @@ export const GET: APIRoute = (context) =>
     async () => {
       const spaceId = requireParam(context.params, "spaceId");
 
-      let userId: string | null = null;
+      // Resolve the identity used for per-document ACL filtering in
+      // searchDocuments. For user sessions this is the user id; for access
+      // tokens it is `token:<id>` so results are scoped to what the token can
+      // actually read. Only trusted server-minted job tokens with no user
+      // context (auth.userId === null) get the unfiltered, system-wide view.
       const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
-      if (auth.type === "user") {
-        userId = auth.user.id;
-      }
+      const userId: string | null = auth.type === "user" ? auth.user.id : auth.userId;
 
       const query = context.url.searchParams.get("q") || "";
       const limit = parseQueryInt(context.url.searchParams, "limit", {

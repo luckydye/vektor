@@ -7,13 +7,16 @@ type ParsedJobToken = {
 };
 
 function createSignature(spaceId: string, timestamp: string, userPart?: string): string {
+  const secret = config().AUTH_SECRET?.trim();
+  // Fail closed: an empty signing key would make job tokens trivially forgeable.
+  if (!secret) {
+    throw new Error("AUTH_SECRET must be configured to sign job tokens");
+  }
   const payload =
     userPart === undefined
       ? `${spaceId}:${timestamp}`
       : `${spaceId}:${timestamp}:${userPart}`;
-  return createHmac("sha256", config().AUTH_SECRET ?? "")
-    .update(payload)
-    .digest("hex");
+  return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
 function safeSigEquals(a: string, b: string): boolean {

@@ -5,7 +5,7 @@ import { getAuthDb } from "./db.ts";
 import { user } from "./schema/auth.ts";
 import { listUserSpaces } from "./spaces.ts";
 import { validateAccessToken } from "./accessTokens.ts";
-import { verifySpaceAccess } from "./api.ts";
+import { verifySpaceAccess, verifySpaceRole } from "./api.ts";
 
 export interface CalDAVUser {
   id: string;
@@ -292,7 +292,7 @@ export function calDavForbidden(): Response {
 
 export async function requireCalDAVUserAndAccess(
   context: APIContext,
-  options: { userId?: string; spaceId?: string },
+  options: { userId?: string; spaceId?: string; requiredRole?: string },
 ): Promise<CalDAVUser | Response> {
   const caldavUser = await verifyCalDAVUser(context);
   if (!caldavUser) {
@@ -305,7 +305,13 @@ export async function requireCalDAVUserAndAccess(
 
   if (options.spaceId) {
     try {
-      await verifySpaceAccess(options.spaceId, caldavUser.id);
+      // Writes (PUT/DELETE) must require the corresponding role, not just
+      // read access — a viewer must not be able to create/modify events.
+      if (options.requiredRole && options.requiredRole !== "viewer") {
+        await verifySpaceRole(options.spaceId, caldavUser.id, options.requiredRole);
+      } else {
+        await verifySpaceAccess(options.spaceId, caldavUser.id);
+      }
     } catch {
       return calDavForbidden();
     }

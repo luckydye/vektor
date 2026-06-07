@@ -10,6 +10,7 @@ import {
   extractFile,
   getExtensionPackage,
 } from "#db/extensions.ts";
+import { EXTENSION_ASSET_CSP } from "#utils/servedFiles.ts";
 
 const MIME_TYPES: Record<string, string> = {
   js: "application/javascript",
@@ -81,6 +82,10 @@ export const GET: APIRoute = (context) =>
       headers: {
         "Content-Type": mimeType,
         "Cache-Control": "public, max-age=3600",
+        // Sandbox extension content into an opaque origin and block MIME
+        // sniffing so a malicious asset cannot run as same-origin code.
+        "Content-Security-Policy": EXTENSION_ASSET_CSP,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   }, "Failed to serve asset");
