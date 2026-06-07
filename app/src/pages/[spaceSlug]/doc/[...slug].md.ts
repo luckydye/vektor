@@ -7,7 +7,6 @@ import {
   authenticateRequest,
   requireParam,
   requireUser,
-  verifyDocumentAccess,
   verifyDocumentRole,
   verifyTokenPermission,
 } from "../../../db/api.ts";
@@ -70,7 +69,7 @@ const VOID_TAGS = new Set([
 ]);
 
 function reconstructHtml(tag: TagNode): string {
-  const attrs = tag.attributes?.length ? " " + attrsToString(tag.attributes) : "";
+  const attrs = tag.attributes?.length ? ` ${attrsToString(tag.attributes)}` : "";
 
   // Void tags don't have closing tags
   if (VOID_TAGS.has(tag.name.toLowerCase())) {
@@ -108,7 +107,7 @@ function nodeToMarkdown(node: AnyNode): string {
 
   // HTML passthrough - keep as raw HTML
   if (HTML_PASSTHROUGH_TAGS.has(name) || isColumnLayout(tag)) {
-    return "\n\n" + reconstructHtml(tag) + "\n\n";
+    return `\n\n${reconstructHtml(tag)}\n\n`;
   }
 
   // Ignore html-block elements entirely
@@ -134,12 +133,12 @@ function nodeToMarkdown(node: AnyNode): string {
     // Lists
     case "ul":
     case "ol":
-      return "\n\n" + childContent() + "\n";
+      return `\n\n${childContent()}\n`;
     case "li": {
       const isTask = getAttr(tag, "data-type") === "taskItem";
       const checked = getAttr(tag, "data-checked") === "true";
       const prefix = isTask ? (checked ? "- [x] " : "- [ ] ") : "- ";
-      return prefix + childContent().trim() + "\n";
+      return `${prefix + childContent().trim()}\n`;
     }
 
     // Inline formatting

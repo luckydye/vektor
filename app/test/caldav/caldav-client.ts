@@ -65,7 +65,7 @@ export class CalDAVSource implements CalendarSource {
    * Get the authorization header for Basic auth.
    */
   private getAuthHeader(): string {
-    return "Basic " + btoa(`${this.credentials.username}:${this.credentials.password}`);
+    return `Basic ${btoa(`${this.credentials.username}:${this.credentials.password}`)}`;
   }
 
   /**
@@ -355,7 +355,7 @@ export class CalDAVSource implements CalendarSource {
 
     if (event.organizer) {
       const cn = event.organizer.name ? `CN="${event.organizer.name}"` : "";
-      lines.push(`ORGANIZER${cn ? ";" + cn : ""}:mailto:${event.organizer.email}`);
+      lines.push(`ORGANIZER${cn ? `;${cn}` : ""}:mailto:${event.organizer.email}`);
     }
 
     if (event.attendees && event.attendees.length > 0) {
@@ -366,7 +366,7 @@ export class CalDAVSource implements CalendarSource {
         if (attendee.status) params.push(`PARTSTAT=${attendee.status}`);
         const paramString = params.join(";");
         lines.push(
-          `ATTENDEE${paramString ? ";" + paramString : ""}:mailto:${attendee.email}`,
+          `ATTENDEE${paramString ? `;${paramString}` : ""}:mailto:${attendee.email}`,
         );
       }
     }

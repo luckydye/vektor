@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { twMerge } from "tailwind-merge";
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { type ExtensionViewElement, extensions } from "../utils/extensions.ts";
 

@@ -1,6 +1,6 @@
 import Mention from "@tiptap/extension-mention";
 
-export type MentionOptions = {};
+export type MentionOptions = Record<string, never>;
 
 export const Mentions = Mention.extend<MentionOptions>({
   parseHTML() {

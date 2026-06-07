@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
-  closeXIcon,
-  dragDotsIcon,
-  panelRightIcon,
-  resizeHandleIcon,
-  windowRestoreIcon,
-} from "~/src/assets/icons.ts";
-import {
   type DockedWindowState,
   useDockedWindows,
 } from "../composeables/useDockedWindows.ts";
@@ -59,17 +52,17 @@ let resizeObserver: ResizeObserver | null = null;
 const overlayStyle = computed(() => {
   if (mode.value === "docked" && dockedRect.value) {
     return {
-      left: dockedRect.value.left + "px",
-      top: DOCK_MARGIN + "px",
-      width: dockedRect.value.width + "px",
+      left: `${dockedRect.value.left}px`,
+      top: `${DOCK_MARGIN}px`,
+      width: `${dockedRect.value.width}px`,
       height: `calc(100vh - ${DOCK_MARGIN * 2}px)`,
     };
   }
   return {
-    left: floatX.value + "px",
-    top: floatY.value + "px",
-    width: floatW.value + "px",
-    height: floatH.value + "px",
+    left: `${floatX.value}px`,
+    top: `${floatY.value}px`,
+    width: `${floatW.value}px`,
+    height: `${floatH.value}px`,
   };
 });
 

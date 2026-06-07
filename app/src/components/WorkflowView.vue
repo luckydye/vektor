@@ -1,18 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import {
-  arrowDownTrayIcon,
-  checkBoldIcon,
-  chevronLeftThinIcon,
-  chevronRightSmallIcon,
-  clipboardDocumentIcon,
-  closeXIcon,
-  playCircleFilledIcon,
-  spinnerQuarterIcon,
-} from "~/src/assets/icons.ts";
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
-import DataTable from "./DataTable.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -130,17 +119,17 @@ const selectedRun = computed(() =>
 );
 
 const selectedRunTitle = computed(() => {
-  const title = selectedRun.value?.runtimeInputs?.["title"];
+  const title = selectedRun.value?.runtimeInputs?.title;
   return typeof title === "string" ? title : null;
 });
 
 const selectedRunFileName = computed(() => {
-  const name = selectedRun.value?.runtimeInputs?.["fileName"];
+  const name = selectedRun.value?.runtimeInputs?.fileName;
   return typeof name === "string" ? name : null;
 });
 
 const selectedRunFileUrl = computed(() => {
-  const file = selectedRun.value?.runtimeInputs?.["file"];
+  const file = selectedRun.value?.runtimeInputs?.file;
   return typeof file === "string" ? file : null;
 });
 
@@ -211,17 +200,17 @@ function unwrapOutputValue(val: unknown): string | null {
 
 // Output fields
 const outputHtml = computed<string | null>(() =>
-  unwrapOutputValue(selectedRunDetail.value?.output?.["html"]),
+  unwrapOutputValue(selectedRunDetail.value?.output?.html),
 );
 
 const outputDocumentId = computed<string | null>(() =>
-  unwrapOutputValue(selectedRunDetail.value?.output?.["documentId"]),
+  unwrapOutputValue(selectedRunDetail.value?.output?.documentId),
 );
 
 function extractTableData(
   output: Record<string, unknown> | null | undefined,
 ): Record<string, unknown>[] | null {
-  let raw: unknown = output?.["data"] ?? output?.["result"];
+  let raw: unknown = output?.data ?? output?.result;
   // unwrap { type: "text", value: "..." } envelope
   const str = unwrapOutputValue(raw);
   if (str !== null) {
@@ -269,7 +258,7 @@ async function toggleHistoryRun(runId: string) {
   if (historyRunDetails.value.has(runId)) return;
   const detail = await api.workflows.getRun(props.spaceId, runId);
   historyRunDetails.value = new Map([...historyRunDetails.value, [runId, detail]]);
-  const docId = unwrapOutputValue(detail.output?.["documentId"]);
+  const docId = unwrapOutputValue(detail.output?.documentId);
   if (docId) {
     const doc = await api.document.get(props.spaceId, docId);
     historyRunDocHrefs.value = new Map([
@@ -284,7 +273,7 @@ async function toggleHistoryRun(runId: string) {
 }
 
 function historyOutputHtml(runId: string): string | null {
-  return unwrapOutputValue(historyRunDetails.value.get(runId)?.output?.["html"]);
+  return unwrapOutputValue(historyRunDetails.value.get(runId)?.output?.html);
 }
 
 function historyOutputData(runId: string): Record<string, unknown>[] | null {
@@ -312,8 +301,7 @@ async function downloadDocument(href: string, title: string) {
 }
 
 const runFailureError = computed<{ nodeId: string; error: string } | null>(() => {
-  if (!selectedRunDetail.value || selectedRunDetail.value.status !== "failed")
-    return null;
+  if (selectedRunDetail.value?.status !== "failed") return null;
   for (const [nodeId, node] of Object.entries(selectedRunDetail.value.nodes)) {
     if (node.status === "failed" && node.error) return { nodeId, error: node.error };
   }

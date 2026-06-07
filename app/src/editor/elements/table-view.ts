@@ -273,7 +273,7 @@ export class TableViewElement extends HTMLElement {
         );
         if (!handle) return;
         const th = handle.parentElement as HTMLElement;
-        const colIndex = parseInt(th.dataset.colIndex ?? "0");
+        const colIndex = parseInt(th.dataset.colIndex ?? "0", 10);
         // index 0 in querySelectorAll("col") is the row-num col; data cols start at 1
         colEl = table.querySelectorAll<HTMLElement>("col")[colIndex + 1] ?? null;
         if (!colEl) return;

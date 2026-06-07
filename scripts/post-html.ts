@@ -40,10 +40,9 @@ export async function fetchAndInlineHTML(
   const linkTagRegex =
     /<link\s+(?:[^>]*?\s+)?rel=["']stylesheet["'](?:\s+[^>]*)?\s+href=["']([^"']+)["'][^>]*>/gi;
 
-  let match;
   const replacements: Array<{ original: string; replacement: string }> = [];
 
-  while ((match = linkTagRegex.exec(html)) !== null) {
+  for (const match of html.matchAll(linkTagRegex)) {
     const fullLinkTag = match[0];
     const href = match[1];
 

@@ -2,13 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import type { Property } from "./PropertyPopover.vue";
 import type { SelectMenuItem } from "./SelectMenu.vue";
-import SelectMenu from "./SelectMenu.vue";
-import Tooltip from "./Tooltip.vue";
 import "@sv/elements/blur";
 import "@sv/elements/calendar";
-import { twMerge } from "tailwind-merge";
 import { plusIcon } from "~/src/assets/icons.ts";
-import Icon from "./Icon.vue";
 
 const inputElement = ref();
 

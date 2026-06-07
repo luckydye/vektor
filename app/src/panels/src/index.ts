@@ -18,8 +18,8 @@ host.open("color-picker", {
 
 // Demo buttons
 document.getElementById("toggle-inspector")?.addEventListener("click", () => {
-  const s = host.getState().panels["inspector"];
-  if (!s || s.visibility !== "open")
+  const s = host.getState().panels.inspector;
+  if (s?.visibility !== "open")
     host.open("inspector", { preferredDock: "right-sidebar" });
   else host.hide("inspector");
 });

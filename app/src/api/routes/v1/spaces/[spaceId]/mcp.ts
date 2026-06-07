@@ -11,7 +11,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
-import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
+import { createJobToken, parseJobToken } from "#jobs/jobToken.ts";
 import {
   createParseErrorResponse,
   handleMcpRequest,

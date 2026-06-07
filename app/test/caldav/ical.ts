@@ -30,7 +30,7 @@ export function parseICalEventsWithNotifications(
       }
       currentAlarmText = "";
     } else if (inAlarm) {
-      currentAlarmText += trimmed + "\n";
+      currentAlarmText += `${trimmed}\n`;
     } else if (trimmed === "BEGIN:VEVENT") {
       currentEvent = {};
       currentAlarms = [];
@@ -201,7 +201,7 @@ export function parseSingleICalEvent(icalText: string): Partial<CalendarEvent> {
       continue;
     }
     if (inAlarm) {
-      currentAlarmText += trimmed + "\n";
+      currentAlarmText += `${trimmed}\n`;
       continue;
     }
 

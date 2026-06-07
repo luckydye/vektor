@@ -43,7 +43,7 @@ export function compileRoute(pattern: string, module: ApiRouteModule): CompiledR
     }
 
     specificity.push(SEGMENT_LITERAL);
-    regexBody += "/" + segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    regexBody += `/${segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
   }
 
   const regex = new RegExp(`^${regexBody || "/"}/?$`);
@@ -79,7 +79,7 @@ export interface RouteMatch {
  * params may contain `/` but no control characters or `..` segments.
  */
 function isSafeParamValue(value: string, isCatchAll: boolean): boolean {
-  // eslint-disable-next-line no-control-regex
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters is the point of this check
   if (/[\x00-\x1f\x7f]/.test(value)) return false;
   if (value.includes("\\")) return false;
   if (isCatchAll) {

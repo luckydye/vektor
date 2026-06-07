@@ -1,5 +1,5 @@
 import { html, render } from "lit-html";
-import { type ActionOptions, Actions } from "../../utils/actions.ts";
+import { Actions } from "../../utils/actions.ts";
 
 customElements.define(
   "document-statusbar",
@@ -82,6 +82,7 @@ customElements.define(
                     </button>
                 `;
             }
+            return null;
           })}
         </div>
       `;

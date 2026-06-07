@@ -41,7 +41,7 @@
  */
 
 const BASE_URL = process.env.BASE_URL || "http://127.0.0.1:8080";
-const BATCH_SIZE = Number.parseInt(process.env.BATCH_SIZE || "100");
+const BATCH_SIZE = Number.parseInt(process.env.BATCH_SIZE || "100", 10);
 const REVISION_PROBABILITY = Number.parseFloat(process.env.REVISION_PROBABILITY || "0.1");
 const TOTAL_DOCS = 20000;
 const OWNER_USER_ID = "IcaXElHWYXheMhmEI9QdQORJYz5CN7OL";

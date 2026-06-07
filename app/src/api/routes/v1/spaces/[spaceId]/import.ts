@@ -564,12 +564,12 @@ export const POST: APIRoute = (context) =>
 
             // Set category for the document
             if (info.isCategory) {
-              properties["category"] = info.finalSlug;
+              properties.category = info.finalSlug;
             } else if (info.categorySlug) {
               // Resolve category slug if it was modified
               const resolvedCategorySlug =
                 slugModifications.get(info.categorySlug) || info.categorySlug;
-              properties["category"] = resolvedCategorySlug;
+              properties.category = resolvedCategorySlug;
             }
 
             // Parse dates

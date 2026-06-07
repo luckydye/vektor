@@ -280,7 +280,7 @@ const agentPresenceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function clearAgentPresence(key: string, documentId: string): void {
   agentPresenceTimers.delete(key);
   const room = yRooms.get(key);
-  if (!room || !room.presences.has(AGENT_CLIENT_ID)) return;
+  if (!room?.presences.has(AGENT_CLIENT_ID)) return;
 
   room.presences.delete(AGENT_CLIENT_ID);
   broadcastToRoom(

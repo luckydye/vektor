@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import {
   jsonResponse,
   requireParam,

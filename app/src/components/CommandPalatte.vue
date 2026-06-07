@@ -1,17 +1,9 @@
 <script setup>
-import { twMerge } from "tailwind-merge";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
-import {
-  boltIcon,
-  chevronRightThinIcon,
-  documentIcon,
-  searchMagnifierIcon,
-} from "~/src/assets/icons.ts";
+import { computed, nextTick, ref, watch } from "vue";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { Actions } from "../utils/actions.ts";
 import { history } from "../utils/history.ts";
-import { formatRelativeTime } from "../utils/utils.ts";
 
 const { documents } = useDocuments();
 const { spaceSlug } = useRoute();
@@ -133,7 +125,7 @@ const scrollToSelected = () => {
 };
 
 const navigateToDocument = async (doc) => {
-  if (doc && doc.slug) {
+  if (doc?.slug) {
     const url = `/${spaceSlug.value}/doc/${doc.slug}`;
     const title = doc.properties?.title || "Untitled Document";
 

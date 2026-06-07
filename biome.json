@@ -29,6 +29,11 @@
       }
     }
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "formatter": {
     "enabled": true,
     "indentWidth": 2,
@@ -47,6 +52,21 @@
       "lineWidth": 30
     }
   },
+  "overrides": [
+    {
+      "includes": [
+        "**/astro.config.mjs",
+        "app/src/app.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
+    }
+  ],
   "files": {
     "ignoreUnknown": true,
     "includes": [

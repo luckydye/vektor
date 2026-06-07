@@ -6,17 +6,12 @@ import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
-import ActivityEvent from "./ActivityEvent.vue";
 import "@sv/elements/popover";
 import {
   checkCircleOutlineIcon,
-  clipboardIcon,
-  clockIcon,
   closeCircleIcon,
-  copyIcon,
   documentIcon,
   documentTextIcon,
-  dotsVerticalIcon,
   editOutlineIcon,
   eyeIcon,
   infoIcon,
@@ -24,13 +19,11 @@ import {
   plusSmallIcon,
   publishIcon,
   refreshIcon,
-  timelineNowDotIcon,
   trashCanIcon,
   unlockIcon,
 } from "~/src/assets/icons.ts";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useMembers } from "../composeables/useMembers.ts";
-import DockedPanel from "./DockedPanel.vue";
 
 const props = defineProps({
   documentId: {

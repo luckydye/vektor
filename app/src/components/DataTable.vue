@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
 
 const PAGE_SIZE = 10;
 const DEFAULT_COL_WIDTH = 200;
@@ -75,15 +74,15 @@ function cellText(v: unknown): string {
 
 function downloadCsv() {
   const csvCols = columns.value;
-  const escape = (s: string) =>
+  const escapeCsv = (s: string) =>
     s.includes(",") || s.includes('"') || s.includes("\n")
       ? `"${s.replace(/"/g, '""')}"`
       : s;
-  const header = csvCols.map(escape).join(",");
+  const header = csvCols.map(escapeCsv).join(",");
   const rows = filtered.value.map((row) =>
-    csvCols.map((col) => escape(cellText(row[col]))).join(","),
+    csvCols.map((col) => escapeCsv(cellText(row[col]))).join(","),
   );
-  const blob = new Blob([header + "\n" + rows.join("\n")], { type: "text/csv" });
+  const blob = new Blob([`${header}\n${rows.join("\n")}`], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "data.csv";

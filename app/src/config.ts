@@ -223,7 +223,7 @@ export function getPublicEnv(): App.PublicEnv {
 
 export function getLocalOrigin(): string {
   const argv = globalThis.process?.argv ?? [];
-  const portIdx = argv.findIndex((arg) => arg === "--port");
+  const portIdx = argv.indexOf("--port");
   const portArg =
     portIdx >= 0
       ? argv[portIdx + 1]

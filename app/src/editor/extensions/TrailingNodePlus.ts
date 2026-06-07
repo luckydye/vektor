@@ -301,7 +301,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       const { doc } = state;
       const lastNode = doc.lastChild;
 
-      if (!lastNode || lastNode.type.name !== "paragraph" || lastNode.content.size > 0) {
+      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
         tr.insert(doc.content.size, state.schema.nodes.paragraph.create());
         return true;
       }
@@ -315,7 +315,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       const { doc } = state;
       const lastNode = doc.lastChild;
 
-      if (!lastNode || lastNode.type.name !== "paragraph" || lastNode.content.size > 0) {
+      if (lastNode?.type.name !== "paragraph" || lastNode.content.size > 0) {
         tr.insert(doc.content.size, state.schema.nodes.paragraph.create());
         return true;
       }

@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import DockedPanel from "./DockedPanel.vue";
-import WorkflowNodeEditor from "./WorkflowNodeEditor.vue";
-
 const props = defineProps<{
   documentId: string;
   spaceId: string;

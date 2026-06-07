@@ -238,7 +238,7 @@ async function cleanXWikiHtml(
     }
   }
 
-  content.querySelectorAll(".xtree").forEach((el) => el.remove());
+  for (const el of content.querySelectorAll(".xtree")) el.remove();
 
   content.querySelectorAll("[class]").forEach((el) => {
     const element = el as Element;

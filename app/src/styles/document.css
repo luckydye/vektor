@@ -1,10 +1,10 @@
-@reference "./index.css";
-
 @import "./tables.css";
 @import "./lists.css";
 @import "./text.css";
 @import "./layout.css";
 @import "./tiptap.css";
+
+@reference "./index.css";
 
 [contenteditable] {
   outline: none;

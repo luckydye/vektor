@@ -207,7 +207,7 @@ function defaultEndISO(startISO: string): string {
     return d.toISOString();
   }
   // Floating — temporarily parse as UTC to do date math, then strip the Z
-  const d = new Date(startISO + "Z");
+  const d = new Date(`${startISO}Z`);
   d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, -1);
 }

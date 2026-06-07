@@ -1,20 +1,6 @@
 <script setup lang="ts">
 import { marked } from "marked";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import {
-  clockIcon,
-  closeSmallIcon,
-  copyOutlineIcon,
-  linkChainIcon,
-  paperclipIcon,
-  pencilSquareIcon,
-  plusThinIcon,
-  robotIcon,
-  sendPlaneIcon,
-  stopIcon,
-  thinkingIcon,
-  trashSmallIcon,
-} from "~/src/assets/icons.ts";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import {
@@ -31,7 +17,6 @@ import { Actions } from "../utils/actions.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
-import DockedPanel from "./DockedPanel.vue";
 
 const props = defineProps({
   documentId: {
@@ -420,8 +405,7 @@ function parseReferencedDocuments(message: string): MentionSuggestion[] {
   const references: MentionSuggestion[] = [];
   const seen = new Set<string>();
   const regex = /@\[([^\]]+)\]\(doc:([^)]+)\)/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(message)) !== null) {
+  for (const match of message.matchAll(regex)) {
     const title = match[1]?.trim();
     const id = match[2]?.trim();
     if (!title || !id || seen.has(id)) continue;
@@ -452,7 +436,7 @@ function appendAssistantMessageChunk(
     assistantMessageIndex.value === null
       ? null
       : messages.value[assistantMessageIndex.value];
-  if (!existing || existing.role !== "assistant") {
+  if (existing?.role !== "assistant") {
     messages.value.push({
       role: "assistant",
       content: text,
@@ -473,7 +457,7 @@ function appendThinkingMessageChunk(
     thinkingMessageIndex.value === null
       ? null
       : messages.value[thinkingMessageIndex.value];
-  if (!existing || existing.role !== "thinking") {
+  if (existing?.role !== "thinking") {
     messages.value.push({
       role: "thinking",
       content: text,

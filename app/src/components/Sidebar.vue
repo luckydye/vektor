@@ -1,10 +1,6 @@
 <script setup lang="ts">
-import { twMerge } from "tailwind-merge";
 import { nextTick, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { Actions } from "../utils/actions.ts";
-import { Icon } from "./index.ts";
-import Navigation from "./Navigation.vue";
-import UserProfile from "./UserProfile.vue";
 
 const props = withDefaults(
   defineProps<{

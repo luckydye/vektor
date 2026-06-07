@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { plusSmallIcon } from "~/src/assets/icons.ts";
 import type { Comment as ApiComment } from "../api/ApiClient.ts";
 import { useComments } from "../composeables/useComments.ts";
-import CommentOverlays, {
-  type Comment as CommentOverlaysType,
-} from "./CommentOverlays.vue";
-import CommentThread, { type Comment as CommentThreadType } from "./CommentThread.vue";
+import type { Comment as CommentOverlaysType } from "./CommentOverlays.vue";
+import type { Comment as CommentThreadType } from "./CommentThread.vue";
 
 const props = defineProps<{
   spaceId: string;

@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <title>Layered Panel Workspace</title>
     <script src="./index.ts" type="module"></script>
@@ -31,9 +31,9 @@
 
           <panel-item id="tools" panel-title="Tools">
             <div class="body">
-              <button>Brush</button>
-              <button>Eraser</button>
-              <button>Move</button>
+              <button type="button">Brush</button>
+              <button type="button">Eraser</button>
+              <button type="button">Move</button>
             </div>
           </panel-item>
 
@@ -47,10 +47,10 @@
     </panel-workspace>
 
     <aside id="hud">
-      <button id="toggle-inspector">toggle inspector</button>
-      <button id="float-tools">float tools</button>
-      <button id="dock-tools">dock tools left</button>
-      <button id="open-histogram">open histogram</button>
+      <button type="button" id="toggle-inspector">toggle inspector</button>
+      <button type="button" id="float-tools">float tools</button>
+      <button type="button" id="dock-tools">dock tools left</button>
+      <button type="button" id="open-histogram">open histogram</button>
       <label><input type="checkbox" id="toggle-debug" /> show dock areas</label>
       <details>
         <summary>state</summary>

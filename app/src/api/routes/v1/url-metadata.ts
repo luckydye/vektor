@@ -201,7 +201,7 @@ function extractDescriptionFromContent(content: string): string | null {
   if (!textContent) return null;
 
   if (textContent.length <= 160) return textContent;
-  return textContent.slice(0, 157) + "...";
+  return `${textContent.slice(0, 157)}...`;
 }
 
 function isInternalUrl(url: string, siteUrl: string | undefined): boolean {

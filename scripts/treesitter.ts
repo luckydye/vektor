@@ -6,7 +6,7 @@ const parser = new Parser();
 
 const Languages = {
   // TypeScript: await Language.load('./tree-sitter-typescript.wasm'),
-  HTML: await Language.load(import.meta.dir + "/tree-sitter-html.wasm"),
+  HTML: await Language.load(`${import.meta.dir}/tree-sitter-html.wasm`),
 };
 
 parser.setLanguage(Languages.HTML);
@@ -22,12 +22,12 @@ function format(node: any, depth = 0, ind = "  "): string {
   // HTML text nodes
   if (type === "text" || type === "raw_text") {
     const text = node.text.trim();
-    return text ? indent + text + "\n" : "";
+    return text ? `${indent + text}\n` : "";
   }
 
   // Leaf statements
   if (type === "doctype" || type === "comment") {
-    return indent + node.text + "\n";
+    return `${indent + node.text}\n`;
   }
 
   // HTML elements
@@ -48,14 +48,14 @@ function format(node: any, depth = 0, ind = "  "): string {
         }
       }
     }
-    if (!hasContent) return indent + start + end + "\n";
+    if (!hasContent) return `${indent + start + end}\n`;
     // Keep short content on single line
     const trimmed = content.trim();
     const singleLine = indent + start + trimmed + end;
     if (trimmed.indexOf("\n") === -1 && singleLine.length <= MAX_WIDTH) {
-      return singleLine + "\n";
+      return `${singleLine}\n`;
     }
-    return indent + start + "\n" + content + indent + end + "\n";
+    return `${indent + start}\n${content}${indent}${end}\n`;
   }
 
   // Statement-level nodes
@@ -112,7 +112,7 @@ function format(node: any, depth = 0, ind = "  "): string {
       if (c.type === "{" || c.type === "}") continue;
       r += format(c, depth + 1, ind);
     }
-    return r + indent + "}";
+    return `${r + indent}}`;
   }
 
   if (statements.indexOf(type) !== -1) {
@@ -130,20 +130,20 @@ function format(node: any, depth = 0, ind = "  "): string {
       for (const c of node.children) {
         if (blocks.indexOf(c.type) !== -1) after += format(c, depth, ind);
         else if (c.type === "else_clause") after += format(c, depth, ind);
-        else if (after === "") before += c.text + " ";
+        else if (after === "") before += `${c.text} `;
       }
       const beforeTrimmed = before.trim();
       if (indent.length + beforeTrimmed.length > MAX_WIDTH) {
-        return wrapStatement(node, indent, ind) + "\n";
+        return `${wrapStatement(node, indent, ind)}\n`;
       }
-      return indent + beforeTrimmed + " " + after.trim() + "\n";
+      return `${indent + beforeTrimmed} ${after.trim()}\n`;
     }
 
     const line = node.text.replace(/\s+/g, " ").trim();
     if (indent.length + line.length <= MAX_WIDTH) {
-      return indent + line + "\n";
+      return `${indent + line}\n`;
     }
-    return indent + wrapStatement(node, indent, ind) + "\n";
+    return `${indent + wrapStatement(node, indent, ind)}\n`;
   }
 
   if (type === "else_clause") {
@@ -163,12 +163,12 @@ function format(node: any, depth = 0, ind = "  "): string {
       pastColon = false;
     for (const c of node.children) {
       if (c.type === ":") {
-        label = label.trimEnd() + ":";
+        label = `${label.trimEnd()}:`;
         pastColon = true;
-      } else if (!pastColon) label += c.text + " ";
+      } else if (!pastColon) label += `${c.text} `;
       else body += format(c, depth + 1, ind);
     }
-    return indent + label.trim() + "\n" + body;
+    return `${indent + label.trim()}\n${body}`;
   }
 
   let r = "";
@@ -201,16 +201,16 @@ function wrapFunction(node: any, indent: string, ind: string): string {
         params.push(p.text.replace(/\s+/g, " ").trim());
       }
       for (let j = 0; j < params.length; j++) {
-        result += paramIndent + params[j] + (j < params.length - 1 ? "," : "") + "\n";
+        result += `${paramIndent + params[j] + (j < params.length - 1 ? "," : "")}\n`;
       }
-      result += indent + ")";
+      result += `${indent})`;
     } else if (c.type === "statement_block") {
-      result += " " + format(c, 0, ind).trim();
+      result += ` ${format(c, 0, ind).trim()}`;
     } else if (c.type === "type_annotation") {
       const typeText = c.children[1]?.text || c.text.slice(1).trim();
-      result += ": " + typeText;
+      result += `: ${typeText}`;
     } else {
-      result += c.text + " ";
+      result += `${c.text} `;
     }
   }
 

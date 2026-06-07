@@ -600,14 +600,6 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 const activeTab = ref<TabId>("general");
-
-import {
-  closeXIcon,
-  editOutlineIcon,
-  pauseCircleIcon,
-  playCircleIcon,
-  trashCanIcon,
-} from "~/src/assets/icons.ts";
 import {
   type AccessToken,
   api,
@@ -616,10 +608,6 @@ import {
   type WebhookEvent,
 } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
-import ArchivedDocuments from "./ArchivedDocuments.vue";
-import ExtensionSettings from "./ExtensionSettings.vue";
-import JobsSettings from "./JobsSettings.vue";
-import SpaceMembers from "./SpaceMembers.vue";
 
 const emit = defineEmits(["saved"]);
 

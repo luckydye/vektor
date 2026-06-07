@@ -427,7 +427,7 @@ if (!apiOnly) {
 }
 
 const runtimeArgv = globalThis.process?.argv ?? [];
-const portArgIndex = runtimeArgv.findIndex((arg) => arg === "--port");
+const portArgIndex = runtimeArgv.indexOf("--port");
 const portArg =
   portArgIndex >= 0
     ? runtimeArgv[portArgIndex + 1]

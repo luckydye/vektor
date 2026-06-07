@@ -1256,7 +1256,7 @@ describe("API Tests - Revisions", () => {
   });
 
   it("should verify compression efficiency", async () => {
-    const longHtml = "<p>" + "Lorem ipsum dolor sit amet. ".repeat(100) + "</p>";
+    const longHtml = `<p>${"Lorem ipsum dolor sit amet. ".repeat(100)}</p>`;
 
     const saveResponse = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${revisionTestDocId}`,
@@ -1582,7 +1582,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
 
   describe("Boundary Values", () => {
     it("should handle extremely long document content", async () => {
-      const longContent = "# Long Content\n" + "a".repeat(100000);
+      const longContent = `# Long Content\n${"a".repeat(100000)}`;
       const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
         method: "POST",
         body: JSON.stringify({

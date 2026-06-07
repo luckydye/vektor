@@ -211,25 +211,25 @@ export class PanelDockElement extends HTMLElement {
         case "left":
           this.setAttribute(
             "width",
-            clampN(startW + (e.clientX - startX), minW, maxW) + "px",
+            `${clampN(startW + (e.clientX - startX), minW, maxW)}px`,
           );
           break;
         case "right":
           this.setAttribute(
             "width",
-            clampN(startW - (e.clientX - startX), minW, maxW) + "px",
+            `${clampN(startW - (e.clientX - startX), minW, maxW)}px`,
           );
           break;
         case "top":
           this.setAttribute(
             "height",
-            clampN(startH + (e.clientY - startY), minH, maxH) + "px",
+            `${clampN(startH + (e.clientY - startY), minH, maxH)}px`,
           );
           break;
         case "bottom":
           this.setAttribute(
             "height",
-            clampN(startH - (e.clientY - startY), minH, maxH) + "px",
+            `${clampN(startH - (e.clientY - startY), minH, maxH)}px`,
           );
           break;
       }
@@ -526,10 +526,10 @@ export class PanelHostElement extends HTMLElement {
       const box = document.createElement("div");
       Object.assign(box.style, {
         position: "absolute",
-        left: r.left - host.left + "px",
-        top: r.top - host.top + "px",
-        width: r.width + "px",
-        height: r.height + "px",
+        left: `${r.left - host.left}px`,
+        top: `${r.top - host.top}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
         outline: "2px dashed magenta",
         outlineOffset: "-2px",
         background: "rgba(255, 0, 255, 0.08)",
@@ -753,10 +753,10 @@ export class PanelHostElement extends HTMLElement {
         this._floating.append(p);
         const s = p.style;
         s.position = "absolute";
-        s.left = fp.x + "px";
-        s.top = fp.y + "px";
-        s.width = fp.width + "px";
-        s.height = fp.height + "px";
+        s.left = `${fp.x}px`;
+        s.top = `${fp.y}px`;
+        s.width = `${fp.width}px`;
+        s.height = `${fp.height}px`;
         s.flex = "";
         s.display = "";
         s.zIndex = String(++this._zCounter);
@@ -809,7 +809,7 @@ export class PanelHostElement extends HTMLElement {
   // ---- internals ---------------------------------------------------------
 
   _adoptPanel(panel: PanelItemElement) {
-    if (!panel.id) panel.id = "panel-" + Math.random().toString(36).slice(2, 8);
+    if (!panel.id) panel.id = `panel-${Math.random().toString(36).slice(2, 8)}`;
     panel._host = this;
     this._panels.set(panel.id, panel);
     // Only move it if it's stray (not yet in floating, not in a dock).
@@ -971,10 +971,10 @@ export class PanelHostElement extends HTMLElement {
       }
       const dr = dock.getBoundingClientRect();
       overlay.style.display = "block";
-      overlay.style.left = dr.left - hostRect.left + "px";
-      overlay.style.top = dr.top - hostRect.top + "px";
-      overlay.style.width = dr.width + "px";
-      overlay.style.height = dr.height + "px";
+      overlay.style.left = `${dr.left - hostRect.left}px`;
+      overlay.style.top = `${dr.top - hostRect.top}px`;
+      overlay.style.width = `${dr.width}px`;
+      overlay.style.height = `${dr.height}px`;
     };
 
     const move = (e: PointerEvent) => {
@@ -989,8 +989,8 @@ export class PanelHostElement extends HTMLElement {
       const maxY = hostRect.height - 24;
       const nx = clamp(startLeft + dx, 0, Math.max(0, maxX));
       const ny = clamp(startTop + dy, 0, Math.max(0, maxY));
-      panel.style.left = nx + "px";
-      panel.style.top = ny + "px";
+      panel.style.left = `${nx}px`;
+      panel.style.top = `${ny}px`;
       placement.x = nx;
       placement.y = ny;
 
@@ -1059,8 +1059,8 @@ export class PanelHostElement extends HTMLElement {
     const move = (e: PointerEvent) => {
       const w = Math.max(80, startW + (e.clientX - startX));
       const h = Math.max(48, startH + (e.clientY - startY));
-      panel.style.width = w + "px";
-      panel.style.height = h + "px";
+      panel.style.width = `${w}px`;
+      panel.style.height = `${h}px`;
       const fp = panel._state.placement as FloatingPlacement;
       fp.width = w;
       fp.height = h;
@@ -1148,10 +1148,10 @@ export class PanelHostElement extends HTMLElement {
       return;
     this._lastInsets = insets;
     const target = (this.closest("panel-workspace") as HTMLElement | null) ?? this;
-    target.style.setProperty("--panel-inset-top", insets.top + "px");
-    target.style.setProperty("--panel-inset-right", insets.right + "px");
-    target.style.setProperty("--panel-inset-bottom", insets.bottom + "px");
-    target.style.setProperty("--panel-inset-left", insets.left + "px");
+    target.style.setProperty("--panel-inset-top", `${insets.top}px`);
+    target.style.setProperty("--panel-inset-right", `${insets.right}px`);
+    target.style.setProperty("--panel-inset-bottom", `${insets.bottom}px`);
+    target.style.setProperty("--panel-inset-left", `${insets.left}px`);
     this._emit("panel-insets-changed", { insets });
   }
 }

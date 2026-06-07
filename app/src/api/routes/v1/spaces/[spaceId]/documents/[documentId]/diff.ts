@@ -12,11 +12,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocument } from "#db/documents.ts";
-import {
-  getPublishedContent,
-  getRevisionContent,
-  getRevisionMetadata,
-} from "#db/revisions.ts";
+import { getRevisionContent, getRevisionMetadata } from "#db/revisions.ts";
 import { prettyPrintHtml } from "#utils/prettyHtml.ts";
 
 async function getRevision(rev: number, spaceId: string, id: string) {

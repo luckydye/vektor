@@ -85,7 +85,7 @@ export const zipinfoCommand = defineCommand("zipinfo", async (args, ctx) => {
     const name = e.entryName;
     return `${e.isDirectory ? "d" : "-"} ${size.toString().padStart(10)} ${name}`;
   });
-  return { stdout: lines.join("\n") + "\n", stderr: "", exitCode: 0 };
+  return { stdout: `${lines.join("\n")}\n`, stderr: "", exitCode: 0 };
 });
 
 export const unzipCommand = defineCommand("unzip", async (args, ctx) => {
@@ -133,7 +133,7 @@ export const unzipCommand = defineCommand("unzip", async (args, ctx) => {
     const lines = zip
       .getEntries()
       .map((e) => `${e.header.size.toString().padStart(10)} ${e.entryName}`);
-    return { stdout: lines.join("\n") + "\n", stderr: "", exitCode: 0 };
+    return { stdout: `${lines.join("\n")}\n`, stderr: "", exitCode: 0 };
   }
 
   const destinationPath = ctx.fs.resolvePath(ctx.cwd, destinationArg);

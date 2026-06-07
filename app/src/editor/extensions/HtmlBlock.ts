@@ -1,7 +1,6 @@
 import type { CommandProps } from "@tiptap/core";
 import { mergeAttributes, Node } from "@tiptap/core";
 import { html, render } from "lit-html";
-import { stripScriptTags } from "~/src/utils/utils.ts";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {

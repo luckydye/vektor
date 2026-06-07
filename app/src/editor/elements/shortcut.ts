@@ -15,7 +15,7 @@ customElements.define(
     }
 
     attributeChangedCallback(name: string, oldValue: string, newValue: string) {
-      this.ariaLabel = "Shortcut: " + this.shortcut;
+      this.ariaLabel = `Shortcut: ${this.shortcut}`;
       render(this.render(), this.shadowRoot);
     }
 
@@ -38,7 +38,8 @@ customElements.define(
       const keys = prefferedCombination?.split("-").map((key) => {
         const icon = document.createElement("span");
         icon.className = "key";
-        icon.innerHTML = ICON[key.toLowerCase() + "Icon"] || key.toUpperCase();
+        const icons = ICON as Record<string, string>;
+        icon.innerHTML = icons[`${key.toLowerCase()}Icon`] || key.toUpperCase();
         return icon;
       });
 

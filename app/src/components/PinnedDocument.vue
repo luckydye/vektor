@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { pinPushpinIcon } from "~/src/assets/icons.ts";
 import { api, type DocumentWithProperties } from "../api/client.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";

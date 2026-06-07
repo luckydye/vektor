@@ -1,15 +1,8 @@
 <script setup>
 import { computed, ref, watch } from "vue";
-import {
-  checkThinIcon,
-  copyIcon,
-  usersGroupIcon,
-  usersIcon,
-} from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { formatDate, getUserInitials } from "../utils/utils.ts";
 
 const { currentSpace } = useSpace();
 const user = useUserProfile();

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as Y from "yjs";
-import { redoArrowIcon, undoArrowIcon } from "~/src/assets/icons.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
@@ -1416,7 +1415,7 @@ function parseCanvasClipboard(text: string | null | undefined): CanvasClipboard 
   if (!text) return null;
   try {
     const parsed = JSON.parse(text) as Partial<CanvasClipboard>;
-    if (!parsed || parsed[CANVAS_CLIPBOARD_MARKER] !== 1) return null;
+    if (parsed?.[CANVAS_CLIPBOARD_MARKER] !== 1) return null;
     if (!Array.isArray(parsed.shapes) || !Array.isArray(parsed.strokes)) return null;
     return parsed as CanvasClipboard;
   } catch {

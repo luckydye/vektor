@@ -34,7 +34,7 @@ async function getWorkflowOutput(
   nodes: Record<string, unknown>,
 ) {
   const doc = await getDocument(spaceId, documentId);
-  if (!doc || doc.type !== "workflow") return null;
+  if (doc?.type !== "workflow") return null;
 
   const content =
     doc.publishedRev !== null

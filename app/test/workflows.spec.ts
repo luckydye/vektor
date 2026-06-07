@@ -315,7 +315,7 @@ describe("Workflow runs — single node", () => {
 
     const run = await pollRun(testSpaceId, runId);
     expect(run.status).toBe("completed");
-    const node = run.nodes["node1"] as { status: string; outputs: { message: string } };
+    const node = run.nodes.node1 as { status: string; outputs: { message: string } };
     expect(node.status).toBe("completed");
     expect(node.outputs.message).toBe("hello world");
     expect(run.output).toEqual({ message: "hello world" });
@@ -345,7 +345,7 @@ describe("Workflow runs — two-node dependency", () => {
 
     const run = await pollRun(testSpaceId, runId);
     expect(run.status).toBe("completed");
-    const n2 = run.nodes["node2"] as { status: string; outputs: { result: string } };
+    const n2 = run.nodes.node2 as { status: string; outputs: { result: string } };
     expect(n2.status).toBe("completed");
     // node1 outputs { message: "hi world" }; node2 appends suffix "!!"
     expect(n2.outputs.result).toBe("hi world !!");
@@ -378,7 +378,7 @@ describe("Workflow runs — two-node dependency", () => {
 
     const run = await pollRun(testSpaceId, runId);
     expect(run.status).toBe("completed");
-    const n2 = run.nodes["node2"] as { outputs: { result: string } };
+    const n2 = run.nodes.node2 as { outputs: { result: string } };
     expect(n2.outputs.result).toBe("overridden !");
     expect(run.output).toEqual({ result: "overridden !" });
   });
@@ -402,7 +402,7 @@ describe("Workflow runs — document creation", () => {
 
     const run = await pollRun(testSpaceId, runId);
     expect(run.status).toBe("completed");
-    const node = run.nodes["node1"] as { outputs: { documentId: string } };
+    const node = run.nodes.node1 as { outputs: { documentId: string } };
 
     const createdRes = await api(
       `/api/v1/spaces/${testSpaceId}/documents/${node.outputs.documentId}`,
@@ -438,12 +438,12 @@ describe("Workflow runs — cached reruns", () => {
     }).then((r) => r.json() as Promise<{ runId: string }>);
     const secondRun = await pollRun(testSpaceId, secondRunId.runId);
 
-    const firstNode = firstRun.nodes["node1"] as {
+    const firstNode = firstRun.nodes.node1 as {
       status: string;
       outputs: { token: string };
       logs: string[];
     };
-    const secondNode = secondRun.nodes["node1"] as {
+    const secondNode = secondRun.nodes.node1 as {
       status: string;
       outputs: { token: string };
       logs: string[];
@@ -471,7 +471,7 @@ describe("Workflow runs — cached reruns", () => {
       body: JSON.stringify({ documentId: docId }),
     }).then((r) => r.json() as Promise<{ runId: string }>);
     const firstRun = await pollRun(testSpaceId, firstRunId.runId);
-    const firstNode = firstRun.nodes["node1"] as {
+    const firstNode = firstRun.nodes.node1 as {
       outputs: { token: string };
       logs: string[];
     };
@@ -489,7 +489,7 @@ describe("Workflow runs — cached reruns", () => {
       body: JSON.stringify({ documentId: docId }),
     }).then((r) => r.json() as Promise<{ runId: string }>);
     const secondRun = await pollRun(testSpaceId, secondRunId.runId);
-    const secondNode = secondRun.nodes["node1"] as {
+    const secondNode = secondRun.nodes.node1 as {
       outputs: { token: string };
       logs: string[];
     };
@@ -517,7 +517,7 @@ describe("Workflow runs — failure handling", () => {
 
     const run = await pollRun(testSpaceId, runId);
     expect(run.status).toBe("failed");
-    const node = run.nodes["node1"] as { status: string; error: string };
+    const node = run.nodes.node1 as { status: string; error: string };
     expect(node.status).toBe("failed");
     expect(node.error).toContain("intentional failure");
   });

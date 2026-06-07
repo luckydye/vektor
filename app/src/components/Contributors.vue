@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useContributors } from "../composeables/useContributors.ts";
-import Avatar from "./Avatar.vue";
-import Tooltip from "./Tooltip.vue";
 
 interface Props {
   documentId?: string;

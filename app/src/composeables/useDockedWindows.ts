@@ -97,7 +97,7 @@ function toggle(
   opts?: Partial<Pick<DockedWindowState, "mode" | "side" | "width">>,
 ) {
   const w = windows.value.get(id);
-  if (!w || !w.open) {
+  if (!w?.open) {
     open(id, opts);
   } else {
     close(id);

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
-import { computed, watch } from "vue";
+import { computed } from "vue";
 import { api, type Category } from "../api/client.ts";
 import { useSpace } from "./useSpace.ts";
 

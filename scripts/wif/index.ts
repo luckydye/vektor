@@ -2,7 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type {
   WIFDocument,
   WIFExport,

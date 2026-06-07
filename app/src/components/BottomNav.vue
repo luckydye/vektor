@@ -33,7 +33,6 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { homeOutlineIcon, menuIcon, searchMagnifierIcon } from "~/src/assets/icons.ts";
 import { Actions } from "../utils/actions.ts";
 
 const props = withDefaults(

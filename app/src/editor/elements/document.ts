@@ -396,11 +396,7 @@ function createEditor(
       if (element.closest(".wiki-inline-suggestion")) continue;
 
       let current: HTMLElement | null = element;
-      while (
-        current &&
-        current.parentElement &&
-        current.parentElement !== editor.view.dom
-      ) {
+      while (current?.parentElement && current.parentElement !== editor.view.dom) {
         current = current.parentElement;
       }
 

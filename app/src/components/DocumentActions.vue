@@ -1,18 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
-import {
-  ButtonSecondary,
-  ContextMenu,
-  ContextMenuItem,
-  Icon,
-} from "~/src/components/index.ts";
 import { api } from "../api/client.ts";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
-import Contributors from "./Contributors.vue";
-import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
 
 const props = defineProps<{
   documentId?: string;

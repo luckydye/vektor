@@ -10,7 +10,6 @@ import {
   ref,
   watch,
 } from "vue";
-import { clockIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
@@ -20,10 +19,6 @@ import { useUserProfile } from "../composeables/useUserProfile.ts";
 import docStyles from "../styles/document.css?inline";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
-import CommentManager from "./CommentManager.vue";
-import DiffView from "./DiffView.vue";
-import ToolbarFormatting from "./ToolbarFormatting.vue";
-import ToolbarTable from "./ToolbarTable.vue";
 
 const props = defineProps({
   documentId: {
