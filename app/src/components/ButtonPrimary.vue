@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import ChevronDownIcon from "../assets/icons/chevron-down.svg?raw";
 
 interface Props {
   variant?: "default" | "with-context";

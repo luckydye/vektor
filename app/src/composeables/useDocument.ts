@@ -106,7 +106,7 @@ export function useDocument(
     try {
       await saveDocumentMutation.mutateAsync(content);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

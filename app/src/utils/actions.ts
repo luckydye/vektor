@@ -91,7 +91,7 @@ export class Actions {
 
   static groups() {
     const groups = new Set<string>();
-    for (const [id, action] of globalActions) {
+    for (const [, action] of globalActions) {
       if (action.group) groups.add(action.group);
       else groups.add("other");
     }
@@ -156,7 +156,7 @@ export class Actions {
     if (actionId) {
       const action = Actions.get(actionId);
       if (action) {
-        const res = Actions.run(actionId);
+        Actions.run(actionId);
         event.preventDefault();
         event.stopPropagation();
       }

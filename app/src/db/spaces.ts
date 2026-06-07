@@ -225,7 +225,7 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
       if (spacePermission) {
         userSpaces.push({ ...space, userRole: spacePermission.permission });
       }
-    } catch (error) {}
+    } catch {}
   }
 
   return userSpaces;

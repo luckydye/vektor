@@ -1,5 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  closeThickIcon,
+  imageFullWidthIcon,
+  restoreArrowIcon,
+} from "~/src/assets/icons.ts";
 import {
   getImageAttributes,
   isImageSelected,
@@ -11,6 +16,7 @@ import {
   registerFormattingActions,
   unregisterFormattingActions,
 } from "../utils/formattingActions.ts";
+import Icon from "./Icon.vue";
 
 const getEditor = () => {
   return globalThis.__editor;

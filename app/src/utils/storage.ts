@@ -4,7 +4,7 @@ export interface IndexConfig {
   unique?: boolean;
 }
 
-export interface StoreConfig<T> {
+export interface StoreConfig {
   dbName: string;
   storeName: string;
   keyPath: string | string[];
@@ -14,10 +14,10 @@ export interface StoreConfig<T> {
 
 export class IndexedDBStore<T extends Record<string, any>> {
   private db: IDBDatabase | null = null;
-  private config: StoreConfig<T>;
+  private config: StoreConfig;
   private initPromise: Promise<void> | null = null;
 
-  constructor(config: StoreConfig<T>) {
+  constructor(config: StoreConfig) {
     this.config = config;
   }
 

@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  clipboardIcon,
+  clockIcon,
+  copyIcon,
+  dotsVerticalIcon,
+  timelineNowDotIcon,
+} from "~/src/assets/icons.ts";
 import { useAuditLogs } from "../composeables/useAuditLogs.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
+import ActivityEvent from "./ActivityEvent.vue";
+import DockedPanel from "./DockedPanel.vue";
 import "@sv/elements/popover";
 import {
   checkCircleOutlineIcon,

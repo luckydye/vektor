@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from "vue";
+import ButtonPrimary from "./ButtonPrimary.vue";
+import SelectMenu from "./SelectMenu.vue";
 import "@sv/elements/blur";
 import { plusIcon } from "~/src/assets/icons.ts";
 import type { SelectMenuItem } from "./SelectMenu.vue";

@@ -1,4 +1,15 @@
 ---
+import { twMerge } from "tailwind-merge";
+import Breadcrumbs from "~/src/components/Breadcrumbs.vue";
+import Canvas from "~/src/components/Canvas.vue";
+import AIChatPanel from "../../../components/AIChatPanel.vue";
+import DocumentActions from "../../../components/DocumentActions.vue";
+import DocumentContent from "../../../components/DocumentContent.vue";
+import DocumentProperties from "../../../components/DocumentProperties.vue";
+import RestoreButton from "../../../components/RestoreButton.vue";
+import RevisionsSidebar from "../../../components/RevisionsSidebar.vue";
+import TitleEditor from "../../../components/TitleEditor.vue";
+import WorkflowView from "../../../components/WorkflowView.vue";
 import { getUserGroups, hasPermission, ResourceType } from "../../../db/acl.ts";
 import { getCategoryBySlug } from "../../../db/categories.ts";
 import {
@@ -8,6 +19,7 @@ import {
 } from "../../../db/documents.ts";
 import { getPublishedContent } from "../../../db/revisions.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
+import SpaceLayout from "../../../layouts/SpaceLayout.astro";
 import { readOnlyDocumentTypes } from "../../../utils/documentTypes.ts";
 
 const { spaceSlug, slug } = Astro.params;

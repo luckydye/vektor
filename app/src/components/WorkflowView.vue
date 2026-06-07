@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  arrowDownTrayIcon,
+  checkBoldIcon,
+  chevronLeftThinIcon,
+  chevronRightSmallIcon,
+  clipboardDocumentIcon,
+  closeXIcon,
+  playCircleFilledIcon,
+  spinnerQuarterIcon,
+} from "~/src/assets/icons.ts";
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
+import DataTable from "./DataTable.vue";
 
 const props = defineProps<{
   documentId: string;

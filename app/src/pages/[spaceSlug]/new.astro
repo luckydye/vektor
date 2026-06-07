@@ -1,4 +1,12 @@
 ---
+import { twMerge } from "tailwind-merge";
+import Canvas from "~/src/components/Canvas.vue";
+import CommentManager from "~/src/components/CommentManager.vue";
+import DocumentActions from "~/src/components/DocumentActions.vue";
+import DocumentProperties from "~/src/components/DocumentProperties.vue";
+import TitleEditor from "~/src/components/TitleEditor.vue";
+import DocumentContent from "../../components/DocumentContent.vue";
+import SpaceLayout from "../../layouts/SpaceLayout.astro";
 import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);

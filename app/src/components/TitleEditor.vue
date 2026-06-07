@@ -15,6 +15,7 @@
 
 <script setup>
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 

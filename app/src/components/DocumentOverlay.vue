@@ -19,7 +19,14 @@
  *     window.viewDocument?.(spaceId, docId);
  *   });
  */
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
+import {
+  closeXIcon,
+  commentIcon,
+  documentIcon,
+  warningTriangleIcon,
+} from "~/src/assets/icons.ts";
+import type { Comment } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { useComments } from "../composeables/useComments.ts";
 import docStyles from "../styles/document.css?inline";

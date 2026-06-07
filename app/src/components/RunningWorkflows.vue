@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 

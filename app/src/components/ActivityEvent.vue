@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import ActivityTimelineConnector from "../assets/icons/activity-timeline-connector.svg?raw";
 import ActivityTimelineConnectorNoAction from "../assets/icons/activity-timeline-connector-no-action.svg?raw";
+import MoreIcon from "../assets/icons/more.svg?raw";
 
 interface Props {
   variant?: "default" | "no-action";

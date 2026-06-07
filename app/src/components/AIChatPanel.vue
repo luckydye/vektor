@@ -1,6 +1,20 @@
 <script setup lang="ts">
 import { marked } from "marked";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  clockIcon,
+  closeSmallIcon,
+  copyOutlineIcon,
+  linkChainIcon,
+  paperclipIcon,
+  pencilSquareIcon,
+  plusThinIcon,
+  robotIcon,
+  sendPlaneIcon,
+  stopIcon,
+  thinkingIcon,
+  trashSmallIcon,
+} from "~/src/assets/icons.ts";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import {
@@ -17,6 +31,7 @@ import { Actions } from "../utils/actions.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
+import DockedPanel from "./DockedPanel.vue";
 
 const props = defineProps({
   documentId: {

@@ -8,7 +8,6 @@ import { user as userTable } from "../src/db/schema/auth.ts";
 const DATA_DIR = "./data";
 const BASE_URL = "http://127.0.0.1:4321";
 
-let testUser1: { id: string; email: string; name: string };
 let testUser2: { id: string; email: string; name: string };
 let testUser3: { id: string; email: string; name: string };
 let session1Token: string;
@@ -123,11 +122,6 @@ beforeAll(async () => {
   try {
     // Create three test users
     const user1Data = await createTestUser("Frontend User 1");
-    testUser1 = {
-      id: user1Data.userId,
-      email: user1Data.email,
-      name: user1Data.name,
-    };
     session1Token = user1Data.token;
 
     const user2Data = await createTestUser("Frontend User 2");

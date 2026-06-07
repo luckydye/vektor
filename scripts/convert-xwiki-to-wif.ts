@@ -18,12 +18,6 @@ import type { WIFDocument } from "./wif/types.ts";
 const DEFAULT_EXPORT_DIR = "./temp/Technik.WebHome/pages";
 const DEFAULT_ATTACHMENT_DIR = "./temp/Technik.WebHome/attachment";
 
-interface XWikiDocument {
-  filePath: string;
-  html: string;
-  slug: string;
-}
-
 // Track slug mappings for link rewriting
 const pathToSlugMap = new Map<string, string>();
 const categories = new Set<string>();
@@ -182,12 +176,9 @@ async function cleanXWikiHtml(
 
     const pathParts = src.split("/");
 
-    let levelsUp = 0;
     const cleanParts = [];
     for (const part of pathParts) {
-      if (part === "..") {
-        levelsUp++;
-      } else if (part && part !== ".") {
+      if (part && part !== "." && part !== "..") {
         cleanParts.push(part);
       }
     }

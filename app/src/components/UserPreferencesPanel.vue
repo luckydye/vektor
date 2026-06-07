@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import {
   api,
   type OAuthIntegrationConnection,

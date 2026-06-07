@@ -1,5 +1,8 @@
 ---
+import NoAccess from "../../components/NoAccess.vue";
+import SpaceSettings from "../../components/SpaceSettings.vue";
 import { getUserGroups, hasPermission, ResourceType } from "../../db/acl.ts";
+import SpaceLayout from "../../layouts/SpaceLayout.astro";
 import { resolveSpacePage } from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);

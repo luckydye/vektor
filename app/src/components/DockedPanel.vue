@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
+  closeXIcon,
+  dragDotsIcon,
+  panelRightIcon,
+  resizeHandleIcon,
+  windowRestoreIcon,
+} from "~/src/assets/icons.ts";
+import {
   type DockedWindowState,
   useDockedWindows,
 } from "../composeables/useDockedWindows.ts";

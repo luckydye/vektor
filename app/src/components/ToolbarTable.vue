@@ -1,5 +1,24 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  cellMergeIcon,
+  closeThickIcon,
+  columnDeleteIcon,
+  expressionCellIcon,
+  highlightIcon,
+  pasteIcon,
+  plusOverlayIcon,
+  rowDeleteIcon,
+  scissorsIcon,
+  tableColumnAddAfterIcon,
+  tableColumnAddBeforeIcon,
+  tableDeleteIcon,
+  tableHeaderCellIcon,
+  tableRowAddAfterIcon,
+  tableRowIcon,
+  tableSplitCellIcon,
+} from "~/src/assets/icons.ts";
+import { Actions } from "../utils/actions.ts";
 
 const getEditor = () => globalThis.__editor;
 

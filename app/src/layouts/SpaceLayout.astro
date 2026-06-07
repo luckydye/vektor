@@ -1,4 +1,14 @@
 ---
+import { ClientRouter } from "astro:transitions";
+import BottomNav from "../components/BottomNav.vue";
+import CalDAVSetupDialog from "../components/CalDAVSetupDialog.vue";
+import CommandPalatte from "../components/CommandPalatte.vue";
+import DockedWindowLayout from "../components/DockedWindowLayout.vue";
+import DocumentOverlay from "../components/DocumentOverlay.vue";
+import ImportFiles from "../components/ImportFiles.vue";
+import LinkPreview from "../components/LinkPreview.vue";
+import Sidebar from "../components/Sidebar.vue";
+import Translations from "../components/Translations.vue";
 import "../styles/index.css";
 import { getSpaceBySlug, type Space } from "../db/spaces.ts";
 import { generatePaletteCss } from "../utils/utils.ts";

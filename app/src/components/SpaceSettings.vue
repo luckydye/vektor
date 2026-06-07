@@ -586,7 +586,18 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import {
+  closeXIcon,
+  editOutlineIcon,
+  pauseCircleIcon,
+  playCircleIcon,
+  trashCanIcon,
+} from "~/src/assets/icons.ts";
 import { config } from "../config.ts";
+import ArchivedDocuments from "./ArchivedDocuments.vue";
+import ExtensionSettings from "./ExtensionSettings.vue";
+import JobsSettings from "./JobsSettings.vue";
+import SpaceMembers from "./SpaceMembers.vue";
 
 const tabs = [
   { id: "general", label: "General" },
@@ -600,6 +611,7 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 const activeTab = ref<TabId>("general");
+
 import {
   type AccessToken,
   api,

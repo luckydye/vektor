@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as Y from "yjs";
+import { redoArrowIcon, undoArrowIcon } from "~/src/assets/icons.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";

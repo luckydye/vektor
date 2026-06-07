@@ -259,7 +259,7 @@ ${markdownContent}
 
 export const GET: APIRoute = async (context) => {
   try {
-    const user = requireUser(context);
+    requireUser(context);
     const spaceSlug = requireParam(context.params, "spaceSlug");
     const docSlug = requireParam(context.params, "slug");
 

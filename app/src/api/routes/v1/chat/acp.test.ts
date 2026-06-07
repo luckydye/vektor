@@ -286,7 +286,7 @@ describe("session/prompt — in-progress turn reconnect", () => {
 
     // Resolve the agent so the turn completes.
     resolveAgent();
-    const { events: turn1Events } = await turn1Promise;
+    await turn1Promise;
 
     // A reconnecting client (second prompt with same key after completion)
     // should start a FRESH turn, not replay turn1 events.
@@ -325,12 +325,10 @@ describe("session/cancel", () => {
 
   it("aborts an in-progress agent turn", async () => {
     let aborted = false;
-    let resolveAgent!: () => void;
     const agentStarted = new Promise<void>((res) => {
       agentImpl = async (opts) => {
         res(); // signal that the agent is running
         await new Promise<void>((done) => {
-          resolveAgent = done;
           opts.signal?.addEventListener("abort", () => {
             aborted = true;
             done();

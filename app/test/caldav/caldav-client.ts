@@ -547,7 +547,7 @@ export class CalDAVSource implements CalendarSource {
     try {
       await this.findCalendarHome();
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

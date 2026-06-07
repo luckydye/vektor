@@ -2,12 +2,24 @@
 import { useInfiniteQuery } from "@tanstack/vue-query";
 import { computed, onMounted, ref } from "vue";
 import {
+  chevronDownThinIcon,
+  chevronLeftLargeIcon,
+  chevronRightThinIcon,
+  closeCircleFilledIcon,
+  closeXIcon,
+  documentIcon,
+  searchMagnifierIcon,
+  spinnerIcon,
+} from "~/src/assets/icons.ts";
+import {
   api,
   type DocumentWithProperties,
   type PropertyFilter,
   type SearchResult,
 } from "../api/client.ts";
-import { normalizeTimestamp } from "../utils/utils.ts";
+import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
+import DocumentListItem from "./DocumentListItem.vue";
+import SearchFilters from "./SearchFilters.vue";
 
 const props = defineProps<{
   spaceId: string;

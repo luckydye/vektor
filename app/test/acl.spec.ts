@@ -1175,7 +1175,6 @@ describe("ACL API Tests - Properties Access Control", () => {
 
 describe("ACL API Tests - Document Children Access Control", () => {
   let parentDocId: string;
-  let childDocId: string;
 
   beforeAll(async () => {
     // Create a parent document
@@ -1209,7 +1208,7 @@ describe("ACL API Tests - Document Children Access Control", () => {
         }),
       },
     );
-    childDocId = (await childResponse.json()).document.id;
+    await childResponse.json();
   });
 
   it("should allow member to view document children", async () => {

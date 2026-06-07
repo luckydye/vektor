@@ -54,7 +54,7 @@ export async function fetchAndInlineHTML(
         const styleTag = `<style>\n${cssContent}\n</style>`;
         replacements.push({ original: fullLinkTag, replacement: styleTag });
       }
-    } catch (error) {
+    } catch {
       console.warn(`Failed to fetch CSS from ${href}`);
     }
   }

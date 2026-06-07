@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SelectItem from "./SelectItem.vue";
 export interface SelectMenuItem {
   id: string;
   label: string;

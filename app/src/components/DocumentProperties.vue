@@ -9,6 +9,11 @@ import {
   propertyIcon,
 } from "~/src/assets/icons.ts";
 import type { Property } from "~/src/components/index.ts";
+import {
+  ButtonIconSmall,
+  PropertyChip,
+  PropertyPopover,
+} from "~/src/components/index.ts";
 
 import { useCategories } from "../composeables/useCategories.ts";
 import { useDocument } from "../composeables/useDocument.ts";

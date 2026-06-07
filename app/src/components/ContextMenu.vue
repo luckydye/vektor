@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ButtonSecondary from "./ButtonSecondary.vue";
+import Icon from "./Icon.vue";
 import "@sv/elements/popover";
 import "@sv/elements/list";
 

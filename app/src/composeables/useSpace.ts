@@ -9,12 +9,7 @@ export function useSpace() {
   const { spaceSlug } = useRoute();
   const queryClient = useQueryClient();
 
-  const {
-    data: spaces,
-    isPending,
-    error,
-    refetch: refresh,
-  } = useQuery({
+  const { data: spaces, isPending } = useQuery({
     queryKey: ["wiki_spaces"],
     queryFn: async () => {
       const data = await api.spaces.get();

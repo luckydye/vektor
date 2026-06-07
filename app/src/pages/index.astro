@@ -1,6 +1,8 @@
 ---
+import FirstSpacePrompt from "../components/FirstSpacePrompt.vue";
 import { config } from "../config.ts";
 import { getSpaceBySlug, listUserSpaces } from "../db/spaces.ts";
+import BaseLayout from "../layouts/BaseLayout.astro";
 
 if (!Astro.locals.session) {
   return Astro.redirect("/login");

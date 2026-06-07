@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
 
 const PAGE_SIZE = 10;
 const DEFAULT_COL_WIDTH = 200;

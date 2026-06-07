@@ -65,6 +65,21 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "**/*.vue",
+        "**/*.astro"
+      ],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noUnusedFunctionParameters": "off",
+            "noUnusedImports": "off"
+          }
+        }
+      }
     }
   ],
   "files": {
