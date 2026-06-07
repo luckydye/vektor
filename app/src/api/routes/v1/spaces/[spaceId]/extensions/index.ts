@@ -89,12 +89,16 @@ export const POST: APIRoute = (context) =>
           await verifySpaceOwnership(spaceId, auth.user.id, getSpace);
           createdBy = auth.user.id;
         } else {
+          // Mirror the user-session branch (space ownership): installing an
+          // extension is an owner-level action. Note: the previous value here
+          // ("extensions") was not a real permission level and always failed
+          // closed — "owner" makes the intent explicit.
           await verifyTokenPermission(
             auth.token,
             spaceId,
             ResourceType.SPACE,
             spaceId,
-            "extensions",
+            "owner",
           );
           createdBy = auth.token.token.createdBy;
         }

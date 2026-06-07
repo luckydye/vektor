@@ -1,11 +1,13 @@
+import { config } from "../config.ts";
+
 const DEFAULT_HOST = "http://localhost:8080";
 
 export function resolveHost(): string {
-  return process.env.WIKI_HOST ?? DEFAULT_HOST;
+  return config().CLI_HOST ?? DEFAULT_HOST;
 }
 
 export async function resolveSpaceId(host: string, token?: string): Promise<string> {
-  const fromEnv = process.env.WIKI_SPACE_ID;
+  const fromEnv = config().CLI_SPACE_ID;
   if (fromEnv) return fromEnv;
 
   const res = await fetch(`${host.replace(/\/$/, "")}/api/v1/spaces`, {

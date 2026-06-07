@@ -262,6 +262,20 @@ export function optionsPreflight(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
+/**
+ * Escape a dynamic value for interpolation into XML element content or
+ * attribute values. User-controlled data (space names, emails, preferences)
+ * must never reach the multistatus documents unescaped.
+ */
+export function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export function xmlResponse(body: string, status = 207): Response {
   return new Response(body, {
     status,

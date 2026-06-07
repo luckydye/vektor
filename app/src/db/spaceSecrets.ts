@@ -159,15 +159,19 @@ export async function userCanReadSpaceSecret(
     return true;
   }
 
-  const isSpaceEditor = await hasPermission(
+  // Value reads are deliberately strict: the rest of the secrets surface
+  // (list/metadata/write/delete) is owner-only, so reading a plaintext value
+  // requires space ownership or an explicit per-secret grant — a space editor
+  // role alone is not enough.
+  const isSpaceOwner = await hasPermission(
     spaceId,
     ResourceType.SPACE,
     spaceId,
     userId,
-    Permission.EDITOR,
+    Permission.OWNER,
     groups,
   );
-  if (isSpaceEditor) {
+  if (isSpaceOwner) {
     return true;
   }
 

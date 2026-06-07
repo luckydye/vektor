@@ -3,7 +3,7 @@ import { webhook, type Webhook, type WebhookInsert } from "./schema/space.ts";
 import type { getSpaceDb } from "./db.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { createId } from "./ids.ts";
-import { assertPublicUrl, isPublicUrl } from "../utils/ssrf.ts";
+import { assertPublicUrl, isPublicUrl, safeFetch } from "../utils/ssrf.ts";
 
 /**
  * Validate a user-supplied webhook destination, rejecting non-public targets
@@ -203,7 +203,9 @@ export async function triggerWebhooks(
         headers["X-Webhook-Signature"] = signature;
       }
 
-      const response = await fetch(wh.url, {
+      // safeFetch re-validates every redirect hop so a public endpoint cannot
+      // 302 the delivery into an internal address.
+      const response = await safeFetch(wh.url, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),

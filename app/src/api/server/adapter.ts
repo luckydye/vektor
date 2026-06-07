@@ -1,24 +1,25 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { auth } from "#auth";
+import { config, getPublicEnv, isTrustProxyEnabled } from "../../config.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_SESSION } from "../../noAuth.ts";
 import type { ApiContext } from "./types.ts";
 
-const PUBLIC_ENV_KEYS = [
-  "WIKI_FEATURE_CANVAS",
-  "WIKI_SITE_URL",
-  "WIKI_API_URL",
-  "WIKI_COLLABORATION_HOST",
-  "WIKI_DEFAULT_SPACE",
-  "OAUTH_PROVIDER_ID",
-  "VEKTOR_NO_AUTH",
-] as const;
+/**
+ * Hard cap on buffered request bodies. The whole body is read into memory
+ * before the handler runs, so an unbounded read is a trivial memory-exhaustion
+ * DoS. Default leaves headroom for the largest legitimate payload (250MB
+ * user uploads); override via WIKI_MAX_REQUEST_BYTES.
+ */
+function maxRequestBytes(): number {
+  const raw = Number.parseInt(config().MAX_REQUEST_BYTES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 256 * 1024 * 1024;
+}
 
-function buildPublicEnv(): App.PublicEnv {
-  const env: Record<string, string | undefined> = {};
-  for (const key of PUBLIC_ENV_KEYS) {
-    env[key] = process.env[key];
+export class PayloadTooLargeError extends Error {
+  constructor() {
+    super("Request body too large");
+    this.name = "PayloadTooLargeError";
   }
-  return env as App.PublicEnv;
 }
 
 /** Read the raw request body for methods that may carry one. */
@@ -28,9 +29,20 @@ function readRequestBody(req: IncomingMessage): Promise<Buffer | undefined> {
     return Promise.resolve(undefined);
   }
 
+  const limit = maxRequestBytes();
+
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let received = 0;
+    req.on("data", (chunk: Buffer) => {
+      received += chunk.length;
+      if (received > limit) {
+        req.destroy();
+        reject(new PayloadTooLargeError());
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
       const body = Buffer.concat(chunks);
       resolve(body.length > 0 ? body : undefined);
@@ -52,9 +64,47 @@ function buildHeaders(req: IncomingMessage): Headers {
   return headers;
 }
 
+/** Canonical public origin (proto + host) from WIKI_SITE_URL, when configured. */
+function configuredOrigin(): string | null {
+  const siteUrl = config().SITE_URL;
+  if (!siteUrl) return null;
+  try {
+    return new URL(siteUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort client IP. Without a trusted proxy this is always the socket
+ * address — a spoofed `X-Forwarded-For` must not let clients pick their own
+ * identity (e.g. to rotate rate-limit buckets).
+ */
+function clientIp(req: IncomingMessage): string {
+  const socketIp = req.socket?.remoteAddress ?? "";
+  if (!isTrustProxyEnabled()) return socketIp;
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(forwardedFor)
+    ? forwardedFor[forwardedFor.length - 1]
+    : forwardedFor;
+  // Rightmost entry is the one appended by our own (trusted) proxy hop.
+  const last = raw?.split(",").pop()?.trim();
+  return last || socketIp;
+}
+
 function requestUrl(req: IncomingMessage): string {
+  // Prefer the configured canonical origin: the Host header (and, without a
+  // trusted proxy, X-Forwarded-Proto) is attacker-controlled and must not
+  // poison absolute URLs derived from the request (OAuth callbacks, links).
+  const origin = configuredOrigin();
+  if (origin) {
+    return `${origin}${req.url ?? "/"}`;
+  }
+
   const socketEncrypted = (req.socket as { encrypted?: boolean })?.encrypted;
-  const forwardedProto = req.headers["x-forwarded-proto"];
+  const forwardedProto = isTrustProxyEnabled()
+    ? req.headers["x-forwarded-proto"]
+    : undefined;
   const proto =
     (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)
       ?.split(",")[0]
@@ -79,9 +129,19 @@ export async function buildApiContext(
 
   const body = await readRequestBody(req);
   const url = requestUrl(req);
+  const headers = buildHeaders(req);
+  // Pin the client identity: better-auth keys its rate limiter on
+  // x-forwarded-for, which clients can spoof to rotate buckets. Overwrite it
+  // with the socket address (or the trusted proxy hop, see clientIp).
+  const ip = clientIp(req);
+  if (ip) {
+    headers.set("x-forwarded-for", ip);
+  } else {
+    headers.delete("x-forwarded-for");
+  }
   const request = new Request(url, {
     method: req.method,
-    headers: buildHeaders(req),
+    headers,
     body,
     signal: controller.signal,
   });
@@ -89,7 +149,7 @@ export async function buildApiContext(
   const locals: App.Locals = {
     user: null,
     session: null,
-    publicEnv: buildPublicEnv(),
+    publicEnv: getPublicEnv(),
   };
 
   if (isNoAuthMode()) {

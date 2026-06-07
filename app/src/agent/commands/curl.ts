@@ -1,31 +1,5 @@
 import { defineCommand } from "just-bash";
-import { assertPublicUrl, SsrfError } from "../../utils/ssrf.ts";
-
-const MAX_REDIRECTS = 5;
-
-/**
- * SSRF-safe fetch for the agent sandbox: validates the target (and every
- * redirect hop) against the private/blocked-IP denylist before connecting, so
- * the agent cannot reach internal services or cloud metadata endpoints.
- */
-async function safeFetch(
-  url: string,
-  init: RequestInit & { method: string },
-): Promise<Response> {
-  let target = (await assertPublicUrl(url)).toString();
-  for (let i = 0; i <= MAX_REDIRECTS; i += 1) {
-    const response = await fetch(target, { ...init, redirect: "manual" });
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) return response;
-      if (i === MAX_REDIRECTS) throw new SsrfError("Too many redirects");
-      target = (await assertPublicUrl(new URL(location, target).toString())).toString();
-      continue;
-    }
-    return response;
-  }
-  throw new SsrfError("Too many redirects");
-}
+import { safeFetch, SsrfError } from "../../utils/ssrf.ts";
 
 export const curlCommand = defineCommand("curl", async (args, ctx) => {
   let silent = false;

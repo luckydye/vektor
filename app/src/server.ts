@@ -6,6 +6,7 @@ import { appLogger } from "./observability/logger.ts";
 import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
 
 import { auth } from "./auth.ts";
+import { config, isTrustProxyEnabled } from "./config.ts";
 import { apiRouter } from "./api/server/router.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
 import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
@@ -42,6 +43,13 @@ function broadcastPresence(room: YRoom, sender: any, type: WsMsgType, payload: o
 }
 
 const app = express();
+
+// Only honor X-Forwarded-* headers when an operator confirms a trusted reverse
+// proxy sits in front of the app — otherwise clients can spoof their IP/proto.
+if (isTrustProxyEnabled()) {
+  app.set("trust proxy", true);
+}
+
 const realtimeWebSocketServer = new WebSocketServer({ noServer: true });
 const getWss = () => realtimeWebSocketServer;
 
@@ -390,8 +398,7 @@ app.post("/sync", (req: any, res: any) => {
 
 // The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
 // server (no client assets, no Astro dev server, no SSR handler).
-const apiOnly =
-  process.env.VEKTOR_API_ONLY === "1" || process.env.VEKTOR_API_ONLY === "true";
+const apiOnly = config().API_ONLY === "1" || config().API_ONLY === "true";
 
 let devServer: Awaited<ReturnType<typeof dev>> | undefined;
 
@@ -429,7 +436,7 @@ const portArg =
     ? runtimeArgv[portArgIndex + 1]
     : runtimeArgv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
 const port = Number.parseInt(portArg ?? "8080", 10);
-const host = globalThis.process?.env.HOST ?? "0.0.0.0";
+const host = config().SERVER_HOST ?? "0.0.0.0";
 const server = app.listen(port, host, () => {
   appLogger.info("Server listening", { host, port });
 });

@@ -1,6 +1,7 @@
 import "./observability/bootstrap.ts";
 import { defineMiddleware } from "astro:middleware";
 import { auth } from "./auth.ts";
+import { getPublicEnv } from "./config.ts";
 import { appLogger } from "./observability/logger.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_SESSION } from "./noAuth.ts";
 
@@ -10,16 +11,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const { request } = context;
   const url = new URL(request.url);
 
-  context.locals.publicEnv = {
-    WIKI_FEATURE_CANVAS: process.env.WIKI_FEATURE_CANVAS,
-    WIKI_SITE_URL: process.env.WIKI_SITE_URL,
-    WIKI_API_URL: process.env.WIKI_API_URL,
-    WIKI_COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
-    WIKI_DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
-    AUTH_LOGIN: process.env.AUTH_LOGIN,
-    OAUTH_PROVIDER_ID: process.env.OAUTH_PROVIDER_ID,
-    VEKTOR_NO_AUTH: process.env.VEKTOR_NO_AUTH,
-  };
+  context.locals.publicEnv = getPublicEnv();
 
   appLogger.info("HTTP request", {
     method: request.method,

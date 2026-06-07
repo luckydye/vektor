@@ -1,3 +1,5 @@
+import { config } from "./config.ts";
+
 export const LOCAL_USER_ID = "local";
 
 export const LOCAL_USER = {
@@ -22,14 +24,38 @@ export const LOCAL_SESSION = {
 };
 
 export function isNoAuthMode(): boolean {
-  return process.env.VEKTOR_NO_AUTH === "1";
+  return config().NO_AUTH === "1";
 }
 
 // No-auth mode makes LOCAL_USER an unauthenticated super-user that bypasses
 // every permission check. It must never be enabled in production — fail fast at
-// startup rather than silently exposing all data.
-if (isNoAuthMode() && process.env.NODE_ENV === "production") {
-  throw new Error(
-    "VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with NODE_ENV=production",
-  );
+// startup rather than silently exposing all data. NODE_ENV alone is not a
+// reliable signal (deployments may forget to set it), so also treat any
+// non-local public origin as production-like.
+if (isNoAuthMode()) {
+  if (config().NODE_ENV === "production") {
+    throw new Error(
+      "VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with NODE_ENV=production",
+    );
+  }
+
+  const siteUrl = config().SITE_URL;
+  if (siteUrl) {
+    let hostname = "";
+    try {
+      hostname = new URL(siteUrl).hostname;
+    } catch {
+      // Unparseable SITE_URL: be conservative and treat it as non-local.
+    }
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".localhost");
+    if (!isLocalHost) {
+      throw new Error(
+        `VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with a non-local WIKI_SITE_URL (${siteUrl})`,
+      );
+    }
+  }
 }

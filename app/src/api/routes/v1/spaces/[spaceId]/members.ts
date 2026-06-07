@@ -8,12 +8,15 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import {
+  getUserGroups,
+  hasPermission,
   listPermissions,
   ResourceType,
   getSpaceMembersWithGroups,
 } from "#db/acl.ts";
 import { getAuthDb } from "#db/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
+import { getSpace } from "#db/spaces.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(
@@ -22,6 +25,20 @@ export const GET: APIRoute = (context) =>
       const spaceId = requireParam(context.params, "spaceId");
 
       await verifySpaceRole(spaceId, user.id, "viewer");
+
+      // Member email addresses are PII: only expose them to editors/owners
+      // (who need them e.g. for mentions); plain viewers get id/name/image.
+      const space = await getSpace(spaceId);
+      const canSeeEmails =
+        space?.createdBy === user.id ||
+        (await hasPermission(
+          spaceId,
+          ResourceType.SPACE,
+          spaceId,
+          user.id,
+          "editor",
+          await getUserGroups(user.id),
+        ));
 
       const permissions = await listPermissions(spaceId, ResourceType.SPACE, spaceId);
       const { directUserIds, groupMembers } = await getSpaceMembersWithGroups(spaceId);
@@ -53,7 +70,7 @@ export const GET: APIRoute = (context) =>
               ? {
                   id: userData.id,
                   name: userData.name,
-                  email: userData.email,
+                  email: canSeeEmails ? userData.email : undefined,
                   image: userData.image,
                 }
               : undefined,
@@ -90,7 +107,7 @@ export const GET: APIRoute = (context) =>
                 user: {
                   id: userData.id,
                   name: userData.name,
-                  email: userData.email,
+                  email: canSeeEmails ? userData.email : undefined,
                   image: userData.image,
                 },
               });

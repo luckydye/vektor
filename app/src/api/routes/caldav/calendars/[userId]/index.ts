@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import {
+  escapeXml,
   optionsPreflight,
   requireCalDAVUserAndAccess,
   xmlResponse,
@@ -26,9 +27,9 @@ export const ALL: APIRoute = async (context) => {
     <d:propstat>
       <d:prop>
         <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
-        <d:displayname>${space.name}</d:displayname>
+        <d:displayname>${escapeXml(space.name)}</d:displayname>
         <cs:getctag>${space.updatedAt.getTime()}</cs:getctag>
-        <apple:calendar-color>${space.preferences.brandColor || "#1e293b"}</apple:calendar-color>
+        <apple:calendar-color>${escapeXml(space.preferences.brandColor || "#1e293b")}</apple:calendar-color>
       </d:prop>
       <d:status>HTTP/1.1 200 OK</d:status>
     </d:propstat>

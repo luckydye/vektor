@@ -15,6 +15,7 @@
  *   document search <query>                    full-text search, prints matching docs
  */
 
+import { config } from "../config.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 function apiUrl(host: string, path: string): string {
@@ -44,7 +45,7 @@ async function apiFetch(
 
 async function resolveConnection() {
   const host = resolveHost();
-  const token = process.env.WIKI_ACCESS_TOKEN;
+  const token = config().CLI_ACCESS_TOKEN;
   const spaceId = await resolveSpaceId(host, token);
   return { host, token, spaceId };
 }

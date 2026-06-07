@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import {
+  filterReadableResources,
   grantPermission,
   listAccessibleResources,
   Permission,
@@ -467,11 +468,18 @@ export async function deleteDocument(
   return true;
 }
 
+/** Identity used for per-document ACL filtering; null = trusted system view. */
+export interface AclViewer {
+  userId: string;
+  userGroups?: string[];
+}
+
 export async function listDocuments(
   spaceId: string,
   limit?: number,
   offset?: number,
   type?: string,
+  viewer?: AclViewer | null,
 ): Promise<{ documents: DocumentWithProperties[]; total: number }> {
   const db = await getSpaceDb(spaceId);
   const whereCondition = type
@@ -485,7 +493,7 @@ export async function listDocuments(
     .where(whereCondition)
     .get();
 
-  const total = countResult?.count || 0;
+  let total = countResult?.count || 0;
 
   // Build query
   const baseQuery = db
@@ -520,7 +528,22 @@ export async function listDocuments(
     readonly: boolean;
     archived: boolean;
   }>;
-  if (limit !== undefined && offset !== undefined) {
+  if (viewer) {
+    // Per-document ACL filtering must happen before pagination, so fetch the
+    // full (content-free) list and paginate in memory.
+    const allDocs = await baseQuery.all();
+    const readable = await filterReadableResources(
+      spaceId,
+      ResourceType.DOCUMENT,
+      allDocs.map((doc) => doc.id),
+      viewer.userId,
+      viewer.userGroups,
+    );
+    const visible = allDocs.filter((doc) => readable.has(doc.id));
+    total = visible.length;
+    const start = offset ?? 0;
+    docs = limit !== undefined ? visible.slice(start, start + limit) : visible.slice(start);
+  } else if (limit !== undefined && offset !== undefined) {
     docs = await baseQuery.limit(limit).offset(offset).all();
   } else if (limit !== undefined) {
     docs = await baseQuery.limit(limit).all();
@@ -878,6 +901,7 @@ export async function listAllDocumentsByCategories(
   spaceId: string,
   categorySlugs: string[],
   userEmail?: string,
+  viewer?: AclViewer | null,
 ): Promise<Record<string, DocumentWithProperties[]>> {
   const uniqueSlugs = Array.from(new Set(categorySlugs.filter(Boolean)));
   if (uniqueSlugs.length === 0) {
@@ -886,7 +910,7 @@ export async function listAllDocumentsByCategories(
 
   const db = await getSpaceDb(spaceId);
 
-  const docs = await db
+  let docs = await db
     .select({
       id: document.id,
       createdAt: document.createdAt,
@@ -904,6 +928,17 @@ export async function listAllDocumentsByCategories(
     .where(nonArchivedDocumentCondition)
     .orderBy(desc(document.updatedAt))
     .all();
+
+  if (viewer) {
+    const readable = await filterReadableResources(
+      spaceId,
+      ResourceType.DOCUMENT,
+      docs.map((doc) => doc.id),
+      viewer.userId,
+      viewer.userGroups,
+    );
+    docs = docs.filter((doc) => readable.has(doc.id));
+  }
 
   const allProps = await db.select().from(property).all();
   const propsByDocId = new Map<string, Record<string, string>>();

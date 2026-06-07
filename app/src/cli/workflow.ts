@@ -16,6 +16,7 @@
  *   vektor workflow abc123 --json
  */
 
+import { config } from "../config.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 type NodeState = {
@@ -98,9 +99,9 @@ export function parseArgs(argv: string[]): CliOptions {
   }
 
   const url = urlFlag ?? resolveHost();
-  const spaceId = spaceFlag ?? process.env.WIKI_SPACE_ID;
+  const spaceId = spaceFlag ?? config().CLI_SPACE_ID;
 
-  return { documentId, inputs, filePaths, json, url, spaceId: spaceId || undefined, token: tokenFlag ?? process.env.WIKI_ACCESS_TOKEN };
+  return { documentId, inputs, filePaths, json, url, spaceId: spaceId || undefined, token: tokenFlag ?? config().CLI_ACCESS_TOKEN };
 }
 
 async function apiFetch(url: string, token: string | undefined, path: string, init?: RequestInit): Promise<unknown> {

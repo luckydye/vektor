@@ -6,6 +6,7 @@ import {
   notFoundResponse,
   parseJsonBody,
   requireParam,
+  verifyDocumentRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocument, updateDocument } from "#db/documents.ts";
@@ -38,6 +39,12 @@ export const POST: APIRoute = (context) =>
     });
     const isJobRequest = auth.type === "job";
     const userId = auth.type === "user" ? auth.user.id : auth.userId;
+
+    // Parity with PATCH/DELETE on the sibling route: a user session must also
+    // hold editor on the document itself, not just on the space.
+    if (auth.type === "user") {
+      await verifyDocumentRole(spaceId, id, auth.user.id, "editor");
+    }
 
     if (
       !isJobRequest &&

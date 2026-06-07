@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createId } from "../db/ids.ts";
+import { config } from "../config.ts";
 
 export type NodeStatus =
   | "pending"
@@ -61,7 +62,7 @@ const MAX_LOG_ENTRIES = 200;
 const MAX_RUNS = 20;
 const REDACTED_VALUE = "[redacted]";
 
-let runStoreFilePath = process.env.VEKTOR_WORKFLOW_RUN_STORE_FILE ??
+let runStoreFilePath = config().WORKFLOW_RUN_STORE_FILE ??
   join(tmpdir(), "vektor-workflow-runs.json");
 
 function ensureRunStoreDirectory(): void {

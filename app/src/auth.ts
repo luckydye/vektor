@@ -4,6 +4,7 @@ import { genericOAuth } from "better-auth/plugins";
 import { getAuthDb } from "./db/db.ts";
 import * as schema from "./db/schema/auth.ts";
 import { config } from "./config.ts";
+import { GROUP_NAME_PATTERN } from "./db/acl.ts";
 
 const appConfig = config();
 const authDb = getAuthDb();
@@ -25,12 +26,10 @@ const useSecureCookies = (appConfig.SITE_URL ?? "").startsWith("https://");
 
 // Optional allowlist of group claims the IdP is permitted to assign. When set
 // (comma-separated), any group outside the list is dropped.
-const OAUTH_ALLOWED_GROUPS = (process.env.OAUTH_ALLOWED_GROUPS ?? "")
+const OAUTH_ALLOWED_GROUPS = (appConfig.OAUTH_ALLOWED_GROUPS ?? "")
   .split(",")
   .map((g) => g.trim())
   .filter(Boolean);
-
-const GROUP_NAME_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 /**
  * Sanitize the `wiki_groups` claim from an OAuth IdP before it is persisted and
@@ -72,10 +71,10 @@ export const auth = betterAuth({
   },
 
   emailAndPassword: {
-    enabled: !!import.meta.env.DEV || process.env.VEKTOR_EMAIL_AUTH === "1",
+    enabled: !!import.meta.env.DEV || appConfig.EMAIL_AUTH === "1",
     minPasswordLength: 12,
     // Require verified email before login when an email sender is wired up.
-    requireEmailVerification: process.env.VEKTOR_REQUIRE_EMAIL_VERIFICATION === "1",
+    requireEmailVerification: appConfig.REQUIRE_EMAIL_VERIFICATION === "1",
   },
 
   // Throttle abuse (credential stuffing, enumeration) with stricter limits on

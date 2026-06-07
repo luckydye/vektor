@@ -16,8 +16,10 @@ import {
   createDocument,
   listAllDocumentsByCategories,
   listDocuments,
+  type AclViewer,
 } from "#db/documents.ts";
-import { ResourceType } from "#db/acl.ts";
+import { getUserGroups, ResourceType } from "#db/acl.ts";
+import { getTokenUserId } from "#db/accessTokens.ts";
 import {
   getDocumentTypeForContentType,
   getMimeType,
@@ -47,6 +49,19 @@ export const GET: APIRoute = (context) =>
       await verifySpaceRole(spaceId, auth.user.id, "viewer");
     }
 
+    // Identity for per-document ACL filtering. Only trusted server-minted job
+    // tokens without user context (userId === null) get the unfiltered view.
+    const aclUserId = jobAuth
+      ? jobAuth.type === "user"
+        ? jobAuth.user.id
+        : jobAuth.userId
+      : auth!.type === "user"
+        ? auth!.user.id
+        : getTokenUserId(auth!.token.tokenId);
+    const viewer: AclViewer | null = aclUserId
+      ? { userId: aclUserId, userGroups: await getUserGroups(aclUserId) }
+      : null;
+
     const limit = parseQueryInt(context.url.searchParams, "limit", {
       defaultValue: 100,
       min: 1,
@@ -73,6 +88,7 @@ export const GET: APIRoute = (context) =>
         spaceId,
         categorySlugs,
         userEmail,
+        viewer,
       );
       const filteredDocumentsByCategory = typeParam
         ? Object.fromEntries(
@@ -111,7 +127,13 @@ export const GET: APIRoute = (context) =>
     }
 
     // Always return documents without content (content fetched separately when viewing)
-    const { documents, total } = await listDocuments(spaceId, limit, offset, typeParam);
+    const { documents, total } = await listDocuments(
+      spaceId,
+      limit,
+      offset,
+      typeParam,
+      viewer,
+    );
     return jsonResponse({ documents, total, limit, offset });
   }, "Failed to list documents");
 

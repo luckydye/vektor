@@ -6,6 +6,7 @@ import {
   xmlResponse,
 } from "#db/caldav.ts";
 import { listDocuments } from "#db/documents.ts";
+import { getUserGroups } from "#db/acl.ts";
 
 /**
  * CalDAV calendar endpoint for a specific space.
@@ -21,7 +22,12 @@ export const ALL: APIRoute = async (context) => {
   const method = context.request.method.toUpperCase();
 
   if (method === "REPORT") {
-    const { documents } = await listDocuments(spaceId);
+    // Filter by per-document ACL so the calendar feed doesn't expose
+    // documents the authenticated user cannot read.
+    const { documents } = await listDocuments(spaceId, undefined, undefined, undefined, {
+      userId: caldavUser.id,
+      userGroups: await getUserGroups(caldavUser.id),
+    });
 
     const eventEntries = documents
       .flatMap((doc) => {

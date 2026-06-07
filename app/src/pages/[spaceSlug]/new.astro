@@ -10,13 +10,19 @@ import TitleEditor from "~/src/components/TitleEditor.vue";
 import DocumentActions from "~/src/components/DocumentActions.vue";
 import DocumentProperties from "~/src/components/DocumentProperties.vue";
 import CommentManager from "~/src/components/CommentManager.vue";
-import { resolveSpacePage } from "../../utils/spacePage.ts";
+import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);
 if (result.response) {
   return result.response;
 }
 const { space } = result;
+
+// Check ACL permissions - user must be a member of the space
+const accessDenied = await requireSpaceViewer(Astro, space);
+if (accessDenied) {
+  return accessDenied;
+}
 
 const type = Astro.url.searchParams.get("type") || "document";
 const category = Astro.url.searchParams.get("category") || undefined;

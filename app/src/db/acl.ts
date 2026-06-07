@@ -64,6 +64,14 @@ const PERMISSION_HIERARCHY: Record<string, number> = {
   owner: 5,
 };
 
+/**
+ * Canonical shape of a group name. Group membership drives ACL access, so
+ * every write AND read path must enforce this: it keeps LIKE wildcards
+ * (`%`/`_`) and JSON-breaking characters out of stored group ids, and drops
+ * malformed entries that bypassed the OAuth sanitizer.
+ */
+export const GROUP_NAME_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
+
 export async function getUserGroups(userId: string): Promise<string[]> {
   const authDb = getAuthDb();
   if (!authDb) {
@@ -77,7 +85,15 @@ export async function getUserGroups(userId: string): Promise<string[]> {
   if (userRecord?.groups) {
     try {
       const userGroups = JSON.parse(userRecord.groups);
-      groups.push(...userGroups);
+      if (Array.isArray(userGroups)) {
+        // Defense in depth: do not trust stored groups blindly — only
+        // well-formed names enter the authorization group set.
+        groups.push(
+          ...userGroups.filter(
+            (g): g is string => typeof g === "string" && GROUP_NAME_PATTERN.test(g),
+          ),
+        );
+      }
     } catch {
       // Keep just "public"
     }
@@ -96,6 +112,10 @@ export async function grantPermission(
 ): Promise<AclEntry> {
   if (!userId && !groupId) {
     throw new Error("Either userId or groupId must be provided");
+  }
+
+  if (groupId && !GROUP_NAME_PATTERN.test(groupId)) {
+    throw new Error("Invalid group name");
   }
 
   const db = await getSpaceDb(spaceId);
@@ -629,6 +649,62 @@ export async function listAccessibleResources(
 
   // Deduplicate resource IDs
   return [...new Set(results.map((r) => r.resourceId))];
+}
+
+/**
+ * Filter `resourceIds` down to those the user can read, mirroring
+ * `hasPermission` semantics in bulk (one query instead of N):
+ *  - a resource with NO ACL row applicable to the user falls back to the
+ *    caller's space-level role — callers must have already verified the user
+ *    holds at least `viewer` on the space;
+ *  - a resource WITH applicable rows is readable only when the best of those
+ *    rows is at least `viewer` (so explicit "denied"-style entries hide it).
+ */
+export async function filterReadableResources(
+  spaceId: string,
+  resourceType: ResourceType,
+  resourceIds: string[],
+  userId: string,
+  userGroups?: string[],
+): Promise<Set<string>> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return new Set(resourceIds);
+  }
+
+  const db = await getSpaceDb(spaceId);
+  const effectiveGroups = userGroups && userGroups.length > 0 ? userGroups : ["public"];
+
+  const rows = await db
+    .select({ resourceId: acl.resourceId, permission: acl.permission })
+    .from(acl)
+    .where(
+      and(
+        eq(acl.resourceType, resourceType),
+        or(
+          and(eq(acl.userId, userId), isNull(acl.groupId)),
+          and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+        ),
+      ),
+    )
+    .all();
+
+  const bestLevel = new Map<string, number>();
+  for (const row of rows) {
+    const level = PERMISSION_HIERARCHY[row.permission] || 0;
+    const previous = bestLevel.get(row.resourceId);
+    if (previous === undefined || level > previous) {
+      bestLevel.set(row.resourceId, level);
+    }
+  }
+
+  const readable = new Set<string>();
+  for (const id of resourceIds) {
+    const level = bestLevel.get(id);
+    if (level === undefined || level >= PERMISSION_HIERARCHY.viewer) {
+      readable.add(id);
+    }
+  }
+  return readable;
 }
 
 export async function countSpaceMembers(spaceId: string): Promise<number> {

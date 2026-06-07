@@ -176,3 +176,30 @@ export async function isPublicUrl(url: string): Promise<boolean> {
     return false;
   }
 }
+
+const MAX_REDIRECTS = 5;
+
+/**
+ * SSRF-safe fetch: validates the target (and every redirect hop) against the
+ * private/blocked-IP denylist before connecting, so user-influenced URLs
+ * (webhooks, the agent `curl` command, ...) cannot redirect the server into
+ * internal services or cloud metadata endpoints.
+ */
+export async function safeFetch(
+  url: string,
+  init: RequestInit & { method: string },
+): Promise<Response> {
+  let target = (await assertPublicUrl(url)).toString();
+  for (let i = 0; i <= MAX_REDIRECTS; i += 1) {
+    const response = await fetch(target, { ...init, redirect: "manual" });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) return response;
+      if (i === MAX_REDIRECTS) throw new SsrfError("Too many redirects");
+      target = (await assertPublicUrl(new URL(location, target).toString())).toString();
+      continue;
+    }
+    return response;
+  }
+  throw new SsrfError("Too many redirects");
+}

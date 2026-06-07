@@ -71,6 +71,23 @@ export interface RouteMatch {
   params: Record<string, string | undefined>;
 }
 
+/**
+ * Params are matched on the still-encoded path and decoded afterwards, so a
+ * decoded value can contain characters the route pattern never matched
+ * (`%2F` → `/`, `%00`, `..`). Reject those centrally: single-segment params
+ * must still be a single, traversal-free segment after decoding; catch-all
+ * params may contain `/` but no control characters or `..` segments.
+ */
+function isSafeParamValue(value: string, isCatchAll: boolean): boolean {
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(value)) return false;
+  if (value.includes("\\")) return false;
+  if (isCatchAll) {
+    return value.split("/").every((segment) => segment !== ".." && segment !== ".");
+  }
+  return !value.includes("/") && value !== ".." && value !== ".";
+}
+
 /** Find the first route whose pattern matches `pathname`, extracting params. */
 export function matchRoute(routes: CompiledRoute[], pathname: string): RouteMatch | null {
   for (const route of routes) {
@@ -78,14 +95,23 @@ export function matchRoute(routes: CompiledRoute[], pathname: string): RouteMatc
     if (!match) continue;
 
     const params: Record<string, string | undefined> = {};
+    let valid = true;
     route.paramNames.forEach((name, index) => {
       const raw = match[index + 1];
+      let value: string | undefined;
       try {
-        params[name] = raw === undefined ? undefined : decodeURIComponent(raw);
+        value = raw === undefined ? undefined : decodeURIComponent(raw);
       } catch {
-        params[name] = raw;
+        value = raw;
       }
+      const isCatchAll = route.hasCatchAll && index === route.paramNames.length - 1;
+      if (value !== undefined && !isSafeParamValue(value, isCatchAll)) {
+        valid = false;
+        return;
+      }
+      params[name] = value;
     });
+    if (!valid) return null;
 
     return { module: route.module, params };
   }

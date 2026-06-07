@@ -34,7 +34,7 @@ function getEncryptionKey(): Buffer {
   // Deriving the secrets key from AUTH_SECRET reuses signing entropy for
   // encryption. Tolerated for dev, but warn loudly in production so operators
   // provision a dedicated WIKI_SECRETS_ENCRYPTION_KEY.
-  if (!warnedAboutFallbackKey && process.env.NODE_ENV === "production") {
+  if (!warnedAboutFallbackKey && config().NODE_ENV === "production") {
     warnedAboutFallbackKey = true;
     console.warn(
       "[secrets] WIKI_SECRETS_ENCRYPTION_KEY is not set; deriving the encryption " +

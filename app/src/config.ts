@@ -49,6 +49,31 @@ export function config() {
        */
       DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
       NO_AUTH: process.env.VEKTOR_NO_AUTH,
+      NODE_ENV: process.env.NODE_ENV,
+
+      /**
+       * Set to "1"/"true" when a trusted reverse proxy fronts the app; only
+       * then are X-Forwarded-* headers honored.
+       */
+      TRUST_PROXY: process.env.WIKI_TRUST_PROXY,
+      /** Hard cap (bytes) for buffered API request bodies. */
+      MAX_REQUEST_BYTES: process.env.WIKI_MAX_REQUEST_BYTES,
+      /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
+      API_ONLY: process.env.VEKTOR_API_ONLY,
+      /** Interface the HTTP server binds to (default 0.0.0.0). */
+      SERVER_HOST: process.env.HOST,
+
+      EMAIL_AUTH: process.env.VEKTOR_EMAIL_AUTH,
+      REQUIRE_EMAIL_VERIFICATION: process.env.VEKTOR_REQUIRE_EMAIL_VERIFICATION,
+      /** Comma-separated allowlist of OAuth group claims the IdP may assign. */
+      OAUTH_ALLOWED_GROUPS: process.env.OAUTH_ALLOWED_GROUPS,
+
+      WORKFLOW_RUN_STORE_FILE: process.env.VEKTOR_WORKFLOW_RUN_STORE_FILE,
+
+      /** CLI connection settings (vektor document/workflow commands). */
+      CLI_HOST: process.env.WIKI_HOST,
+      CLI_SPACE_ID: process.env.WIKI_SPACE_ID,
+      CLI_ACCESS_TOKEN: process.env.WIKI_ACCESS_TOKEN,
 
       /**
        * better-auth secret token
@@ -165,6 +190,34 @@ export function getLlmWorkerConfig() {
     anthropicModel: getConfiguredAnthropicModel(),
     ollamaBaseUrl: config().OLLAMA_BASE_URL ? getConfiguredOllamaBaseUrl() : null,
     ollamaModel: config().OLLAMA_BASE_URL ? getConfiguredOllamaModel() : null,
+  };
+}
+
+/**
+ * True when the operator confirmed a trusted reverse proxy fronts the app
+ * (WIKI_TRUST_PROXY=1/true); only then may X-Forwarded-* headers be honored.
+ */
+export function isTrustProxyEnabled(): boolean {
+  const raw = config().TRUST_PROXY;
+  return raw === "1" || raw === "true";
+}
+
+/**
+ * Runtime environment exposed to the browser. Single source of truth for the
+ * Astro middleware and the Express API adapter — only ever add non-secret
+ * values here.
+ */
+export function getPublicEnv(): App.PublicEnv {
+  const appConfig = config();
+  return {
+    WIKI_FEATURE_CANVAS: appConfig.FEATURE_CANVAS,
+    WIKI_SITE_URL: appConfig.SITE_URL,
+    WIKI_API_URL: appConfig.API_URL,
+    WIKI_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
+    WIKI_DEFAULT_SPACE: appConfig.DEFAULT_SPACE,
+    AUTH_LOGIN: appConfig.AUTH_LOGIN,
+    OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
+    VEKTOR_NO_AUTH: appConfig.NO_AUTH,
   };
 }
 

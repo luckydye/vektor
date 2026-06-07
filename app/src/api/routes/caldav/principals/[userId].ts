@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import {
+  escapeXml,
   optionsPreflight,
   requireCalDAVUserAndAccess,
   xmlResponse,
@@ -25,7 +26,7 @@ export const ALL: APIRoute = async (context) => {
           <d:href>/api/caldav/calendars/${caldavUser.id}/</d:href>
         </c:calendar-home-set>
         <c:calendar-user-address-set>
-          <d:href>mailto:${caldavUser.email}</d:href>
+          <d:href>mailto:${escapeXml(caldavUser.email)}</d:href>
         </c:calendar-user-address-set>
       </d:prop>
       <d:status>HTTP/1.1 200 OK</d:status>

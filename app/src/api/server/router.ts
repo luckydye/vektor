@@ -1,13 +1,50 @@
 import type { NextFunction, Request as ExRequest, Response as ExResponse } from "express";
+import { authTrustedOrigins } from "#auth";
 import { appLogger } from "#observability/logger.ts";
 import { apiRoutes } from "../routes.ts";
-import { buildApiContext, sendWebResponse } from "./adapter.ts";
+import { buildApiContext, PayloadTooLargeError, sendWebResponse } from "./adapter.ts";
 import { compileRoute, matchRoute, sortRoutes, type CompiledRoute } from "./matcher.ts";
 import type { ApiRouteMethod, ApiRouteModule } from "./types.ts";
 
 const compiledRoutes: CompiledRoute[] = sortRoutes(
   apiRoutes.map(({ pattern, module }) => compileRoute(pattern, module)),
 );
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/** Trusted origins, normalized to `proto://host[:port]` for exact comparison. */
+const trustedOrigins = new Set(
+  authTrustedOrigins.flatMap((value) => {
+    try {
+      return [new URL(value).origin];
+    } catch {
+      return [];
+    }
+  }),
+);
+
+/**
+ * CSRF guard: browsers attach the session cookie to cross-site requests (and
+ * always send an `Origin` header on cross-site non-GET requests), so unsafe
+ * methods from an untrusted origin are rejected outright. Requests without an
+ * `Origin` header (curl, access tokens, CalDAV clients, same-origin GET
+ * navigations) pass through — they are not forgeable by a hostile web page.
+ * This is an explicit second layer on top of the SameSite cookie default.
+ */
+function isCrossSiteForgery(req: ExRequest, method: string): boolean {
+  if (SAFE_METHODS.has(method)) return false;
+  const origin = req.headers.origin;
+  if (!origin) return false;
+  if (trustedOrigins.has(origin)) return false;
+  // Same-origin fallback for deployments without WIKI_SITE_URL: the browser
+  // sets Host to the target server, so Origin host === Host implies the
+  // request came from a page served by this very host.
+  try {
+    return new URL(origin).host !== req.headers.host;
+  } catch {
+    return true;
+  }
+}
 
 function isApiPath(pathname: string): boolean {
   return (
@@ -47,7 +84,13 @@ export async function apiRouter(
     return;
   }
 
-  const handler = resolveHandler(match.module, (req.method ?? "GET").toUpperCase());
+  const method = (req.method ?? "GET").toUpperCase();
+  if (isCrossSiteForgery(req, method)) {
+    jsonError(res, 403, "Cross-origin request rejected");
+    return;
+  }
+
+  const handler = resolveHandler(match.module, method);
   if (!handler) {
     const allowed = Object.keys(match.module)
       .filter((key) => key !== "ALL")
@@ -69,6 +112,11 @@ export async function apiRouter(
 
     await sendWebResponse(res, result);
   } catch (error) {
+    if (error instanceof PayloadTooLargeError) {
+      if (!res.headersSent) jsonError(res, 413, "Request body too large");
+      else res.end();
+      return;
+    }
     appLogger.error("Unhandled API route error", {
       path: pathname,
       error: error instanceof Error ? error.message : String(error),
