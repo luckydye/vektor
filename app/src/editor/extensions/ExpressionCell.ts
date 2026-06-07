@@ -62,7 +62,7 @@ export const ExpressionCell = Node.create({
     return {
       insertExpressionCell:
         (attributes?: { formula?: string }) =>
-        ({ commands, state }: CommandProps) => {
+        ({ commands }: CommandProps) => {
           const formula = attributes?.formula || "=";
           return commands.insertContent({
             type: this.name,
@@ -84,7 +84,7 @@ export const ExpressionCell = Node.create({
     return [
       new Plugin({
         key: new PluginKey("expressionCellSyncFormula"),
-        appendTransaction(transactions, oldState, newState) {
+        appendTransaction(_transactions, _oldState, newState) {
           const tr = newState.tr;
           let modified = false;
 
@@ -109,7 +109,7 @@ export const ExpressionCell = Node.create({
       new Plugin({
         key: new PluginKey("expressionCellAutoConvert"),
         props: {
-          handleTextInput(view, from, to, text) {
+          handleTextInput(view, _from, _to, text) {
             const { state } = view;
             const { $from } = state.selection;
 

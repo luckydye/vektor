@@ -67,7 +67,7 @@ export async function fetchAndInlineHTML(
   // Replace all relative URLs in href attributes with absolute URLs
   html = html.replace(
     /href=["'](?!(?:https?:|\/\/|#|mailto:))([^"']+)["']/gi,
-    (match, url) => {
+    (_match, url) => {
       const absoluteUrl = new URL(url, sourceUrl).href;
       return `href="${absoluteUrl}"`;
     },
@@ -76,7 +76,7 @@ export async function fetchAndInlineHTML(
   // Replace all relative URLs in src attributes with absolute URLs
   html = html.replace(
     /src=["'](?!(?:https?:|\/\/|#|data:))([^"']+)["']/gi,
-    (match, url) => {
+    (_match, url) => {
       const absoluteUrl = new URL(url, sourceUrl).href;
       return `src="${absoluteUrl}"`;
     },

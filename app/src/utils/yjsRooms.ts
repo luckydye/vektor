@@ -1,6 +1,7 @@
 import { getSchema } from "@tiptap/core";
 import { generateHTML, generateJSON } from "@tiptap/html";
 import { Node } from "@tiptap/pm/model";
+import type { WebSocket } from "ws";
 import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument } from "#db/documents.ts";
@@ -15,7 +16,7 @@ import { contentExtensions } from "../editor/extensions.ts";
 
 export interface YRoom {
   doc?: Y.Doc;
-  clients: Set<any>;
+  clients: Set<WebSocket>;
   presences: Map<string, PresenceEnvelope>;
 }
 

@@ -46,12 +46,17 @@ export async function requireSpaceViewer(
   astro: Pick<AstroGlobal, "locals">,
   space: Space,
 ): Promise<Response | null> {
-  const userGroups = await getUserGroups(astro.locals.user!.id);
+  const user = astro.locals.user;
+  if (!user) {
+    return new Response(null, { status: 401, statusText: "Unauthorized" });
+  }
+
+  const userGroups = await getUserGroups(user.id);
   const hasAccess = await hasPermission(
     space.id,
     ResourceType.SPACE,
     space.id,
-    astro.locals.user!.id,
+    user.id,
     "viewer",
     userGroups,
   );

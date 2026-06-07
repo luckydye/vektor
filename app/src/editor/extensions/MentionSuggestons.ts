@@ -1,3 +1,5 @@
+import type { Editor } from "@tiptap/core";
+import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import type { DocumentWithProperties, SpaceMember } from "~/src/api/ApiClient.ts";
@@ -12,6 +14,8 @@ type MentionItem = {
   type: "person" | "document";
   slug?: string;
 };
+
+type MentionProps = SuggestionProps<MentionItem, MentionItem>;
 
 export interface MentionOptions {
   spaceId: string;
@@ -38,10 +42,10 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
             editor,
           }: {
             query: string;
-            editor: any;
+            editor: Editor;
           }): Promise<MentionItem[]> => {
             const options = editor.extensionManager.extensions.find(
-              (ext: any) => ext.name === "mention-suggestons",
+              (ext) => ext.name === "mention-suggestons",
             )?.options;
 
             if (!cachedMembers || !cachedDocs) {
@@ -96,9 +100,11 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
           let popup: HTMLDivElement | null = null;
           let selectedIndex = 0;
           let currentItems: MentionItem[] = [];
-          let lastProps: any = null;
+          let lastProps: MentionProps | null = null;
 
-          function assertClientRect(props: any) {
+          function assertClientRect(
+            props: MentionProps,
+          ): asserts props is MentionProps & { clientRect: () => DOMRect | null } {
             if (!props.clientRect) {
               throw new Error(
                 "Mention suggestion requires clientRect to position the popup.",
@@ -106,15 +112,15 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
             }
           }
 
-          function movePopup(props: any) {
+          function movePopup(props: MentionProps) {
             assertClientRect(props);
             const rect = props.clientRect();
-            if (!popup) return;
+            if (!rect || !popup) return;
             popup.style.left = `${rect.left}px`;
             popup.style.top = `${rect.bottom + 8}px`;
           }
 
-          function selectItem(props: any, index: number) {
+          function selectItem(props: MentionProps, index: number) {
             const item = currentItems[index];
             if (!item) return;
 
@@ -144,12 +150,12 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
             e.preventDefault();
           }
 
-          function onItemClick(e: MouseEvent, props: any, index: number) {
+          function onItemClick(e: MouseEvent, props: MentionProps, index: number) {
             e.stopPropagation();
             selectItem(props, index);
           }
 
-          function onKeyDown(_props: any, event: KeyboardEvent) {
+          function onKeyDown(_props: SuggestionKeyDownProps, event: KeyboardEvent) {
             switch (event.key) {
               case "Escape":
                 return true;
@@ -177,7 +183,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
             renderList(lastProps);
           }
 
-          function renderList(props: any) {
+          function renderList(props: MentionProps) {
             if (!popup) return;
             lastProps = props;
             currentItems = props.items || [];
@@ -259,7 +265,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
           }
 
           return {
-            onStart: (props: any) => {
+            onStart: (props: MentionProps) => {
               if (!props) {
                 throw new Error("Mention suggestion onStart requires props.");
               }
@@ -279,16 +285,15 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
               renderList(props);
             },
 
-            onUpdate: (props: any) => {
+            onUpdate: (props: MentionProps) => {
               if (!popup) {
                 throw new Error("Mention suggestion updated after being destroyed.");
               }
               renderList(props);
             },
 
-            onKeyDown: (props: any) => {
-              const event = props.event as KeyboardEvent;
-              return onKeyDown(props, event);
+            onKeyDown: (props: SuggestionKeyDownProps) => {
+              return onKeyDown(props, props.event);
             },
 
             onExit: () => {

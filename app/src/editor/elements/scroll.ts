@@ -10,7 +10,7 @@ customElements.define(
       return `${this.className}-${this.parentElement?.className}`.replace(" ", ".");
     }
 
-    attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+    attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
       if (name === "name") {
         this.name = newValue || this.fallbackName();
       }

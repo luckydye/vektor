@@ -15,7 +15,13 @@ const tree = parser.parse(await Bun.file(process.argv[2] || "").text());
 
 const MAX_WIDTH = 100;
 
-function format(node: any, depth = 0, ind = "  "): string {
+interface TSNode {
+  type: string;
+  text: string;
+  children: TSNode[];
+}
+
+function format(node: TSNode, depth = 0, ind = "  "): string {
   const indent = ind.repeat(depth);
   const type = node.type;
 
@@ -176,7 +182,7 @@ function format(node: any, depth = 0, ind = "  "): string {
   return r;
 }
 
-function wrapStatement(node: any, indent: string, ind: string): string {
+function wrapStatement(node: TSNode, indent: string, ind: string): string {
   const t = node.type;
 
   // Handle function/method parameters
@@ -188,7 +194,7 @@ function wrapStatement(node: any, indent: string, ind: string): string {
   return node.text.replace(/\s+/g, " ").trim();
 }
 
-function wrapFunction(node: any, indent: string, ind: string): string {
+function wrapFunction(node: TSNode, indent: string, ind: string): string {
   let result = "";
   const paramIndent = indent + ind;
 

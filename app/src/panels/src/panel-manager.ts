@@ -298,7 +298,7 @@ export class PanelItemElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this.removeEventListener("pointerdown", this._onFocus, { capture: true } as any);
+    this.removeEventListener("pointerdown", this._onFocus, { capture: true });
   }
 
   attributeChangedCallback() {

@@ -1,10 +1,11 @@
+import type { Editor } from "@tiptap/core";
 import { Actions } from "./actions.ts";
 
 /**
  * Get the global editor instance
  */
-const getEditor = () => {
-  return (globalThis as any).__editor;
+const getEditor = (): Editor => {
+  return (globalThis as { __editor?: Editor }).__editor as Editor;
 };
 
 /**
@@ -594,7 +595,7 @@ export function registerFormattingActions() {
 /**
  * Helper function to set column count on an existing column layout
  */
-function setColumnCount(editor: any, newCount: number) {
+function setColumnCount(editor: Editor, newCount: number) {
   const { state } = editor;
   const { selection } = state;
   const { $from } = selection;

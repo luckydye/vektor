@@ -1,6 +1,20 @@
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 
+/** The subset of drizzle's internal column shape this generator reads. */
+interface ColumnInfo {
+  name: string;
+  columnType: string;
+  primary?: boolean;
+  autoIncrement?: boolean;
+  notNull?: boolean;
+  hasDefault?: boolean;
+  default?: unknown;
+  isUnique?: boolean;
+  references?: () => { table: SQLiteTable; name: string };
+  onDelete?: string;
+}
+
 export function generateCreateTableSQL(table: SQLiteTable): string {
   const config = getTableConfig(table);
   const columns = config.columns;
@@ -11,12 +25,12 @@ export function generateCreateTableSQL(table: SQLiteTable): string {
 
   // Check for composite primary key
   if (config.primaryKeys && config.primaryKeys.length > 0) {
-    const pkColumns = config.primaryKeys[0].columns.map((col: any) => col.name);
+    const pkColumns = config.primaryKeys[0].columns.map((col) => col.name);
     constraints.push(`PRIMARY KEY (${pkColumns.join(", ")})`);
   }
 
   for (const column of columns) {
-    const col = column as any;
+    const col = column as unknown as ColumnInfo;
     let def = `"${col.name}" ${getSQLiteType(col)}`;
 
     // Only add PRIMARY KEY if there's no composite primary key
@@ -72,7 +86,7 @@ export function generateCreateTableSQL(table: SQLiteTable): string {
   return `CREATE TABLE IF NOT EXISTS ${config.name} (\n  ${allDefs.join(",\n  ")}\n)`;
 }
 
-function getSQLiteType(column: any): string {
+function getSQLiteType(column: ColumnInfo): string {
   const colType = column.columnType;
 
   // SQLite column types from drizzle-orm

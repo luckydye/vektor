@@ -148,7 +148,7 @@ function xwikiPathToSlug(xwikiPath: string): string | null {
 async function cleanXWikiHtml(
   html: string,
   htmlFilePath: string,
-  attachmentDir: string,
+  _attachmentDir: string,
   mediaMap: Map<string, string>,
 ): Promise<string> {
   const { document } = parseHTML(html);

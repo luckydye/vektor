@@ -25,6 +25,8 @@ import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
 import { contentExtensions } from "../extensions.ts";
 
+type ProsemirrorMapping = Parameters<typeof relativePositionToAbsolutePosition>[3];
+
 declare global {
   interface Window {
     __editor?: Editor;
@@ -118,13 +120,13 @@ function createPresencePlugin(
             ydoc,
             docType,
             Y.createRelativePositionFromJSON(remoteState.selection.anchor),
-            mapping as any,
+            mapping as unknown as ProsemirrorMapping,
           );
           const head = relativePositionToAbsolutePosition(
             ydoc,
             docType,
             Y.createRelativePositionFromJSON(remoteState.selection.head),
-            mapping as any,
+            mapping as unknown as ProsemirrorMapping,
           );
 
           if (anchor === null || head === null) {
@@ -260,14 +262,14 @@ function createEditor(
           absolutePositionToRelativePosition(
             selection.anchor,
             ydoc.getXmlFragment("default"),
-            mapping as any,
+            mapping as unknown as ProsemirrorMapping,
           ),
         ),
         head: serializeRelativePosition(
           absolutePositionToRelativePosition(
             selection.head,
             ydoc.getXmlFragment("default"),
-            mapping as any,
+            mapping as unknown as ProsemirrorMapping,
           ),
         ),
       },
@@ -656,7 +658,7 @@ class DocumentView extends HTMLElement {
   attachListeners() {
     this.root?.addEventListener(
       "input",
-      (e) => {
+      (_e) => {
         if (this.editor) return; // we ignore checkbox changes in read mode only
 
         window.dispatchEvent(new CustomEvent("edit-mode-start"));
@@ -682,7 +684,7 @@ class DocumentView extends HTMLElement {
     );
     this.root?.addEventListener(
       "pointerout",
-      (e) => {
+      (_e) => {
         document.dispatchEvent(new CustomEvent("mouseout"));
       },
       {

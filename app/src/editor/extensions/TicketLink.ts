@@ -95,7 +95,7 @@ export const TicketLink = Mark.create<TicketLinkOptions>({
     return [
       new Plugin({
         key: new PluginKey("ticketLinkApplier"),
-        appendTransaction: (transactions, oldState, newState) => {
+        appendTransaction: (transactions, _oldState, newState) => {
           const connections = getConnections();
           if (!connections || connections.length === 0) {
             return null;

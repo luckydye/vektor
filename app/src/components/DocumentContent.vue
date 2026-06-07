@@ -108,7 +108,7 @@ async function handleEditModeCancel() {
   await reloadIfReady();
 }
 
-watch(isEditingReady, (ready) => {
+watch(isEditingReady, (_ready) => {
   document.body.dataset.editing = !!isEditingReady.value;
 });
 

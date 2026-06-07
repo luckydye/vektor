@@ -1,4 +1,4 @@
-import { Extension } from "@tiptap/core";
+import { type Editor, Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
@@ -14,7 +14,7 @@ interface ContentItem {
   title: string;
   description: string;
   icon: string;
-  command: (editor: any) => void;
+  command: (editor: Editor) => void;
 }
 
 function createContentItems(spaceId: string, documentId?: string): ContentItem[] {

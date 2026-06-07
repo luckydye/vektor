@@ -36,7 +36,7 @@ const colwidthAttribute = {
     const colwidth = element.getAttribute("colwidth");
     return colwidth ? colwidth.split(",").map((w) => parseInt(w, 10)) : [200];
   },
-  renderHTML: (attributes: Record<string, any>) => {
+  renderHTML: (attributes: { colwidth?: number[] }) => {
     if (!attributes.colwidth) {
       return { style: "width: 200px" };
     }

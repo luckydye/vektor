@@ -249,7 +249,8 @@ watch(outputDocumentId, async (id) => {
   }
   const doc = await api.document.get(props.spaceId, id);
   outputDocumentHref.value = `/${props.spaceSlug}/doc/${doc.slug}`;
-  outputDocumentTitle.value = (doc as any).properties?.title || doc.slug;
+  outputDocumentTitle.value =
+    (doc as { properties?: { title?: string } }).properties?.title || doc.slug;
 });
 
 // Run history expansion — lazy load per run
@@ -278,7 +279,7 @@ async function toggleHistoryRun(runId: string) {
     ]);
     historyRunDocTitles.value = new Map([
       ...historyRunDocTitles.value,
-      [runId, (doc as any).properties?.title || doc.slug],
+      [runId, (doc as { properties?: { title?: string } }).properties?.title || doc.slug],
     ]);
   }
 }

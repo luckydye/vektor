@@ -95,7 +95,7 @@ export class Actions {
       if (action.group) groups.add(action.group);
       else groups.add("other");
     }
-    return [...groups].sort((a, b) => {
+    return [...groups].sort((a, _b) => {
       if (a === "cities") {
         return -1;
       }
@@ -143,7 +143,7 @@ export class Actions {
   /**
    * Handle key event from key down and up event
    */
-  static handleKey(event: KeyboardEvent, keydown: boolean | undefined) {
+  static handleKey(event: KeyboardEvent, _keydown: boolean | undefined) {
     // cancel if inside specified element
     const ignoredElements = ["INPUT"];
 

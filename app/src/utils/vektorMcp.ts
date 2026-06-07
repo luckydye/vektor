@@ -73,6 +73,12 @@ function parseLooseObject(value: unknown, label: string): Record<string, unknown
   return assertObject(value, label);
 }
 
+function expectString(args: Record<string, unknown>, key: string): string;
+function expectString(
+  args: Record<string, unknown>,
+  key: string,
+  options: { optional: true },
+): string | undefined;
 function expectString(
   args: Record<string, unknown>,
   key: string,
@@ -91,6 +97,12 @@ function expectString(
   return value;
 }
 
+function expectNumber(args: Record<string, unknown>, key: string): number;
+function expectNumber(
+  args: Record<string, unknown>,
+  key: string,
+  options: { optional: true },
+): number | undefined;
 function expectNumber(
   args: Record<string, unknown>,
   key: string,
@@ -109,6 +121,15 @@ function expectNumber(
   return value;
 }
 
+function expectObject(
+  args: Record<string, unknown>,
+  key: string,
+): Record<string, unknown>;
+function expectObject(
+  args: Record<string, unknown>,
+  key: string,
+  options: { optional: true },
+): Record<string, unknown> | undefined;
 function expectObject(
   args: Record<string, unknown>,
   key: string,
@@ -391,8 +412,9 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     ...(() => {
       const allProviders = ["gitlab", "youtrack"];
-      const providers = config.connectedProviders
-        ? allProviders.filter((p) => config.connectedProviders!.includes(p))
+      const connected = config.connectedProviders;
+      const providers = connected
+        ? allProviders.filter((p) => connected.includes(p))
         : allProviders;
       if (providers.length === 0) return [];
       return [
@@ -457,7 +479,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         })}`,
       );
     case "read_document": {
-      const documentId = expectString(args, "documentId")!;
+      const documentId = expectString(args, "documentId");
       const rev = expectNumber(args, "rev", { optional: true });
       // Without an explicit revision, read the live draft content (including
       // unsaved changes in the collaboration room) so partial edits via
@@ -479,7 +501,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       );
     case "write_document": {
       const documentId = expectString(args, "documentId", { optional: true });
-      const content = expectString(args, "content")!;
+      const content = expectString(args, "content");
       if (documentId) {
         return await apiRequest(
           config,
@@ -511,7 +533,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       });
     }
     case "edit_document": {
-      const documentId = expectString(args, "documentId")!;
+      const documentId = expectString(args, "documentId");
       const operations = args.operations;
       if (!Array.isArray(operations) || operations.length === 0) {
         throw new Error("operations must be a non-empty array");
@@ -530,7 +552,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       );
     }
     case "delete_document": {
-      const documentId = expectString(args, "documentId")!;
+      const documentId = expectString(args, "documentId");
       const permanent = args.permanent === true;
       return await apiRequest(
         config,
@@ -542,8 +564,8 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       );
     }
     case "update_document_properties": {
-      const documentId = expectString(args, "documentId")!;
-      const properties = expectObject(args, "properties")!;
+      const documentId = expectString(args, "documentId");
+      const properties = expectObject(args, "properties");
       return await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/documents/${encodeURIComponent(documentId)}`,
@@ -558,7 +580,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       );
     }
     case "run_workflow": {
-      const documentId = expectString(args, "documentId")!;
+      const documentId = expectString(args, "documentId");
       const inputs = expectObject(args, "inputs", { optional: true });
       const sourceExtensionId = expectString(args, "sourceExtensionId", {
         optional: true,
@@ -576,14 +598,14 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       });
     }
     case "get_workflow_run": {
-      const runId = expectString(args, "runId")!;
+      const runId = expectString(args, "runId");
       return await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
       );
     }
     case "get_workflow_log": {
-      const runId = expectString(args, "runId")!;
+      const runId = expectString(args, "runId");
       const nodeId = expectString(args, "nodeId", { optional: true });
       const run = (await apiRequest(
         config,
@@ -619,8 +641,8 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     }
     case "upload_artifact": {
       const form = new FormData();
-      const filename = expectString(args, "filename")!;
-      const content = expectString(args, "content")!;
+      const filename = expectString(args, "filename");
+      const content = expectString(args, "content");
       const contentType =
         expectString(args, "contentType", { optional: true }) ??
         "application/octet-stream";
@@ -642,12 +664,12 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       });
     }
     case "get_documentation": {
-      const section = expectString(args, "section")!;
+      const section = expectString(args, "section");
       return await apiRequest(config, `/docs/${section}`);
     }
     case "integration_api_request": {
-      const provider = expectString(args, "provider")!;
-      const path = expectString(args, "path")!;
+      const provider = expectString(args, "provider");
+      const path = expectString(args, "path");
       const method = expectString(args, "method", { optional: true });
       const headers = expectObject(args, "headers", { optional: true });
       const body = expectString(args, "body", { optional: true });
@@ -666,8 +688,8 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     }
     case "install_extension": {
       const form = new FormData();
-      const filename = expectString(args, "filename")!;
-      const content = expectString(args, "content")!;
+      const filename = expectString(args, "filename");
+      const content = expectString(args, "content");
       const bytes = Buffer.from(content, "base64");
       form.set("file", new Blob([bytes], { type: "application/zip" }), filename);
       return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/extensions`, {

@@ -1,7 +1,7 @@
 import "./observability/bootstrap.ts";
 import type { IncomingMessage } from "node:http";
 import type { dev } from "astro";
-import express from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
 import { apiRouter } from "./api/server/router.ts";
@@ -29,7 +29,12 @@ import {
 } from "./utils/realtime.ts";
 import { getRoom, loadYDoc, type YRoom, yRooms } from "./utils/yjsRooms.ts";
 
-function broadcastPresence(room: YRoom, sender: any, type: WsMsgType, payload: object) {
+function broadcastPresence(
+  room: YRoom,
+  sender: WebSocket,
+  type: WsMsgType,
+  payload: object,
+) {
   const frame = wsEncode(type, payload);
   for (const client of room.clients) {
     if (client === sender || client.readyState !== 1) {
@@ -51,7 +56,7 @@ const realtimeWebSocketServer = new WebSocketServer({ noServer: true });
 const getWss = () => realtimeWebSocketServer;
 
 // Logging
-app.use((req: any, res: any, next: any) => {
+app.use((req: Request & { time?: string }, res: Response, next: NextFunction) => {
   const startTime = Date.now();
   req.time = new Date(startTime).toString();
   appLogger.info("HTTP request", {
@@ -132,7 +137,7 @@ async function handleRealtimeWebSocket(
     userId = LOCAL_USER_ID;
   } else {
     const session = await auth.api.getSession({
-      headers: request.headers as any,
+      headers: request.headers as unknown as Headers,
     });
 
     if (!session?.user?.id) {
@@ -379,7 +384,7 @@ app.use(apiRouter);
 app.use(
   express.json({
     limit: "100mb",
-    type: (req: any) => {
+    type: (req: IncomingMessage) => {
       // Skip express.json for MCP routes — they parse the body themselves
       if (req.url?.includes("/mcp")) return false;
       const ct = req.headers["content-type"] ?? "";
@@ -387,7 +392,7 @@ app.use(
     },
   }),
 );
-app.post("/sync", (req: any, res: any) => {
+app.post("/sync", (req: Request, res: Response) => {
   const events = Array.isArray(req.body) ? req.body : [req.body];
   publishSyncEvents(events);
   res.status(200).end();

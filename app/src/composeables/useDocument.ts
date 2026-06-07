@@ -61,14 +61,13 @@ export function useDocument(
         const defaultTitle =
           documentType === "canvas" ? "Untitled Canvas" : "Untitled Document";
         const title = pendingTitle || defaultTitle;
+        const category = new URLSearchParams(window.location.search).get("category");
         const response = await api.documents.post(currentSpaceId.value, {
           content,
           type: documentType,
           properties: {
             title,
-            ...(new URLSearchParams(window.location.search).get("category")
-              ? { category: new URLSearchParams(window.location.search).get("category")! }
-              : {}),
+            ...(category ? { category } : {}),
           },
         });
         return { content, isNew: true, document: response };

@@ -1,4 +1,5 @@
 import {
+  type AnySQLiteColumn,
   blob,
   integer,
   primaryKey,
@@ -62,7 +63,7 @@ export const document = sqliteTable("document", {
   searchUpdatedAt: integer("search_updated_at", { mode: "timestamp" }),
   currentRev: integer("current_rev").default(0).notNull(),
   publishedRev: integer("published_rev"),
-  parentId: text("parent_id").references((): any => document.id, {
+  parentId: text("parent_id").references((): AnySQLiteColumn => document.id, {
     onDelete: "set null",
   }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),

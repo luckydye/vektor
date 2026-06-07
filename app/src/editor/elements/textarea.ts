@@ -1,5 +1,10 @@
 import { html, render } from "lit-html";
 
+interface LanguageModelSession {
+  destroy?: () => void;
+  promptStreaming: (input: string) => AsyncIterable<string>;
+}
+
 interface AITextareaState {
   value: string;
   placeholder: string;
@@ -12,7 +17,7 @@ interface AITextareaState {
 customElements.define(
   "ai-textarea",
   class extends HTMLElement {
-    session: any = null;
+    session: LanguageModelSession | null = null;
     state: AITextareaState = {
       value: "",
       placeholder: "",

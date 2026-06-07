@@ -1346,7 +1346,7 @@ export async function searchDocuments(
 
   // Filter by accessible IDs (null docIds means job token — all docs accessible)
   let accessibleResults =
-    docIds === null ? allRawResults : allRawResults.filter((r) => docIds!.includes(r.id));
+    docIds === null ? allRawResults : allRawResults.filter((r) => docIds.includes(r.id));
 
   // If we have filters, apply them by loading properties for each document
   if (hasFilters && accessibleResults.length > 0) {

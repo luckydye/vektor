@@ -12,7 +12,7 @@ export interface StoreConfig {
   version?: number;
 }
 
-export class IndexedDBStore<T extends Record<string, any>> {
+export class IndexedDBStore<T extends object> {
   private db: IDBDatabase | null = null;
   private config: StoreConfig;
   private initPromise: Promise<void> | null = null;

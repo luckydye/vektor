@@ -36,7 +36,7 @@ export const GET: APIRoute = (context) =>
       ResourceType.SPACE;
     const resourceId = context.url.searchParams.get("resourceId") || spaceId;
 
-    const permissions: Array<{ type: string; permission: any }> = [];
+    const permissions: Array<{ type: string; permission: unknown }> = [];
 
     // Get role permissions (space members)
     if (typeFilter === "all" || typeFilter === "role") {

@@ -21,8 +21,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   });
 
   if (isNoAuthMode()) {
-    context.locals.user = LOCAL_USER as any;
-    context.locals.session = LOCAL_SESSION as any;
+    context.locals.user = LOCAL_USER as typeof context.locals.user;
+    context.locals.session = LOCAL_SESSION as typeof context.locals.session;
   } else {
     const isAuthed = await auth.api.getSession({
       headers: request.headers,

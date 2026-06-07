@@ -4,7 +4,7 @@ export class DrawerTrack extends Track {
   public override traits: Trait[] = [
     {
       id: "drawer",
-      input(track: DrawerTrack, inputState: InputState) {
+      input(track: DrawerTrack, _inputState: InputState) {
         const openThresholdFixed = window.innerHeight / 2;
         const openThreshold = window.innerHeight - openThresholdFixed;
 
@@ -106,7 +106,7 @@ export class DrawerTrack extends Track {
       }
     });
 
-    this.addEventListener("click", (e) => {
+    this.addEventListener("click", (_e) => {
       if (!this.isOpen) {
         this.open();
       }

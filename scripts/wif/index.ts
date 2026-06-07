@@ -129,7 +129,7 @@ export function calculateRelativePath(fromDocPath: string, toMediaPath: string):
 export async function createWIFExport(
   exportName: string,
   sourceType: string,
-  outputDir: string,
+  _outputDir: string,
 ): Promise<WIFExport> {
   const now = new Date().toISOString();
 

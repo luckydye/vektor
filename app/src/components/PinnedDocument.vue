@@ -28,7 +28,7 @@ watch(doc, (d) => {
 function renderContent(html: string) {
   const el = viewEl.value;
   if (!el) return;
-  const root = (el as any).shadowRoot;
+  const root = (el as Element).shadowRoot;
   if (!root) {
     requestAnimationFrame(() => renderContent(html));
     return;

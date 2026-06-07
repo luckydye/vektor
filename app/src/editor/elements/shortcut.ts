@@ -14,7 +14,7 @@ customElements.define(
       return ["data-shortcut"];
     }
 
-    attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+    attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
       this.ariaLabel = `Shortcut: ${this.shortcut}`;
       render(this.render(), this.shadowRoot);
     }

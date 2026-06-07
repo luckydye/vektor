@@ -7,7 +7,7 @@ export const Mentions = Mention.extend<MentionOptions>({
     return [
       {
         tag: "user-mention",
-        getAttrs: (element: any) => {
+        getAttrs: (element: HTMLElement) => {
           const email = element.getAttribute("email");
           const label = element.textContent?.replace("@", "") || email;
           return {

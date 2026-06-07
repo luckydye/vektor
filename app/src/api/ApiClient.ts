@@ -403,7 +403,7 @@ interface RealtimeConnection {
   topicRefCounts: Map<RealtimeTopic, number>;
   subscriptions: Set<RealtimeSubscription>;
   presenceRoomRefCounts: Map<string, number>;
-  presenceSubscriptions: Set<PresenceSubscription<any>>;
+  presenceSubscriptions: Set<PresenceSubscription<unknown>>;
 }
 
 interface PresenceSubscription<TState = unknown> {
@@ -700,7 +700,7 @@ export class ApiClient {
       return await this.apiGet<{
         permissions: Array<{
           type: "role" | "feature";
-          permission: any;
+          permission: string;
         }>;
       }>(this.baseUrl, url);
     },
@@ -899,7 +899,7 @@ export class ApiClient {
         content: string;
         parentId?: string | null;
         categoryId?: string | null;
-        properties?: Record<string, any>;
+        properties?: Record<string, unknown>;
       },
     ) => {
       const response = await this.apiPost<{ document: DocumentWithProperties }>(
@@ -1275,7 +1275,7 @@ export class ApiClient {
       return await this.apiPost<{
         id: string;
         token: string;
-        resources: any[];
+        resources: unknown[];
         message: string;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/access-tokens`, body);
     },
@@ -1290,7 +1290,7 @@ export class ApiClient {
       resourceId: string,
       body: { permission: string },
     ) => {
-      return await this.apiPut<{ resources: any[]; message: string }>(
+      return await this.apiPut<{ resources: unknown[]; message: string }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/access-tokens/${tokenId}/resources/${resourceType}/${resourceId}`,
         body,
