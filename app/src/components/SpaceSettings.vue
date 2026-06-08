@@ -115,26 +115,31 @@
                   class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="viewer">Viewer</option>
                   <option value="editor">Editor</option>
-                  <option value="extensions">Extensions</option>
+                  <option value="extensions">Extensions (install/update)</option>
                 </select>
               </div>
-              <div>
-                <label class="block text-xs font-medium text-neutral-700 mb-1">Resource Type</label>
-                <select v-model="newTokenResourceType"
-                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="space">Space</option>
-                  <option value="document">Document</option>
-                  <option value="extension">Extension</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-neutral-700 mb-1">
-                  Resource ID
-                  <span v-if="newTokenResourceType === 'space'" class="text-neutral-400 font-normal">(space ID auto-filled)</span>
-                </label>
-                <input v-model="newTokenResourceId" type="text" required
-                  :disabled="newTokenResourceType === 'space'"
-                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-100 disabled:text-neutral-400" />
+              <template v-if="newTokenPermission !== 'extensions'">
+                <div>
+                  <label class="block text-xs font-medium text-neutral-700 mb-1">Resource Type</label>
+                  <select v-model="newTokenResourceType"
+                    class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="space">Space</option>
+                    <option value="document">Document</option>
+                    <option value="extension">Extension</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-neutral-700 mb-1">
+                    Resource ID
+                    <span v-if="newTokenResourceType === 'space'" class="text-neutral-400 font-normal">(space ID auto-filled)</span>
+                  </label>
+                  <input v-model="newTokenResourceId" type="text" required
+                    :disabled="newTokenResourceType === 'space'"
+                    class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-100 disabled:text-neutral-400" />
+                </div>
+              </template>
+              <div v-else class="md:col-span-2 text-xs text-neutral-500 self-center">
+                Grants space-wide permission to install and update extensions. No resource needed.
               </div>
               <div>
                 <label class="block text-xs font-medium text-neutral-700 mb-1">Expires in days <span class="text-neutral-400 font-normal">(optional)</span></label>
@@ -801,14 +806,20 @@ async function handleCreateToken() {
   tokenError.value = null;
 
   try {
+    const isExtensionsCapability = newTokenPermission.value === "extensions";
     const result = await api.accessTokens.create(currentSpace.value.id, {
       name: newTokenName.value.trim(),
       permission: newTokenPermission.value,
-      resourceType: newTokenResourceType.value,
-      resourceId:
-        newTokenResourceType.value === "space"
-          ? currentSpace.value.id
-          : newTokenResourceId.value.trim(),
+      // The "extensions" capability is space-wide and has no resource target.
+      ...(isExtensionsCapability
+        ? {}
+        : {
+            resourceType: newTokenResourceType.value,
+            resourceId:
+              newTokenResourceType.value === "space"
+                ? currentSpace.value.id
+                : newTokenResourceId.value.trim(),
+          }),
       ...(newTokenExpiresInDays.value
         ? { expiresInDays: newTokenExpiresInDays.value }
         : {}),

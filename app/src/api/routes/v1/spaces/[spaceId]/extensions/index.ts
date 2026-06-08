@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { ResourceType } from "#db/acl.ts";
+import { Feature } from "#db/acl.ts";
 import {
   authenticateRequest,
   badRequestResponse,
@@ -10,7 +10,7 @@ import {
   jsonResponse,
   requireParam,
   verifySpaceOwnership,
-  verifyTokenPermission,
+  verifyTokenFeature,
   withApiErrorHandling,
 } from "#db/api.ts";
 import {
@@ -75,33 +75,6 @@ export const POST: APIRoute = (context) =>
     async () => {
       const spaceId = requireParam(context.params, "spaceId");
 
-      let createdBy: string;
-      const jobTokenHeader = context.request.headers.get("X-Job-Token");
-      if (jobTokenHeader) {
-        const parsed = parseJobToken(jobTokenHeader, spaceId);
-        if (!parsed) throw forbiddenResponse("Invalid job token");
-        createdBy = parsed.userId ?? "agent";
-      } else {
-        const auth = await authenticateRequest(context, spaceId);
-        if (auth.type === "user") {
-          await verifySpaceOwnership(spaceId, auth.user.id, getSpace);
-          createdBy = auth.user.id;
-        } else {
-          // Mirror the user-session branch (space ownership): installing an
-          // extension is an owner-level action. Note: the previous value here
-          // ("extensions") was not a real permission level and always failed
-          // closed — "owner" makes the intent explicit.
-          await verifyTokenPermission(
-            auth.token,
-            spaceId,
-            ResourceType.SPACE,
-            spaceId,
-            "owner",
-          );
-          createdBy = auth.token.token.createdBy;
-        }
-      }
-
       const formData = await context.request.formData();
       const file = formData.get("file") as File | null;
 
@@ -122,7 +95,9 @@ export const POST: APIRoute = (context) =>
 
       const buffer = Buffer.from(await file.arrayBuffer());
 
-      // extractManifest is called inside createExtension and will throw if invalid
+      // Parse the manifest up front so we know which extension is being
+      // installed before authorizing — token grants are scoped to the
+      // specific extension resource, so we need its id to check permission.
       let manifest: ExtensionManifest;
       try {
         const { extractFile } = await import("#db/extensions.ts");
@@ -138,6 +113,27 @@ export const POST: APIRoute = (context) =>
 
       // Use manifest.id as the extension ID
       const extensionId = manifest.id;
+
+      let createdBy: string;
+      const jobTokenHeader = context.request.headers.get("X-Job-Token");
+      if (jobTokenHeader) {
+        const parsed = parseJobToken(jobTokenHeader, spaceId);
+        if (!parsed) throw forbiddenResponse("Invalid job token");
+        createdBy = parsed.userId ?? "agent";
+      } else {
+        const auth = await authenticateRequest(context, spaceId);
+        if (auth.type === "user") {
+          await verifySpaceOwnership(spaceId, auth.user.id, getSpace);
+          createdBy = auth.user.id;
+        } else {
+          // Tokens may install/update extensions only with the space-wide
+          // `manage_extensions` capability — not a plain viewer/editor token.
+          // It's space-scoped (no resource id), so it can publish NEW
+          // extensions too. Space owners install via the user-session branch.
+          await verifyTokenFeature(auth.token, spaceId, Feature.MANAGE_EXTENSIONS);
+          createdBy = auth.token.token.createdBy;
+        }
+      }
 
       // Check if extension already exists - update it if so
       const existing = await getExtension(spaceId, extensionId);

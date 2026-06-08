@@ -563,6 +563,27 @@ export async function verifyTokenPermission(
 }
 
 /**
+ * Verify a token holds a space-wide `feature` capability.
+ *
+ * Features are space-scoped (no resource id), so a feature-granted token can
+ * act across the whole space — e.g. a token with `manage_extensions` can
+ * install NEW extensions, not just ones that already exist. The check does not
+ * fall back to a space role unless the role's defaults include the feature, so
+ * a plain viewer/editor token (which lacks the feature by default) is rejected.
+ */
+export async function verifyTokenFeature(
+  tokenResult: ValidateTokenResult,
+  spaceId: string,
+  feature: Feature,
+): Promise<void> {
+  const tokenUserId = getTokenUserId(tokenResult.tokenId);
+  const hasIt = await hasFeature(spaceId, feature, tokenUserId);
+  if (!hasIt) {
+    throw forbiddenResponse(`Token does not have the ${feature} capability for this space`);
+  }
+}
+
+/**
  * Authenticate request with either user session or access token
  * Returns { type: "user", user } or { type: "token", token }
  */

@@ -1,11 +1,17 @@
 import type { APIRoute } from "astro";
 import {
   createAccessToken,
+  getTokenUserId,
   grantTokenAccess,
   listAccessTokens,
   listTokenResources,
 } from "#db/accessTokens.ts";
-import { ResourceType, type ResourceType as ResourceTypeValue } from "#db/acl.ts";
+import {
+  Feature,
+  grantFeature,
+  ResourceType,
+  type ResourceType as ResourceTypeValue,
+} from "#db/acl.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -71,28 +77,37 @@ export const POST: APIRoute = (context) =>
       throw badRequestResponse("Token name is required");
     }
 
-    if (!resourceType || !Object.values(ResourceType).includes(resourceType)) {
-      throw badRequestResponse(
-        `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
-      );
-    }
-
-    if (!resourceId || typeof resourceId !== "string") {
-      throw badRequestResponse("Resource ID is required");
-    }
-
     if (!permission || typeof permission !== "string") {
       throw badRequestResponse("Permission is required");
     }
 
-    // Validate the grant and ensure the caller cannot delegate more than they hold.
-    await verifyCanGrantTokenAccess(
-      spaceId,
-      user.id,
-      resourceType as ResourceTypeValue,
-      resourceId,
-      permission,
-    );
+    // "extensions" is a space-wide capability, not a resource grant: it has no
+    // resource id and lets the token install/update any extension (including
+    // new ones). The caller is already verified as a space owner above, which
+    // is the level that holds `manage_extensions` by default — so delegating it
+    // to a token does not escalate beyond what the caller has.
+    const isExtensionsCapability = permission === "extensions";
+
+    if (!isExtensionsCapability) {
+      if (!resourceType || !Object.values(ResourceType).includes(resourceType)) {
+        throw badRequestResponse(
+          `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
+        );
+      }
+
+      if (!resourceId || typeof resourceId !== "string") {
+        throw badRequestResponse("Resource ID is required");
+      }
+
+      // Validate the grant and ensure the caller cannot delegate more than they hold.
+      await verifyCanGrantTokenAccess(
+        spaceId,
+        user.id,
+        resourceType as ResourceTypeValue,
+        resourceId,
+        permission,
+      );
+    }
 
     let expiresAt: Date | undefined;
     if (expiresInDays !== undefined) {
@@ -110,14 +125,18 @@ export const POST: APIRoute = (context) =>
       createdBy: user.id,
     });
 
-    // Grant access to the specified resource
-    await grantTokenAccess({
-      tokenId: result.id,
-      spaceId,
-      resourceType,
-      resourceId,
-      permission,
-    });
+    // Grant the capability or resource access to the new token.
+    if (isExtensionsCapability) {
+      await grantFeature(spaceId, Feature.MANAGE_EXTENSIONS, getTokenUserId(result.id));
+    } else {
+      await grantTokenAccess({
+        tokenId: result.id,
+        spaceId,
+        resourceType,
+        resourceId,
+        permission,
+      });
+    }
 
     // Get the resources to return
     const resources = await listTokenResources(result.id, spaceId);

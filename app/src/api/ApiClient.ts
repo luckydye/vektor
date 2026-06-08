@@ -1242,8 +1242,10 @@ export class ApiClient {
       spaceId: string,
       body: {
         name: string;
-        resourceType: string;
-        resourceId: string;
+        // Omitted for the space-wide "extensions" capability (no resource
+        // target); required for viewer/editor resource grants.
+        resourceType?: string;
+        resourceId?: string;
         permission: string;
         expiresInDays?: number;
       },
