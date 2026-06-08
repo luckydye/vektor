@@ -273,11 +273,21 @@ onMounted(() => {
   }
 
   window.addEventListener("revision:close", onRevisionClose);
+  window.addEventListener("document-published", onDocumentPublished);
 });
 
 onUnmounted(() => {
   window.removeEventListener("revision:close", onRevisionClose);
+  window.removeEventListener("document-published", onDocumentPublished);
 });
+
+function onDocumentPublished() {
+  if (isOpen.value) {
+    refresh();
+  } else {
+    fetchPublishedRev();
+  }
+}
 
 function onRevisionClose() {
   selectedRevisionNumber.value = null;
@@ -287,21 +297,27 @@ function onRevisionClose() {
   window.history.replaceState({}, "", url);
 }
 
-// Watch isOpen: fetch data when opened, keep notifying DocumentContent for compat
+// Fetch data when the panel is open AND the space is ready. Gating on
+// currentSpaceId (not just isOpen) avoids the race where an immediate refresh
+// runs before the space resolves, leaving publishedRev/history stale until a
+// manual refresh — while auditLogs load on their own space-reactive watcher.
 watch(
-  isOpen,
-  (newValue) => {
-    if (newValue) {
+  [isOpen, currentSpaceId],
+  ([open, spaceId], prev) => {
+    if (open && spaceId) {
       refresh();
     }
 
-    window.dispatchEvent(
-      new CustomEvent("revisions:toggled", {
-        detail: { isOpen: newValue },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    const prevOpen = prev?.[0];
+    if (open !== prevOpen) {
+      window.dispatchEvent(
+        new CustomEvent("revisions:toggled", {
+          detail: { isOpen: open },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
   },
   { immediate: true },
 );
