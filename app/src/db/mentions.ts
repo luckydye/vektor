@@ -8,9 +8,6 @@ export interface ExtractedMention {
 /**
  * Extracts user mentions from HTML content by parsing for <user-mention> elements
  *
- * This function is used to detect when users are mentioned in newly published documents,
- * triggering "mention" webhook events for each unique mentioned user.
- *
  * The HTML is parsed using html5parser to create an AST (Abstract Syntax Tree),
  * which is then traversed to find all <user-mention> custom elements. These elements
  * are created by the TipTap editor's MentionExtension when users type @ followed by
@@ -22,23 +19,7 @@ export interface ExtractedMention {
  * Returns:
  *   [{ email: "john@example.com", label: "John Doe" }]
  *
- * Integration:
- *   - Called in createRevision() when a document is published (auto-publish on save)
- *   - Called in publishRevision() when manually publishing a revision
- *   - Triggers webhook events with type "mention" for each unique user
- *
- * Webhook payload example:
- *   {
- *     event: "mention",
- *     spaceId: "space-123",
- *     documentId: "doc-456",
- *     revisionId: 5,
- *     timestamp: "2024-01-15T10:30:00.000Z",
- *     data: {
- *       mentionedUser: "john@example.com",
- *       mentionedBy: "alice@example.com" // Only available in createRevision context
- *     }
- *   }
+ * Used to compute per-user mention counts for published document revisions.
  */
 export function extractMentionsFromHtml(html: string): ExtractedMention[] {
   const mentions: ExtractedMention[] = [];

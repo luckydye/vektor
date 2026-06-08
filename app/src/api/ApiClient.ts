@@ -133,23 +133,6 @@ export interface Connection {
   updatedAt: Date | string;
 }
 
-export type WebhookEvent =
-  | "document.published"
-  | "document.unpublished"
-  | "document.deleted"
-  | "mention";
-
-export interface Webhook {
-  id: string;
-  url: string;
-  events: WebhookEvent[];
-  documentId?: string | null;
-  enabled: boolean;
-  createdAt: Date | string;
-  updatedAt: Date | string;
-  createdBy: string;
-}
-
 export interface JobSchedule {
   id: string;
   jobId: string;
@@ -1438,73 +1421,6 @@ export class ApiClient {
       await this.apiDelete(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/integrations/${provider}`,
-      );
-    },
-  };
-
-  webhooks = {
-    /**
-     * List webhooks in a space
-     */
-    get: async (spaceId: string) => {
-      return await this.apiGet<{ webhooks: Webhook[] }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/webhooks`,
-      );
-    },
-
-    /**
-     * Get a specific webhook
-     */
-    getById: async (spaceId: string, webhookId: string) => {
-      return await this.apiGet<{ webhook: Webhook }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/webhooks/${webhookId}`,
-      );
-    },
-
-    /**
-     * Create a new webhook
-     */
-    post: async (
-      spaceId: string,
-      body: { url: string; events: WebhookEvent[]; documentId?: string; secret?: string },
-    ) => {
-      return await this.apiPost<{ webhook: Webhook }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/webhooks`,
-        body,
-      );
-    },
-
-    /**
-     * Update a webhook
-     */
-    patch: async (
-      spaceId: string,
-      webhookId: string,
-      body: {
-        url?: string;
-        events?: WebhookEvent[];
-        documentId?: string;
-        secret?: string;
-        enabled?: boolean;
-      },
-    ) => {
-      return await this.apiPatch<{ webhook: Webhook }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/webhooks/${webhookId}`,
-        body,
-      );
-    },
-
-    /**
-     * Delete a webhook
-     */
-    delete: async (spaceId: string, webhookId: string) => {
-      await this.apiDelete(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/webhooks/${webhookId}`,
       );
     },
   };

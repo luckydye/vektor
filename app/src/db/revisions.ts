@@ -6,9 +6,7 @@ import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
 import { invalidateMentionCache } from "./documents.ts";
 import { createId } from "./ids.ts";
-import { getUniqueMentionedEmails } from "./mentions.ts";
 import { document, revision } from "./schema/space.ts";
-import { triggerWebhooks } from "./webhooks.ts";
 
 export interface Revision {
   id: string;
@@ -170,31 +168,6 @@ export async function createRevision(
       event: "publish",
       details: { message: `Auto-published revision ${nextRev}` },
     });
-
-    await triggerWebhooks(db, {
-      event: "document.published",
-      spaceId,
-      documentId,
-      revisionId: nextRev,
-      timestamp: new Date().toISOString(),
-    });
-
-    const mentionedEmails = getUniqueMentionedEmails(html);
-    if (mentionedEmails.length > 0) {
-      for (const email of mentionedEmails) {
-        await triggerWebhooks(db, {
-          event: "mention",
-          spaceId,
-          documentId,
-          revisionId: nextRev,
-          timestamp: new Date().toISOString(),
-          data: {
-            mentionedUser: email,
-            mentionedBy: userId,
-          },
-        });
-      }
-    }
   }
 
   return {

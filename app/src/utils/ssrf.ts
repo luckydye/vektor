@@ -5,7 +5,7 @@ import { isIP } from "node:net";
  * Server-Side Request Forgery (SSRF) guard.
  *
  * Any code path that fetches a URL whose value is influenced by user input
- * (link previews, webhooks, the agent `curl` command, ...) must validate the
+ * (link previews, the agent `curl` command, ...) must validate the
  * target through {@link assertPublicUrl} first. The check rejects non-HTTP(S)
  * schemes, blocked hostnames, and any URL that resolves to a private,
  * loopback, link-local, or otherwise non-routable address — including the
@@ -182,7 +182,7 @@ const MAX_REDIRECTS = 5;
 /**
  * SSRF-safe fetch: validates the target (and every redirect hop) against the
  * private/blocked-IP denylist before connecting, so user-influenced URLs
- * (webhooks, the agent `curl` command, ...) cannot redirect the server into
+ * (link previews, the agent `curl` command, ...) cannot redirect the server into
  * internal services or cloud metadata endpoints.
  */
 export async function safeFetch(

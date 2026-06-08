@@ -78,9 +78,6 @@ import * as secrets from "./routes/v1/spaces/[spaceId]/secrets/index.ts";
 // Uploads
 import * as uploadFile from "./routes/v1/spaces/[spaceId]/uploads/[...path].ts";
 import * as uploads from "./routes/v1/spaces/[spaceId]/uploads/index.ts";
-import * as webhook from "./routes/v1/spaces/[spaceId]/webhooks/[webhookId].ts";
-// Webhooks
-import * as webhooks from "./routes/v1/spaces/[spaceId]/webhooks.ts";
 
 // Workflow runs
 import * as workflowRun from "./routes/v1/spaces/[spaceId]/workflows/runs/[runId].ts";
@@ -213,9 +210,6 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces/[spaceId]/uploads", module: uploads },
   { pattern: "/api/v1/spaces/[spaceId]/uploads/[...path]", module: uploadFile },
-
-  { pattern: "/api/v1/spaces/[spaceId]/webhooks", module: webhooks },
-  { pattern: "/api/v1/spaces/[spaceId]/webhooks/[webhookId]", module: webhook },
 
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs", module: workflowRuns },
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs/[runId]", module: workflowRun },

@@ -12,7 +12,6 @@ const idPrefixes = {
   run: "run",
   secret: "secret",
   space: "space",
-  webhook: "webhook",
 } as const;
 
 export type IdType = keyof typeof idPrefixes;

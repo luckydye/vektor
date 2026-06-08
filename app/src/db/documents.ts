@@ -25,7 +25,6 @@ import {
   scoreKeywordOverlap,
   serializeEmbedding,
 } from "./searchEmbeddings.ts";
-import { triggerWebhooks } from "./webhooks.ts";
 import { sendSyncEvent } from "./ws.ts";
 
 const nonArchivedDocumentCondition = sql`
@@ -399,13 +398,6 @@ export async function archiveDocument(
     .set({ archived: true, updatedAt: new Date() })
     .where(eq(document.id, id));
 
-  await triggerWebhooks(db, {
-    event: "document.archived",
-    spaceId,
-    documentId: id,
-    timestamp: new Date().toISOString(),
-  });
-
   return true;
 }
 
@@ -431,13 +423,6 @@ export async function restoreDocument(
     .set({ archived: false, updatedAt: new Date() })
     .where(eq(document.id, id));
 
-  await triggerWebhooks(db, {
-    event: "document.restored",
-    spaceId,
-    documentId: id,
-    timestamp: new Date().toISOString(),
-  });
-
   return true;
 }
 
@@ -459,13 +444,6 @@ export async function deleteDocument(
   }
 
   await db.delete(document).where(eq(document.id, id));
-
-  await triggerWebhooks(db, {
-    event: "document.deleted",
-    spaceId,
-    documentId: id,
-    timestamp: new Date().toISOString(),
-  });
 
   return true;
 }

@@ -91,7 +91,7 @@ const activityEvents = computed(() => {
     const revision = item.revisionId
       ? revisionsByNumber.value.get(item.revisionId)
       : null;
-    const isSuggestion = revision?.status !== null;
+    const isSuggestion = revision != null && revision.status !== null;
 
     return {
       variant: (item.revisionId ? "default" : "no-action") as "default" | "no-action",

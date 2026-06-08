@@ -213,21 +213,6 @@ export const auditLog = sqliteTable("audit_log", {
 export type AuditLog = typeof auditLog.$inferSelect;
 export type AuditLogInsert = typeof auditLog.$inferInsert;
 
-export const webhook = sqliteTable("webhook", {
-  id: text("id").primaryKey(),
-  url: text("url").notNull(),
-  events: text("events").notNull(),
-  documentId: text("document_id").references(() => document.id, { onDelete: "cascade" }),
-  secret: text("secret"),
-  enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  createdBy: text("created_by").notNull(),
-});
-
-export type Webhook = typeof webhook.$inferSelect;
-export type WebhookInsert = typeof webhook.$inferInsert;
-
 export const accessToken = sqliteTable("access_token", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

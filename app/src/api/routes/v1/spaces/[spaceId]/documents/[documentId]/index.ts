@@ -31,7 +31,6 @@ import {
   updateDocument,
   updateDocumentProperty,
 } from "#db/documents.ts";
-import { getUniqueMentionedEmails } from "#db/mentions.ts";
 import {
   createRevision,
   createSuggestion,
@@ -40,7 +39,6 @@ import {
   getRevisionMetadata,
 } from "#db/revisions.ts";
 import { document as documentTable } from "#db/schema/space.ts";
-import { triggerWebhooks } from "#db/webhooks.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
@@ -168,14 +166,6 @@ async function handlePublishedRevisionPatch(
     },
   });
 
-  await triggerWebhooks(db, {
-    event: publishedRev === null ? "document.unpublished" : "document.published",
-    spaceId,
-    documentId,
-    revisionId: publishedRev || undefined,
-    timestamp: new Date().toISOString(),
-  });
-
   if (publishedRev === null) {
     return;
   }
@@ -191,25 +181,6 @@ async function handlePublishedRevisionPatch(
     .update(documentTable)
     .set({ content: revisionContent })
     .where(eq(documentTable.id, documentId));
-
-  const mentionedEmails = getUniqueMentionedEmails(revisionContent);
-  if (mentionedEmails.length === 0) {
-    return;
-  }
-
-  for (const email of mentionedEmails) {
-    await triggerWebhooks(db, {
-      event: "mention",
-      spaceId,
-      documentId,
-      revisionId: publishedRev || undefined,
-      timestamp: new Date().toISOString(),
-      data: {
-        mentionedUser: email,
-        mentionedBy: userId,
-      },
-    });
-  }
 }
 
 async function handleReadonlyPatch(

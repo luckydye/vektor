@@ -209,109 +209,6 @@
       </div>
     </section>
 
-    <!-- Webhooks -->
-    <section v-if="activeTab === 'api'" class="mt-8 pt-6 border-t border-neutral-100">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-sm font-semibold text-neutral-900">Webhooks</h2>
-        <button v-if="!isAddingNewWebhook" @click="handleStartAddWebhook" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Webhook</button>
-      </div>
-      <div>
-        <div v-if="webhookError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
-          {{ webhookError }}
-        </div>
-        <div v-if="isLoadingWebhooks" class="text-center py-6 text-sm text-neutral-500">Loading webhooks...</div>
-        <template v-else>
-          <!-- Add Webhook Form -->
-          <div v-if="isAddingNewWebhook" class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-            <form @submit.prevent="handleAddWebhook" class="flex items-center gap-2">
-              <input v-model="newWebhookUrl" type="url" required placeholder="https://example.com/webhook"
-                class="flex-1 px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" autofocus />
-              <button type="submit" :disabled="isAddingWebhook"
-                class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
-                {{ isAddingWebhook ? 'Adding...' : 'Add' }}
-              </button>
-              <button type="button" @click="handleCancelNewWebhook" class="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-800">Cancel</button>
-            </form>
-          </div>
-          <!-- Webhooks List -->
-          <div v-if="webhooks.length === 0 && !isAddingNewWebhook" class="text-center py-6 text-sm text-neutral-500">No webhooks configured</div>
-          <div v-else class="space-y-2">
-            <div v-for="webhook in webhooks" :key="webhook.id"
-              class="border border-neutral-100 rounded-md overflow-hidden">
-              <div class="flex items-center gap-3 px-3 py-2 bg-neutral-50">
-                <span :class="webhook.enabled ? 'bg-green-500' : 'bg-neutral-300'" class="w-2 h-2 rounded-full shrink-0"></span>
-                <span class="flex-1 text-sm font-mono text-neutral-700 truncate">{{ webhook.url }}</span>
-                <div class="flex items-center gap-1">
-                  <span v-for="event in webhook.events" :key="event" class="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">
-                    {{ formatEventName(event) }}
-                  </span>
-                </div>
-                <span v-if="webhook.documentId" class="text-xs text-neutral-500">{{ getDocumentTitle(webhook.documentId) }}</span>
-                <span v-else class="text-xs text-neutral-400">All docs</span>
-                <div class="flex items-center gap-1 ml-2">
-                  <button @click="handleEditWebhook(webhook)" class="p-1 text-neutral-400 hover:text-neutral-600" title="Edit">
-                    <div class="svg-icon w-4 h-4" v-html="editOutlineIcon" />
-                  </button>
-                  <button @click="handleToggleWebhook(webhook)" class="p-1 text-neutral-400 hover:text-neutral-600" :title="webhook.enabled ? 'Disable' : 'Enable'">
-                    <div v-if="webhook.enabled" class="svg-icon w-4 h-4" v-html="pauseCircleIcon" />
-                    <div v-else class="svg-icon w-4 h-4" v-html="playCircleIcon" />
-                  </button>
-                  <button @click="handleDeleteWebhook(webhook.id)" class="p-1 text-neutral-400 hover:text-red-500" title="Delete">
-                    <div class="svg-icon w-4 h-4" v-html="trashCanIcon" />
-                  </button>
-                </div>
-              </div>
-              <!-- Edit Panel -->
-              <div v-if="editingWebhookId === webhook.id" class="px-3 py-3 border-t border-neutral-100 bg-background">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-xs font-medium text-neutral-700 mb-2">Events</label>
-                    <div class="space-y-1">
-                      <label class="flex items-center text-sm">
-                        <input type="checkbox" value="document.published" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
-                        Published
-                      </label>
-                      <label class="flex items-center text-sm">
-                        <input type="checkbox" value="document.unpublished" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
-                        Unpublished
-                      </label>
-                      <label class="flex items-center text-sm">
-                        <input type="checkbox" value="document.deleted" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
-                        Deleted
-                      </label>
-                      <label class="flex items-center text-sm">
-                        <input type="checkbox" value="mention" v-model="editingWebhookEvents" class="mr-2 rounded border-neutral-100 text-blue-600 focus:ring-blue-500" />
-                        Mention
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium text-neutral-700 mb-2">Document Filter</label>
-                    <input v-model="editingDocumentSearchQuery" type="text" placeholder="Search documents..."
-                      class="w-full px-2 py-1 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 mb-1" />
-                    <select v-model="editingWebhookDocumentId" size="3"
-                      class="w-full px-2 py-1 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500">
-                      <option :value="null">All documents</option>
-                      <option v-for="doc in getFilteredDocumentsForEdit()" :key="doc.id" :value="doc.id">
-                        {{ doc.properties?.title || doc.slug }}
-                      </option>
-                    </select>
-                  </div>
-                </div>
-                <div class="mt-3 flex justify-end gap-2">
-                  <button @click="handleCancelEdit()" class="px-3 py-1 text-sm text-neutral-600 hover:text-neutral-800">Cancel</button>
-                  <button @click="handleSaveWebhook(webhook.id)" :disabled="editingWebhookEvents.length === 0"
-                    class="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
-      </div>
-    </section>
-
     <!-- MCP Server -->
     <section v-if="activeTab === 'api'" class="mt-8 pt-6 border-t border-neutral-100">
       <h2 class="text-sm font-semibold text-neutral-900 mb-2">MCP Server</h2>
@@ -586,13 +483,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import {
-  closeXIcon,
-  editOutlineIcon,
-  pauseCircleIcon,
-  playCircleIcon,
-  trashCanIcon,
-} from "~/src/assets/icons.ts";
+import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
@@ -602,7 +493,7 @@ import SpaceMembers from "./SpaceMembers.vue";
 const tabs = [
   { id: "general", label: "General" },
   { id: "members", label: "Members" },
-  { id: "api", label: "API & Webhooks" },
+  { id: "api", label: "API" },
   { id: "secrets", label: "Secrets" },
   { id: "extensions", label: "Extensions" },
   { id: "jobs", label: "Jobs" },
@@ -612,13 +503,7 @@ const tabs = [
 type TabId = (typeof tabs)[number]["id"];
 const activeTab = ref<TabId>("general");
 
-import {
-  type AccessToken,
-  api,
-  type SpaceSecret,
-  type Webhook,
-  type WebhookEvent,
-} from "../api/client.ts";
+import { type AccessToken, api, type SpaceSecret } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 
 const emit = defineEmits(["saved"]);
@@ -683,24 +568,6 @@ async function handleCopyMcpConfig() {
     isCopyingMcpConfig.value = false;
   }
 }
-
-// Webhook state
-const webhooks = ref<Webhook[]>([]);
-const isLoadingWebhooks = ref(false);
-const isAddingWebhook = ref(false);
-const isAddingNewWebhook = ref(false);
-const newWebhookUrl = ref("");
-const webhookError = ref<string | null>(null);
-interface SpaceDocument {
-  id: string;
-  slug: string;
-  properties?: { title?: string };
-}
-const documents = ref<SpaceDocument[]>([]);
-const editingWebhookId = ref<string | null>(null);
-const editingWebhookEvents = ref<WebhookEvent[]>([]);
-const editingWebhookDocumentId = ref<string | null>(null);
-const editingDocumentSearchQuery = ref("");
 
 // Access Tokens state
 const accessTokens = ref<AccessToken[]>([]);
@@ -849,158 +716,12 @@ async function handleSave() {
   }
 }
 
-async function loadWebhooks() {
-  if (!currentSpace.value?.id) return;
-  isLoadingWebhooks.value = true;
-  webhookError.value = null;
-
-  try {
-    const response = await api.webhooks.get(currentSpace.value.id);
-    webhooks.value = response.webhooks || [];
-  } catch (err) {
-    webhookError.value = err instanceof Error ? err.message : "Failed to load webhooks";
-  } finally {
-    isLoadingWebhooks.value = false;
-  }
-}
-
-function handleStartAddWebhook() {
-  isAddingNewWebhook.value = true;
-  newWebhookUrl.value = "";
-  webhookError.value = null;
-}
-
-function handleCancelNewWebhook() {
-  isAddingNewWebhook.value = false;
-  newWebhookUrl.value = "";
-  webhookError.value = null;
-}
-
-async function handleAddWebhook() {
-  if (!currentSpace.value?.id || !newWebhookUrl.value.trim()) return;
-
-  isAddingWebhook.value = true;
-  webhookError.value = null;
-
-  try {
-    const response = await api.webhooks.post(currentSpace.value.id, {
-      url: newWebhookUrl.value.trim(),
-      events: ["document.published"],
-      documentId: undefined,
-      secret: undefined,
-    });
-    newWebhookUrl.value = "";
-    isAddingNewWebhook.value = false;
-    await loadWebhooks();
-    if (response.webhook) {
-      handleEditWebhook(response.webhook);
-    }
-  } catch (err) {
-    webhookError.value = err instanceof Error ? err.message : "Failed to add webhook";
-  } finally {
-    isAddingWebhook.value = false;
-  }
-}
-
-async function handleToggleWebhook(webhook: Webhook) {
-  if (!currentSpace.value?.id) return;
-  webhookError.value = null;
-
-  try {
-    await api.webhooks.patch(currentSpace.value.id, webhook.id, {
-      enabled: !webhook.enabled,
-    });
-    await loadWebhooks();
-  } catch (err) {
-    webhookError.value = err instanceof Error ? err.message : "Failed to toggle webhook";
-  }
-}
-
-async function handleDeleteWebhook(webhookId: string) {
-  if (!currentSpace.value?.id) return;
-  if (!confirm("Are you sure you want to delete this webhook?")) return;
-  webhookError.value = null;
-
-  try {
-    await api.webhooks.delete(currentSpace.value.id, webhookId);
-    await loadWebhooks();
-  } catch (err) {
-    webhookError.value = err instanceof Error ? err.message : "Failed to delete webhook";
-  }
-}
-
-function formatEventName(event: string): string {
-  const names: Record<string, string> = {
-    "document.published": "Published",
-    "document.unpublished": "Unpublished",
-    "document.deleted": "Deleted",
-    mention: "Mention",
-  };
-  return names[event] || event;
-}
-
 function formatDate(date: string | Date): string {
   return new Date(date).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
-}
-
-function getDocumentTitle(documentId: string): string {
-  const doc = documents.value.find((d) => d.id === documentId);
-  return doc?.properties?.title || doc?.slug || documentId;
-}
-
-async function loadDocuments() {
-  if (!currentSpace.value?.id) return;
-  try {
-    const docs = await api.documents.get(currentSpace.value.id);
-    documents.value = docs.documents || [];
-  } catch {
-    // Silent fail for documents list
-  }
-}
-
-function getFilteredDocumentsForEdit() {
-  if (!editingDocumentSearchQuery.value.trim()) {
-    return documents.value;
-  }
-  const query = editingDocumentSearchQuery.value.toLowerCase();
-  return documents.value.filter((doc) => {
-    const title = (doc.properties?.title || doc.slug || "").toLowerCase();
-    return title.includes(query);
-  });
-}
-
-function handleEditWebhook(webhook: Webhook) {
-  editingWebhookId.value = webhook.id;
-  editingWebhookEvents.value = [...webhook.events];
-  editingWebhookDocumentId.value = webhook.documentId ?? null;
-  editingDocumentSearchQuery.value = "";
-}
-
-function handleCancelEdit() {
-  editingWebhookId.value = null;
-  editingWebhookEvents.value = [];
-  editingWebhookDocumentId.value = null;
-  editingDocumentSearchQuery.value = "";
-}
-
-async function handleSaveWebhook(webhookId: string) {
-  if (!currentSpace.value?.id || editingWebhookEvents.value.length === 0) return;
-  webhookError.value = null;
-
-  try {
-    await api.webhooks.patch(currentSpace.value.id, webhookId, {
-      events: editingWebhookEvents.value,
-      documentId: editingWebhookDocumentId.value || undefined,
-    });
-    handleCancelEdit();
-    await loadWebhooks();
-  } catch (err) {
-    webhookError.value = err instanceof Error ? err.message : "Failed to update webhook";
-  }
 }
 
 async function handleDeleteSpace() {
@@ -1296,8 +1017,6 @@ async function handleCopySelectedSecret() {
 }
 
 onMounted(() => {
-  loadWebhooks();
-  loadDocuments();
   loadAccessTokens();
   loadSecrets();
   loadSecretAssignableUsers();
@@ -1307,8 +1026,6 @@ watch(
   () => currentSpace.value?.id,
   () => {
     if (currentSpace.value?.id) {
-      loadWebhooks();
-      loadDocuments();
       loadAccessTokens();
       loadSecrets();
       loadSecretAssignableUsers();

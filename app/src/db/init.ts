@@ -96,9 +96,6 @@ export async function prepareSpaceDb(spaceId: string) {
   const auditLogSQL = generateCreateTableSQL(spaceSchema.auditLog);
   await spaceDb.run(sql.raw(auditLogSQL));
 
-  const webhookSQL = generateCreateTableSQL(spaceSchema.webhook);
-  await spaceDb.run(sql.raw(webhookSQL));
-
   const accessTokenSQL = generateCreateTableSQL(spaceSchema.accessToken);
   await spaceDb.run(sql.raw(accessTokenSQL));
 
