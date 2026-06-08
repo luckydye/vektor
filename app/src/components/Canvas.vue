@@ -80,11 +80,12 @@ type DragState =
   | {
       type: "shape";
       pointerId: number;
-      shapeId: string;
       startPointer: { x: number; y: number };
-      startShape: { x: number; y: number };
-      containedShapes: { id: string; x: number; y: number }[];
-      containedStrokes: { id: string; points: FreehandPoint[] }[];
+      // Every shape and stroke that moves with this drag (the grabbed shape,
+      // anything else in the selection, and the contents of any dragged
+      // section), captured at their starting positions.
+      shapes: { id: string; x: number; y: number }[];
+      strokes: { id: string; points: FreehandPoint[] }[];
     }
   | {
       type: "resize";
@@ -93,13 +94,25 @@ type DragState =
       startPointer: { x: number; y: number };
       startSize: { width: number; height: number };
       minSize: { width: number; height: number };
+      // Locked width/height ratio for media; undefined lets the axes move freely.
+      aspect?: number;
     }
   | {
       type: "pan";
       pointerId: number;
       startPointer: { x: number; y: number };
       startCamera: ViewportCamera;
+    }
+  | {
+      type: "marquee";
+      pointerId: number;
+      additive: boolean;
+      startScreen: { x: number; y: number };
+      baseShapeIds: Set<string>;
+      baseStrokeIds: Set<string>;
     };
+
+type Rect = { x: number; y: number; width: number; height: number };
 
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
 const FREEHAND_STYLE: FreehandStrokeStyle = {
@@ -189,14 +202,17 @@ const FIT_ICON_PATHS = [
 const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
 const MIN_NOTE_SIZE = { width: 140, height: 96 };
 const MIN_SECTION_SIZE = { width: 240, height: 160 };
+const MIN_MEDIA_SIZE = { width: 80, height: 60 };
 const MIN_TEXT_SIZE = { width: 32, height: 40 };
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
 const shapes = ref<CanvasShape[]>([]);
 const strokes = ref<CanvasStroke[]>([]);
-const selectedShapeId = ref<string | null>(null);
-const selectedStrokeId = ref<string | null>(null);
+const selectedShapeIds = ref<Set<string>>(new Set());
+const selectedStrokeIds = ref<Set<string>>(new Set());
+// Live screen-space rectangle while drag-selecting; null when not marqueeing.
+const marqueeRect = ref<Rect | null>(null);
 const activeTool = ref<CanvasTool>("select");
 const noteColor = ref<string>(NOTE_COLORS[0]);
 const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
@@ -261,11 +277,70 @@ watch(camera, () => {
     isCameraMoving.value = false;
   }, 150);
 });
-const selectedShape = computed(() =>
-  selectedShapeId.value
-    ? (shapes.value.find((shape) => shape.id === selectedShapeId.value) ?? null)
-    : null,
-);
+// The single selected shape, or null when nothing or multiple things are
+// selected. Drives the per-shape affordances (note color, resize handle) that
+// only make sense for one shape at a time.
+const selectedShape = computed(() => {
+  if (selectedShapeIds.value.size !== 1 || selectedStrokeIds.value.size > 0) {
+    return null;
+  }
+  const [id] = selectedShapeIds.value;
+  return shapes.value.find((shape) => shape.id === id) ?? null;
+});
+
+function selectOnlyShape(id: string) {
+  selectedShapeIds.value = new Set([id]);
+  if (selectedStrokeIds.value.size > 0) {
+    selectedStrokeIds.value = new Set();
+    renderInk();
+  }
+}
+
+function selectStroke(id: string, additive: boolean) {
+  if (additive) {
+    const next = new Set(selectedStrokeIds.value);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    selectedStrokeIds.value = next;
+  } else {
+    selectedShapeIds.value = new Set();
+    selectedStrokeIds.value = new Set([id]);
+  }
+  renderInk();
+}
+
+function toggleShapeSelection(id: string) {
+  const next = new Set(selectedShapeIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  selectedShapeIds.value = next;
+}
+
+function clearSelection() {
+  if (selectedShapeIds.value.size > 0) selectedShapeIds.value = new Set();
+  if (selectedStrokeIds.value.size > 0) {
+    selectedStrokeIds.value = new Set();
+    renderInk();
+  }
+}
+
+function rectsIntersect(a: Rect, b: Rect) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+function rectContains(outer: Rect, inner: Rect) {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
+}
 
 function getPresenceColor(seed: string) {
   let hash = 0;
@@ -419,18 +494,28 @@ function syncShapesFromY() {
       return a.updatedAt - b.updatedAt || a.id.localeCompare(b.id);
     });
 
-  if (selectedShapeId.value && !yShapes.has(selectedShapeId.value)) {
-    selectedShapeId.value = null;
+  let pruned = false;
+  for (const id of selectedShapeIds.value) {
+    if (!yShapes.has(id)) {
+      selectedShapeIds.value.delete(id);
+      pruned = true;
+    }
   }
+  if (pruned) selectedShapeIds.value = new Set(selectedShapeIds.value);
 }
 
 function syncStrokesFromY() {
   strokes.value = [...yStrokes.entries()]
     .map(([id, value]) => toStroke(id, value))
     .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
-  if (selectedStrokeId.value && !yStrokes.has(selectedStrokeId.value)) {
-    selectedStrokeId.value = null;
+  let pruned = false;
+  for (const id of selectedStrokeIds.value) {
+    if (!yStrokes.has(id)) {
+      selectedStrokeIds.value.delete(id);
+      pruned = true;
+    }
   }
+  if (pruned) selectedStrokeIds.value = new Set(selectedStrokeIds.value);
   renderInk();
 }
 
@@ -697,35 +782,36 @@ function renderInk() {
 }
 
 function drawStrokeSelection(context: CanvasRenderingContext2D) {
-  const id = selectedStrokeId.value;
-  if (!id) return;
-  const stroke = strokes.value.find((s) => s.id === id);
-  if (!stroke || stroke.points.length === 0) return;
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const point of stroke.points) {
-    const screenPos = worldToScreen(point);
-    minX = Math.min(minX, screenPos.x);
-    minY = Math.min(minY, screenPos.y);
-    maxX = Math.max(maxX, screenPos.x);
-    maxY = Math.max(maxY, screenPos.y);
-  }
-
-  const halfWidth = (stroke.style.width / 2) * transform.value.scale;
-  const padding = halfWidth + 8;
-  const x = minX - padding;
-  const y = minY - padding;
-  const width = maxX - minX + padding * 2;
-  const height = maxY - minY + padding * 2;
+  if (selectedStrokeIds.value.size === 0) return;
 
   context.save();
   context.strokeStyle = "#2563eb";
   context.lineWidth = 1.5;
   context.setLineDash([6, 4]);
-  context.strokeRect(x, y, width, height);
+  for (const id of selectedStrokeIds.value) {
+    const stroke = strokes.value.find((s) => s.id === id);
+    if (!stroke || stroke.points.length === 0) continue;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const point of stroke.points) {
+      const screenPos = worldToScreen(point);
+      minX = Math.min(minX, screenPos.x);
+      minY = Math.min(minY, screenPos.y);
+      maxX = Math.max(maxX, screenPos.x);
+      maxY = Math.max(maxY, screenPos.y);
+    }
+
+    const padding = (stroke.style.width / 2) * transform.value.scale + 8;
+    context.strokeRect(
+      minX - padding,
+      minY - padding,
+      maxX - minX + padding * 2,
+      maxY - minY + padding * 2,
+    );
+  }
   context.restore();
 }
 
@@ -763,8 +849,8 @@ function presenceState(): CanvasPresenceState {
       y: camera.value.centerY,
       scale: camera.value.zoom,
     },
-    selectionIds: selectedShapeId.value ? [selectedShapeId.value] : [],
-    focusedNodeId: selectedShapeId.value,
+    selectionIds: [...selectedShapeIds.value],
+    focusedNodeId: selectedShape.value?.id ?? null,
     activeTool: activeTool.value,
   };
 }
@@ -917,7 +1003,7 @@ async function addMediaFile(file: File, at: { x: number; y: number }) {
       updatedAt: Date.now(),
     };
     yShapes.set(id, createShapeMap(shape));
-    selectedShapeId.value = id;
+    selectOnlyShape(id);
     activeTool.value = "select";
     saveState.value = "idle";
     dispatchSaveStatus();
@@ -957,11 +1043,7 @@ function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
     updatedAt: Date.now(),
   };
   yShapes.set(id, createShapeMap(shape));
-  selectedShapeId.value = id;
-  if (selectedStrokeId.value !== null) {
-    selectedStrokeId.value = null;
-    renderInk();
-  }
+  selectOnlyShape(id);
   activeTool.value = "select";
   nextTick(() => {
     const input = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
@@ -983,7 +1065,10 @@ function handleTextBlur(shape: CanvasShape, event: FocusEvent) {
   const value = (event.target as HTMLTextAreaElement).value;
   if (value.trim() !== "") return;
   yShapes.delete(shape.id);
-  if (selectedShapeId.value === shape.id) selectedShapeId.value = null;
+  if (selectedShapeIds.value.has(shape.id)) {
+    selectedShapeIds.value.delete(shape.id);
+    selectedShapeIds.value = new Set(selectedShapeIds.value);
+  }
 }
 
 function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
@@ -1057,14 +1142,13 @@ function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
 }
 
 function deleteSelectedShape() {
-  if (selectedShapeId.value) {
-    yShapes.delete(selectedShapeId.value);
-    selectedShapeId.value = null;
-  }
-  if (selectedStrokeId.value) {
-    yStrokes.delete(selectedStrokeId.value);
-    selectedStrokeId.value = null;
-  }
+  if (selectedShapeIds.value.size === 0 && selectedStrokeIds.value.size === 0) return;
+  ydoc.transact(() => {
+    for (const id of selectedShapeIds.value) yShapes.delete(id);
+    for (const id of selectedStrokeIds.value) yStrokes.delete(id);
+  });
+  selectedShapeIds.value = new Set();
+  selectedStrokeIds.value = new Set();
 }
 
 function distanceToSegment(
@@ -1119,8 +1203,7 @@ function freehandPoint(event: PointerEvent): FreehandPoint {
 
 function startFreehand(event: PointerEvent) {
   if (event.button !== 0 || (event.pointerType === "touch" && !event.isPrimary)) return;
-  selectedShapeId.value = null;
-  selectedStrokeId.value = null;
+  clearSelection();
   freehandPointerId = event.pointerId;
   freehandBuilder = createFreehandStrokeBuilder(freehandOptions());
   activeFreehandStroke.value = freehandBuilder.startAt(freehandPoint(event));
@@ -1149,23 +1232,59 @@ function finishFreehand(event: PointerEvent) {
   renderInk();
 }
 
-function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0) return;
-  selectedShapeId.value = shape.id;
-  if (selectedStrokeId.value !== null) {
-    selectedStrokeId.value = null;
-    renderInk();
+// Snapshots the start positions of everything that should move with a shape
+// drag: the whole current selection, plus the contents of any selected
+// section. Strokes are deduped against section contents so a stroke that is
+// both selected and inside a dragged section only moves once.
+function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "shape" }> {
+  const moveShapes = new Map<string, { id: string; x: number; y: number }>();
+  const moveStrokes = new Map<string, { id: string; points: FreehandPoint[] }>();
+
+  for (const id of selectedShapeIds.value) {
+    const shape = shapes.value.find((s) => s.id === id);
+    if (!shape) continue;
+    moveShapes.set(shape.id, { id: shape.id, x: shape.x, y: shape.y });
+    if (shape.type === "section") {
+      const contents = getSectionContents(shape);
+      for (const s of contents.shapes) if (!moveShapes.has(s.id)) moveShapes.set(s.id, s);
+      for (const s of contents.strokes)
+        if (!moveStrokes.has(s.id)) moveStrokes.set(s.id, s);
+    }
   }
-  const sectionContents = shape.type === "section" ? getSectionContents(shape) : null;
-  dragState = {
+  for (const id of selectedStrokeIds.value) {
+    if (moveStrokes.has(id)) continue;
+    const stroke = strokes.value.find((s) => s.id === id);
+    if (stroke) {
+      moveStrokes.set(id, { id, points: stroke.points.map(cloneFreehandPoint) });
+    }
+  }
+
+  return {
     type: "shape",
     pointerId: event.pointerId,
-    shapeId: shape.id,
     startPointer: screenToWorld(screenPoint(event)),
-    startShape: { x: shape.x, y: shape.y },
-    containedShapes: sectionContents?.shapes ?? [],
-    containedStrokes: sectionContents?.strokes ?? [],
+    shapes: [...moveShapes.values()],
+    strokes: [...moveStrokes.values()],
   };
+}
+
+function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
+  if (event.button !== 0) return;
+
+  // Shift toggles membership and does not begin a drag.
+  if (event.shiftKey) {
+    toggleShapeSelection(shape.id);
+    if (shape.type !== "text") event.preventDefault();
+    return;
+  }
+
+  // Clicking a shape outside the current selection collapses to just it;
+  // clicking one already inside keeps the selection so the whole group drags.
+  if (!selectedShapeIds.value.has(shape.id)) {
+    selectOnlyShape(shape.id);
+  }
+
+  dragState = buildShapeDragState(event);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   if (shape.type !== "text") {
     event.preventDefault();
@@ -1173,15 +1292,23 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeResize(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || (shape.type !== "note" && shape.type !== "section")) return;
-  selectedShapeId.value = shape.id;
+  if (event.button !== 0 || shape.type === "text") return;
+  selectOnlyShape(shape.id);
+  const isMedia = shape.type === "image" || shape.type === "video";
   dragState = {
     type: "resize",
     pointerId: event.pointerId,
     shapeId: shape.id,
     startPointer: screenToWorld(screenPoint(event)),
     startSize: { width: shape.width, height: shape.height },
-    minSize: shape.type === "section" ? MIN_SECTION_SIZE : MIN_NOTE_SIZE,
+    minSize:
+      shape.type === "section"
+        ? MIN_SECTION_SIZE
+        : isMedia
+          ? MIN_MEDIA_SIZE
+          : MIN_NOTE_SIZE,
+    // Media keeps its aspect ratio; notes and sections resize freely.
+    aspect: isMedia && shape.height > 0 ? shape.width / shape.height : undefined,
   };
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -1197,6 +1324,73 @@ function startPan(event: PointerEvent) {
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 }
 
+function startMarquee(event: PointerEvent, additive: boolean) {
+  if (!additive) clearSelection();
+  const start = screenPoint(event);
+  dragState = {
+    type: "marquee",
+    pointerId: event.pointerId,
+    additive,
+    startScreen: start,
+    baseShapeIds: new Set(selectedShapeIds.value),
+    baseStrokeIds: new Set(selectedStrokeIds.value),
+  };
+  marqueeRect.value = { x: start.x, y: start.y, width: 0, height: 0 };
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+}
+
+// Recomputes the selection from the marquee rectangle. Sections must be fully
+// enclosed to be picked up (a marquee inside a big section selects its
+// contents, not the section); every other shape selects on intersection.
+function applyMarqueeSelection(
+  state: Extract<DragState, { type: "marquee" }>,
+  rect: Rect,
+) {
+  const topLeft = screenToWorld({ x: rect.x, y: rect.y });
+  const bottomRight = screenToWorld({ x: rect.x + rect.width, y: rect.y + rect.height });
+  const worldRect: Rect = {
+    x: Math.min(topLeft.x, bottomRight.x),
+    y: Math.min(topLeft.y, bottomRight.y),
+    width: Math.abs(bottomRight.x - topLeft.x),
+    height: Math.abs(bottomRight.y - topLeft.y),
+  };
+
+  const shapeIds = new Set(state.additive ? state.baseShapeIds : []);
+  for (const shape of shapes.value) {
+    const bounds: Rect = {
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+    };
+    const hit =
+      shape.type === "section"
+        ? rectContains(worldRect, bounds)
+        : rectsIntersect(worldRect, bounds);
+    if (hit) shapeIds.add(shape.id);
+  }
+
+  const strokeIds = new Set(state.additive ? state.baseStrokeIds : []);
+  for (const stroke of strokes.value) {
+    if (stroke.points.some((point) => isPointInRect(point, worldRect))) {
+      strokeIds.add(stroke.id);
+    }
+  }
+
+  selectedShapeIds.value = shapeIds;
+  selectedStrokeIds.value = strokeIds;
+  renderInk();
+}
+
+function isPointInRect(point: { x: number; y: number }, rect: Rect) {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+}
+
 function handleViewportPointerDown(event: PointerEvent) {
   if (event.pointerType === "touch" && !event.isPrimary) return;
 
@@ -1210,15 +1404,20 @@ function handleViewportPointerDown(event: PointerEvent) {
   }
 
   if (activeTool.value === "select") {
-    selectedShapeId.value = null;
+    const additive = event.shiftKey;
     const hitStroke = strokeHitTest(screenToWorld(point));
-    selectedStrokeId.value = hitStroke;
-    renderInk();
     if (hitStroke) {
+      selectStroke(hitStroke, additive);
       event.preventDefault();
       return;
     }
-    if (event.pointerType !== "touch") startPan(event);
+    // Empty space: touch leaves panning/zooming to the two-finger gesture
+    // handler; mouse/pen drag-selects with a marquee.
+    if (event.pointerType === "touch") {
+      if (!additive) clearSelection();
+      return;
+    }
+    startMarquee(event, additive);
     return;
   }
 
@@ -1259,41 +1458,56 @@ function handlePointerMove(event: PointerEvent) {
     return;
   }
 
+  if (dragState.type === "marquee") {
+    const rect: Rect = {
+      x: Math.min(dragState.startScreen.x, point.x),
+      y: Math.min(dragState.startScreen.y, point.y),
+      width: Math.abs(point.x - dragState.startScreen.x),
+      height: Math.abs(point.y - dragState.startScreen.y),
+    };
+    marqueeRect.value = rect;
+    applyMarqueeSelection(dragState, rect);
+    updatePresence();
+    return;
+  }
+
   const world = screenToWorld(point);
   if (dragState.type === "resize") {
+    let width = dragState.startSize.width + world.x - dragState.startPointer.x;
+    let height = dragState.startSize.height + world.y - dragState.startPointer.y;
+
+    if (dragState.aspect) {
+      // Drive the locked box from whichever axis the pointer pushed out
+      // furthest, then derive the other axis and clamp against both minimums.
+      width = Math.max(width, height * dragState.aspect, dragState.minSize.width);
+      height = width / dragState.aspect;
+      if (height < dragState.minSize.height) {
+        height = dragState.minSize.height;
+        width = height * dragState.aspect;
+      }
+    } else {
+      width = Math.max(dragState.minSize.width, width);
+      height = Math.max(dragState.minSize.height, height);
+    }
+
     updateShape(dragState.shapeId, {
-      width: Math.round(
-        Math.max(
-          dragState.minSize.width,
-          dragState.startSize.width + world.x - dragState.startPointer.x,
-        ),
-      ),
-      height: Math.round(
-        Math.max(
-          dragState.minSize.height,
-          dragState.startSize.height + world.y - dragState.startPointer.y,
-        ),
-      ),
+      width: Math.round(width),
+      height: Math.round(height),
     });
     return;
   }
 
   const dx = world.x - dragState.startPointer.x;
   const dy = world.y - dragState.startPointer.y;
+  const drag = dragState;
   ydoc.transact(() => {
-    updateShape(dragState.shapeId, {
-      x: Math.round(dragState.startShape.x + dx),
-      y: Math.round(dragState.startShape.y + dy),
-    });
-
-    for (const contained of dragState.containedShapes) {
-      updateShape(contained.id, {
-        x: Math.round(contained.x + dx),
-        y: Math.round(contained.y + dy),
+    for (const moved of drag.shapes) {
+      updateShape(moved.id, {
+        x: Math.round(moved.x + dx),
+        y: Math.round(moved.y + dy),
       });
     }
-
-    for (const stroke of dragState.containedStrokes) {
+    for (const stroke of drag.strokes) {
       translateStroke(stroke.id, stroke.points, dx, dy);
     }
   });
@@ -1302,6 +1516,7 @@ function handlePointerMove(event: PointerEvent) {
 function handlePointerUp(event: PointerEvent) {
   finishFreehand(event);
   if (dragState?.pointerId === event.pointerId) {
+    if (dragState.type === "marquee") marqueeRect.value = null;
     dragState = null;
   }
 }
@@ -1355,21 +1570,17 @@ type CanvasClipboard = {
 let internalClipboard: string | null = null;
 
 function collectSelection(): { shapes: CanvasShape[]; strokes: CanvasStrokeSnapshot[] } {
-  const selShapes = selectedShapeId.value
-    ? shapes.value
-        .filter((shape) => shape.id === selectedShapeId.value)
-        .map((shape) => ({ ...shape }))
-    : [];
-  const selStrokes = selectedStrokeId.value
-    ? strokes.value
-        .filter((stroke) => stroke.id === selectedStrokeId.value)
-        .map((stroke) => ({
-          id: stroke.id,
-          points: stroke.points.map(cloneFreehandPoint),
-          style: { ...stroke.style },
-          updatedAt: stroke.updatedAt,
-        }))
-    : [];
+  const selShapes = shapes.value
+    .filter((shape) => selectedShapeIds.value.has(shape.id))
+    .map((shape) => ({ ...shape }));
+  const selStrokes = strokes.value
+    .filter((stroke) => selectedStrokeIds.value.has(stroke.id))
+    .map((stroke) => ({
+      id: stroke.id,
+      points: stroke.points.map(cloneFreehandPoint),
+      style: { ...stroke.style },
+      updatedAt: stroke.updatedAt,
+    }));
   return { shapes: selShapes, strokes: selStrokes };
 }
 
@@ -1444,13 +1655,13 @@ function pasteCanvasClipboard(
   const dx = at.x - Math.min(...xs);
   const dy = at.y - Math.min(...ys);
   const now = Date.now();
-  let firstShapeId: string | null = null;
-  let firstStrokeId: string | null = null;
+  const pastedShapeIds = new Set<string>();
+  const pastedStrokeIds = new Set<string>();
 
   ydoc.transact(() => {
     for (const shape of payload.shapes) {
       const id = `shape-${crypto.randomUUID()}`;
-      if (!firstShapeId) firstShapeId = id;
+      pastedShapeIds.add(id);
       yShapes.set(
         id,
         createShapeMap({
@@ -1464,7 +1675,7 @@ function pasteCanvasClipboard(
     }
     for (const stroke of payload.strokes) {
       const id = `stroke-${crypto.randomUUID()}`;
-      if (!firstStrokeId) firstStrokeId = id;
+      pastedStrokeIds.add(id);
       yStrokes.set(
         id,
         createStrokeMap({
@@ -1481,9 +1692,10 @@ function pasteCanvasClipboard(
     }
   });
 
-  selectedStrokeId.value = firstShapeId ? null : firstStrokeId;
-  selectedShapeId.value = firstShapeId;
+  selectedShapeIds.value = pastedShapeIds;
+  selectedStrokeIds.value = pastedStrokeIds;
   activeTool.value = "select";
+  renderInk();
 }
 
 function handlePaste(event: ClipboardEvent) {
@@ -1538,7 +1750,7 @@ function fitView() {
   camera.value = {
     centerX: (minX + maxX) / 2,
     centerY: (minY + maxY) / 2,
-    zoom: Math.max(0.25, Math.min(3, fitScale / baseScale)),
+    zoom: Math.max(0.25, Math.min(5, fitScale / baseScale)),
   };
 }
 
@@ -1646,7 +1858,7 @@ onMounted(() => {
       renderInk();
     },
     minZoom: 0.25,
-    maxZoom: 3,
+    maxZoom: 5,
   });
 
   resizeObserver = new ResizeObserver(resize);
@@ -1812,7 +2024,7 @@ onUnmounted(() => {
           class="canvas-shape"
           :class="[
             shape.type,
-            { selected: selectedShapeId === shape.id },
+            { selected: selectedShapeIds.has(shape.id) },
           ]"
           :style="{
             left: `${shape.x}px`,
@@ -1853,13 +2065,13 @@ onUnmounted(() => {
               :value="shape.text"
               spellcheck="false"
               aria-label="Section headline"
-              @focus="selectedShapeId = shape.id"
+              @focus="selectOnlyShape(shape.id)"
               @pointerdown.stop
               @input="updateShapeText(shape, ($event.target as HTMLInputElement).value)"
             />
           </div>
           <div
-            v-else-if="shape.type !== 'text'"
+            v-else-if="shape.type === 'note'"
             class="canvas-shape-handle"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></div>
@@ -1869,6 +2081,7 @@ onUnmounted(() => {
             :src="shape.src"
             :alt="shape.alt || ''"
             draggable="false"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
           />
           <video
             v-else-if="shape.type === 'video' && shape.src"
@@ -1892,17 +2105,17 @@ onUnmounted(() => {
               :data-shape-text="shape.id"
               :value="shape.text"
               spellcheck="false"
-              @focus="selectedShapeId = shape.id"
+              @focus="selectOnlyShape(shape.id)"
               @blur="handleTextBlur(shape, $event)"
               @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
               @input="updateShapeText(shape, ($event.target as HTMLTextAreaElement).value)"
             ></textarea>
           </div>
           <button
-            v-if="(shape.type === 'note' || shape.type === 'section') && selectedShapeId === shape.id"
+            v-if="shape.type !== 'text' && selectedShape?.id === shape.id"
             type="button"
             class="canvas-resize-handle"
-            :aria-label="shape.type === 'section' ? 'Resize section' : 'Resize note'"
+            :aria-label="`Resize ${shape.type}`"
             @pointerdown.stop="startShapeResize(shape, $event)"
           ></button>
         </article>
@@ -1921,6 +2134,17 @@ onUnmounted(() => {
         <span class="canvas-presence-cursor"></span>
         <span class="canvas-presence-label">{{ presence.user.name }}</span>
       </div>
+
+      <div
+        v-if="marqueeRect"
+        class="canvas-marquee"
+        :style="{
+          left: `${marqueeRect.x}px`,
+          top: `${marqueeRect.y}px`,
+          width: `${marqueeRect.width}px`,
+          height: `${marqueeRect.height}px`,
+        }"
+      ></div>
 
       <div v-if="shapes.length === 0 && strokes.length === 0" class="canvas-empty">
         <strong>Blank canvas</strong>
@@ -2235,8 +2459,15 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.canvas-shape.image {
+.canvas-shape.image,
+.canvas-shape.video {
+  border-color: transparent;
   background: var(--canvas-image-bg);
+}
+
+.canvas-shape.image .canvas-shape-image,
+.canvas-shape.video .canvas-shape-image {
+  cursor: move;
 }
 
 .canvas-shape.section {
@@ -2412,6 +2643,15 @@ onUnmounted(() => {
   border-bottom: 2px solid var(--canvas-resize-border);
   background: transparent;
   cursor: nwse-resize;
+}
+
+.canvas-marquee {
+  position: absolute;
+  z-index: 7;
+  border: 1px solid #2563eb;
+  border-radius: 2px;
+  background: rgba(37, 99, 235, 0.1);
+  pointer-events: none;
 }
 
 .canvas-presence {
