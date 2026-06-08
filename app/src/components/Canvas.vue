@@ -213,6 +213,9 @@ const selectedShapeIds = ref<Set<string>>(new Set());
 const selectedStrokeIds = ref<Set<string>>(new Set());
 // Live screen-space rectangle while drag-selecting; null when not marqueeing.
 const marqueeRect = ref<Rect | null>(null);
+// True only while a pan drag is in progress, so the viewport shows the grabbing
+// hand during panning and a resting cursor otherwise.
+const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
 const noteColor = ref<string>(NOTE_COLORS[0]);
 const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
@@ -685,6 +688,14 @@ function screenPoint(event: MouseEvent) {
 const transform = computed(() =>
   buildTransform(camera.value, screen.value, FIT_REFERENCE),
 );
+
+// Panning (middle/right-drag) shows the grabbing hand; the select tool rests on
+// the default arrow, while the content-placing tools use a crosshair.
+const viewportCursor = computed(() => {
+  if (isPanning.value) return "grabbing";
+  if (activeTool.value === "select") return "default";
+  return "crosshair";
+});
 
 function screenToWorld(point: { x: number; y: number }) {
   return viewportScreenToWorld(point.x, point.y, transform.value);
@@ -1321,6 +1332,7 @@ function startPan(event: PointerEvent) {
     startPointer: { x: event.clientX, y: event.clientY },
     startCamera: camera.value,
   };
+  isPanning.value = true;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 }
 
@@ -1517,6 +1529,7 @@ function handlePointerUp(event: PointerEvent) {
   finishFreehand(event);
   if (dragState?.pointerId === event.pointerId) {
     if (dragState.type === "marquee") marqueeRect.value = null;
+    if (dragState.type === "pan") isPanning.value = false;
     dragState = null;
   }
 }
@@ -1720,7 +1733,7 @@ function handlePaste(event: ClipboardEvent) {
   void addMediaFiles(media, insertionPointFromEvent());
 }
 
-function fitView() {
+function fitView(maxZoom = 5) {
   const xs = [
     ...shapes.value.flatMap((shape) => [shape.x, shape.x + shape.width]),
     ...strokes.value.flatMap((stroke) => stroke.points.map((point) => point.x)),
@@ -1750,8 +1763,21 @@ function fitView() {
   camera.value = {
     centerX: (minX + maxX) / 2,
     centerY: (minY + maxY) / 2,
-    zoom: Math.max(0.25, Math.min(5, fitScale / baseScale)),
+    zoom: Math.max(0.25, Math.min(maxZoom, fitScale / baseScale)),
   };
+}
+
+// Centers the viewport on the document's content the first time it loads, so a
+// saved canvas opens framed instead of pinned to world origin. Fires at most
+// once: `isInitialContent` is false for the user's own first edit (Yjs origin
+// null), which only disarms the one-shot rather than recentering their view.
+let hasFitInitialView = false;
+function fitInitialViewIfNeeded(isInitialContent: boolean) {
+  if (hasFitInitialView || !isReady) return;
+  if (shapes.value.length === 0 && strokes.value.length === 0) return;
+  hasFitInitialView = true;
+  // Frame the content but never magnify past 100% on load.
+  if (isInitialContent) fitView(1);
 }
 
 const canUndo = ref(false);
@@ -1828,15 +1854,17 @@ watch(
 );
 
 onMounted(() => {
-  yShapes.observeDeep(() => {
+  yShapes.observeDeep((_events, transaction) => {
     syncShapesFromY();
     scheduleSave();
     refreshUndoState();
+    fitInitialViewIfNeeded(transaction.origin !== null);
   });
-  yStrokes.observeDeep(() => {
+  yStrokes.observeDeep((_events, transaction) => {
     syncStrokesFromY();
     scheduleSave();
     refreshUndoState();
+    fitInitialViewIfNeeded(transaction.origin !== null);
   });
   syncShapesFromY();
   syncStrokesFromY();
@@ -1852,6 +1880,7 @@ onMounted(() => {
     getFit: () => FIT_REFERENCE,
     onTouchGestureStart: () => {
       dragState = null;
+      isPanning.value = false;
       freehandBuilder = null;
       freehandPointerId = null;
       activeFreehandStroke.value = null;
@@ -1879,6 +1908,9 @@ onMounted(() => {
 
   setupPresence();
   isReady = true;
+  // Content already present at mount (seeded synchronously or preloaded from
+  // the Yjs room) is initial — frame it now that the screen has been measured.
+  fitInitialViewIfNeeded(true);
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
@@ -1983,7 +2015,7 @@ onUnmounted(() => {
         class="canvas-tool"
         aria-label="Fit to view"
         data-tooltip="Fit to view · F"
-        @click="fitView"
+        @click="fitView()"
       >
         <svg
           class="canvas-tool-icon"
@@ -2004,6 +2036,7 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="canvas-viewport"
+      :style="{ cursor: viewportCursor }"
       @contextmenu.prevent
       @pointerdown="handleViewportPointerDown"
       @pointerleave="handlePointerLeave"
@@ -2414,12 +2447,7 @@ onUnmounted(() => {
   inset: 0;
   overflow: hidden;
   background-color: var(--canvas-bg);
-  cursor: grab;
   touch-action: none;
-}
-
-.canvas-viewport:active {
-  cursor: grabbing;
 }
 
 .canvas-world {
