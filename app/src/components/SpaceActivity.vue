@@ -76,8 +76,6 @@ const eventLabels: Record<string, string> = {
   create: "created",
   lock: "locked",
   unlock: "unlocked",
-  webhook_success: "successfully delivered webhook for",
-  webhook_failed: "failed to deliver webhook for",
 };
 
 const eventColors: Record<string, string> = {
@@ -87,8 +85,6 @@ const eventColors: Record<string, string> = {
   delete: "bg-red-500",
   lock: "bg-orange-500",
   unlock: "bg-green-500",
-  webhook_success: "bg-green-500",
-  webhook_failed: "bg-red-500",
   default: "bg-neutral-500",
 };
 

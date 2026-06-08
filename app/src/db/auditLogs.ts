@@ -28,10 +28,6 @@ import { sendSyncEvent } from "./ws.ts";
  * Access control events:
  * - acl_grant: Permission is granted
  * - acl_revoke: Permission is revoked
- *
- * Webhook events:
- * - webhook_success: Webhook delivery succeeded
- * - webhook_failed: Webhook delivery failed
  */
 export type AuditEvent =
   | "view"
@@ -47,9 +43,7 @@ export type AuditEvent =
   | "lock"
   | "unlock"
   | "property_update"
-  | "property_delete"
-  | "webhook_success"
-  | "webhook_failed";
+  | "property_delete";
 
 /**
  * Optional details that can be attached to audit log entries
@@ -95,13 +89,6 @@ export type AuditEvent =
  *
  * Access control fields:
  * - permission: The permission being granted or revoked
- *
- * Webhook fields:
- * - webhookId: The ID of the webhook that was triggered
- * - webhookUrl: The URL the webhook was sent to
- * - webhookEvent: The type of webhook event (e.g., "document.published", "mention")
- * - statusCode: HTTP status code from webhook delivery
- * - errorMessage: Error message if webhook delivery failed
  */
 export interface AuditDetails {
   ip?: string;
@@ -113,11 +100,6 @@ export interface AuditDetails {
   permission?: string;
   propertyKey?: string;
   propertyType?: string;
-  webhookId?: string;
-  webhookUrl?: string;
-  webhookEvent?: string;
-  statusCode?: number;
-  errorMessage?: string;
 }
 
 export interface CreateAuditLogParams {

@@ -290,9 +290,7 @@ export type AuditEvent =
   | "lock"
   | "unlock"
   | "property_update"
-  | "property_delete"
-  | "webhook_success"
-  | "webhook_failed";
+  | "property_delete";
 
 export interface AuditDetails {
   ip?: string;
@@ -304,11 +302,6 @@ export interface AuditDetails {
   permission?: string;
   propertyKey?: string;
   propertyType?: string;
-  webhookId?: string;
-  webhookUrl?: string;
-  webhookEvent?: string;
-  statusCode?: number;
-  errorMessage?: string;
 }
 
 export interface AuditLog {

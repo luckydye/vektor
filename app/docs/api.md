@@ -50,11 +50,6 @@ Most errors are JSON:
 | GET | `/spaces/:spaceId/uploads` | Lists uploaded files in a space. |
 | POST | `/spaces/:spaceId/uploads` | Uploads a file and returns its API URL/key. |
 | GET | `/spaces/:spaceId/uploads/*` | Serves an uploaded file by path. |
-| GET | `/spaces/:spaceId/webhooks` | Lists webhooks. |
-| POST | `/spaces/:spaceId/webhooks` | Creates a webhook. |
-| GET | `/spaces/:spaceId/webhooks/:webhookId` | Returns one webhook. |
-| PATCH | `/spaces/:spaceId/webhooks/:webhookId` | Updates webhook fields/events/status. |
-| DELETE | `/spaces/:spaceId/webhooks/:webhookId` | Deletes a webhook. |
 | GET | `/spaces/:spaceId/access-tokens` | Lists access tokens and their resource grants. |
 | POST | `/spaces/:spaceId/access-tokens` | Creates an access token and grants initial resource permission. |
 | GET | `/spaces/:spaceId/access-tokens/:tokenId` | Returns one token with resource grants. |
@@ -360,44 +355,6 @@ Most errors are JSON:
 - `path` required.
 - Returns:
 - Raw file bytes with inferred MIME type and long cache headers.
-
----
-
-## `GET /spaces/:spaceId/webhooks`
-
-- Auth: session + `viewer`.
-- Returns:
-- `200` `{ webhooks }`.
-
-## `POST /spaces/:spaceId/webhooks`
-
-- Auth: session + `admin`.
-- Body:
-- `url` (required string)
-- `events` (required non-empty array; validated)
-- optional `documentId`, `secret`
-- Returns:
-- `200` `{ webhook }`.
-
-## `GET /spaces/:spaceId/webhooks/:webhookId`
-
-- Auth: session + `viewer`.
-- Returns:
-- `200` `{ webhook }`.
-
-## `PATCH /spaces/:spaceId/webhooks/:webhookId`
-
-- Auth: session + `admin`.
-- Body:
-- Any of `url`, `events`, `documentId`, `secret`, `enabled` with strict type checks.
-- Returns:
-- `200` `{ webhook }`.
-
-## `DELETE /spaces/:spaceId/webhooks/:webhookId`
-
-- Auth: session + `admin`.
-- Returns:
-- `200` `{ success: true }`.
 
 ---
 

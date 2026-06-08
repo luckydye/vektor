@@ -17,7 +17,6 @@ import ActivityEvent from "./ActivityEvent.vue";
 import DockedPanel from "./DockedPanel.vue";
 import "@sv/elements/popover";
 import {
-  checkCircleOutlineIcon,
   closeCircleIcon,
   documentIcon,
   documentTextIcon,
@@ -122,8 +121,6 @@ function getEventIcon(iconType: string) {
     unlock: `<span class="svg-icon w-4 h-4 text-green-500">${unlockIcon}</span>`,
     property_update: `<span class="svg-icon w-4 h-4 text-indigo-500">${editOutlineIcon}</span>`,
     property_delete: `<span class="svg-icon w-4 h-4 text-pink-500">${closeCircleIcon}</span>`,
-    webhook_success: `<span class="svg-icon w-4 h-4 text-green-500">${checkCircleOutlineIcon}</span>`,
-    webhook_failed: `<span class="svg-icon w-4 h-4 text-red-500">${closeCircleIcon}</span>`,
   };
   return (
     icons[iconType] ||
@@ -213,8 +210,6 @@ function formatEventName(userName: string, event: string): string {
     unlock: `${userName} - Document unlocked`,
     property_update: `${userName} - Property updated`,
     property_delete: `${userName} - Property deleted`,
-    webhook_success: `${userName} - Webhook delivered`,
-    webhook_failed: `${userName} - Webhook failed`,
   };
   return eventNames[event] || event;
 }
