@@ -185,6 +185,13 @@ async function handlePublishedRevisionPatch(
     return;
   }
 
+  // Publishing a revision also loads it into the draft, so the editor (which
+  // always reads doc.content) reflects the revision that is now published.
+  await db
+    .update(documentTable)
+    .set({ content: revisionContent })
+    .where(eq(documentTable.id, documentId));
+
   const mentionedEmails = getUniqueMentionedEmails(revisionContent);
   if (mentionedEmails.length === 0) {
     return;
