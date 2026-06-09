@@ -14,6 +14,7 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
 import Contributors from "./Contributors.vue";
 import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
+import WorkflowRunButton from "./WorkflowRunButton.vue";
 
 const props = defineProps<{
   documentId?: string;
@@ -349,9 +350,15 @@ watchEffect(() => {
 
 <template>
   <div id="document-actions" class="flex gap-4 items-start">
-    <div class="flex-1">
+    <div class="flex-1 mr-4">
       <Contributors v-if="documentId" :documentId="documentId" />
     </div>
+
+    <WorkflowRunButton
+      v-if="documentType === 'workflow' && documentId && currentSpaceId && userCanEdit"
+      :documentId="documentId"
+      :spaceId="currentSpaceId"
+    />
 
     <button
       v-if="documentType === 'workflow' && documentId && userCanEdit"
