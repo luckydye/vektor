@@ -8,65 +8,14 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getDocument } from "#db/documents.ts";
-import { getPublishedContent } from "#db/revisions.ts";
 import { cancelRun, ensureSpaceRecovered, getRunForRead } from "#jobs/runStore.ts";
-import type { WorkflowDefinition } from "#jobs/workflow.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-
-function getTerminalNodeIds(definition: WorkflowDefinition): string[] {
-  const enabledEntries = Object.entries(definition).filter(([, node]) => !node.disabled);
-  if (enabledEntries.length === 0) return [];
-
-  const dependedOn = new Set<string>();
-  for (const [, node] of enabledEntries) {
-    for (const dep of node.depends) dependedOn.add(dep);
-  }
-
-  return enabledEntries
-    .map(([nodeId]) => nodeId)
-    .filter((nodeId) => !dependedOn.has(nodeId));
-}
-
-async function getWorkflowOutput(
-  spaceId: string,
-  documentId: string,
-  nodes: Record<string, unknown>,
-) {
-  const doc = await getDocument(spaceId, documentId);
-  if (doc?.type !== "workflow") return null;
-
-  const content =
-    doc.publishedRev !== null
-      ? ((await getPublishedContent(spaceId, documentId)) ?? doc.content)
-      : doc.content;
-
-  let definition: WorkflowDefinition;
-  try {
-    definition = JSON.parse(content ?? "{}") as WorkflowDefinition;
-  } catch {
-    return null;
-  }
-
-  const terminalNodeIds = getTerminalNodeIds(definition);
-  if (terminalNodeIds.length === 0) return null;
-
-  const output = terminalNodeIds.reduce<Record<string, unknown>>((acc, nodeId) => {
-    const nodeOutputs = (
-      nodes[nodeId] as { outputs?: Record<string, unknown> | null } | undefined
-    )?.outputs;
-    if (nodeOutputs && typeof nodeOutputs === "object") {
-      Object.assign(acc, nodeOutputs);
-    }
-    return acc;
-  }, {});
-
-  return Object.keys(output).length > 0 ? output : null;
-}
 
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs/:runId
  * Returns the current state of a workflow run.
+ * Nodes are returned in insertion order (= execution order for JS scripts).
+ * Output is taken from the "_script" node's outputs (the script's return value).
  */
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -79,44 +28,8 @@ export const GET: APIRoute = (context) =>
     const run = await getRunForRead(spaceId, runId);
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
 
-    const doc = await getDocument(spaceId, run.documentId);
-    const content =
-      doc?.publishedRev !== null && doc
-        ? ((await getPublishedContent(spaceId, run.documentId)) ?? doc.content)
-        : doc?.content;
-
-    let definition: WorkflowDefinition = {};
-    try {
-      definition = JSON.parse(content ?? "{}") as WorkflowDefinition;
-    } catch {}
-
-    // Topological sort (Kahn's algorithm) to return nodes in execution order
-    const ids = [...run.nodes.keys()];
-    const inDegree = new Map<string, number>(
-      ids.map((id) => [id, definition[id]?.depends.length ?? 0]),
-    );
-    const adj = new Map<string, string[]>(ids.map((id) => [id, []]));
-    for (const id of ids) {
-      for (const dep of definition[id]?.depends ?? []) adj.get(dep)?.push(id);
-    }
-    const queue = ids.filter((id) => inDegree.get(id) === 0);
-    const order: string[] = [];
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      order.push(id);
-      for (const next of adj.get(id) ?? []) {
-        const deg = (inDegree.get(next) ?? 1) - 1;
-        inDegree.set(next, deg);
-        if (deg === 0) queue.push(next);
-      }
-    }
-    for (const id of ids) {
-      if (!order.includes(id)) order.push(id);
-    }
-
     const nodes: Record<string, unknown> = {};
-    for (const id of order) {
-      const nodeState = run.nodes.get(id)!;
+    for (const [id, nodeState] of run.nodes) {
       nodes[id] = {
         status: nodeState.status,
         inputs: nodeState.inputs,
@@ -128,7 +41,12 @@ export const GET: APIRoute = (context) =>
       };
     }
 
-    const output = await getWorkflowOutput(spaceId, run.documentId, nodes);
+    // Output = the script's return value (stored on the _script node)
+    const scriptNode = run.nodes.get("_script");
+    const output =
+      scriptNode?.outputs && Object.keys(scriptNode.outputs).length > 0
+        ? scriptNode.outputs
+        : null;
 
     return jsonResponse({ status: run.status, nodes, output });
   }, "Failed to get run");

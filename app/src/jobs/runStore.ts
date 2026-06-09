@@ -382,7 +382,7 @@ export async function ensureSpaceRecovered(spaceId: string): Promise<void> {
 export function createRun(
   spaceId: string,
   documentId: string,
-  nodeIds: string[],
+  nodeIds: string[] = [],
   initiatedByUserId: string | null = null,
   sourceExtensionId: string | null = null,
   runtimeInputs: Record<string, unknown> = {},
@@ -434,6 +434,21 @@ export function setRunAbort(runId: string, abort: () => void): void {
   const run = activeRuns.get(runId);
   if (!run) return;
   run.abort = abort;
+}
+
+export function addNode(runId: string, nodeId: string): void {
+  const run = activeRuns.get(runId);
+  if (!run || run.nodes.has(nodeId)) return;
+  run.nodes.set(nodeId, {
+    status: "pending",
+    inputs: {},
+    outputs: null,
+    error: null,
+    logs: [],
+    startedAt: null,
+    completedAt: null,
+  });
+  schedulePersist(runId);
 }
 
 export function setNodeStatus(

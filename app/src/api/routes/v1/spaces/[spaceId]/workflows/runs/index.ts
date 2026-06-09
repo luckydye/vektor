@@ -10,7 +10,6 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocument } from "#db/documents.ts";
-import { getExtension } from "#db/extensions.ts";
 import { getPublishedContent } from "#db/revisions.ts";
 import {
   createRun,
@@ -19,7 +18,7 @@ import {
   getRunForRead,
   listRuns,
 } from "#jobs/runStore.ts";
-import { executeWorkflow, type WorkflowDefinition } from "#jobs/workflow.ts";
+import { executeWorkflowScript } from "#jobs/workflowScript.ts";
 import { appLogger } from "#observability/logger.ts";
 import { activeTraceHeaders } from "#observability/otel.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
@@ -123,12 +122,10 @@ export const POST: APIRoute = (context) =>
 
       const body = await parseJsonBody<{
         documentId?: string;
-        fromRunId?: string;
-        fromNodeId?: string;
         inputs?: Record<string, unknown>;
         sourceExtensionId?: string;
       }>(context.request);
-      const { documentId, fromRunId, fromNodeId, inputs, sourceExtensionId } = body;
+      const { documentId, inputs, sourceExtensionId } = body;
       if (documentId) span?.setAttribute("wiki.document.id", documentId);
 
       if (!documentId) return badRequestResponse("documentId is required");
@@ -139,105 +136,19 @@ export const POST: APIRoute = (context) =>
         return badRequestResponse("Document type must be 'workflow'");
       }
 
-      const content =
+      const code =
         doc.publishedRev !== null
           ? ((await getPublishedContent(spaceId, documentId)) ?? doc.content)
           : doc.content;
 
-      let definition: WorkflowDefinition;
-      try {
-        definition = JSON.parse(content ?? "{}") as WorkflowDefinition;
-      } catch {
-        return badRequestResponse("Workflow document content is not valid JSON");
-      }
-
-      // Validate each node's extensionId + jobId exists
-      for (const [nodeId, node] of Object.entries(definition)) {
-        const ext = await getExtension(spaceId, node.extensionId);
-        if (!ext) {
-          return badRequestResponse(
-            `Node "${nodeId}": extension "${node.extensionId}" not found`,
-          );
-        }
-        const job = ext.manifest.jobs?.find((j) => j.id === node.jobId);
-        if (!job) {
-          return badRequestResponse(
-            `Node "${nodeId}": job "${node.jobId}" not found in extension "${node.extensionId}"`,
-          );
-        }
-      }
-
-      // Build pre-seeded outputs when restarting from a specific node
-      let preSeeded: Map<string, Record<string, unknown>> | undefined;
-      if (fromRunId && fromNodeId) {
-        await ensureSpaceRecovered(spaceId);
-        const prevRun = await getRunForRead(spaceId, fromRunId);
-        if (!prevRun) return notFoundResponse("Previous run");
-        if (prevRun.spaceId !== spaceId || prevRun.documentId !== documentId) {
-          return badRequestResponse("Previous run does not belong to this workflow");
-        }
-        if (!definition[fromNodeId]) {
-          return badRequestResponse(`Node "${fromNodeId}" not in workflow`);
-        }
-        if (prevRun.nodes.get(fromNodeId)?.status !== "failed") {
-          return badRequestResponse(`Node "${fromNodeId}" did not fail in previous run`);
-        }
-
-        // Topological order to find nodes that come before fromNodeId
-        const inDegree = new Map<string, number>();
-        const adj = new Map<string, string[]>();
-        for (const nid of Object.keys(definition)) {
-          inDegree.set(nid, definition[nid].depends.length);
-          adj.set(nid, []);
-        }
-        for (const [nid, node] of Object.entries(definition)) {
-          for (const dep of node.depends) {
-            const dependents = adj.get(dep);
-            if (dependents) dependents.push(nid);
-          }
-        }
-        const queue: string[] = [];
-        for (const [nid, deg] of inDegree) {
-          if (deg === 0) queue.push(nid);
-        }
-        const order: string[] = [];
-        while (queue.length > 0) {
-          const nid = queue.shift();
-          if (!nid) break;
-          order.push(nid);
-          for (const dep of adj.get(nid) ?? []) {
-            const currentDegree = inDegree.get(dep);
-            if (currentDegree === undefined) continue;
-            const nd = currentDegree - 1;
-            inDegree.set(dep, nd);
-            if (nd === 0) queue.push(dep);
-          }
-        }
-
-        // Collect ancestors of fromNodeId (everything it transitively depends on)
-        const ancestors = new Set<string>();
-        const stack = [...definition[fromNodeId].depends];
-        while (stack.length > 0) {
-          const nid = stack.pop();
-          if (!nid) break;
-          if (ancestors.has(nid)) continue;
-          ancestors.add(nid);
-          stack.push(...definition[nid].depends);
-        }
-
-        preSeeded = new Map();
-        for (const nid of ancestors) {
-          const nodeState = prevRun.nodes.get(nid);
-          if (nodeState?.status === "completed" && nodeState.outputs) {
-            preSeeded.set(nid, nodeState.outputs);
-          }
-        }
+      if (!code?.trim()) {
+        return badRequestResponse("Workflow script is empty");
       }
 
       const runId = createRun(
         spaceId,
         documentId,
-        Object.keys(definition),
+        [],
         initiatedByUserId,
         sourceExtensionId ?? null,
         inputs ?? {},
@@ -245,10 +156,10 @@ export const POST: APIRoute = (context) =>
       const traceHeaders = activeTraceHeaders();
 
       // Fire and forget — errors are recorded in run state
-      executeWorkflow(spaceId, runId, definition, preSeeded, {
+      executeWorkflowScript(spaceId, runId, code, {
+        runtimeInputs: inputs,
         traceparent: traceHeaders.traceparent,
         tracestate: traceHeaders.tracestate,
-        runtimeInputs: inputs,
       }).catch(() => {});
 
       return jsonResponse({ runId }, 202);

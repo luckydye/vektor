@@ -28,17 +28,10 @@ type RunSummary = {
   runtimeInputs: Record<string, unknown>;
 };
 
-type WorkflowNodeDef = {
-  jobId: string;
-  extensionId: string;
-  inputs: { key: string; value: string }[];
-};
-
 const runList = ref<RunSummary[]>([]);
 const sourceExtensionHref = ref<string | null>(null);
 const selectedRunId = ref<string | null>(null);
 const selectedRunDetail = ref<WorkflowRunStatus | null>(null);
-const workflowDef = ref<Record<string, WorkflowNodeDef>>({});
 const logsExpanded = ref(false);
 let unsubscribeRuns: (() => void) | null = null;
 let unsubscribeRun: (() => void) | null = null;
@@ -116,11 +109,6 @@ const selectedRunInputs = computed(() => {
 });
 
 onMounted(async () => {
-  const doc = await api.document.get(props.spaceId, props.documentId);
-  try {
-    workflowDef.value = JSON.parse(doc.content ?? "{}");
-  } catch {}
-
   await fetchRuns();
   if (runList.value[0]) await selectRun(runList.value[0].runId);
 
@@ -154,10 +142,10 @@ onUnmounted(() => {
   unsubscribeRun?.();
 });
 
-// Pipeline nodes — order is determined by the API (topological sort)
+// Pipeline nodes — insertion order = execution order for JS scripts; _script is the wrapper
 const pipelineNodes = computed((): [string, WorkflowNodeState][] => {
   if (!selectedRunDetail.value) return [];
-  return Object.entries(selectedRunDetail.value.nodes);
+  return Object.entries(selectedRunDetail.value.nodes).filter(([id]) => id !== "_script");
 });
 
 // Job outputs are stored as { type: "text", value } or { type: "file", url } objects
@@ -379,7 +367,7 @@ const statusBadgeClass: Record<string, string> = {
           <div class="w-9 flex-shrink-0 flex flex-col items-center">
             <span class="text-[10px] text-neutral-400 leading-tight text-center whitespace-pre">
               <span class="block">Step {{ i + 1 }}</span>
-              <span v-if="workflowDef[nodeId]?.jobId" class="block text-neutral-400">{{ workflowDef[nodeId].jobId }}</span>
+              <span v-if="node.inputs?._jobId" class="block text-neutral-400">{{ node.inputs._jobId }}</span>
             </span>
           </div>
         </template>

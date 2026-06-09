@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DockedPanel from "./DockedPanel.vue";
-import WorkflowNodeEditor from "./WorkflowNodeEditor.vue";
+import WorkflowCodeEditor from "./WorkflowCodeEditor.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -17,7 +17,7 @@ const props = defineProps<{
     default-mode="floating"
   >
     <div class="flex flex-col h-full bg-white">
-      <WorkflowNodeEditor
+      <WorkflowCodeEditor
         class="flex-1 min-h-0"
         :document-id="props.documentId"
         :space-id="props.spaceId"
