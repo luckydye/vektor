@@ -77,7 +77,7 @@ const filteredResults = computed(() => {
 const loadHistory = async () => {
   try {
     historyEntries.value = await history.getAll();
-    console.log("Loaded history entries:", historyEntries.value);
+    // Loaded history entries
   } catch (error) {
     console.error("Failed to load history:", error);
     historyEntries.value = [];

@@ -19,10 +19,7 @@ const authDb = drizzle({
   },
 });
 
-console.log("Initializing databases...");
 prepateAuthDb(authDb);
-console.log("Done! Auth database is ready.");
-console.log("Space databases will be created automatically when spaces are created.");
 
 export function getAuthDb() {
   return authDb;

@@ -164,64 +164,6 @@ export class IndexedDBStore<T extends object> {
   }
 
   /**
-   * Count total items
-   */
-  async count(): Promise<number> {
-    return this.request("readonly", (store) => store.count());
-  }
-
-  /**
-   * Query items using a cursor with optional index
-   */
-  async query<R = T>(callback: (store: IDBObjectStore) => IDBRequest<R>): Promise<R> {
-    return this.request("readonly", callback);
-  }
-
-  /**
-   * Query items with a cursor for iteration
-   */
-  async queryCursor(
-    callback: (cursor: IDBCursorWithValue) => void,
-    indexName?: string,
-    direction: IDBCursorDirection = "next",
-  ): Promise<void> {
-    const store = await this.openStore("readonly");
-
-    return new Promise((resolve, reject) => {
-      const source = indexName ? store.index(indexName) : store;
-      const request = source.openCursor(null, direction);
-
-      request.onsuccess = () => {
-        const cursor = request.result;
-        if (cursor) {
-          callback(cursor);
-          cursor.continue();
-        } else {
-          resolve();
-        }
-      };
-
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  /**
-   * Execute a custom transaction
-   */
-  async transaction<R>(
-    mode: IDBTransactionMode,
-    callback: (store: IDBObjectStore) => Promise<R>,
-  ): Promise<R> {
-    const store = await this.openStore(mode);
-
-    return new Promise((resolve, reject) => {
-      store.transaction.onerror = () => reject(store.transaction.error);
-
-      callback(store).then(resolve).catch(reject);
-    });
-  }
-
-  /**
    * Get items by index range
    */
   async getByIndex(
@@ -251,41 +193,6 @@ export class IndexedDBStore<T extends object> {
       };
 
       request.onerror = () => reject(request.error);
-    });
-  }
-
-  /**
-   * Batch put multiple items
-   */
-  async putBatch(items: T[]): Promise<void> {
-    const store = await this.openStore("readwrite");
-
-    return new Promise((resolve, reject) => {
-      let completed = 0;
-      const errors: Error[] = [];
-
-      for (const item of items) {
-        const request = store.put(item);
-
-        request.onsuccess = () => {
-          completed++;
-          if (completed === items.length) {
-            if (errors.length > 0) {
-              reject(errors[0]);
-            } else {
-              resolve();
-            }
-          }
-        };
-
-        request.onerror = () => {
-          errors.push(new Error(`Failed to put item: ${request.error}`));
-          completed++;
-          if (completed === items.length) {
-            reject(errors[0]);
-          }
-        };
-      }
     });
   }
 

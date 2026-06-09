@@ -94,16 +94,6 @@ function convertHtmlTableToCsv(html: string): string {
     .join("\n");
 }
 
-export {
-  collectChildTags,
-  convertHtmlTableToCsv,
-  escapeCsvCell,
-  findFirstTag,
-  getNodeText,
-  isTag,
-  normalizeHtmlText,
-};
-
 export const pandocCommand = defineCommand("pandoc", async (args, ctx) => {
   const usage =
     "usage: pandoc -f <html|html-table> -t csv [input-file] [-o output-file]\n" +

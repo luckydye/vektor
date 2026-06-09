@@ -1655,19 +1655,6 @@ export class ApiClient {
       return response.runs;
     },
 
-    /** @deprecated use listRuns */
-    listRunning: async (spaceId: string) => {
-      const response = await this.apiGet<{
-        runs: {
-          runId: string;
-          documentId: string;
-          documentSlug: string | null;
-          documentTitle: string;
-          status: string;
-        }[];
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`);
-      return response.runs;
-    },
   };
 
   jobs = {

@@ -49,7 +49,7 @@ export async function prepateAuthDb(authDb: BunSQLiteDatabase) {
   await authDb.run(sql.raw(accountSQL));
   await authDb.run(sql.raw(verificationSQL));
 
-  console.log("Auth database initialized at");
+  // Auth database initialized
 }
 
 export async function prepareSpaceDb(spaceId: string) {
@@ -150,5 +150,5 @@ export async function prepareSpaceDb(spaceId: string) {
   await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_au"));
   await spaceDb.run(sql.raw("DROP TABLE IF EXISTS document_fts"));
 
-  console.log("Space database initialized at:", spacePath);
+  // Space database initialized
 }

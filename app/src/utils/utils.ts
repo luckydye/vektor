@@ -1,7 +1,3 @@
-/**
- * Generates a color palette from a base color for light mode
- * Creates shades from 10 (lightest) to 950 (darkest)
- */
 function hexToHsl(color: string): [number, number, number] {
   const hex = color.replace("#", "");
   const r = parseInt(hex.substring(0, 2), 16);
@@ -15,12 +11,11 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`;
 }
 
-export function generateColorPalette(baseColor: string): Record<string, string> {
+function generateColorPalette(baseColor: string): Record<string, string> {
   const [h, s] = hexToHsl(baseColor);
 
   const palette: Record<string, string> = {};
 
-  // Generate shades
   const stops = [
     { key: "10", lightness: 95 },
     { key: "50", lightness: 90 },
@@ -43,16 +38,11 @@ export function generateColorPalette(baseColor: string): Record<string, string> 
   return palette;
 }
 
-/**
- * Generates a dark mode color palette from a base color
- * Creates shades optimized for dark backgrounds
- */
-export function generateDarkColorPalette(baseColor: string): Record<string, string> {
+function generateDarkColorPalette(baseColor: string): Record<string, string> {
   const [h, s] = hexToHsl(baseColor);
 
   const palette: Record<string, string> = {};
 
-  // Generate dark mode shades (inverted lightness scale with adjusted saturation)
   const stops = [
     { key: "10", lightness: 12, saturation: s * 0.6 },
     { key: "50", lightness: 16, saturation: s * 0.65 },
@@ -139,9 +129,6 @@ function componentToHex(c: number): string {
   return hex.length === 1 ? `0${hex}` : hex;
 }
 
-/**
- * Generates CSS custom properties for the color palette
- */
 export function generatePaletteCss(baseColor: string) {
   return {
     light: Object.entries(generateColorPalette(baseColor))

@@ -13,7 +13,7 @@ export const realtimeTopics = {
 } as const;
 
 export type RealtimeTopic = string;
-export type RealtimeEventData = Record<string, unknown> | null;
+type RealtimeEventData = Record<string, unknown> | null;
 
 export interface RealtimeTopicEvent {
   topic: RealtimeTopic;

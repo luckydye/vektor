@@ -167,16 +167,6 @@ export async function assertPublicUrl(url: string): Promise<URL> {
   return parsed;
 }
 
-/** Non-throwing variant: returns true when the URL is safe to fetch. */
-export async function isPublicUrl(url: string): Promise<boolean> {
-  try {
-    await assertPublicUrl(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const MAX_REDIRECTS = 5;
 
 /**
