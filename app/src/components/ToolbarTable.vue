@@ -272,7 +272,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 @reference "tailwindcss";
-@reference "../styles/utils.css";
 @reference "../styles/theme.css";
 
 .table-toolbar {
