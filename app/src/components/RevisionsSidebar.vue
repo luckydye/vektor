@@ -330,16 +330,6 @@ function exitPopover(e: Event) {
 <template>
   <DockedPanel id="revisions" title="Document History" default-side="right" :default-width="420">
     <div class="relative flex flex-col h-full">
-        <div class="absolute top-3 right-3">
-            <button
-                @click="refresh"
-                :disabled="isLoadingAudit"
-                class="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors disabled:opacity-50"
-                title="Refresh"
-            >
-                <div class="svg-icon w-4 h-4" v-html="refreshIcon" />
-            </button>
-        </div>
     
       <!-- Error State -->
       <div v-if="auditError" class="mx-4 mt-4 p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">

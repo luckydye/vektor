@@ -374,12 +374,22 @@ interface RealtimeSubscription {
 }
 
 interface RealtimeConnection {
+  spaceId: string;
   socket: WebSocket;
+  /** Resolves when the current socket reaches the OPEN state. Never rejects. */
   ready: Promise<void>;
   topicRefCounts: Map<RealtimeTopic, number>;
   subscriptions: Set<RealtimeSubscription>;
   presenceRoomRefCounts: Map<string, number>;
   presenceSubscriptions: Set<PresenceSubscription<unknown>>;
+  /** Active Yjs rooms keyed by documentId so they can be re-joined after a reconnect. */
+  yjsRooms: Map<string, Set<YDoc>>;
+  /** Latest presence join payload per room, replayed on reconnect (state kept current via updates). */
+  presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
+  /** True once the connection has been intentionally torn down; suppresses reconnects. */
+  closed: boolean;
+  reconnectAttempts: number;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface PresenceSubscription<TState = unknown> {
@@ -1779,82 +1789,239 @@ export class ApiClient {
       throw new Error("provide a socketHost in options");
     }
 
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${protocol}://${this.socketHost}/events/${spaceId}`);
-    socket.binaryType = "arraybuffer";
-
     const connection: RealtimeConnection = {
-      socket,
-      ready: new Promise<void>((resolve, reject) => {
-        socket.addEventListener("open", () => resolve(), { once: true });
-        socket.addEventListener(
-          "error",
-          () => reject(new Error("Realtime socket failed")),
-          {
-            once: true,
-          },
-        );
-      }),
+      spaceId,
+      // socket/ready are assigned synchronously by openRealtimeSocket below.
+      socket: undefined as unknown as WebSocket,
+      ready: Promise.resolve(),
       topicRefCounts: new Map(),
       subscriptions: new Set(),
       presenceRoomRefCounts: new Map(),
       presenceSubscriptions: new Set(),
+      yjsRooms: new Map(),
+      presenceJoinPayloads: new Map(),
+      closed: false,
+      reconnectAttempts: 0,
+      reconnectTimer: null,
     };
 
-    socket.addEventListener("message", (event) => {
-      if (!(event.data instanceof ArrayBuffer)) return;
-      const { type, payload } = wsDecode(new Uint8Array(event.data));
-
-      if (type === WsMsgType.Event) {
-        const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
-        for (const subscription of connection.subscriptions) {
-          if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
-          subscription.callback({ type: "event", ...msg });
-        }
-        return;
-      }
-
-      if (
-        type === WsMsgType.PresenceSnapshot ||
-        type === WsMsgType.PresenceUpdate ||
-        type === WsMsgType.PresenceLeave
-      ) {
-        const msg =
-          type === WsMsgType.PresenceSnapshot
-            ? ({
-                type: "presence-snapshot",
-                ...wsDecodeJson<Omit<PresenceSnapshotMessage, "type">>(payload),
-              } satisfies PresenceSnapshotMessage)
-            : type === WsMsgType.PresenceUpdate
-              ? ({
-                  type: "presence-update",
-                  ...wsDecodeJson<Omit<PresenceUpdateMessage, "type">>(payload),
-                } satisfies PresenceUpdateMessage)
-              : ({
-                  type: "presence-leave",
-                  ...wsDecodeJson<Omit<PresenceLeaveMessage, "type">>(payload),
-                } satisfies PresenceLeaveMessage);
-
-        for (const subscription of connection.presenceSubscriptions) {
-          const targetRoom =
-            msg.type === "presence-update" ? msg.presence.room : msg.room;
-          if (targetRoom !== subscription.room) continue;
-          subscription.callback(msg);
-        }
-      }
-    });
-
-    const destroyConnection = () => {
-      if (this.realtimeConnections.get(spaceId) === connection) {
-        this.realtimeConnections.delete(spaceId);
-      }
-    };
-
-    socket.addEventListener("close", destroyConnection, { once: true });
-    socket.addEventListener("error", destroyConnection);
-
+    this.openRealtimeSocket(connection);
     this.realtimeConnections.set(spaceId, connection);
     return connection;
+  }
+
+  /**
+   * Create (or recreate) the underlying WebSocket for a connection and wire up
+   * its lifecycle handlers. Safe to call again after an unexpected close to
+   * reconnect; existing subscription state is replayed in resyncRealtimeConnection.
+   */
+  private openRealtimeSocket(connection: RealtimeConnection): void {
+    if (!this.socketHost) {
+      throw new Error("provide a socketHost in options");
+    }
+
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(
+      `${protocol}://${this.socketHost}/events/${connection.spaceId}`,
+    );
+    socket.binaryType = "arraybuffer";
+    connection.socket = socket;
+    connection.ready = new Promise<void>((resolve) => {
+      socket.addEventListener("open", () => resolve(), { once: true });
+    });
+
+    socket.addEventListener("open", () => {
+      if (connection.socket !== socket) return; // stale handler from a prior socket
+      connection.reconnectAttempts = 0;
+      this.resyncRealtimeConnection(connection);
+    });
+
+    socket.addEventListener("message", (event) => {
+      if (connection.socket !== socket) return;
+      this.handleRealtimeMessage(connection, event);
+    });
+
+    const onClose = () => {
+      if (connection.socket !== socket) return; // a newer socket already took over
+      this.handleRealtimeClose(connection);
+    };
+    socket.addEventListener("close", onClose);
+    socket.addEventListener("error", onClose);
+  }
+
+  private handleRealtimeMessage(
+    connection: RealtimeConnection,
+    event: MessageEvent,
+  ): void {
+    if (!(event.data instanceof ArrayBuffer)) return;
+    const { type, payload } = wsDecode(new Uint8Array(event.data));
+
+    if (type === WsMsgType.Event) {
+      const msg = wsDecodeJson<Omit<RealtimeEventMessage, "type">>(payload);
+      for (const subscription of connection.subscriptions) {
+        if (!msg.events.some(({ topic }) => subscription.topics.has(topic))) continue;
+        subscription.callback({ type: "event", ...msg });
+      }
+      return;
+    }
+
+    if (type === WsMsgType.YjsUpdate) {
+      const { documentId, update } = wsDecodeYjsUpdate(payload);
+      const ydocs = connection.yjsRooms.get(documentId);
+      if (ydocs) {
+        for (const ydoc of ydocs) {
+          applyUpdate(ydoc, update, "remote");
+        }
+      }
+      return;
+    }
+
+    if (
+      type === WsMsgType.PresenceSnapshot ||
+      type === WsMsgType.PresenceUpdate ||
+      type === WsMsgType.PresenceLeave
+    ) {
+      const msg =
+        type === WsMsgType.PresenceSnapshot
+          ? ({
+              type: "presence-snapshot",
+              ...wsDecodeJson<Omit<PresenceSnapshotMessage, "type">>(payload),
+            } satisfies PresenceSnapshotMessage)
+          : type === WsMsgType.PresenceUpdate
+            ? ({
+                type: "presence-update",
+                ...wsDecodeJson<Omit<PresenceUpdateMessage, "type">>(payload),
+              } satisfies PresenceUpdateMessage)
+            : ({
+                type: "presence-leave",
+                ...wsDecodeJson<Omit<PresenceLeaveMessage, "type">>(payload),
+              } satisfies PresenceLeaveMessage);
+
+      for (const subscription of connection.presenceSubscriptions) {
+        const targetRoom =
+          msg.type === "presence-update" ? msg.presence.room : msg.room;
+        if (targetRoom !== subscription.room) continue;
+        subscription.callback(msg);
+      }
+    }
+  }
+
+  private handleRealtimeClose(connection: RealtimeConnection): void {
+    if (connection.closed) return;
+
+    // No active interest left — let it stay closed rather than reconnecting.
+    if (
+      connection.subscriptions.size === 0 &&
+      connection.presenceSubscriptions.size === 0 &&
+      connection.yjsRooms.size === 0
+    ) {
+      this.teardownRealtimeConnection(connection);
+      return;
+    }
+
+    this.scheduleRealtimeReconnect(connection);
+  }
+
+  private scheduleRealtimeReconnect(connection: RealtimeConnection): void {
+    if (connection.closed || connection.reconnectTimer !== null) return;
+
+    // Exponential backoff capped at 30s, with jitter to avoid thundering herds.
+    const attempt = connection.reconnectAttempts;
+    const delay =
+      Math.min(30_000, 1_000 * 2 ** attempt) + Math.floor(Math.random() * 1_000);
+    connection.reconnectAttempts = attempt + 1;
+
+    connection.reconnectTimer = setTimeout(() => {
+      connection.reconnectTimer = null;
+      if (connection.closed) return;
+      this.openRealtimeSocket(connection);
+    }, delay);
+  }
+
+  /**
+   * Replay all active subscription state onto a freshly opened socket. Called on
+   * every open (initial connect and reconnect) so it is the single source of
+   * truth for what the server should know about — no per-call send is needed
+   * while the socket is connecting.
+   */
+  private resyncRealtimeConnection(connection: RealtimeConnection): void {
+    const socket = connection.socket;
+    if (socket.readyState !== WebSocket.OPEN) return;
+
+    const topics = [...connection.topicRefCounts.keys()];
+    if (topics.length > 0) {
+      socket.send(wsEncode(WsMsgType.Subscribe, { topics }));
+    }
+
+    for (const documentId of connection.yjsRooms.keys()) {
+      socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+    }
+
+    for (const payload of connection.presenceJoinPayloads.values()) {
+      socket.send(wsEncode(WsMsgType.PresenceJoin, payload));
+    }
+  }
+
+  /** Permanently close a connection and stop any pending reconnect. */
+  private teardownRealtimeConnection(connection: RealtimeConnection): void {
+    connection.closed = true;
+    if (connection.reconnectTimer !== null) {
+      clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
+    }
+    if (this.realtimeConnections.get(connection.spaceId) === connection) {
+      this.realtimeConnections.delete(connection.spaceId);
+    }
+    try {
+      connection.socket.close();
+    } catch {
+      // ignore — socket may already be closing/closed
+    }
+  }
+
+  /** Tear down the connection once nothing is subscribed to it anymore. */
+  private maybeCloseRealtimeConnection(connection: RealtimeConnection): void {
+    if (
+      connection.subscriptions.size === 0 &&
+      connection.presenceSubscriptions.size === 0 &&
+      connection.yjsRooms.size === 0
+    ) {
+      this.teardownRealtimeConnection(connection);
+    }
+  }
+
+  /**
+   * Send subscription/state messages (subscribe, join, leave). Only sent when the
+   * socket is open; while connecting or reconnecting the state is replayed by
+   * resyncRealtimeConnection on the next open, so sending here would double up.
+   */
+  private sendRealtimeState(
+    connection: RealtimeConnection,
+    data: Uint8Array,
+  ): void {
+    if (connection.socket.readyState === WebSocket.OPEN) {
+      connection.socket.send(data);
+    }
+  }
+
+  /**
+   * Send ephemeral messages (presence/yjs updates) that are not part of replayed
+   * state. Best-effort: sent immediately when open, otherwise once the socket
+   * opens. Guards against "WebSocket is already in CLOSING or CLOSED state".
+   */
+  private sendRealtimeEphemeral(
+    connection: RealtimeConnection,
+    data: Uint8Array,
+  ): void {
+    if (connection.socket.readyState === WebSocket.OPEN) {
+      connection.socket.send(data);
+      return;
+    }
+    void connection.ready.then(() => {
+      if (connection.socket.readyState === WebSocket.OPEN) {
+        connection.socket.send(data);
+      }
+    });
   }
 
   private sendRealtimeMessage(
@@ -1863,12 +2030,7 @@ export class ApiClient {
     topics: RealtimeTopic[],
   ) {
     if (topics.length === 0) return;
-
-    void connection.ready
-      .then(() => {
-        connection.socket.send(wsEncode(type, { topics }));
-      })
-      .catch(() => {});
+    this.sendRealtimeState(connection, wsEncode(type, { topics }));
   }
 
   subscribeToTopics(
@@ -1916,13 +2078,7 @@ export class ApiClient {
 
       this.sendRealtimeMessage(connection, WsMsgType.Unsubscribe, unsubscribeTopics);
 
-      if (
-        connection.subscriptions.size === 0 &&
-        connection.presenceSubscriptions.size === 0
-      ) {
-        connection.socket.close();
-        this.realtimeConnections.delete(spaceId);
-      }
+      this.maybeCloseRealtimeConnection(connection);
     };
   }
 
@@ -1947,42 +2103,33 @@ export class ApiClient {
 
   joinYjsRoom(spaceId: string, documentId: string, ydoc: YDoc): () => void {
     const connection = this.getRealtimeConnection(spaceId);
-    connection.socket.binaryType = "arraybuffer";
 
-    void connection.ready
-      .then(() => {
-        connection.socket.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
-      })
-      .catch(() => {});
-
-    const handleMessage = (event: MessageEvent) => {
-      if (!(event.data instanceof ArrayBuffer)) return;
-      const { type, payload } = wsDecode(new Uint8Array(event.data));
-      if (type !== WsMsgType.YjsUpdate) return;
-
-      const { documentId: incomingDocId, update } = wsDecodeYjsUpdate(payload);
-      if (incomingDocId !== documentId) return;
-
-      applyUpdate(ydoc, update, "remote");
-    };
-
-    connection.socket.addEventListener("message", handleMessage);
+    let ydocs = connection.yjsRooms.get(documentId);
+    if (!ydocs) {
+      ydocs = new Set();
+      connection.yjsRooms.set(documentId, ydocs);
+      // First doc for this room — announce the join (replayed on reconnect).
+      this.sendRealtimeState(connection, wsEncode(WsMsgType.YjsJoin, { documentId }));
+    }
+    ydocs.add(ydoc);
 
     const handleUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === "remote") return;
-
-      void connection.ready
-        .then(() => {
-          connection.socket.send(wsEncodeYjsUpdate(documentId, update));
-        })
-        .catch(() => {});
+      this.sendRealtimeEphemeral(connection, wsEncodeYjsUpdate(documentId, update));
     };
 
     ydoc.on("update", handleUpdate);
 
     return () => {
       ydoc.off("update", handleUpdate);
-      connection.socket.removeEventListener("message", handleMessage);
+      const rooms = connection.yjsRooms.get(documentId);
+      if (rooms) {
+        rooms.delete(ydoc);
+        if (rooms.size === 0) {
+          connection.yjsRooms.delete(documentId);
+        }
+      }
+      this.maybeCloseRealtimeConnection(connection);
     };
   }
 
@@ -2005,30 +2152,35 @@ export class ApiClient {
     connection.presenceRoomRefCounts.set(room, roomRefCount);
 
     if (roomRefCount === 1) {
-      void connection.ready
-        .then(() => {
-          const joinPayload: PresenceJoinPayload<TState> = {
-            room,
-            clientId,
-            user,
-            state: initialState,
-          };
-          connection.socket.send(wsEncode(WsMsgType.PresenceJoin, joinPayload));
-        })
-        .catch(() => {});
+      const joinPayload: PresenceJoinPayload<TState> = {
+        room,
+        clientId,
+        user,
+        state: initialState,
+      };
+      // Remember the join so it can be replayed after a reconnect; its `state`
+      // is kept current by `update` below.
+      connection.presenceJoinPayloads.set(
+        room,
+        joinPayload as PresenceJoinPayload<unknown>,
+      );
+      this.sendRealtimeState(connection, wsEncode(WsMsgType.PresenceJoin, joinPayload));
     }
 
     const update = (state: TState) => {
+      const stored = connection.presenceJoinPayloads.get(room);
+      if (stored) {
+        stored.state = state;
+      }
       const updatePayload: PresenceUpdatePayload<TState> = {
         room,
         clientId,
         state,
       };
-      void connection.ready
-        .then(() => {
-          connection.socket.send(wsEncode(WsMsgType.PresenceUpdate, updatePayload));
-        })
-        .catch(() => {});
+      this.sendRealtimeEphemeral(
+        connection,
+        wsEncode(WsMsgType.PresenceUpdate, updatePayload),
+      );
     };
 
     const leave = () => {
@@ -2037,27 +2189,16 @@ export class ApiClient {
       const currentCount = connection.presenceRoomRefCounts.get(room) ?? 0;
       if (currentCount <= 1) {
         connection.presenceRoomRefCounts.delete(room);
-        void connection.ready
-          .then(() => {
-            connection.socket.send(
-              wsEncode(WsMsgType.PresenceLeave, {
-                room,
-                clientId,
-              }),
-            );
-          })
-          .catch(() => {});
+        connection.presenceJoinPayloads.delete(room);
+        this.sendRealtimeState(
+          connection,
+          wsEncode(WsMsgType.PresenceLeave, { room, clientId }),
+        );
       } else {
         connection.presenceRoomRefCounts.set(room, currentCount - 1);
       }
 
-      if (
-        connection.subscriptions.size === 0 &&
-        connection.presenceSubscriptions.size === 0
-      ) {
-        connection.socket.close();
-        this.realtimeConnections.delete(spaceId);
-      }
+      this.maybeCloseRealtimeConnection(connection);
     };
 
     return { update, leave };
