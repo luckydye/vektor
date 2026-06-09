@@ -203,7 +203,7 @@ onUnmounted(() => {
             <td
               v-for="col in columns"
               :key="col"
-              class="px-3 py-2 text-neutral-700 dark:text-neutral-300 whitespace-nowrap overflow-hidden truncate"
+              class="px-3 py-2 text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap overflow-hidden truncate"
               :style="{ width: colWidth(col), maxWidth: colWidth(col) }"
               :title="cellText(row[col])"
             >
