@@ -1601,7 +1601,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 12px;
   padding: 12px;
-  max-height: 620px;
   overflow: auto;
   user-select: text;
 }
