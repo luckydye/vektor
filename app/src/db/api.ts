@@ -160,6 +160,30 @@ export function parseQueryInt(
   return value;
 }
 
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function parsePaginationParams(
+  searchParams: URLSearchParams,
+  options: { defaultLimit?: number; maxLimit?: number } = {},
+): { limit: number; offset: number } {
+  const { defaultLimit = 50, maxLimit = 500 } = options;
+  const limit = parseQueryInt(searchParams, "limit", {
+    defaultValue: defaultLimit,
+    min: 1,
+    max: maxLimit,
+  });
+  const offset = parseQueryInt(searchParams, "offset", {
+    defaultValue: 0,
+    min: 0,
+  });
+  return { limit, offset };
+}
+
 export async function parseJsonBody<T = Record<string, unknown>>(
   request: Request,
 ): Promise<T> {

@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import {
   errorResponse,
   jsonResponse,
-  parseQueryInt,
+  parsePaginationParams,
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
@@ -23,14 +23,9 @@ export const GET: APIRoute = (context) =>
       const userId: string | null = auth.type === "user" ? auth.user.id : auth.userId;
 
       const query = context.url.searchParams.get("q") || "";
-      const limit = parseQueryInt(context.url.searchParams, "limit", {
-        defaultValue: 20,
-        min: 1,
-        max: 100,
-      });
-      const offset = parseQueryInt(context.url.searchParams, "offset", {
-        defaultValue: 0,
-        min: 0,
+      const { limit, offset } = parsePaginationParams(context.url.searchParams, {
+        defaultLimit: 20,
+        maxLimit: 100,
       });
       const filtersParam = context.url.searchParams.get("filters");
 

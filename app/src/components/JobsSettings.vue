@@ -247,7 +247,7 @@ async function loadRuns() {
   runsError.value = null;
   try {
     const response = await api.jobs.listRuns(currentSpace.value.id, { limit: 50 });
-    runs.value = response.runs || [];
+    runs.value = response.runs;
   } catch (err) {
     runsError.value = err instanceof Error ? err.message : "Failed to load job runs";
   } finally {

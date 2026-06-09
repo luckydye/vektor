@@ -2,7 +2,7 @@ import type { APIRoute } from "astro";
 import { Feature } from "#db/acl.ts";
 import {
   jsonResponse,
-  parseQueryInt,
+  parsePaginationParams,
   requireParam,
   requireUser,
   verifyDocumentAccess,
@@ -23,19 +23,15 @@ export const GET: APIRoute = (context) =>
     // Verify user has audit log viewing feature access
     await verifyFeatureAccess(spaceId, Feature.VIEW_AUDIT, user.id);
 
-    const limit = parseQueryInt(context.url.searchParams, "limit", {
-      defaultValue: 100,
-      min: 1,
-      max: 1000,
-    });
+    const { limit, offset } = parsePaginationParams(context.url.searchParams);
 
     const db = await getSpaceDb(spaceId);
-    const logs = await getAuditLogsForDocument(db, documentId, limit);
+    const { rows, total } = await getAuditLogsForDocument(db, documentId, limit, offset);
 
-    const logsWithDetails = logs.map((log) => ({
+    const auditLogs = rows.map((log) => ({
       ...log,
       details: parseAuditDetails(log),
     }));
 
-    return jsonResponse({ auditLogs: logsWithDetails });
+    return jsonResponse({ auditLogs, total, limit, offset });
   }, "Failed to list document audit logs");

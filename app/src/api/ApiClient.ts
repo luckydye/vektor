@@ -1028,13 +1028,16 @@ export class ApiClient {
     /**
      * Get audit logs for a document
      */
-    get: async (spaceId: string, documentId: string, query?: { limit?: number }) => {
-      const response = await this.apiGet<{ auditLogs: AuditLog[] }>(
+    get: async (
+      spaceId: string,
+      documentId: string,
+      query?: { limit?: number; offset?: number },
+    ) => {
+      return this.apiGet<{ auditLogs: AuditLog[]; total: number; limit: number; offset: number }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/documents/${documentId}/audit-logs`,
         query,
       );
-      return response.auditLogs;
     },
   };
 
@@ -1128,13 +1131,12 @@ export class ApiClient {
     /**
      * List audit logs for a space
      */
-    get: async (spaceId: string, query?: { limit?: number }) => {
-      const response = await this.apiGet<{ auditLogs: AuditLog[] }>(
+    get: async (spaceId: string, query?: { limit?: number; offset?: number }) => {
+      return this.apiGet<{ auditLogs: AuditLog[]; total: number; limit: number; offset: number }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/audit-logs`,
         query,
       );
-      return response.auditLogs;
     },
   };
 
@@ -1705,16 +1707,12 @@ export class ApiClient {
      */
     listRuns: async (
       spaceId: string,
-      options?: { jobId?: string; scheduleId?: string; limit?: number },
+      options?: { jobId?: string; scheduleId?: string; limit?: number; offset?: number },
     ) => {
-      const params = new URLSearchParams();
-      if (options?.jobId) params.set("jobId", options.jobId);
-      if (options?.scheduleId) params.set("scheduleId", options.scheduleId);
-      if (options?.limit) params.set("limit", String(options.limit));
-      const query = params.size > 0 ? `?${params}` : "";
-      return await this.apiGet<{ runs: JobRun[] }>(
+      return this.apiGet<{ runs: JobRun[]; total: number; limit: number; offset: number }>(
         this.baseUrl,
-        `/api/v1/spaces/${spaceId}/jobs/runs${query}`,
+        `/api/v1/spaces/${spaceId}/jobs/runs`,
+        options,
       );
     },
 

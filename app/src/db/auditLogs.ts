@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { realtimeTopics } from "../utils/realtime.ts";
 import type { getSpaceDb } from "./db.ts";
 import { type AuditLog, auditLog } from "./schema.ts";
@@ -222,25 +222,38 @@ export async function createAuditLog(
 export async function getAuditLogsForDocument(
   db: Awaited<ReturnType<typeof getSpaceDb>>,
   docId: string,
-  limit = 100,
-): Promise<AuditLog[]> {
-  return db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.docId, docId))
-    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
-    .limit(limit);
+  limit = 50,
+  offset = 0,
+): Promise<{ rows: AuditLog[]; total: number }> {
+  const where = eq(auditLog.docId, docId);
+  const [countResult, rows] = await Promise.all([
+    db.select({ total: sql<number>`count(*)` }).from(auditLog).where(where).get(),
+    db
+      .select()
+      .from(auditLog)
+      .where(where)
+      .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+      .limit(limit)
+      .offset(offset),
+  ]);
+  return { rows, total: countResult?.total ?? 0 };
 }
 
 export async function getRecentAuditLogs(
   db: Awaited<ReturnType<typeof getSpaceDb>>,
-  limit = 100,
-): Promise<AuditLog[]> {
-  return db
-    .select()
-    .from(auditLog)
-    .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
-    .limit(limit);
+  limit = 50,
+  offset = 0,
+): Promise<{ rows: AuditLog[]; total: number }> {
+  const [countResult, rows] = await Promise.all([
+    db.select({ total: sql<number>`count(*)` }).from(auditLog).get(),
+    db
+      .select()
+      .from(auditLog)
+      .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+      .limit(limit)
+      .offset(offset),
+  ]);
+  return { rows, total: countResult?.total ?? 0 };
 }
 
 export function parseAuditDetails(log: AuditLog): AuditDetails | null {

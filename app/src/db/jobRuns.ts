@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { appLogger } from "../observability/logger.ts";
 import { getSpaceDb } from "./db.ts";
 import { type JobRun, type JobRunInsert, jobRun } from "./schema/space.ts";
@@ -111,20 +111,26 @@ export async function failStaleJobRuns(spaceId: string, cutoff: Date): Promise<n
 
 export async function listJobRuns(
   spaceId: string,
-  options?: { jobId?: string; scheduleId?: string; limit?: number },
-): Promise<JobRun[]> {
+  options?: { jobId?: string; scheduleId?: string; limit?: number; offset?: number },
+): Promise<{ runs: JobRun[]; total: number }> {
   const db = await getSpaceDb(spaceId);
   const conditions = [];
   if (options?.jobId) conditions.push(eq(jobRun.jobId, options.jobId));
   if (options?.scheduleId) conditions.push(eq(jobRun.scheduleId, options.scheduleId));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  return db
-    .select()
-    .from(jobRun)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(jobRun.queuedAt))
-    .limit(Math.min(options?.limit ?? 50, 200))
-    .all();
+  const [countResult, runs] = await Promise.all([
+    db.select({ total: sql<number>`count(*)` }).from(jobRun).where(where).get(),
+    db
+      .select()
+      .from(jobRun)
+      .where(where)
+      .orderBy(desc(jobRun.queuedAt))
+      .limit(options?.limit ?? 50)
+      .offset(options?.offset ?? 0)
+      .all(),
+  ]);
+  return { runs, total: countResult?.total ?? 0 };
 }
 
 export function toJobRunDto(run: JobRun) {

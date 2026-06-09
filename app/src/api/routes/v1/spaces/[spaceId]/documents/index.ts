@@ -8,7 +8,7 @@ import {
   forbiddenResponse,
   jsonResponse,
   parseJsonBody,
-  parseQueryInt,
+  parsePaginationParams,
   requireParam,
   verifySpaceRole,
   verifyTokenPermission,
@@ -62,15 +62,7 @@ export const GET: APIRoute = (context) =>
       ? { userId: aclUserId, userGroups: await getUserGroups(aclUserId) }
       : null;
 
-    const limit = parseQueryInt(context.url.searchParams, "limit", {
-      defaultValue: 100,
-      min: 1,
-      max: 1000,
-    });
-    const offset = parseQueryInt(context.url.searchParams, "offset", {
-      defaultValue: 0,
-      min: 0,
-    });
+    const { limit, offset } = parsePaginationParams(context.url.searchParams);
     const typeParam = context.url.searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = context.url.searchParams.get("categorySlugs");
     const grouped = context.url.searchParams.get("grouped") === "true";

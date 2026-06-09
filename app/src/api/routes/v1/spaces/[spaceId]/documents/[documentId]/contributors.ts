@@ -20,7 +20,7 @@ export const GET: APIRoute = (context) =>
     await verifyDocumentAccess(spaceId, documentId, currentUser.id);
 
     const db = await getSpaceDb(spaceId);
-    const logs = await getAuditLogsForDocument(db, documentId, 1000);
+    const { rows: logs } = await getAuditLogsForDocument(db, documentId, 1000);
 
     // Extract unique user IDs from audit logs
     const userIds = new Set<string>();

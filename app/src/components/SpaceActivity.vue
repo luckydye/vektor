@@ -23,20 +23,10 @@ Usage:
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { type AuditLog, api } from "../api/client.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 
-interface AuditLogEntry {
-  id: number;
-  docId: string;
-  revisionId?: number;
-  userId?: string;
-  event: string;
-  details?: {
-    message?: string;
-    permission?: string;
-  } | null;
-  createdAt: string;
-}
+type AuditLogEntry = AuditLog;
 
 interface User {
   id: string;
@@ -93,25 +83,17 @@ async function fetchActivities() {
     isLoading.value = true;
     error.value = null;
 
-    const [logsResponse, usersResponse] = await Promise.all([
-      fetch(`/api/v1/spaces/${props.spaceId}/audit-logs?limit=${props.limit}`),
-      fetch(`/api/v1/users?spaceId=${encodeURIComponent(props.spaceId)}`),
+    const [logsData, usersData] = await Promise.all([
+      api.auditLogs.get(props.spaceId, { limit: props.limit }),
+      fetch(`/api/v1/users?spaceId=${encodeURIComponent(props.spaceId)}`).then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch users");
+        return r.json();
+      }),
     ]);
 
-    if (!logsResponse.ok) {
-      throw new Error("Failed to fetch activity logs");
-    }
-
-    if (!usersResponse.ok) {
-      throw new Error("Failed to fetch users");
-    }
-
-    const logsData = await logsResponse.json();
-    const usersData = await usersResponse.json();
-
     // Filter out ACL permission events
-    activities.value = (logsData.auditLogs || []).filter(
-      (log: AuditLogEntry) => log.event !== "acl_grant" && log.event !== "acl_revoke",
+    activities.value = logsData.auditLogs.filter(
+      (log) => log.event !== "acl_grant" && log.event !== "acl_revoke",
     );
 
     const usersMap = new Map<string, User>();

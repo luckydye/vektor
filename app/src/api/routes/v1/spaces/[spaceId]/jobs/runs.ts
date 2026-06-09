@@ -4,11 +4,12 @@
  * Lists job execution history (newest first). All runs are recorded —
  * manual, workflow nodes and cron-scheduled.
  *
- * Query: ?jobId=...&scheduleId=...&limit=50 (max 200)
+ * Query: ?jobId=...&scheduleId=...&limit=50&offset=0 (max 500)
  */
 import type { APIRoute } from "astro";
 import {
   jsonResponse,
+  parsePaginationParams,
   requireParam,
   requireUser,
   verifySpaceRole,
@@ -23,17 +24,11 @@ export const GET: APIRoute = (context) =>
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const url = new URL(context.request.url);
-    const jobId = url.searchParams.get("jobId") ?? undefined;
-    const scheduleId = url.searchParams.get("scheduleId") ?? undefined;
-    const limitParam = url.searchParams.get("limit");
-    const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
+    const { limit, offset } = parsePaginationParams(context.url.searchParams);
+    const jobId = context.url.searchParams.get("jobId") ?? undefined;
+    const scheduleId = context.url.searchParams.get("scheduleId") ?? undefined;
 
-    const runs = await listJobRuns(spaceId, {
-      jobId,
-      scheduleId,
-      limit: limit && Number.isFinite(limit) && limit > 0 ? limit : undefined,
-    });
+    const { runs, total } = await listJobRuns(spaceId, { jobId, scheduleId, limit, offset });
 
-    return jsonResponse({ runs: runs.map(toJobRunDto) });
+    return jsonResponse({ runs: runs.map(toJobRunDto), total, limit, offset });
   }, "Failed to list job runs");

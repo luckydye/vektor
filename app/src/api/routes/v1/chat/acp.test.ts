@@ -12,10 +12,14 @@
  *  3. An in-progress turn is reconnected to (buffered events are replayed).
  *  4. session/cancel aborts the active worker.
  *  5. Basic request-validation errors return 400 before touching the agent.
+ *  6. Full pipeline through sendWebResponse: events are not lost when res
+ *     emits "close" or when the agent completes before the reader is attached.
  */
 
+import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { AgentEvent, AgentResult } from "#agent/agent.ts";
+import { sendWebResponse } from "#api/server/adapter.ts";
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be declared before importing the handler
