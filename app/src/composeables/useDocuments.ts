@@ -17,12 +17,12 @@ export function useDocuments() {
       if (!spaceId.value) {
         throw new Error("No space ID");
       }
-      return await api.documents.get(spaceId.value);
+      return await api.documents.get(spaceId.value, { limit: 500 });
     },
     enabled: computed(() => !!spaceId.value),
   });
 
-  const documents = computed(() => data.value?.documents || []);
+  const documents = computed(() => data.value?.documents ?? []);
 
   return {
     documents,

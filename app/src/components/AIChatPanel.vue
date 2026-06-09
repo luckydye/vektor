@@ -269,12 +269,9 @@ async function ensureMentionDocs(): Promise<DocumentWithProperties[]> {
   ) {
     return mentionDocsCache.value;
   }
-  const response = await api.documents.get(currentSpaceId.value, {
-    limit: 1000,
-    offset: 0,
-  });
+  const response = await api.documents.get(currentSpaceId.value, { limit: 500 });
   mentionDocsSpaceId.value = currentSpaceId.value;
-  mentionDocsCache.value = response.documents || [];
+  mentionDocsCache.value = response.documents;
   return mentionDocsCache.value;
 }
 

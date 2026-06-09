@@ -249,7 +249,7 @@ async function load() {
   try {
     const [doc, docs, extResult, latestRun] = await Promise.all([
       api.document.get(props.spaceId, props.documentId, { draft: true }),
-      api.documents.get(props.spaceId),
+      api.documents.get(props.spaceId, { limit: 500 }),
       api.extensions.get(props.spaceId),
       api.workflows.getLatestRun(props.spaceId, props.documentId),
     ]);

@@ -846,17 +846,12 @@ export class ApiClient {
       spaceId: string,
       query?: Record<string, string | number | boolean | undefined>,
     ) => {
-      const resolvedQuery = {
-        limit: 1000,
-        offset: 0,
-        ...query,
-      };
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
         total: number;
         limit: number;
         offset: number;
-      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, resolvedQuery);
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, query);
       return response;
     },
 
