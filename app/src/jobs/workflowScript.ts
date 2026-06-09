@@ -1,4 +1,12 @@
-import { newQuickJSAsyncWASMModule, type QuickJSHandle } from "quickjs-emscripten";
+import RELEASE_ASYNC from "@jitl/quickjs-wasmfile-release-asyncify";
+// @ts-expect-error -- Bun bundles .wasm imports as assets in --compile binaries
+import wasmPath from "@jitl/quickjs-wasmfile-release-asyncify/wasm";
+import {
+  newQuickJSAsyncWASMModuleFromVariant,
+  newVariant,
+  type QuickJSAsyncContext,
+  type QuickJSHandle,
+} from "quickjs-emscripten";
 import { getExtension, getExtensionPackage } from "../db/extensions.ts";
 import { otelMetrics, withSpan } from "../observability/otel.ts";
 import {
@@ -12,6 +20,36 @@ import {
 } from "./runStore.ts";
 import { runJob } from "./scheduler.ts";
 import { resolveJobSandbox } from "./sandbox.ts";
+
+/** Marshal a plain JS value into a QuickJS handle without using evalCode. */
+function marshalToVM(vm: QuickJSAsyncContext, value: unknown): QuickJSHandle {
+  if (value === null || value === undefined) return vm.newObject(); // return {} for null/undefined
+  if (typeof value === "boolean") {
+    // newNumber(0/1) avoids static-lifetime handle ownership issues with vm.true/vm.false
+    return vm.newNumber(value ? 1 : 0);
+  }
+  if (typeof value === "number") return vm.newNumber(value);
+  if (typeof value === "string") return vm.newString(value);
+  if (Array.isArray(value)) {
+    const arr = vm.newArray();
+    value.forEach((item, i) => {
+      const h = marshalToVM(vm, item);
+      vm.setProp(arr, i, h);
+      h.dispose();
+    });
+    return arr;
+  }
+  if (typeof value === "object") {
+    const obj = vm.newObject();
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const h = marshalToVM(vm, v);
+      vm.setProp(obj, k, h);
+      h.dispose();
+    }
+    return obj;
+  }
+  return vm.newString(String(value));
+}
 
 const meter = otelMetrics.getMeter("wiki.workflows");
 const workflowRunsCounter = meter.createCounter("wiki_workflow_runs_total");
@@ -68,7 +106,8 @@ export async function executeWorkflowScript(
       setNodeStatus(runId, "_script", { status: "running", inputs: {}, startedAt: new Date() });
 
       try {
-        const QuickJS = await newQuickJSAsyncWASMModule();
+        const variant = newVariant(RELEASE_ASYNC, { wasmLocation: wasmPath });
+        const QuickJS = await newQuickJSAsyncWASMModuleFromVariant(variant);
         const vm = QuickJS.newContext();
 
         try {
@@ -81,15 +120,10 @@ export async function executeWorkflowScript(
           vm.setProp(vm.global, "log", logFn);
           logFn.dispose();
 
-          // Expose input object
-          const inputJson = JSON.stringify(options?.runtimeInputs ?? {});
-          const inputResult = vm.evalCode(`(${inputJson})`);
-          if (!inputResult.error) {
-            vm.setProp(vm.global, "input", inputResult.value);
-            inputResult.value.dispose();
-          } else {
-            inputResult.error.dispose();
-          }
+          // Expose input object — use handle APIs, never vm.evalCode on async context
+          const inputHandle = marshalToVM(vm, options?.runtimeInputs ?? {});
+          vm.setProp(vm.global, "input", inputHandle);
+          inputHandle.dispose();
 
           // Expose runJob(extensionId, jobId, inputs?)
           const runJobFn = vm.newAsyncifiedFunction("runJob", async (...handles: QuickJSHandle[]) => {
@@ -153,15 +187,8 @@ export async function executeWorkflowScript(
                 completedAt: new Date(),
               });
 
-              // Marshal outputs back to QuickJS
-              const json = JSON.stringify(outputs ?? {});
-              const resultHandle = vm.evalCode(`(${json})`);
-              if (resultHandle.error) {
-                resultHandle.error.dispose();
-                return vm.newObject();
-              }
-              // ownership transfers to caller (QuickJS VM)
-              return resultHandle.value;
+              // Marshal outputs back to QuickJS — never use vm.evalCode on async context
+              return marshalToVM(vm, outputs ?? {});
             } catch (err) {
               const error = err instanceof Error ? err.message : String(err);
               setNodeStatus(runId, stepId, {
@@ -176,18 +203,18 @@ export async function executeWorkflowScript(
           vm.setProp(vm.global, "runJob", runJobFn);
           runJobFn.dispose();
 
-          // Wrap code so top-level await works
-          const wrapped = `(async () => { ${code} })()`;
+          // evalCodeAsync on an async context resolves any Promise the code
+          // returns, so a plain async IIFE is all we need.
+          const wrapped = `(async () => {\n${code}\n})()`;
           const evalResult = await vm.evalCodeAsync(wrapped);
 
           if (evalResult.error) {
-            const errDump = vm.dump(evalResult.error);
+            const errDump = vm.dump(evalResult.error) as Record<string, unknown>;
             evalResult.error.dispose();
-            const msg =
-              errDump && typeof errDump === "object"
-                ? String((errDump as Record<string, unknown>).message ?? JSON.stringify(errDump))
-                : String(errDump);
-            throw new Error(msg);
+            const name = String(errDump?.name ?? "Error");
+            const message = String(errDump?.message ?? JSON.stringify(errDump));
+            const location = String(errDump?.stack ?? "");
+            throw new Error(`${name}: ${message}${location ? `\n${location}` : ""}`);
           }
 
           const outputRaw = vm.dump(evalResult.value);

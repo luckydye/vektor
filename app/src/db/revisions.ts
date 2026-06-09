@@ -82,6 +82,7 @@ export async function createRevision(
     .limit(1)
     .get();
 
+  // Identical content — return existing revision as-is.
   if (
     lastRevision &&
     lastRevision.checksum === checksum &&
@@ -100,6 +101,43 @@ export async function createRevision(
       message: lastRevision.message,
       createdAt: new Date(lastRevision.createdAt),
       createdBy: lastRevision.createdBy,
+    };
+  }
+
+  const OVERWRITE_WINDOW_MS = 5 * 60 * 60 * 1000;
+  const lastIsRecent =
+    lastRevision &&
+    Date.now() - new Date(lastRevision.createdAt).getTime() < OVERWRITE_WINDOW_MS;
+
+  // Overwrite the last revision in place if it's a regular save within the 5-hour window.
+  if (lastIsRecent && status === null && (lastRevision!.status ?? null) === null) {
+    const compressed = compressHtml(html);
+    await db
+      .update(revision)
+      .set({ snapshot: compressed, checksum })
+      .where(eq(revision.id, lastRevision!.id));
+
+    await createAuditLog(db, {
+      spaceId,
+      docId: documentId,
+      revisionId: lastRevision!.rev,
+      userId,
+      event: "save",
+      details: { message: options.message || "Revision updated" },
+    });
+
+    return {
+      id: lastRevision!.id,
+      documentId: lastRevision!.documentId,
+      rev: lastRevision!.rev,
+      slug: lastRevision!.slug,
+      snapshot: compressed,
+      checksum,
+      parentRev: lastRevision!.parentRev,
+      status: null,
+      message: lastRevision!.message,
+      createdAt: new Date(lastRevision!.createdAt),
+      createdBy: lastRevision!.createdBy,
     };
   }
 

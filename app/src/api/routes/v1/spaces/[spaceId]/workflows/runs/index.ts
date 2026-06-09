@@ -10,7 +10,6 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocument } from "#db/documents.ts";
-import { getPublishedContent } from "#db/revisions.ts";
 import {
   createRun,
   ensureSpaceRecovered,
@@ -136,10 +135,8 @@ export const POST: APIRoute = (context) =>
         return badRequestResponse("Document type must be 'workflow'");
       }
 
-      const code =
-        doc.publishedRev !== null
-          ? ((await getPublishedContent(spaceId, documentId)) ?? doc.content)
-          : doc.content;
+      // Always run the current draft — workflows are scripts, not versioned publications.
+      const code = doc.content;
 
       if (!code?.trim()) {
         return badRequestResponse("Workflow script is empty");

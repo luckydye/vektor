@@ -5,7 +5,10 @@
   "dependencies": {
     "@astrojs/node": "^9.5.0",
     "@astrojs/vue": "^5.1.1",
+    "@codemirror/commands": "^6.10.3",
     "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/view": "^6.43.1",
+    "@jitl/quickjs-wasmfile-release-asyncify": "^0.32.0",
     "@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "0.205.0",

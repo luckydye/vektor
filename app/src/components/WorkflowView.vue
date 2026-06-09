@@ -335,47 +335,29 @@ const statusBadgeClass: Record<string, string> = {
         </div>
     </div>
 
-    <!-- <p v-if="selectedRunFileName" class="text-sm text-neutral-500">{{ selectedRunFileName }}</p> -->
-
     <!-- Pipeline progress -->
-    <div v-if="pipelineNodes.length > 0 && selectedRunDetail?.status !== 'completed'" class="py-2 px-6">
-      <!-- Track row: circles + lines only -->
-      <div class="flex items-center">
-        <template v-for="([nodeId, node], i) in pipelineNodes" :key="nodeId">
-          <div v-if="i > 0" class="h-px flex-1 min-w-6 transition-colors duration-500" :class="pipelineNodes[i-1][1].status === 'completed' ? 'bg-emerald-300' : 'bg-neutral-200'" />
-          <div
-            class="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center transition-all duration-300 ring-4"
-            :class="{
-              'bg-neutral-100 ring-neutral-100 text-neutral-400': node.status === 'pending',
-              'bg-blue-500 ring-blue-100 text-white': node.status === 'running',
-              'bg-emerald-500 ring-emerald-100 text-white': node.status === 'completed',
-              'bg-red-500 ring-red-100 text-white': node.status === 'failed',
-              'bg-neutral-200 ring-neutral-100 text-neutral-400': node.status === 'cancelled' || node.status === 'skipped',
-            }"
-          >
-            <div v-if="node.status === 'running'" class="svg-icon w-4 h-4 animate-spin" v-html="spinnerQuarterIcon" />
-            <div v-else-if="node.status === 'completed'" class="svg-icon w-4 h-4" v-html="checkBoldIcon" />
-            <div v-else-if="node.status === 'failed'" class="svg-icon w-4 h-4" v-html="closeXIcon" />
-            <span v-else class="w-2 h-2 rounded-full bg-current opacity-40" />
-          </div>
-        </template>
-      </div>
-      <!-- Labels row: mirrors the track structure -->
-      <div class="flex mt-2">
-        <template v-for="([nodeId, node], i) in pipelineNodes" :key="nodeId">
-          <div v-if="i > 0" class="flex-1 min-w-6" />
-          <div class="w-9 flex-shrink-0 flex flex-col items-center">
-            <span class="text-[10px] text-neutral-400 leading-tight text-center whitespace-pre">
-              <span class="block">Step {{ i + 1 }}</span>
-              <span v-if="node.inputs?._jobId" class="block text-neutral-400">{{ node.inputs._jobId }}</span>
-            </span>
-          </div>
-        </template>
-      </div>
+    
+    <!-- Logs (expandable) -->
+    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
+        <button
+            class="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
+            @click="logsExpanded = !logsExpanded"
+        >
+        <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
+            Logs
+        </button>
+        <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[900px]">
+            <div class="font-mono text-[11px] space-y-0.5">
+                <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
+                <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
+                <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
+                </div>
+            </div>
+        </div>
     </div>
-
+    
     <!-- No runs yet -->
-    <div v-else-if="!selectedRunDetail" class="text-sm text-neutral-400 py-8 text-center">
+    <div v-if="!selectedRunDetail" class="text-sm text-neutral-400 py-8 text-center">
       No runs yet. Click "Run Workflow" to execute.
     </div>
 
@@ -452,31 +434,6 @@ const statusBadgeClass: Record<string, string> = {
         </div>
       </details>
 
-    </div>
-
-    <!-- Failure error -->
-    <div v-if="runFailureError" class="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4">
-      <p class="text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-wide mb-1">{{ runFailureError.nodeId }}</p>
-      <p class="text-sm text-red-700 dark:text-red-300 font-mono break-all">{{ runFailureError.error }}</p>
-    </div>
-
-    <!-- Logs (expandable) -->
-    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col">
-      <button
-        class="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
-        @click="logsExpanded = !logsExpanded"
-      >
-        <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
-        Logs
-      </button>
-      <div v-if="logsExpanded" class="mt-2 w-full rounded-lg bg-neutral-950 dark:bg-neutral-50 p-4 overflow-x-auto">
-        <div class="font-mono text-[11px] space-y-0.5">
-          <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
-            <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
-            <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Run history -->

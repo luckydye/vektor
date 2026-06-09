@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
+import { keymap } from "@codemirror/view";
 import { EditorView, basicSetup } from "codemirror";
 import { onMounted, onUnmounted, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -57,6 +59,7 @@ onMounted(async () => {
     extensions: [
       basicSetup,
       javascript(),
+      keymap.of([indentWithTab]),
       EditorView.theme({
         "&": { height: "100%", fontSize: "13px" },
         ".cm-scroller": { overflow: "auto", fontFamily: "monospace" },
