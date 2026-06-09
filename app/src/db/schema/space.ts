@@ -267,6 +267,26 @@ export const jobRun = sqliteTable("job_run", {
 export type JobRun = typeof jobRun.$inferSelect;
 export type JobRunInsert = typeof jobRun.$inferInsert;
 
+export const workflowRun = sqliteTable("workflow_run", {
+  /** Run id from createId("run") */
+  id: text("id").primaryKey(),
+  /** Workflow document this run belongs to */
+  documentId: text("document_id").notNull(),
+  /** NodeStatus: "pending" | "running" | "completed" | "failed" | "cancelled" | "skipped" */
+  status: text("status").notNull(),
+  initiatedByUserId: text("initiated_by_user_id"),
+  sourceExtensionId: text("source_extension_id"),
+  /** JSON: sanitized Record<string, unknown> of runtime inputs */
+  runtimeInputs: text("runtime_inputs").notNull(),
+  /** JSON: sanitized Record<nodeId, PersistedNodeState> */
+  nodes: text("nodes").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export type WorkflowRunRow = typeof workflowRun.$inferSelect;
+export type WorkflowRunInsert = typeof workflowRun.$inferInsert;
+
 export const aiChatSession = sqliteTable("ai_chat_session", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),

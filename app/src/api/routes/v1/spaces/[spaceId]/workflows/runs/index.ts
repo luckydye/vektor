@@ -12,7 +12,13 @@ import {
 import { getDocument } from "#db/documents.ts";
 import { getExtension } from "#db/extensions.ts";
 import { getPublishedContent } from "#db/revisions.ts";
-import { createRun, getRun, latestRunByDoc, runs } from "#jobs/runStore.ts";
+import {
+  createRun,
+  ensureSpaceRecovered,
+  getLatestRunIdForDoc,
+  getRunForRead,
+  listRuns,
+} from "#jobs/runStore.ts";
 import { executeWorkflow, type WorkflowDefinition } from "#jobs/workflow.ts";
 import { appLogger } from "#observability/logger.ts";
 import { activeTraceHeaders } from "#observability/otel.ts";
@@ -48,20 +54,20 @@ export const GET: APIRoute = (context) =>
     const documentId = context.url.searchParams.get("documentId");
     const sourceExtensionId = context.url.searchParams.get("sourceExtensionId");
 
+    await ensureSpaceRecovered(spaceId);
+
     if (documentId) {
-      const runId = latestRunByDoc.get(documentId);
+      const runId = await getLatestRunIdForDoc(spaceId, documentId);
       if (!runId) return notFoundResponse("Run");
-      const run = runs.get(runId);
+      const run = await getRunForRead(spaceId, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
       if (!(await canReadDocument(run.documentId))) return notFoundResponse("Run");
       return jsonResponse({ runId, status: run.status });
     }
 
     // List all runs for this space, newest first
-    const spaceRuns = [...runs.entries()].filter(
-      ([, run]) =>
-        run.spaceId === spaceId &&
-        (!sourceExtensionId || run.sourceExtensionId === sourceExtensionId),
+    const spaceRuns = (await listRuns(spaceId, { sourceExtensionId })).map(
+      ({ runId, run }) => [runId, run] as const,
     );
     const readableRuns: typeof spaceRuns = [];
     for (const entry of spaceRuns) {
@@ -164,7 +170,8 @@ export const POST: APIRoute = (context) =>
       // Build pre-seeded outputs when restarting from a specific node
       let preSeeded: Map<string, Record<string, unknown>> | undefined;
       if (fromRunId && fromNodeId) {
-        const prevRun = getRun(fromRunId);
+        await ensureSpaceRecovered(spaceId);
+        const prevRun = await getRunForRead(spaceId, fromRunId);
         if (!prevRun) return notFoundResponse("Previous run");
         if (prevRun.spaceId !== spaceId || prevRun.documentId !== documentId) {
           return badRequestResponse("Previous run does not belong to this workflow");

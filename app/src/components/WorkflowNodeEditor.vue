@@ -6,6 +6,7 @@ import type {
   WorkflowRunStatus,
 } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 import {
   buildTransform,
   createViewportControls,
@@ -98,7 +99,7 @@ const uploadErrors = reactive<Record<string, string>>({});
 
 let viewportControls: ViewportControls | null = null;
 let resizeObserver: ResizeObserver | null = null;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let unsubscribeRuns: (() => void) | null = null;
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
 let dpr = window.devicePixelRatio || 1;
 
@@ -956,11 +957,14 @@ onMounted(async () => {
   window.addEventListener("keydown", handleKeydown);
 
   await load();
-  pollTimer = setInterval(() => {
-    if (runStatus.value?.status === "running" || runStatus.value?.status === "pending") {
+  // Refresh from realtime run events instead of polling.
+  unsubscribeRuns = api.subscribeToTopics(
+    props.spaceId,
+    [realtimeTopics.workflowRuns],
+    () => {
       void refreshRunStatus();
-    }
-  }, 2000);
+    },
+  );
 });
 
 onUnmounted(() => {
@@ -970,7 +974,7 @@ onUnmounted(() => {
   window.removeEventListener("pointerup", handlePointerUp);
   window.removeEventListener("pointercancel", handlePointerUp);
   window.removeEventListener("keydown", handleKeydown);
-  if (pollTimer) clearInterval(pollTimer);
+  unsubscribeRuns?.();
   if (savedTimer) clearTimeout(savedTimer);
 });
 </script>

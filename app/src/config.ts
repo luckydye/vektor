@@ -68,8 +68,6 @@ export function config() {
       /** Comma-separated allowlist of OAuth group claims the IdP may assign. */
       OAUTH_ALLOWED_GROUPS: process.env.OAUTH_ALLOWED_GROUPS,
 
-      WORKFLOW_RUN_STORE_FILE: process.env.VEKTOR_WORKFLOW_RUN_STORE_FILE,
-
       /** CLI connection settings (vektor document/workflow commands). */
       CLI_HOST: process.env.WIKI_HOST,
       CLI_SPACE_ID: process.env.WIKI_SPACE_ID,

@@ -117,6 +117,19 @@ export async function prepareSpaceDb(spaceId: string) {
     sql.raw("CREATE INDEX IF NOT EXISTS job_run_queued_at_idx ON job_run (queued_at)"),
   );
 
+  const workflowRunSQL = generateCreateTableSQL(spaceSchema.workflowRun);
+  await spaceDb.run(sql.raw(workflowRunSQL));
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS workflow_run_document_created_idx ON workflow_run (document_id, created_at)",
+    ),
+  );
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS workflow_run_created_at_idx ON workflow_run (created_at)",
+    ),
+  );
+
   const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
   await spaceDb.run(sql.raw(spaceSecretSQL));
   const oauthIntegrationSQL = generateCreateTableSQL(spaceSchema.oauthIntegration);

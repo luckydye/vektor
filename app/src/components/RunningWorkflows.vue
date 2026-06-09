@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 
 type WorkflowRun = {
@@ -25,7 +26,7 @@ const props = defineProps<{
 
 const runs = ref<WorkflowRun[]>([]);
 const now = ref(Date.now());
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let unsubscribe: (() => void) | null = null;
 let tickInterval: ReturnType<typeof setInterval> | null = null;
 
 async function fetchRuns() {
@@ -37,14 +38,22 @@ async function fetchRuns() {
 
 onMounted(() => {
   fetchRuns();
-  pollInterval = setInterval(fetchRuns, 3000);
+  // Push updates over the realtime channel instead of polling.
+  unsubscribe = api.subscribeToTopics(
+    props.spaceId,
+    [realtimeTopics.workflowRuns],
+    () => {
+      void fetchRuns();
+    },
+  );
+  // Elapsed-time display still ticks locally.
   tickInterval = setInterval(() => {
     now.value = Date.now();
   }, 1000);
 });
 
 onUnmounted(() => {
-  if (pollInterval !== null) clearInterval(pollInterval);
+  unsubscribe?.();
   if (tickInterval !== null) clearInterval(tickInterval);
 });
 

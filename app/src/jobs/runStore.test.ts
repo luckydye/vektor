@@ -1,37 +1,35 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   appendNodeLog,
   clearRunStoreForTests,
   createRun,
+  ensureSpaceRecovered,
+  finalizeRun,
+  flushRunStoreForTests,
+  getLatestRunIdForDoc,
   getRun,
-  latestRunByDoc,
+  getRunForRead,
+  listRuns,
   RUN_STORE_RECOVERY_ERROR,
-  reloadRunStoreFromDisk,
+  resetRunStoreMemoryForTests,
   setNodeStatus,
   setRunStatus,
-  setRunStoreFilePathForTests,
 } from "./runStore.ts";
 
-let testDir = "";
+const SPACE_ID = "space_run_store_test";
 
 describe("runStore", () => {
-  beforeEach(() => {
-    testDir = mkdtempSync(join(tmpdir(), "vektor-run-store-"));
-    setRunStoreFilePathForTests(join(testDir, "runs.json"));
-    clearRunStoreForTests();
+  beforeEach(async () => {
+    await clearRunStoreForTests(SPACE_ID);
   });
 
-  afterEach(() => {
-    clearRunStoreForTests();
-    rmSync(testDir, { recursive: true, force: true });
+  afterEach(async () => {
+    await clearRunStoreForTests(SPACE_ID);
   });
 
-  it("persists workflow runs and recovers interrupted nodes after reload", () => {
+  it("persists runs to the DB and recovers interrupted nodes after a restart", async () => {
     const runId = createRun(
-      "space_1",
+      SPACE_ID,
       "doc_1",
       ["node1", "node2", "node3"],
       "user_1",
@@ -53,14 +51,19 @@ describe("runStore", () => {
       startedAt,
     });
 
-    reloadRunStoreFromDisk();
+    // Drain pending writes, then simulate a process restart: memory is gone
+    // while the DB row is left in the "running" state.
+    await flushRunStoreForTests();
+    resetRunStoreMemoryForTests();
 
-    expect(latestRunByDoc.get("doc_1")).toBe(runId);
+    await ensureSpaceRecovered(SPACE_ID);
 
-    const run = getRun(runId);
+    expect(await getLatestRunIdForDoc(SPACE_ID, "doc_1")).toBe(runId);
+
+    const run = await getRunForRead(SPACE_ID, runId);
     expect(run).toBeDefined();
     expect(run?.status).toBe("failed");
-    expect(run?.spaceId).toBe("space_1");
+    expect(run?.spaceId).toBe(SPACE_ID);
     expect(run?.initiatedByUserId).toBe("user_1");
     expect(run?.sourceExtensionId).toBe("empco-linter");
 
@@ -78,5 +81,25 @@ describe("runStore", () => {
     const node3 = run?.nodes.get("node3");
     expect(node3?.status).toBe("cancelled");
     expect(node3?.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("evicts completed runs from memory but keeps them as durable history", async () => {
+    const runId = createRun(SPACE_ID, "doc_2", ["node1"]);
+    setRunStatus(runId, "running");
+    setNodeStatus(runId, "node1", { status: "completed", outputs: { ok: true } });
+    finalizeRun(runId);
+
+    // The terminal run is dropped from the active in-memory map…
+    expect(getRun(runId)).toBeUndefined();
+
+    await flushRunStoreForTests();
+
+    // …but remains readable from the DB, and is not pruned from history.
+    const fromDb = await getRunForRead(SPACE_ID, runId);
+    expect(fromDb?.status).toBe("completed");
+    expect(fromDb?.nodes.get("node1")?.status).toBe("completed");
+
+    const all = await listRuns(SPACE_ID);
+    expect(all.some((entry) => entry.runId === runId)).toBe(true);
   });
 });

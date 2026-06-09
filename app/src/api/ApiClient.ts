@@ -2101,6 +2101,14 @@ export class ApiClient {
     return this.subscribeToTopics(spaceId, [realtimeTopics.documentTree], callback);
   }
 
+  /** Fires whenever any workflow run in the space changes (created/progress/terminal). */
+  subscribeToWorkflowRuns(
+    spaceId: string,
+    callback: (event: RealtimeEventMessage) => void,
+  ): () => void {
+    return this.subscribeToTopics(spaceId, [realtimeTopics.workflowRuns], callback);
+  }
+
   joinYjsRoom(spaceId: string, documentId: string, ydoc: YDoc): () => void {
     const connection = this.getRealtimeConnection(spaceId);
 

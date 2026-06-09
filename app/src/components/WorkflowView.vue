@@ -12,6 +12,7 @@ import {
 } from "~/src/assets/icons.ts";
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 import DataTable from "./DataTable.vue";
 
 const props = defineProps<{
@@ -46,7 +47,23 @@ const cancelling = ref(false);
 const logsExpanded = ref(false);
 const showInputsDialog = ref(false);
 const inputValues = ref<Record<string, string>>({});
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let unsubscribeRuns: (() => void) | null = null;
+let unsubscribeRun: (() => void) | null = null;
+
+// Follow the selected run with a per-run realtime subscription.
+watch(selectedRunId, (runId) => {
+  unsubscribeRun?.();
+  unsubscribeRun = null;
+  if (runId) {
+    unsubscribeRun = api.subscribeToTopics(
+      props.spaceId,
+      [realtimeTopics.workflowRun(runId)],
+      () => {
+        void fetchSelectedRunDetail();
+      },
+    );
+  }
+});
 
 async function fetchRuns() {
   const all = await api.workflows.listRuns(props.spaceId);
@@ -182,14 +199,20 @@ onMounted(async () => {
       sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
   }
 
-  pollInterval = setInterval(async () => {
-    await fetchRuns();
-    if (selectedRunId.value) await fetchSelectedRunDetail();
-  }, 2000);
+  // Any run change in the space refreshes the list (and the open run detail).
+  unsubscribeRuns = api.subscribeToTopics(
+    props.spaceId,
+    [realtimeTopics.workflowRuns],
+    () => {
+      void fetchRuns();
+      if (selectedRunId.value) void fetchSelectedRunDetail();
+    },
+  );
 });
 
 onUnmounted(() => {
-  if (pollInterval !== null) clearInterval(pollInterval);
+  unsubscribeRuns?.();
+  unsubscribeRun?.();
 });
 
 // Pipeline nodes — order is determined by the API (topological sort)
@@ -361,46 +384,50 @@ const statusBadgeClass: Record<string, string> = {
 
   <div class="px-xs lg:px-xl space-y-8 mx-auto">
 
-    <!-- Title -->
-    <h2 v-if="selectedRunTitle" class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle }}</h2>
-
-    <!-- Header -->
-    <div class="flex items-center justify-between gap-4">
-      <div v-if="selectedRunDetail" class="flex items-center gap-3">
-        <span
-          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium capitalize"
-          :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
-        >
-        <div v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'" class="svg-icon w-3 h-3 animate-spin" v-html="spinnerQuarterIcon" />
-        {{ selectedRunDetail.status }}
-      </span>
-      <span v-if="selectedRun" class="text-xs text-neutral-400">
-        {{ formatDate(selectedRun.createdAt) }}
-      </span>
-      </div>
-
-      <div class="flex items-center gap-2 ml-auto">
-        <button
-          v-if="isActiveRun"
-          class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          :disabled="cancelling"
-          @click="cancelRun"
-        >
-          <div v-if="cancelling" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
-          <div v-else class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
-          {{ cancelling ? "Cancelling…" : "Cancel" }}
-        </button>
-        <button
-          v-else
-          class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          :disabled="starting"
-          @click="openRunDialog"
-        >
-          <div v-if="starting" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
-          <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
-          {{ starting ? "Starting…" : "Run Workflow" }}
-        </button>
-      </div>
+    <div class="flex justify-between gap-4">
+        <!-- Title -->
+        <h2 v-if="selectedRunTitle" class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle }}</h2>
+    
+        <!-- Header -->
+        <div class="flex items-center justify-between gap-12">
+            <div class="flex items-center gap-3">
+                <span v-if="selectedRun" class="text-xs text-neutral-400">
+                  {{ formatDate(selectedRun.createdAt) }}
+                </span>
+                <div v-if="selectedRunDetail" class="flex items-center gap-3">
+                    <span
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium capitalize"
+                        :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
+                        >
+                        <div v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'" class="svg-icon w-3 h-3 animate-spin" v-html="spinnerQuarterIcon" />
+                        {{ selectedRunDetail.status }}
+                    </span>
+                </div>
+            </div>
+    
+          <div class="flex items-center gap-2 ml-auto">
+            <button
+              v-if="isActiveRun"
+              class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              :disabled="cancelling"
+              @click="cancelRun"
+            >
+              <div v-if="cancelling" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
+              <div v-else class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
+              {{ cancelling ? "Cancelling…" : "Cancel" }}
+            </button>
+            <button
+              v-else
+              class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              :disabled="starting"
+              @click="openRunDialog"
+            >
+              <div v-if="starting" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
+              <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
+              {{ starting ? "Starting…" : "Run Workflow" }}
+            </button>
+          </div>
+        </div>
     </div>
 
     <!-- <p v-if="selectedRunFileName" class="text-sm text-neutral-500">{{ selectedRunFileName }}</p> -->
@@ -529,7 +556,7 @@ const statusBadgeClass: Record<string, string> = {
     </div>
 
     <!-- Logs (expandable) -->
-    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col items-end px-4">
+    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col">
       <button
         class="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
         @click="logsExpanded = !logsExpanded"

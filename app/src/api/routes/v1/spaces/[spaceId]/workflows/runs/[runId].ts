@@ -10,7 +10,7 @@ import {
 } from "#db/api.ts";
 import { getDocument } from "#db/documents.ts";
 import { getPublishedContent } from "#db/revisions.ts";
-import { cancelRun, getRun } from "#jobs/runStore.ts";
+import { cancelRun, ensureSpaceRecovered, getRunForRead } from "#jobs/runStore.ts";
 import type { WorkflowDefinition } from "#jobs/workflow.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
@@ -75,7 +75,8 @@ export const GET: APIRoute = (context) =>
 
     await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
-    const run = getRun(runId);
+    await ensureSpaceRecovered(spaceId);
+    const run = await getRunForRead(spaceId, runId);
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
 
     const doc = await getDocument(spaceId, run.documentId);
@@ -139,7 +140,8 @@ function cancelWorkflowRun(context: Parameters<APIRoute>[0]) {
       const spaceId = requireParam(context.params, "spaceId");
       const runId = requireParam(context.params, "runId");
       await verifySpaceRole(spaceId, user.id, "editor");
-      const run = getRun(runId);
+      await ensureSpaceRecovered(spaceId);
+      const run = await getRunForRead(spaceId, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
       cancelRun(runId);
       return jsonResponse({ ok: true });

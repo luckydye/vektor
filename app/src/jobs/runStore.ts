@@ -1,15 +1,14 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { config } from "../config.ts";
+import { desc, eq, inArray } from "drizzle-orm";
+import { getSpaceDb } from "../db/db.ts";
 import { createId } from "../db/ids.ts";
+import {
+  type WorkflowRunInsert,
+  type WorkflowRunRow,
+  workflowRun,
+} from "../db/schema/space.ts";
+import { sendSyncEvent } from "../db/ws.ts";
+import { appLogger } from "../observability/logger.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 export type NodeStatus =
   | "pending"
@@ -46,18 +45,18 @@ type PersistedNodeState = Omit<NodeState, "startedAt" | "completedAt"> & {
   completedAt: string | null;
 };
 
-type PersistedRunState = Omit<RunState, "nodes" | "abort" | "createdAt"> & {
-  createdAt: string | null;
-  nodes: Record<string, PersistedNodeState>;
-};
-
-type PersistedRunStore = {
-  runs: Record<string, PersistedRunState>;
-  latestRunByDoc: Record<string, string>;
-};
-
-export const runs = new Map<string, RunState>();
-export const latestRunByDoc = new Map<string, string>();
+/**
+ * Workflow runs are durably stored in the per-space SQLite `workflow_run` table —
+ * that is the source of truth and the reason run history survives a restart.
+ *
+ * Memory holds only the *active* runs (status pending/running): the executor mutates
+ * their node state synchronously many times per run and each carries a non-serializable
+ * `abort` handle. The instant a run reaches a terminal status it is written to the DB
+ * and evicted from memory; all history reads go straight to the DB. There is no
+ * in-memory history cache and no full hydration on boot — interrupted runs are repaired
+ * lazily per space via `ensureSpaceRecovered`.
+ */
+export const activeRuns = new Map<string, RunState>();
 
 export const RUN_STORE_RECOVERY_ERROR =
   "Workflow process restarted before this run completed";
@@ -66,15 +65,7 @@ const MAX_STRING_CHARS = 2_000;
 const MAX_ARRAY_ITEMS = 20;
 const MAX_OBJECT_ENTRIES = 20;
 const MAX_LOG_ENTRIES = 200;
-const MAX_RUNS = 20;
 const REDACTED_VALUE = "[redacted]";
-
-let runStoreFilePath =
-  config().WORKFLOW_RUN_STORE_FILE ?? join(tmpdir(), "vektor-workflow-runs.json");
-
-function ensureRunStoreDirectory(): void {
-  mkdirSync(dirname(runStoreFilePath), { recursive: true });
-}
 
 function serializeDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -207,69 +198,52 @@ function normalizeRunState(run: RunState): RunState {
   return run;
 }
 
-function pruneCompletedRuns(): void {
-  const retainedRunIds = new Set(
-    [...runs.entries()]
-      .filter(([, run]) => run.status === "pending" || run.status === "running")
-      .map(([runId]) => runId),
+// ---------------------------------------------------------------------------
+// Serialization to/from the workflow_run row
+// ---------------------------------------------------------------------------
+
+function serializeNodes(run: RunState): Record<string, PersistedNodeState> {
+  return Object.fromEntries(
+    [...run.nodes.entries()].map(([nodeId, node]) => [
+      nodeId,
+      {
+        ...sanitizeNodeState(node),
+        startedAt: serializeDate(node.startedAt),
+        completedAt: serializeDate(node.completedAt),
+      },
+    ]),
   );
-  const completedRuns = [...runs.entries()]
-    .filter(([, run]) => run.status !== "pending" && run.status !== "running")
-    .sort(([, a], [, b]) => b.createdAt.getTime() - a.createdAt.getTime());
-
-  for (const [runId] of completedRuns.slice(0, MAX_RUNS)) {
-    retainedRunIds.add(runId);
-  }
-
-  for (const [runId] of runs) {
-    if (!retainedRunIds.has(runId)) {
-      runs.delete(runId);
-    }
-  }
-
-  for (const [documentId, runId] of latestRunByDoc) {
-    if (!runs.has(runId)) {
-      latestRunByDoc.delete(documentId);
-    }
-  }
 }
 
-function serializeRun(run: RunState): PersistedRunState {
+function serializeRunToRow(runId: string, run: RunState): WorkflowRunInsert {
   return {
-    status: run.status,
-    spaceId: run.spaceId,
+    id: runId,
     documentId: run.documentId,
+    status: run.status,
     initiatedByUserId: run.initiatedByUserId,
     sourceExtensionId: run.sourceExtensionId,
-    runtimeInputs: run.runtimeInputs,
-    createdAt: serializeDate(run.createdAt),
-    nodes: Object.fromEntries(
-      [...run.nodes.entries()].map(([nodeId, node]) => [
-        nodeId,
-        {
-          ...sanitizeNodeState(node),
-          startedAt: serializeDate(node.startedAt),
-          completedAt: serializeDate(node.completedAt),
-        },
-      ]),
-    ),
+    runtimeInputs: JSON.stringify(summarizeRecord(run.runtimeInputs) ?? {}),
+    nodes: JSON.stringify(serializeNodes(run)),
+    createdAt: run.createdAt,
+    updatedAt: new Date(),
   };
 }
 
-function deserializeRun(serialized: PersistedRunState): RunState {
+function deserializeRowToRun(row: WorkflowRunRow, spaceId: string): RunState {
+  const nodesObj = JSON.parse(row.nodes) as Record<string, PersistedNodeState>;
   return normalizeRunState({
-    status: serialized.status,
-    spaceId: serialized.spaceId,
-    documentId: serialized.documentId,
-    initiatedByUserId: serialized.initiatedByUserId,
-    sourceExtensionId: serialized.sourceExtensionId ?? null,
-    runtimeInputs: serialized.runtimeInputs ?? {},
-    createdAt: deserializeDate(serialized.createdAt) ?? new Date(0),
+    status: row.status as NodeStatus,
+    spaceId,
+    documentId: row.documentId,
+    initiatedByUserId: row.initiatedByUserId,
+    sourceExtensionId: row.sourceExtensionId,
+    runtimeInputs: JSON.parse(row.runtimeInputs) as Record<string, unknown>,
+    createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
     nodes: new Map(
-      Object.entries(serialized.nodes).map(([nodeId, node]) => [
+      Object.entries(nodesObj).map(([nodeId, node]) => [
         nodeId,
         {
-          ...sanitizeNodeState(node),
+          ...sanitizeNodeState(node as unknown as NodeState),
           startedAt: deserializeDate(node.startedAt),
           completedAt: deserializeDate(node.completedAt),
         },
@@ -278,103 +252,132 @@ function deserializeRun(serialized: PersistedRunState): RunState {
   });
 }
 
-function persistRunStoreSync(): void {
-  pruneCompletedRuns();
-  ensureRunStoreDirectory();
-  const tempFilePath = `${runStoreFilePath}.${process.pid}.tmp`;
-  const serialized: PersistedRunStore = {
-    runs: Object.fromEntries(
-      [...runs.entries()].map(([runId, run]) => [runId, serializeRun(run)]),
-    ),
-    latestRunByDoc: Object.fromEntries(latestRunByDoc),
-  };
-  writeFileSync(tempFilePath, JSON.stringify(serialized), "utf-8");
-  renameSync(tempFilePath, runStoreFilePath);
+// ---------------------------------------------------------------------------
+// Persistence — fire-and-forget upserts of the whole run snapshot
+// ---------------------------------------------------------------------------
+
+const pendingWrites = new Set<Promise<void>>();
+
+function trackWrite(write: Promise<void>): void {
+  pendingWrites.add(write);
+  void write.finally(() => pendingWrites.delete(write));
+}
+
+async function upsertRunToDb(spaceId: string, row: WorkflowRunInsert): Promise<void> {
+  try {
+    const db = await getSpaceDb(spaceId);
+    await db
+      .insert(workflowRun)
+      .values(row)
+      .onConflictDoUpdate({ target: workflowRun.id, set: row });
+  } catch (error) {
+    appLogger.warn("Failed to persist workflow run", { runId: row.id, error });
+  }
 }
 
 const PERSIST_DEBOUNCE_MS = 500;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
-let persistPending = false;
+const dirtyRuns = new Set<string>();
 
-function schedulePersist(): void {
-  persistPending = true;
+function flushDirtyRuns(): void {
+  const ids = [...dirtyRuns];
+  dirtyRuns.clear();
+  for (const runId of ids) {
+    const run = activeRuns.get(runId);
+    // Evicted (already persisted on terminal) — nothing to flush.
+    if (!run) continue;
+    trackWrite(upsertRunToDb(run.spaceId, serializeRunToRow(runId, run)));
+  }
+}
+
+/** Debounced persistence for frequent, non-terminal updates (logs, node progress). */
+function schedulePersist(runId: string): void {
+  dirtyRuns.add(runId);
   if (persistTimer) return;
   persistTimer = setTimeout(() => {
     persistTimer = null;
-    if (!persistPending) return;
-    persistPending = false;
-    try {
-      persistRunStoreSync();
-    } catch {
-      // best-effort; next change will retry
-    }
+    flushDirtyRuns();
   }, PERSIST_DEBOUNCE_MS);
 }
 
-function persistRunStore(): void {
-  if (persistTimer) {
-    clearTimeout(persistTimer);
-    persistTimer = null;
-  }
-  persistPending = false;
-  persistRunStoreSync();
+/** Immediate persistence for important/structural changes (create, status, terminal). */
+function persistNow(runId: string, run: RunState): void {
+  dirtyRuns.delete(runId);
+  trackWrite(upsertRunToDb(run.spaceId, serializeRunToRow(runId, run)));
 }
 
-function recoverInterruptedRuns(): void {
-  const recoveredAt = new Date();
-  let changed = false;
-  for (const run of runs.values()) {
-    let runWasInterrupted = run.status === "pending" || run.status === "running";
-    for (const node of run.nodes.values()) {
-      if (node.status === "running") {
-        node.status = "failed";
-        node.error = RUN_STORE_RECOVERY_ERROR;
-        node.completedAt = node.completedAt ?? recoveredAt;
-        runWasInterrupted = true;
-        changed = true;
-        continue;
-      }
-      if (node.status === "pending") {
-        node.status = "cancelled";
-        node.completedAt = node.completedAt ?? recoveredAt;
-        runWasInterrupted = true;
-        changed = true;
-      }
+// ---------------------------------------------------------------------------
+// Realtime — broadcast a lightweight signal; clients re-fetch via the API
+// ---------------------------------------------------------------------------
+
+function emitRunChanged(runId: string, run: RunState): void {
+  sendSyncEvent(
+    run.spaceId,
+    { topic: realtimeTopics.workflowRun(runId) },
+    { topic: realtimeTopics.workflowRuns },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recovery — repair runs left mid-flight by a previous process, per space
+// ---------------------------------------------------------------------------
+
+const recoveredSpaces = new Set<string>();
+const recoveryPromises = new Map<string, Promise<void>>();
+
+function applyRecovery(run: RunState, recoveredAt: Date): void {
+  for (const node of run.nodes.values()) {
+    if (node.status === "running") {
+      node.status = "failed";
+      node.error = RUN_STORE_RECOVERY_ERROR;
+      node.completedAt = node.completedAt ?? recoveredAt;
+    } else if (node.status === "pending") {
+      node.status = "cancelled";
+      node.completedAt = node.completedAt ?? recoveredAt;
     }
-    if (!runWasInterrupted) continue;
-    run.status = "failed";
-    changed = true;
   }
-  if (changed) persistRunStore();
+  run.status = "failed";
 }
 
-export function reloadRunStoreFromDisk(): void {
-  runs.clear();
-  latestRunByDoc.clear();
-  if (!existsSync(runStoreFilePath)) return;
-  const serialized = JSON.parse(
-    readFileSync(runStoreFilePath, "utf-8"),
-  ) as PersistedRunStore;
-  for (const [runId, run] of Object.entries(serialized.runs)) {
-    runs.set(runId, normalizeRunState(deserializeRun(run)));
+async function recoverSpace(spaceId: string): Promise<void> {
+  try {
+    const db = await getSpaceDb(spaceId);
+    const rows = await db
+      .select()
+      .from(workflowRun)
+      .where(inArray(workflowRun.status, ["pending", "running"]))
+      .all();
+    const recoveredAt = new Date();
+    for (const row of rows) {
+      // A row still active in *this* process is genuinely running — leave it.
+      if (activeRuns.has(row.id)) continue;
+      const run = deserializeRowToRun(row, spaceId);
+      applyRecovery(run, recoveredAt);
+      await upsertRunToDb(spaceId, serializeRunToRow(row.id, run));
+    }
+    recoveredSpaces.add(spaceId);
+  } catch (error) {
+    appLogger.warn("Failed to recover workflow runs", { spaceId, error });
+    // Leave the space unmarked so a later access retries recovery.
+  } finally {
+    recoveryPromises.delete(spaceId);
   }
-  for (const [documentId, runId] of Object.entries(serialized.latestRunByDoc)) {
-    latestRunByDoc.set(documentId, runId);
-  }
-  recoverInterruptedRuns();
-  persistRunStore();
 }
 
-export function setRunStoreFilePathForTests(filePath: string): void {
-  runStoreFilePath = filePath;
-  reloadRunStoreFromDisk();
+/** Repair interrupted runs for a space once, before serving reads. */
+export async function ensureSpaceRecovered(spaceId: string): Promise<void> {
+  if (recoveredSpaces.has(spaceId)) return;
+  let promise = recoveryPromises.get(spaceId);
+  if (!promise) {
+    promise = recoverSpace(spaceId);
+    recoveryPromises.set(spaceId, promise);
+  }
+  await promise;
 }
 
-export function clearRunStoreForTests(): void {
-  runs.clear();
-  latestRunByDoc.clear();
-  rmSync(runStoreFilePath, { force: true });
-}
+// ---------------------------------------------------------------------------
+// Mutations (synchronous, operate on the active in-memory run)
+// ---------------------------------------------------------------------------
 
 export function createRun(
   spaceId: string,
@@ -398,7 +401,7 @@ export function createRun(
       completedAt: null,
     });
   }
-  runs.set(runId, {
+  const run: RunState = {
     status: "pending",
     nodes,
     spaceId,
@@ -407,26 +410,29 @@ export function createRun(
     sourceExtensionId,
     runtimeInputs,
     createdAt,
-  });
-  latestRunByDoc.set(documentId, runId);
-  persistRunStore();
+  };
+  activeRuns.set(runId, run);
+  persistNow(runId, run);
+  emitRunChanged(runId, run);
   return runId;
 }
 
+/** Synchronous read of an *active* run (used by the executor). */
 export function getRun(runId: string): RunState | undefined {
-  return runs.get(runId);
+  return activeRuns.get(runId);
 }
 
 export function setRunStatus(runId: string, status: NodeStatus): void {
-  const run = runs.get(runId);
-  if (!run) throw new Error(`Run not found: ${runId}`);
+  const run = activeRuns.get(runId);
+  if (!run) return;
   run.status = status;
-  persistRunStore();
+  persistNow(runId, run);
+  emitRunChanged(runId, run);
 }
 
 export function setRunAbort(runId: string, abort: () => void): void {
-  const run = runs.get(runId);
-  if (!run) throw new Error(`Run not found: ${runId}`);
+  const run = activeRuns.get(runId);
+  if (!run) return;
   run.abort = abort;
 }
 
@@ -435,10 +441,10 @@ export function setNodeStatus(
   nodeId: string,
   update: Partial<NodeState>,
 ): void {
-  const run = runs.get(runId);
-  if (!run) throw new Error(`Run not found: ${runId}`);
+  const run = activeRuns.get(runId);
+  if (!run) return;
   const node = run.nodes.get(nodeId);
-  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  if (!node) return;
   const sanitizedUpdate: Partial<NodeState> = { ...update };
   if (sanitizedUpdate.inputs) {
     sanitizedUpdate.inputs = summarizeRecord(sanitizedUpdate.inputs) ?? {};
@@ -448,41 +454,47 @@ export function setNodeStatus(
     sanitizedUpdate.error = summarizeString(sanitizedUpdate.error);
   }
   Object.assign(node, sanitizedUpdate);
-  const isTerminal =
+  const isTerminalNode =
     sanitizedUpdate.status &&
     sanitizedUpdate.status !== "pending" &&
     sanitizedUpdate.status !== "running";
-  if (isTerminal) {
-    persistRunStore();
+  if (isTerminalNode) {
+    // Persist a completed node's outputs promptly so a crash can't lose them.
+    persistNow(runId, run);
   } else {
-    schedulePersist();
+    schedulePersist(runId);
   }
+  emitRunChanged(runId, run);
 }
 
 export function appendNodeLog(runId: string, nodeId: string, message: string): void {
-  const run = runs.get(runId);
-  if (!run) throw new Error(`Run not found: ${runId}`);
+  const run = activeRuns.get(runId);
+  if (!run) return;
   const node = run.nodes.get(nodeId);
-  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  if (!node) return;
   node.logs.push(summarizeString(message));
   if (node.logs.length > MAX_LOG_ENTRIES) {
     node.logs = summarizeLogs(node.logs);
   }
-  schedulePersist();
+  schedulePersist(runId);
+  emitRunChanged(runId, run);
 }
 
 export function finalizeRun(runId: string): void {
-  const run = runs.get(runId);
-  if (!run) throw new Error(`Run not found: ${runId}`);
-  if (run.status === "cancelled") return;
-  const anyFailed = [...run.nodes.values()].some((n) => n.status === "failed");
-  run.status = anyFailed ? "failed" : "completed";
-  persistRunStore();
+  const run = activeRuns.get(runId);
+  if (!run) return;
+  if (run.status !== "cancelled") {
+    const anyFailed = [...run.nodes.values()].some((n) => n.status === "failed");
+    run.status = anyFailed ? "failed" : "completed";
+  }
+  persistNow(runId, run);
+  emitRunChanged(runId, run);
+  activeRuns.delete(runId);
 }
 
 export function cancelRun(runId: string): void {
-  const run = runs.get(runId);
-  if (!run) throw new Error(`Run not found: ${runId}`);
+  const run = activeRuns.get(runId);
+  if (!run) return;
   run.status = "cancelled";
   run.abort?.();
   for (const node of run.nodes.values()) {
@@ -491,7 +503,123 @@ export function cancelRun(runId: string): void {
       node.completedAt = new Date();
     }
   }
-  persistRunStore();
+  persistNow(runId, run);
+  emitRunChanged(runId, run);
+  activeRuns.delete(runId);
 }
 
-reloadRunStoreFromDisk();
+// ---------------------------------------------------------------------------
+// Reads (async, DB is the source of truth; overlay live active runs)
+// ---------------------------------------------------------------------------
+
+/** Read a run by id — the live active copy if present, otherwise from the DB. */
+export async function getRunForRead(
+  spaceId: string,
+  runId: string,
+): Promise<RunState | undefined> {
+  const active = activeRuns.get(runId);
+  if (active && active.spaceId === spaceId) return active;
+  const db = await getSpaceDb(spaceId);
+  const rows = await db
+    .select()
+    .from(workflowRun)
+    .where(eq(workflowRun.id, runId))
+    .limit(1)
+    .all();
+  const row = rows[0];
+  if (!row) return undefined;
+  return deserializeRowToRun(row, spaceId);
+}
+
+/** All runs in a space, newest first. Live active runs override their DB snapshot. */
+export async function listRuns(
+  spaceId: string,
+  options?: { sourceExtensionId?: string | null },
+): Promise<Array<{ runId: string; run: RunState }>> {
+  const db = await getSpaceDb(spaceId);
+  const rows = await db
+    .select()
+    .from(workflowRun)
+    .orderBy(desc(workflowRun.createdAt))
+    .all();
+  const merged = new Map<string, RunState>();
+  for (const row of rows) {
+    merged.set(row.id, deserializeRowToRun(row, spaceId));
+  }
+  for (const [runId, run] of activeRuns) {
+    if (run.spaceId === spaceId) merged.set(runId, run);
+  }
+  let entries = [...merged.entries()];
+  if (options?.sourceExtensionId) {
+    entries = entries.filter(
+      ([, run]) => run.sourceExtensionId === options.sourceExtensionId,
+    );
+  }
+  entries.sort(([, a], [, b]) => b.createdAt.getTime() - a.createdAt.getTime());
+  return entries.map(([runId, run]) => ({ runId, run }));
+}
+
+/** Id of the most recent run for a document (active copy wins on a tie). */
+export async function getLatestRunIdForDoc(
+  spaceId: string,
+  documentId: string,
+): Promise<string | undefined> {
+  let latestActive: { runId: string; createdAt: Date } | undefined;
+  for (const [runId, run] of activeRuns) {
+    if (run.spaceId !== spaceId || run.documentId !== documentId) continue;
+    if (!latestActive || run.createdAt > latestActive.createdAt) {
+      latestActive = { runId, createdAt: run.createdAt };
+    }
+  }
+  const db = await getSpaceDb(spaceId);
+  const rows = await db
+    .select({ id: workflowRun.id, createdAt: workflowRun.createdAt })
+    .from(workflowRun)
+    .where(eq(workflowRun.documentId, documentId))
+    .orderBy(desc(workflowRun.createdAt))
+    .limit(1)
+    .all();
+  const dbLatest = rows[0];
+  if (latestActive && (!dbLatest || latestActive.createdAt >= dbLatest.createdAt)) {
+    return latestActive.runId;
+  }
+  return dbLatest?.id;
+}
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+/** Drain debounced + in-flight writes so tests can observe the DB deterministically. */
+export async function flushRunStoreForTests(): Promise<void> {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+    flushDirtyRuns();
+  }
+  await Promise.all([...pendingWrites]);
+}
+
+/** Drop all in-memory state, simulating a fresh process (DB rows are untouched). */
+export function resetRunStoreMemoryForTests(): void {
+  activeRuns.clear();
+  recoveredSpaces.clear();
+  recoveryPromises.clear();
+  dirtyRuns.clear();
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+}
+
+/** Reset memory and delete all persisted runs for a space. */
+export async function clearRunStoreForTests(spaceId: string): Promise<void> {
+  await flushRunStoreForTests();
+  resetRunStoreMemoryForTests();
+  try {
+    const db = await getSpaceDb(spaceId);
+    await db.delete(workflowRun);
+  } catch (error) {
+    appLogger.warn("Failed to clear workflow runs for tests", { spaceId, error });
+  }
+}

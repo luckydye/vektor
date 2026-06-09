@@ -6,6 +6,10 @@ export const realtimeTopics = {
   documents: "space:documents",
   properties: "space:properties",
   document: (documentId: string) => `document:${documentId}`,
+  /** Any workflow run in the space changed (list views) */
+  workflowRuns: "space:workflow-runs",
+  /** A specific workflow run changed (detail view) */
+  workflowRun: (runId: string) => `workflow-run:${runId}`,
 } as const;
 
 export type RealtimeTopic = string;
@@ -83,6 +87,12 @@ export type PresenceMessage<TState = unknown> =
 
 export function isDocumentRealtimeTopic(topic: string): topic is `document:${string}` {
   return topic.startsWith("document:") && topic.length > "document:".length;
+}
+
+export function isWorkflowRunRealtimeTopic(
+  topic: string,
+): topic is `workflow-run:${string}` {
+  return topic.startsWith("workflow-run:") && topic.length > "workflow-run:".length;
 }
 
 export function toRealtimeTopicEvent(input: RealtimeEventInput): RealtimeTopicEvent {

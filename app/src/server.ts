@@ -15,6 +15,7 @@ import { appLogger } from "./observability/logger.ts";
 import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
 import {
   isDocumentRealtimeTopic,
+  isWorkflowRunRealtimeTopic,
   type PresenceEnvelope,
   type PresenceJoinPayload,
   type PresenceLeavePayload,
@@ -107,6 +108,7 @@ const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.documentTree,
   realtimeTopics.documents,
   realtimeTopics.properties,
+  realtimeTopics.workflowRuns,
 ]);
 
 async function authorizeRealtimeTopic(
@@ -120,6 +122,12 @@ async function authorizeRealtimeTopic(
 
   if (isDocumentRealtimeTopic(topic)) {
     await verifyDocumentRole(spaceId, topic.slice("document:".length), userId, "viewer");
+    return true;
+  }
+
+  // Per-run topics are pure change signals; the run data itself is fetched via
+  // the ACL-checked run endpoints. The connection is already space-viewer authed.
+  if (isWorkflowRunRealtimeTopic(topic)) {
     return true;
   }
 
