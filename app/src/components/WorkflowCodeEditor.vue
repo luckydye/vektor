@@ -2,7 +2,7 @@
 import { indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
 import { keymap } from "@codemirror/view";
-import { EditorView, basicSetup } from "codemirror";
+import { basicSetup, EditorView } from "codemirror";
 import { onMounted, onUnmounted, ref } from "vue";
 import { api } from "../api/client.ts";
 
@@ -19,6 +19,96 @@ const savedAt = ref<number | null>(null);
 let savedTimer: ReturnType<typeof setTimeout> | null = null;
 
 const SAVE_DEBOUNCE_MS = 800;
+
+function getThemeExtension() {
+  return EditorView.theme(
+    {
+      "&": {
+        height: "100%",
+        fontSize: "13px",
+        backgroundColor: "var(--color-background)",
+        color: "var(--color-forground)",
+      },
+      ".cm-scroller": {
+        overflow: "auto",
+        fontFamily: "monospace",
+        backgroundColor: "var(--color-background)",
+      },
+      ".cm-content": {
+        padding: "12px 0",
+        backgroundColor: "var(--color-background)",
+      },
+      ".cm-gutters": {
+        backgroundColor: "var(--color-neutral-50)",
+        borderRight: "1px solid var(--color-neutral-200)",
+        color: "var(--color-neutral-500)",
+      },
+      ".cm-gutter": {
+        backgroundColor: "var(--color-neutral-50)",
+        color: "var(--color-neutral-500)",
+      },
+      ".cm-activeLine": {
+        backgroundColor: "var(--color-neutral-100)",
+      },
+      ".cm-selectionMatch": {
+        backgroundColor: "var(--color-primary-200)",
+      },
+      "&.cm-focused .cm-cursor": {
+        borderLeftColor: "var(--color-primary-500)",
+      },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+        {
+          backgroundColor: "var(--color-primary-200)",
+        },
+      ".cm-matchingBracket, .cm-nonmatchingBracket": {
+        backgroundColor: "var(--color-primary-100)",
+        outline: "none",
+      },
+      ".cm-tooltip": {
+        backgroundColor: "var(--color-neutral-100)",
+        border: "1px solid var(--color-neutral-200)",
+        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+      },
+      ".cm-tooltip-autocomplete": {
+        backgroundColor: "var(--color-background)",
+        border: "1px solid var(--color-neutral-200)",
+      },
+      ".cm-completionList": {
+        backgroundColor: "var(--color-background)",
+      },
+      ".cm-completionItem": {
+        color: "var(--color-forground)",
+        padding: "2px 8px",
+      },
+      ".cm-completionItem-selected": {
+        backgroundColor: "var(--color-primary-100)",
+        color: "var(--color-primary-700)",
+      },
+      ".cm-completionItem-label": {
+        color: "var(--color-forground)",
+      },
+      ".cm-completionItem-detail": {
+        color: "var(--color-neutral-500)",
+      },
+      ".cm-completionInfo": {
+        backgroundColor: "var(--color-neutral-100)",
+        border: "1px solid var(--color-neutral-200)",
+        color: "var(--color-neutral-700)",
+      },
+      ".cm-panel": {
+        backgroundColor: "var(--color-neutral-50)",
+        borderTop: "1px solid var(--color-neutral-200)",
+      },
+      ".cm-searchMatch": {
+        backgroundColor: "var(--color-primary-200)",
+      },
+      ".cm-searchMatch-selected": {
+        backgroundColor: "var(--color-primary-500)",
+      },
+    },
+    { dark: false },
+  );
+}
 
 async function saveContent(code: string) {
   if (saving.value) return;
@@ -60,11 +150,7 @@ onMounted(async () => {
       basicSetup,
       javascript(),
       keymap.of([indentWithTab]),
-      EditorView.theme({
-        "&": { height: "100%", fontSize: "13px" },
-        ".cm-scroller": { overflow: "auto", fontFamily: "monospace" },
-        ".cm-content": { padding: "12px 0" },
-      }),
+      getThemeExtension(),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           scheduleSave(update.state.doc.toString());

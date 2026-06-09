@@ -115,7 +115,6 @@ export async function executeWorkflowScript(
           const logFn = vm.newFunction("log", (msgHandle: QuickJSHandle) => {
             const msg = String(vm.dump(msgHandle) ?? "");
             appendNodeLog(runId, "_script", msg);
-            return vm.undefined;
           });
           vm.setProp(vm.global, "log", logFn);
           logFn.dispose();
@@ -126,11 +125,14 @@ export async function executeWorkflowScript(
           inputHandle.dispose();
 
           // Expose runJob(extensionId, jobId, inputs?)
-          const runJobFn = vm.newAsyncifiedFunction("runJob", async (...handles: QuickJSHandle[]) => {
+          // Uses a deferred promise so QuickJS's await resolves naturally through
+          // the microtask queue (executePendingJobs) instead of asyncify suspension.
+          const runJobFn = vm.newFunction("runJob", (...handles: QuickJSHandle[]) => {
             if (handles.length < 2) {
               throw new Error("runJob(extensionId, jobId, inputs?) requires at least 2 arguments");
             }
 
+            const stepId = `step_${stepCounter++}`;
             const extensionId = String(vm.dump(handles[0]) ?? "");
             const jobId = String(vm.dump(handles[1]) ?? "");
             const inputsRaw = handles[2] ? vm.dump(handles[2]) : {};
@@ -139,72 +141,89 @@ export async function executeWorkflowScript(
                 ? (inputsRaw as Record<string, unknown>)
                 : {};
 
-            if (controller.signal.aborted) {
-              throw new Error("Workflow cancelled");
-            }
+            const promise = vm.newPromise();
 
-            const stepId = `step_${stepCounter++}`;
-
-            const ext = await getExtension(spaceId, extensionId);
-            if (!ext) throw new Error(`Extension not found: ${extensionId}`);
-
-            const jobDef = ext.manifest.jobs?.find((j) => j.id === jobId);
-            if (!jobDef) {
-              throw new Error(`Job "${jobId}" not found in extension "${extensionId}"`);
-            }
-
-            const zipBuffer = await getExtensionPackage(spaceId, extensionId);
-            if (!zipBuffer) throw new Error(`Extension package not found: ${extensionId}`);
-
-            addNode(runId, stepId);
-            setNodeStatus(runId, stepId, {
-              status: "running",
-              inputs: { _extensionId: extensionId, _jobId: jobId, ...inputs },
-              startedAt: new Date(),
-            });
-
+            // Run the actual job asynchronously; never await inside this callback.
             const stepStart = Date.now();
-            try {
-              const outputs = await runJob(
-                zipBuffer,
-                jobDef.entry,
-                inputs,
-                spaceId,
-                (msg) => appendNodeLog(runId, stepId, msg),
-                {
-                  signal: controller.signal,
-                  initiatedByUserId: run.initiatedByUserId,
-                  jobType: "workflow_node",
-                  jobId,
-                  trigger: "workflow",
-                  sandbox,
-                },
-              );
+            (async () => {
+              try {
+                const ext = await getExtension(spaceId, extensionId);
+                if (!ext) throw new Error(`Extension not found: ${extensionId}`);
 
-              setNodeStatus(runId, stepId, {
-                status: "completed",
-                outputs,
-                completedAt: new Date(),
-              });
+                const jobDef = ext.manifest.jobs?.find((j) => j.id === jobId);
+                if (!jobDef) {
+                  throw new Error(`Job "${jobId}" not found in extension "${extensionId}"`);
+                }
 
-              // Marshal outputs back to QuickJS — never use vm.evalCode on async context
-              return marshalToVM(vm, outputs ?? {});
-            } catch (err) {
-              const error = err instanceof Error ? err.message : String(err);
-              setNodeStatus(runId, stepId, {
-                status: "failed",
-                error,
-                completedAt: new Date(),
-              });
-              workflowRunDurationMs.record(Date.now() - stepStart, { status: "failed" });
-              throw err;
-            }
+                const zipBuffer = await getExtensionPackage(spaceId, extensionId);
+                if (!zipBuffer) throw new Error(`Extension package not found: ${extensionId}`);
+
+                addNode(runId, stepId);
+                setNodeStatus(runId, stepId, {
+                  status: "running",
+                  inputs: { _extensionId: extensionId, _jobId: jobId, ...inputs },
+                  startedAt: new Date(),
+                });
+
+                if (controller.signal.aborted) {
+                  throw new Error("Workflow cancelled");
+                }
+
+                const outputs = await runJob(
+                  zipBuffer,
+                  jobDef.entry,
+                  inputs,
+                  spaceId,
+                  (msg) => appendNodeLog(runId, stepId, msg),
+                  {
+                    signal: controller.signal,
+                    initiatedByUserId: run.initiatedByUserId,
+                    jobType: "workflow_node",
+                    jobId,
+                    trigger: "workflow",
+                    sandbox,
+                  },
+                );
+
+                setNodeStatus(runId, stepId, {
+                  status: "completed",
+                  outputs,
+                  completedAt: new Date(),
+                });
+
+                // Strip JobOutputValue typed wrappers before marshaling to QuickJS,
+                // matching the same unwrapping logic in workflow.ts:168-173.
+                const unwrapped: Record<string, unknown> = {};
+                for (const [k, v] of Object.entries(outputs ?? {})) {
+                  const t = v as { type?: string; url?: string; value?: unknown };
+                  if (t.type === "file") unwrapped[k] = t.url;
+                  else if (t.type === "text") unwrapped[k] = t.value;
+                  else unwrapped[k] = v;
+                }
+
+                promise.resolve(marshalToVM(vm, unwrapped));
+              } catch (err) {
+                const error = err instanceof Error ? err.message : String(err);
+                setNodeStatus(runId, stepId, {
+                  status: "failed",
+                  error,
+                  completedAt: new Date(),
+                });
+                workflowRunDurationMs.record(Date.now() - stepStart, { status: "failed" });
+                promise.reject(vm.newError(error));
+              }
+            })();
+
+            return promise.handle;
           });
           vm.setProp(vm.global, "runJob", runJobFn);
           runJobFn.dispose();
 
-          // evalCodeAsync on an async context resolves any Promise the code
-          // returns, so a plain async IIFE is all we need.
+          // Run the user script inside an async IIFE.
+          // evalCodeAsync may return a still-pending Promise handle when the
+          // IIFE returns Promise.resolve(...), because the async thenable
+          // unwrap needs an extra microtask pump.
+          // We pump microtasks via executePendingJobs until it settles.
           const wrapped = `(async () => {\n${code}\n})()`;
           const evalResult = await vm.evalCodeAsync(wrapped);
 
@@ -217,8 +236,53 @@ export async function executeWorkflowScript(
             throw new Error(`${name}: ${message}${location ? `\n${location}` : ""}`);
           }
 
-          const outputRaw = vm.dump(evalResult.value);
-          evalResult.value.dispose();
+          const handle = evalResult.value;
+
+          // ── resolve pending Promise ──────────────────────────────────────
+          let resolvedValue: QuickJSHandle;
+          {
+            let ps = vm.getPromiseState(handle);
+            if (ps.type === "pending") {
+              // evalCodeAsync returned a still-pending Promise.
+              // Pump the microtask queue via executePendingJobs until the
+              // promise settles. With deferred-promise runJob, the host side
+              // must also get event-loop turns to resolve deferred promises,
+              // so we interleave executePendingJobs with host yields.
+              // The loop is indefinite; the caller's timeout / controller
+              // signal provides the upper bound.
+              for (;;) {
+                vm.runtime.executePendingJobs();
+                ps = vm.getPromiseState(handle);
+                if (ps.type !== "pending") break;
+                if (controller.signal.aborted) {
+                  handle.dispose();
+                  throw new Error("Workflow cancelled");
+                }
+                await new Promise((r) => setTimeout(r, 10));
+              }
+            }
+            if (ps.type === "rejected") {
+              const errDump = vm.dump(ps.error) as Record<string, unknown>;
+              ps.error.dispose();
+              handle.dispose();
+              const name = String(errDump?.name ?? "Error");
+              const message = String(errDump?.message ?? JSON.stringify(errDump));
+              const location = String(errDump?.stack ?? "");
+              throw new Error(`${name}: ${message}${location ? `\n${location}` : ""}`);
+            }
+            resolvedValue = handle;
+          }
+
+          // ── extract script output ────────────────────────────────────────
+          // dump() disposes the handle when it encounters a fulfilled Promise,
+          // so we unwrap via getPromiseState first to avoid double-dispose.
+          const resultState = vm.getPromiseState(resolvedValue);
+          const outputRaw =
+            resultState.type === "fulfilled" && !resultState.notAPromise
+              ? resultState.value.consume((inner) => vm.dump(inner))
+              : vm.dump(resolvedValue);
+          if (resolvedValue.alive) resolvedValue.dispose();
+
           const output =
             outputRaw && typeof outputRaw === "object" && !Array.isArray(outputRaw)
               ? (outputRaw as Record<string, unknown>)
