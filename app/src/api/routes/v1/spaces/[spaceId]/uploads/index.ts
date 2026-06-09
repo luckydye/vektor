@@ -41,6 +41,9 @@ const ALLOWED_TYPES = [
   "application/pdf", // .pdf
   "application/zip", // .zip
   "application/x-zip-compressed", // .zip (alternative)
+  "application/json", // .json
+  "application/xml", // .xml
+  "text/xml", // .xml (alternative)
 ];
 
 const ALLOWED_EXTENSIONS = [
@@ -67,6 +70,7 @@ const ALLOWED_EXTENSIONS = [
   "md",
   "txt",
   "json",
+  "xml",
 ];
 const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB for documents
 
