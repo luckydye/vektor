@@ -8,6 +8,7 @@ import {
 } from "~/src/components/index.ts";
 import { api } from "../api/client.ts";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
+import { useHeaderImage } from "../composeables/useHeaderImage.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
@@ -19,10 +20,12 @@ const props = defineProps<{
   title?: string;
   readonly: boolean;
   documentType?: string;
+  headerImage?: string;
 }>();
 
 const { currentSpaceId, currentSpace } = useSpace();
 const { toggle: toggleDockedWindow } = useDockedWindows();
+const { supportsHeaderImage, changeHeaderImage, removeHeaderImage } = useHeaderImage();
 
 const userCanEdit = computed(() => {
   return canEdit(currentSpace.value?.userRole);
@@ -310,6 +313,36 @@ watchEffect(() => {
         window.location.href = `/${currentSpace.value.slug}`;
       },
     });
+  }
+});
+
+watchEffect(() => {
+  Actions.unregister("document:set-header");
+  Actions.unregister("document:remove-header");
+
+  const documentId = props.documentId;
+  if (
+    userCanEdit.value === true &&
+    documentId &&
+    supportsHeaderImage(props.documentType)
+  ) {
+    Actions.register("document:set-header", {
+      title: props.headerImage ? "Change header" : "Add header image",
+      icon: () => "image",
+      description: "Set the header image for this document",
+      group: "document",
+      run: async () => changeHeaderImage(documentId),
+    });
+
+    if (props.headerImage) {
+      Actions.register("document:remove-header", {
+        title: "Remove header image",
+        icon: () => "image",
+        description: "Remove the header image from this document",
+        group: "document:danger",
+        run: async () => removeHeaderImage(documentId),
+      });
+    }
   }
 });
 </script>

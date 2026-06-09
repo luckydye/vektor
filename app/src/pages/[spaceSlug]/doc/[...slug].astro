@@ -82,6 +82,14 @@ if (!hasAccess) {
 
 const title = document.properties.title || "Untitled Document";
 
+// Optional header image (stored as a document property; empty string = none)
+const headerImage = document.properties.headerImage || null;
+const showHeaderImage =
+  !!headerImage &&
+  document.type !== "canvas" &&
+  document.type !== "app" &&
+  document.type !== "workflow";
+
 // Archived documents should be treated as readonly
 const isReadonly =
   document.readonly ||
@@ -165,6 +173,17 @@ if (diffMins >= 1 && diffMins < 60) {
         </div>
       )}
 
+      <!-- Header Image -->
+      {showHeaderImage && (
+        <div class="print:px-0 px-xs lg:px-xl">
+          <img
+            src={headerImage}
+            alt=""
+            class="w-full h-[240px] object-cover rounded-lg"
+          />
+        </div>
+      )}
+
       <!-- Document Header -->
       <div class={twMerge(
         document.type === 'app'
@@ -205,7 +224,7 @@ if (diffMins >= 1 && diffMins < 60) {
             ) : null}
           </div>
 
-          <DocumentActions documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} client:load />
+          <DocumentActions documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} headerImage={headerImage ?? undefined} client:load />
         </div>
 
         <div class={twMerge(

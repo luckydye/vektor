@@ -27,6 +27,11 @@ const props = defineProps<{
   initialProperties: Record<string, string | null | undefined> | undefined;
 }>();
 
+// Reserved/internal properties that are managed through dedicated UI
+// (title editor, layout/category chips, header image action) and must not
+// appear in the editable properties list.
+const HIDDEN_PROPERTY_KEYS = ["title", "category", "layout", "parentid", "headerimage"];
+
 const { categories } = useCategories();
 const { document } = useDocument(props.documentId);
 const { updateProperty, deleteProperty, properties: spaceProperties } = useProperties();
@@ -216,7 +221,7 @@ const properties = computed((): Property[] => {
 
   const otherProps = Object.entries(documentProperties.value)
     .map(([key, value]): Property | null => {
-      if (["title", "category", "layout", "parentid"].includes(key?.toLowerCase())) {
+      if (HIDDEN_PROPERTY_KEYS.includes(key?.toLowerCase())) {
         return null;
       }
       const spaceProperty = spaceProperties.value?.find((sp) => sp.name === key);
@@ -243,6 +248,7 @@ const propertyTypes = [
 const availableNewProperties = computed(() => {
   return (
     spaceProperties.value.filter((sp) => {
+      if (HIDDEN_PROPERTY_KEYS.includes(sp.name?.toLowerCase())) return false;
       return !(sp.name in documentProperties.value);
     }) || []
   );
