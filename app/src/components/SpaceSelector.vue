@@ -75,7 +75,7 @@ const handleCreateDoc = (event: Event) => {
 </script>
 
 <template>
-  <div class="w-full flex gap-4 pr-4xs">
+  <div class="w-full flex gap-4">
     <div v-if="loading" class="flex items-center gap-3xs px-4xs py-4xs">
       <div class="flex-none w-9 h-9 bg-neutral-200 rounded-md animate-pulse" />
       <div class="flex-1 flex flex-col gap-1">
