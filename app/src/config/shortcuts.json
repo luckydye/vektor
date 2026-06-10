@@ -6,5 +6,6 @@
   "meta-b": "format:bold",
   "meta-i": "format:italic",
   "tab": "format:list:indent",
-  "shift-tab": "format:list:outdent"
+  "shift-tab": "format:list:outdent",
+  "meta-l": "revisions:toggle"
 }

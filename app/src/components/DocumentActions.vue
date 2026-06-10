@@ -445,14 +445,15 @@ watchEffect(() => {
 
     <ContextMenu>
       <ContextMenuItem v-for="[name, options] of actions" :onClick="(event) => runContextMenuAction(event, name)">
-        <Icon :name="options.icon?.() || 'placeholder'" />
-        <span :data-action="name">{{options.title}}</span>
+        <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+        <span class="block w-full text-left mr-2" :data-action="name">{{options.title}}</span>
+        <a-shortcut :data-shortcut="Actions.getShortcutsForAction(name)?.values().next().value"></a-shortcut>
       </ContextMenuItem>
 
       <hr v-if="actionsDanger.length > 0" />
 
       <ContextMenuItem v-for="[name, options] of actionsDanger" :onClick="(event) => runContextMenuAction(event, name)" class="text-orange-600 hover:text-orange-700">
-        <Icon :name="options.icon?.() || 'placeholder'" />
+        <Icon :name="(options.icon?.() as any) || 'placeholder'" />
         <span>{{options.title}}</span>
       </ContextMenuItem>
     </ContextMenu>

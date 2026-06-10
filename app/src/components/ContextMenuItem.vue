@@ -15,7 +15,7 @@ const props = defineProps<{
         props.onClick(e);
       }"
       :class="[
-        'flex items-center gap-2.5 px-3xs pr-xs py-5xs w-full transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 rounded-md',
+        'flex items-center gap-2.5 px-3xs pr-4xs py-5xs w-full transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 rounded-md',
         'group-aria-selected:bg-primary-10'
       ]"
     >
