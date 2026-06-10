@@ -150,7 +150,7 @@ const activityGroups = computed((): ActivityGroup[] => {
                   :size="28"
                 />
               </div>
-              <span class="text-sm font-semibold text-primary-600">
+              <span class="text-sm font-semibold text-primary-600 leading-[1.7rem] @md:leading-[2.175rem]">
                 {{ getUserName(group.userId) }}
               </span>
               <span class="text-neutral-300 select-none text-xs">•</span>
@@ -165,7 +165,7 @@ const activityGroups = computed((): ActivityGroup[] => {
           </div>
 
           <!-- Per-entry rows -->
-          <div class="space-y-1">
+          <div class="space-y-1 ml-4 @md:ml-0">
             <template v-for="entry in group.items" :key="entry.id">
               <div class="flex items-start gap-2">
 
