@@ -17,6 +17,7 @@ import {
   type PropertyFilter,
   type SearchResult,
 } from "../api/client.ts";
+import { usePagedList } from "../composeables/usePagedList.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import DocumentListItem from "./DocumentListItem.vue";
 import SearchFilters from "./SearchFilters.vue";
@@ -27,16 +28,55 @@ const props = defineProps<{
 }>();
 
 const searchQuery = ref("");
-const results = ref<SearchResult[]>([]);
-const isLoading = ref(false);
-const error = ref<string | null>(null);
-const total = ref(0);
-const offset = ref(0);
-const limit = 20;
+const activeFilters = ref<PropertyFilter[]>([]);
 const hasSearched = ref(false);
 
-// Advanced filter state
-const activeFilters = ref<PropertyFilter[]>([]);
+// "Committed" values — only updated when the user explicitly submits a search.
+// This prevents usePagedList from re-fetching while the user is still typing.
+const committedQuery = ref("");
+const committedFilters = ref<PropertyFilter[]>([]);
+
+// Search results via usePagedList
+const {
+  items: results,
+  total,
+  isLoading: isSearching,
+  isFetching: isFetchingSearch,
+  error: searchError,
+  page,
+  totalPages,
+  hasPrevPage,
+  hasNextPage,
+  prevPage: handlePrevPage,
+  nextPage: handleNextPage,
+} = usePagedList({
+  queryKey: computed(() => [
+    "search",
+    props.spaceId,
+    committedQuery.value,
+    JSON.stringify(committedFilters.value),
+  ]),
+  fetcher: ({ limit, offset }) => {
+    const queryParams: { q?: string; limit: number; offset: number; filters?: string } = {
+      limit,
+      offset,
+    };
+    if (committedQuery.value.trim()) queryParams.q = committedQuery.value;
+    if (committedFilters.value.length > 0) {
+      queryParams.filters = JSON.stringify(committedFilters.value);
+    }
+    return api.search.get(props.spaceId, queryParams).then((r) => ({
+      items: r.results,
+      total: r.total,
+    }));
+  },
+  enabled: computed(() => hasSearched.value),
+  pageSize: 20,
+});
+
+const sortedResults = computed(() =>
+  [...results.value].sort((a, b) => a.rank - b.rank),
+);
 
 const updateUrlParams = () => {
   const url = new URL(window.location.href);
@@ -59,7 +99,7 @@ const documentsPageSize = 50;
 const {
   data: documentsData,
   fetchNextPage,
-  hasNextPage,
+  hasNextPage: hasMoreDocuments,
   isFetchingNextPage,
   isLoading: isLoadingDocuments,
 } = useInfiniteQuery({
@@ -125,7 +165,7 @@ const groupedDocuments = computed(() => {
 // Watch for scroll to load more
 const handleScroll = () => {
   if (hasSearched.value) return;
-  if (isFetchingNextPage.value || !hasNextPage.value) return;
+  if (isFetchingNextPage.value || !hasMoreDocuments.value) return;
 
   const scrollPosition = window.innerHeight + window.scrollY;
   const threshold = document.documentElement.scrollHeight - 500;
@@ -160,75 +200,36 @@ onMounted(() => {
   }
 
   if (queryParam || filtersParam) {
-    handleSearch();
+    // Commit directly so usePagedList fires without a redundant handleSearch() call
+    committedQuery.value = queryParam ?? "";
+    committedFilters.value = [...activeFilters.value];
+    hasSearched.value = true;
   }
 });
 
-const search = async () => {
+const handleSearch = () => {
   const hasQuery = searchQuery.value.trim().length > 0;
   const hasFilters = activeFilters.value.length > 0;
 
   if (!hasQuery && !hasFilters) {
-    results.value = [];
-    total.value = 0;
     hasSearched.value = false;
+    committedQuery.value = "";
+    committedFilters.value = [];
     updateUrlParams();
     return;
   }
 
-  isLoading.value = true;
-  error.value = null;
+  committedQuery.value = searchQuery.value;
+  committedFilters.value = [...activeFilters.value];
   hasSearched.value = true;
   updateUrlParams();
-
-  try {
-    const queryParams: { q?: string; limit: number; offset: number; filters?: string } = {
-      limit,
-      offset: offset.value,
-    };
-
-    if (hasQuery) {
-      queryParams.q = searchQuery.value;
-    }
-
-    if (hasFilters) {
-      queryParams.filters = JSON.stringify(activeFilters.value);
-    }
-
-    const data = await api.search.get(props.spaceId, queryParams);
-    results.value = data.results;
-    total.value = data.total;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "Search failed";
-    results.value = [];
-    total.value = 0;
-  } finally {
-    isLoading.value = false;
-  }
-};
-
-const handleSearch = async () => {
-  offset.value = 0;
-  await search();
-};
-
-const handleNextPage = () => {
-  offset.value += limit;
-  search();
-};
-
-const handlePrevPage = () => {
-  offset.value = Math.max(0, offset.value - limit);
-  search();
 };
 
 const clear = () => {
   searchQuery.value = "";
-  results.value = [];
-  total.value = 0;
-  error.value = null;
-  offset.value = 0;
   hasSearched.value = false;
+  committedQuery.value = "";
+  committedFilters.value = [];
   updateUrlParams();
 };
 
@@ -262,13 +263,13 @@ const canSearch = computed(() => {
           placeholder="Find documents... (e.g., 'typescript', 'database design', 'react ui')"
           class="w-full py-3 pl-12 pr-12 border-2 border-neutral-100 rounded-lg text-base bg-neutral-50 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-neutral-200 disabled:cursor-not-allowed"
           @keydown="handleKeydown"
-          :disabled="isLoading"
+          :disabled="isSearching"
         />
-        <button
-          v-if="searchQuery || activeFilters.length > 0"
-          @click="clearAll"
-          class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="isLoading"
+          <button
+            v-if="searchQuery || activeFilters.length > 0"
+            @click="clearAll"
+            class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="isSearching"
           title="Clear all"
         >
           <div class="svg-icon w-5 h-5" v-html="closeXIcon" />
@@ -277,12 +278,12 @@ const canSearch = computed(() => {
 
       <button
         @click="handleSearch"
-        :disabled="isLoading || !canSearch"
+        :disabled="isSearching || !canSearch"
         class="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all whitespace-nowrap"
       >
-        <div v-if="!isLoading" class="svg-icon w-5 h-5" v-html="searchMagnifierIcon" />
+        <div v-if="!isSearching" class="svg-icon w-5 h-5" v-html="searchMagnifierIcon" />
         <div v-else class="svg-icon w-5 h-5 animate-spin" v-html="spinnerIcon" />
-        {{ isLoading ? "Searching..." : "Search" }}
+        {{ isSearching ? "Searching..." : "Search" }}
       </button>
     </div>
 
@@ -296,62 +297,62 @@ const canSearch = computed(() => {
     </div>
 
     <!-- Error Message -->
-    <div v-if="error" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-sm">
+    <div v-if="searchError" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-sm">
       <div class="svg-icon w-5 h-5 shrink-0" v-html="closeCircleFilledIcon" />
-      {{ error }}
+      {{ searchError.message ?? 'Search failed' }}
     </div>
 
     <!-- Search Results -->
     <div v-if="results.length > 0" class="mt-8">
-      <div class="mb-6 pb-4 border-b-1 border-neutral-100">
-        <p class="text-sm text-neutral-700">
-          <span class="font-semibold">{{ total }}</span>
-          result{{ total !== 1 ? "s" : "" }}
-          <span v-if="activeFilters.length > 0" class="text-neutral-500">
-            with {{ activeFilters.length }} filter{{ activeFilters.length !== 1 ? "s" : "" }}
-          </span>
-        </p>
-      </div>
-
-      <div class="flex flex-col gap-4">
-        <DocumentListItem
-          v-for="result in results.sort((a, b) => a.rank - b.rank)"
-          :key="result.id"
-          :document="result"
-          :space-slug="props.spaceSlug"
-          :show-rank="true"
-          :show-snippet="true"
-          :search-query="searchQuery"
-        />
-      </div>
-
-      <!-- Pagination -->
-      <div v-if="total > limit" class="flex justify-between items-center mt-10 pt-6 border-t border-neutral-100">
-        <button
-          @click="handlePrevPage"
-          :disabled="offset === 0 || isLoading"
-          class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          <div class="svg-icon w-5 h-5" v-html="chevronLeftLargeIcon" />
-          Previous
-        </button>
-        <span class="text-sm text-neutral-500">
-          Page <span class="font-semibold">{{ Math.floor(offset / limit) + 1 }}</span> of
-          <span class="font-semibold">{{ Math.ceil(total / limit) }}</span>
+    <div class="mb-6 pb-4 border-b-1 border-neutral-100">
+      <p class="text-sm text-neutral-700">
+        <span class="font-semibold">{{ total }}</span>
+        result{{ total !== 1 ? "s" : "" }}
+        <span v-if="activeFilters.length > 0" class="text-neutral-500">
+          with {{ activeFilters.length }} filter{{ activeFilters.length !== 1 ? "s" : "" }}
         </span>
-        <button
-          @click="handleNextPage"
-          :disabled="offset + limit >= total || isLoading"
-          class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          Next
-          <div class="svg-icon w-5 h-5" v-html="chevronRightThinIcon" />
-        </button>
-      </div>
+      </p>
     </div>
 
+    <div class="flex flex-col gap-4">
+      <DocumentListItem
+        v-for="result in sortedResults"
+        :key="result.id"
+        :document="result"
+        :space-slug="props.spaceSlug"
+        :show-rank="true"
+        :show-snippet="true"
+        :search-query="searchQuery"
+      />
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="totalPages > 1" class="flex justify-between items-center mt-10 pt-6 border-t border-neutral-100">
+      <button
+        @click="handlePrevPage"
+        :disabled="!hasPrevPage || isFetchingSearch"
+        class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        <div class="svg-icon w-5 h-5" v-html="chevronLeftLargeIcon" />
+        Previous
+      </button>
+      <span class="text-sm text-neutral-500">
+        Page <span class="font-semibold">{{ page }}</span> of
+        <span class="font-semibold">{{ totalPages }}</span>
+      </span>
+      <button
+        @click="handleNextPage"
+        :disabled="!hasNextPage || isFetchingSearch"
+        class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        Next
+        <div class="svg-icon w-5 h-5" v-html="chevronRightThinIcon" />
+      </button>
+    </div>
+  </div>
+
     <!-- No Results -->
-    <div v-else-if="hasSearched && !isLoading && !error">
+    <div v-else-if="hasSearched && !isSearching && !searchError">
       <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300" v-html="searchMagnifierIcon" />
       <h3 class="text-2xl font-semibold text-neutral-800 mb-2">No results found</h3>
       <p class="text-neutral-600 mb-8">
@@ -404,7 +405,7 @@ const canSearch = computed(() => {
         </div>
       </template>
 
-      <div v-if="hasNextPage" class="flex justify-center mt-8 pt-8">
+      <div v-if="hasMoreDocuments" class="flex justify-center mt-8 pt-8">
         <button
           @click="() => fetchNextPage()"
           :disabled="isFetchingNextPage"
@@ -418,7 +419,7 @@ const canSearch = computed(() => {
     </div>
 
     <!-- Loading Documents -->
-    <div v-else-if="!hasSearched && isLoadingDocuments">
+    <div v-else-if="!hasSearched && isLoadingDocuments" class="text-center">
       <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300 animate-spin" v-html="spinnerIcon" />
       <h3 class="text-center text-xl font-semibold text-neutral-700">Loading documents...</h3>
     </div>

@@ -6,6 +6,7 @@ import {
   jsonResponse,
   notFoundResponse,
   parseJsonBody,
+  parsePaginationParams,
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
@@ -51,6 +52,7 @@ export const GET: APIRoute = (context) =>
 
     const documentId = context.url.searchParams.get("documentId");
     const sourceExtensionId = context.url.searchParams.get("sourceExtensionId");
+    const filterDocumentId = context.url.searchParams.get("filterDocumentId") ?? undefined;
 
     await ensureSpaceRecovered(spaceId);
 
@@ -63,16 +65,23 @@ export const GET: APIRoute = (context) =>
       return jsonResponse({ runId, status: run.status });
     }
 
-    // List all runs for this space, newest first
-    const spaceRuns = (await listRuns(spaceId, { sourceExtensionId })).map(
+    const { limit, offset } = parsePaginationParams(context.url.searchParams, {
+      defaultLimit: 20,
+      maxLimit: 200,
+    });
+
+    // List runs for this space, newest first. filterDocumentId narrows to one document.
+    const spaceRuns = (await listRuns(spaceId, { sourceExtensionId, documentId: filterDocumentId })).map(
       ({ runId, run }) => [runId, run] as const,
     );
     const readableRuns: typeof spaceRuns = [];
     for (const entry of spaceRuns) {
       if (await canReadDocument(entry[1].documentId)) readableRuns.push(entry);
     }
+    const total = readableRuns.length;
+    const pageRuns = readableRuns.slice(offset, offset + limit);
     const allRuns = await Promise.all(
-      readableRuns.map(async ([runId, run]) => {
+      pageRuns.map(async ([runId, run]) => {
         const doc = await getDocument(spaceId, run.documentId);
         const nodeList = [...run.nodes.values()];
         const startedAt = nodeList.reduce<Date | null>((min, n) => {
@@ -104,7 +113,7 @@ export const GET: APIRoute = (context) =>
       }),
     );
 
-    return jsonResponse({ runs: allRuns });
+    return jsonResponse({ runs: allRuns, total, limit, offset });
   }, "Failed to get runs");
 
 /**

@@ -117,6 +117,12 @@ export async function executeWorkflowScript(
             appendNodeLog(runId, "_script", msg);
           });
           vm.setProp(vm.global, "log", logFn);
+
+          // Expose console.log
+          const consoleObj = vm.newObject();
+          vm.setProp(consoleObj, "log", logFn);
+          vm.setProp(vm.global, "console", consoleObj);
+          consoleObj.dispose();
           logFn.dispose();
 
           // Expose input object — use handle APIs, never vm.evalCode on async context

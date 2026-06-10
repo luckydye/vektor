@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
+import { usePagedList } from "../composeables/usePagedList.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 
@@ -24,26 +25,39 @@ const props = defineProps<{
   spaceId: string;
 }>();
 
-const runs = ref<WorkflowRun[]>([]);
+const {
+  items: runs,
+  isLoading,
+  page,
+  totalPages,
+  hasPrevPage,
+  hasNextPage,
+  prevPage,
+  nextPage,
+  refresh,
+} = usePagedList<WorkflowRun>({
+  queryKey: computed(() => ["workflow_runs", props.spaceId]),
+  fetcher: ({ limit, offset }) =>
+    api.workflows.listRuns(props.spaceId, { limit, offset }).then((r) => ({
+      items: [...r.runs].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ),
+      total: r.total,
+    })),
+  pageSize: 20,
+});
+
 const now = ref(Date.now());
 let unsubscribe: (() => void) | null = null;
 let tickInterval: ReturnType<typeof setInterval> | null = null;
 
-async function fetchRuns() {
-  const result = await api.workflows.listRuns(props.spaceId);
-  runs.value = (result as WorkflowRun[])
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
-}
-
 onMounted(() => {
-  fetchRuns();
   // Push updates over the realtime channel instead of polling.
   unsubscribe = api.subscribeToTopics(
     props.spaceId,
     [realtimeTopics.workflowRuns],
     () => {
-      void fetchRuns();
+      refresh();
     },
   );
   // Elapsed-time display still ticks locally.
@@ -167,8 +181,9 @@ const groupedRuns = computed(() => {
 </script>
 
 <template>
-  <div v-if="runs.length > 0">
+  <div v-if="runs.length > 0 || isLoading">
     <h2 class="text-lg font-semibold mb-3">Workflows</h2>
+    <div v-if="isLoading && runs.length === 0" class="text-sm text-neutral-500 py-4">Loading runs...</div>
     <div class="space-y-6">
       <div v-for="group in groupedRuns" :key="group.date" class="space-y-3">
         <div class="text-xs font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 py-2">
@@ -224,6 +239,23 @@ const groupedRuns = computed(() => {
       </a>
         </div>
       </div>
+    </div>
+    <div v-if="totalPages > 1" class="flex justify-between items-center mt-4 pt-4 border-t border-neutral-200">
+      <button
+        @click="prevPage"
+        :disabled="!hasPrevPage"
+        class="px-3 py-1.5 text-sm font-medium border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Previous
+      </button>
+      <span class="text-xs text-neutral-400">Page {{ page }} of {{ totalPages }}</span>
+      <button
+        @click="nextPage"
+        :disabled="!hasNextPage"
+        class="px-3 py-1.5 text-sm font-medium border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Next
+      </button>
     </div>
   </div>
 </template>

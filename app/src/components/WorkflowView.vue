@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { usePagedList } from "../composeables/usePagedList.ts";
 import {
   arrowDownTrayIcon,
   checkBoldIcon,
@@ -28,13 +29,30 @@ type RunSummary = {
   runtimeInputs: Record<string, unknown>;
 };
 
-const runList = ref<RunSummary[]>([]);
 const sourceExtensionHref = ref<string | null>(null);
 const selectedRunId = ref<string | null>(null);
 const selectedRunDetail = ref<WorkflowRunStatus | null>(null);
 const logsExpanded = ref(false);
 let unsubscribeRuns: (() => void) | null = null;
 let unsubscribeRun: (() => void) | null = null;
+
+const {
+  items: runList,
+  page: runPage,
+  totalPages: runTotalPages,
+  hasPrevPage: runHasPrevPage,
+  hasNextPage: runHasNextPage,
+  prevPage: runPrevPage,
+  nextPage: runNextPage,
+  refresh: refreshRuns,
+} = usePagedList<RunSummary>({
+  queryKey: computed(() => ["workflow_runs", props.spaceId, props.documentId]),
+  fetcher: ({ limit, offset }) =>
+    api.workflows
+      .listRuns(props.spaceId, { filterDocumentId: props.documentId, limit, offset })
+      .then((r) => ({ items: r.runs, total: r.total })),
+  pageSize: 20,
+});
 
 // Follow the selected run with a per-run realtime subscription.
 watch(selectedRunId, (runId) => {
@@ -50,13 +68,6 @@ watch(selectedRunId, (runId) => {
     );
   }
 });
-
-async function fetchRuns() {
-  const all = await api.workflows.listRuns(props.spaceId);
-  runList.value = all
-    .filter((r) => r.documentId === props.documentId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
 
 async function fetchSelectedRunDetail() {
   if (!selectedRunId.value) return;
@@ -108,18 +119,24 @@ const selectedRunInputs = computed(() => {
   return inputs;
 });
 
-onMounted(async () => {
-  await fetchRuns();
-  if (runList.value[0]) await selectRun(runList.value[0].runId);
+// Auto-select the first run and load extension info once on initial data arrival.
+watch(
+  runList,
+  async (newRuns) => {
+    if (newRuns.length === 0) return;
+    if (!selectedRunId.value) await selectRun(newRuns[0].runId);
+    const sourceExtId = newRuns[0].sourceExtensionId;
+    if (sourceExtId) {
+      const ext = await api.extensions.getById(props.spaceId, sourceExtId);
+      const firstRoute = ext.routes?.[0];
+      if (firstRoute)
+        sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
+    }
+  },
+  { once: true },
+);
 
-  const sourceExtId = runList.value[0]?.sourceExtensionId;
-  if (sourceExtId) {
-    const ext = await api.extensions.getById(props.spaceId, sourceExtId);
-    const firstRoute = ext.routes?.[0];
-    if (firstRoute)
-      sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
-  }
-
+onMounted(() => {
   // Any run change in the space refreshes the list (and the open run detail).
   // When a run is started elsewhere (e.g. the header button) and nothing is
   // selected yet, follow the newest run so it shows up immediately.
@@ -127,12 +144,8 @@ onMounted(async () => {
     props.spaceId,
     [realtimeTopics.workflowRuns],
     async () => {
-      await fetchRuns();
-      if (!selectedRunId.value && runList.value[0]) {
-        await selectRun(runList.value[0].runId);
-      } else if (selectedRunId.value) {
-        await fetchSelectedRunDetail();
-      }
+      refreshRuns();
+      if (selectedRunId.value) await fetchSelectedRunDetail();
     },
   );
 });
@@ -437,7 +450,7 @@ const statusBadgeClass: Record<string, string> = {
     </div>
 
     <!-- Run history -->
-    <div v-if="runList.length > 0">
+    <div v-if="runList.length > 0 || runTotalPages > 1">
       <div class="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-6">Run history</div>
       <div class="space-y-1">
         <div
@@ -493,6 +506,25 @@ const statusBadgeClass: Record<string, string> = {
             <div v-else class="text-xs text-neutral-400">Loading…</div>
           </div>
         </div>
+      </div>
+
+      <!-- Run history pagination -->
+      <div v-if="runTotalPages > 1" class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-100">
+        <button
+          @click="runPrevPage"
+          :disabled="!runHasPrevPage"
+          class="px-2.5 py-1 text-xs font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Previous
+        </button>
+        <span class="text-xs text-neutral-400">{{ runPage }} / {{ runTotalPages }}</span>
+        <button
+          @click="runNextPage"
+          :disabled="!runHasNextPage"
+          class="px-2.5 py-1 text-xs font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Next
+        </button>
       </div>
     </div>
 

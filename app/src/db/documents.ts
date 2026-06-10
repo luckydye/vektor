@@ -569,7 +569,8 @@ export async function listDocuments(
 export async function listArchivedDocuments(
   spaceId: string,
   viewer?: AclViewer | null,
-): Promise<DocumentWithProperties[]> {
+  options?: { limit?: number; offset?: number },
+): Promise<{ documents: DocumentWithProperties[]; total: number }> {
   const db = await getSpaceDb(spaceId);
 
   let docs = await db
@@ -629,7 +630,10 @@ export async function listArchivedDocuments(
     archived: doc.archived,
   }));
 
-  return results;
+  const total = results.length;
+  const limit = options?.limit ?? 50;
+  const offset = options?.offset ?? 0;
+  return { documents: results.slice(offset, offset + limit), total };
 }
 
 export async function updateDocumentProperty(

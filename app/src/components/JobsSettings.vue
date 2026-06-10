@@ -92,14 +92,14 @@
     <div class="mt-8 pt-6 border-t border-neutral-100">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-sm font-semibold text-neutral-900">Recent Job Runs</h2>
-        <button @click="loadRuns" :disabled="isLoadingRuns"
+        <button @click="refreshRuns" :disabled="isLoadingRuns"
           class="text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50">
           {{ isLoadingRuns ? 'Refreshing...' : 'Refresh' }}
         </button>
       </div>
 
-      <div v-if="runsError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
-        {{ runsError }}
+      <div v-if="runsQueryError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+        {{ runsQueryError?.message ?? 'Failed to load job runs' }}
       </div>
 
       <div v-if="isLoadingRuns && runs.length === 0" class="text-center py-6 text-sm text-neutral-500">Loading runs...</div>
@@ -136,14 +136,32 @@
           </tbody>
         </table>
       </div>
+      <div v-if="runsTotalPages > 1" class="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
+        <button
+          @click="runsPrevPage"
+          :disabled="!runsHasPrevPage || isFetchingRuns"
+          class="px-3 py-1.5 text-xs font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        <span class="text-xs text-neutral-500">Page {{ runsPage }} of {{ runsTotalPages }}</span>
+        <button
+          @click="runsNextPage"
+          :disabled="!runsHasNextPage || isFetchingRuns"
+          class="px-3 py-1.5 text-xs font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { api, type JobRun, type JobSchedule } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { usePagedList } from "../composeables/usePagedList.ts";
 
 const { currentSpace } = useSpace();
 
@@ -165,10 +183,29 @@ interface AvailableJob {
 }
 const availableJobs = ref<AvailableJob[]>([]);
 
-// Runs state
-const runs = ref<JobRun[]>([]);
-const isLoadingRuns = ref(false);
-const runsError = ref<string | null>(null);
+const {
+  items: runs,
+  isLoading: isLoadingRuns,
+  isFetching: isFetchingRuns,
+  error: runsQueryError,
+  page: runsPage,
+  totalPages: runsTotalPages,
+  hasPrevPage: runsHasPrevPage,
+  hasNextPage: runsHasNextPage,
+  prevPage: runsPrevPage,
+  nextPage: runsNextPage,
+  refresh: refreshRuns,
+} = usePagedList({
+  queryKey: computed(() => ["job_runs", currentSpace.value?.id]),
+  fetcher: ({ limit, offset }) =>
+    api.jobs.listRuns(currentSpace.value!.id, { limit, offset }).then((r) => ({
+      items: r.runs,
+      total: r.total,
+    })),
+  enabled: computed(() => !!currentSpace.value?.id),
+  pageSize: 25,
+});
+
 const expandedRunId = ref<string | null>(null);
 
 function jobName(jobId: string): string {
@@ -241,20 +278,6 @@ async function loadSchedules() {
   }
 }
 
-async function loadRuns() {
-  if (!currentSpace.value?.id) return;
-  isLoadingRuns.value = true;
-  runsError.value = null;
-  try {
-    const response = await api.jobs.listRuns(currentSpace.value.id, { limit: 50 });
-    runs.value = response.runs;
-  } catch (err) {
-    runsError.value = err instanceof Error ? err.message : "Failed to load job runs";
-  } finally {
-    isLoadingRuns.value = false;
-  }
-}
-
 function handleStartCreateSchedule() {
   isCreatingSchedule.value = true;
   newScheduleJobId.value = "";
@@ -321,7 +344,6 @@ async function handleDeleteSchedule(scheduleId: string) {
 function loadAll() {
   loadAvailableJobs();
   loadSchedules();
-  loadRuns();
 }
 
 onMounted(loadAll);

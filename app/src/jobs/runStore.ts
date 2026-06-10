@@ -549,7 +549,7 @@ export async function getRunForRead(
 /** All runs in a space, newest first. Live active runs override their DB snapshot. */
 export async function listRuns(
   spaceId: string,
-  options?: { sourceExtensionId?: string | null },
+  options?: { sourceExtensionId?: string | null; documentId?: string | null },
 ): Promise<Array<{ runId: string; run: RunState }>> {
   const db = await getSpaceDb(spaceId);
   const rows = await db
@@ -569,6 +569,9 @@ export async function listRuns(
     entries = entries.filter(
       ([, run]) => run.sourceExtensionId === options.sourceExtensionId,
     );
+  }
+  if (options?.documentId) {
+    entries = entries.filter(([, run]) => run.documentId === options.documentId);
   }
   entries.sort(([, a], [, b]) => b.createdAt.getTime() - a.createdAt.getTime());
   return entries.map(([runId, run]) => ({ runId, run }));

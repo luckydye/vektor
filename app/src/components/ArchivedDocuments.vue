@@ -1,58 +1,40 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed } from "vue";
 import { api } from "../api/client.ts";
 import { formatDate } from "../utils/utils.ts";
+import { usePagedList } from "../composeables/usePagedList.ts";
 
 const props = defineProps<{
   spaceId: string;
   spaceSlug: string;
 }>();
 
-interface ArchivedDocument {
-  id: string;
-  slug: string;
-  properties: Record<string, string>;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  parentId: string | null;
-}
-
-const documents = ref<ArchivedDocument[]>([]);
-const isLoading = ref(true);
-const error = ref<string | null>(null);
-
-const loadArchivedDocuments = async () => {
-  isLoading.value = true;
-  error.value = null;
-
-  try {
-    const response = await fetch(`/api/v1/spaces/${props.spaceId}/documents/archived`);
-
-    if (!response.ok) {
-      throw new Error(
-        response.status === 403
-          ? "You don't have access to this space"
-          : "Failed to load archived documents",
-      );
-    }
-
-    const data = await response.json();
-    documents.value = data.documents;
-  } catch (err) {
-    error.value =
-      err instanceof Error ? err.message : "Failed to load archived documents";
-    documents.value = [];
-  } finally {
-    isLoading.value = false;
-  }
-};
+const {
+  items: documents,
+  isLoading,
+  isFetching,
+  error,
+  page,
+  totalPages,
+  hasPrevPage,
+  hasNextPage,
+  prevPage,
+  nextPage,
+  refresh,
+} = usePagedList({
+  queryKey: computed(() => ["archived_docs", props.spaceId]),
+  fetcher: ({ limit, offset }) =>
+    api.documents.archived(props.spaceId, { limit, offset }).then((r) => ({
+      items: r.documents,
+      total: r.total,
+    })),
+  pageSize: 50,
+});
 
 const handleRestore = async (documentId: string) => {
   try {
     await api.document.restore(props.spaceId, documentId);
-
-    await loadArchivedDocuments();
+    refresh();
   } catch (err) {
     alert(err instanceof Error ? err.message : "Failed to restore document");
   }
@@ -68,26 +50,12 @@ const handleDelete = async (documentId: string) => {
   }
 
   try {
-    const response = await fetch(
-      `/api/v1/spaces/${props.spaceId}/documents/${documentId}?permanent=true`,
-      {
-        method: "DELETE",
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to delete document");
-    }
-
-    await loadArchivedDocuments();
+    await api.document.delete(props.spaceId, documentId);
+    refresh();
   } catch (err) {
     alert(err instanceof Error ? err.message : "Failed to delete document");
   }
 };
-
-onMounted(() => {
-  loadArchivedDocuments();
-});
 </script>
 
 <template>
@@ -97,7 +65,7 @@ onMounted(() => {
     </div>
 
     <div v-else-if="error" class="text-center py-8">
-      <div class="text-red-600">{{ error }}</div>
+      <div class="text-red-600">{{ error?.message ?? 'Failed to load archived documents' }}</div>
     </div>
 
     <div v-else-if="documents.length === 0" class="text-center py-8">
@@ -135,6 +103,24 @@ onMounted(() => {
             Delete Permanently
           </button>
         </div>
+      </div>
+
+      <div v-if="totalPages > 1" class="flex justify-between items-center mt-4 pt-4 border-t border-neutral-100">
+        <button
+          @click="prevPage"
+          :disabled="!hasPrevPage || isFetching"
+          class="px-4 py-2 text-sm font-medium border border-neutral-100 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        <span class="text-sm text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
+        <button
+          @click="nextPage"
+          :disabled="!hasNextPage || isFetching"
+          class="px-4 py-2 text-sm font-medium border border-neutral-100 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
       </div>
     </div>
   </div>

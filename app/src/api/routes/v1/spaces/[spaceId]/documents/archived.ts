@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getUserGroups } from "#db/acl.ts";
 import {
   jsonResponse,
+  parsePaginationParams,
   requireParam,
   requireUser,
   verifySpaceAccess,
@@ -14,9 +15,14 @@ export const GET: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     await verifySpaceAccess(spaceId, user.id);
-    const documents = await listArchivedDocuments(spaceId, {
-      userId: user.id,
-      userGroups: await getUserGroups(user.id),
+    const { limit, offset } = parsePaginationParams(context.url.searchParams, {
+      defaultLimit: 50,
+      maxLimit: 500,
     });
-    return jsonResponse({ documents });
+    const { documents, total } = await listArchivedDocuments(
+      spaceId,
+      { userId: user.id, userGroups: await getUserGroups(user.id) },
+      { limit, offset },
+    );
+    return jsonResponse({ documents, total, limit, offset });
   }, "Failed to list archived documents");

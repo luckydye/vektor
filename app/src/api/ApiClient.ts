@@ -856,6 +856,22 @@ export class ApiClient {
     },
 
     /**
+     * List archived documents in a space
+     */
+    archived: async (
+      spaceId: string,
+      query?: { limit?: number; offset?: number },
+    ) => {
+      const response = await this.apiGet<{
+        documents: DocumentWithProperties[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/archived`, query);
+      return response;
+    },
+
+    /**
      * List documents by categories as a grouped map, including descendants.
      */
     getByCategories: async (spaceId: string, categorySlugs: string[]) => {
@@ -1639,7 +1655,10 @@ export class ApiClient {
       );
     },
 
-    listRuns: async (spaceId: string, query?: { sourceExtensionId?: string }) => {
+    listRuns: async (
+      spaceId: string,
+      query?: { sourceExtensionId?: string; filterDocumentId?: string; limit?: number; offset?: number },
+    ) => {
       const response = await this.apiGet<{
         runs: {
           runId: string;
@@ -1648,11 +1667,18 @@ export class ApiClient {
           documentTitle: string;
           status: string;
           createdAt: string;
+          startedAt: string | null;
+          finishedAt: string | null;
+          totalNodes: number;
+          completedNodes: number;
           sourceExtensionId: string | null;
           runtimeInputs: Record<string, unknown>;
         }[];
+        total: number;
+        limit: number;
+        offset: number;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`, query);
-      return response.runs;
+      return response;
     },
 
   };
