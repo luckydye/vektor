@@ -331,7 +331,7 @@ const statusBadgeClass: Record<string, string> = {
 
     <div class="flex justify-between gap-4">
         <!-- Title -->
-        <h2 v-if="selectedRunTitle" class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle }}</h2>
+        <h2 class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle || "Untitled" }}</h2>
     
         <!-- Header -->
         <div class="flex items-center justify-between gap-12">
@@ -355,6 +355,17 @@ const statusBadgeClass: Record<string, string> = {
 
     <!-- Pipeline progress -->
     
+    <!-- Input fields -->
+    <details v-if="selectedRunInputs" class="text-xs">
+      <summary class="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">Input fields</summary>
+      <div class="mt-2 space-y-2">
+        <div v-for="(val, key) in selectedRunInputs" :key="key" class="rounded-lg border border-neutral-200 overflow-hidden">
+          <div class="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 font-mono font-semibold text-neutral-500 border-b border-neutral-200">{{ key }}</div>
+          <pre class="px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-300">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+        </div>
+      </div>
+    </details>
+    
     <!-- Logs (expandable) -->
     <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
         <button
@@ -377,6 +388,57 @@ const statusBadgeClass: Record<string, string> = {
     <!-- No runs yet -->
     <div v-if="!selectedRunDetail" class="text-sm text-neutral-400 py-8 text-center">
       No runs yet. Click "Run Workflow" to execute.
+    </div>
+
+    <!-- Results -->
+    <div v-if="selectedRunDetail?.status === 'completed'" class="space-y-4">
+
+      <!-- HTML output -->
+      <div v-if="outputHtml" class="rounded-xl border border-neutral-200 overflow-hidden">
+        <div v-html="outputHtml" class="p-2" />
+      </div>
+
+      <!-- Data table -->
+      <DataTable v-if="outputData" :data="outputData" :space-slug="props.spaceSlug" :document-id="props.documentId" />
+
+      <!-- Document link -->
+      <div v-if="outputDocumentId && outputDocumentHref" class="inline-flex items-center gap-2">
+        <a
+          :href="outputDocumentHref"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
+        >
+          <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
+          {{ outputDocumentTitle ?? "Open document" }}
+        </a>
+        <button
+          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+          title="Download as Markdown"
+          @click="downloadDocument(outputDocumentHref!, outputDocumentTitle ?? 'document')"
+        >
+          <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
+        </button>
+      </div>
+
+      <!-- File input -->
+      <div v-if="selectedRunFileUrl && selectedRunFileName" class="inline-flex items-center gap-2 ml-4">
+        <a
+          :href="selectedRunFileUrl"
+          target="_blank"
+          rel="noreferrer"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
+        >
+          <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
+          {{ selectedRunFileName }}
+        </a>
+        <button
+          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+          title="Download"
+          @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!)"
+        >
+          <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
+        </button>
+      </div>
+
     </div>
 
     <!-- Run history -->
