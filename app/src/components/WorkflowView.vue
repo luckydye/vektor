@@ -120,20 +120,25 @@ const selectedRunInputs = computed(() => {
 });
 
 // Auto-select the first run and load extension info once on initial data arrival.
+// Uses `immediate: true` so cached data (served synchronously on client navigation)
+// triggers the callback even when runList doesn't change after the watcher is registered.
+// The per-field guards keep the side-effects idempotent across subsequent list updates.
 watch(
   runList,
   async (newRuns) => {
     if (newRuns.length === 0) return;
     if (!selectedRunId.value) await selectRun(newRuns[0].runId);
-    const sourceExtId = newRuns[0].sourceExtensionId;
-    if (sourceExtId) {
-      const ext = await api.extensions.getById(props.spaceId, sourceExtId);
-      const firstRoute = ext.routes?.[0];
-      if (firstRoute)
-        sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
+    if (!sourceExtensionHref.value) {
+      const sourceExtId = newRuns[0].sourceExtensionId;
+      if (sourceExtId) {
+        const ext = await api.extensions.getById(props.spaceId, sourceExtId);
+        const firstRoute = ext.routes?.[0];
+        if (firstRoute)
+          sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
+      }
     }
   },
-  { once: true },
+  { immediate: true },
 );
 
 onMounted(() => {
