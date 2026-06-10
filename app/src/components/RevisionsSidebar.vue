@@ -101,6 +101,11 @@ function revisionStatusOf(entry: AuditLog): string | null {
   return revisionsByNumber.value.get(entry.revisionId)?.status ?? null;
 }
 
+/** The most recent entry in a group that has a revision (used for the header action). */
+function primaryRevisionEntry(items: AuditLog[]): AuditLog | undefined {
+  return items.find((i) => !!i.revisionId);
+}
+
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
@@ -301,19 +306,9 @@ watch(
             :get-user-name="getUserName"
             :get-user="getUser"
           >
-            <template #entry-actions="{ entry }">
-              <!-- Published / Suggestion badge -->
-              <span
-                v-if="isPublishedEntry(entry)"
-                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded border border-blue-200 text-blue-600 bg-blue-50"
-              >Published</span>
-              <span
-                v-else-if="isSuggestionEntry(entry)"
-                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded border border-amber-200 text-amber-600 bg-amber-50"
-              >{{ revisionStatusOf(entry) === "applied" ? "Applied" : "Suggestion" }}</span>
-
-              <!-- Revision action popover -->
-              <div v-if="entry.revisionId" class="shrink-0">
+            <!-- ⋯ button in the header row, acting on the most recent revision in the group -->
+            <template #header-actions="{ items }">
+              <div v-if="primaryRevisionEntry(items)" class="shrink-0">
                 <a-popover-trigger :showdelay="0" :hidedelay="100">
                   <button
                     slot="trigger"
@@ -327,29 +322,29 @@ watch(
                     <div class="w-max py-2 opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
                       <div class="bg-background border border-neutral-100 rounded-lg origin-top-right scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 min-w-[160px]">
                         <button
-                          @click="e => { exitPopover(e); viewRevision(entry.revisionId); }"
+                          @click="e => { exitPopover(e); viewRevision(primaryRevisionEntry(items)!.revisionId); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="eyeIcon" />
                           View Revision
                         </button>
                         <button
-                          @click="e => { exitPopover(e); showDiff(entry); }"
+                          @click="e => { exitPopover(e); showDiff(primaryRevisionEntry(items)!); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="clipboardIcon" />
                           Show Diff
                         </button>
                         <button
-                          @click="e => { exitPopover(e); copyRevisionLink(entry.id); }"
+                          @click="e => { exitPopover(e); copyRevisionLink(primaryRevisionEntry(items)!.id); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="copyIcon" />
                           Copy Link
                         </button>
                         <button
-                          v-if="!isPublishedEntry(entry) && !isSuggestionEntry(entry)"
-                          @click="e => { exitPopover(e); publishRevisionAction(entry.revisionId); }"
+                          v-if="!isPublishedEntry(primaryRevisionEntry(items)!) && !isSuggestionEntry(primaryRevisionEntry(items)!)"
+                          @click="e => { exitPopover(e); publishRevisionAction(primaryRevisionEntry(items)!.revisionId); }"
                           class="w-full px-4 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           :disabled="isPublishing"
                         >
@@ -361,6 +356,18 @@ watch(
                   </a-popover>
                 </a-popover-trigger>
               </div>
+            </template>
+
+            <!-- Published / Suggestion badge per entry -->
+            <template #entry-actions="{ entry }">
+              <span
+                v-if="isPublishedEntry(entry)"
+                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded border border-blue-200 text-blue-600 bg-blue-50"
+              >Published</span>
+              <span
+                v-else-if="isSuggestionEntry(entry)"
+                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded border border-amber-200 text-amber-600 bg-amber-50"
+              >{{ revisionStatusOf(entry) === "applied" ? "Applied" : "Suggestion" }}</span>
             </template>
           </ActivityFeed>
         </div>

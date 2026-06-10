@@ -139,25 +139,29 @@ const activityGroups = computed((): ActivityGroup[] => {
         <!-- Content -->
         <div class="flex-1 min-w-0 space-y-2">
 
-          <!-- Group header: Name • Summary · time -->
+          <!-- Group header: Name • Summary · time [optional action] -->
           <!-- At default the avatar lives inline here; hidden at @md -->
-          <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-            <div class="@md:hidden shrink-0 self-center mr-0.5">
-              <Avatar
-                :id="group.userId ?? undefined"
-                :user="getUser?.(group.userId)"
-                :size="28"
-              />
+          <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 flex-1 min-w-0">
+              <div class="@md:hidden shrink-0 self-center mr-0.5">
+                <Avatar
+                  :id="group.userId ?? undefined"
+                  :user="getUser?.(group.userId)"
+                  :size="28"
+                />
+              </div>
+              <span class="text-sm font-semibold text-primary-600">
+                {{ getUserName(group.userId) }}
+              </span>
+              <span class="text-neutral-300 select-none text-xs">•</span>
+              <span class="text-sm text-neutral-600">{{ getGroupSummary(group.items) }}</span>
+              <span class="text-neutral-300 select-none text-xs">·</span>
+              <span class="text-xs text-neutral-400 whitespace-nowrap">
+                {{ formatActivityTime(group.time) }}
+              </span>
             </div>
-            <span class="text-sm font-semibold text-primary-600 leading-[1.75rem] @md:leading-[2.175rem]">
-              {{ getUserName(group.userId) }}
-            </span>
-            <span class="text-neutral-300 select-none text-xs">•</span>
-            <span class="text-sm text-neutral-600">{{ getGroupSummary(group.items) }}</span>
-            <span class="text-neutral-300 select-none text-xs">·</span>
-            <span class="text-xs text-neutral-400 whitespace-nowrap">
-              {{ formatActivityTime(group.time) }}
-            </span>
+            <!-- Action placed to the right of the date (e.g. revision ⋯ popover) -->
+            <slot name="header-actions" :items="group.items" />
           </div>
 
           <!-- Per-entry rows -->
