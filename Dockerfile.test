@@ -1,0 +1,63 @@
+# Test image — production-identical system tools + Bun for running the test suite.
+#
+# The system layer (base image, apt packages, htmlq) is a byte-for-byte copy of
+# the production Dockerfile so the test exercises the exact same runtime environment,
+# including the architecture-specific htmlq binary that is suspected of causing
+# HTML tags to appear in workflow output on non-x86_64 hosts.
+#
+# Usage (from repo root):
+#   docker build -f Dockerfile.test -t vektor-test .
+#   docker run --rm vektor-test
+
+FROM --platform=linux/amd64 debian:12-slim
+
+# ── Identical to production Dockerfile ──────────────────────────────────────
+RUN apt-get update \
+    && apt-get -y --no-install-recommends install \
+        curl \
+        git \
+        ca-certificates \
+        jq \
+        zstd \
+        librsvg2-bin \
+        unzip \
+    && command -v rsvg-convert \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -L https://github.com/mgdm/htmlq/releases/download/v0.4.0/htmlq-x86_64-linux.tar.gz \
+    | tar xvz -C /usr/local/bin
+
+RUN curl -L https://github.com/jgm/pandoc/releases/download/3.6.4/pandoc-3.6.4-linux-amd64.tar.gz \
+    | tar xvz --strip-components=2 -C /usr/local/bin pandoc-3.6.4/bin/pandoc
+
+# ── Bun runtime (test runner + dev server) ──────────────────────────────────
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:$PATH"
+
+# ── Workspace layout mirrors the host repo so all relative paths resolve ────
+#
+#   /workspace/
+#     package.json      ← workspace root
+#     bun.lock
+#     app/              ← Bun workspace package (source + tests)
+#     extensions/       ← extension zips (test reads the workflow-builder zip)
+
+WORKDIR /workspace
+
+# Install dependencies (two-step COPY for layer caching)
+COPY package.json bun.lock ./
+COPY app/package.json ./app/
+
+RUN bun install --frozen-lockfile
+
+# Copy application source
+COPY app/ ./app/
+
+# Extension zip — resolves to the path the test computes via import.meta.dir:
+#   join("/workspace/app/test", "../../extensions/...") → /workspace/extensions/...
+COPY extensions/extensions/workflow-builder/workflow-builder.zip \
+     ./extensions/extensions/workflow-builder/workflow-builder.zip
+
+WORKDIR /workspace/app
+
+CMD ["bun", "test", "test/workflow-script.spec.ts", "--timeout", "120000"]

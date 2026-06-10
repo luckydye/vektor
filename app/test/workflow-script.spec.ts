@@ -52,6 +52,7 @@ return {
 // ---------------------------------------------------------------------------
 
 let serverProcess: ReturnType<typeof Bun.spawn>;
+let serverLogs = "";
 let spaceId: string;
 let workflowDocId: string;
 
@@ -98,9 +99,27 @@ async function pollRunUntilDone(
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    const run = await apiJson<RunState>(
-      `/api/v1/spaces/${space}/workflows/runs/${runId}`,
-    );
+    let run: RunState;
+    try {
+      run = await apiJson<RunState>(
+        `/api/v1/spaces/${space}/workflows/runs/${runId}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isConnErr =
+        msg.includes("ConnectionRefused") ||
+        msg.includes("ECONNREFUSED") ||
+        msg.includes("Unable to connect") ||
+        (err as NodeJS.ErrnoException).code === "ECONNREFUSED";
+      if (isConnErr) {
+        const tail = serverLogs.split("\n").slice(-30).join("\n");
+        throw new Error(
+          `Server crashed while workflow was running.\n\n` +
+          `Last server output:\n${tail || "(none)"}`,
+        );
+      }
+      throw err;
+    }
 
     if (run.status !== "pending" && run.status !== "running") {
       return run;
@@ -142,11 +161,23 @@ beforeAll(async () => {
         // Required to sign job tokens used for sub-job API calls
         AUTH_SECRET: "test-secret-for-workflow-integration-testing",
       },
-      stdout: "ignore",
-      stderr: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
       cwd: import.meta.dir + "/..",
     },
   );
+
+  // Collect server output so we can surface it on failure
+  ;(async () => {
+    for await (const chunk of serverProcess.stdout) {
+      serverLogs += new TextDecoder().decode(chunk);
+    }
+  })();
+  ;(async () => {
+    for await (const chunk of serverProcess.stderr) {
+      serverLogs += new TextDecoder().decode(chunk);
+    }
+  })();
 
   await waitForServer();
 

@@ -7,5 +7,6 @@
   "meta-i": "format:italic",
   "tab": "format:list:indent",
   "shift-tab": "format:list:outdent",
-  "meta-l": "revisions:toggle"
+  "meta-l": "revisions:toggle",
+  "meta-r": "ai-chat:toggle"
 }

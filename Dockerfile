@@ -5,7 +5,6 @@ RUN apt-get update \
         curl \
         git \
         ca-certificates \
-        pandoc \
         jq \
         zstd \
         librsvg2-bin \
@@ -13,6 +12,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -L https://github.com/mgdm/htmlq/releases/download/v0.4.0/htmlq-x86_64-linux.tar.gz | tar xvz -C /usr/local/bin
+
+RUN curl -L https://github.com/jgm/pandoc/releases/download/3.6.4/pandoc-3.6.4-linux-amd64.tar.gz \
+    | tar xvz --strip-components=2 -C /usr/local/bin pandoc-3.6.4/bin/pandoc
 
 WORKDIR /app
 
