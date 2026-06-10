@@ -164,7 +164,7 @@ onUnmounted(() => {
       class="w-full rounded-md border border-neutral-200 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
     />
     <div class="overflow-x-auto rounded-lg border border-neutral-200">
-      <table class="text-sm" style="table-layout: fixed;">
+      <table class="text-sm" style="table-layout: fixed; width: max-content; min-width: 100%;">
         <thead>
           <tr class="bg-neutral-50 dark:bg-neutral-800 text-left">
             <th
@@ -203,18 +203,19 @@ onUnmounted(() => {
             <td
               v-for="col in columns"
               :key="col"
-              class="px-3 py-2 text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap overflow-hidden truncate"
+              class="px-3 py-2 text-neutral-700 dark:text-neutral-300 align-top"
               :style="{ width: colWidth(col), maxWidth: colWidth(col) }"
-              :title="cellText(row[col])"
             >
-              <a
-                v-if="documentHref(col, row[col])"
-                :href="documentHref(col, row[col])!"
-                class="text-sky-700 hover:text-sky-800 hover:underline"
-                target="_blank"
-                rel="noreferrer"
-              >{{ cellText(row[col]) }}</a>
-              <template v-else>{{ cellText(row[col]) }}</template>
+              <div class="max-h-24 overflow-y-auto whitespace-pre-wrap break-words" :title="cellText(row[col])">
+                <a
+                  v-if="documentHref(col, row[col])"
+                  :href="documentHref(col, row[col])!"
+                  class="text-sky-700 hover:text-sky-800 hover:underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >{{ cellText(row[col]) }}</a>
+                <template v-else>{{ cellText(row[col]) }}</template>
+              </div>
             </td>
           </tr>
           <tr v-if="filtered.length === 0">
