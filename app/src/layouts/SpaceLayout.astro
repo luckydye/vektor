@@ -1,6 +1,6 @@
 ---
 import { ClientRouter } from "astro:transitions";
-import BottomNav from "../components/BottomNav.vue";
+import MobileHeader from "../components/MobileHeader.vue";
 import CalDAVSetupDialog from "../components/CalDAVSetupDialog.vue";
 import CommandPalatte from "../components/CommandPalatte.vue";
 import DockedWindowLayout from "../components/DockedWindowLayout.vue";
@@ -187,6 +187,14 @@ const publicEnvVars = () => Astro.locals.publicEnv;
 
       <!-- Main Content Area with left margin for fixed sidebar -->
       <div transition:name="content" transition:animate="none" class="main-content min-h-screen h-full transition-all lg:transition-none lg:ml-(--sidebar-width) relative">
+        <!-- Mobile Header Navigation -->
+        <MobileHeader
+            client:load
+            transition:name="navigation"
+            spaceSlug={currentSpaceSlug}
+            spaceName={currentSpace?.name ?? ""}
+            pathname={pathname}
+        />
         <DockedWindowLayout client:load>
           <slot />
         </DockedWindowLayout>
@@ -202,14 +210,6 @@ const publicEnvVars = () => Astro.locals.publicEnv;
     <!-- <LinkPreview client:only /> -->
 
     <DocumentOverlay client:only="vue" />
-
-    <!-- Bottom Navigation -->
-    <BottomNav
-        client:load
-        transition:name="navigation"
-        spaceSlug={currentSpaceSlug}
-        pathname={pathname}
-    />
 
     <slot name="outer"></slot>
   </body>

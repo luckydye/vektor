@@ -7,16 +7,16 @@ import Navigation from "./Navigation.vue";
 import UserProfile from "./UserProfile.vue";
 
 const props = withDefaults(
-  defineProps<{
-    defaultWidth?: number;
-    minWidth?: number;
-    maxWidth?: number;
-  }>(),
-  {
-    defaultWidth: 250,
-    minWidth: 70,
-    maxWidth: 500,
-  },
+    defineProps<{
+        defaultWidth?: number;
+        minWidth?: number;
+        maxWidth?: number;
+    }>(),
+    {
+        defaultWidth: 250,
+        minWidth: 84,
+        maxWidth: 500,
+    },
 );
 
 const sidebarRef = ref<HTMLElement | null>(null);
@@ -27,218 +27,201 @@ const displayWidth = ref();
 const isMobileOpen = ref(false);
 
 const closeMobile = () => {
-  isMobileOpen.value = false;
-  document.body.style.overflow = "";
+    isMobileOpen.value = false;
+    document.body.style.overflow = "";
 };
 
 const handleSidebarClick = (e: MouseEvent) => {
-  const target = e.target as HTMLElement;
-  if (target.tagName === "A" || target.closest("a")) {
-    closeMobile();
-  }
+    const target = e.target as HTMLElement;
+    if (target.tagName === "A" || target.closest("a")) {
+        closeMobile();
+    }
 };
 
 const toggleCollapse = () => {
-  Actions.run("ui:toggle:sidebar");
+    Actions.run("ui:toggle:sidebar");
 };
 
 const startResize = (e: MouseEvent) => {
-  isResizing.value = true;
-  hasDragged.value = false;
-  e.preventDefault();
+    isResizing.value = true;
+    hasDragged.value = false;
+    e.preventDefault();
 
-  document.addEventListener("mousemove", handleResize);
-  document.addEventListener("mouseup", stopResize);
-  document.body.style.cursor = "col-resize";
-  document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleResize);
+    document.addEventListener("mouseup", stopResize);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
 };
 
 function dispatchSidebarResize() {
-  window.dispatchEvent(
-    new CustomEvent("sidebar:resize", { detail: { width: currentWidth.value } }),
-  );
+    window.dispatchEvent(
+        new CustomEvent("sidebar:resize", { detail: { width: currentWidth.value } }),
+    );
 }
 
 const handleResize = (e: MouseEvent) => {
-  if (!isResizing.value || !sidebarRef.value) return;
-  hasDragged.value = true;
+    if (!isResizing.value || !sidebarRef.value) return;
+    hasDragged.value = true;
 
-  const rect = sidebarRef.value.getBoundingClientRect();
-  let newWidth = e.clientX - rect.left;
+    const rect = sidebarRef.value.getBoundingClientRect();
+    let newWidth = e.clientX - rect.left;
 
-  // Snap to default width or min width within 10px threshold
-  const snapThreshold = 15;
-  if (Math.abs(newWidth - props.defaultWidth) <= snapThreshold) {
-    newWidth = props.defaultWidth;
-  } else if (Math.abs(newWidth - props.minWidth) <= snapThreshold) {
-    newWidth = props.minWidth;
-  }
+    // Snap to default width or min width within 10px threshold
+    const snapThreshold = 15;
+    if (Math.abs(newWidth - props.defaultWidth) <= snapThreshold) {
+        newWidth = props.defaultWidth;
+    } else if (Math.abs(newWidth - props.minWidth) <= snapThreshold) {
+        newWidth = props.minWidth;
+    }
 
-  if (newWidth < props.minWidth) {
-    const overshoot = props.minWidth - newWidth;
-    displayWidth.value = props.minWidth - overshoot * 0.2;
-  } else if (newWidth > props.maxWidth) {
-    const overshoot = newWidth - props.maxWidth;
-    displayWidth.value = props.maxWidth + overshoot * 0.2;
-  } else {
-    displayWidth.value = newWidth;
-  }
+    if (newWidth < props.minWidth) {
+        const overshoot = props.minWidth - newWidth;
+        displayWidth.value = props.minWidth - overshoot * 0.2;
+    } else if (newWidth > props.maxWidth) {
+        const overshoot = newWidth - props.maxWidth;
+        displayWidth.value = props.maxWidth + overshoot * 0.2;
+    } else {
+        displayWidth.value = newWidth;
+    }
 
-  const clampedWidth = Math.max(
-    props.minWidth,
-    Math.min(props.maxWidth, displayWidth.value),
-  );
+    const clampedWidth = Math.max(
+        props.minWidth,
+        Math.min(props.maxWidth, displayWidth.value),
+    );
 
-  currentWidth.value = clampedWidth;
-  dispatchSidebarResize();
+    currentWidth.value = clampedWidth;
+    dispatchSidebarResize();
 };
 
 const stopResize = () => {
-  const didDrag = hasDragged.value;
-  isResizing.value = false;
-  document.removeEventListener("mousemove", handleResize);
-  document.removeEventListener("mouseup", stopResize);
-  document.body.style.cursor = "";
-  document.body.style.userSelect = "";
+    const didDrag = hasDragged.value;
+    isResizing.value = false;
+    document.removeEventListener("mousemove", handleResize);
+    document.removeEventListener("mouseup", stopResize);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
 
-  if (!didDrag) {
-    toggleCollapse();
-    return;
-  }
+    if (!didDrag) {
+        toggleCollapse();
+        return;
+    }
 
-  const clampedWidth = Math.max(
-    props.minWidth,
-    Math.min(props.maxWidth, displayWidth.value),
-  );
-  currentWidth.value = clampedWidth;
-  displayWidth.value = clampedWidth;
+    const clampedWidth = Math.max(
+        props.minWidth,
+        Math.min(props.maxWidth, displayWidth.value),
+    );
+    currentWidth.value = clampedWidth;
+    displayWidth.value = clampedWidth;
 
-  localStorage.setItem("sidebar-width", currentWidth.value.toString());
-  dispatchSidebarResize();
+    localStorage.setItem("sidebar-width", currentWidth.value.toString());
+    dispatchSidebarResize();
 };
 
 onMounted(() => {
-  Actions.register("ui:toggle:sidebar", {
-    title: "Toggle Sidebar",
-    description: "Open or close the sidebar menu",
-    group: "navigation",
-    run: async () => {
-      const targetWidth =
-        currentWidth.value === props.minWidth ? props.defaultWidth : props.minWidth;
-      currentWidth.value = targetWidth;
-      displayWidth.value = targetWidth;
-      localStorage.setItem("sidebar-width", targetWidth.toString());
-      dispatchSidebarResize();
-      nextTick(() => window.dispatchEvent(new Event("resize")));
-    },
-  });
+    Actions.register("ui:toggle:sidebar", {
+        title: "Toggle Sidebar",
+        description: "Open or close the sidebar menu",
+        group: "navigation",
+        run: async () => {
+            const targetWidth =
+                currentWidth.value === props.minWidth ? props.defaultWidth : props.minWidth;
+            currentWidth.value = targetWidth;
+            displayWidth.value = targetWidth;
+            localStorage.setItem("sidebar-width", targetWidth.toString());
+            dispatchSidebarResize();
+            nextTick(() => window.dispatchEvent(new Event("resize")));
+        },
+    });
 
-  Actions.register("sidebar:toggle", {
-    title: "Toggle Sidebar",
-    description: "Open or close the sidebar menu",
-    group: "navigation",
-    run: async () => {
-      isMobileOpen.value = !isMobileOpen.value;
+    Actions.register("sidebar:toggle", {
+        title: "Toggle Sidebar",
+        description: "Open or close the sidebar menu",
+        group: "navigation",
+        run: async () => {
+            isMobileOpen.value = !isMobileOpen.value;
 
-      if (isMobileOpen.value) {
-        document.body.style.overflow = "hidden";
-      } else {
-        document.body.style.overflow = "";
-      }
-    },
-  });
+            if (isMobileOpen.value) {
+                document.body.style.overflow = "hidden";
+            } else {
+                document.body.style.overflow = "";
+            }
+        },
+    });
 
-  const savedWidth = localStorage.getItem("sidebar-width");
-  if (savedWidth) {
-    const width = parseInt(savedWidth, 10);
-    if (width >= props.minWidth && width <= props.maxWidth) {
-      currentWidth.value = width;
-      displayWidth.value = width;
-      return;
+    const savedWidth = localStorage.getItem("sidebar-width");
+    if (savedWidth) {
+        const width = parseInt(savedWidth, 10);
+        if (width >= props.minWidth && width <= props.maxWidth) {
+            currentWidth.value = width;
+            displayWidth.value = width;
+            return;
+        }
     }
-  }
 
-  const initialWidth = props.defaultWidth || props.minWidth;
-  currentWidth.value = initialWidth;
-  displayWidth.value = initialWidth;
+    const initialWidth = props.defaultWidth || props.minWidth;
+    currentWidth.value = initialWidth;
+    displayWidth.value = initialWidth;
 });
 
 watchEffect(() => {
-  if (typeof window !== "undefined") {
-    document.body.style.setProperty("--sidebar-width", `${currentWidth.value}px`);
-  }
+    if (typeof window !== "undefined") {
+        document.body.style.setProperty("--sidebar-width", `${currentWidth.value}px`);
+    }
 });
 
 onUnmounted(() => {
-  document.body.style.overflow = "";
-  Actions.unregister("sidebar:toggle");
+    document.body.style.overflow = "";
+    Actions.unregister("sidebar:toggle");
 });
 </script>
 
 <template>
-  <div>
-    <!-- Backdrop Overlay for Mobile -->
-    <div
-      v-if="isMobileOpen"
-      @click="closeMobile"
-      class="fixed inset-0 bg-black/50 z-30 lg:hidden transition-opacity"
-    ></div>
+    <div>
+        <!-- Backdrop Overlay for Mobile -->
+        <div v-if="isMobileOpen" @click="closeMobile"
+            class="fixed inset-0 bg-black/50 z-30 lg:hidden transition-opacity"></div>
 
-    <!-- Sidebar -->
-    <div
-      ref="sidebarRef"
-      :style="{
-        width: `${displayWidth}px`,
-        '--color-background': 'var(--color-neutral-50)'
-      }"
-      :class="[
-        '@container sidebar m-1.5 rounded-md border border-neutral-100',
-        'flex flex-col bg-background fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
-        'z-40 lg:z-10',
-        'lg:translate-x-0',
-        isMobileOpen ? 'translate-x-0' : '-translate-x-full'
-      ]"
-      @click="handleSidebarClick"
-    >
-      <!-- Toggle Button - Floating on Right Border -->
-      <button
-        @click.stop="toggleCollapse"
-        type="button"
-        class="hidden lg:block absolute bottom-6 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
-        :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'"
-      >
-        <Icon
-          name="collapse"
-          :class="twMerge(
-            'w-4 h-4 transition-transform',
-            currentWidth === minWidth ? 'rotate-180' : ''
-          )"
-        />
-      </button>
+        <!-- Sidebar -->
+        <div ref="sidebarRef" :style="{
+            width: `${displayWidth}px`,
+            '--color-background': 'var(--color-neutral-50)'
+        }" :class="[
+            '@container sidebar p-1.5 flex',
+            'fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
+            'z-40 lg:z-10',
+            'lg:translate-x-0',
+            isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+        ]" @click="handleSidebarClick">
+            <div class="flex flex-col bg-background rounded-lg overflow-hidden border border-neutral-100 w-full h-full">
+                <!-- Toggle Button - Floating on Right Border -->
+                <button @click.stop="toggleCollapse" type="button"
+                    class="hidden lg:block absolute bottom-6 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
+                    :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'">
+                    <Icon name="collapse" :class="twMerge(
+                        'w-4 h-4 transition-transform',
+                        currentWidth === minWidth ? 'rotate-180' : ''
+                    )" />
+                </button>
 
-      <!-- Navigation -->
-      <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
-        <Navigation />
-      </wiki-scroll>
-      
-      <!-- Bottom Actions -->
-      <div
-        class="px-1 py-3 relative flex items-center"
-      >
-        <!-- User Profile -->
-        <UserProfile />
-      </div>
+                <!-- Navigation -->
+                <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
+                    <Navigation />
+                </wiki-scroll>
 
-      <!-- Desktop Resize Handle -->
-      <div
-        :class="[
-          'hidden lg:block absolute top-0 bottom-0 -right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
-          isResizing && 'bg-primary-200/50' || ''
-        ]"
-        @mousedown="startResize"
-      >
-        <div class="absolute inset-y-0 -right-1 w-3"></div>
-      </div>
+                <!-- Bottom Actions -->
+                <div class="px-1 py-3 relative flex items-center">
+                    <!-- User Profile -->
+                    <UserProfile />
+                </div>
+
+                <!-- Desktop Resize Handle -->
+                <div :class="[
+                    'hidden lg:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
+                    isResizing && 'bg-primary-200/50 active:bg-primary-200' || ''
+                ]" @mousedown="startResize">
+                    <div class="absolute inset-y-0 right-1 w-3"></div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 </template>

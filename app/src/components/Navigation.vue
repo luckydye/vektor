@@ -175,17 +175,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
       <div v-for="i in 3" :key="`nav-skeleton-${i}`" class="h-9 bg-neutral-100 rounded-md animate-pulse" />
     </div>
 
-    <!-- Mobile-only Settings Button -->
-    <div v-if="!isLoading && userCanAccessSettings" class="px-4xs flex-none flex lg:hidden flex-col gap-1">
-        <MenuLink
-            :icon="settingsIcon"
-            text="Settings"
-            :href="`/${spaceSlug}/settings`"
-            :is-active="activeRoute === 'settings'"
-        />
-    </div>
-
-    <div v-if="!isLoading" class="px-4xs flex-none hidden lg:flex flex-col gap-0.5">
+    <div v-if="!isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
         <MenuLink
             :icon="homeIcon"
             text="Home"

@@ -1,0 +1,53 @@
+<template>
+  <header class="lg:hidden sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-neutral-100 px-2">
+    <div class="flex items-center justify-between h-12">
+      <button
+        @click="handleMenuClick"
+        class="flex items-center justify-center w-9 h-9 rounded-lg transition-colors text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100"
+      >
+        <div class="svg-icon h-5 w-5" v-html="menuIcon" />
+        <span class="sr-only">Menu</span>
+      </button>
+
+      <span v-if="spaceName" class="text-sm font-semibold text-neutral-800 truncate max-w-[140px]">
+        {{ spaceName }}
+      </span>
+
+      <a
+        :href="`/${spaceSlug}/search`"
+        class="flex items-center justify-center w-9 h-9 rounded-lg transition-colors"
+        :class="isSearchActive ? 'text-primary-600 bg-primary-50' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'"
+      >
+        <div class="svg-icon h-5 w-5" v-html="searchMagnifierIcon" />
+        <span class="sr-only">Search</span>
+      </a>
+    </div>
+  </header>
+</template>
+
+<script setup lang="ts">
+import { computed } from "vue";
+import { menuIcon, searchMagnifierIcon } from "~/src/assets/icons.ts";
+import { Actions } from "../utils/actions.ts";
+
+const props = withDefaults(
+  defineProps<{
+    spaceSlug?: string;
+    spaceName?: string;
+    pathname?: string;
+  }>(),
+  {
+    spaceSlug: "",
+    spaceName: "",
+    pathname: "",
+  },
+);
+
+const isSearchActive = computed(() => {
+  return props.pathname?.includes("/search") || false;
+});
+
+const handleMenuClick = () => {
+  Actions.run("sidebar:toggle");
+};
+</script>

@@ -5,7 +5,7 @@ const { leftWindows, rightWindows } = useDockedWindows();
 </script>
 
 <template>
-  <div class="flex min-h-screen h-full ml-3">
+  <div class="flex min-h-screen h-full">
     <!-- Left docked placeholders -->
     <div
       v-for="w in leftWindows"
