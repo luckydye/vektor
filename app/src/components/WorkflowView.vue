@@ -346,7 +346,7 @@ const statusBadgeClass: Record<string, string> = {
         <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
             Logs
         </button>
-        <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[900px]">
+        <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[400px]">
             <div class="font-mono text-[11px] space-y-0.5">
                 <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
                 <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>

@@ -281,9 +281,7 @@ if (diffMins >= 1 && diffMins < 60) {
 
    	<!-- Revisions Sidebar -->
     <div slot="outer">
-        {document.type !== "canvas" && (
           <RevisionsSidebar client:only documentId={document.id} />
-        )}
         <AIChatPanel client:only documentId={document.id} />
     </div>
 </SpaceLayout>

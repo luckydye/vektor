@@ -1,6 +1,5 @@
 ---
 import PinnedDocument from "~/src/components/PinnedDocument.vue";
-import RunningWorkflows from "~/src/components/RunningWorkflows.vue";
 import ExtensionView from "../../components/ExtensionView.vue";
 import SpaceActivity from "../../components/SpaceActivity.vue";
 import { getDocument } from "../../db/documents.ts";
@@ -60,10 +59,6 @@ const homeTopViews = extensions.flatMap((ext) =>
 		)}
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-3xl mb-20">
-			<div>
-				<RunningWorkflows client:load spaceSlug={space.slug} spaceId={space.id} />
-			</div>
-
 			<div>
 				<SpaceActivity client:load spaceId={space.id} limit={15} />
 			</div>

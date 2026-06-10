@@ -2,29 +2,24 @@
 SpaceActivity Component
 
 Displays recent activity from the audit log for a space. Shows user actions like
-document creation, edits, publishing, permissions changes, etc.
+document creation, edits, publishing, permissions changes, property updates, etc.
 
 Props:
   - spaceId: The ID of the space to show activity for
   - limit: Maximum number of activity entries to fetch (default: 10)
 
 Features:
-  - Groups activities by date for better readability
-  - Shows color-coded indicators for different event types
-  - Displays relative time ("5 minutes ago") for recent events
+  - Groups consecutive activities by the same user into one card
+  - A new group starts when a different user acts
+  - Date separators appear between groups when the date changes
+  - Displays property changes as "Property: oldValue → newValue"
   - Fetches and displays user names and document names
-  - Add websocket support for real-time activity updates
-
-Usage:
-  import SpaceActivity from "./SpaceActivity.vue";
-
-  <SpaceActivity client:load spaceId="space-123" limit={15} />
 -->
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { type AuditLog, api } from "../api/client.ts";
-import { normalizeTimestamp } from "../utils/utils.ts";
+import ActivityFeed from "./ActivityFeed.vue";
 
 type AuditLogEntry = AuditLog;
 
@@ -55,28 +50,6 @@ const isLoading = ref(true);
 const error = ref<string | null>(null);
 const users = ref<Map<string, User>>(new Map());
 const documents = ref<Map<string, Document>>(new Map());
-
-const eventLabels: Record<string, string> = {
-  view: "viewed",
-  save: "made changes to",
-  publish: "published",
-  unpublish: "unpublished",
-  restore: "restored",
-  delete: "deleted",
-  create: "created",
-  lock: "locked",
-  unlock: "unlocked",
-};
-
-const eventColors: Record<string, string> = {
-  create: "bg-green-500",
-  save: "bg-blue-500",
-  publish: "bg-purple-500",
-  delete: "bg-red-500",
-  lock: "bg-orange-500",
-  unlock: "bg-green-500",
-  default: "bg-neutral-500",
-};
 
 async function fetchActivities() {
   try {
@@ -135,7 +108,12 @@ async function fetchDocuments() {
   await Promise.all(docPromises);
 }
 
-function getUserName(userId?: string): string {
+function getUser(userId?: string | null): User | undefined {
+  if (!userId) return undefined;
+  return users.value.get(userId) ?? undefined;
+}
+
+function getUserName(userId?: string | null): string {
   if (!userId) return "Unknown user";
   const user = users.value.get(userId);
   return user?.name || user?.email || userId;
@@ -146,76 +124,6 @@ function getDocumentName(docId: string): string {
   const doc = documents.value.get(docId);
   return doc?.slug || "Unknown document";
 }
-
-function formatEventDescription(activity: AuditLogEntry): string {
-  const userName = getUserName(activity.userId);
-  const eventLabel = eventLabels[activity.event] || activity.event;
-  const docName = getDocumentName(activity.docId);
-
-  if (activity.details?.message) {
-    return `${userName} ${eventLabel} ${docName}`;
-  }
-
-  return `${userName} ${eventLabel} ${docName}`;
-}
-
-function getEventColor(event: string): string {
-  return eventColors[event] || eventColors.default;
-}
-
-function formatTime(dateString: string): string {
-  try {
-    const date = normalizeTimestamp(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
-    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
-    if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
-
-    return date.toLocaleDateString();
-  } catch {
-    return dateString;
-  }
-}
-
-const groupedActivities = computed(() => {
-  const groups: { date: string; items: AuditLogEntry[] }[] = [];
-  let currentDate = "";
-  let currentGroup: AuditLogEntry[] = [];
-
-  for (const activity of activities.value) {
-    const activityDate = normalizeTimestamp(activity.createdAt).toLocaleDateString(
-      "en-US",
-      {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      },
-    );
-
-    if (activityDate !== currentDate) {
-      if (currentGroup.length > 0) {
-        groups.push({ date: currentDate, items: currentGroup });
-      }
-      currentDate = activityDate;
-      currentGroup = [activity];
-    } else {
-      currentGroup.push(activity);
-    }
-  }
-
-  if (currentGroup.length > 0) {
-    groups.push({ date: currentDate, items: currentGroup });
-  }
-
-  return groups;
-});
 
 onMounted(() => {
   fetchActivities();
@@ -228,55 +136,44 @@ onMounted(() => {
       <h2 class="text-2xl font-bold">Recent Activity</h2>
     </div>
 
+    <!-- Error state -->
     <div v-if="error" class="text-red-600 p-4 border border-red-200 rounded bg-red-50">
       {{ error }}
     </div>
 
-    <div v-else-if="isLoading" class="space-y-6">
-      <div class="space-y-3">
-        <div class="text-xs font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 py-2 h-4 bg-neutral-200 rounded w-32 animate-pulse" />
-        <div class="space-y-1">
-          <div v-for="i in 5" :key="`skeleton-${i}`" class="flex items-start gap-3 p-3 rounded-lg animate-pulse">
-            <div class="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-neutral-200" />
-            <div class="flex-1 min-w-0 space-y-2">
-              <div class="h-4 bg-neutral-200 rounded w-3/4" />
-              <div class="h-3 bg-neutral-200 rounded w-1/4" />
-            </div>
+    <!-- Loading skeleton -->
+    <div v-else-if="isLoading" class="space-y-5">
+      <div class="h-3 bg-neutral-200 rounded w-36 animate-pulse" />
+      <div v-for="i in 3" :key="`skeleton-${i}`" class="space-y-2 animate-pulse">
+        <!-- Group header skeleton -->
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-neutral-200 shrink-0" />
+          <div class="flex items-center gap-2">
+            <div class="h-3.5 bg-neutral-200 rounded w-24" />
+            <div class="h-3 bg-neutral-200 rounded w-16" />
+            <div class="h-3 bg-neutral-200 rounded w-20" />
           </div>
+        </div>
+        <!-- Change rows skeleton -->
+        <div class="ml-12 space-y-1.5">
+          <div class="h-6 bg-neutral-100 rounded w-56" />
+          <div v-if="i === 1" class="h-6 bg-neutral-100 rounded w-44" />
         </div>
       </div>
     </div>
 
-    <div v-else-if="activities.length === 0" class="text-center py-8 text-neutral">
+    <!-- Empty state -->
+    <div v-else-if="activities.length === 0" class="text-center py-8 text-neutral-400">
       No recent activity
     </div>
 
-    <div v-else class="space-y-6">
-      <div v-for="group in groupedActivities" :key="group.date" class="space-y-3">
-        <div class="text-xs font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 py-2">
-          {{ group.date }}
-        </div>
-        <div class="space-y-0.5">
-          <div
-            v-for="activity in group.items"
-            :key="activity.id"
-            class="flex items-start gap-3 p-3 rounded-lg hover:bg-neutral-300 transition-colors group"
-          >
-            <div
-              class="flex-shrink-0 w-2 h-2 mt-1.5 rounded-full"
-              :class="getEventColor(activity.event)"
-            />
-            <div class="flex-1 min-w-0 flex justify-between flex-wrap">
-              <p class="text-sm text-neutral-900">
-                {{ formatEventDescription(activity) }}
-              </p>
-              <p class="text-xs text-neutral-900">
-                {{ formatTime(activity.createdAt) }}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Activity feed -->
+    <ActivityFeed
+      v-else
+      :entries="activities"
+      :get-user-name="getUserName"
+      :get-user="getUser"
+      :get-document-name="getDocumentName"
+    />
   </div>
 </template>
