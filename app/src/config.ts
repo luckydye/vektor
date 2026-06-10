@@ -49,6 +49,7 @@ export function config() {
        */
       DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
       NO_AUTH: process.env.VEKTOR_NO_AUTH,
+      IN_MEMORY_DB: process.env.VEKTOR_IN_MEMORY_DB,
       NODE_ENV: process.env.NODE_ENV,
 
       /**

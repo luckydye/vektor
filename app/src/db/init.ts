@@ -52,22 +52,11 @@ export async function prepateAuthDb(authDb: BunSQLiteDatabase) {
   // Auth database initialized
 }
 
-export async function prepareSpaceDb(spaceId: string) {
-  const spacePath = join(DATA_DIR, "spaces", `${spaceId}.db`);
-  const spaceDir = join(DATA_DIR, "spaces");
-
-  if (!existsSync(spaceDir)) {
-    mkdirSync(spaceDir, { recursive: true });
-  }
-
-  const spaceDb = drizzle({
-    connection: {
-      source: path.resolve(spacePath),
-      create: true,
-      readwrite: true,
-    },
-  });
-
+/**
+ * Run all DDL migrations on a space database instance.
+ * Works for both file-backed and in-memory SQLite databases.
+ */
+export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
   const metadataSQL = generateCreateTableSQL(spaceSchema.spaceMetadata);
   const documentSQL = generateCreateTableSQL(spaceSchema.document);
   const revisionSQL = generateCreateTableSQL(spaceSchema.revision);
@@ -151,4 +140,23 @@ export async function prepareSpaceDb(spaceId: string) {
   await spaceDb.run(sql.raw("DROP TABLE IF EXISTS document_fts"));
 
   // Space database initialized
+}
+
+export async function prepareSpaceDb(spaceId: string) {
+  const spacePath = join(DATA_DIR, "spaces", `${spaceId}.db`);
+  const spaceDir = join(DATA_DIR, "spaces");
+
+  if (!existsSync(spaceDir)) {
+    mkdirSync(spaceDir, { recursive: true });
+  }
+
+  const spaceDb = drizzle({
+    connection: {
+      source: path.resolve(spacePath),
+      create: true,
+      readwrite: true,
+    },
+  });
+
+  await initSpaceDbSchema(spaceDb);
 }

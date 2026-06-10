@@ -4,7 +4,7 @@
  * Vektor CLI
  *
  * Usage:
- *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--email-auth]
+ *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
  *   vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
  *   vektor extension create <id>
  *   vektor extension package [id]
@@ -54,7 +54,7 @@ function parseFlags(args: string[]): {
 function printUsage(): void {
   console.log(`
 Usage:
-  vektor serve [--port <port>] [--host <host>] [--no-auth] [--email-auth]
+  vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor agent [prompt...] [--doc <slug|id>] [--space <id>] [--url <host>] [--token <tok>] [--once]
   vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
   vektor extension create <id>
@@ -86,6 +86,7 @@ async function main(): Promise<void> {
     if (flags.host) process.env.HOST = flags.host;
     if ("no-auth" in flags) process.env.VEKTOR_NO_AUTH = "1";
     if ("email-auth" in flags) process.env.VEKTOR_EMAIL_AUTH = "1";
+    if ("in-memory" in flags) process.env.VEKTOR_IN_MEMORY_DB = "1";
     await import("./src/server.ts");
     return;
   }

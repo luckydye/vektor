@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import path, { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { isInMemoryDb } from "../inMemoryDb.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
 import { slugify } from "../utils/utils.ts";
 import {
@@ -11,7 +12,7 @@ import {
   listUserPermissions,
   ResourceType,
 } from "./acl.ts";
-import { closeSpaceDb, getSpaceDb } from "./db.ts";
+import { closeSpaceDb, getSpaceDb, listInMemorySpaceIds } from "./db.ts";
 import { createId } from "./ids.ts";
 import { prepareSpaceDb } from "./init.ts";
 import { preference, spaceMetadata } from "./schema/space.ts";
@@ -55,25 +56,32 @@ export async function createSpace(
     throw new Error(`Space with slug "${slug}" already exists`);
   }
 
-  if (!existsSync(SPACES_DIR)) {
-    mkdirSync(SPACES_DIR, { recursive: true });
+  let spaceDb: Awaited<ReturnType<typeof getSpaceDb>>;
+
+  if (isInMemoryDb()) {
+    // In-memory mode: getSpaceDb creates and initialises the DB on first access.
+    spaceDb = await getSpaceDb(id);
+  } else {
+    if (!existsSync(SPACES_DIR)) {
+      mkdirSync(SPACES_DIR, { recursive: true });
+    }
+
+    const spacePath = join(DATA_DIR, "spaces", `${id}.db`);
+
+    if (existsSync(spacePath)) {
+      throw new Error("Space with this ID already exists");
+    }
+
+    await prepareSpaceDb(id);
+
+    spaceDb = drizzle({
+      connection: {
+        source: path.resolve(spacePath),
+        create: true,
+        readwrite: true,
+      },
+    });
   }
-
-  const spacePath = join(DATA_DIR, "spaces", `${id}.db`);
-
-  if (existsSync(spacePath)) {
-    throw new Error("Space with this ID already exists");
-  }
-
-  await prepareSpaceDb(id);
-
-  const spaceDb = drizzle({
-    connection: {
-      source: path.resolve(spacePath),
-      create: true,
-      readwrite: true,
-    },
-  });
 
   await spaceDb.insert(spaceMetadata).values({
     id,
@@ -115,9 +123,12 @@ export async function createSpace(
 }
 
 export async function getSpace(id: string): Promise<Space | null> {
-  const spacePath = join(SPACES_DIR, `${id}.db`);
-
-  if (!existsSync(spacePath)) {
+  if (!isInMemoryDb()) {
+    const spacePath = join(SPACES_DIR, `${id}.db`);
+    if (!existsSync(spacePath)) {
+      return null;
+    }
+  } else if (!listInMemorySpaceIds().includes(id)) {
     return null;
   }
 
@@ -174,17 +185,22 @@ export async function getSpaceBySlug(slug: string): Promise<Space | null> {
 }
 
 export async function listAllSpaces(): Promise<Space[]> {
-  if (!existsSync(SPACES_DIR)) {
-    return [];
-  }
+  let spaceIds: string[];
 
-  const files = readdirSync(SPACES_DIR);
-  const dbFiles = files.filter((f) => f.endsWith(".db"));
+  if (isInMemoryDb()) {
+    spaceIds = listInMemorySpaceIds();
+  } else {
+    if (!existsSync(SPACES_DIR)) {
+      return [];
+    }
+    spaceIds = readdirSync(SPACES_DIR)
+      .filter((f) => f.endsWith(".db"))
+      .map((f) => f.replace(".db", ""));
+  }
 
   const spaces: Space[] = [];
 
-  for (const file of dbFiles) {
-    const spaceId = file.replace(".db", "");
+  for (const spaceId of spaceIds) {
     const space = await getSpace(spaceId);
     if (space) {
       spaces.push(space);
@@ -301,6 +317,14 @@ export async function updateSpace(
 }
 
 export async function deleteSpace(id: string): Promise<boolean> {
+  if (isInMemoryDb()) {
+    if (!listInMemorySpaceIds().includes(id)) {
+      return false;
+    }
+    closeSpaceDb(id);
+    return true;
+  }
+
   const spacePath = join(SPACES_DIR, `${id}.db`);
 
   if (!existsSync(spacePath)) {
