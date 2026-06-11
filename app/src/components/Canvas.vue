@@ -296,6 +296,15 @@ const activeFreehandStroke = ref<FreehandStroke | null>(null);
 const contextMenuPos = ref<{ x: number; y: number } | null>(null);
 // World-space insertion point captured when the context menu was opened.
 let contextMenuInsertWorld: { x: number; y: number } | null = null;
+// Raw client position of the most recent primary touch pointerdown. Used to
+// detect movement before a contextmenu event so we don't open the menu when
+// the user has actually started drawing or panning.
+let touchDownClient: { x: number; y: number } | null = null;
+// Set to true once the primary touch has moved beyond LONG_PRESS_SLOP_PX,
+// so contextmenu events caused by iOS firing contextmenu despite small drags
+// are suppressed.
+let touchMovedPastSlop = false;
+const LONG_PRESS_SLOP_PX = 10;
 let isReady = false;
 let hasSeededInitialContent = false;
 let viewportControls: ViewportControls | null = null;
@@ -1534,6 +1543,13 @@ function handleViewportPointerDown(event: PointerEvent) {
     return;
   }
 
+  // Reset touch movement tracking so contextmenu events on this touch
+  // can be checked against how far the finger actually moved.
+  if (event.pointerType === "touch") {
+    touchDownClient = { x: event.clientX, y: event.clientY };
+    touchMovedPastSlop = false;
+  }
+
   // The handlers below call preventDefault(), which suppresses the browser's
   // default focus shift — so without this the canvas never holds focus and
   // copy/cut/paste events are never dispatched to it. Shape/text pointerdowns
@@ -1671,6 +1687,17 @@ function snapDragOffset(
 function handlePointerMove(event: PointerEvent) {
   const point = screenPoint(event);
   localPointer.value = screenToWorld(point);
+
+  // Track whether the primary touch has moved enough to be a drag/stroke
+  // rather than a hold.  We check this in handleContextMenu to suppress the
+  // context menu when the user is actually drawing.
+  if (event.pointerType === "touch" && event.isPrimary && touchDownClient && !touchMovedPastSlop) {
+    const dx = event.clientX - touchDownClient.x;
+    const dy = event.clientY - touchDownClient.y;
+    if (Math.hypot(dx, dy) > LONG_PRESS_SLOP_PX) {
+      touchMovedPastSlop = true;
+    }
+  }
 
   if (freehandBuilder && freehandPointerId === event.pointerId) {
     activeFreehandStroke.value = freehandBuilder.addPoint(freehandPoint(event));
@@ -1839,15 +1866,15 @@ function handleDrop(event: DragEvent) {
 }
 
 function handleContextMenu(event: MouseEvent) {
+  // Always prevent the native context menu / iOS callout.
   event.preventDefault();
   if (!viewportRef.value) return;
-  // Cancel any in-progress drawing so a long-press doesn't leave a stray stroke.
-  if (freehandBuilder) {
-    freehandBuilder = null;
-    freehandPointerId = null;
-    activeFreehandStroke.value = null;
-    renderInk();
-  }
+
+  // Don't open the menu if the user was drawing or has moved their finger —
+  // the long-press just fired because iOS' own slop threshold is tighter than
+  // ours.  In both cases the pointer events continue uninterrupted.
+  if (freehandBuilder || touchMovedPastSlop) return;
+
   dragState = null;
   const rect = viewportRef.value.getBoundingClientRect();
   const pos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
