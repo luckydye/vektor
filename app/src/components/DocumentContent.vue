@@ -396,6 +396,7 @@ onMounted(() => {
   window.addEventListener("revision:close", handleRevisionClose);
   window.addEventListener("revisions:toggled", handleSidebarToggle);
   window.addEventListener("revision:diff", handleRevisionDiff);
+  window.addEventListener("document-published", reloadIfReady);
 
   if (typeof window !== "undefined") {
     window.addEventListener("visibilitychange", handleVisibilityChange);
@@ -424,6 +425,7 @@ onUnmounted(() => {
   window.removeEventListener("revision:close", handleRevisionClose);
   window.removeEventListener("revisions:toggled", handleSidebarToggle);
   window.removeEventListener("revision:diff", handleRevisionDiff);
+  window.removeEventListener("document-published", reloadIfReady);
   if (typeof window !== "undefined") {
     window.removeEventListener("visibilitychange", handleVisibilityChange);
   }

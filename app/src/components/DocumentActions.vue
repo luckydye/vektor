@@ -170,7 +170,7 @@ async function stopEditing(mode: "revision" | "suggestion" = "revision") {
   registerEditAction();
 
   if (props.documentId && mode === "revision") {
-    window.location.reload();
+    window.dispatchEvent(new CustomEvent("document-published"));
   }
 }
 
