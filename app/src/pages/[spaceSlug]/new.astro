@@ -4,6 +4,7 @@ import Canvas from "~/src/components/Canvas.vue";
 import CommentManager from "~/src/components/CommentManager.vue";
 import DocumentActions from "~/src/components/DocumentActions.vue";
 import DocumentProperties from "~/src/components/DocumentProperties.vue";
+import NewDocumentPicker from "~/src/components/NewDocumentPicker.vue";
 import TitleEditor from "~/src/components/TitleEditor.vue";
 import DocumentContent from "../../components/DocumentContent.vue";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
@@ -21,9 +22,12 @@ if (accessDenied) {
   return accessDenied;
 }
 
-const type = Astro.url.searchParams.get("type") || "document";
+const typeParam = Astro.url.searchParams.get("type");
+const type = typeParam || "document";
+const showPicker = !typeParam;
 const category = Astro.url.searchParams.get("category") || undefined;
 const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
+const spaceSlug = Astro.params.spaceSlug as string;
 ---
 
 <SpaceLayout title={`${title} - ${space.name} - Wiki`}>
@@ -58,7 +62,7 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
       <!-- Main Content -->
       <div
         class={twMerge(
-          'max-w-none text-neutral-700 h-full',
+          'max-w-none text-neutral-700 h-full relative',
           type !== 'canvas' && "print:px-0 px-xs lg:px-xl"
         )}
       >
@@ -68,6 +72,10 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
 			documentType={type}
 			initialEditMode={true}
 		/>
+
+        {showPicker && (
+          <NewDocumentPicker client:load spaceSlug={spaceSlug} />
+        )}
 
 	    <div class="h-full">
       		{type === "canvas" ? (
