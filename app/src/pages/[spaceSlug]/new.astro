@@ -27,6 +27,9 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
 ---
 
 <SpaceLayout title={`${title} - ${space.name} - Wiki`}>
+    <!-- Inset content past the fixed sidebar — except canvas docs, which render
+         full-bleed behind the nav and inset only their (absolute) header below. -->
+    <div class={twMerge('flex-1 min-h-0', type !== 'canvas' && 'lg:ml-(--sidebar-width)')}>
     <div
       class={twMerge(
         "space-y-6 mx-auto h-full flex flex-col relative w-full",
@@ -35,7 +38,7 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
      >
       <!-- Document Header -->
       <div class={twMerge(
-        type === 'canvas' ? 'absolute top-xs right-0 left-0 z-10' : 'pt-s mb-xl'
+        type === 'canvas' ? 'absolute top-xs right-0 left-0 lg:left-(--sidebar-width) z-10' : 'pt-s mb-xl'
       )}>
         <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xs">
           <div>
@@ -75,5 +78,6 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
       		) : null}
 		</div>
       </div>
+    </div>
     </div>
 </SpaceLayout>

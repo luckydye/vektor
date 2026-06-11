@@ -185,8 +185,10 @@ const publicEnvVars = () => Astro.locals.publicEnv;
       <!-- Fixed Sidebar -->
       <Sidebar client:load transition:name="navigation" />
 
-      <!-- Main Content Area with left margin for fixed sidebar -->
-      <div transition:name="content" transition:animate="none" class="main-content min-h-screen h-full transition-all lg:transition-none lg:ml-(--sidebar-width) relative">
+      <!-- Main content spans the full width (behind the fixed sidebar). Each
+           content view opts into the sidebar inset itself, so full-bleed views
+           (e.g. canvas documents) can render behind the navigation. -->
+      <div transition:name="content" transition:animate="none" class="main-content min-h-screen h-full transition-all lg:transition-none relative">
         <!-- Mobile Header Navigation -->
         <MobileHeader
             client:load

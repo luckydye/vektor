@@ -146,6 +146,9 @@ if (diffMins >= 1 && diffMins < 60) {
   description: document.properties.description || '',
 }}>
 
+    <!-- Inset content past the fixed sidebar — except canvas docs, which render
+         full-bleed behind the nav and inset only their (absolute) header below. -->
+    <div class={twMerge('flex-1 min-h-0', document.type !== 'canvas' && 'lg:ml-(--sidebar-width)')}>
     <div
       data-type={document.type}
       data-updated-at={document.updatedAt}
@@ -189,7 +192,7 @@ if (diffMins >= 1 && diffMins < 60) {
         document.type === 'app'
           ? 'hidden'
           : document.type === 'canvas'
-            ? 'absolute top-xs right-0 left-0 z-20 pointer-events-none'
+            ? 'absolute top-xs right-0 left-0 lg:left-(--sidebar-width) z-20 pointer-events-none'
             : 'pt-s mb-xl'
       )}>
         <div class={twMerge(
@@ -277,6 +280,7 @@ if (diffMins >= 1 && diffMins < 60) {
                  <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
          	</main>
       </div>
+    </div>
     </div>
 
    	<!-- Revisions Sidebar -->

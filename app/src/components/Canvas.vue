@@ -1733,6 +1733,17 @@ function handlePaste(event: ClipboardEvent) {
   void addMediaFiles(media, insertionPointFromEvent());
 }
 
+// The canvas renders full-bleed behind the fixed navigation sidebar, so the
+// left `inset` px of the viewport are occluded by the nav. Fit-to-view must
+// frame content within the *visible* region instead of the full viewport.
+function reservedSidebarWidth(): number {
+  if (typeof window === "undefined") return 0;
+  // Below the lg breakpoint the sidebar is an overlay drawer and reserves no space.
+  if (!window.matchMedia("(min-width: 1024px)").matches) return 0;
+  const rect = document.querySelector(".sidebar")?.getBoundingClientRect();
+  return Math.max(0, rect?.right ?? 0);
+}
+
 function fitView(maxZoom = 5) {
   const xs = [
     ...shapes.value.flatMap((shape) => [shape.x, shape.x + shape.width]),
@@ -1743,8 +1754,15 @@ function fitView(maxZoom = 5) {
     ...strokes.value.flatMap((stroke) => stroke.points.map((point) => point.y)),
   ];
 
+  const inset = reservedSidebarWidth();
+  const baseScale = Math.min(
+    screen.value.width / FIT_REFERENCE.width,
+    screen.value.height / FIT_REFERENCE.height,
+  );
+
   if (xs.length === 0 || ys.length === 0) {
-    camera.value = { centerX: 0, centerY: 0, zoom: 1 };
+    // Center the world origin within the visible region (right of the nav).
+    camera.value = { centerX: -inset / (2 * baseScale), centerY: 0, zoom: 1 };
     return;
   }
 
@@ -1754,16 +1772,18 @@ function fitView(maxZoom = 5) {
   const maxY = Math.max(...ys);
   const width = Math.max(1, maxX - minX + 160);
   const height = Math.max(1, maxY - minY + 160);
-  const fitScale = Math.min(screen.value.width / width, screen.value.height / height);
-  const baseScale = Math.min(
-    screen.value.width / FIT_REFERENCE.width,
-    screen.value.height / FIT_REFERENCE.height,
-  );
+  // Fit the content into the visible width, not the full (occluded) viewport.
+  const availableWidth = Math.max(1, screen.value.width - inset);
+  const fitScale = Math.min(availableWidth / width, screen.value.height / height);
+  const zoom = Math.max(0.25, Math.min(maxZoom, fitScale / baseScale));
+  const appliedScale = baseScale * zoom;
 
   camera.value = {
-    centerX: (minX + maxX) / 2,
+    // Shift the camera left by half the inset so the content centers in the
+    // visible region rather than the full viewport.
+    centerX: (minX + maxX) / 2 - inset / (2 * appliedScale),
     centerY: (minY + maxY) / 2,
-    zoom: Math.max(0.25, Math.min(maxZoom, fitScale / baseScale)),
+    zoom,
   };
 }
 

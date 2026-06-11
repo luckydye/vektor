@@ -40,7 +40,7 @@ const pageTitle = match.route.title || match.extension.manifest.name;
 ---
 
 <SpaceLayout title={`${pageTitle} - ${space.name} - Wiki`}>
-  <div class="mx-auto overflow-hidden h-full w-full relative flex-1">
+  <div class="overflow-hidden h-full relative flex-1 lg:ml-(--sidebar-width)">
     <ExtensionView
       client:only
       extensionId={match.extension.id}
