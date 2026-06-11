@@ -18,6 +18,7 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import docStyles from "../styles/document.css?inline";
+import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import CommentManager from "./CommentManager.vue";
@@ -625,7 +626,7 @@ useSync(
   ></document-statusbar>
 
   <CommentManager
-    v-if="props.documentId && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
+    v-if="props.documentId && supportsComments(props.documentType)"
     :spaceId="props.spaceId"
     :documentId="props.documentId"
     :currentRev="documentData?.currentRev"
