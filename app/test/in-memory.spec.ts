@@ -35,24 +35,21 @@ async function waitForServer(timeoutMs = 15_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  serverProcess = Bun.spawn(
-    ["bun", "./src/server.ts", "--port", String(PORT)],
-    {
-      env: {
-        ...process.env,
-        VEKTOR_NO_AUTH: "1",
-        VEKTOR_IN_MEMORY_DB: "1",
-        VEKTOR_API_ONLY: "1",
-        HOST: "127.0.0.1",
-        NODE_ENV: "test",
-        // Silence OTEL noise in test output
-        WIKI_OTEL_ENABLED: "0",
-      },
-      stdout: "ignore",
-      stderr: "ignore",
-      cwd: import.meta.dir + "/..",
+  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+    env: {
+      ...process.env,
+      VEKTOR_NO_AUTH: "1",
+      VEKTOR_IN_MEMORY_DB: "1",
+      VEKTOR_API_ONLY: "1",
+      HOST: "127.0.0.1",
+      NODE_ENV: "test",
+      // Silence OTEL noise in test output
+      WIKI_OTEL_ENABLED: "0",
     },
-  );
+    stdout: "ignore",
+    stderr: "ignore",
+    cwd: import.meta.dir + "/..",
+  });
 
   await waitForServer();
 });
@@ -85,7 +82,7 @@ async function apiJson<T = unknown>(path: string, options: RequestInit = {}): Pr
 // ---------------------------------------------------------------------------
 
 let spaceId: string;
-let docIds: string[] = [];
+const docIds: string[] = [];
 
 // ---------------------------------------------------------------------------
 // Space tests

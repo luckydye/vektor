@@ -18,8 +18,8 @@ import {
   setRunAbort,
   setRunStatus,
 } from "./runStore.ts";
-import { runJob } from "./scheduler.ts";
 import { resolveJobSandbox } from "./sandbox.ts";
+import { runJob } from "./scheduler.ts";
 
 /** Marshal a plain JS value into a QuickJS handle without using evalCode. */
 function marshalToVM(vm: QuickJSAsyncContext, value: unknown): QuickJSHandle {
@@ -103,7 +103,11 @@ export async function executeWorkflowScript(
 
       // The _script node tracks top-level logs and the final return value.
       addNode(runId, "_script");
-      setNodeStatus(runId, "_script", { status: "running", inputs: {}, startedAt: new Date() });
+      setNodeStatus(runId, "_script", {
+        status: "running",
+        inputs: {},
+        startedAt: new Date(),
+      });
 
       try {
         const variant = newVariant(RELEASE_ASYNC, { wasmLocation: wasmPath });
@@ -135,7 +139,9 @@ export async function executeWorkflowScript(
           // the microtask queue (executePendingJobs) instead of asyncify suspension.
           const runJobFn = vm.newFunction("runJob", (...handles: QuickJSHandle[]) => {
             if (handles.length < 2) {
-              throw new Error("runJob(extensionId, jobId, inputs?) requires at least 2 arguments");
+              throw new Error(
+                "runJob(extensionId, jobId, inputs?) requires at least 2 arguments",
+              );
             }
 
             const stepId = `step_${stepCounter++}`;
@@ -158,11 +164,14 @@ export async function executeWorkflowScript(
 
                 const jobDef = ext.manifest.jobs?.find((j) => j.id === jobId);
                 if (!jobDef) {
-                  throw new Error(`Job "${jobId}" not found in extension "${extensionId}"`);
+                  throw new Error(
+                    `Job "${jobId}" not found in extension "${extensionId}"`,
+                  );
                 }
 
                 const zipBuffer = await getExtensionPackage(spaceId, extensionId);
-                if (!zipBuffer) throw new Error(`Extension package not found: ${extensionId}`);
+                if (!zipBuffer)
+                  throw new Error(`Extension package not found: ${extensionId}`);
 
                 addNode(runId, stepId);
                 setNodeStatus(runId, stepId, {
@@ -215,7 +224,9 @@ export async function executeWorkflowScript(
                   error,
                   completedAt: new Date(),
                 });
-                workflowRunDurationMs.record(Date.now() - stepStart, { status: "failed" });
+                workflowRunDurationMs.record(Date.now() - stepStart, {
+                  status: "failed",
+                });
                 promise.reject(vm.newError(error));
               }
             })();

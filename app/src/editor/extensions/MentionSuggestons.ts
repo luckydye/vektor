@@ -51,7 +51,9 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
             if (!cachedMembers || !cachedDocs) {
               const [members, docsResponse] = await Promise.all([
                 api.spaceMembers.get(options.spaceId).catch(() => []),
-                api.documents.get(options.spaceId, { limit: 500 }).catch(() => ({ documents: [] })),
+                api.documents
+                  .get(options.spaceId, { limit: 500 })
+                  .catch(() => ({ documents: [] })),
               ]);
               cachedMembers = members || [];
               cachedDocs = docsResponse.documents;

@@ -52,7 +52,8 @@ export const GET: APIRoute = (context) =>
 
     const documentId = context.url.searchParams.get("documentId");
     const sourceExtensionId = context.url.searchParams.get("sourceExtensionId");
-    const filterDocumentId = context.url.searchParams.get("filterDocumentId") ?? undefined;
+    const filterDocumentId =
+      context.url.searchParams.get("filterDocumentId") ?? undefined;
 
     await ensureSpaceRecovered(spaceId);
 
@@ -71,9 +72,9 @@ export const GET: APIRoute = (context) =>
     });
 
     // List runs for this space, newest first. filterDocumentId narrows to one document.
-    const spaceRuns = (await listRuns(spaceId, { sourceExtensionId, documentId: filterDocumentId })).map(
-      ({ runId, run }) => [runId, run] as const,
-    );
+    const spaceRuns = (
+      await listRuns(spaceId, { sourceExtensionId, documentId: filterDocumentId })
+    ).map(({ runId, run }) => [runId, run] as const);
     const readableRuns: typeof spaceRuns = [];
     for (const entry of spaceRuns) {
       if (await canReadDocument(entry[1].documentId)) readableRuns.push(entry);

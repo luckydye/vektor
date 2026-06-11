@@ -858,10 +858,7 @@ export class ApiClient {
     /**
      * List archived documents in a space
      */
-    archived: async (
-      spaceId: string,
-      query?: { limit?: number; offset?: number },
-    ) => {
+    archived: async (spaceId: string, query?: { limit?: number; offset?: number }) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
         total: number;
@@ -1044,7 +1041,12 @@ export class ApiClient {
       documentId: string,
       query?: { limit?: number; offset?: number },
     ) => {
-      return this.apiGet<{ auditLogs: AuditLog[]; total: number; limit: number; offset: number }>(
+      return this.apiGet<{
+        auditLogs: AuditLog[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/documents/${documentId}/audit-logs`,
         query,
@@ -1143,11 +1145,12 @@ export class ApiClient {
      * List audit logs for a space
      */
     get: async (spaceId: string, query?: { limit?: number; offset?: number }) => {
-      return this.apiGet<{ auditLogs: AuditLog[]; total: number; limit: number; offset: number }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/audit-logs`,
-        query,
-      );
+      return this.apiGet<{
+        auditLogs: AuditLog[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/audit-logs`, query);
     },
   };
 
@@ -1657,7 +1660,12 @@ export class ApiClient {
 
     listRuns: async (
       spaceId: string,
-      query?: { sourceExtensionId?: string; filterDocumentId?: string; limit?: number; offset?: number },
+      query?: {
+        sourceExtensionId?: string;
+        filterDocumentId?: string;
+        limit?: number;
+        offset?: number;
+      },
     ) => {
       const response = await this.apiGet<{
         runs: {
@@ -1680,7 +1688,6 @@ export class ApiClient {
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`, query);
       return response;
     },
-
   };
 
   jobs = {
@@ -1717,11 +1724,12 @@ export class ApiClient {
       spaceId: string,
       options?: { jobId?: string; scheduleId?: string; limit?: number; offset?: number },
     ) => {
-      return this.apiGet<{ runs: JobRun[]; total: number; limit: number; offset: number }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/jobs/runs`,
-        options,
-      );
+      return this.apiGet<{
+        runs: JobRun[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/jobs/runs`, options);
     },
 
     /**
@@ -1904,8 +1912,7 @@ export class ApiClient {
               } satisfies PresenceLeaveMessage);
 
       for (const subscription of connection.presenceSubscriptions) {
-        const targetRoom =
-          msg.type === "presence-update" ? msg.presence.room : msg.room;
+        const targetRoom = msg.type === "presence-update" ? msg.presence.room : msg.room;
         if (targetRoom !== subscription.room) continue;
         subscription.callback(msg);
       }
@@ -2001,10 +2008,7 @@ export class ApiClient {
    * socket is open; while connecting or reconnecting the state is replayed by
    * resyncRealtimeConnection on the next open, so sending here would double up.
    */
-  private sendRealtimeState(
-    connection: RealtimeConnection,
-    data: Uint8Array,
-  ): void {
+  private sendRealtimeState(connection: RealtimeConnection, data: Uint8Array): void {
     if (connection.socket.readyState === WebSocket.OPEN) {
       connection.socket.send(data);
     }
@@ -2015,10 +2019,7 @@ export class ApiClient {
    * state. Best-effort: sent immediately when open, otherwise once the socket
    * opens. Guards against "WebSocket is already in CLOSING or CLOSED state".
    */
-  private sendRealtimeEphemeral(
-    connection: RealtimeConnection,
-    data: Uint8Array,
-  ): void {
+  private sendRealtimeEphemeral(connection: RealtimeConnection, data: Uint8Array): void {
     if (connection.socket.readyState === WebSocket.OPEN) {
       connection.socket.send(data);
       return;

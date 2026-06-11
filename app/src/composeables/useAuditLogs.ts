@@ -23,7 +23,10 @@ export function useAuditLogs(documentId: string) {
     error.value = null;
 
     try {
-      const { auditLogs: logs } = await api.documentAuditLogs.get(currentSpaceId.value, documentId);
+      const { auditLogs: logs } = await api.documentAuditLogs.get(
+        currentSpaceId.value,
+        documentId,
+      );
       auditLogs.value = logs;
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Unknown error";

@@ -26,13 +26,7 @@ interface Props {
   loading?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  spaces: () => [],
-  modelValue: null,
-  canAccessSettings: false,
-  canCreateDocs: false,
-  loading: false,
-});
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
@@ -44,9 +38,9 @@ const emit = defineEmits<{
 
 const currentSpace = computed(() => {
   if (props.modelValue) {
-    return props.spaces.find((s) => s.id === props.modelValue) || props.spaces[0] || null;
+    return props.spaces?.find((s) => s.id === props.modelValue) || props.spaces?.[0] || null;
   }
-  return props.spaces[0] || null;
+  return props.spaces?.[0] || null;
 });
 
 const handleSpaceSelect = (space: Space) => {
@@ -76,10 +70,10 @@ const handleCreateDoc = (event: Event) => {
 
 <template>
   <div class="w-full flex gap-4">
-    <div v-if="loading" class="flex items-center gap-3xs px-4xs py-4xs">
+    <div v-if="loading" class="flex items-start gap-3xs w-full px-4xs py-4xs">
       <div class="flex-none w-9 h-9 bg-neutral-200 rounded-md animate-pulse" />
       <div class="flex-1 flex flex-col gap-1">
-        <div class="h-4 bg-neutral-200 rounded-sm animate-pulse w-28" />
+        <div class="h-4 bg-neutral-200 rounded-sm animate-pulse w-25" />
         <div class="h-3 bg-neutral-100 rounded-sm animate-pulse w-16" />
       </div>
     </div>
@@ -157,13 +151,7 @@ const handleCreateDoc = (event: Event) => {
     </a-popover-trigger>
     
     <!-- Action Buttons -->
-    <div class="@max-sm:hidden flex items-center gap-2xs flex-none">
-      <ButtonSecondary
-        v-if="props.canAccessSettings"
-        aria-label="Space settings"
-        @click="handleSettings"
-        :icon="settingsIcon"
-      />
+    <div class="@max-sm:hidden flex items-start gap-2xs flex-none py-4xs pr-5xs">
       <ButtonSecondary v-if="props.canCreateDocs" aria-label="New document" @click="handleCreateDoc">
         <Icon name="plus" class="-mx-1" />
       </ButtonSecondary>

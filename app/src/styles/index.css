@@ -82,15 +82,6 @@ body {
     margin-left 300ms ease;*/
 }
 
-/* During an Astro view transition the page content and the sidebar are captured
-   as separate, overlapping snapshot groups. Now that content renders full-bleed
-   behind the fixed sidebar (e.g. canvas docs paint an opaque grid across the full
-   width), keep the navigation snapshot on top so the sidebar doesn't flicker out
-   mid-transition. */
-::view-transition-group(navigation) {
-  z-index: 20;
-}
-
 hr {
   color: var(--color-neutral-100);
 }

@@ -28,7 +28,12 @@ export const GET: APIRoute = (context) =>
     const jobId = context.url.searchParams.get("jobId") ?? undefined;
     const scheduleId = context.url.searchParams.get("scheduleId") ?? undefined;
 
-    const { runs, total } = await listJobRuns(spaceId, { jobId, scheduleId, limit, offset });
+    const { runs, total } = await listJobRuns(spaceId, {
+      jobId,
+      scheduleId,
+      limit,
+      offset,
+    });
 
     return jsonResponse({ runs: runs.map(toJobRunDto), total, limit, offset });
   }, "Failed to list job runs");

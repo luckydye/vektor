@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { api } from "../api/client.ts";
-import { formatDate } from "../utils/utils.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
+import { formatDate } from "../utils/utils.ts";
 
 const props = defineProps<{
   spaceId: string;

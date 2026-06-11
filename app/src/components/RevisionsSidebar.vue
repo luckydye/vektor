@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { AuditLog } from "../api/client.ts";
 import {
   clipboardIcon,
   clockIcon,
@@ -11,6 +10,7 @@ import {
   refreshIcon,
   timelineNowDotIcon,
 } from "~/src/assets/icons.ts";
+import type { AuditLog } from "../api/client.ts";
 import { useAuditLogs } from "../composeables/useAuditLogs.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
@@ -59,13 +59,14 @@ const isOpen = computed(() => windows.value.get("revisions")?.open ?? false);
 /** Sorted audit log entries, newest first. */
 const sortedEntries = computed(() =>
   [...auditLogs.value].sort((a, b) => {
-    return normalizeTimestamp(b.createdAt).getTime() - normalizeTimestamp(a.createdAt).getTime();
+    return (
+      normalizeTimestamp(b.createdAt).getTime() -
+      normalizeTimestamp(a.createdAt).getTime()
+    );
   }),
 );
 
-const revisionsByNumber = computed(
-  () => new Map(revisions.value.map((r) => [r.rev, r])),
-);
+const revisionsByNumber = computed(() => new Map(revisions.value.map((r) => [r.rev, r])));
 
 // ---------------------------------------------------------------------------
 // User / document resolvers passed to ActivityFeed
@@ -145,7 +146,11 @@ async function viewRevision(revisionId: number | null | undefined) {
 
     window.dispatchEvent(
       new CustomEvent("revision:view", {
-        detail: { revision: revisionId, content: revision.content, isSuggestion: revision.status !== null },
+        detail: {
+          revision: revisionId,
+          content: revision.content,
+          isSuggestion: revision.status !== null,
+        },
         bubbles: true,
         composed: true,
       }),

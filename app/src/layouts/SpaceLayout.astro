@@ -1,12 +1,12 @@
 ---
 import { ClientRouter } from "astro:transitions";
-import MobileHeader from "../components/MobileHeader.vue";
 import CalDAVSetupDialog from "../components/CalDAVSetupDialog.vue";
 import CommandPalatte from "../components/CommandPalatte.vue";
 import DockedWindowLayout from "../components/DockedWindowLayout.vue";
 import DocumentOverlay from "../components/DocumentOverlay.vue";
 import ImportFiles from "../components/ImportFiles.vue";
 import LinkPreview from "../components/LinkPreview.vue";
+import MobileHeader from "../components/MobileHeader.vue";
 import Sidebar from "../components/Sidebar.vue";
 import Translations from "../components/Translations.vue";
 import "../styles/index.css";
@@ -182,13 +182,10 @@ const publicEnvVars = () => Astro.locals.publicEnv;
         }
       </script>
 
-      <!-- Fixed Sidebar -->
-      <Sidebar client:load transition:name="navigation" />
-
       <!-- Main content spans the full width (behind the fixed sidebar). Each
            content view opts into the sidebar inset itself, so full-bleed views
            (e.g. canvas documents) can render behind the navigation. -->
-      <div transition:name="content" transition:animate="none" class="main-content min-h-screen h-full transition-all lg:transition-none relative">
+      <div class="main-content min-h-screen h-full transition-all lg:transition-none relative">
         <!-- Mobile Header Navigation -->
         <MobileHeader
             client:load
@@ -197,10 +194,13 @@ const publicEnvVars = () => Astro.locals.publicEnv;
             spaceName={currentSpace?.name ?? ""}
             pathname={pathname}
         />
-        <DockedWindowLayout client:load>
+        <DockedWindowLayout client:only>
           <slot />
         </DockedWindowLayout>
       </div>
+
+      <!-- Fixed Sidebar -->
+      <Sidebar client:load transition:name="navigation" />
     </div>
 
     <CommandPalatte client:only />

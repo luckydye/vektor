@@ -95,6 +95,9 @@ const userCanAccessSettings = computed(() => {
 
 // Check if current user can edit
 const userCanEdit = computed(() => {
+  if(isLoading.value) {
+    return false;
+  }
   return canEdit(currentSpace.value?.userRole);
 });
 

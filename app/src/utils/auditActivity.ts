@@ -2,7 +2,7 @@
  * Shared helpers for rendering audit-log / activity entries.
  * Used by SpaceActivity.vue and RevisionsSidebar.vue.
  */
-import type { AuditLog } from "../api/client.ts";
+
 import {
   closeCircleIcon,
   documentIcon,
@@ -17,6 +17,7 @@ import {
   trashCanIcon,
   unlockIcon,
 } from "~/src/assets/icons.ts";
+import type { AuditLog } from "../api/client.ts";
 import { normalizeTimestamp } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -97,7 +98,9 @@ export function getAuditEventIcon(event: string): string {
     property_update: `<span class="svg-icon w-4 h-4 text-indigo-500">${editOutlineIcon}</span>`,
     property_delete: `<span class="svg-icon w-4 h-4 text-pink-500">${closeCircleIcon}</span>`,
   };
-  return icons[event] ?? `<span class="svg-icon w-4 h-4 text-neutral-400">${infoIcon}</span>`;
+  return (
+    icons[event] ?? `<span class="svg-icon w-4 h-4 text-neutral-400">${infoIcon}</span>`
+  );
 }
 
 // ---------------------------------------------------------------------------

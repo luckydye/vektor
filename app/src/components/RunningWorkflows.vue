@@ -40,7 +40,7 @@ const {
   fetcher: ({ limit, offset }) =>
     api.workflows.listRuns(props.spaceId, { limit, offset }).then((r) => ({
       items: [...r.runs].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       ),
       total: r.total,
     })),

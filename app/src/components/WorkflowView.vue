@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { usePagedList } from "../composeables/usePagedList.ts";
 import {
   arrowDownTrayIcon,
   checkBoldIcon,
@@ -12,6 +11,7 @@ import {
 } from "~/src/assets/icons.ts";
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
+import { usePagedList } from "../composeables/usePagedList.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import DataTable from "./DataTable.vue";
 

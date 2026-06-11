@@ -101,9 +101,7 @@ async function pollRunUntilDone(
   while (Date.now() < deadline) {
     let run: RunState;
     try {
-      run = await apiJson<RunState>(
-        `/api/v1/spaces/${space}/workflows/runs/${runId}`,
-      );
+      run = await apiJson<RunState>(`/api/v1/spaces/${space}/workflows/runs/${runId}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const isConnErr =
@@ -115,7 +113,7 @@ async function pollRunUntilDone(
         const tail = serverLogs.split("\n").slice(-30).join("\n");
         throw new Error(
           `Server crashed while workflow was running.\n\n` +
-          `Last server output:\n${tail || "(none)"}`,
+            `Last server output:\n${tail || "(none)"}`,
         );
       }
       throw err;
@@ -146,34 +144,30 @@ function summariseFailure(run: RunState): string {
 // ---------------------------------------------------------------------------
 
 beforeAll(async () => {
-  serverProcess = Bun.spawn(
-    ["bun", "./src/server.ts", "--port", String(PORT)],
-    {
-      env: {
-        ...process.env,
-        VEKTOR_NO_AUTH: "1",
-        VEKTOR_IN_MEMORY_DB: "1",
-        VEKTOR_API_ONLY: "1",
-        WIKI_JOB_ALLOW_UNSANDBOXED: "1",
-        HOST: "127.0.0.1",
-        NODE_ENV: "test",
-        WIKI_OTEL_ENABLED: "0",
-        // Required to sign job tokens used for sub-job API calls
-        AUTH_SECRET: "test-secret-for-workflow-integration-testing",
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd: import.meta.dir + "/..",
+  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+    env: {
+      ...process.env,
+      VEKTOR_NO_AUTH: "1",
+      VEKTOR_IN_MEMORY_DB: "1",
+      VEKTOR_API_ONLY: "1",
+      WIKI_JOB_ALLOW_UNSANDBOXED: "1",
+      HOST: "127.0.0.1",
+      NODE_ENV: "test",
+      WIKI_OTEL_ENABLED: "0",
+      // Required to sign job tokens used for sub-job API calls
+      AUTH_SECRET: "test-secret-for-workflow-integration-testing",
     },
-  );
-
+    stdout: "pipe",
+    stderr: "pipe",
+    cwd: import.meta.dir + "/..",
+  });
   // Collect server output so we can surface it on failure
-  ;(async () => {
+  (async () => {
     for await (const chunk of serverProcess.stdout) {
       serverLogs += new TextDecoder().decode(chunk);
     }
   })();
-  ;(async () => {
+  (async () => {
     for await (const chunk of serverProcess.stderr) {
       serverLogs += new TextDecoder().decode(chunk);
     }
@@ -247,46 +241,43 @@ describe("workflow: sitemap download + HTML-to-markdown conversion", () => {
     expect(document.content).toContain("outputFormat: 'markdown'");
   });
 
-  it(
-    "runs the workflow, completes successfully, and output contains no HTML tags",
-    async () => {
-      // ── 1. Start the run ────────────────────────────────────────────────
-      const { runId } = await apiJson<{ runId: string }>(
-        `/api/v1/spaces/${spaceId}/workflows/runs`,
-        {
-          method: "POST",
-          body: JSON.stringify({ documentId: workflowDocId }),
-        },
-      );
-      expect(runId).toBeString();
-      expect(runId.length).toBeGreaterThan(0);
+  it("runs the workflow, completes successfully, and output contains no HTML tags", async () => {
+    // ── 1. Start the run ────────────────────────────────────────────────
+    const { runId } = await apiJson<{ runId: string }>(
+      `/api/v1/spaces/${spaceId}/workflows/runs`,
+      {
+        method: "POST",
+        body: JSON.stringify({ documentId: workflowDocId }),
+      },
+    );
+    expect(runId).toBeString();
+    expect(runId.length).toBeGreaterThan(0);
 
-      // ── 2. Poll until the run settles ───────────────────────────────────
-      const run = await pollRunUntilDone(spaceId, runId);
+    // ── 2. Poll until the run settles ───────────────────────────────────
+    const run = await pollRunUntilDone(spaceId, runId);
 
-      if (run.status !== "completed") {
-        throw new Error(`Workflow ended unexpectedly:\n${summariseFailure(run)}`);
-      }
-      expect(run.status).toBe("completed");
+    if (run.status !== "completed") {
+      throw new Error(`Workflow ended unexpectedly:\n${summariseFailure(run)}`);
+    }
+    expect(run.status).toBe("completed");
 
-      // ── 3. Validate the output structure ────────────────────────────────
-      // The script returns { result: mdFiles.result } where result is the
-      // JSON table produced by for-each-file after running convert on each page.
-      const result = run.output?.result;
-      expect(result).toBeDefined();
-      expect(typeof result).toBe("string");
+    // ── 3. Validate the output structure ────────────────────────────────
+    // The script returns { result: mdFiles.result } where result is the
+    // JSON table produced by for-each-file after running convert on each page.
+    const result = run.output?.result;
+    expect(result).toBeDefined();
+    expect(typeof result).toBe("string");
 
-      const resultStr = result as string;
-      expect(resultStr.length).toBeGreaterThan(0);
+    const resultStr = result as string;
+    expect(resultStr.length).toBeGreaterThan(0);
 
-      // ── 4. Assert: no HTML tags in the output ───────────────────────────
-      // After HTML → markdown conversion the output must be free of HTML
-      // markup. The pattern matches opening and closing tags for every common
-      // block/inline element.
-      const HTML_TAG = /<\/?(?:html|head|body|div|span|p|a|h[1-6]|ul|ol|li|dl|dt|dd|table|thead|tbody|tfoot|tr|td|th|section|article|header|footer|nav|main|aside|figure|figcaption|iframe|form|input|button|select|option|textarea|label|script|style|link|meta|noscript|canvas|svg|video|audio|source|picture|img|br|hr|em|strong|i|b|u|s|del|ins|sub|sup|small|mark|abbr|cite|q|code|pre|blockquote|details|summary)[^>]*>/gi;
+    // ── 4. Assert: no HTML tags in the output ───────────────────────────
+    // After HTML → markdown conversion the output must be free of HTML
+    // markup. The pattern matches opening and closing tags for every common
+    // block/inline element.
+    const HTML_TAG =
+      /<\/?(?:html|head|body|div|span|p|a|h[1-6]|ul|ol|li|dl|dt|dd|table|thead|tbody|tfoot|tr|td|th|section|article|header|footer|nav|main|aside|figure|figcaption|iframe|form|input|button|select|option|textarea|label|script|style|link|meta|noscript|canvas|svg|video|audio|source|picture|img|br|hr|em|strong|i|b|u|s|del|ins|sub|sup|small|mark|abbr|cite|q|code|pre|blockquote|details|summary)[^>]*>/gi;
 
-      expect(resultStr).not.toMatch(HTML_TAG);
-    },
-    90_000, // generous timeout for external network fetches + conversion
-  );
+    expect(resultStr).not.toMatch(HTML_TAG);
+  }, 90_000); // generous timeout for external network fetches + conversion
 });

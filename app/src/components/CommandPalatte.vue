@@ -148,6 +148,19 @@ const navigateToDocument = async (doc) => {
   closePalette();
 };
 
+// Lets a document be dragged out of the palette and dropped onto a navigation
+// category/document. Uses the same `text/plain` + documentId protocol as the
+// search results' <page-target>, so the existing category-target/page-target
+// drop handlers work unchanged. The palette closes on drag start to reveal the
+// navigation as the drop target — the in-flight drag survives because the
+// payload is set synchronously here, before the overlay unmounts.
+const handleDocumentDragStart = (e, documentId) => {
+  if (!e.dataTransfer || !documentId) return;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", documentId);
+  closePalette();
+};
+
 const executeAction = (actionId) => {
   closePalette();
   Actions.run(actionId);
@@ -231,11 +244,13 @@ Actions.register("ui:toggle:palatte", {
             <button
               v-for="(result, index) in filteredResults"
               :key="result.type === 'document' ? 'doc-' + result.data.id : 'action-' + result.id"
-              class="w-full text-left px-4 py-3 hover:bg-neutral-300 border-b border-neutral-100 last:border-b-0 flex items-center justify-between gap-3"
+              :draggable="result.type === 'document'"
+              class="w-full text-left px-4 py-3 hover:bg-neutral-300 border-b border-neutral-100 last:border-b-0 flex items-center justify-between gap-3 [&[draggable=true]]:cursor-grab"
               :class="{
                 'bg-neutral-50 hover:bg-neutral-50': index === selectedIndex,
               }"
               @click="result.type === 'document' ? navigateToDocument(result.data) : executeAction(result.id)"
+              @dragstart="result.type === 'document' && handleDocumentDragStart($event, result.data.id)"
               @mouseenter="selectedIndex = index"
             >
               <div class="flex items-center gap-3 flex-1 min-w-0">

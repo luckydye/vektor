@@ -227,14 +227,14 @@ if (diffMins >= 1 && diffMins < 60) {
             ) : null}
           </div>
 
-          <DocumentActions documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} headerImage={headerImage ?? undefined} client:load />
+          <DocumentActions client:only documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} headerImage={headerImage ?? undefined} />
         </div>
 
         <div class={twMerge(
           "print:px-0 px-xs lg:px-xl mt-xs",
           document.type === 'canvas' && 'pointer-events-auto'
         )}>
-          <DocumentProperties client:load documentId={document.id} documentType={document.type ?? undefined} initialProperties={{ ...document.properties, parentId: document.parentId }} />
+          <DocumentProperties client:only documentId={document.id} documentType={document.type ?? undefined} initialProperties={{ ...document.properties, parentId: document.parentId }} />
         </div>
       </div>
 

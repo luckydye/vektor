@@ -74,9 +74,7 @@ const {
   pageSize: 20,
 });
 
-const sortedResults = computed(() =>
-  [...results.value].sort((a, b) => a.rank - b.rank),
-);
+const sortedResults = computed(() => [...results.value].sort((a, b) => a.rank - b.rank));
 
 const updateUrlParams = () => {
   const url = new URL(window.location.href);

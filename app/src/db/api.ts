@@ -603,7 +603,9 @@ export async function verifyTokenFeature(
   const tokenUserId = getTokenUserId(tokenResult.tokenId);
   const hasIt = await hasFeature(spaceId, feature, tokenUserId);
   if (!hasIt) {
-    throw forbiddenResponse(`Token does not have the ${feature} capability for this space`);
+    throw forbiddenResponse(
+      `Token does not have the ${feature} capability for this space`,
+    );
   }
 }
 
