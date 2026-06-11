@@ -709,3 +709,73 @@ export function drawFreehandStroke(
 ): void {
   drawFreehandPath(ctx, stroke.path, transform, stroke.style);
 }
+
+// Strokes the silhouette outline of a freehand stroke in screen space.
+// `expand` adds extra screen-pixel padding around the stroke shape, useful for
+// drawing a visible selection ring outside the stroke's actual edge.
+export function drawFreehandOutline(
+  ctx: CanvasRenderingContext2D,
+  stroke: FreehandStroke,
+  transform: WorldTransform,
+  expand = 0,
+): void {
+  const samples = sampleFreehandPath(stroke.path, transform, stroke.style);
+  const filtered = filterScreenSamples(samples);
+  if (filtered.length === 0) return;
+
+  if (filtered.length === 1) {
+    const sample = filtered[0];
+    ctx.beginPath();
+    ctx.arc(sample.x, sample.y, sample.width / 2 + expand, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+
+  const left: ScreenStrokeEdge[] = [];
+  const right: ScreenStrokeEdge[] = [];
+
+  for (let i = 0; i < filtered.length; i++) {
+    const tangent = tangentForSample(filtered, i);
+    if (!tangent) continue;
+
+    const nx = -tangent.y;
+    const ny = tangent.x;
+    const halfWidth = filtered[i].width / 2 + expand;
+    left.push({ x: filtered[i].x + nx * halfWidth, y: filtered[i].y + ny * halfWidth });
+    right.push({ x: filtered[i].x - nx * halfWidth, y: filtered[i].y - ny * halfWidth });
+  }
+
+  if (left.length === 0 || right.length === 0) return;
+
+  const start = filtered[0];
+  const end = filtered[filtered.length - 1];
+  const startRadius = start.width / 2 + expand;
+  const endRadius = end.width / 2 + expand;
+  const leftEnd = left[left.length - 1];
+  const rightEnd = right[right.length - 1];
+  const leftStart = left[0];
+  const rightStart = right[0];
+
+  ctx.beginPath();
+  ctx.moveTo(left[0].x, left[0].y);
+  addEdgeCurve(ctx, left);
+  ctx.arc(
+    end.x,
+    end.y,
+    endRadius,
+    Math.atan2(leftEnd.y - end.y, leftEnd.x - end.x),
+    Math.atan2(rightEnd.y - end.y, rightEnd.x - end.x),
+    true,
+  );
+  addEdgeCurve(ctx, right.slice().reverse());
+  ctx.arc(
+    start.x,
+    start.y,
+    startRadius,
+    Math.atan2(rightStart.y - start.y, rightStart.x - start.x),
+    Math.atan2(leftStart.y - start.y, leftStart.x - start.x),
+    true,
+  );
+  ctx.closePath();
+  ctx.stroke();
+}
