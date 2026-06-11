@@ -14,6 +14,7 @@ export {
   buildFreehandPath,
   buildFreehandStroke,
   createFreehandStrokeBuilder,
+  drawFreehandOutline,
   drawFreehandPath,
   drawFreehandStroke,
   filterFreehandPoints,
