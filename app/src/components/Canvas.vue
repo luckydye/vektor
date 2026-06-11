@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as Y from "yjs";
 import {
   chevronRightThinIcon,
+  clipboardDocumentIcon,
   copyIcon,
   documentIcon,
   redoArrowIcon,
@@ -291,6 +292,10 @@ let dragMoved = false;
 let freehandBuilder: FreehandStrokeBuilder | null = null;
 let freehandPointerId: number | null = null;
 const activeFreehandStroke = ref<FreehandStroke | null>(null);
+// Screen-space position of the long-press context menu, null when hidden.
+const contextMenuPos = ref<{ x: number; y: number } | null>(null);
+// World-space insertion point captured when the context menu was opened.
+let contextMenuInsertWorld: { x: number; y: number } | null = null;
 let isReady = false;
 let hasSeededInitialContent = false;
 let viewportControls: ViewportControls | null = null;
@@ -1521,6 +1526,15 @@ function isPointInRect(point: { x: number; y: number }, rect: Rect) {
 function handleViewportPointerDown(event: PointerEvent) {
   if (event.pointerType === "touch" && !event.isPrimary) return;
 
+  // Dismiss context menu on any tap outside of it (the menu itself stops
+  // propagation with @pointerdown.stop so taps inside it don't reach here).
+  if (contextMenuPos.value) {
+    contextMenuPos.value = null;
+    contextMenuInsertWorld = null;
+    return;
+  }
+
+
   // The handlers below call preventDefault(), which suppresses the browser's
   // default focus shift — so without this the canvas never holds focus and
   // copy/cut/paste events are never dispatched to it. Shape/text pointerdowns
@@ -1823,6 +1837,39 @@ function handleDrop(event: DragEvent) {
   if (droppedId && insertDocumentLink(droppedId, insertionPointFromEvent(event))) {
     event.preventDefault();
   }
+}
+
+function handleContextMenu(event: MouseEvent) {
+  // Always prevent the native context menu / iOS callout.
+  event.preventDefault();
+  if (!viewportRef.value) return;
+
+  // Don't open the menu when the draw tool is active.
+  if (activeTool.value === "draw") return;
+
+  dragState = null;
+  const rect = viewportRef.value.getBoundingClientRect();
+  const pos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  contextMenuInsertWorld = screenToWorld(pos);
+  contextMenuPos.value = pos;
+}
+
+async function pasteFromContextMenu() {
+  const insertAt = contextMenuInsertWorld ?? insertionPointFromEvent();
+  contextMenuPos.value = null;
+  contextMenuInsertWorld = null;
+
+  const text = await navigator.clipboard.readText().catch(() => null);
+  if (text !== null) {
+    const payload = parseCanvasClipboard(text);
+    if (payload) {
+      pasteCanvasClipboard(payload, insertAt);
+      return;
+    }
+  }
+
+  const internal = parseCanvasClipboard(internalClipboard);
+  if (internal) pasteCanvasClipboard(internal, insertAt);
 }
 
 // Portable clipboard payload — written to the system clipboard as JSON so a
@@ -2364,7 +2411,7 @@ onUnmounted(() => {
       class="canvas-viewport"
       tabindex="-1"
       :style="{ cursor: viewportCursor }"
-      @contextmenu.prevent
+      @contextmenu="handleContextMenu"
       @pointerdown="handleViewportPointerDown"
       @pointerleave="handlePointerLeave"
       @dragover="handleDragOver"
@@ -2555,6 +2602,54 @@ onUnmounted(() => {
         >
           <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="trashIcon" />
         </button>
+      </div>
+
+      <div
+        v-if="contextMenuPos"
+        class="canvas-context-menu"
+        :style="{
+          transform: `translate(${contextMenuPos.x}px, ${contextMenuPos.y}px)`,
+        }"
+        @pointerdown.stop
+      >
+        <template v-if="selectedShapeIds.size > 0 || selectedStrokeIds.size > 0">
+          <button
+            type="button"
+            class="canvas-tool"
+            aria-label="Copy"
+            @click="copySelectionToClipboard(); contextMenuPos = null"
+          >
+            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="copyIcon" />
+          </button>
+          <button
+            type="button"
+            class="canvas-tool"
+            aria-label="Cut"
+            @click="cutSelectionToClipboard(); contextMenuPos = null"
+          >
+            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="scissorsIcon" />
+          </button>
+          <span class="canvas-divider"></span>
+        </template>
+        <button
+          type="button"
+          class="canvas-tool"
+          aria-label="Paste"
+          @click="pasteFromContextMenu"
+        >
+          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="clipboardDocumentIcon" />
+        </button>
+        <template v-if="selectedShapeIds.size > 0 || selectedStrokeIds.size > 0">
+          <span class="canvas-divider"></span>
+          <button
+            type="button"
+            class="canvas-tool danger"
+            aria-label="Delete"
+            @click="deleteSelectedShape(); contextMenuPos = null"
+          >
+            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="trashIcon" />
+          </button>
+        </template>
       </div>
 
       <div v-if="shapes.length === 0 && strokes.length === 0" class="canvas-empty">
@@ -2808,6 +2903,26 @@ onUnmounted(() => {
   will-change: transform;
 }
 
+.canvas-context-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 10px;
+  background: var(--canvas-toolbar-bg);
+  padding: 4px;
+  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  will-change: transform;
+  /* Offset slightly below and to the right of the long-press point. */
+  translate: 8px 8px;
+}
+
 .canvas-note-colors {
   display: flex;
   align-items: center;
@@ -2848,9 +2963,20 @@ onUnmounted(() => {
   overflow: hidden;
   background-color: var(--canvas-bg);
   touch-action: none;
+  /* Prevent iOS long-press from selecting text in shape DOM nodes while drawing. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   /* Focusable (tabindex) so the browser dispatches clipboard events here, but
      it's not a control — suppress the focus ring. */
   outline: none;
+}
+
+/* Re-enable text selection inside editable shape content. */
+.canvas-shape-text,
+.canvas-section-title {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .canvas-world {
