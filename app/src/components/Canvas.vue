@@ -3,8 +3,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as Y from "yjs";
 import {
   chevronRightThinIcon,
+  copyIcon,
   documentIcon,
   redoArrowIcon,
+  scissorsIcon,
+  trashIcon,
   undoArrowIcon,
 } from "~/src/assets/icons.ts";
 import { useDocument } from "../composeables/useDocument.ts";
@@ -324,6 +327,42 @@ const selectedShape = computed(() => {
   }
   const [id] = selectedShapeIds.value;
   return shapes.value.find((shape) => shape.id === id) ?? null;
+});
+
+// Screen-space top-center anchor for the multi-selection overlay. Returns null
+// when fewer than 2 items are selected so the overlay stays hidden.
+const selectionAnchorPos = computed(() => {
+  const totalSelected = selectedShapeIds.value.size + selectedStrokeIds.value.size;
+  if (totalSelected < 2) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const id of selectedShapeIds.value) {
+    const shape = shapes.value.find((s) => s.id === id);
+    if (!shape) continue;
+    minX = Math.min(minX, shape.x);
+    minY = Math.min(minY, shape.y);
+    maxX = Math.max(maxX, shape.x + shape.width);
+    maxY = Math.max(maxY, shape.y + shape.height);
+  }
+
+  for (const id of selectedStrokeIds.value) {
+    const stroke = strokes.value.find((s) => s.id === id);
+    if (!stroke || stroke.points.length === 0) continue;
+    for (const point of stroke.points) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    }
+  }
+
+  if (!isFinite(minX)) return null;
+
+  return worldToScreen({ x: (minX + maxX) / 2, y: minY });
 });
 
 function selectOnlyShape(id: string) {
@@ -1869,6 +1908,21 @@ function handleCut(event: ClipboardEvent) {
   deleteSelectedShape();
 }
 
+function copySelectionToClipboard() {
+  const json = serializeSelection();
+  if (!json) return;
+  internalClipboard = json;
+  navigator.clipboard?.writeText(json).catch(() => {});
+}
+
+function cutSelectionToClipboard() {
+  const json = serializeSelection();
+  if (!json) return;
+  internalClipboard = json;
+  navigator.clipboard?.writeText(json).catch(() => {});
+  deleteSelectedShape();
+}
+
 function parseCanvasClipboard(text: string | null | undefined): CanvasClipboard | null {
   if (!text) return null;
   try {
@@ -2483,6 +2537,44 @@ onUnmounted(() => {
         }"
       ></div>
 
+      <div
+        v-if="selectionAnchorPos"
+        class="canvas-selection-overlay"
+        :style="{
+          transform: `translate(${selectionAnchorPos.x}px, ${selectionAnchorPos.y}px) translate(-50%, calc(-100% - 10px))`,
+        }"
+        @pointerdown.stop
+      >
+        <button
+          type="button"
+          class="canvas-tool"
+          aria-label="Copy"
+          data-tooltip="Copy · ⌘C"
+          @click="copySelectionToClipboard"
+        >
+          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="copyIcon" />
+        </button>
+        <button
+          type="button"
+          class="canvas-tool"
+          aria-label="Cut"
+          data-tooltip="Cut · ⌘X"
+          @click="cutSelectionToClipboard"
+        >
+          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="scissorsIcon" />
+        </button>
+        <span class="canvas-divider"></span>
+        <button
+          type="button"
+          class="canvas-tool danger"
+          aria-label="Delete"
+          data-tooltip="Delete · ⌫"
+          @click="deleteSelectedShape"
+        >
+          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="trashIcon" />
+        </button>
+      </div>
+
       <div v-if="shapes.length === 0 && strokes.length === 0" class="canvas-empty">
         <strong>Blank canvas</strong>
         <span>Choose Draw, Note, Text, or Section, then use the canvas.</span>
@@ -2714,6 +2806,24 @@ onUnmounted(() => {
   width: 1px;
   height: 24px;
   background: var(--canvas-divider-color);
+}
+
+.canvas-selection-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 10px;
+  background: var(--canvas-toolbar-bg);
+  padding: 4px;
+  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  will-change: transform;
 }
 
 .canvas-note-colors {
