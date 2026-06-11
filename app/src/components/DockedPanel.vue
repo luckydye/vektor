@@ -11,6 +11,7 @@ import {
   type DockedWindowState,
   useDockedWindows,
 } from "../composeables/useDockedWindows.ts";
+import { getInsets, type Insets, onInsets } from "../utils/insets.ts";
 
 const props = defineProps<{
   id: string;
@@ -33,8 +34,9 @@ const {
   undock,
   setWidth,
   setPosition,
-  getWindow,
   windows,
+  leftWindows,
+  rightWindows,
 } = useDockedWindows();
 
 // Reactive window state derived from composable
@@ -50,20 +52,45 @@ const floatY = ref(100);
 const floatW = ref(props.defaultWidth ?? 380);
 const floatH = ref(600);
 
-// Docked position (read from placeholder via ResizeObserver)
-const dockedRect = ref<DOMRect | null>(null);
-const placeholderEl = ref<HTMLElement | null>(null);
-let resizeObserver: ResizeObserver | null = null;
+// Layout insets (sidebar + docked panels), kept in sync via the inset subscriber.
+const insets = ref<Insets>(getInsets());
+let stopInsets: (() => void) | null = null;
 
-// Computed style for the fixed overlay
+// Track the lg breakpoint reactively so docked positioning recomputes when the
+// sidebar collapses to an overlay below it.
+const isDesktop = ref(true);
+
+function sidebarOffset(): number {
+  return isDesktop.value ? insets.value.sidebar : 0;
+}
+
+// Sum of same-side docked panel widths stacked before this one.
+function precedingWidth(): number {
+  const list = side.value === "left" ? leftWindows.value : rightWindows.value;
+  const idx = list.findIndex((w) => w.id === props.id);
+  return list.slice(0, Math.max(0, idx)).reduce((sum, w) => sum + w.width, 0);
+}
+
+// Left edge (viewport px) of this panel when docked.
+function dockedLeft(): number {
+  if (side.value === "left") return sidebarOffset() + precedingWidth();
+  return window.innerWidth - precedingWidth() - width.value;
+}
+
+// Computed style for the fixed overlay. Docked panels derive their position
+// from the inset system rather than a measured placeholder, anchoring to the
+// relevant edge so no viewport math is needed: left panels sit past the sidebar
+// (and any panels stacked before them), right panels stack in from the right.
 const overlayStyle = computed(() => {
-  if (mode.value === "docked" && dockedRect.value) {
-    return {
-      left: `${dockedRect.value.left}px`,
+  if (mode.value === "docked") {
+    const base = {
       top: `${DOCK_MARGIN}px`,
-      width: `${dockedRect.value.width}px`,
+      width: `${width.value}px`,
       height: `calc(100vh - ${DOCK_MARGIN * 2}px)`,
     };
+    return side.value === "left"
+      ? { ...base, left: `${sidebarOffset() + precedingWidth()}px` }
+      : { ...base, right: `${precedingWidth()}px` };
   }
   return {
     left: `${floatX.value}px`,
@@ -72,57 +99,6 @@ const overlayStyle = computed(() => {
     height: `${floatH.value}px`,
   };
 });
-
-function getSidebarWidth(): number {
-  if (window.innerWidth < 1024) return 0;
-  const w = getComputedStyle(document.body).getPropertyValue("--sidebar-width");
-  return parseInt(w, 10) || 250;
-}
-
-// ── Placeholder tracking ──────────────────────────────────────────────────────
-
-function findPlaceholder(): HTMLElement | null {
-  return document.querySelector(`[data-docked-id="${props.id}"]`);
-}
-
-function updateDockedRect() {
-  const el = findPlaceholder();
-  if (el) {
-    placeholderEl.value = el;
-    dockedRect.value = el.getBoundingClientRect();
-  }
-}
-
-function startObservingPlaceholder() {
-  stopObservingPlaceholder();
-  const el = findPlaceholder();
-  if (!el) return;
-  placeholderEl.value = el;
-  dockedRect.value = el.getBoundingClientRect();
-  resizeObserver = new ResizeObserver(() => {
-    dockedRect.value = el.getBoundingClientRect();
-  });
-  resizeObserver.observe(el);
-}
-
-function stopObservingPlaceholder() {
-  resizeObserver?.disconnect();
-  resizeObserver = null;
-  placeholderEl.value = null;
-}
-
-// Re-observe when mode/side changes to docked
-watch(
-  () => [mode.value, side.value, isOpen.value],
-  () => {
-    if (mode.value === "docked" && isOpen.value) {
-      // Placeholder may not exist yet in next tick
-      requestAnimationFrame(() => startObservingPlaceholder());
-    } else {
-      stopObservingPlaceholder();
-    }
-  },
-);
 
 // Sync floating refs from composable state
 watch(
@@ -153,9 +129,9 @@ function onDragStart(e: MouseEvent) {
   dragStartX = e.clientX;
   dragStartY = e.clientY;
 
-  if (mode.value === "docked" && dockedRect.value) {
+  if (mode.value === "docked") {
     // Start from docked position so the panel tracks the cursor
-    windowStartX = dockedRect.value.left;
+    windowStartX = dockedLeft();
     windowStartY = DOCK_MARGIN;
     floatX.value = windowStartX;
     floatY.value = windowStartY;
@@ -208,10 +184,9 @@ function onMouseMove(e: MouseEvent) {
 
     // If docked and dragged far enough, undock
     if (mode.value === "docked") {
-      const sidebarW = getSidebarWidth();
       const threshold =
         side.value === "left"
-          ? sidebarW + DOCK_THRESHOLD
+          ? sidebarOffset() + precedingWidth() + DOCK_THRESHOLD
           : window.innerWidth - width.value - DOCK_THRESHOLD;
       const movedAway = side.value === "left" ? newX > threshold : newX < threshold;
 
@@ -226,12 +201,12 @@ function onMouseMove(e: MouseEvent) {
     }
   } else if (resizing) {
     if (mode.value === "docked") {
-      // Width-only resize for docked panels
+      // Width-only resize for docked panels — the overlay repositions reactively
+      // through the inset system as the width changes.
       const dx = e.clientX - resizeStartX;
       const dir = side.value === "right" ? -1 : 1;
       const newW = Math.max(MIN_WIDTH, resizeStartW + dx * dir);
       setWidth(props.id, newW);
-      requestAnimationFrame(() => updateDockedRect());
     } else {
       // Free resize for floating
       floatW.value = Math.max(MIN_WIDTH, resizeStartW + (e.clientX - resizeStartX));
@@ -246,8 +221,8 @@ function onMouseUp() {
   if (dragging) {
     // Snap-to-dock if near edges
     if (mode.value === "floating") {
-      const sidebarW = getSidebarWidth();
-      const nearLeft = floatX.value < sidebarW + DOCK_THRESHOLD;
+      const sidebar = sidebarOffset();
+      const nearLeft = floatX.value < sidebar + DOCK_THRESHOLD;
       const nearRight = floatX.value + floatW.value > window.innerWidth - DOCK_THRESHOLD;
 
       if (nearLeft) {
@@ -268,9 +243,8 @@ function onMouseUp() {
 }
 
 function onWindowResize() {
-  if (mode.value === "docked") {
-    updateDockedRect();
-  } else {
+  isDesktop.value = window.innerWidth >= 1024;
+  if (mode.value === "floating") {
     // Clamp floating position
     const maxX = window.innerWidth - floatW.value - DOCK_MARGIN;
     if (floatX.value > maxX) floatX.value = Math.max(0, maxX);
@@ -291,12 +265,10 @@ function onDock() {
 
 function onUndock() {
   // Position floating window roughly where the docked one was
-  if (dockedRect.value) {
-    floatX.value = dockedRect.value.left + 20;
-    floatY.value = 40;
-    floatW.value = width.value;
-    floatH.value = window.innerHeight - 80;
-  }
+  floatX.value = dockedLeft() + 20;
+  floatY.value = 40;
+  floatW.value = width.value;
+  floatH.value = window.innerHeight - 80;
   undock(props.id);
   setPosition(props.id, floatX.value, floatY.value, floatW.value, floatH.value);
 }
@@ -310,16 +282,14 @@ onMounted(() => {
     width: props.defaultWidth ?? 380,
   });
 
+  isDesktop.value = window.innerWidth >= 1024;
+  stopInsets = onInsets((s) => {
+    insets.value = s;
+  });
+
   window.addEventListener("mousemove", onMouseMove);
   window.addEventListener("mouseup", onMouseUp);
   window.addEventListener("resize", onWindowResize);
-  window.addEventListener("sidebar:resize", updateDockedRect);
-
-  requestAnimationFrame(() => {
-    if (mode.value === "docked") {
-      startObservingPlaceholder();
-    }
-  });
 });
 
 onUnmounted(() => {
@@ -327,8 +297,7 @@ onUnmounted(() => {
   window.removeEventListener("mousemove", onMouseMove);
   window.removeEventListener("mouseup", onMouseUp);
   window.removeEventListener("resize", onWindowResize);
-  window.removeEventListener("sidebar:resize", updateDockedRect);
-  stopObservingPlaceholder();
+  stopInsets?.();
 });
 </script>
 

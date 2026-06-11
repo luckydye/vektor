@@ -16,6 +16,7 @@ import {
   registerFormattingActions,
   unregisterFormattingActions,
 } from "../utils/formattingActions.ts";
+import { bindInsets } from "../utils/insets.ts";
 import Icon from "./Icon.vue";
 
 const getEditor = () => {
@@ -348,6 +349,19 @@ function handleEditModeEnd() {
   isImageActive.value = false;
 }
 
+// Pinned-mode width reads the layout insets; bind them locally so the toolbar
+// tracks the sidebar and docked panels without a document-wide variable. The
+// toolbar is rendered conditionally, so bind/unbind as the element appears.
+let unbindInsets = null;
+watch(
+  menuRef,
+  (el) => {
+    unbindInsets?.();
+    unbindInsets = el ? bindInsets(el) : null;
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   const savedPinState = localStorage.getItem("toolbar-pinned");
   if (savedPinState !== null) {
@@ -387,6 +401,8 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerup", handleClickOutside);
   document.removeEventListener("scroll", updatePosition);
   window.removeEventListener("resize", updatePosition);
+
+  unbindInsets?.();
 });
 </script>
 
@@ -729,7 +745,7 @@ onBeforeUnmount(() => {
 }
 
 .floating-menu--pinned {
-  @apply fixed h-0 top-[21px] w-[calc(100%-var(--sidebar-width)-100px)] justify-start mb-10;
+  @apply fixed h-0 top-[21px] w-[calc(100%-var(--inset-left)-var(--inset-right)-100px)] justify-start mb-10;
 }
 
 .toolbar-section {

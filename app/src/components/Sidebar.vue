@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { twMerge } from "tailwind-merge";
-import { nextTick, onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Actions } from "../utils/actions.ts";
 import { Icon } from "./index.ts";
 import Navigation from "./Navigation.vue";
@@ -148,25 +148,20 @@ onMounted(() => {
     },
   });
 
+  let initialWidth = props.defaultWidth || props.minWidth;
   const savedWidth = localStorage.getItem("sidebar-width");
   if (savedWidth) {
     const width = parseInt(savedWidth, 10);
     if (width >= props.minWidth && width <= props.maxWidth) {
-      currentWidth.value = width;
-      displayWidth.value = width;
-      return;
+      initialWidth = width;
     }
   }
-
-  const initialWidth = props.defaultWidth || props.minWidth;
   currentWidth.value = initialWidth;
   displayWidth.value = initialWidth;
-});
 
-watchEffect(() => {
-  if (typeof window !== "undefined") {
-    document.body.style.setProperty("--sidebar-width", `${currentWidth.value}px`);
-  }
+  // Publish the resolved width so subscribers (page insets, toolbar, docked
+  // panels) sync to the actual component state on mount.
+  dispatchSidebarResize();
 });
 
 onUnmounted(() => {

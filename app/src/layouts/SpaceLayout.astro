@@ -173,13 +173,12 @@ const publicEnvVars = () => Astro.locals.publicEnv;
 
     <div id="root" class="mx-auto relative origin-top">
       <script>
-        if(typeof window !== "undefined") {
-          const savedWidth = localStorage.getItem("sidebar-width");
-          document.body.style.setProperty(
-            "--sidebar-width",
-            `${savedWidth}px`,
-          );
-        }
+        import { initInsets } from "../utils/insets.ts";
+        // Apply layout insets (sidebar + docked panels) directly to their
+        // consumers (instead of to document.body), scoping style invalidation
+        // to the elements that use them. Updates flow through the
+        // `sidebar:resize` event and the docked-windows layer.
+        initInsets();
       </script>
 
       <!-- Main content spans the full width (behind the fixed sidebar). Each

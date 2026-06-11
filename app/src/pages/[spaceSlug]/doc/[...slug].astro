@@ -148,7 +148,7 @@ if (diffMins >= 1 && diffMins < 60) {
 
     <!-- Inset content past the fixed sidebar — except canvas docs, which render
          full-bleed behind the nav and inset only their (absolute) header below. -->
-    <div class={twMerge('flex-1 min-h-0', document.type !== 'canvas' && 'lg:ml-(--sidebar-width)')}>
+    <div data-inset class={twMerge('flex-1 min-h-0', document.type !== 'canvas' && 'lg:ml-(--inset-left) lg:mr-(--inset-right)')}>
     <div
       data-type={document.type}
       data-updated-at={document.updatedAt}
@@ -188,11 +188,11 @@ if (diffMins >= 1 && diffMins < 60) {
       )}
 
       <!-- Document Header -->
-      <div class={twMerge(
+      <div data-inset class={twMerge(
         document.type === 'app'
           ? 'hidden'
           : document.type === 'canvas'
-            ? 'absolute top-xs right-0 left-0 lg:left-(--sidebar-width) z-20 pointer-events-none'
+            ? 'absolute top-xs right-0 left-0 lg:left-(--inset-left) lg:right-(--inset-right) z-20 pointer-events-none'
             : 'pt-s mb-xl'
       )}>
         <div class={twMerge(
