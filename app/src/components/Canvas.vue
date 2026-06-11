@@ -9,9 +9,11 @@ import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import {
   buildFreehandStroke,
   buildTransform,
+  computeSnapGuides,
   createFreehandStrokeBuilder,
   createViewportControls,
   drawFreehandStroke,
+  drawSnapGuides,
   drawWorldGrid,
   type FitReference,
   type FreehandPoint,
@@ -21,10 +23,14 @@ import {
   type FreehandStrokeStyle,
   panCameraByScreenDelta,
   type ScreenSize,
+  type SnapGuide,
+  type SnapTarget,
+  snapRectToGuides,
   type ViewportCamera,
   type ViewportControls,
   screenToWorld as viewportScreenToWorld,
   worldToScreen as viewportWorldToScreen,
+  type WorldRect,
 } from "../viewport/index.ts";
 
 const props = defineProps<{
@@ -213,6 +219,15 @@ const selectedShapeIds = ref<Set<string>>(new Set());
 const selectedStrokeIds = ref<Set<string>>(new Set());
 // Live screen-space rectangle while drag-selecting; null when not marqueeing.
 const marqueeRect = ref<Rect | null>(null);
+// Alignment guides shown while dragging shapes; empty when no edge/center of
+// the dragged group is snapped to another shape. Drawn on the ink overlay.
+const activeSnapGuides = ref<SnapGuide[]>([]);
+// How close (in screen px) a dragged edge/center must come to another shape's
+// edge/center before it snaps to it.
+const SNAP_THRESHOLD_PX = 6;
+// Only shapes within this screen-space margin of the dragged group are
+// considered as snap targets, so a canvas with hundreds of elements stays fast.
+const SNAP_PROXIMITY_PX = 320;
 // True only while a pan drag is in progress, so the viewport shows the grabbing
 // hand during panning and a resting cursor otherwise.
 const isPanning = ref(false);
@@ -790,6 +805,9 @@ function renderInk() {
     );
   }
   drawStrokeSelection(context);
+  drawSnapGuides(context, activeSnapGuides.value, transform.value, screen.value, {
+    color: "#2563eb",
+  });
 }
 
 function drawStrokeSelection(context: CanvasRenderingContext2D) {
@@ -1406,6 +1424,13 @@ function isPointInRect(point: { x: number; y: number }, rect: Rect) {
 function handleViewportPointerDown(event: PointerEvent) {
   if (event.pointerType === "touch" && !event.isPrimary) return;
 
+  // The handlers below call preventDefault(), which suppresses the browser's
+  // default focus shift — so without this the canvas never holds focus and
+  // copy/cut/paste events are never dispatched to it. Shape/text pointerdowns
+  // use @pointerdown.stop, so this only fires for empty-canvas/stroke clicks
+  // and won't pull focus out of a text shape being edited.
+  viewportRef.value?.focus({ preventScroll: true });
+
   const point = screenPoint(event);
   localPointer.value = screenToWorld(point);
 
@@ -1440,6 +1465,97 @@ function handleViewportPointerDown(event: PointerEvent) {
 
   addShape(activeTool.value, screenToWorld(point));
   event.preventDefault();
+}
+
+// World-space bounding box of everything moving in a shape drag, at its
+// starting position. Stroke point extents are included so freehand selections
+// snap by their drawn bounds too.
+function movingGroupBounds(
+  drag: Extract<DragState, { type: "shape" }>,
+): WorldRect | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const moved of drag.shapes) {
+    const shape = shapes.value.find((s) => s.id === moved.id);
+    if (!shape) continue;
+    minX = Math.min(minX, moved.x);
+    minY = Math.min(minY, moved.y);
+    maxX = Math.max(maxX, moved.x + shape.width);
+    maxY = Math.max(maxY, moved.y + shape.height);
+  }
+  for (const stroke of drag.strokes) {
+    for (const point of stroke.points) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    }
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+// Nudges the raw drag offset so the dragged group's edges/centers snap to the
+// edges/centers of the shapes it isn't moving, and records the active guides
+// for rendering. Returns the (possibly adjusted) offset. Holding Cmd bypasses
+// snapping entirely.
+function snapDragOffset(
+  drag: Extract<DragState, { type: "shape" }>,
+  dx: number,
+  dy: number,
+  disabled: boolean,
+): { dx: number; dy: number } {
+  const startBounds = movingGroupBounds(drag);
+  if (disabled || !startBounds) {
+    activeSnapGuides.value = [];
+    return { dx, dy };
+  }
+
+  // Only snap to shapes near the dragged group. A canvas can hold hundreds of
+  // elements, so building guides for all of them (and matching against each)
+  // every pointermove gets expensive — restrict to a proximity window around
+  // the group's current position with a cheap rect test first.
+  const margin = SNAP_PROXIMITY_PX / transform.value.scale;
+  const near: Rect = {
+    x: startBounds.x + dx - margin,
+    y: startBounds.y + dy - margin,
+    width: startBounds.width + margin * 2,
+    height: startBounds.height + margin * 2,
+  };
+  const movingIds = new Set(drag.shapes.map((moved) => moved.id));
+  const targets: SnapTarget[] = shapes.value
+    .filter(
+      (shape) =>
+        !movingIds.has(shape.id) &&
+        rectsIntersect(near, {
+          x: shape.x,
+          y: shape.y,
+          width: shape.width,
+          height: shape.height,
+        }),
+    )
+    .map((shape) => ({
+      id: shape.id,
+      bounds: { x: shape.x, y: shape.y, width: shape.width, height: shape.height },
+    }));
+
+  const guides = computeSnapGuides({
+    camera: camera.value,
+    screen: screen.value,
+    fit: FIT_REFERENCE,
+    targets,
+  });
+
+  const snap = snapRectToGuides({
+    guides,
+    bounds: { ...startBounds, x: startBounds.x + dx, y: startBounds.y + dy },
+    threshold: SNAP_THRESHOLD_PX / transform.value.scale,
+  });
+
+  activeSnapGuides.value = snap.guides;
+  return { dx: dx + snap.dx, dy: dy + snap.dy };
 }
 
 function handlePointerMove(event: PointerEvent) {
@@ -1509,9 +1625,13 @@ function handlePointerMove(event: PointerEvent) {
     return;
   }
 
-  const dx = world.x - dragState.startPointer.x;
-  const dy = world.y - dragState.startPointer.y;
   const drag = dragState;
+  const { dx, dy } = snapDragOffset(
+    drag,
+    world.x - drag.startPointer.x,
+    world.y - drag.startPointer.y,
+    event.metaKey,
+  );
   ydoc.transact(() => {
     for (const moved of drag.shapes) {
       updateShape(moved.id, {
@@ -1523,6 +1643,9 @@ function handlePointerMove(event: PointerEvent) {
       translateStroke(stroke.id, stroke.points, dx, dy);
     }
   });
+  // Yjs shape edits don't trigger an ink redraw, so guides won't appear without
+  // this explicit render.
+  renderInk();
 }
 
 function handlePointerUp(event: PointerEvent) {
@@ -1530,6 +1653,10 @@ function handlePointerUp(event: PointerEvent) {
   if (dragState?.pointerId === event.pointerId) {
     if (dragState.type === "marquee") marqueeRect.value = null;
     if (dragState.type === "pan") isPanning.value = false;
+    if (activeSnapGuides.value.length > 0) {
+      activeSnapGuides.value = [];
+      renderInk();
+    }
     dragState = null;
   }
 }
@@ -1566,7 +1693,7 @@ function handleDrop(event: DragEvent) {
   // Prevent the browser from navigating to the file even when the dropped
   // files turn out not to be media we can place.
   event.preventDefault();
-  const media = mediaFilesFromList(event.dataTransfer?.files ?? []);
+  const media = mediaFilesFromList(clipboardFiles(event.dataTransfer));
   if (media.length === 0) return;
   void addMediaFiles(media, insertionPointFromEvent(event));
 }
@@ -1715,22 +1842,59 @@ function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select")) return;
 
-  // Canvas elements first (portable JSON in the clipboard text).
-  const payload =
-    parseCanvasClipboard(event.clipboardData?.getData("text/plain")) ??
-    parseCanvasClipboard(internalClipboard);
+  // The system clipboard is authoritative — it reflects the *latest* copy from
+  // anywhere. Check it before the in-memory fallback so copying something new
+  // (an image, other text) overrides a previously-copied canvas element.
+  const text = event.clipboardData?.getData("text/plain") ?? "";
+
+  // 1. Our own canvas elements (portable JSON in the clipboard text).
+  const payload = parseCanvasClipboard(text);
   if (payload) {
     event.preventDefault();
     pasteCanvasClipboard(payload, insertionPointFromEvent());
     return;
   }
 
-  const files = Array.from(event.clipboardData?.files ?? []);
-  const media = mediaFilesFromList(files);
-  if (media.length === 0) return;
+  // 2. Images / video pasted from the clipboard.
+  const media = mediaFilesFromList(clipboardFiles(event.clipboardData));
+  if (media.length > 0) {
+    event.preventDefault();
+    void addMediaFiles(media, insertionPointFromEvent());
+    return;
+  }
 
-  event.preventDefault();
-  void addMediaFiles(media, insertionPointFromEvent());
+  // 3. The clipboard holds some other real content (plain text, etc.) that
+  //    isn't ours — leave it to the browser, don't paste a stale element.
+  if (text.trim().length > 0) return;
+
+  // 4. The system clipboard gave us nothing usable (e.g. a non-secure context
+  //    where clipboardData is unavailable). Fall back to the last canvas copy
+  //    held in memory.
+  const internal = parseCanvasClipboard(internalClipboard);
+  if (internal) {
+    event.preventDefault();
+    pasteCanvasClipboard(internal, insertionPointFromEvent());
+  }
+}
+
+// Images on the clipboard (e.g. a screenshot or "copy image") may arrive in
+// `files`, in `items` as a file entry, or both. Collect from both and dedupe so
+// a single pasted image isn't inserted twice.
+function clipboardFiles(data: DataTransfer | null | undefined): File[] {
+  if (!data) return [];
+  const files = Array.from(data.files ?? []);
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  const seen = new Set<string>();
+  return files.filter((file) => {
+    const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // The canvas renders full-bleed behind the fixed navigation sidebar, so the
@@ -2056,6 +2220,7 @@ onUnmounted(() => {
     <div
       ref="viewportRef"
       class="canvas-viewport"
+      tabindex="-1"
       :style="{ cursor: viewportCursor }"
       @contextmenu.prevent
       @pointerdown="handleViewportPointerDown"
@@ -2468,6 +2633,9 @@ onUnmounted(() => {
   overflow: hidden;
   background-color: var(--canvas-bg);
   touch-action: none;
+  /* Focusable (tabindex) so the browser dispatches clipboard events here, but
+     it's not a control — suppress the focus ring. */
+  outline: none;
 }
 
 .canvas-world {
