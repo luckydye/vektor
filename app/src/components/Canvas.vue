@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as Y from "yjs";
-import { redoArrowIcon, undoArrowIcon } from "~/src/assets/icons.ts";
+import {
+  chevronRightThinIcon,
+  documentIcon,
+  redoArrowIcon,
+  undoArrowIcon,
+} from "~/src/assets/icons.ts";
 import { useDocument } from "../composeables/useDocument.ts";
+import { useDocuments } from "../composeables/useDocuments.ts";
+import { useRoute } from "../composeables/useRoute.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
 import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
@@ -39,7 +46,7 @@ const props = defineProps<{
 }>();
 
 type CanvasTool = "select" | "draw" | "note" | "text" | "section";
-type CanvasShapeType = "note" | "text" | "image" | "video" | "section";
+type CanvasShapeType = "note" | "text" | "image" | "video" | "section" | "document";
 
 type CanvasShape = {
   id: string;
@@ -52,6 +59,10 @@ type CanvasShape = {
   color: string;
   src?: string;
   alt?: string;
+  // For "document" shapes: the linked document's id and slug. The slug builds
+  // the navigation URL; the id is the stable reference.
+  docId?: string;
+  docSlug?: string;
   updatedAt: number;
 };
 
@@ -210,6 +221,8 @@ const MIN_NOTE_SIZE = { width: 140, height: 96 };
 const MIN_SECTION_SIZE = { width: 240, height: 160 };
 const MIN_MEDIA_SIZE = { width: 80, height: 60 };
 const MIN_TEXT_SIZE = { width: 32, height: 40 };
+// Default footprint of a document-link card dropped on the canvas.
+const DOC_CARD_SIZE = { width: 260, height: 64 };
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
@@ -243,6 +256,10 @@ const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
 const user = useUserProfile();
 const { document: documentData, saveDocument } = useDocument(props.documentId, "canvas");
+// Used to resolve a dropped/inserted document id to its slug + title, and to
+// build navigation URLs for document-link cards.
+const { documents } = useDocuments();
+const { spaceSlug } = useRoute();
 
 const roomId = props.documentId || crypto.randomUUID();
 const presenceClientId = crypto.randomUUID();
@@ -264,6 +281,9 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saveStateTimer: ReturnType<typeof setTimeout> | null = null;
 let presenceTimer: ReturnType<typeof setInterval> | null = null;
 let dragState: DragState | null = null;
+// True once a shape drag has actually moved the selection. Document-link cards
+// read this to tell a click (open the document) from a drag (just reposition).
+let dragMoved = false;
 let freehandBuilder: FreehandStrokeBuilder | null = null;
 let freehandPointerId: number | null = null;
 const activeFreehandStroke = ref<FreehandStroke | null>(null);
@@ -431,12 +451,15 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
     typeValue === "note" ||
     typeValue === "image" ||
     typeValue === "video" ||
-    typeValue === "section"
+    typeValue === "section" ||
+    typeValue === "document"
       ? typeValue
       : "note";
 
-  const defaultWidth = type === "text" ? 220 : type === "section" ? 560 : 240;
-  const defaultHeight = type === "text" ? 88 : type === "section" ? 340 : 150;
+  const defaultWidth =
+    type === "text" ? 220 : type === "section" ? 560 : type === "document" ? 260 : 240;
+  const defaultHeight =
+    type === "text" ? 88 : type === "section" ? 340 : type === "document" ? 64 : 150;
   return {
     id,
     type,
@@ -448,6 +471,8 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
     color: typeof read("color") === "string" ? String(read("color")) : defaultColor(type),
     src: typeof read("src") === "string" ? String(read("src")) : undefined,
     alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
+    docId: typeof read("docId") === "string" ? String(read("docId")) : undefined,
+    docSlug: typeof read("docSlug") === "string" ? String(read("docSlug")) : undefined,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
   };
 }
@@ -542,6 +567,8 @@ function defaultColor(type: CanvasShapeType) {
   if (type === "video") return "#000000";
   if (type === "section") return "rgba(255, 255, 255, 0.02)";
   if (type === "text") return "#ffffff";
+  // Theme-aware surface so the card reads correctly in light and dark mode.
+  if (type === "document") return "var(--canvas-doc-bg)";
   return NOTE_COLORS[0];
 }
 
@@ -549,6 +576,7 @@ function defaultText(type: CanvasShapeType) {
   if (type === "image" || type === "video") return "";
   if (type === "section") return "Section";
   if (type === "text") return "Text";
+  if (type === "document") return "Untitled";
   return "Note";
 }
 
@@ -563,6 +591,8 @@ function createShapeMap(shape: CanvasShape) {
   map.set("color", shape.color);
   if (shape.src) map.set("src", shape.src);
   if (shape.alt) map.set("alt", shape.alt);
+  if (shape.docId) map.set("docId", shape.docId);
+  if (shape.docSlug) map.set("docSlug", shape.docSlug);
   map.set("updatedAt", shape.updatedAt);
   return map;
 }
@@ -1055,6 +1085,51 @@ async function addMediaFiles(files: File[], at: { x: number; y: number }) {
   }
 }
 
+function documentLabel(doc: { properties?: { title?: string | null } | null }): string {
+  const title = doc.properties?.title;
+  return title?.trim() ? title.trim() : "Untitled";
+}
+
+// Places a card on the canvas that links to another document. Returns false if
+// the id doesn't resolve to a known document (e.g. a stray text drag), so the
+// caller can leave the drop to the browser.
+function insertDocumentLink(documentId: string, at: { x: number; y: number }): boolean {
+  const doc = documents.value.find((entry) => entry.id === documentId);
+  if (!doc) return false;
+  const id = `shape-${crypto.randomUUID()}`;
+  const shape: CanvasShape = {
+    id,
+    type: "document",
+    x: Math.round(at.x - DOC_CARD_SIZE.width / 2),
+    y: Math.round(at.y - DOC_CARD_SIZE.height / 2),
+    width: DOC_CARD_SIZE.width,
+    height: DOC_CARD_SIZE.height,
+    text: documentLabel(doc),
+    color: defaultColor("document"),
+    docId: doc.id,
+    docSlug: doc.slug ?? undefined,
+    updatedAt: Date.now(),
+  };
+  yShapes.set(id, createShapeMap(shape));
+  selectOnlyShape(id);
+  activeTool.value = "select";
+  return true;
+}
+
+function documentShapeHref(shape: CanvasShape): string | undefined {
+  if (!shape.docSlug) return undefined;
+  return spaceSlug.value
+    ? `/${spaceSlug.value}/doc/${shape.docSlug}`
+    : `/doc/${shape.docSlug}`;
+}
+
+// The card is an anchor, so navigation is native — we only intervene to swallow
+// the click when the pointer was actually dragging the card, or when the card
+// has no resolvable target.
+function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
+  if (dragMoved || !documentShapeHref(shape)) event.preventDefault();
+}
+
 function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
   const id = `shape-${crypto.randomUUID()}`;
   const text = defaultText(type);
@@ -1313,6 +1388,7 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
     selectOnlyShape(shape.id);
   }
 
+  dragMoved = false;
   dragState = buildShapeDragState(event);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   if (shape.type !== "text") {
@@ -1626,6 +1702,16 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   const drag = dragState;
+  // A few pixels of travel (in screen space) promotes this from a click to a
+  // drag, so a click on a document card opens it instead of nudging it.
+  if (
+    !dragMoved &&
+    Math.hypot(world.x - drag.startPointer.x, world.y - drag.startPointer.y) *
+      transform.value.scale >
+      3
+  ) {
+    dragMoved = true;
+  }
   const { dx, dy } = snapDragOffset(
     drag,
     world.x - drag.startPointer.x,
@@ -1682,20 +1768,40 @@ function dragHasMediaFiles(transfer: DataTransfer | null) {
   return transfer.types.includes("Files");
 }
 
+// Documents dragged from the sidebar/command palette carry their id as
+// `text/plain` (see page-target.ts). The actual id can't be read during
+// dragover, so accept any plain-text drag here and verify it on drop.
+function dragHasDocumentLink(transfer: DataTransfer | null) {
+  return Boolean(transfer?.types.includes("text/plain"));
+}
+
 function handleDragOver(event: DragEvent) {
-  if (!dragHasMediaFiles(event.dataTransfer)) return;
+  const hasMedia = dragHasMediaFiles(event.dataTransfer);
+  if (!hasMedia && !dragHasDocumentLink(event.dataTransfer)) return;
   event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  if (event.dataTransfer) {
+    // Document drags from the sidebar/palette advertise effectAllowed "move";
+    // a mismatched "copy" dropEffect makes the browser reject the drop, so we
+    // mirror "move" for those. OS file drops carry copy semantics.
+    event.dataTransfer.dropEffect = hasMedia ? "copy" : "move";
+  }
 }
 
 function handleDrop(event: DragEvent) {
-  if (!dragHasMediaFiles(event.dataTransfer)) return;
-  // Prevent the browser from navigating to the file even when the dropped
-  // files turn out not to be media we can place.
-  event.preventDefault();
-  const media = mediaFilesFromList(clipboardFiles(event.dataTransfer));
-  if (media.length === 0) return;
-  void addMediaFiles(media, insertionPointFromEvent(event));
+  if (dragHasMediaFiles(event.dataTransfer)) {
+    // Prevent the browser from navigating to the file even when the dropped
+    // files turn out not to be media we can place.
+    event.preventDefault();
+    const media = mediaFilesFromList(clipboardFiles(event.dataTransfer));
+    if (media.length > 0) void addMediaFiles(media, insertionPointFromEvent(event));
+    return;
+  }
+
+  // A document dragged from the sidebar or command palette becomes a link card.
+  const droppedId = event.dataTransfer?.getData("text/plain")?.trim();
+  if (droppedId && insertDocumentLink(droppedId, insertionPointFromEvent(event))) {
+    event.preventDefault();
+  }
 }
 
 // Portable clipboard payload — written to the system clipboard as JSON so a
@@ -2313,6 +2419,19 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
+          <a
+            v-else-if="shape.type === 'document'"
+            class="canvas-shape-doc"
+            :href="documentShapeHref(shape)"
+            draggable="false"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+            @dragstart.prevent
+            @click="onDocumentShapeClick(shape, $event)"
+          >
+            <span class="svg-icon canvas-shape-doc-icon" v-html="documentIcon"></span>
+            <span class="canvas-shape-doc-title">{{ shape.text || "Untitled" }}</span>
+            <span class="svg-icon canvas-shape-doc-open" v-html="chevronRightThinIcon"></span>
+          </a>
           <div
             v-else-if="shape.type !== 'section'"
             class="canvas-shape-textwrap"
@@ -2402,6 +2521,8 @@ onUnmounted(() => {
   --canvas-section-title-border: rgba(37, 99, 235, 0.28);
   --canvas-section-title-text: #1e3a8a;
   --canvas-image-bg: #ffffff;
+  --canvas-doc-bg: #ffffff;
+  --canvas-doc-accent: #2563eb;
   --canvas-resize-border: rgba(15, 23, 42, 0.45);
   --canvas-presence-text: #111827;
   position: relative;
@@ -2443,6 +2564,8 @@ onUnmounted(() => {
     --canvas-section-title-border: rgba(147, 197, 253, 0.36);
     --canvas-section-title-text: #dbeafe;
     --canvas-image-bg: #111827;
+    --canvas-doc-bg: #1a1d24;
+    --canvas-doc-accent: #93c5fd;
     --canvas-resize-border: rgba(255, 255, 255, 0.58);
     --canvas-presence-text: #111827;
   }
@@ -2746,6 +2869,49 @@ onUnmounted(() => {
   flex: 0 0 auto;
   cursor: move;
   background: var(--canvas-handle-bg);
+}
+
+/* Document-link card: a draggable surface whose body is a click-to-open
+   anchor. */
+.canvas-shape.document {
+  cursor: pointer;
+}
+
+.canvas-shape-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 0 14px;
+  color: var(--canvas-text);
+  text-decoration: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.canvas-shape-doc-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--canvas-doc-accent);
+}
+
+.canvas-shape-doc-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-shape-doc-open {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  opacity: 0.45;
 }
 
 .canvas-section-header {
