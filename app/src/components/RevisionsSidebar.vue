@@ -166,7 +166,6 @@ async function publishRevisionAction(revisionId: number | null | undefined) {
     if (success) {
       publishedRev.value = revisionId;
       await refresh();
-      location.reload();
     }
   } finally {
     isPublishing.value = false;
