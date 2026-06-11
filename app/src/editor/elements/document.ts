@@ -178,7 +178,7 @@ function createPresencePlugin(
                   fontWeight: "600",
                   lineHeight: "1",
                   whiteSpace: "nowrap",
-                  borderRadius: "3px 3px 3px 0",
+                  borderRadius: "var(--radius-xs) var(--radius-xs) var(--radius-xs) 0",
                   padding: "0.15rem 0.35rem",
                   boxShadow: "0 1px 2px rgb(0 0 0 / 0.18)",
                 });
@@ -366,7 +366,7 @@ function createEditor(
       top: "0",
       width: "0",
       height: "2px",
-      borderRadius: "999px",
+      borderRadius: "var(--radius-full)",
       backgroundColor: "var(--color-primary-500, #3b82f6)",
       boxShadow:
         "0 0 0 1px color-mix(in srgb, var(--color-primary-500, #3b82f6) 25%, transparent)",

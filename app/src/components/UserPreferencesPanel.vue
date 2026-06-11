@@ -189,13 +189,13 @@ watch(
 
     <div
       v-if="integrationsError"
-      class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600"
+      class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600"
     >
       {{ integrationsError }}
     </div>
     <div
       v-if="integrationsMessage"
-      class="mb-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-700"
+      class="mb-3 p-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700"
     >
       {{ integrationsMessage }}
     </div>

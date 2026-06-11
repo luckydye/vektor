@@ -206,7 +206,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
 
             render(
               html`
-              <div class="w-72 bg-background border border-neutral-100 rounded shadow-lg overflow-hidden text-sm" role="listbox" @keydown=${(e: Event) => e.stopPropagation()}>
+              <div class="w-72 bg-background border border-neutral-100 rounded-sm shadow-lg overflow-hidden text-sm" role="listbox" @keydown=${(e: Event) => e.stopPropagation()}>
                 <ul class="max-h-64 overflow-auto" @mousedown=${onItemMouseDown}>
                   ${
                     people.length > 0
@@ -248,7 +248,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                         aria-selected=${gi === selectedIndex}
                         @click=${(e: MouseEvent) => onItemClick(e, props, gi)}
                       >
-                        <div class="w-6 h-6 rounded flex items-center justify-center text-xs text-neutral-500 bg-neutral-100">
+                        <div class="w-6 h-6 rounded-sm flex items-center justify-center text-xs text-neutral-500 bg-neutral-100">
                           <span class="svg-icon w-3.5 h-3.5">${unsafeHTML(documentIcon)}</span>
                         </div>
                         <span class="font-medium leading-4 truncate">${item.label}</span>

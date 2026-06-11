@@ -173,7 +173,7 @@ const activityGroups = computed((): ActivityGroup[] => {
                   <!-- Property change pill -->
                   <div
                     v-if="hasPropertyChange(entry)"
-                    class="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs bg-neutral-100 rounded px-2.5 py-1.5 text-neutral-700"
+                    class="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs bg-neutral-100 rounded-sm px-2.5 py-1.5 text-neutral-700"
                   >
                     <span class="font-medium text-neutral-500">
                       {{ formatPropertyKey(entry.details?.propertyKey) }}:
@@ -198,10 +198,11 @@ const activityGroups = computed((): ActivityGroup[] => {
                   >
                     <span class="font-medium text-neutral-600">{{ getAuditEventLabel(entry.event) }}</span>
                     <span v-if="getDocumentName?.(entry.docId)">{{ getDocumentName(entry.docId) }}</span>
-                    <template v-if="entry.details?.message && entry.event !== 'save'">
+                    <!-- <template v-if="entry.details?.message && entry.event !== 'save'">
+                        TODO: should be a detail expand area soemthing
                       <span class="text-neutral-300">·</span>
                       <span>{{ entry.details.message }}</span>
-                    </template>
+                    </template> -->
                   </div>
                 </div>
 

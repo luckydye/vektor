@@ -104,7 +104,7 @@ customElements.define(
             display: inline-flex;
             flex-direction: column;
             border: 1px solid #e5e7eb;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             overflow: hidden;
             max-width: 300px;
             margin: 4px 0;

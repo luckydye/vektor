@@ -268,7 +268,7 @@ const canSearch = computed(() => {
           <button
             v-if="searchQuery || activeFilters.length > 0"
             @click="clearAll"
-            class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="isSearching"
           title="Clear all"
         >
@@ -368,9 +368,9 @@ const canSearch = computed(() => {
       <div class="max-w-md mx-auto p-6 bg-neutral-50 border border-neutral-100 rounded-lg text-left">
         <p class="font-semibold text-neutral-700 mb-3">💡 Search tips:</p>
         <ul class="list-disc pl-6 space-y-2 text-sm text-neutral-600">
-          <li>Use natural language for broader matches: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">database design basics</code></li>
-          <li>Exact phrases still help when you know the wording: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">"programming language"</code></li>
-          <li>Short prefixes can still work for common terms: <code class="px-1.5 py-0.5 bg-neutral-200 rounded text-xs font-mono text-neutral-800">java</code></li>
+          <li>Use natural language for broader matches: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-xs font-mono text-neutral-800">database design basics</code></li>
+          <li>Exact phrases still help when you know the wording: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-xs font-mono text-neutral-800">"programming language"</code></li>
+          <li>Short prefixes can still work for common terms: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-xs font-mono text-neutral-800">java</code></li>
           <li>Use property filters to narrow down by metadata</li>
           <li>Make sure you have access to the documents you're searching for</li>
         </ul>

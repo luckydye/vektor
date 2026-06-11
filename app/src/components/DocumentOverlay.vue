@@ -223,21 +223,21 @@ function formatCommentTime(date: Date | string): string {
                         <h2 v-if="documentData" class="text-lg font-semibold text-foreground truncate">
                           {{ documentData.title }}
                         </h2>
-                        <div v-else-if="loading" class="h-6 w-48 bg-neutral-200 rounded animate-pulse" />
+                        <div v-else-if="loading" class="h-6 w-48 bg-neutral-200 rounded-sm animate-pulse" />
                       </div>
 
                       <div class="flex items-center gap-2 shrink-0">
                         <button
                           v-if="documentData"
                           @click="navigateToDocument"
-                          class="px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-foreground hover:bg-neutral-100 rounded transition-colors"
+                          class="px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
                           title="Open full document"
                         >
                           Open
                         </button>
                         <button
                           @click="closeOverlay"
-                          class="p-1.5 text-neutral-400 hover:text-foreground hover:bg-neutral-100 rounded transition-colors"
+                          class="p-1.5 text-neutral-400 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
                           title="Close (Esc)"
                         >
                           <div class="svg-icon w-5 h-5" v-html="closeXIcon" />
@@ -249,10 +249,10 @@ function formatCommentTime(date: Date | string): string {
                     <div class="flex-1 overflow-y-auto" data-scroll-container>
                       <!-- Loading state -->
                       <div v-if="loading" class="p-6 space-y-4">
-                        <div class="h-4 w-3/4 bg-neutral-200 rounded animate-pulse" />
-                        <div class="h-4 w-full bg-neutral-200 rounded animate-pulse" />
-                        <div class="h-4 w-5/6 bg-neutral-200 rounded animate-pulse" />
-                        <div class="h-4 w-2/3 bg-neutral-200 rounded animate-pulse" />
+                        <div class="h-4 w-3/4 bg-neutral-200 rounded-sm animate-pulse" />
+                        <div class="h-4 w-full bg-neutral-200 rounded-sm animate-pulse" />
+                        <div class="h-4 w-5/6 bg-neutral-200 rounded-sm animate-pulse" />
+                        <div class="h-4 w-2/3 bg-neutral-200 rounded-sm animate-pulse" />
                       </div>
 
                       <!-- Error state -->
@@ -263,7 +263,7 @@ function formatCommentTime(date: Date | string): string {
                         <p class="text-neutral-600">{{ error }}</p>
                         <button
                           @click="closeOverlay"
-                          class="mt-4 px-4 py-2 text-sm font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded hover:bg-neutral-50 transition-colors"
+                          class="mt-4 px-4 py-2 text-sm font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded-sm hover:bg-neutral-50 transition-colors"
                         >
                           Close
                         </button>
@@ -321,11 +321,11 @@ function formatCommentTime(date: Date | string): string {
                             <div class="flex-1">
                               <textarea
                                 placeholder="Add a comment..."
-                                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-sm bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                                 rows="2"
                               />
                               <div class="mt-2 flex justify-end gap-2">
-                                <button class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors">
+                                <button class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors">
                                   Comment
                                 </button>
                               </div>

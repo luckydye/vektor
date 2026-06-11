@@ -209,7 +209,7 @@ Actions.register("ui:toggle:palatte", {
                 @keydown="handleResultKeydown"
               />
               <kbd
-                class="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-neutral-900 neutral border border-neutral-100 rounded"
+                class="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-neutral-900 neutral border border-neutral-100 rounded-sm"
               >
                 ESC
               </kbd>
@@ -280,7 +280,7 @@ Actions.register("ui:toggle:palatte", {
                 <kbd
                   v-for="shortcut in Actions.getShortcutsForAction(result.id)"
                   :key="shortcut"
-                  class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded font-mono text-[10px] capitalize"
+                  class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded-sm font-mono text-[10px] capitalize"
                 >
                   {{ shortcut }}
                 </kbd>
@@ -299,16 +299,16 @@ Actions.register("ui:toggle:palatte", {
           <div class="px-4 py-3 bg-neutral-100 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral">
             <div class="flex items-center gap-4">
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded font-mono">↑↓</kbd>
+                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">↑↓</kbd>
                 Navigate
               </span>
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded font-mono">Enter</kbd>
+                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">Enter</kbd>
                 Select
               </span>
             </div>
             <span class="flex items-center gap-1">
-              <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded font-mono">⌘K</kbd>
+              <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">⌘K</kbd>
               Toggle
             </span>
           </div>

@@ -566,7 +566,7 @@ useSync(
       </div>
       <button
         @click="closeRevisionView"
-        class="px-4 py-2 text-sm font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded hover:bg-amber-200 transition-colors"
+        class="px-4 py-2 text-sm font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors"
       >
         Show published version
       </button>

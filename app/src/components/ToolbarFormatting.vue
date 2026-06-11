@@ -747,7 +747,7 @@ onBeforeUnmount(() => {
 }
 
 .menu-btn {
-  @apply relative px-2.5 py-2 text-sm font-medium rounded transition-all;
+  @apply relative px-2.5 py-2 text-sm font-medium rounded-sm transition-all;
   @apply text-neutral-700;
   @apply hover:bg-neutral-100;
   @apply min-w-[2rem] flex items-center justify-center;
@@ -803,7 +803,7 @@ onBeforeUnmount(() => {
 }
 
 .color-clear-btn {
-  @apply p-1 rounded transition-colors;
+  @apply p-1 rounded-sm transition-colors;
   @apply text-neutral-500 hover:text-neutral-700;
   @apply hover:bg-neutral-100;
 }

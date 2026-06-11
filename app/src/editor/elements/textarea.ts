@@ -70,7 +70,7 @@ customElements.define(
             @change=${this.handleTextareaChange}
             @focus=${this.handleTextareaFocus}
             @blur=${this.handleTextareaBlur}
-            style="box-sizing: border-box; width: 100%; min-height: 200px; padding: 0.75rem; border: 1px solid ${this.state.isFocused ? "#3b82f6" : "#d1d5db"}; border-radius: 0.375rem; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace; font-size: 0.875rem; line-height: 1.5; resize: vertical; outline: none; transition: border-color 0.2s; box-shadow: ${this.state.isFocused ? "0 0 0 3px rgba(59, 130, 246, 0.1)" : "none"};"
+            style="box-sizing: border-box; width: 100%; min-height: 200px; padding: 0.75rem; border: 1px solid ${this.state.isFocused ? "#3b82f6" : "#d1d5db"}; border-radius: var(--radius-sm); font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace; font-size: 0.875rem; line-height: 1.5; resize: vertical; outline: none; transition: border-color 0.2s; box-shadow: ${this.state.isFocused ? "0 0 0 3px rgba(59, 130, 246, 0.1)" : "none"};"
           ></textarea>
 
           <div
@@ -84,14 +84,14 @@ customElements.define(
               ?disabled=${this.state.isGenerating}
               @input=${this.handlePromptInput}
               @keydown=${this.handlePromptKeydown}
-              style="flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 0.875rem; outline: none; transition: border-color 0.2s;"
+              style="flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: var(--radius-sm); font-size: 0.875rem; outline: none; transition: border-color 0.2s;"
             />
 
             <button
               type="button"
               ?disabled=${!this.state.isAvailable || this.state.isGenerating}
               @click=${this.handleGenerate}
-              style="padding: 0.5rem 1rem; background: ${this.state.isAvailable && !this.state.isGenerating ? "#3b82f6" : "#9ca3af"}; color: white; border: none; border-radius: 0.375rem; font-size: 0.875rem; cursor: ${this.state.isAvailable && !this.state.isGenerating ? "pointer" : "not-allowed"}; transition: bg-background 0.2s; white-space: nowrap;"
+              style="padding: 0.5rem 1rem; background: ${this.state.isAvailable && !this.state.isGenerating ? "#3b82f6" : "#9ca3af"}; color: white; border: none; border-radius: var(--radius-sm); font-size: 0.875rem; cursor: ${this.state.isAvailable && !this.state.isGenerating ? "pointer" : "not-allowed"}; transition: bg-background 0.2s; white-space: nowrap;"
               title=${this.state.isAvailable ? "Generate content with AI" : "AI language model is not available in this browser"}
             >
               ${

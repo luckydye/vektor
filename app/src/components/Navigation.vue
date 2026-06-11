@@ -218,15 +218,15 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
           <!-- Category header -->
           <div class="flex items-center gap-2 p-2 rounded-md">
-            <div class="w-4 h-4 bg-neutral-200 rounded animate-pulse flex-none" />
-            <div class="w-6 h-6 bg-neutral-200 rounded flex-none animate-pulse" />
-            <div class="h-4 bg-neutral-200 rounded w-24 animate-pulse" />
+            <div class="w-4 h-4 bg-neutral-200 rounded-sm animate-pulse flex-none" />
+            <div class="w-6 h-6 bg-neutral-200 rounded-sm flex-none animate-pulse" />
+            <div class="h-4 bg-neutral-200 rounded-sm w-24 animate-pulse" />
           </div>
           <!-- Documents under category -->
           <div class="pl-3 space-y-1">
             <div v-for="j in 2" :key="`doc-skeleton-${i}-${j}`" class="flex items-center gap-2 p-2 rounded-md">
-              <div class="w-4 h-4 bg-neutral-200 rounded animate-pulse flex-none" />
-              <div class="h-3 bg-neutral-200 rounded w-32 animate-pulse flex-1" />
+              <div class="w-4 h-4 bg-neutral-200 rounded-sm animate-pulse flex-none" />
+              <div class="h-3 bg-neutral-200 rounded-sm w-32 animate-pulse flex-1" />
             </div>
           </div>
         </div>

@@ -105,7 +105,7 @@
                 <div class="flex flex-wrap gap-1">
                   <span
                     v-if="ext.entries.frontend"
-                    class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded whitespace-nowrap"
+                    class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-sm whitespace-nowrap"
                   >
                     frontend
                   </span>

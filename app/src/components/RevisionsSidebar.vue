@@ -274,7 +274,7 @@ watch(
     <div class="relative flex flex-col h-full">
 
       <!-- Error State -->
-      <div v-if="auditError" class="mx-4 mt-4 p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
+      <div v-if="auditError" class="mx-4 mt-4 p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm">
         {{ auditError }}
       </div>
 
@@ -312,7 +312,7 @@ watch(
                 <a-popover-trigger :showdelay="0" :hidedelay="100">
                   <button
                     slot="trigger"
-                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-neutral-200 transition-colors"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded-sm hover:bg-neutral-200 transition-colors"
                     title="Revision actions"
                   >
                     <div class="svg-icon w-[12px] h-[18px] text-neutral-500" v-html="dotsVerticalIcon" />
@@ -362,11 +362,11 @@ watch(
             <template #entry-actions="{ entry }">
               <span
                 v-if="isPublishedEntry(entry)"
-                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded border border-blue-200 text-blue-600 bg-blue-50"
+                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded-sm border border-blue-200 text-blue-600 bg-blue-50"
               >Published</span>
               <span
                 v-else-if="isSuggestionEntry(entry)"
-                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded border border-amber-200 text-amber-600 bg-amber-50"
+                class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded-sm border border-amber-200 text-amber-600 bg-amber-50"
               >{{ revisionStatusOf(entry) === "applied" ? "Applied" : "Suggestion" }}</span>
             </template>
           </ActivityFeed>

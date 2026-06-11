@@ -39,7 +39,7 @@ const handleRestore = async () => {
   <button
     @click="handleRestore"
     :disabled="isLoading"
-    class="px-3 py-1 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+    class="px-3 py-1 text-sm font-medium text-white bg-green-600 rounded-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
   >
     {{ isLoading ? "Restoring..." : "Restore" }}
   </button>

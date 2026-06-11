@@ -106,7 +106,7 @@ export const HtmlBlock = Node.create({
               cursor: pointer;
               font-size: 1rem;
               padding: 0.25rem 0.5rem;
-              border-radius: 0.25rem;
+              border-radius: var(--radius-xs);
               transition: background-color 0.2s;
             }
             .html-block-toggle-btn:hover {

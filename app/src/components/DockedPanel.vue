@@ -351,7 +351,7 @@ onUnmounted(() => {
         <!-- Dock/undock toggle -->
         <button
           v-if="mode === 'floating'"
-          class="p-1 text-neutral-500 hover:text-neutral-800 rounded transition-colors"
+          class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
           title="Dock panel"
           @click="onDock"
         >
@@ -359,7 +359,7 @@ onUnmounted(() => {
         </button>
         <button
           v-else
-          class="p-1 text-neutral-500 hover:text-neutral-800 rounded transition-colors"
+          class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
           title="Undock panel"
           @click="onUndock"
         >
@@ -367,7 +367,7 @@ onUnmounted(() => {
         </button>
         <!-- Close -->
         <button
-          class="p-1 text-neutral-500 hover:text-neutral-800 rounded transition-colors"
+          class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
           @click="onClose"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />

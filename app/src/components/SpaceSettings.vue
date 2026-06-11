@@ -48,7 +48,7 @@
             </label>
             <div class="flex gap-2 items-center">
               <input id="settings-brand-color" v-model="localBrandColor" type="color"
-                class="h-8 w-12 border border-neutral-100 rounded cursor-pointer" />
+                class="h-8 w-12 border border-neutral-100 rounded-sm cursor-pointer" />
               <input v-model="localBrandColor" type="text" placeholder="#1e293b" pattern="^#[0-9A-Fa-f]{6}$"
                 class="flex-1 px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
@@ -60,8 +60,8 @@
             <div class="flex items-center gap-2">
               <input id="settings-logo-svg" type="file" accept="image/svg+xml,image/png,image/jpeg"
                 @change="handleLogoUpload"
-                class="flex-1 text-sm file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-neutral-100 file:text-neutral-700 hover:file:bg-neutral-200" />
-              <div v-if="localLogoSvg" class="flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded">
+                class="flex-1 text-sm file:mr-2 file:py-1 file:px-2 file:rounded-sm file:border-0 file:text-xs file:bg-neutral-100 file:text-neutral-700 hover:file:bg-neutral-200" />
+              <div v-if="localLogoSvg" class="flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded-sm">
                 <div v-if="localLogoSvg.startsWith('<')" v-html="localLogoSvg" class="h-5 flex items-center [&>svg]:h-5 [&>svg]:w-auto"></div>
                 <img v-else :src="localLogoSvg" class="h-5" />
                 <button type="button" @click="localLogoSvg = ''" class="text-neutral-400 hover:text-red-500">
@@ -71,7 +71,7 @@
             </div>
           </div>
         </div>
-        <div v-if="error" class="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+        <div v-if="error" class="mt-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
           {{ error }}
         </div>
         <div class="mt-4 flex justify-end">
@@ -96,7 +96,7 @@
         <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
       </div>
       <div>
-        <div v-if="tokenError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+        <div v-if="tokenError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
           {{ tokenError }}
         </div>
 
@@ -161,9 +161,9 @@
         <div v-if="createdTokenValue" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
           <p class="text-xs font-medium text-green-800 mb-2">Token created — copy it now, it won't be shown again.</p>
           <div class="flex items-center gap-2">
-            <code class="flex-1 px-2 py-1.5 text-xs bg-background border border-green-200 rounded font-mono break-all select-all">{{ createdTokenValue }}</code>
+            <code class="flex-1 px-2 py-1.5 text-xs bg-background border border-green-200 rounded-sm font-mono break-all select-all">{{ createdTokenValue }}</code>
             <button type="button" @click="handleCopyToken"
-              class="shrink-0 px-2 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-300 rounded hover:bg-green-200">
+              class="shrink-0 px-2 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-300 rounded-sm hover:bg-green-200">
               {{ tokenCopied ? 'Copied!' : 'Copy' }}
             </button>
           </div>
@@ -188,14 +188,14 @@
               <tr v-for="token in accessTokens" :key="token.id" class="hover:bg-neutral-50">
                 <td class="py-2 pr-4 font-medium text-neutral-900">{{ token.name }}</td>
                 <td class="py-2 pr-4">
-                  <span v-if="token.revokedAt" class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Revoked</span>
-                  <span v-else-if="token.expiresAt && new Date(token.expiresAt) < new Date()" class="px-1.5 py-0.5 text-xs rounded bg-yellow-100 text-yellow-700">Expired</span>
-                  <span v-else class="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">Active</span>
+                  <span v-if="token.revokedAt" class="px-1.5 py-0.5 text-xs rounded-sm bg-red-100 text-red-700">Revoked</span>
+                  <span v-else-if="token.expiresAt && new Date(token.expiresAt) < new Date()" class="px-1.5 py-0.5 text-xs rounded-sm bg-yellow-100 text-yellow-700">Expired</span>
+                  <span v-else class="px-1.5 py-0.5 text-xs rounded-sm bg-green-100 text-green-700">Active</span>
                 </td>
                 <td class="py-2 pr-4">
                   <div class="flex flex-wrap gap-1">
                     <span v-for="resource in token.resources" :key="`${resource.resourceType}-${resource.resourceId}`"
-                      class="px-1.5 py-0.5 text-xs bg-blue-50 text-blue-700 rounded">
+                      class="px-1.5 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-sm">
                       {{ resource.resourceType }}: {{ resource.permission }}
                     </span>
                     <span v-if="!token.resources?.length" class="text-xs text-neutral-400 italic">None</span>
@@ -225,17 +225,17 @@
       <div class="relative">
         <pre class="p-3 text-xs font-mono bg-neutral-50 border border-neutral-200 rounded-md overflow-x-auto whitespace-pre">{{ mcpConfigJson }}</pre>
         <button type="button" @click="handleCopyMcpConfig" :disabled="isCopyingMcpConfig"
-          class="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded hover:bg-neutral-100 disabled:opacity-50">
+          class="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-sm hover:bg-neutral-100 disabled:opacity-50">
           {{ isCopyingMcpConfig ? 'Creating token...' : mcpConfigCopied ? 'Copied with token!' : 'Copy with new token' }}
         </button>
       </div>
       <p class="mt-3 text-xs text-neutral-500">
         Clicking copy creates a new access token and includes it in the copied config.
-        Available tools: <code class="px-1 py-0.5 bg-neutral-100 rounded">list_documents</code>,
-        <code class="px-1 py-0.5 bg-neutral-100 rounded">search_documents</code>,
-        <code class="px-1 py-0.5 bg-neutral-100 rounded">get_document</code>,
-        <code class="px-1 py-0.5 bg-neutral-100 rounded">upload_artifact</code>,
-        <code class="px-1 py-0.5 bg-neutral-100 rounded">install_extension</code>.
+        Available tools: <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">list_documents</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">search_documents</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">get_document</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">upload_artifact</code>,
+        <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">install_extension</code>.
       </p>
     </section>
 
@@ -252,7 +252,7 @@
         </button>
       </div>
 
-      <div v-if="secretsError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+      <div v-if="secretsError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
         {{ secretsError }}
       </div>
 
@@ -357,14 +357,14 @@
           <button @click="selectedSecretName = null; selectedSecretValue = null;" class="text-xs text-neutral-500 hover:text-neutral-700">Close</button>
         </div>
         <div class="flex items-center gap-2 mb-3">
-          <code class="flex-1 px-2 py-1.5 text-xs bg-background border border-neutral-200 rounded font-mono break-all select-all">{{
+          <code class="flex-1 px-2 py-1.5 text-xs bg-background border border-neutral-200 rounded-sm font-mono break-all select-all">{{
             selectedSecretValue ?? (isLoadingSecretValue ? "Loading..." : "Not loaded")
           }}</code>
           <button
             type="button"
             @click="handleCopySelectedSecret"
             :disabled="!selectedSecretValue"
-            class="shrink-0 px-2 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 border border-neutral-200 rounded hover:bg-neutral-200 disabled:opacity-50"
+            class="shrink-0 px-2 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 border border-neutral-200 rounded-sm hover:bg-neutral-200 disabled:opacity-50"
           >
             Copy
           </button>
@@ -404,7 +404,7 @@
             <span
               v-for="perm in secretPermissions"
               :key="`${perm.userId || perm.groupId}-${perm.permission}`"
-              class="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 rounded"
+              class="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 rounded-sm"
             >
               {{ formatSecretPermissionTarget(perm) }} ({{ perm.permission }})
               <button
@@ -465,11 +465,11 @@
         Are you sure you want to delete <strong>{{ currentSpace?.name }}</strong>? This action will archive all documents and data.
       </p>
       <p class="text-sm text-neutral-600 mb-3">
-        Type <code class="px-1.5 py-0.5 bg-neutral-100 rounded font-mono text-sm">{{ currentSpace?.slug }}</code> to confirm:
+        Type <code class="px-1.5 py-0.5 bg-neutral-100 rounded-sm font-mono text-sm">{{ currentSpace?.slug }}</code> to confirm:
       </p>
       <input v-model="deleteConfirmText" type="text" placeholder="Type space slug"
         class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 mb-3" />
-      <div v-if="deleteError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+      <div v-if="deleteError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
         {{ deleteError }}
       </div>
       <div class="flex gap-2">

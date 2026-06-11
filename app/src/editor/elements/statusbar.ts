@@ -52,7 +52,7 @@ customElements.define(
                 padding: 0.25rem 0.5rem;
                 color: var(--color-neutral-900);
                 background-color: var(--color-neutral-10);
-                border-radius: 0.5rem;
+                border-radius: var(--radius-md);
                 transition: all 0.15s ease;
                 font-weight: bold;
                 font-size: 0.75rem;

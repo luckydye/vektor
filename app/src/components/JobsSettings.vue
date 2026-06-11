@@ -7,7 +7,7 @@
         class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Schedule</button>
     </div>
 
-    <div v-if="scheduleError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+    <div v-if="scheduleError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
       {{ scheduleError }}
     </div>
 
@@ -72,7 +72,7 @@
               </div>
             </td>
             <td class="py-2 pr-4">
-              <code class="px-1.5 py-0.5 text-xs bg-neutral-100 rounded font-mono">{{ schedule.cronExpression }}</code>
+              <code class="px-1.5 py-0.5 text-xs bg-neutral-100 rounded-sm font-mono">{{ schedule.cronExpression }}</code>
               <span v-if="schedule.timezone" class="ml-1 text-xs text-neutral-400">{{ schedule.timezone }}</span>
             </td>
             <td class="py-2 pr-4 text-neutral-500">{{ schedule.enabled && schedule.nextRunAt ? formatDateTime(schedule.nextRunAt) : '—' }}</td>
@@ -98,7 +98,7 @@
         </button>
       </div>
 
-      <div v-if="runsQueryError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+      <div v-if="runsQueryError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
         {{ runsQueryError?.message ?? 'Failed to load job runs' }}
       </div>
 
@@ -120,7 +120,7 @@
               <tr class="hover:bg-neutral-50" :class="run.error ? 'cursor-pointer' : ''"
                 @click="run.error ? (expandedRunId = expandedRunId === run.id ? null : run.id) : undefined">
                 <td class="py-2 pr-4">
-                  <span :class="statusClasses(run.status)" class="px-1.5 py-0.5 text-xs rounded">{{ run.status }}</span>
+                  <span :class="statusClasses(run.status)" class="px-1.5 py-0.5 text-xs rounded-sm">{{ run.status }}</span>
                 </td>
                 <td class="py-2 pr-4 font-medium text-neutral-900">{{ jobName(run.jobId) }}</td>
                 <td class="py-2 pr-4 text-neutral-500">{{ run.trigger }}</td>

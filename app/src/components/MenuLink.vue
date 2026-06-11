@@ -30,7 +30,7 @@ const props = defineProps<{
 
     <span
       v-if="badge !== undefined && badge > 0"
-      class="ml-auto bg-primary-100 text-neutral-800 px-1.5 py-0.5 rounded text-xs font-medium"
+      class="ml-auto bg-primary-100 text-neutral-800 px-1.5 py-0.5 rounded-sm text-xs font-medium"
     >
       {{ badge }}
     </span>

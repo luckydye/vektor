@@ -64,7 +64,7 @@ async function unpin() {
         <span v-if="doc" class="text-sm font-semibold text-neutral-800 group-hover:text-blue-600 transition-colors">
           {{ doc.properties?.title || 'Untitled' }}
         </span>
-        <span v-else class="h-4 w-40 bg-amber-100 animate-pulse rounded"></span>
+        <span v-else class="h-4 w-40 bg-amber-100 animate-pulse rounded-sm"></span>
       </a>
       <button
         v-if="userCanEdit"

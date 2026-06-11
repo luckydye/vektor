@@ -333,7 +333,7 @@ onUnmounted(() => {
       </h3>
       <button
         @click="toggleEditMode"
-        class="p-1 text-neutral-900 hover:text-neutral rounded transition-colors"
+        class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
         :title="isEditMode ? 'Done editing' : 'Edit categories'"
       >
         <div v-if="!isEditMode" class="svg-icon w-4 h-4" v-html="pencilIcon" />
@@ -368,7 +368,7 @@ onUnmounted(() => {
               <div class="svg-icon flex-none w-4 h-4 transition-transform"
                 :class="{ 'rotate-90': expandedItems.has(category.id) }" v-html="chevronRightThinIcon" />
 
-              <div class="flex-none w-6 h-6 rounded flex items-center justify-center text-xs font-semibold" :style="{
+              <div class="flex-none w-6 h-6 rounded-sm flex items-center justify-center text-xs font-semibold" :style="{
                 backgroundColor: category.color || '#E5E7EB',
                 color: getTextColor(category.color)
               }">
@@ -382,7 +382,7 @@ onUnmounted(() => {
             <a
               v-if="!isEditMode && canEdit(currentSpace?.userRole)"
               :href="`/${currentSpace?.slug}/new?category=${category.slug}`"
-              class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded transition-all shrink-0 mr-2"
+              class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-all shrink-0 mr-2"
               title="New document in this category"
               @click.stop
             >
@@ -393,7 +393,7 @@ onUnmounted(() => {
             <div v-if="isEditMode" class="flex items-center gap-1 shrink-0 pr-2">
               <button
                 @click="startEditing(category)"
-                class="p-1 text-neutral-900 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                class="p-1 text-neutral-900 hover:text-blue-600 hover:bg-blue-50 rounded-sm transition-colors"
                 title="Edit"
               >
                 <div class="svg-icon w-4 h-4" v-html="editOutlineIcon" />
@@ -401,7 +401,7 @@ onUnmounted(() => {
               <button
                 @click="handleDelete(category)"
                 :disabled="deletingIds.has(category.id)"
-                class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-sm transition-colors disabled:opacity-50"
                 title="Delete"
               >
                 <div class="svg-icon w-4 h-4" v-html="trashCanIcon" />
@@ -476,7 +476,7 @@ onUnmounted(() => {
                 <input
                   v-model="formData.color"
                   type="color"
-                  class="h-8 w-16 border border-neutral-100 rounded cursor-pointer"
+                  class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
                 />
                 <input
                   v-model="formData.color"

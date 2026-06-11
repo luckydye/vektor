@@ -68,7 +68,7 @@ function createSuggestionPopup(): HTMLDivElement {
     z-index: 50;
     background: white;
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     max-height: 300px;
     min-width: 200px;

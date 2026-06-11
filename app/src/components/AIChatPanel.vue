@@ -1454,9 +1454,9 @@ onUnmounted(() => {
                 v-if="attachment.previewUrl"
                 :src="attachment.previewUrl"
                 :alt="attachment.name"
-                class="h-8 w-8 rounded object-cover"
+                class="h-8 w-8 rounded-sm object-cover"
               />
-              <div v-else class="h-8 w-8 rounded bg-neutral-200 text-neutral-500 flex items-center justify-center text-[10px] font-semibold">
+              <div v-else class="h-8 w-8 rounded-sm bg-neutral-200 text-neutral-500 flex items-center justify-center text-[10px] font-semibold">
                 FILE
               </div>
               <div class="min-w-0 max-w-36">

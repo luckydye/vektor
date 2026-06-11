@@ -79,8 +79,8 @@ const handleCreateDoc = (event: Event) => {
     <div v-if="loading" class="flex items-center gap-3xs px-4xs py-4xs">
       <div class="flex-none w-9 h-9 bg-neutral-200 rounded-md animate-pulse" />
       <div class="flex-1 flex flex-col gap-1">
-        <div class="h-4 bg-neutral-200 rounded animate-pulse w-28" />
-        <div class="h-3 bg-neutral-100 rounded animate-pulse w-16" />
+        <div class="h-4 bg-neutral-200 rounded-sm animate-pulse w-28" />
+        <div class="h-3 bg-neutral-100 rounded-sm animate-pulse w-16" />
       </div>
     </div>
     
@@ -125,7 +125,7 @@ const handleCreateDoc = (event: Event) => {
                   'bg-primary-100': space.id === modelValue,
                 }"
               >
-                <div class="w-6 h-6 rounded overflow-hidden flex items-center justify-center" :style="{ background: space.color || '#6366f1' }">
+                <div class="w-6 h-6 rounded-sm overflow-hidden flex items-center justify-center" :style="{ background: space.color || '#6366f1' }">
                   <div v-if="space.logoSvg && space.logoSvg.startsWith('<')" v-html="space.logoSvg" class="block text-white" />
                   <img v-else-if="space.logoSvg" :src="space.logoSvg" class="block object-contain" />
                   <div v-else v-html="homeIcon" class="text-white [&>svg]:w-4 [&>svg]:h-4 [&>svg]:object-contain" />

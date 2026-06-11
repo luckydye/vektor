@@ -228,7 +228,7 @@ onUnmounted(() => {
       <div class="flex items-center gap-2">
         <span>{{ filtered.length }} / {{ data.length }} rows</span>
         <button
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 transition-colors"
           title="Download as CSV"
           @click="downloadCsv"
         >
@@ -238,13 +238,13 @@ onUnmounted(() => {
       </div>
       <div v-if="pageCount > 1" class="flex items-center gap-1">
         <button
-          class="px-2 py-0.5 rounded border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           :disabled="page === 0"
           @click="page--"
         >←</button>
         <span>{{ page + 1 }} / {{ pageCount }}</span>
         <button
-          class="px-2 py-0.5 rounded border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           :disabled="page >= pageCount - 1"
           @click="page++"
         >→</button>

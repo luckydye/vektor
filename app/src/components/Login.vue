@@ -130,7 +130,7 @@ function toggleMode() {
         />
       </FormField>
 
-      <div v-if="error" class="text-red-600 text-sm p-2 bg-red-50 rounded">
+      <div v-if="error" class="text-red-600 text-sm p-2 bg-red-50 rounded-sm">
         {{ error }}
       </div>
 

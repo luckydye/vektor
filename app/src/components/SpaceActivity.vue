@@ -137,27 +137,27 @@ onMounted(() => {
     </div>
 
     <!-- Error state -->
-    <div v-if="error" class="text-red-600 p-4 border border-red-200 rounded bg-red-50">
+    <div v-if="error" class="text-red-600 p-4 border border-red-200 rounded-sm bg-red-50">
       {{ error }}
     </div>
 
     <!-- Loading skeleton -->
     <div v-else-if="isLoading" class="space-y-5">
-      <div class="h-3 bg-neutral-200 rounded w-36 animate-pulse" />
+      <div class="h-3 bg-neutral-200 rounded-sm w-36 animate-pulse" />
       <div v-for="i in 3" :key="`skeleton-${i}`" class="space-y-2 animate-pulse">
         <!-- Group header skeleton -->
         <div class="flex items-center gap-3">
           <div class="w-9 h-9 rounded-full bg-neutral-200 shrink-0" />
           <div class="flex items-center gap-2">
-            <div class="h-3.5 bg-neutral-200 rounded w-24" />
-            <div class="h-3 bg-neutral-200 rounded w-16" />
-            <div class="h-3 bg-neutral-200 rounded w-20" />
+            <div class="h-3.5 bg-neutral-200 rounded-sm w-24" />
+            <div class="h-3 bg-neutral-200 rounded-sm w-16" />
+            <div class="h-3 bg-neutral-200 rounded-sm w-20" />
           </div>
         </div>
         <!-- Change rows skeleton -->
         <div class="ml-12 space-y-1.5">
-          <div class="h-6 bg-neutral-100 rounded w-56" />
-          <div v-if="i === 1" class="h-6 bg-neutral-100 rounded w-44" />
+          <div class="h-6 bg-neutral-100 rounded-sm w-56" />
+          <div v-if="i === 1" class="h-6 bg-neutral-100 rounded-sm w-44" />
         </div>
       </div>
     </div>

@@ -96,7 +96,7 @@ const getCategoryIcon = (categorySlug: string | undefined) => {
   const textColor = getTextColor(bgColor);
   const iconText = category.icon || category.name.charAt(0).toUpperCase();
 
-  return `<div class="w-[18px] h-[18px] rounded flex items-center justify-center text-xs font-semibold" style="background-color: ${bgColor}; color: ${textColor};">${iconText}</div>`;
+  return `<div class="w-[18px] h-[18px] rounded-sm flex items-center justify-center text-xs font-semibold" style="background-color: ${bgColor}; color: ${textColor};">${iconText}</div>`;
 };
 
 const getPropertyLabel = (property: Property) => {

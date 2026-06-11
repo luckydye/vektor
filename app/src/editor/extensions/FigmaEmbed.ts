@@ -53,7 +53,7 @@ function createSuggestionPopup(
     z-index: 50;
     background: white;
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     padding: 12px;
     display: flex;
@@ -72,7 +72,7 @@ function createSuggestionPopup(
     background: #7c3aed;
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
     cursor: pointer;
   `;
@@ -85,7 +85,7 @@ function createSuggestionPopup(
     background: #f3f4f6;
     color: #374151;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: 13px;
     cursor: pointer;
   `;

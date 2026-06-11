@@ -68,7 +68,7 @@ onUnmounted(() => {
               <span class="text-small text-neutral-400 w-24 shrink-0">Server URL</span>
               <button
                 type="button"
-                class="flex-1 text-left text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded px-3xs py-5xs truncate hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                class="flex-1 text-left text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded-sm px-3xs py-5xs truncate hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                 :title="serverUrl"
                 @click="copy(serverUrl, 'url')"
               >{{ serverUrl }}</button>
@@ -79,7 +79,7 @@ onUnmounted(() => {
               <span class="text-small text-neutral-400 w-24 shrink-0">Username</span>
               <button
                 type="button"
-                class="flex-1 text-left text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded px-3xs py-5xs truncate hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                class="flex-1 text-left text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded-sm px-3xs py-5xs truncate hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                 :title="user?.email"
                 @click="user?.email && copy(user.email, 'email')"
               >{{ user?.email ?? '—' }}</button>
@@ -88,7 +88,7 @@ onUnmounted(() => {
 
             <div class="flex items-center gap-4xs">
               <span class="text-small text-neutral-400 w-24 shrink-0">Password</span>
-              <span class="flex-1 text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded px-3xs py-5xs text-neutral-500 italic">
+              <span class="flex-1 text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded-sm px-3xs py-5xs text-neutral-500 italic">
                 access token from step 1
               </span>
             </div>

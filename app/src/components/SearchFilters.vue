@@ -118,7 +118,7 @@ const addHasPropertyFilter = () => {
             v-for="val in selectedProperty()!.values.slice(0, 20)"
             :key="val"
             @click="selectPropertyValue(val)"
-            class="px-2.5 py-1 text-sm rounded border bg-background border-neutral-100 text-neutral-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
+            class="px-2.5 py-1 text-sm rounded-sm border bg-background border-neutral-100 text-neutral-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
           >
             {{ val }}
           </button>
@@ -127,7 +127,7 @@ const addHasPropertyFilter = () => {
           </span>
           <button
             @click="addHasPropertyFilter"
-            class="px-2.5 py-1 text-sm rounded border border-dashed border-neutral-100 text-neutral-500 hover:border-blue-400 hover:text-blue-600 transition-colors italic"
+            class="px-2.5 py-1 text-sm rounded-sm border border-dashed border-neutral-100 text-neutral-500 hover:border-blue-400 hover:text-blue-600 transition-colors italic"
           >
             any value
           </button>

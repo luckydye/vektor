@@ -192,7 +192,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                     }}
                   >
                     <div
-                      class="w-10 h-10 flex items-center justify-center bg-neutral-300 rounded font-bold text-neutral-900 text-sm shrink-0"
+                      class="w-10 h-10 flex items-center justify-center bg-neutral-300 rounded-sm font-bold text-neutral-900 text-sm shrink-0"
                     >
                       ${item.icon}
                     </div>

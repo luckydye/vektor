@@ -92,13 +92,13 @@ const handleDelete = async (documentId: string) => {
         <div class="flex items-center gap-2">
           <button
             @click="handleRestore(doc.id)"
-            class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700"
+            class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-sm hover:bg-green-700"
           >
             Restore
           </button>
           <button
             @click="handleDelete(doc.id)"
-            class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded hover:bg-red-700"
+            class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-sm hover:bg-red-700"
           >
             Delete Permanently
           </button>

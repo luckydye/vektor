@@ -53,7 +53,7 @@ const arrowClasses = {
       enter-to-class="opacity-100" leave-active-class="transition-opacity duration-150" leave-from-class="opacity-100"
       leave-to-class="opacity-0">
       <div v-if="showTooltip" :class="['absolute z-50 whitespace-nowrap', positionClasses[position]]">
-        <div class="relative px-2 py-1 text-xs text-white bg-neutral-300 rounded shadow-lg">
+        <div class="relative px-2 py-1 text-xs text-white bg-neutral-300 rounded-sm shadow-lg">
           {{ text }}
           <div :class="['absolute w-0 h-0 border-4', arrowClasses[position]]" />
         </div>

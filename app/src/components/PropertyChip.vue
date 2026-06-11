@@ -132,7 +132,7 @@ onMounted(() => {
         @click="handleClick"
       >
         <div v-if="icon" v-html="icon" />
-        <div v-if="!icon" class="w-[18px] h-[18px] rounded flex items-center justify-center bg-primary-500" />
+        <div v-if="!icon" class="w-[18px] h-[18px] rounded-sm flex items-center justify-center bg-primary-500" />
         <span
             :class="twMerge(
               'max-w-[150px] text-ellipsis overflow-hidden whitespace-nowrap capitalize',

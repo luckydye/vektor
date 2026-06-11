@@ -56,7 +56,7 @@ const isSearchResult = (
           <span
             v-for="[key, value] in getVisibleProperties(document)"
             :key="key"
-            class="inline-flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded font-medium"
+            class="inline-flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded-sm font-medium"
             :title="`${key}: ${value}`"
           >
             <span class="text-neutral-400 text-xs capitalize">{{ key }}:</span>
@@ -72,7 +72,7 @@ const isSearchResult = (
 
       <div 
         v-if="showSnippet && isSearchResult(document)" 
-        class="mb-3 leading-relaxed text-neutral-600 text-sm [&_mark]:bg-amber-100 [&_mark]:px-0.5 [&_mark]:rounded [&_mark]:font-medium [&_mark]:text-amber-800" 
+        class="mb-3 leading-relaxed text-neutral-600 text-sm [&_mark]:bg-amber-100 [&_mark]:px-0.5 [&_mark]:rounded-sm [&_mark]:font-medium [&_mark]:text-amber-800" 
       >
         <document-view>
             <template v-html="document.snippet"></template>

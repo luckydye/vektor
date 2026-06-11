@@ -9,7 +9,7 @@
 }
 
 .tiptap .collaboration-carets__label {
-  border-radius: 3px 3px 3px 0;
+  border-radius: var(--radius-xs) var(--radius-xs) var(--radius-xs) 0;
   color: #0d0d0d;
   font-size: 12px;
   font-style: normal;
@@ -28,7 +28,7 @@
 }
 
 .tiptap expression-cell {
-  @apply inline-flex items-center px-2 py-0.5 rounded font-mono text-sm transition-colors;
+  @apply inline-flex items-center px-2 py-0.5 rounded-sm font-mono text-sm transition-colors;
   cursor: text;
   user-select: text;
   @apply bg-blue-50 text-blue-800 border border-blue-200;
@@ -71,7 +71,7 @@
   opacity: 1 !important;
   background-color: var(--color-primary-500, #3b82f6) !important;
   height: 1px !important;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   box-shadow: none !important;
 }
 
@@ -88,7 +88,7 @@
   padding: 0.5rem 0.75rem;
   color: var(--color-neutral-500);
   background-color: transparent;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-md);
   transition: all 0.15s ease;
   font-size: 0.875rem;
 }
