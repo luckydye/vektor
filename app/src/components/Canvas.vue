@@ -22,6 +22,7 @@ import {
   computeSnapGuides,
   createFreehandStrokeBuilder,
   createViewportControls,
+  drawFreehandOutline,
   drawFreehandStroke,
   drawSnapGuides,
   drawWorldGrid,
@@ -885,30 +886,11 @@ function drawStrokeSelection(context: CanvasRenderingContext2D) {
   context.save();
   context.strokeStyle = "#2563eb";
   context.lineWidth = 1.5;
-  context.setLineDash([6, 4]);
+  context.setLineDash([]);
   for (const id of selectedStrokeIds.value) {
     const stroke = strokes.value.find((s) => s.id === id);
     if (!stroke || stroke.points.length === 0) continue;
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const point of stroke.points) {
-      const screenPos = worldToScreen(point);
-      minX = Math.min(minX, screenPos.x);
-      minY = Math.min(minY, screenPos.y);
-      maxX = Math.max(maxX, screenPos.x);
-      maxY = Math.max(maxY, screenPos.y);
-    }
-
-    const padding = (stroke.style.width / 2) * transform.value.scale + 8;
-    context.strokeRect(
-      minX - padding,
-      minY - padding,
-      maxX - minX + padding * 2,
-      maxY - minY + padding * 2,
-    );
+    drawFreehandOutline(context, stroke, transform.value, 4);
   }
   context.restore();
 }
