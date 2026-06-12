@@ -187,17 +187,17 @@ onUnmounted(() => {
             'lg:translate-x-0',
             isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         ]" @click="handleSidebarClick">
-            <div class="flex flex-col bg-background rounded-lg overflow-hidden border border-neutral-100 w-full h-full">
-                <!-- Toggle Button - Floating on Right Border -->
-                <button @click.stop="toggleCollapse" type="button"
-                    class="hidden lg:block absolute bottom-6 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
-                    :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'">
-                    <Icon name="collapse" :class="twMerge(
-                        'w-4 h-4 transition-transform',
-                        currentWidth === minWidth ? 'rotate-180' : ''
-                    )" />
-                </button>
-
+            <!-- Toggle Button - Floating on Right Border -->
+            <button @click.stop="toggleCollapse" type="button"
+                class="hidden lg:block absolute bottom-6 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
+                :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'">
+                <Icon name="collapse" :class="twMerge(
+                    'w-4 h-4 transition-transform',
+                    currentWidth === minWidth ? 'rotate-180' : ''
+                )" />
+            </button>
+            
+            <div class="flex flex-col bg-background/90 rounded-lg backdrop-blur-xl overflow-hidden border border-neutral-100 w-full h-full">
                 <!-- Navigation -->
                 <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
                     <Navigation />
@@ -208,14 +208,14 @@ onUnmounted(() => {
                     <!-- User Profile -->
                     <UserProfile />
                 </div>
-
-                <!-- Desktop Resize Handle -->
-                <div :class="[
-                    'hidden lg:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
-                    isResizing && 'bg-primary-200/50 active:bg-primary-200' || ''
-                ]" @mousedown="startResize">
-                    <div class="absolute inset-y-0 -right-1 w-3"></div>
-                </div>
+            </div>
+            
+            <!-- Desktop Resize Handle -->
+            <div :class="[
+                'hidden lg:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
+                isResizing && 'bg-primary-200/50 active:bg-primary-200' || ''
+            ]" @mousedown="startResize">
+                <div class="absolute inset-y-0 -right-1 w-3"></div>
             </div>
         </div>
     </div>

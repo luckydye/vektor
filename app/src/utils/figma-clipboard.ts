@@ -1,6 +1,5 @@
 /**
- * Parses Figma clipboard HTML (fig-kiwi binary format) into a flat list of
- * canvas-relevant node descriptors.
+ * Parses Figma clipboard HTML (fig-kiwi binary format).
  *
  * Wire format:
  *   data-metadata span  →  base64 figmeta JSON (file key, selected node IDs)
@@ -12,10 +11,9 @@
  *     next 4      data chunk size (uint32 LE)
  *     next N      data chunk (zstd → kiwi-encoded Message)
  *
- * The kiwi-schema package bundled with fig-kiwi only knows 6 primitive types;
- * Figma uses int64 (index -7) and uint64 (index -8) as well. We remap those to
- * int/uint (JS has no native 64-bit integers, but the values we care about —
- * positions, sizes, field IDs — are well within 32-bit range).
+ * kiwi-schema only knows 6 primitive types; Figma also uses int64 (index -7)
+ * and uint64 (index -8). We remap those to int/uint (values we care about —
+ * positions, sizes, field IDs — fit in 32-bit range).
  */
 
 import { decompress as fzstdDecompress } from "fzstd";
@@ -137,7 +135,6 @@ class ByteBuffer {
 // Binary schema decoder
 // ---------------------------------------------------------------------------
 
-// Primitive type indices (kiwi uses ~index as a negative varint)
 const PRIMITIVES = [
   "bool",
   "byte",
@@ -289,7 +286,7 @@ function readArray(
 }
 
 // ---------------------------------------------------------------------------
-// HTML parsing + full decode pipeline
+// Utilities
 // ---------------------------------------------------------------------------
 
 function extractBase64(html: string, start: string, end: string): string {
@@ -324,8 +321,14 @@ function enumName(defs: TypeDef[], typeName: string, value: number): string {
   return def?.fields.find((f) => f.value === value)?.name ?? String(value);
 }
 
+function nodeGuidKey(n: KiwiValue): string | null {
+  const g = n.guid as KiwiValue | undefined;
+  if (!g) return null;
+  return `${g.sessionID}:${g.localID}`;
+}
+
 // ---------------------------------------------------------------------------
-// Decompression — native DecompressionStream where available, fzstd fallback
+// Decompression
 // ---------------------------------------------------------------------------
 
 async function decompress(
@@ -362,13 +365,19 @@ async function decompressZstd(data: Uint8Array): Promise<Uint8Array> {
   }
 }
 
-/** Parse Figma clipboard HTML. Returns null if not Figma clipboard data. */
-export async function parseFigmaClipboard(
-  html: string,
-): Promise<{ meta: FigmaMeta; nodes: FigmaNode[] } | null> {
+// ---------------------------------------------------------------------------
+// Shared decode pipeline
+// ---------------------------------------------------------------------------
+
+async function decodeFigmaKiwi(html: string): Promise<{
+  meta: FigmaMeta;
+  defs: TypeDef[];
+  allChanges: KiwiValue[];
+  selected: KiwiValue[];
+  selectedMap: Map<string, KiwiValue>;
+} | null> {
   if (!html.includes("(figmeta)") || !html.includes("(figma)")) return null;
 
-  // --- meta ---
   const metaB64 = extractBase64(html, "<!--(figmeta)", "(/figmeta)-->");
   if (!metaB64) return null;
   let meta: FigmaMeta;
@@ -378,40 +387,34 @@ export async function parseFigmaClipboard(
     return null;
   }
 
-  // --- binary buffer ---
+  const selectedGuids = new Set(
+    meta.selectedNodeData.split(",").map((e) => e.split("|")[0]),
+  );
+
   const figmaB64 = extractBase64(html, "<!--(figma)", "(/figma)-->");
   if (!figmaB64) return null;
   const raw = b64ToBytes(figmaB64);
-
-  // Check magic
-  const magic = String.fromCharCode(...raw.slice(0, 8));
-  if (magic !== "fig-kiwi") return null;
+  if (String.fromCharCode(...raw.slice(0, 8)) !== "fig-kiwi") return null;
 
   const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   const schemaSize = dv.getUint32(12, true);
-  const schemaCompressed = raw.slice(16, 16 + schemaSize);
   const dataOffset = 16 + schemaSize;
   const dataSize = dv.getUint32(dataOffset, true);
-  const dataCompressed = raw.slice(dataOffset + 4, dataOffset + 4 + dataSize);
 
-  // Schema: deflate-raw (native DecompressionStream, available everywhere)
-  // Data:   zstd (native in Chrome 123+, fzstd fallback for Firefox/Safari)
   let schemaBytes: Uint8Array;
   let dataBytes: Uint8Array;
   try {
     [schemaBytes, dataBytes] = await Promise.all([
-      decompress(schemaCompressed, "deflate-raw"),
-      decompressZstd(dataCompressed),
+      decompress(raw.slice(16, 16 + schemaSize), "deflate-raw"),
+      decompressZstd(raw.slice(dataOffset + 4, dataOffset + 4 + dataSize)),
     ]);
   } catch {
     return null;
   }
 
-  // Decode schema
   const defs = decodeBinarySchema(schemaBytes);
   const schemaIndex = new Map(defs.map((d) => [d.name, d]));
 
-  // Decode message
   let msg: KiwiValue;
   try {
     msg = decodeMessage(new ByteBuffer(dataBytes), "Message", schemaIndex);
@@ -420,34 +423,36 @@ export async function parseFigmaClipboard(
   }
 
   const allChanges = (msg.nodeChanges as KiwiValue[] | undefined) ?? [];
-
-  // Build set of selected node GUIDs from figmeta
-  const selectedGuids = new Set(
-    meta.selectedNodeData.split(",").map((entry) => entry.split("|")[0]),
-  );
-
-  const guidKey = (n: KiwiValue): string | null => {
-    const g = n.guid as KiwiValue | undefined;
-    if (!g) return null;
-    return `${g.sessionID}:${g.localID}`;
-  };
-
-  // Filter to selected nodes only
   const selected = allChanges.filter((n) => {
-    const k = guidKey(n);
+    const k = nodeGuidKey(n);
     return k !== null && selectedGuids.has(k);
   });
+  const selectedMap = new Map(selected.map((n) => [nodeGuidKey(n)!, n]));
 
-  // Find root nodes: selected nodes whose parent is also not in selection
-  const selectedKeys = new Set(selected.map(guidKey).filter(Boolean) as string[]);
+  return { meta, defs, allChanges, selected, selectedMap };
+}
+
+// ---------------------------------------------------------------------------
+// parseFigmaClipboard — flat list of canvas-relevant shapes
+// ---------------------------------------------------------------------------
+
+/** Parse Figma clipboard HTML. Returns null if not Figma clipboard data. */
+export async function parseFigmaClipboard(
+  html: string,
+): Promise<{ meta: FigmaMeta; nodes: FigmaNode[] } | null> {
+  const decoded = await decodeFigmaKiwi(html);
+  if (!decoded) return null;
+
+  const { meta, defs, selected, selectedMap } = decoded;
+
+  // Root nodes: selected nodes whose parent is not also selected
   const rootNodes = selected.filter((n) => {
     const pi = n.parentIndex as KiwiValue | undefined;
     if (!pi?.guid) return true;
     const pg = pi.guid as KiwiValue;
-    return !selectedKeys.has(`${pg.sessionID}:${pg.localID}`);
+    return !selectedMap.has(`${pg.sessionID}:${pg.localID}`);
   });
 
-  // Map to FigmaNode
   const nodes: FigmaNode[] = [];
   for (const n of rootNodes) {
     const transform = n.transform as KiwiValue | undefined;
@@ -462,21 +467,21 @@ export async function parseFigmaClipboard(
 
     const fills = (n.fillPaints as KiwiValue[] | undefined) ?? [];
     const solidFill = fills.find((p) => {
-      const typeVal = p.type as number;
-      const typeStr = enumName(defs, "PaintType", typeVal);
-      const visible = p.visible as boolean | undefined;
-      return typeStr === "SOLID" && visible !== false;
+      const typeStr = enumName(defs, "PaintType", p.type as number);
+      return typeStr === "SOLID" && p.visible !== false;
     });
     const fillColor = solidFill?.color as KiwiValue | undefined;
     const fill = fillColor
-      ? toHex(fillColor.r as number, fillColor.g as number, fillColor.b as number)
+      ? toHex(
+          fillColor.r as number,
+          fillColor.g as number,
+          fillColor.b as number,
+        )
       : undefined;
 
     const textData = n.textData as KiwiValue | undefined;
     const text = textData?.characters as string | undefined;
-
-    const typeVal = n.type as number;
-    const type = enumName(defs, "NodeType", typeVal);
+    const type = enumName(defs, "NodeType", n.type as number);
 
     nodes.push({
       type,
@@ -491,4 +496,222 @@ export async function parseFigmaClipboard(
   }
 
   return { meta, nodes };
+}
+
+// ---------------------------------------------------------------------------
+// figmaClipboardToSVG — render entire selection as a single SVG
+// ---------------------------------------------------------------------------
+
+/**
+ * Decodes a Figma clipboard and renders the selected nodes as an SVG string.
+ * The full node tree is preserved (frames contain their children). Each node
+ * type maps to the closest SVG primitive; VECTOR/path nodes fall back to a
+ * filled rectangle since the path command data lives in a separate blob pool
+ * that is not decoded here.
+ */
+export async function figmaClipboardToSVG(html: string): Promise<string | null> {
+  const decoded = await decodeFigmaKiwi(html);
+  if (!decoded) return null;
+
+  const { defs, allChanges, selected } = decoded;
+
+  // Build parent → sorted-children from ALL changes (not just selected).
+  // Selected nodes are only the roots of what was copied; their descendants
+  // live in allChanges but are not in selectedGuids.
+  const nodeOrder = new Map(allChanges.map((n, i) => [nodeGuidKey(n)!, i]));
+  const childrenOf = new Map<string, KiwiValue[]>();
+  for (const n of allChanges) {
+    const pi = n.parentIndex as KiwiValue | undefined;
+    if (!pi?.guid) continue;
+    const pk = `${(pi.guid as KiwiValue).sessionID}:${(pi.guid as KiwiValue).localID}`;
+    if (!childrenOf.has(pk)) childrenOf.set(pk, []);
+    childrenOf.get(pk)!.push(n);
+  }
+  for (const kids of childrenOf.values()) {
+    kids.sort(
+      (a, b) =>
+        (nodeOrder.get(nodeGuidKey(a)!) ?? 0) -
+        (nodeOrder.get(nodeGuidKey(b)!) ?? 0),
+    );
+  }
+
+  // Render roots = the explicitly selected nodes. Their transforms are in
+  // Figma canvas/world space. Children are in parent-local space.
+  const roots = selected;
+
+  // ViewBox from selected roots (world-space bounding box)
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const n of roots) {
+    const t = n.transform as KiwiValue | undefined;
+    const s = n.size as KiwiValue | undefined;
+    if (!t || !s) continue;
+    const x = t.m02 as number,
+      y = t.m12 as number;
+    const w = s.x as number,
+      h = s.y as number;
+    if (!isFinite(x) || !isFinite(y) || w <= 0 || h <= 0) continue;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w);
+    maxY = Math.max(maxY, y + h);
+  }
+  if (!isFinite(minX)) return null;
+
+  const vw = Math.round(maxX - minX);
+  const vh = Math.round(maxY - minY);
+
+  // Compact float formatter
+  const f = (n: number) => parseFloat(n.toFixed(3)).toString();
+
+  function solidColor(
+    paints: KiwiValue[] | undefined,
+  ): { hex: string; opacity: number } | null {
+    if (!paints?.length) return null;
+    const p = paints.find(
+      (p) =>
+        enumName(defs, "PaintType", p.type as number) === "SOLID" &&
+        p.visible !== false,
+    );
+    if (!p?.color) return null;
+    const c = p.color as KiwiValue;
+    return {
+      hex: toHex(c.r as number, c.g as number, c.b as number),
+      opacity: (p.opacity as number) ?? 1,
+    };
+  }
+
+  // Recursive hierarchical renderer.
+  // rootOffsetX/Y: subtract from translation to normalize to viewBox origin.
+  // For root nodes pass (minX, minY). For children pass (0, 0) because their
+  // transforms are already in parent-local space.
+  function renderNode(
+    n: KiwiValue,
+    rootOffsetX: number,
+    rootOffsetY: number,
+  ): string {
+    const t = n.transform as KiwiValue | undefined;
+    const s = n.size as KiwiValue | undefined;
+    if (!t || !s) return "";
+
+    const w = s.x as number;
+    const h = s.y as number;
+    if (w <= 0 || h <= 0) return "";
+
+    const m00 = (t.m00 as number) ?? 1;
+    const m01 = (t.m01 as number) ?? 0;
+    const m10 = (t.m10 as number) ?? 0;
+    const m11 = (t.m11 as number) ?? 1;
+    const tx = (t.m02 as number) - rootOffsetX;
+    const ty = (t.m12 as number) - rootOffsetY;
+
+    const isIdentity =
+      Math.abs(m00 - 1) < 0.001 &&
+      Math.abs(m01) < 0.001 &&
+      Math.abs(m10) < 0.001 &&
+      Math.abs(m11 - 1) < 0.001;
+    const transform = isIdentity
+      ? `translate(${f(tx)},${f(ty)})`
+      : `matrix(${f(m00)},${f(m10)},${f(m01)},${f(m11)},${f(tx)},${f(ty)})`;
+
+    const type = enumName(defs, "NodeType", n.type as number);
+    const fill = solidColor(n.fillPaints as KiwiValue[] | undefined);
+    const stroke = solidColor(n.strokePaints as KiwiValue[] | undefined);
+    const strokeW = (n.strokeWeight as number) || 0;
+    const nodeOpacity = (n.opacity as number) ?? 1;
+    const opacityAttr =
+      nodeOpacity < 0.999 ? ` opacity="${f(nodeOpacity)}"` : "";
+
+    const fillAttr = fill
+      ? `fill="${fill.hex}" fill-opacity="${f(fill.opacity)}"`
+      : `fill="none"`;
+    const strokeAttr =
+      stroke && strokeW > 0
+        ? ` stroke="${stroke.hex}" stroke-width="${f(strokeW)}"`
+        : "";
+
+    // Children are in parent-local space, so pass offsets of 0
+    const k = nodeGuidKey(n);
+    const kids = k ? (childrenOf.get(k) ?? []) : [];
+    const childSVG = kids.map((c) => renderNode(c, 0, 0)).join("");
+
+    switch (type) {
+      case "RECTANGLE":
+      case "ROUNDED_RECTANGLE": {
+        const rx = (n.cornerRadius as number) || 0;
+        const rxAttr = rx > 0 ? ` rx="${f(rx)}"` : "";
+        return (
+          `<g transform="${transform}"${opacityAttr}>` +
+          `<rect width="${f(w)}" height="${f(h)}"${rxAttr} ${fillAttr}${strokeAttr}/>` +
+          childSVG +
+          `</g>`
+        );
+      }
+      case "ELLIPSE":
+        return (
+          `<g transform="${transform}"${opacityAttr}>` +
+          `<ellipse cx="${f(w / 2)}" cy="${f(h / 2)}" rx="${f(w / 2)}" ry="${f(h / 2)}" ${fillAttr}${strokeAttr}/>` +
+          childSVG +
+          `</g>`
+        );
+      case "TEXT": {
+        const textData = n.textData as KiwiValue | undefined;
+        const chars = (textData?.characters as string | undefined) ?? "";
+        const fontSize = (textData?.fontSize as number | undefined) ?? 14;
+        const textFill = fill ? fill.hex : "#000000";
+        const tspans = chars
+          .split("\n")
+          .map((l, i) => {
+            const esc = l
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;");
+            return `<tspan x="0" dy="${i === 0 ? 0 : f(fontSize * 1.2)}">${esc || " "}</tspan>`;
+          })
+          .join("");
+        return (
+          `<g transform="${transform}"${opacityAttr}>` +
+          `<text font-size="${f(fontSize)}" fill="${textFill}" dominant-baseline="text-before-edge">${tspans}</text>` +
+          childSVG +
+          `</g>`
+        );
+      }
+      case "FRAME":
+      case "COMPONENT":
+      case "INSTANCE":
+      case "GROUP":
+      case "COMPONENT_SET":
+      case "SECTION":
+        // Containers: transparent background, just wrap children
+        return childSVG
+          ? `<g transform="${transform}"${opacityAttr}>${childSVG}</g>`
+          : "";
+      default:
+        // VECTOR, LINE, BOOLEAN_OPERATION, STAR, REGULAR_POLYGON, etc.
+        // Path data lives in a separate blob pool; approximate with a rect.
+        if (fill || (stroke && strokeW > 0)) {
+          return (
+            `<g transform="${transform}"${opacityAttr}>` +
+            `<rect width="${f(w)}" height="${f(h)}" ${fillAttr}${strokeAttr}/>` +
+            childSVG +
+            `</g>`
+          );
+        }
+        return childSVG
+          ? `<g transform="${transform}">${childSVG}</g>`
+          : "";
+    }
+  }
+
+  const body = roots.map((n) => renderNode(n, minX, minY)).join("\n");
+
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg"` +
+    ` viewBox="0 0 ${vw} ${vh}" width="${vw}" height="${vh}">\n` +
+    body +
+    `\n</svg>`
+  );
 }
