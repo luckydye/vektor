@@ -104,9 +104,9 @@ const handleCreateDoc = (event: Event) => {
         </div>
       </button>
   
-      <a-popover class="group" placements="bottom">
+      <a-popover class="group" placements="bottom-start">
         <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
-          <div class="bg-neutral-50 border border-neutral-100 rounded-lg origin-top scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100 min-w-[240px] max-h-[500px] overflow-y-auto">
+          <div class="bg-neutral-50 border border-neutral-100 rounded-lg origin-top scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100 max-h-[500px] overflow-y-auto">
             <div class="p-[4px] flex flex-col gap-[4px]">
               <!-- Space List -->
               <button

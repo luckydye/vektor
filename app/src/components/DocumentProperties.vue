@@ -172,7 +172,7 @@ const getPropertyIcon = (property: Property) => {
     return property.value === "full" ? layoutFullIcon : layoutDocumentIcon;
   }
   if (property.id?.toLowerCase() === "gridtype") {
-    return GRID_TYPE_OPTIONS.find((o) => o.id === property.value)?.icon ?? gridGridIcon;
+    return GRID_TYPE_OPTIONS.find((o) => o.id === property.value)?.icon ?? gridDotsIcon;
   }
   if (property.type === "user") {
     return peopleIcon;
