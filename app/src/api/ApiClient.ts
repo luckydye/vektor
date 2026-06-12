@@ -183,7 +183,12 @@ export interface WorkflowNodeState {
 }
 
 export interface WorkflowRunStatus {
+  runId?: string;
+  documentId?: string;
   status: WorkflowNodeStatus;
+  createdAt?: string;
+  sourceExtensionId?: string | null;
+  runtimeInputs?: Record<string, unknown>;
   nodes: Record<string, WorkflowNodeState>;
   output: Record<string, unknown> | null;
 }

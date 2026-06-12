@@ -32,6 +32,7 @@ type RunSummary = {
 const sourceExtensionHref = ref<string | null>(null);
 const selectedRunId = ref<string | null>(null);
 const selectedRunDetail = ref<WorkflowRunStatus | null>(null);
+const selectedRunError = ref<string | null>(null);
 const logsExpanded = ref(false);
 let unsubscribeRuns: (() => void) | null = null;
 let unsubscribeRun: (() => void) | null = null;
@@ -54,6 +55,21 @@ const {
   pageSize: 20,
 });
 
+function runIdFromHash(): string | null {
+  const hash = window.location.hash.slice(1).trim();
+  if (!hash) return null;
+  try {
+    return decodeURIComponent(hash);
+  } catch {
+    return hash;
+  }
+}
+
+function setRunHash(runId: string) {
+  if (runIdFromHash() === runId) return;
+  window.location.hash = encodeURIComponent(runId);
+}
+
 // Follow the selected run with a per-run realtime subscription.
 watch(selectedRunId, (runId) => {
   unsubscribeRun?.();
@@ -71,13 +87,25 @@ watch(selectedRunId, (runId) => {
 
 async function fetchSelectedRunDetail() {
   if (!selectedRunId.value) return;
-  selectedRunDetail.value = await api.workflows.getRun(
-    props.spaceId,
-    selectedRunId.value,
-  );
+  const runId = selectedRunId.value;
+  try {
+    const detail = await api.workflows.getRun(props.spaceId, runId);
+    if (selectedRunId.value !== runId) return;
+    if (detail.documentId && detail.documentId !== props.documentId) {
+      throw new Error("Workflow run not found for this document");
+    }
+    selectedRunDetail.value = detail;
+    selectedRunError.value = null;
+  } catch (err) {
+    if (selectedRunId.value !== runId) return;
+    selectedRunDetail.value = null;
+    selectedRunError.value =
+      err instanceof Error ? err.message : "Failed to load workflow run";
+  }
 }
 
-async function selectRun(runId: string) {
+async function selectRun(runId: string, options: { updateHash?: boolean } = {}) {
+  if (options.updateHash ?? true) setRunHash(runId);
   selectedRunId.value = runId;
   logsExpanded.value = false;
   await fetchSelectedRunDetail();
@@ -87,18 +115,35 @@ const selectedRun = computed(() =>
   runList.value.find((r) => r.runId === selectedRunId.value),
 );
 
+const selectedRunSourceExtensionId = computed(
+  () =>
+    selectedRun.value?.sourceExtensionId ??
+    selectedRunDetail.value?.sourceExtensionId ??
+    null,
+);
+
+const selectedRunCreatedAt = computed(
+  () => selectedRun.value?.createdAt ?? selectedRunDetail.value?.createdAt ?? null,
+);
+
 const selectedRunTitle = computed(() => {
-  const title = selectedRun.value?.runtimeInputs?.title;
+  const title =
+    selectedRun.value?.runtimeInputs?.title ??
+    selectedRunDetail.value?.runtimeInputs?.title;
   return typeof title === "string" ? title : null;
 });
 
 const selectedRunFileName = computed(() => {
-  const name = selectedRun.value?.runtimeInputs?.fileName;
+  const name =
+    selectedRun.value?.runtimeInputs?.fileName ??
+    selectedRunDetail.value?.runtimeInputs?.fileName;
   return typeof name === "string" ? name : null;
 });
 
 const selectedRunFileUrl = computed(() => {
-  const file = selectedRun.value?.runtimeInputs?.file;
+  const file =
+    selectedRun.value?.runtimeInputs?.file ??
+    selectedRunDetail.value?.runtimeInputs?.file;
   return typeof file === "string" ? file : null;
 });
 
@@ -114,7 +159,8 @@ async function downloadFile(url: string, fileName: string) {
 }
 
 const selectedRunInputs = computed(() => {
-  const inputs = selectedRun.value?.runtimeInputs;
+  const inputs =
+    selectedRun.value?.runtimeInputs ?? selectedRunDetail.value?.runtimeInputs;
   if (!inputs || Object.keys(inputs).length === 0) return null;
   return inputs;
 });
@@ -127,21 +173,50 @@ watch(
   runList,
   async (newRuns) => {
     if (newRuns.length === 0) return;
-    if (!selectedRunId.value) await selectRun(newRuns[0].runId);
-    if (!sourceExtensionHref.value) {
-      const sourceExtId = newRuns[0].sourceExtensionId;
-      if (sourceExtId) {
-        const ext = await api.extensions.getById(props.spaceId, sourceExtId);
-        const firstRoute = ext.routes?.[0];
-        if (firstRoute)
-          sourceExtensionHref.value = `/${props.spaceSlug}/x/${firstRoute.path}`;
-      }
+    const hashedRunId = runIdFromHash();
+    if (!selectedRunId.value) {
+      await selectRun(hashedRunId ?? newRuns[0].runId, { updateHash: false });
     }
   },
   { immediate: true },
 );
 
+watch(
+  selectedRunSourceExtensionId,
+  async (sourceExtId) => {
+    if (!sourceExtId) {
+      sourceExtensionHref.value = null;
+      return;
+    }
+    const ext = await api.extensions.getById(props.spaceId, sourceExtId);
+    if (selectedRunSourceExtensionId.value !== sourceExtId) return;
+    const firstRoute = ext.routes?.[0];
+    sourceExtensionHref.value = firstRoute
+      ? `/${props.spaceSlug}/x/${firstRoute.path}`
+      : null;
+  },
+  { immediate: true },
+);
+
+function handleHashChange() {
+  const runId = runIdFromHash();
+  if (runId && runId !== selectedRunId.value) {
+    void selectRun(runId, { updateHash: false });
+  } else if (
+    !runId &&
+    runList.value[0] &&
+    runList.value[0].runId !== selectedRunId.value
+  ) {
+    void selectRun(runList.value[0].runId, { updateHash: false });
+  }
+}
+
 onMounted(() => {
+  const hashedRunId = runIdFromHash();
+  if (hashedRunId && selectedRunId.value !== hashedRunId)
+    void selectRun(hashedRunId, { updateHash: false });
+  window.addEventListener("hashchange", handleHashChange);
+
   // Any run change in the space refreshes the list (and the open run detail).
   // When a run is started elsewhere (e.g. the header button) and nothing is
   // selected yet, follow the newest run so it shows up immediately.
@@ -156,6 +231,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener("hashchange", handleHashChange);
   unsubscribeRuns?.();
   unsubscribeRun?.();
 });
@@ -336,8 +412,8 @@ const statusBadgeClass: Record<string, string> = {
         <!-- Header -->
         <div class="flex items-center justify-between gap-12">
             <div class="flex items-center gap-3">
-                <span v-if="selectedRun" class="text-xs text-neutral-400">
-                  {{ formatDate(selectedRun.createdAt) }}
+                <span v-if="selectedRunCreatedAt" class="text-xs text-neutral-400">
+                  {{ formatDate(selectedRunCreatedAt) }}
                 </span>
                 <div v-if="selectedRunDetail" class="flex items-center gap-3">
                     <span
@@ -387,7 +463,7 @@ const statusBadgeClass: Record<string, string> = {
     
     <!-- No runs yet -->
     <div v-if="!selectedRunDetail" class="text-sm text-neutral-400 py-8 text-center">
-      No runs yet. Click "Run Workflow" to execute.
+      {{ selectedRunError ?? 'No runs yet. Click "Run Workflow" to execute.' }}
     </div>
 
     <!-- Results -->

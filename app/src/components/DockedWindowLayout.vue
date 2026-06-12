@@ -15,7 +15,5 @@ watch([leftDock, rightDock], ([l, r]) => setDockInsets(l, r), { immediate: true 
 </script>
 
 <template>
-  <div class="min-h-screen h-full flex flex-col relative">
-    <slot />
-  </div>
+  <div class="hidden" aria-hidden="true" />
 </template>

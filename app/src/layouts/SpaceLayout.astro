@@ -193,9 +193,10 @@ const publicEnvVars = () => Astro.locals.publicEnv;
             spaceName={currentSpace?.name ?? ""}
             pathname={pathname}
         />
-        <DockedWindowLayout client:only>
+        <DockedWindowLayout client:only="vue" />
+        <div class="min-h-screen h-full flex flex-col relative">
           <slot />
-        </DockedWindowLayout>
+        </div>
       </div>
 
       <!-- Fixed Sidebar -->

@@ -48,7 +48,16 @@ export const GET: APIRoute = (context) =>
         ? scriptNode.outputs
         : null;
 
-    return jsonResponse({ status: run.status, nodes, output });
+    return jsonResponse({
+      runId,
+      documentId: run.documentId,
+      status: run.status,
+      createdAt: run.createdAt.toISOString(),
+      sourceExtensionId: run.sourceExtensionId,
+      runtimeInputs: run.runtimeInputs,
+      nodes,
+      output,
+    });
   }, "Failed to get run");
 
 function cancelWorkflowRun(context: Parameters<APIRoute>[0]) {

@@ -11,6 +11,7 @@ import {
   trashIcon,
   undoArrowIcon,
 } from "~/src/assets/icons.ts";
+import { api } from "../api/client.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useRoute } from "../composeables/useRoute.ts";
@@ -258,8 +259,9 @@ const MIN_NOTE_SIZE = { width: 140, height: 96 };
 const MIN_SECTION_SIZE = { width: 240, height: 160 };
 const MIN_MEDIA_SIZE = { width: 80, height: 60 };
 const MIN_TEXT_SIZE = { width: 32, height: 40 };
-// Default footprint of a document-link card dropped on the canvas.
-const DOC_CARD_SIZE = { width: 260, height: 64 };
+const MIN_DOC_SIZE = { width: 280, height: 180 };
+// Default footprint of a document preview card dropped on the canvas.
+const DOC_CARD_SIZE = { width: 380, height: 280 };
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
@@ -303,6 +305,17 @@ const { document: documentData, saveDocument } = useDocument(props.documentId, "
 // build navigation URLs for document-link cards.
 const { documents } = useDocuments();
 const { spaceSlug } = useRoute();
+
+type DocumentPreviewState = {
+  status: "loading" | "loaded" | "error";
+  title: string;
+  slug?: string;
+  type?: string | null;
+  content: string;
+  error?: string;
+};
+
+const documentPreviews = ref(new Map<string, DocumentPreviewState>());
 
 const roomId = props.documentId || crypto.randomUUID();
 const presenceClientId = crypto.randomUUID();
@@ -550,16 +563,30 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
       : "note";
 
   const defaultWidth =
-    type === "text" ? 220 : type === "section" ? 560 : type === "document" ? 260 : 240;
+    type === "text"
+      ? 220
+      : type === "section"
+        ? 560
+        : type === "document"
+          ? DOC_CARD_SIZE.width
+          : 240;
   const defaultHeight =
-    type === "text" ? 88 : type === "section" ? 340 : type === "document" ? 64 : 150;
+    type === "text"
+      ? 88
+      : type === "section"
+        ? 340
+        : type === "document"
+          ? DOC_CARD_SIZE.height
+          : 150;
+  const minWidth = type === "document" ? MIN_DOC_SIZE.width : 80;
+  const minHeight = type === "document" ? MIN_DOC_SIZE.height : 48;
   return {
     id,
     type,
     x: toNumber(read("x"), 0),
     y: toNumber(read("y"), 0),
-    width: Math.max(80, toNumber(read("width"), defaultWidth)),
-    height: Math.max(48, toNumber(read("height"), defaultHeight)),
+    width: Math.max(minWidth, toNumber(read("width"), defaultWidth)),
+    height: Math.max(minHeight, toNumber(read("height"), defaultHeight)),
     text: typeof read("text") === "string" ? String(read("text")) : "",
     color: typeof read("color") === "string" ? String(read("color")) : defaultColor(type),
     src: typeof read("src") === "string" ? String(read("src")) : undefined,
@@ -1196,6 +1223,91 @@ function documentLabel(doc: { properties?: { title?: string | null } | null }): 
   return title?.trim() ? title.trim() : "Untitled";
 }
 
+function setDocumentPreview(documentId: string, preview: DocumentPreviewState) {
+  const next = new Map(documentPreviews.value);
+  next.set(documentId, preview);
+  documentPreviews.value = next;
+}
+
+function cachedDocumentPreview(shape: CanvasShape): DocumentPreviewState | undefined {
+  return shape.docId ? documentPreviews.value.get(shape.docId) : undefined;
+}
+
+function initialDocumentPreview(documentId: string): DocumentPreviewState {
+  const doc = documents.value.find((entry) => entry.id === documentId);
+  return {
+    status: "loading",
+    title: doc ? documentLabel(doc) : "Untitled",
+    slug: doc?.slug ?? undefined,
+    type: doc?.type,
+    content: "",
+  };
+}
+
+async function loadDocumentPreview(documentId: string) {
+  const existing = documentPreviews.value.get(documentId);
+  if (existing?.status === "loading" || existing?.status === "loaded") return;
+
+  setDocumentPreview(documentId, initialDocumentPreview(documentId));
+
+  try {
+    const doc = await api.document.get(props.spaceId, documentId);
+    setDocumentPreview(documentId, {
+      status: "loaded",
+      title: documentLabel(doc),
+      slug: doc.slug ?? undefined,
+      type: doc.type,
+      content: typeof doc.content === "string" ? doc.content : "",
+    });
+  } catch (error) {
+    const fallback =
+      documentPreviews.value.get(documentId) ?? initialDocumentPreview(documentId);
+    setDocumentPreview(documentId, {
+      ...fallback,
+      status: "error",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function documentShapeTitle(shape: CanvasShape): string {
+  return cachedDocumentPreview(shape)?.title || shape.text || "Untitled";
+}
+
+function documentShapeHref(shape: CanvasShape): string | undefined {
+  const slug = cachedDocumentPreview(shape)?.slug || shape.docSlug;
+  if (!slug) return undefined;
+  return spaceSlug.value ? `/${spaceSlug.value}/doc/${slug}` : `/doc/${slug}`;
+}
+
+function isCanvasSnapshotContent(content: string) {
+  const trimmed = content.trimStart();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed = JSON.parse(content) as { version?: unknown; shapes?: unknown };
+    return parsed?.version === 1 && Array.isArray(parsed.shapes);
+  } catch {
+    return false;
+  }
+}
+
+function documentShapeContentHtml(shape: CanvasShape): string {
+  const preview = cachedDocumentPreview(shape);
+  const content = preview?.content.trim() ?? "";
+  if (!content || preview?.type === "canvas" || isCanvasSnapshotContent(content)) {
+    return "";
+  }
+  return content;
+}
+
+function documentShapeFallback(shape: CanvasShape): string {
+  const preview = cachedDocumentPreview(shape);
+  if (!preview || preview.status === "loading") return "Loading document content...";
+  if (preview.status === "error") return "Unable to load document content.";
+  if (preview.type === "canvas") return "Canvas document";
+  return "No document content";
+}
+
 // Places a card on the canvas that links to another document. Returns false if
 // the id doesn't resolve to a known document (e.g. a stray text drag), so the
 // caller can leave the drop to the browser.
@@ -1218,20 +1330,13 @@ function insertDocumentLink(documentId: string, at: { x: number; y: number }): b
   };
   yShapes.set(id, createShapeMap(shape));
   selectOnlyShape(id);
+  void loadDocumentPreview(documentId);
   activeTool.value = "select";
   return true;
 }
 
-function documentShapeHref(shape: CanvasShape): string | undefined {
-  if (!shape.docSlug) return undefined;
-  return spaceSlug.value
-    ? `/${spaceSlug.value}/doc/${shape.docSlug}`
-    : `/doc/${shape.docSlug}`;
-}
-
-// The card is an anchor, so navigation is native — we only intervene to swallow
-// the click when the pointer was actually dragging the card, or when the card
-// has no resolvable target.
+// Navigation is native through the explicit open link. Prevent it when the
+// target has not resolved yet, or after a drag gesture.
 function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
   if (dragMoved || !documentShapeHref(shape)) event.preventDefault();
 }
@@ -1537,9 +1642,11 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
     minSize:
       shape.type === "section"
         ? MIN_SECTION_SIZE
-        : isMedia
-          ? MIN_MEDIA_SIZE
-          : MIN_NOTE_SIZE,
+        : shape.type === "document"
+          ? MIN_DOC_SIZE
+          : isMedia
+            ? MIN_MEDIA_SIZE
+            : MIN_NOTE_SIZE,
     // Media keeps its aspect ratio; notes and sections resize freely.
     aspect: isMedia && shape.height > 0 ? shape.width / shape.height : undefined,
   };
@@ -2399,6 +2506,19 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () =>
+    shapes.value.flatMap((shape) =>
+      shape.type === "document" && shape.docId ? [shape.docId] : [],
+    ),
+  (documentIds) => {
+    for (const documentId of new Set(documentIds)) {
+      void loadDocumentPreview(documentId);
+    }
+  },
+  { immediate: true },
+);
+
 watch(user, setupPresence);
 watch(
   [camera, screen],
@@ -2756,19 +2876,43 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
-          <a
+          <div
             v-else-if="shape.type === 'document'"
             class="canvas-shape-doc"
-            :href="documentShapeHref(shape)"
-            draggable="false"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @dragstart.prevent
-            @click="onDocumentShapeClick(shape, $event)"
           >
-            <span class="svg-icon canvas-shape-doc-icon" v-html="documentIcon"></span>
-            <span class="canvas-shape-doc-title">{{ shape.text || "Untitled" }}</span>
-            <span class="svg-icon canvas-shape-doc-open" v-html="chevronRightThinIcon"></span>
-          </a>
+            <div
+              class="canvas-shape-doc-header"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            >
+              <span class="svg-icon canvas-shape-doc-icon" v-html="documentIcon"></span>
+              <span class="canvas-shape-doc-title">{{ documentShapeTitle(shape) }}</span>
+              <a
+                class="canvas-shape-doc-open"
+                :href="documentShapeHref(shape)"
+                draggable="false"
+                aria-label="Open document"
+                @pointerdown.stop="dragMoved = false"
+                @dragstart.prevent
+                @click="onDocumentShapeClick(shape, $event)"
+              >
+                <span class="svg-icon canvas-shape-doc-open-icon" v-html="chevronRightThinIcon"></span>
+              </a>
+            </div>
+            <div
+              class="canvas-shape-doc-body"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+              @wheel.stop
+            >
+              <div
+                v-if="documentShapeContentHtml(shape)"
+                class="canvas-shape-doc-content"
+                v-html="documentShapeContentHtml(shape)"
+              ></div>
+              <p v-else class="canvas-shape-doc-empty">
+                {{ documentShapeFallback(shape) }}
+              </p>
+            </div>
+          </div>
           <div
             v-else-if="shape.type !== 'section'"
             class="canvas-shape-textwrap"
@@ -2946,6 +3090,8 @@ onUnmounted(() => {
   --canvas-image-bg: #ffffff;
   --canvas-doc-bg: #ffffff;
   --canvas-doc-accent: #2563eb;
+  --canvas-doc-divider: #e5e7eb;
+  --canvas-doc-content: #374151;
   --canvas-resize-border: rgba(15, 23, 42, 0.45);
   --canvas-presence-text: #111827;
   position: relative;
@@ -2989,6 +3135,8 @@ onUnmounted(() => {
     --canvas-image-bg: #111827;
     --canvas-doc-bg: #1a1d24;
     --canvas-doc-accent: #93c5fd;
+    --canvas-doc-divider: rgba(255, 255, 255, 0.1);
+    --canvas-doc-content: #d1d5db;
     --canvas-resize-border: rgba(255, 255, 255, 0.58);
     --canvas-presence-text: #111827;
   }
@@ -3024,6 +3172,10 @@ onUnmounted(() => {
   --canvas-section-title-border: rgba(147, 197, 253, 0.36);
   --canvas-section-title-text: #dbeafe;
   --canvas-image-bg: #111827;
+  --canvas-doc-bg: #1a1d24;
+  --canvas-doc-accent: #93c5fd;
+  --canvas-doc-divider: rgba(255, 255, 255, 0.1);
+  --canvas-doc-content: #d1d5db;
   --canvas-resize-border: rgba(255, 255, 255, 0.58);
   --canvas-presence-text: #111827;
 }
@@ -3407,25 +3559,33 @@ onUnmounted(() => {
   background: var(--canvas-handle-bg);
 }
 
-/* Document-link card: a draggable surface whose body is a click-to-open
-   anchor. */
+/* Document preview card: a draggable surface with an explicit open target. */
 .canvas-shape.document {
-  cursor: pointer;
+  background: var(--canvas-doc-bg) !important;
+  cursor: move;
 }
 
 .canvas-shape-doc {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
   width: 100%;
   height: 100%;
-  padding: 0 14px;
   color: var(--canvas-text);
-  text-decoration: none;
   font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
+}
+
+.canvas-shape-doc-header {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--canvas-doc-divider);
+  padding: 10px 12px;
+  cursor: move;
 }
 
 .canvas-shape-doc-icon {
@@ -3441,13 +3601,139 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .canvas-shape-doc-open {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--canvas-muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.canvas-shape-doc-open:hover {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-shape-doc-open-icon {
   width: 16px;
   height: 16px;
-  flex: 0 0 auto;
-  opacity: 0.45;
+}
+
+.canvas-shape-doc-body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 14px 16px;
+  color: var(--canvas-doc-content);
+  cursor: move;
+  scrollbar-width: thin;
+}
+
+.canvas-shape-doc-content {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.canvas-shape-doc-content :deep(*) {
+  max-width: 100%;
+}
+
+.canvas-shape-doc-content :deep(h1),
+.canvas-shape-doc-content :deep(h2),
+.canvas-shape-doc-content :deep(h3),
+.canvas-shape-doc-content :deep(h4) {
+  margin: 0.8em 0 0.35em;
+  color: var(--canvas-text);
+  font-weight: 750;
+  line-height: 1.18;
+}
+
+.canvas-shape-doc-content :deep(h1:first-child),
+.canvas-shape-doc-content :deep(h2:first-child),
+.canvas-shape-doc-content :deep(h3:first-child),
+.canvas-shape-doc-content :deep(h4:first-child),
+.canvas-shape-doc-content :deep(p:first-child),
+.canvas-shape-doc-content :deep(ul:first-child),
+.canvas-shape-doc-content :deep(ol:first-child),
+.canvas-shape-doc-content :deep(table:first-child) {
+  margin-top: 0;
+}
+
+.canvas-shape-doc-content :deep(h1) {
+  font-size: 22px;
+}
+
+.canvas-shape-doc-content :deep(h2) {
+  font-size: 18px;
+}
+
+.canvas-shape-doc-content :deep(h3) {
+  font-size: 15px;
+}
+
+.canvas-shape-doc-content :deep(p),
+.canvas-shape-doc-content :deep(ul),
+.canvas-shape-doc-content :deep(ol),
+.canvas-shape-doc-content :deep(blockquote),
+.canvas-shape-doc-content :deep(pre),
+.canvas-shape-doc-content :deep(table) {
+  margin: 0.55em 0;
+}
+
+.canvas-shape-doc-content :deep(ul),
+.canvas-shape-doc-content :deep(ol) {
+  padding-left: 1.25em;
+}
+
+.canvas-shape-doc-content :deep(img),
+.canvas-shape-doc-content :deep(video) {
+  display: block;
+  height: auto;
+  border-radius: 6px;
+}
+
+.canvas-shape-doc-content :deep(table) {
+  display: block;
+  overflow: auto;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.canvas-shape-doc-content :deep(th),
+.canvas-shape-doc-content :deep(td) {
+  border: 1px solid var(--canvas-doc-divider);
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.canvas-shape-doc-content :deep(pre),
+.canvas-shape-doc-content :deep(code) {
+  border-radius: 4px;
+  background: var(--canvas-tool-hover-bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.canvas-shape-doc-content :deep(pre) {
+  overflow: auto;
+  padding: 8px;
+}
+
+.canvas-shape-doc-empty {
+  margin: 0;
+  color: var(--canvas-muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .canvas-section-header {
