@@ -712,22 +712,34 @@ export async function parseFigmaClipboard(
 }
 
 // ---------------------------------------------------------------------------
-// figmaClipboardToSVG — render entire selection as a single SVG
+// SVG rendering
 // ---------------------------------------------------------------------------
 
-/**
- * Decodes a Figma clipboard and renders the selected nodes as an SVG string.
- * The full node tree is preserved (frames contain their children). Each node
- * type maps to the closest SVG primitive; VECTOR/path nodes fall back to a
- * filled rectangle since the path command data lives in a separate blob pool
- * that is not decoded here.
- */
-export async function figmaClipboardToSVG(html: string): Promise<string | null> {
-  const decoded = await decodeFigmaKiwi(html);
-  if (!decoded) return null;
+/** One rendered top-level node: a self-contained SVG plus its world-space box. */
+export interface FigmaFrame {
+  svg: string;
+  name: string;
+  /** Figma canvas (world) coordinates of the node's top-left corner. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
-  const { defs, allChanges, selected, blobs } = decoded;
+interface RenderContext {
+  defs: TypeDef[];
+  blobs: Uint8Array[];
+  /** parent guid-key → children, in paint order. */
+  childrenOf: Map<string, KiwiValue[]>;
+  f: (n: number) => string;
+}
 
+function buildRenderContext(decoded: {
+  defs: TypeDef[];
+  allChanges: KiwiValue[];
+  blobs: Uint8Array[];
+}): RenderContext {
+  const { defs, allChanges, blobs } = decoded;
   // Build parent → sorted-children from ALL changes (not just selected).
   // Selected nodes are only the roots of what was copied; their descendants
   // live in allChanges but are not in selectedGuids.
@@ -747,12 +759,272 @@ export async function figmaClipboardToSVG(html: string): Promise<string | null> 
         (nodeOrder.get(nodeGuidKey(b)!) ?? 0),
     );
   }
+  const f = (n: number) => parseFloat(n.toFixed(3)).toString();
+  return { defs, blobs, childrenOf, f };
+}
 
-  // Render roots = the explicitly selected nodes. Their transforms are in
-  // Figma canvas/world space. Children are in parent-local space.
-  const roots = selected;
+function solidColorOf(
+  paints: KiwiValue[] | undefined,
+  defs: TypeDef[],
+): { hex: string; opacity: number } | null {
+  if (!paints?.length) return null;
+  const p = paints.find(
+    (p) =>
+      enumName(defs, "PaintType", p.type as number) === "SOLID" &&
+      p.visible !== false,
+  );
+  if (!p?.color) return null;
+  const c = p.color as KiwiValue;
+  return {
+    hex: toHex(c.r as number, c.g as number, c.b as number),
+    opacity: (p.opacity as number) ?? 1,
+  };
+}
 
-  // ViewBox from selected roots (world-space bounding box)
+/**
+ * Recursive hierarchical renderer.
+ * rootOffsetX/Y: subtract from translation to normalize to viewBox origin.
+ * For root nodes pass the root's world translation. For children pass (0, 0)
+ * because their transforms are already in parent-local space.
+ * `counter.n` accumulates nodes that drew ink — image/video fills reference
+ * bytes that live on Figma's servers (not the clipboard), so they draw nothing.
+ */
+function renderNode(
+  n: KiwiValue,
+  rootOffsetX: number,
+  rootOffsetY: number,
+  ctx: RenderContext,
+  counter: { n: number },
+): string {
+  const { defs, blobs, childrenOf, f } = ctx;
+  const t = n.transform as KiwiValue | undefined;
+  const s = n.size as KiwiValue | undefined;
+  if (!t || !s) return "";
+
+  const w = s.x as number;
+  const h = s.y as number;
+  if (w <= 0 || h <= 0) return "";
+
+  const m00 = (t.m00 as number) ?? 1;
+  const m01 = (t.m01 as number) ?? 0;
+  const m10 = (t.m10 as number) ?? 0;
+  const m11 = (t.m11 as number) ?? 1;
+  const tx = (t.m02 as number) - rootOffsetX;
+  const ty = (t.m12 as number) - rootOffsetY;
+
+  const isIdentity =
+    Math.abs(m00 - 1) < 0.001 &&
+    Math.abs(m01) < 0.001 &&
+    Math.abs(m10) < 0.001 &&
+    Math.abs(m11 - 1) < 0.001;
+  const transform = isIdentity
+    ? `translate(${f(tx)},${f(ty)})`
+    : `matrix(${f(m00)},${f(m10)},${f(m01)},${f(m11)},${f(tx)},${f(ty)})`;
+
+  const type = enumName(defs, "NodeType", n.type as number);
+  const fill = solidColorOf(n.fillPaints as KiwiValue[] | undefined, defs);
+  const stroke = solidColorOf(n.strokePaints as KiwiValue[] | undefined, defs);
+  const strokeW = (n.strokeWeight as number) || 0;
+  const nodeOpacity = (n.opacity as number) ?? 1;
+  const opacityAttr = nodeOpacity < 0.999 ? ` opacity="${f(nodeOpacity)}"` : "";
+
+  const fillAttr = fill
+    ? `fill="${fill.hex}" fill-opacity="${f(fill.opacity)}"`
+    : `fill="none"`;
+  const strokeAttr =
+    stroke && strokeW > 0
+      ? ` stroke="${stroke.hex}" stroke-width="${f(strokeW)}"`
+      : "";
+
+  // Children are in parent-local space, so pass offsets of 0
+  const k = nodeGuidKey(n);
+  const kids = k ? (childrenOf.get(k) ?? []) : [];
+  const childSVG = kids
+    .map((c) => renderNode(c, 0, 0, ctx, counter))
+    .join("");
+
+  switch (type) {
+    case "RECTANGLE":
+    case "ROUNDED_RECTANGLE": {
+      const rx = (n.cornerRadius as number) || 0;
+      const rxAttr = rx > 0 ? ` rx="${f(rx)}"` : "";
+      if (fill || (stroke && strokeW > 0)) counter.n++;
+      return (
+        `<g transform="${transform}"${opacityAttr}>` +
+        `<rect width="${f(w)}" height="${f(h)}"${rxAttr} ${fillAttr}${strokeAttr}/>` +
+        childSVG +
+        `</g>`
+      );
+    }
+    case "ELLIPSE":
+      if (fill || (stroke && strokeW > 0)) counter.n++;
+      return (
+        `<g transform="${transform}"${opacityAttr}>` +
+        `<ellipse cx="${f(w / 2)}" cy="${f(h / 2)}" rx="${f(w / 2)}" ry="${f(h / 2)}" ${fillAttr}${strokeAttr}/>` +
+        childSVG +
+        `</g>`
+      );
+    case "TEXT": {
+      const textData = n.textData as KiwiValue | undefined;
+      const chars = (textData?.characters as string | undefined) ?? "";
+      const fontSize = (textData?.fontSize as number | undefined) ?? 14;
+      const textFill = fill ? fill.hex : "#000000";
+      if (chars.trim().length > 0) counter.n++;
+      const tspans = chars
+        .split("\n")
+        .map((l, i) => {
+          const esc = l
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+          return `<tspan x="0" dy="${i === 0 ? 0 : f(fontSize * 1.2)}">${esc || " "}</tspan>`;
+        })
+        .join("");
+      return (
+        `<g transform="${transform}"${opacityAttr}>` +
+        `<text font-size="${f(fontSize)}" fill="${textFill}" dominant-baseline="text-before-edge">${tspans}</text>` +
+        childSVG +
+        `</g>`
+      );
+    }
+    case "FRAME":
+    case "COMPONENT":
+    case "INSTANCE":
+    case "GROUP":
+    case "COMPONENT_SET":
+    case "SECTION":
+      // Containers: transparent background, just wrap children
+      return childSVG
+        ? `<g transform="${transform}"${opacityAttr}>${childSVG}</g>`
+        : "";
+    default: {
+      // VECTOR, LINE, BOOLEAN_OPERATION, STAR, REGULAR_POLYGON, etc.
+      // Real path geometry lives in the blob pool, referenced by
+      // vectorData.vectorNetworkBlob. Decode it into an SVG path.
+      const vectorData = n.vectorData as KiwiValue | undefined;
+      const blobIdx = vectorData?.vectorNetworkBlob as number | undefined;
+      if (
+        (fill || (stroke && strokeW > 0)) &&
+        blobIdx !== undefined &&
+        blobs[blobIdx]
+      ) {
+        const vn = decodeVectorNetwork(blobs[blobIdx]);
+        // Vertices are stored in the vector's normalizedSize space; scale them
+        // to the node's actual rendered size (Figma scales the network to fit).
+        const norm = vectorData?.normalizedSize as KiwiValue | undefined;
+        const sx = norm && (norm.x as number) ? w / (norm.x as number) : 1;
+        const sy = norm && (norm.y as number) ? h / (norm.y as number) : 1;
+        const scaled =
+          vn && (Math.abs(sx - 1) > 1e-6 || Math.abs(sy - 1) > 1e-6)
+            ? {
+                vertices: vn.vertices.map((v) => ({ x: v.x * sx, y: v.y * sy })),
+                segments: vn.segments.map((s) => ({
+                  start: s.start,
+                  end: s.end,
+                  tanStart: { x: s.tanStart.x * sx, y: s.tanStart.y * sy },
+                  tanEnd: { x: s.tanEnd.x * sx, y: s.tanEnd.y * sy },
+                })),
+              }
+            : vn;
+        const d = scaled
+          ? vectorNetworkToPath(scaled, (n.cornerRadius as number) || 0, f)
+          : "";
+        if (d) {
+          counter.n++;
+          return (
+            `<g transform="${transform}"${opacityAttr}>` +
+            `<path d="${d}" ${fillAttr}${strokeAttr}/>` +
+            childSVG +
+            `</g>`
+          );
+        }
+      }
+      // Fallback: approximate with the bounding rect.
+      if (fill || (stroke && strokeW > 0)) {
+        counter.n++;
+        return (
+          `<g transform="${transform}"${opacityAttr}>` +
+          `<rect width="${f(w)}" height="${f(h)}" ${fillAttr}${strokeAttr}/>` +
+          childSVG +
+          `</g>`
+        );
+      }
+      return childSVG ? `<g transform="${transform}">${childSVG}</g>` : "";
+    }
+  }
+}
+
+/** Renders one node-subtree to a self-contained SVG sized to that node. */
+function renderRoot(
+  root: KiwiValue,
+  ctx: RenderContext,
+): { svg: string; width: number; height: number } | null {
+  const t = root.transform as KiwiValue | undefined;
+  const s = root.size as KiwiValue | undefined;
+  if (!t || !s) return null;
+  const width = s.x as number;
+  const height = s.y as number;
+  const x = t.m02 as number;
+  const y = t.m12 as number;
+  if (!isFinite(x) || !isFinite(y) || width <= 0 || height <= 0) return null;
+
+  const counter = { n: 0 };
+  // Offset by the root's own world translation so its <g> sits at (0,0).
+  const body = renderNode(root, x, y, ctx, counter);
+  if (counter.n === 0) return null;
+
+  const vw = Math.round(width);
+  const vh = Math.round(height);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg"` +
+    ` viewBox="0 0 ${vw} ${vh}" width="${vw}" height="${vh}">\n` +
+    body +
+    `\n</svg>`;
+  return { svg, width, height };
+}
+
+/**
+ * Decodes a Figma clipboard and renders each selected top-level node as its
+ * own SVG, tagged with the node's world-space box so the caller can lay the
+ * shapes out preserving their relative positions. Returns null if nothing in
+ * the selection is renderable (e.g. a pure image selection).
+ */
+export async function figmaClipboardToFrames(
+  html: string,
+): Promise<FigmaFrame[] | null> {
+  const decoded = await decodeFigmaKiwi(html);
+  if (!decoded) return null;
+  const ctx = buildRenderContext(decoded);
+
+  const frames: FigmaFrame[] = [];
+  for (const root of decoded.selected) {
+    const rendered = renderRoot(root, ctx);
+    if (!rendered) continue;
+    const t = root.transform as KiwiValue;
+    frames.push({
+      svg: rendered.svg,
+      name: (root.name as string | undefined) ?? "",
+      x: t.m02 as number,
+      y: t.m12 as number,
+      width: rendered.width,
+      height: rendered.height,
+    });
+  }
+  return frames.length ? frames : null;
+}
+
+/**
+ * Decodes a Figma clipboard and renders the whole selection into a single SVG
+ * (its world-space bounding box). Returns null if nothing is renderable.
+ */
+export async function figmaClipboardToSVG(html: string): Promise<string | null> {
+  const decoded = await decodeFigmaKiwi(html);
+  if (!decoded) return null;
+  const ctx = buildRenderContext(decoded);
+  const roots = decoded.selected;
+
+  // ViewBox from selected roots (world-space bounding box).
   let minX = Infinity,
     minY = Infinity,
     maxX = -Infinity,
@@ -775,174 +1047,12 @@ export async function figmaClipboardToSVG(html: string): Promise<string | null> 
 
   const vw = Math.round(maxX - minX);
   const vh = Math.round(maxY - minY);
+  const counter = { n: 0 };
+  const body = roots
+    .map((n) => renderNode(n, minX, minY, ctx, counter))
+    .join("\n");
 
-  // Compact float formatter
-  const f = (n: number) => parseFloat(n.toFixed(3)).toString();
-
-  function solidColor(
-    paints: KiwiValue[] | undefined,
-  ): { hex: string; opacity: number } | null {
-    if (!paints?.length) return null;
-    const p = paints.find(
-      (p) =>
-        enumName(defs, "PaintType", p.type as number) === "SOLID" &&
-        p.visible !== false,
-    );
-    if (!p?.color) return null;
-    const c = p.color as KiwiValue;
-    return {
-      hex: toHex(c.r as number, c.g as number, c.b as number),
-      opacity: (p.opacity as number) ?? 1,
-    };
-  }
-
-  // Recursive hierarchical renderer.
-  // rootOffsetX/Y: subtract from translation to normalize to viewBox origin.
-  // For root nodes pass (minX, minY). For children pass (0, 0) because their
-  // transforms are already in parent-local space.
-  function renderNode(
-    n: KiwiValue,
-    rootOffsetX: number,
-    rootOffsetY: number,
-  ): string {
-    const t = n.transform as KiwiValue | undefined;
-    const s = n.size as KiwiValue | undefined;
-    if (!t || !s) return "";
-
-    const w = s.x as number;
-    const h = s.y as number;
-    if (w <= 0 || h <= 0) return "";
-
-    const m00 = (t.m00 as number) ?? 1;
-    const m01 = (t.m01 as number) ?? 0;
-    const m10 = (t.m10 as number) ?? 0;
-    const m11 = (t.m11 as number) ?? 1;
-    const tx = (t.m02 as number) - rootOffsetX;
-    const ty = (t.m12 as number) - rootOffsetY;
-
-    const isIdentity =
-      Math.abs(m00 - 1) < 0.001 &&
-      Math.abs(m01) < 0.001 &&
-      Math.abs(m10) < 0.001 &&
-      Math.abs(m11 - 1) < 0.001;
-    const transform = isIdentity
-      ? `translate(${f(tx)},${f(ty)})`
-      : `matrix(${f(m00)},${f(m10)},${f(m01)},${f(m11)},${f(tx)},${f(ty)})`;
-
-    const type = enumName(defs, "NodeType", n.type as number);
-    const fill = solidColor(n.fillPaints as KiwiValue[] | undefined);
-    const stroke = solidColor(n.strokePaints as KiwiValue[] | undefined);
-    const strokeW = (n.strokeWeight as number) || 0;
-    const nodeOpacity = (n.opacity as number) ?? 1;
-    const opacityAttr =
-      nodeOpacity < 0.999 ? ` opacity="${f(nodeOpacity)}"` : "";
-
-    const fillAttr = fill
-      ? `fill="${fill.hex}" fill-opacity="${f(fill.opacity)}"`
-      : `fill="none"`;
-    const strokeAttr =
-      stroke && strokeW > 0
-        ? ` stroke="${stroke.hex}" stroke-width="${f(strokeW)}"`
-        : "";
-
-    // Children are in parent-local space, so pass offsets of 0
-    const k = nodeGuidKey(n);
-    const kids = k ? (childrenOf.get(k) ?? []) : [];
-    const childSVG = kids.map((c) => renderNode(c, 0, 0)).join("");
-
-    switch (type) {
-      case "RECTANGLE":
-      case "ROUNDED_RECTANGLE": {
-        const rx = (n.cornerRadius as number) || 0;
-        const rxAttr = rx > 0 ? ` rx="${f(rx)}"` : "";
-        return (
-          `<g transform="${transform}"${opacityAttr}>` +
-          `<rect width="${f(w)}" height="${f(h)}"${rxAttr} ${fillAttr}${strokeAttr}/>` +
-          childSVG +
-          `</g>`
-        );
-      }
-      case "ELLIPSE":
-        return (
-          `<g transform="${transform}"${opacityAttr}>` +
-          `<ellipse cx="${f(w / 2)}" cy="${f(h / 2)}" rx="${f(w / 2)}" ry="${f(h / 2)}" ${fillAttr}${strokeAttr}/>` +
-          childSVG +
-          `</g>`
-        );
-      case "TEXT": {
-        const textData = n.textData as KiwiValue | undefined;
-        const chars = (textData?.characters as string | undefined) ?? "";
-        const fontSize = (textData?.fontSize as number | undefined) ?? 14;
-        const textFill = fill ? fill.hex : "#000000";
-        const tspans = chars
-          .split("\n")
-          .map((l, i) => {
-            const esc = l
-              .replace(/&/g, "&amp;")
-              .replace(/</g, "&lt;")
-              .replace(/>/g, "&gt;")
-              .replace(/"/g, "&quot;");
-            return `<tspan x="0" dy="${i === 0 ? 0 : f(fontSize * 1.2)}">${esc || " "}</tspan>`;
-          })
-          .join("");
-        return (
-          `<g transform="${transform}"${opacityAttr}>` +
-          `<text font-size="${f(fontSize)}" fill="${textFill}" dominant-baseline="text-before-edge">${tspans}</text>` +
-          childSVG +
-          `</g>`
-        );
-      }
-      case "FRAME":
-      case "COMPONENT":
-      case "INSTANCE":
-      case "GROUP":
-      case "COMPONENT_SET":
-      case "SECTION":
-        // Containers: transparent background, just wrap children
-        return childSVG
-          ? `<g transform="${transform}"${opacityAttr}>${childSVG}</g>`
-          : "";
-      default: {
-        // VECTOR, LINE, BOOLEAN_OPERATION, STAR, REGULAR_POLYGON, etc.
-        // Real path geometry lives in the blob pool, referenced by
-        // vectorData.vectorNetworkBlob. Decode it into an SVG path.
-        const vectorData = n.vectorData as KiwiValue | undefined;
-        const blobIdx = vectorData?.vectorNetworkBlob as number | undefined;
-        if (
-          (fill || (stroke && strokeW > 0)) &&
-          blobIdx !== undefined &&
-          blobs[blobIdx]
-        ) {
-          const vn = decodeVectorNetwork(blobs[blobIdx]);
-          const d = vn
-            ? vectorNetworkToPath(vn, (n.cornerRadius as number) || 0, f)
-            : "";
-          if (d) {
-            return (
-              `<g transform="${transform}"${opacityAttr}>` +
-              `<path d="${d}" ${fillAttr}${strokeAttr}/>` +
-              childSVG +
-              `</g>`
-            );
-          }
-        }
-        // Fallback: approximate with the bounding rect.
-        if (fill || (stroke && strokeW > 0)) {
-          return (
-            `<g transform="${transform}"${opacityAttr}>` +
-            `<rect width="${f(w)}" height="${f(h)}" ${fillAttr}${strokeAttr}/>` +
-            childSVG +
-            `</g>`
-          );
-        }
-        return childSVG
-          ? `<g transform="${transform}">${childSVG}</g>`
-          : "";
-      }
-    }
-  }
-
-  const body = roots.map((n) => renderNode(n, minX, minY)).join("\n");
+  if (counter.n === 0) return null;
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg"` +

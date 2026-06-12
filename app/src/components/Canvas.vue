@@ -15,7 +15,7 @@ import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { figmaClipboardToSVG } from "../utils/figma-clipboard.ts";
+import { figmaClipboardToFrames } from "../utils/figma-clipboard.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
 import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import {
@@ -54,6 +54,7 @@ const props = defineProps<{
 
 type CanvasTool = "select" | "draw" | "note" | "text" | "section";
 type CanvasShapeType = "note" | "text" | "image" | "video" | "section" | "document";
+type DrawStrokeMode = "pencil" | "pen";
 
 type CanvasShape = {
   id: string;
@@ -146,30 +147,35 @@ const FREEHAND_STYLE: FreehandStrokeStyle = {
   lineCap: "round",
   lineJoin: "round",
 };
-// Width bounds are in world units; the renderer scales them by zoom.
-const FREEHAND_VELOCITY = {
-  minWidth: 5,
-  maxWidth: 14,
-  smoothing: 0.7,
+// Width bounds are in world units; the renderer scales them by zoom. Pen mode
+// intentionally has a broad range so velocity and stylus pressure read clearly.
+const FREEHAND_PEN_VELOCITY = {
+  minWidth: 2,
+  maxWidth: 18,
+  smoothing: 0.45,
 };
 // The stroke reaches its thinnest at roughly this pointer speed in screen px/ms.
-const SCREEN_VELOCITY_FULL = 4;
+const SCREEN_VELOCITY_FULL = 2.4;
 
 // addVelocityWidths measures velocity in world units/ms, so it would otherwise
 // taper differently depending on zoom. Multiplying the scale by the current
 // world→screen scale makes the taper track on-screen pointer speed instead.
 function freehandOptions(
   style: FreehandStrokeStyle = FREEHAND_STYLE,
+  mode: DrawStrokeMode = "pen",
 ): FreehandStrokeOptions {
   return {
     minDistance: 2,
     simplifyTolerance: 0.75,
     smoothing: 0.9,
     style,
-    velocityWidth: {
-      ...FREEHAND_VELOCITY,
-      scale: (1 / SCREEN_VELOCITY_FULL) * transform.value.scale,
-    },
+    velocityWidth:
+      mode === "pen"
+        ? {
+            ...FREEHAND_PEN_VELOCITY,
+            scale: (1 / SCREEN_VELOCITY_FULL) * transform.value.scale,
+          }
+        : undefined,
   };
 }
 type ToolDef = {
@@ -224,6 +230,30 @@ const FIT_ICON_PATHS = [
   "M16 21h3a2 2 0 0 0 2-2v-3",
 ];
 const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
+const PEN_COLORS = [
+  "#111827",
+  "#ef4444",
+  "#f97316",
+  "#22c55e",
+  "#3b82f6",
+  "#8b5cf6",
+] as const;
+const DRAW_STROKE_MODES: Array<{
+  id: DrawStrokeMode;
+  label: string;
+  paths: string[];
+}> = [
+  {
+    id: "pencil",
+    label: "Pencil",
+    paths: ["M16.5 4.5l3 3L8 19l-4 1 1-4z", "M14.5 6.5l3 3"],
+  },
+  {
+    id: "pen",
+    label: "Pen",
+    paths: ["M12 3l5 5-3.5 10.5L12 21l-1.5-2.5L7 8z", "M7 8l5 5 5-5", "M12 13l-1.5 5.5"],
+  },
+];
 const MIN_NOTE_SIZE = { width: 140, height: 96 };
 const MIN_SECTION_SIZE = { width: 240, height: 160 };
 const MIN_MEDIA_SIZE = { width: 80, height: 60 };
@@ -253,6 +283,8 @@ const SNAP_PROXIMITY_PX = 320;
 const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
 const noteColor = ref<string>(NOTE_COLORS[0]);
+const penColor = ref<string>(PEN_COLORS[0]);
+const drawStrokeMode = ref<DrawStrokeMode>("pen");
 // Backdrop grid style, driven by the document's "gridtype" property. "grid"
 // draws ruled lines, "dots" a dot grid, and "clean" leaves the backdrop empty.
 type GridType = "grid" | "clean" | "dots";
@@ -341,6 +373,16 @@ const selectedShape = computed(() => {
   return shapes.value.find((shape) => shape.id === id) ?? null;
 });
 
+const selectedStrokeColor = computed(() => {
+  if (selectedStrokeIds.value.size === 0) return null;
+  const selected = strokes.value.filter((stroke) =>
+    selectedStrokeIds.value.has(stroke.id),
+  );
+  if (selected.length === 0) return null;
+  const color = selected[0].style.color;
+  return selected.every((stroke) => stroke.style.color === color) ? color : null;
+});
+
 // Screen-space top-center anchor for the multi-selection overlay. Returns null
 // when fewer than 2 items are selected so the overlay stays hidden.
 const selectionAnchorPos = computed(() => {
@@ -372,7 +414,7 @@ const selectionAnchorPos = computed(() => {
     }
   }
 
-  if (!isFinite(minX)) return null;
+  if (!Number.isFinite(minX)) return null;
 
   return worldToScreen({ x: (minX + maxX) / 2, y: minY });
 });
@@ -1300,6 +1342,25 @@ function setNoteColor(color: string) {
   }
 }
 
+function setPenColor(color: string) {
+  penColor.value = color;
+  if (selectedStrokeIds.value.size === 0) return;
+
+  ydoc.transact(() => {
+    for (const id of selectedStrokeIds.value) {
+      const stroke = yStrokes.get(id);
+      if (!stroke) continue;
+      const styleValue = stroke.get("style");
+      const style =
+        typeof styleValue === "object" && styleValue !== null
+          ? { ...FREEHAND_STYLE, ...(styleValue as Partial<FreehandStrokeStyle>) }
+          : { ...FREEHAND_STYLE };
+      stroke.set("style", { ...style, color });
+      stroke.set("updatedAt", Date.now());
+    }
+  });
+}
+
 function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
   const shape = yShapes.get(id);
   if (!shape) return;
@@ -1360,7 +1421,8 @@ function freehandPoint(event: PointerEvent): FreehandPoint {
   // Only trust pressure from a stylus. Mice report a constant 0.5 while a button
   // is held, and touch rarely reports meaningful pressure, so for those inputs
   // width falls back to velocity-based tapering.
-  const hasStylusPressure = event.pointerType === "pen" && event.pressure > 0;
+  const hasStylusPressure =
+    drawStrokeMode.value === "pen" && event.pointerType === "pen" && event.pressure > 0;
   return {
     x: point.x,
     y: point.y,
@@ -1373,7 +1435,9 @@ function startFreehand(event: PointerEvent) {
   if (event.button !== 0 || (event.pointerType === "touch" && !event.isPrimary)) return;
   clearSelection();
   freehandPointerId = event.pointerId;
-  freehandBuilder = createFreehandStrokeBuilder(freehandOptions());
+  freehandBuilder = createFreehandStrokeBuilder(
+    freehandOptions({ ...FREEHAND_STYLE, color: penColor.value }, drawStrokeMode.value),
+  );
   activeFreehandStroke.value = freehandBuilder.startAt(freehandPoint(event));
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -2066,15 +2130,70 @@ function pasteCanvasClipboard(
 
 // Map Figma NodeType strings to canvas shape types and decide which node types
 // are worth showing on the canvas (skip pure-layout/decorator nodes).
+// Pastes a Figma selection: each top-level node becomes its own image shape,
+// laid out to preserve the relative positions and sizes they had in Figma.
+// Returns false when nothing is renderable so the caller can fall back to the
+// OS clipboard's bitmap flavor.
 async function pasteFigmaClipboard(
   html: string,
   at: { x: number; y: number },
 ): Promise<boolean> {
-  const svg = await figmaClipboardToSVG(html);
-  if (!svg) return false;
-  const file = new File([svg], "figma-paste.svg", { type: "image/svg+xml" });
-  await addMediaFile(file, at);
-  return true;
+  const frames = await figmaClipboardToFrames(html);
+  if (!frames || frames.length === 0) return false;
+
+  // Shared scale keeps the frames' relative sizes; clamp the largest so a
+  // screen-sized frame doesn't paste enormous.
+  const maxW = Math.max(...frames.map((f) => f.width));
+  const maxH = Math.max(...frames.map((f) => f.height));
+  const scale = Math.min(1, 480 / Math.max(1, maxW), 360 / Math.max(1, maxH));
+
+  // World-space bounding box of the whole selection.
+  const minX = Math.min(...frames.map((f) => f.x));
+  const minY = Math.min(...frames.map((f) => f.y));
+  const maxX = Math.max(...frames.map((f) => f.x + f.width));
+  const maxY = Math.max(...frames.map((f) => f.y + f.height));
+  const groupLeft = at.x - ((maxX - minX) * scale) / 2;
+  const groupTop = at.y - ((maxY - minY) * scale) / 2;
+
+  saveState.value = "saving";
+  saveError.value = null;
+  dispatchSaveStatus();
+
+  const createdIds: string[] = [];
+  try {
+    for (const frame of frames) {
+      const file = new File([frame.svg], `${frame.name || "figma"}.svg`, {
+        type: "image/svg+xml",
+      });
+      const src = await uploadMediaFile(file);
+      const id = `shape-${crypto.randomUUID()}`;
+      const shape: CanvasShape = {
+        id,
+        type: "image",
+        x: Math.round(groupLeft + (frame.x - minX) * scale),
+        y: Math.round(groupTop + (frame.y - minY) * scale),
+        width: Math.max(1, Math.round(frame.width * scale)),
+        height: Math.max(1, Math.round(frame.height * scale)),
+        text: "",
+        color: defaultColor("image"),
+        src,
+        alt: frame.name,
+        updatedAt: Date.now(),
+      };
+      yShapes.set(id, createShapeMap(shape));
+      createdIds.push(id);
+    }
+    selectedShapeIds.value = new Set(createdIds);
+    activeTool.value = "select";
+    saveState.value = "idle";
+    dispatchSaveStatus();
+    return true;
+  } catch (err) {
+    saveState.value = "error";
+    saveError.value = err instanceof Error ? err.message : String(err);
+    dispatchSaveStatus();
+    return createdIds.length > 0;
+  }
 }
 
 function handlePaste(event: ClipboardEvent) {
@@ -2387,6 +2506,90 @@ onUnmounted(() => {
 
 <template>
   <div class="canvas-root" :class="{ 'is-dark': isDarkMode }">
+    <div
+      v-if="
+        activeTool === 'draw' ||
+        activeTool === 'note' ||
+        selectedStrokeIds.size > 0 ||
+        selectedShape?.type === 'note'
+      "
+      class="canvas-sub-toolbar"
+      @pointerdown.stop
+    >
+      <span
+        v-if="activeTool === 'draw'"
+        class="canvas-draw-modes"
+        aria-label="Draw mode"
+      >
+        <button
+          v-for="mode in DRAW_STROKE_MODES"
+          :key="mode.id"
+          type="button"
+          class="canvas-draw-mode"
+          :class="{ active: drawStrokeMode === mode.id }"
+          :aria-label="mode.label"
+          :aria-pressed="drawStrokeMode === mode.id"
+          :title="mode.label"
+          @click="drawStrokeMode = mode.id"
+        >
+          <svg
+            class="canvas-draw-mode-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path v-for="(d, i) in mode.paths" :key="i" :d="d" />
+          </svg>
+        </button>
+      </span>
+      <span
+        v-if="activeTool === 'draw'"
+        class="canvas-divider"
+      ></span>
+      <span
+        v-if="activeTool === 'note' || selectedShape?.type === 'note'"
+        class="canvas-note-colors"
+        aria-label="Note color"
+      >
+        <button
+          v-for="color in NOTE_COLORS"
+          :key="color"
+          type="button"
+          class="canvas-color-swatch"
+          :class="{ active: (selectedShape?.type === 'note' ? selectedShape.color : noteColor) === color }"
+          :style="{ background: color }"
+          :aria-label="`Set note color ${color}`"
+          @click="setNoteColor(color)"
+        ></button>
+      </span>
+      <span
+        v-if="
+          (activeTool === 'draw' || selectedStrokeIds.size > 0) &&
+          (activeTool === 'note' || selectedShape?.type === 'note')
+        "
+        class="canvas-divider"
+      ></span>
+      <span
+        v-if="activeTool === 'draw' || selectedStrokeIds.size > 0"
+        class="canvas-note-colors"
+        aria-label="Pen color"
+      >
+        <button
+          v-for="color in PEN_COLORS"
+          :key="color"
+          type="button"
+          class="canvas-color-swatch"
+          :class="{ active: (selectedStrokeIds.size > 0 ? selectedStrokeColor : penColor) === color }"
+          :style="{ background: color }"
+          :aria-label="`Set pen color ${color}`"
+          @click="setPenColor(color)"
+        ></button>
+      </span>
+    </div>
     <div class="canvas-toolbar" @pointerdown.stop>
       <button
         v-for="tool in CANVAS_TOOLS"
@@ -2412,22 +2615,6 @@ onUnmounted(() => {
           <path v-for="(d, i) in tool.paths" :key="i" :d="d" />
         </svg>
       </button>
-      <span
-        v-if="activeTool === 'note' || selectedShape?.type === 'note'"
-        class="canvas-note-colors"
-        aria-label="Note color"
-      >
-        <button
-          v-for="color in NOTE_COLORS"
-          :key="color"
-          type="button"
-          class="canvas-color-swatch"
-          :class="{ active: (selectedShape?.type === 'note' ? selectedShape.color : noteColor) === color }"
-          :style="{ background: color }"
-          :aria-label="`Set note color ${color}`"
-          @click="setNoteColor(color)"
-        ></button>
-      </span>
       <span class="canvas-divider"></span>
       <button
         type="button"
@@ -2859,6 +3046,24 @@ onUnmounted(() => {
   backdrop-filter: blur(8px);
 }
 
+.canvas-sub-toolbar {
+  position: absolute;
+  bottom: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 12px;
+  background: var(--canvas-toolbar-bg);
+  padding: 6px;
+  box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+}
+
 .canvas-tool {
   position: relative;
   display: inline-flex;
@@ -2995,6 +3200,43 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   padding-inline: 2px;
+}
+
+.canvas-draw-modes {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.canvas-draw-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0;
+  color: var(--canvas-tool-text);
+  cursor: pointer;
+}
+
+.canvas-draw-mode-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.canvas-draw-mode:hover {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-draw-mode.active {
+  background: var(--canvas-tool-active-bg);
+  color: var(--canvas-tool-active-text);
 }
 
 .canvas-color-swatch {
