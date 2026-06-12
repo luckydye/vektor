@@ -72,52 +72,46 @@ const handleDelete = async (documentId: string) => {
       <div class="text-neutral">No archived documents</div>
     </div>
 
-    <div v-else class="space-y-2">
-      <div
-        v-for="doc in documents"
-        :key="doc.id"
-        class="flex items-center justify-between p-4 bg-background border border-neutral-100 rounded-lg hover:bg-neutral-200"
-      >
-        <div class="flex-1">
-          <a
-            :href="`/${spaceSlug}/doc/${doc.slug}`"
-            class="text-lg font-medium text-neutral-900 hover:text-blue-600"
-          >
-            {{ doc.properties.title || "Untitled" }}
-          </a>
-          <div class="text-sm text-neutral-900 mt-1">
-            Archived {{ formatDate(doc.updatedAt) }}
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button
-            @click="handleRestore(doc.id)"
-            class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-sm hover:bg-green-700"
-          >
-            Restore
-          </button>
-          <button
-            @click="handleDelete(doc.id)"
-            class="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-sm hover:bg-red-700"
-          >
-            Delete Permanently
-          </button>
-        </div>
+    <div v-else>
+      <div class="overflow-x-auto border border-neutral-100 rounded-md">
+        <table class="min-w-full text-sm">
+          <thead class="bg-neutral-50">
+            <tr>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Title</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Archived</th>
+              <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="doc in documents" :key="doc.id" class="hover:bg-neutral-50">
+              <td class="px-4 py-2.5">
+                <a :href="`/${spaceSlug}/doc/${doc.slug}`" class="font-medium text-neutral-900 hover:text-blue-600">
+                  {{ doc.properties.title || "Untitled" }}
+                </a>
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(doc.updatedAt) }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
+                <button @click="handleRestore(doc.id)" class="text-xs text-green-600 hover:text-green-800">Restore</button>
+                <button @click="handleDelete(doc.id)" class="text-xs text-red-600 hover:text-red-800">Delete Permanently</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div v-if="totalPages > 1" class="flex justify-between items-center mt-4 pt-4 border-t border-neutral-100">
+      <div class="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
         <button
           @click="prevPage"
           :disabled="!hasPrevPage || isFetching"
-          class="px-4 py-2 text-sm font-medium border border-neutral-100 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-3 py-1.5 text-xs font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
         </button>
-        <span class="text-sm text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
+        <span class="text-xs text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
         <button
           @click="nextPage"
           :disabled="!hasNextPage || isFetching"
-          class="px-4 py-2 text-sm font-medium border border-neutral-100 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-3 py-1.5 text-xs font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
         </button>

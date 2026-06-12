@@ -214,7 +214,7 @@ onUnmounted(() => {
                     'hidden lg:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
                     isResizing && 'bg-primary-200/50 active:bg-primary-200' || ''
                 ]" @mousedown="startResize">
-                    <div class="absolute inset-y-0 right-1 w-3"></div>
+                    <div class="absolute inset-y-0 -right-1 w-3"></div>
                 </div>
             </div>
         </div>

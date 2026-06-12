@@ -325,23 +325,6 @@ async function copyMemberId(memberId) {
 
 <template>
   <div class="space-y-6">
-    <div class="flex justify-between items-center">
-        <!-- Header -->
-        <div>
-            <h3 class="text-lg font-semibold text-neutral-900">Space Access</h3>
-            <p class="text-sm text-neutral-900 mt-1">Manage users and groups with access to this space</p>
-        </div>
-    
-        <!-- Add Button -->
-        <div class="flex justify-end">
-            <button
-            @click="showAddMember = true"
-            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-            Add Access
-            </button>
-        </div>
-    </div>
 
     <!-- Loading State -->
     <div v-if="isLoading || loadingUsers" class="flex justify-center py-8">
@@ -354,56 +337,44 @@ async function copyMemberId(memberId) {
     </div>
 
     <!-- Members List -->
-    <div v-if="!isLoading && !loadingUsers && rolePermissions.length > 0" class="border border-neutral-100 rounded-lg overflow-auto">
-      <table class="min-w-full divide-y divide-neutral-200">
+    <div v-if="!isLoading && !loadingUsers && rolePermissions.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
+      <table class="min-w-full text-sm">
         <thead class="bg-neutral-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wider">
-              Member
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wider">
-              Type
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wider">
-              Role
-            </th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wider">
-              Added
-            </th>
-            <th class="px-6 py-3 text-right text-xs font-medium text-neutral-900 uppercase tracking-wider">
-              Actions
-            </th>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Member</th>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Type</th>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Role</th>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Added</th>
+            <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
-        <tbody class="bg-background divide-y divide-neutral-200">
+        <tbody class="divide-y divide-neutral-100">
           <tr v-for="perm in rolePermissions" :key="`${perm.permission.userId || perm.permission.groupId}`" class="hover:bg-neutral-50">
-            <td class="px-6 py-4 whitespace-nowrap">
+            <td class="px-4 py-2.5">
               <div class="flex items-center gap-3">
-                <div :class="[getMemberBgColor(perm), 'flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center']">
-                  <span v-if="perm.permission.userId" class="text-white text-sm font-medium">
+                <div :class="[getMemberBgColor(perm), 'flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center']">
+                  <span v-if="perm.permission.userId" class="text-white text-xs font-medium">
                     {{ getUserInitials(getMemberName(perm)) }}
                   </span>
-                  <div v-else class="svg-icon w-5 h-5 text-white" v-html="usersIcon" />
+                  <div v-else class="svg-icon w-4 h-4 text-white" v-html="usersIcon" />
                 </div>
                 <div>
-                  <div class="text-sm font-medium text-neutral-900">{{ getMemberName(perm) }}</div>
+                  <div class="font-medium text-neutral-900">{{ getMemberName(perm) }}</div>
                   <div v-if="getMemberEmail(perm)" class="text-xs text-neutral-500">{{ getMemberEmail(perm) }}</div>
                 </div>
                 <button
                   v-if="perm.permission.userId"
                   @click="copyMemberId(perm.permission.userId)"
                   :title="copiedUserId === perm.permission.userId ? 'Copied!' : 'Copy ID'"
-                  class="ml-2 p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
+                  class="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
                 >
-                  <div v-if="copiedUserId === perm.permission.userId" class="svg-icon w-4 h-4 text-green-600" v-html="checkThinIcon" />
-                  <div v-else class="svg-icon w-4 h-4" v-html="copyIcon" />
+                  <div v-if="copiedUserId === perm.permission.userId" class="svg-icon w-3.5 h-3.5 text-green-600" v-html="checkThinIcon" />
+                  <div v-else class="svg-icon w-3.5 h-3.5" v-html="copyIcon" />
                 </button>
               </div>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap">
-              <span class="text-sm text-neutral-900">{{ getMemberType(perm) }}</span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap">
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">{{ getMemberType(perm) }}</td>
+            <td class="px-4 py-2.5 whitespace-nowrap">
               <select
                 v-if="canEditMember(perm.permission.userId, perm)"
                 :value="perm.permission.permission"
@@ -415,33 +386,43 @@ async function copyMemberId(memberId) {
                 <option value="editor">Editor</option>
                 <option value="owner">Owner</option>
               </select>
-              <span v-else class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" :class="getRoleBadgeClass(perm.permission.permission)">
+              <span v-else class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="getRoleBadgeClass(perm.permission.permission)">
                 {{ perm.permission.permission }}
               </span>
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-neutral-500">
-              {{ formatDate(perm.permission.createdAt) }}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(perm.permission.createdAt) }}</td>
+            <td class="px-4 py-2.5 whitespace-nowrap text-right">
               <button
                 v-if="canRemoveMember(perm)"
                 @click="handleRemoveMember(perm)"
                 :disabled="removingMember === (perm.permission.userId || perm.permission.groupId)"
-                class="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="text-xs text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {{ removingMember === (perm.permission.userId || perm.permission.groupId) ? 'Removing...' : 'Remove' }}
               </button>
-              <span v-else class="text-neutral-400">-</span>
+              <span v-else class="text-neutral-400">—</span>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-
+    
     <!-- Empty State -->
     <div v-if="!isLoading && !loadingUsers && rolePermissions.length === 0" class="text-center py-12 border border-neutral-100 rounded-lg">
       <div class="svg-icon mx-auto h-12 w-12 text-neutral-400" v-html="usersGroupIcon" />
       <p class="mt-4 text-neutral-500">No members yet. Add your first member to get started.</p>
+    </div>
+    
+    <div class="flex justify-between items-center">
+        <!-- Add Button -->
+        <div class="flex justify-end">
+            <button
+            @click="showAddMember = true"
+            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+            Add Access
+            </button>
+        </div>
     </div>
   </div>
 

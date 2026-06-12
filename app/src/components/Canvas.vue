@@ -15,6 +15,7 @@ import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
+import { parseFigmaClipboard } from "../utils/figma-clipboard.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
 import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import {
@@ -1571,7 +1572,6 @@ function handleViewportPointerDown(event: PointerEvent) {
     return;
   }
 
-
   // The handlers below call preventDefault(), which suppresses the browser's
   // default focus shift — so without this the canvas never holds focus and
   // copy/cut/paste events are never dispatched to it. Shape/text pointerdowns
@@ -2064,6 +2064,93 @@ function pasteCanvasClipboard(
   renderInk();
 }
 
+// Map Figma NodeType strings to canvas shape types and decide which node types
+// are worth showing on the canvas (skip pure-layout/decorator nodes).
+const FIGMA_TYPE_TO_SHAPE: Partial<Record<string, CanvasShapeType>> = {
+  FRAME: "note",
+  SECTION: "section",
+  GROUP: "note",
+  COMPONENT: "note",
+  COMPONENT_SET: "note",
+  INSTANCE: "note",
+  ROUNDED_RECTANGLE: "note",
+  RECTANGLE: "note",
+  ELLIPSE: "note",
+  REGULAR_POLYGON: "note",
+  STAR: "note",
+  BOOLEAN_OPERATION: "note",
+  TEXT: "text",
+};
+
+async function pasteFigmaClipboard(
+  html: string,
+  at: { x: number; y: number },
+): Promise<boolean> {
+  const result = await parseFigmaClipboard(html);
+  if (!result) return false;
+
+  const { nodes } = result;
+
+  // Keep only node types that map to a canvas shape
+  const mappable = nodes.filter((n) => FIGMA_TYPE_TO_SHAPE[n.type]);
+  if (mappable.length === 0) return false;
+
+  // Scale Figma coordinates to canvas space. Preserve relative layout but
+  // fit the whole selection into a reasonable area (max ~2000×2000 canvas px).
+  const xs = mappable.map((n) => n.x);
+  const ys = mappable.map((n) => n.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...mappable.map((n) => n.x + n.width));
+  const maxY = Math.max(...mappable.map((n) => n.y + n.height));
+  const figmaW = maxX - minX || 1;
+  const figmaH = maxY - minY || 1;
+  const TARGET = 2000;
+  const scale = Math.min(1, TARGET / Math.max(figmaW, figmaH));
+
+  // Cap total shapes to avoid flooding the canvas
+  const MAX_SHAPES = 200;
+  const subset = mappable.slice(0, MAX_SHAPES);
+
+  const now = Date.now();
+  const pastedIds = new Set<string>();
+
+  ydoc.transact(() => {
+    for (const node of subset) {
+      const shapeType = FIGMA_TYPE_TO_SHAPE[node.type]!;
+      const id = `shape-${crypto.randomUUID()}`;
+      pastedIds.add(id);
+
+      const sw = Math.max(80, Math.round(node.width * scale));
+      const sh = Math.max(30, Math.round(node.height * scale));
+
+      yShapes.set(
+        id,
+        createShapeMap({
+          id,
+          type: shapeType,
+          x: Math.round(at.x + (node.x - minX) * scale),
+          y: Math.round(at.y + (node.y - minY) * scale),
+          width: sw,
+          height: sh,
+          text: node.text ?? node.name,
+          color:
+            shapeType === "note"
+              ? (node.fill ?? NOTE_COLORS[0])
+              : shapeType === "section"
+                ? defaultColor("section")
+                : "#ffffff",
+          updatedAt: now,
+        }),
+      );
+    }
+  });
+
+  selectedShapeIds.value = pastedIds;
+  activeTool.value = "select";
+  return true;
+}
+
 function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select")) return;
@@ -2089,11 +2176,20 @@ function handlePaste(event: ClipboardEvent) {
     return;
   }
 
-  // 3. The clipboard holds some other real content (plain text, etc.) that
+  // 3. Figma selection — HTML blob with figmeta + kiwi binary scene data. Must
+  //    run before the plain-text bail below because Figma also populates text/plain.
+  const html = event.clipboardData?.getData("text/html") ?? "";
+  if (html.includes("(figmeta)") && html.includes("(figma)")) {
+    event.preventDefault();
+    void pasteFigmaClipboard(html, insertionPointFromEvent());
+    return;
+  }
+
+  // 4. The clipboard holds some other real content (plain text, etc.) that
   //    isn't ours — leave it to the browser, don't paste a stale element.
   if (text.trim().length > 0) return;
 
-  // 4. The system clipboard gave us nothing usable (e.g. a non-secure context
+  // 5. The system clipboard gave us nothing usable (e.g. a non-secure context
   //    where clipboardData is unavailable). Fall back to the last canvas copy
   //    held in memory.
   const internal = parseCanvasClipboard(internalClipboard);

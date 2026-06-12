@@ -1,29 +1,6 @@
 <template>
   <div class="flex-1 flex flex-col">
-    <div>
-      <h3 class="text-lg font-semibold text-neutral-900">Extensions</h3>
-      <p class="text-sm text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
-    </div>
-
     <div class="pt-6 space-y-4">
-      <!-- Upload Section -->
-      <div class="flex items-center gap-4">
-        <label
-          class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-neutral-100 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
-        >
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            class="hidden"
-            :disabled="isUploading"
-            @change="handleFileSelect"
-          />
-          <span class="text-sm text-neutral">
-            {{ isUploading ? 'Uploading...' : 'Click to upload extension (.zip)' }}
-          </span>
-        </label>
-      </div>
-
       <!-- Error Display -->
       <div v-if="uploadError" class="p-3 bg-red-50 border border-red-200 rounded-md">
         <p class="text-sm text-red-600">{{ uploadError }}</p>
@@ -56,75 +33,36 @@
 
       <!-- Extensions List -->
       <div v-else class="overflow-x-auto border border-neutral-100 rounded-md">
-        <table class="min-w-full divide-y divide-neutral background">
-          <thead class="bg-neutral-200">
+        <table class="min-w-full text-sm">
+          <thead class="bg-neutral-50">
             <tr>
-              <th
-                scope="col"
-                class="py-3 pl-4 pr-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wide"
-              >
-                Extension
-              </th>
-              <th
-                scope="col"
-                class="px-3 py-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wide"
-              >
-                Version
-              </th>
-              <th
-                scope="col"
-                class="px-3 py-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wide"
-              >
-                Entry Points
-              </th>
-              <th
-                scope="col"
-                class="px-3 py-3 text-left text-xs font-medium text-neutral-900 uppercase tracking-wide"
-              >
-                Updated
-              </th>
-              <th
-                scope="col"
-                class="relative py-3 pl-3 pr-4 text-right text-xs font-medium text-neutral-900 uppercase tracking-wide"
-              >
-                Actions
-              </th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Extension</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Version</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Entry Points</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Updated</th>
+              <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-neutral">
-            <tr v-for="ext in extensions" :key="ext.id" class="hover:bg-neutral-200">
-              <td class="py-3 pl-4 pr-3">
-                <div class="text-sm font-medium text-neutral-900">{{ ext.name }}</div>
-                <div class="text-xs text-neutral font-mono">{{ ext.id }}</div>
-                <div v-if="ext.description" class="text-xs text-neutral mt-1">{{ ext.description }}</div>
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="ext in extensions" :key="ext.id" class="hover:bg-neutral-50">
+              <td class="px-4 py-2.5">
+                <div class="font-medium text-neutral-900">{{ ext.name }}</div>
+                <div class="text-xs text-neutral-500 font-mono">{{ ext.id }}</div>
+                <div v-if="ext.description" class="text-xs text-neutral-500 mt-0.5">{{ ext.description }}</div>
               </td>
-              <td class="whitespace-nowrap px-3 py-3 text-sm text-neutral-900 font-mono">
-                {{ ext.version }}
-              </td>
-              <td class="px-3 py-3 text-sm">
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-900 font-mono">{{ ext.version }}</td>
+              <td class="px-4 py-2.5">
                 <div class="flex flex-wrap gap-1">
-                  <span
-                    v-if="ext.entries.frontend"
-                    class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-sm whitespace-nowrap"
-                  >
-                    frontend
-                  </span>
-                  <span
-                    v-if="!ext.entries.frontend"
-                    class="text-xs text-neutral italic"
-                  >
-                    None
-                  </span>
+                  <span v-if="ext.entries.frontend" class="px-1.5 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-sm whitespace-nowrap">frontend</span>
+                  <span v-if="!ext.entries.frontend" class="text-xs text-neutral-400 italic">None</span>
                 </div>
               </td>
-              <td class="whitespace-nowrap px-3 py-3 text-sm text-neutral">
-                {{ formatDate(ext.updatedAt) }}
-              </td>
-              <td class="whitespace-nowrap py-3 pl-3 pr-4 text-right text-sm">
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(ext.updatedAt) }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-right">
                 <button
                   @click="handleDelete(ext.id)"
                   :disabled="isDeleting"
-                  class="text-red-600 hover:text-red-800 text-xs font-medium disabled:opacity-50"
+                  class="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
                 >
                   Delete
                 </button>
@@ -132,6 +70,24 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Upload Section -->
+      <div class="flex items-center gap-4">
+        <label
+          class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-neutral-100 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+        >
+          <input
+            type="file"
+            accept=".zip,application/zip"
+            class="hidden"
+            :disabled="isUploading"
+            @change="handleFileSelect"
+          />
+          <span class="text-sm text-neutral">
+            {{ isUploading ? 'Uploading...' : 'Click to upload extension (.zip)' }}
+          </span>
+        </label>
       </div>
     </div>
   </div>

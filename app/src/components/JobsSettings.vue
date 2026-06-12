@@ -52,32 +52,32 @@
     <div v-else-if="schedules.length === 0 && !isCreatingSchedule" class="text-center py-6 text-sm text-neutral-500">
       No scheduled jobs
     </div>
-    <div v-else-if="schedules.length > 0" class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-neutral-100">
-            <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Job</th>
-            <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Schedule</th>
-            <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Next Run</th>
-            <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Last Run</th>
-            <th class="text-right py-2 text-xs font-medium text-neutral-500 uppercase">Actions</th>
+    <div v-else-if="schedules.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
+      <table class="min-w-full text-sm">
+        <thead class="bg-neutral-50">
+          <tr>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Job</th>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Schedule</th>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Next Run</th>
+            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Last Run</th>
+            <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
           <tr v-for="schedule in schedules" :key="schedule.id" class="hover:bg-neutral-50">
-            <td class="py-2 pr-4">
+            <td class="px-4 py-2.5">
               <div class="flex items-center gap-2">
                 <span :class="schedule.enabled ? 'bg-green-500' : 'bg-neutral-300'" class="w-2 h-2 rounded-full shrink-0"></span>
                 <span class="font-medium text-neutral-900">{{ jobName(schedule.jobId) }}</span>
               </div>
             </td>
-            <td class="py-2 pr-4">
+            <td class="px-4 py-2.5 whitespace-nowrap">
               <code class="px-1.5 py-0.5 text-xs bg-neutral-100 rounded-sm font-mono">{{ schedule.cronExpression }}</code>
               <span v-if="schedule.timezone" class="ml-1 text-xs text-neutral-400">{{ schedule.timezone }}</span>
             </td>
-            <td class="py-2 pr-4 text-neutral-500">{{ schedule.enabled && schedule.nextRunAt ? formatDateTime(schedule.nextRunAt) : '—' }}</td>
-            <td class="py-2 pr-4 text-neutral-500">{{ schedule.lastRunAt ? formatDateTime(schedule.lastRunAt) : '—' }}</td>
-            <td class="py-2 text-right space-x-2">
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ schedule.enabled && schedule.nextRunAt ? formatDateTime(schedule.nextRunAt) : '—' }}</td>
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ schedule.lastRunAt ? formatDateTime(schedule.lastRunAt) : '—' }}</td>
+            <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
               <button @click="handleToggleSchedule(schedule)" class="text-xs text-blue-600 hover:text-blue-800">
                 {{ schedule.enabled ? 'Disable' : 'Enable' }}
               </button>
@@ -104,31 +104,31 @@
 
       <div v-if="isLoadingRuns && runs.length === 0" class="text-center py-6 text-sm text-neutral-500">Loading runs...</div>
       <div v-else-if="runs.length === 0" class="text-center py-6 text-sm text-neutral-500">No job runs yet</div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-neutral-100">
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Status</th>
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Job</th>
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Trigger</th>
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Started</th>
-              <th class="text-left py-2 text-xs font-medium text-neutral-500 uppercase">Duration</th>
+      <div v-else class="overflow-x-auto border border-neutral-100 rounded-md">
+        <table class="min-w-full text-sm">
+          <thead class="bg-neutral-50">
+            <tr>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Job</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Trigger</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Started</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Duration</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-neutral-100">
             <template v-for="run in runs" :key="run.id">
               <tr class="hover:bg-neutral-50" :class="run.error ? 'cursor-pointer' : ''"
                 @click="run.error ? (expandedRunId = expandedRunId === run.id ? null : run.id) : undefined">
-                <td class="py-2 pr-4">
+                <td class="px-4 py-2.5 whitespace-nowrap">
                   <span :class="statusClasses(run.status)" class="px-1.5 py-0.5 text-xs rounded-sm">{{ run.status }}</span>
                 </td>
-                <td class="py-2 pr-4 font-medium text-neutral-900">{{ jobName(run.jobId) }}</td>
-                <td class="py-2 pr-4 text-neutral-500">{{ run.trigger }}</td>
-                <td class="py-2 pr-4 text-neutral-500">{{ formatDateTime(run.startedAt ?? run.queuedAt) }}</td>
-                <td class="py-2 text-neutral-500">{{ formatDuration(run) }}</td>
+                <td class="px-4 py-2.5 font-medium text-neutral-900">{{ jobName(run.jobId) }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ run.trigger }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDateTime(run.startedAt ?? run.queuedAt) }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDuration(run) }}</td>
               </tr>
               <tr v-if="expandedRunId === run.id && run.error">
-                <td colspan="5" class="py-2 px-3 bg-red-50">
+                <td colspan="5" class="px-4 py-2.5 bg-red-50">
                   <p class="text-xs text-red-700 font-mono break-all">{{ run.error }}</p>
                 </td>
               </tr>
@@ -136,7 +136,7 @@
           </tbody>
         </table>
       </div>
-      <div v-if="runsTotalPages > 1" class="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
+      <div class="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
         <button
           @click="runsPrevPage"
           :disabled="!runsHasPrevPage || isFetchingRuns"

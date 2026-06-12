@@ -2,7 +2,7 @@
   <div class="flex flex-col lg:flex-row min-h-0 h-full">
     <!-- Sidebar - Horizontal on mobile, vertical on desktop -->
     <nav class="flex lg:flex-col lg:w-44 shrink-0 py-2 gap-0.5 lg:pr-1 overflow-x-auto lg:overflow-x-visible border-b lg:border-b-0 border-neutral-100 lg:border-none">
-      <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id"
+      <button v-for="tab in tabs" :key="tab.id" @click="setTab(tab.id)"
         :class="activeTab === tab.id
           ? 'bg-neutral-100 text-neutral-900 font-medium'
           : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800'"
@@ -16,7 +16,7 @@
 
     <!-- General Settings -->
     <section v-if="activeTab === 'general'">
-      <h2 class="text-sm font-semibold text-neutral-900 mb-4">General Settings</h2>
+      <h2 class="text-xl font-semibold text-neutral-900 mb-4">General Settings</h2>
       <form @submit.prevent="handleSave">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -81,18 +81,20 @@
           </button>
         </div>
       </form>
-    </section>
 
-    <!-- Members -->
-    <section v-if="activeTab === 'members'">
-      <h2 class="text-sm font-semibold text-neutral-900 mb-4">Members</h2>
-      <SpaceMembers />
+      <div class="pt-12">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-neutral-900 mb-4">Members</h2>
+        </div>
+        
+        <SpaceMembers />
+      </div>
     </section>
 
     <!-- Access Tokens -->
     <section v-if="activeTab === 'api'">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-sm font-semibold text-neutral-900">Access Tokens</h2>
+        <h2 class="text-xl font-semibold text-neutral-900 mb-4">Access Tokens</h2>
         <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
       </div>
       <div>
@@ -172,27 +174,27 @@
 
         <div v-if="isLoadingTokens" class="text-center py-6 text-sm text-neutral-500">Loading tokens...</div>
         <div v-else-if="accessTokens.length === 0 && !isCreatingToken" class="text-center py-6 text-sm text-neutral-500">No access tokens created yet</div>
-        <div v-else-if="accessTokens.length > 0" class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-neutral-100">
-                <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Name</th>
-                <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Status</th>
-                <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Resources</th>
-                <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Last Used</th>
-                <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Expires</th>
-                <th class="text-right py-2 text-xs font-medium text-neutral-500 uppercase">Actions</th>
+        <div v-else-if="accessTokens.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
+          <table class="min-w-full text-sm">
+            <thead class="bg-neutral-50">
+              <tr>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Name</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Resources</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Expires</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-for="token in accessTokens" :key="token.id" class="hover:bg-neutral-50">
-                <td class="py-2 pr-4 font-medium text-neutral-900">{{ token.name }}</td>
-                <td class="py-2 pr-4">
+                <td class="px-4 py-2.5 font-medium text-neutral-900">{{ token.name }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap">
                   <span v-if="token.revokedAt" class="px-1.5 py-0.5 text-xs rounded-sm bg-red-100 text-red-700">Revoked</span>
                   <span v-else-if="token.expiresAt && new Date(token.expiresAt) < new Date()" class="px-1.5 py-0.5 text-xs rounded-sm bg-yellow-100 text-yellow-700">Expired</span>
                   <span v-else class="px-1.5 py-0.5 text-xs rounded-sm bg-green-100 text-green-700">Active</span>
                 </td>
-                <td class="py-2 pr-4">
+                <td class="px-4 py-2.5">
                   <div class="flex flex-wrap gap-1">
                     <span v-for="resource in token.resources" :key="`${resource.resourceType}-${resource.resourceId}`"
                       class="px-1.5 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-sm">
@@ -201,9 +203,9 @@
                     <span v-if="!token.resources?.length" class="text-xs text-neutral-400 italic">None</span>
                   </div>
                 </td>
-                <td class="py-2 pr-4 text-neutral-500">{{ token.lastUsedAt ? formatDate(token.lastUsedAt) : '—' }}</td>
-                <td class="py-2 pr-4 text-neutral-500">{{ token.expiresAt ? formatDate(token.expiresAt) : '—' }}</td>
-                <td class="py-2 text-right space-x-2">
+                <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ token.lastUsedAt ? formatDate(token.lastUsedAt) : '—' }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ token.expiresAt ? formatDate(token.expiresAt) : '—' }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
                   <button v-if="!token.revokedAt" @click="handleRevokeToken(token.id)" class="text-xs text-red-600 hover:text-red-800">Revoke</button>
                   <button @click="handleDeleteToken(token.id)" class="text-xs text-neutral-500 hover:text-neutral-700">Delete</button>
                 </td>
@@ -242,7 +244,7 @@
     <!-- Secrets -->
     <section v-if="activeTab === 'secrets'">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-sm font-semibold text-neutral-900">Secrets</h2>
+        <h2 class="text-xl font-semibold text-neutral-900 mb-4">Secrets</h2>
         <button
           v-if="!isCreatingSecret"
           @click="isCreatingSecret = true"
@@ -315,31 +317,31 @@
       <div v-else-if="secrets.length === 0 && !isCreatingSecret" class="text-center py-6 text-sm text-neutral-500">
         No secrets configured
       </div>
-      <div v-else-if="secrets.length > 0" class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-neutral-100">
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Name</th>
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Description</th>
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Last Used</th>
-              <th class="text-left py-2 pr-4 text-xs font-medium text-neutral-500 uppercase">Updated</th>
-              <th class="text-right py-2 text-xs font-medium text-neutral-500 uppercase">Actions</th>
+      <div v-else-if="secrets.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
+        <table class="min-w-full text-sm">
+          <thead class="bg-neutral-50">
+            <tr>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Name</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Description</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
+              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Updated</th>
+              <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-neutral-100">
             <tr v-for="secret in secrets" :key="secret.name" class="hover:bg-neutral-50">
-              <td class="py-2 pr-4 font-medium text-neutral-900 font-mono">{{ secret.name }}</td>
-              <td class="py-2 pr-4 text-neutral-600">{{ secret.description || "—" }}</td>
-              <td class="py-2 pr-4 text-neutral-500">{{ secret.lastUsedAt ? formatDate(secret.lastUsedAt) : "—" }}</td>
-              <td class="py-2 pr-4 text-neutral-500">{{ formatDate(secret.updatedAt) }}</td>
-              <td class="py-2 text-right space-x-2">
+              <td class="px-4 py-2.5 font-medium text-neutral-900 font-mono">{{ secret.name }}</td>
+              <td class="px-4 py-2.5 text-neutral-600">{{ secret.description || "—" }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ secret.lastUsedAt ? formatDate(secret.lastUsedAt) : "—" }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(secret.updatedAt) }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
                 <button
                   @click="handleRevealSecret(secret.name)"
                   class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                 >
                   Reveal
                 </button>
-                <button @click="handleRotateSecret(secret.name)" class="text-xs text-neutral-600 hover:text-neutral-800">
+                <button @click="handleRotateSecret(secret.name)" class="text-xs text-neutral-500 hover:text-neutral-700">
                   Rotate
                 </button>
                 <button @click="handleDeleteSecret(secret.name)" class="text-xs text-red-600 hover:text-red-800">
@@ -422,18 +424,20 @@
 
     <!-- Extensions -->
     <section v-if="activeTab === 'extensions'">
-      <h2 class="text-sm font-semibold text-neutral-900 mb-4">Extensions</h2>
+      <h2 class="text-xl font-semibold text-neutral-900 mb-4">Extensions</h2>
+      <p class="text-sm text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
       <ExtensionSettings />
     </section>
 
     <!-- Jobs -->
     <section v-if="activeTab === 'jobs'">
+      <h2 class="text-xl font-semibold text-neutral-900 mb-4">Jobs</h2>
       <JobsSettings />
     </section>
 
     <!-- Archive -->
     <section v-if="activeTab === 'archive'">
-      <h2 class="text-sm font-semibold text-neutral-900 mb-4">Archived Documents</h2>
+      <h2 class="text-xl font-semibold text-neutral-900 mb-4">Archived Documents</h2>
       <ArchivedDocuments v-if="currentSpace" :space-id="currentSpace.id" :space-slug="currentSpace.slug" />
     </section>
 
@@ -487,7 +491,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
@@ -497,7 +501,6 @@ import SpaceMembers from "./SpaceMembers.vue";
 
 const tabs = [
   { id: "general", label: "General" },
-  { id: "members", label: "Members" },
   { id: "api", label: "API" },
   { id: "secrets", label: "Secrets" },
   { id: "extensions", label: "Extensions" },
@@ -506,7 +509,22 @@ const tabs = [
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
+const validTabIds = tabs.map((t) => t.id) as string[];
+
+function tabFromHash(): TabId {
+  const hash = window.location.hash.slice(1);
+  return validTabIds.includes(hash) ? (hash as TabId) : "general";
+}
+
 const activeTab = ref<TabId>("general");
+
+function handleHashChange() {
+  activeTab.value = tabFromHash();
+}
+
+function setTab(id: TabId) {
+  window.location.hash = id;
+}
 
 import { type AccessToken, api, type SpaceSecret } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
@@ -1028,9 +1046,15 @@ async function handleCopySelectedSecret() {
 }
 
 onMounted(() => {
+  activeTab.value = tabFromHash();
+  window.addEventListener("hashchange", handleHashChange);
   loadAccessTokens();
   loadSecrets();
   loadSecretAssignableUsers();
+});
+
+onUnmounted(() => {
+  window.removeEventListener("hashchange", handleHashChange);
 });
 
 watch(
