@@ -197,35 +197,36 @@ if (diffMins >= 1 && diffMins < 60) {
       )}>
         <div class={twMerge(
           "print:px-0 px-xs lg:px-xl min-h-7",
-          document.type === 'canvas' && 'pointer-events-auto'
+          document.type === 'canvas' && 'pointer-events-auto',
+          'flex justify-between items-center'
         )}>
-            {document.type === "workflow" ? (
-                <div id="workflow-breadcrumb-slot" />
-            ) : (
-                <Breadcrumbs
-                    spaceSlug={spaceSlug!}
-                    category={category}
-                    parents={parentBreadcrumbs}
-                    currentTitle={title}
-                />
-            )}
-        </div>
-
-        <div class={twMerge(
-          "flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xs",
-          document.type === 'canvas' && 'pointer-events-auto'
-        )}>
-          <div>
-            <div class="flex items-start justify-between">
-              <TitleEditor client:load initialEditMode={false} title={title} documentId={document.id} />
+            <div>
+                {document.type === "workflow" ? (
+                    <div id="workflow-breadcrumb-slot" />
+                ) : (
+                    <Breadcrumbs
+                        spaceSlug={spaceSlug!}
+                        category={category}
+                        parents={parentBreadcrumbs}
+                        currentTitle={title}
+                    />
+                )}
             </div>
 
             {document.updatedAt ? (
-                <div class="mt-4xs flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                <div class="flex flex-wrap items-center gap-2 text-sm text-neutral-500">
                     {updatedAtStr && <span>Updated {updatedAtStr}</span>}
                 </div>
             ) : null}
-          </div>
+        </div>
+
+        <div class={twMerge(
+          "flex gap-6 lg:gap-4 justify-between flex-row print:px-0 px-xs lg:px-xl mt-xs",
+          document.type === 'canvas' && 'pointer-events-auto'
+        )}>
+            <div class="flex items-start justify-between">
+              <TitleEditor client:load initialEditMode={false} title={title} documentId={document.id} />
+            </div>
 
           <DocumentActions client:only documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} headerImage={headerImage ?? undefined} />
         </div>
