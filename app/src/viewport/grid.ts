@@ -94,3 +94,56 @@ export function drawWorldGrid(
   }
   ctx.restore();
 }
+
+export interface DrawWorldDotsOptions {
+  // Distance between dots in world units.
+  size?: number;
+  color?: string;
+  // Dot radius in screen pixels (kept constant regardless of zoom).
+  radius?: number;
+  // Hide the dots while their spacing is too dense on screen.
+  minScreenSpacing?: number;
+}
+
+const DEFAULT_DOT_RADIUS = 1.2;
+
+// Draws a dot at each grid intersection. Mirrors drawWorldGrid's world→screen
+// placement so dots line up with where grid lines would cross.
+export function drawWorldDots(
+  ctx: CanvasRenderingContext2D,
+  transform: WorldTransform,
+  screen: ScreenSize,
+  options: DrawWorldDotsOptions = {},
+): void {
+  const size = options.size ?? DEFAULT_GRID_SIZE;
+  if (size <= 0) return;
+
+  const screenSpacing = size * transform.scale;
+  if (
+    options.minScreenSpacing !== undefined &&
+    screenSpacing < options.minScreenSpacing
+  ) {
+    return;
+  }
+
+  const bounds = visibleWorldBounds(screen, transform);
+  const startX = Math.floor(bounds.minX / size) * size;
+  const startY = Math.floor(bounds.minY / size) * size;
+  const endX = Math.ceil(bounds.maxX / size) * size;
+  const endY = Math.ceil(bounds.maxY / size) * size;
+  const radius = options.radius ?? DEFAULT_DOT_RADIUS;
+
+  ctx.save();
+  ctx.fillStyle = options.color ?? DEFAULT_GRID_COLOR;
+  ctx.beginPath();
+  for (let x = startX; x <= endX; x += size) {
+    const sx = worldToScreen(x, 0, transform).x;
+    for (let y = startY; y <= endY; y += size) {
+      const sy = worldToScreen(0, y, transform).y;
+      ctx.moveTo(sx + radius, sy);
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    }
+  }
+  ctx.fill();
+  ctx.restore();
+}

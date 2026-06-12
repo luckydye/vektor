@@ -102,7 +102,11 @@ export function useProperties() {
   ) {
     await updatePropertyMutation.mutateAsync({ documentId, name, value, type });
 
-    if (typeof window !== "undefined" && name.toLowerCase() === "layout") {
+    const lowerName = name.toLowerCase();
+    if (
+      typeof window !== "undefined" &&
+      (lowerName === "layout" || lowerName === "gridtype")
+    ) {
       window.dispatchEvent(
         new CustomEvent("document:property", {
           detail: { propertyName: name, value },

@@ -26,6 +26,7 @@ import {
   drawFreehandOutline,
   drawFreehandStroke,
   drawSnapGuides,
+  drawWorldDots,
   drawWorldGrid,
   type FitReference,
   type FreehandPoint,
@@ -251,6 +252,10 @@ const SNAP_PROXIMITY_PX = 320;
 const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
 const noteColor = ref<string>(NOTE_COLORS[0]);
+// Backdrop grid style, driven by the document's "gridtype" property. "grid"
+// draws ruled lines, "dots" a dot grid, and "clean" leaves the backdrop empty.
+type GridType = "grid" | "clean" | "dots";
+const gridType = ref<GridType>("dots");
 const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
 const saveError = ref<string | null>(null);
 const isDarkMode = ref(false);
@@ -819,6 +824,25 @@ function renderThemeChanged() {
   renderInk();
 }
 
+function applyGridType(value: unknown) {
+  const next: GridType =
+    value === "clean" || value === "dots" || value === "grid" ? value : "dots";
+  if (next === gridType.value) return;
+  gridType.value = next;
+  renderGrid();
+}
+
+// Live in-tab updates: useProperties dispatches this when the grid type changes
+// via the property chip, so the backdrop updates without waiting on a refetch.
+function handlePropertyEvent(event: Event) {
+  const detail = (event as CustomEvent).detail as
+    | { propertyName?: string; value?: unknown }
+    | undefined;
+  if (detail?.propertyName?.toLowerCase() === "gridtype") {
+    applyGridType(detail.value);
+  }
+}
+
 function defaultInkColor() {
   return canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
 }
@@ -844,6 +868,19 @@ function renderGrid() {
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, screen.value.width, screen.value.height);
+
+  if (gridType.value === "clean") return;
+
+  if (gridType.value === "dots") {
+    drawWorldDots(context, transform.value, screen.value, {
+      size: 40,
+      color: canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)"),
+      radius: 1.2,
+      minScreenSpacing: 8,
+    });
+    return;
+  }
+
   drawWorldGrid(context, transform.value, screen.value, {
     levels: [
       {
@@ -2215,6 +2252,12 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => documentData.value?.properties?.gridtype,
+  (value) => applyGridType(value),
+  { immediate: true },
+);
+
 watch(user, setupPresence);
 watch(
   [camera, screen],
@@ -2291,6 +2334,7 @@ onMounted(() => {
   window.addEventListener("copy", handleCopy);
   window.addEventListener("cut", handleCut);
   window.addEventListener("paste", handlePaste);
+  window.addEventListener("document:property", handlePropertyEvent);
 });
 
 onUnmounted(() => {
@@ -2311,6 +2355,7 @@ onUnmounted(() => {
   window.removeEventListener("copy", handleCopy);
   window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
+  window.removeEventListener("document:property", handlePropertyEvent);
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
   if (presenceTimer) clearInterval(presenceTimer);

@@ -2,6 +2,9 @@
 import { computed, ref } from "vue";
 import {
   calendarIcon,
+  gridCleanIcon,
+  gridDotsIcon,
+  gridGridIcon,
   layoutDocumentIcon,
   layoutFullIcon,
   peopleIcon,
@@ -30,7 +33,21 @@ const props = defineProps<{
 // Reserved/internal properties that are managed through dedicated UI
 // (title editor, layout/category chips, header image action) and must not
 // appear in the editable properties list.
-const HIDDEN_PROPERTY_KEYS = ["title", "category", "layout", "parentid", "headerimage"];
+const HIDDEN_PROPERTY_KEYS = [
+  "title",
+  "category",
+  "layout",
+  "gridtype",
+  "parentid",
+  "headerimage",
+];
+
+// Backdrop grid options for canvas documents, mirroring the layout picker.
+const GRID_TYPE_OPTIONS = [
+  { id: "grid", label: "Grid", icon: gridGridIcon },
+  { id: "clean", label: "Clean", icon: gridCleanIcon },
+  { id: "dots", label: "Dots", icon: gridDotsIcon },
+];
 
 const { categories } = useCategories();
 const { document } = useDocument(props.documentId);
@@ -46,6 +63,8 @@ const effectiveDocumentType = computed(
 );
 
 const isDocumentType = computed(() => effectiveDocumentType.value === "document");
+
+const isCanvasType = computed(() => effectiveDocumentType.value === "canvas");
 
 function requireDocumentId(): string {
   if (!props.documentId) {
@@ -116,6 +135,11 @@ const getPropertyLabel = (property: Property) => {
     return property.value === "full" ? "Full Width" : "Document";
   }
 
+  if (property.name?.toLowerCase() === "gridtype") {
+    const option = GRID_TYPE_OPTIONS.find((o) => o.id === property.value);
+    return option?.label ?? "Dots";
+  }
+
   if (property.type === "user" && property.value) {
     const member = members.value.find((m) => m.userId === property.value);
     if (member?.user) {
@@ -147,6 +171,9 @@ const getPropertyIcon = (property: Property) => {
   if (property.id?.toLowerCase() === "layout") {
     return property.value === "full" ? layoutFullIcon : layoutDocumentIcon;
   }
+  if (property.id?.toLowerCase() === "gridtype") {
+    return GRID_TYPE_OPTIONS.find((o) => o.id === property.value)?.icon ?? gridGridIcon;
+  }
   if (property.type === "user") {
     return peopleIcon;
   }
@@ -158,7 +185,11 @@ const getPropertyIcon = (property: Property) => {
 
 const getPropertyVariant = (property: Property): "default" | "special" => {
   const propertyName = property.name?.toLowerCase();
-  return propertyName === "category" || propertyName === "layout" ? "special" : "default";
+  return propertyName === "category" ||
+    propertyName === "layout" ||
+    propertyName === "gridtype"
+    ? "special"
+    : "default";
 };
 
 const getPropertyValues = async (property: Property) => {
@@ -174,6 +205,10 @@ const getPropertyValues = async (property: Property) => {
       { id: "document", label: "Document", icon: layoutDocumentIcon },
       { id: "full", label: "Full Width", icon: layoutFullIcon },
     ];
+  }
+
+  if (property.name?.toLowerCase() === "gridtype") {
+    return GRID_TYPE_OPTIONS.map((o) => ({ id: o.id, label: o.label, icon: o.icon }));
   }
 
   if (property.type === "user") {
@@ -216,6 +251,15 @@ const properties = computed((): Property[] => {
       name: "layout",
       type: "select",
       value: documentProperties.value.layout || "document",
+    } as Property);
+  }
+
+  if (isCanvasType.value) {
+    props_list.push({
+      id: "gridtype",
+      name: "gridtype",
+      type: "select",
+      value: documentProperties.value.gridtype || "dots",
     } as Property);
   }
 

@@ -20,8 +20,8 @@ export {
   filterFreehandPoints,
   simplifyFreehandPoints,
 } from "./freehand";
-export type { DrawWorldGridOptions, WorldGridLevel } from "./grid";
-export { drawWorldGrid } from "./grid";
+export type { DrawWorldDotsOptions, DrawWorldGridOptions, WorldGridLevel } from "./grid";
+export { drawWorldDots, drawWorldGrid } from "./grid";
 export type {
   Anchor,
   AnchorLayer,
