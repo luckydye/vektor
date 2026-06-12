@@ -42,7 +42,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
           <span v-if="category.icon" class="text-base">{{ category.icon }}</span>
           <span>{{ category.name }}</span>
         </a>
-        <span class="text-neutral-400 px-1">/</span>
+        <span class="text-neutral-400 px-1" aria-hidden="true">&rsaquo;</span>
       </li>
 
       <!-- Parent Documents -->
@@ -54,7 +54,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
         >
           {{ parent.title }}
         </a>
-        <span class="text-neutral-400 px-1">/</span>
+        <span class="text-neutral-400 px-1" aria-hidden="true">&rsaquo;</span>
       </li>
 
       <!-- Current Document -->

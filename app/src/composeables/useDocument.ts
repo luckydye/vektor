@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { computed, type Ref, ref } from "vue";
 import { api } from "../api/client.ts";
 import { realtimeTopics } from "../utils/realtime.ts";

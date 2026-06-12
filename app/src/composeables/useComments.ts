@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { computed, type Ref, ref } from "vue";
 import type { Comment } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";

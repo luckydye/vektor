@@ -5,7 +5,7 @@
       @blur="updateTitle" @keydown.enter="updateTitle" />
 
     <div v-else :data-document-id="documentId">
-        <h1 class="text-3xl font-bold text-neutral-900 flex items-center gap-3 cursor-text" @dblclick="startEditing">
+        <h1 class="text-3xl font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow" @dblclick="startEditing">
             {{ localTitle || 'Untitled Document' }}
             <div v-if="starred" class="svg-icon w-6 h-6 text-yellow-500" v-html="starFilledIcon" />
         </h1>

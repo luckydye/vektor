@@ -375,6 +375,7 @@ async function decodeFigmaKiwi(html: string): Promise<{
   allChanges: KiwiValue[];
   selected: KiwiValue[];
   selectedMap: Map<string, KiwiValue>;
+  blobs: Uint8Array[];
 } | null> {
   if (!html.includes("(figmeta)") || !html.includes("(figma)")) return null;
 
@@ -429,7 +430,219 @@ async function decodeFigmaKiwi(html: string): Promise<{
   });
   const selectedMap = new Map(selected.map((n) => [nodeGuidKey(n)!, n]));
 
-  return { meta, defs, allChanges, selected, selectedMap };
+  // Blob pool — each blob is a struct { bytes: byte[] }. VECTOR nodes index
+  // into this pool via vectorData.vectorNetworkBlob.
+  const rawBlobs = (msg.blobs as KiwiValue[] | undefined) ?? [];
+  const blobs = rawBlobs.map((b) =>
+    Uint8Array.from((b.bytes as number[] | undefined) ?? []),
+  );
+
+  return { meta, defs, allChanges, selected, selectedMap, blobs };
+}
+
+// ---------------------------------------------------------------------------
+// Vector network decoding (path geometry for VECTOR / shape nodes)
+// ---------------------------------------------------------------------------
+
+interface VNVertex {
+  x: number;
+  y: number;
+}
+interface VNSegment {
+  start: number;
+  tanStart: { x: number; y: number };
+  end: number;
+  tanEnd: { x: number; y: number };
+}
+interface VectorNetwork {
+  vertices: VNVertex[];
+  segments: VNSegment[];
+}
+
+/**
+ * Decodes a Figma vector-network blob.
+ *
+ * Layout (all little-endian, word = 4 bytes):
+ *   word 0   vertexCount  (uint32)
+ *   word 1   segmentCount (uint32)
+ *   word 2   regionCount  (uint32)
+ *   word 3   reserved
+ *   then vertexCount × 3 words:  x (f32), y (f32), styleId (uint32)
+ *   then segmentCount × 7 words: start (uint32), tanStart.x/y (f32),
+ *                                end (uint32), tanEnd.x/y (f32), flags
+ * The final word of the last segment may be truncated; reads past the end
+ * return 0 (tangents default to zero / straight lines).
+ */
+function decodeVectorNetwork(bytes: Uint8Array): VectorNetwork | null {
+  if (bytes.length < 16) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u32 = (w: number) =>
+    w * 4 + 4 <= bytes.length ? dv.getUint32(w * 4, true) : 0;
+  const f32 = (w: number) =>
+    w * 4 + 4 <= bytes.length ? dv.getFloat32(w * 4, true) : 0;
+
+  const vertexCount = u32(0);
+  const segmentCount = u32(1);
+  if (vertexCount <= 0 || vertexCount > 100000) return null;
+  if (segmentCount < 0 || segmentCount > 100000) return null;
+
+  let w = 4;
+  const vertices: VNVertex[] = [];
+  for (let i = 0; i < vertexCount; i++) {
+    vertices.push({ x: f32(w), y: f32(w + 1) });
+    w += 3;
+  }
+  const segments: VNSegment[] = [];
+  for (let i = 0; i < segmentCount; i++) {
+    segments.push({
+      start: u32(w),
+      tanStart: { x: f32(w + 1), y: f32(w + 2) },
+      end: u32(w + 3),
+      tanEnd: { x: f32(w + 4), y: f32(w + 5) },
+    });
+    w += 7;
+  }
+  return { vertices, segments };
+}
+
+/** Trace segments into ordered closed loops (handles multiple loops). */
+function traceLoops(vn: VectorNetwork): number[][] {
+  const { segments } = vn;
+  const usedFrom = new Set<number>(); // segment indices already consumed
+  // vertex -> list of { segIdx, to }
+  const adj = new Map<number, { segIdx: number; to: number }[]>();
+  segments.forEach((s, i) => {
+    if (!adj.has(s.start)) adj.set(s.start, []);
+    adj.get(s.start)!.push({ segIdx: i, to: s.end });
+  });
+
+  const loops: number[][] = [];
+  for (let i = 0; i < segments.length; i++) {
+    if (usedFrom.has(i)) continue;
+    const loop: number[] = [];
+    let segIdx: number | undefined = i;
+    const loopStart = segments[i].start;
+    while (segIdx !== undefined && !usedFrom.has(segIdx)) {
+      usedFrom.add(segIdx);
+      const seg: VNSegment = segments[segIdx];
+      loop.push(seg.start);
+      const next = (adj.get(seg.end) ?? []).find(
+        (e: { segIdx: number; to: number }) => !usedFrom.has(e.segIdx),
+      );
+      segIdx = seg.end === loopStart ? undefined : next?.segIdx;
+    }
+    if (loop.length >= 2) loops.push(loop);
+  }
+  return loops;
+}
+
+/**
+ * Builds an SVG path `d` string from a vector network, in the node's local
+ * coordinate space. Straight-line corners are rounded by `cornerRadius`
+ * (matching Figma's corner smoothing); segments with tangents are emitted as
+ * cubic béziers with no extra rounding.
+ */
+function vectorNetworkToPath(
+  vn: VectorNetwork,
+  cornerRadius: number,
+  fmt: (n: number) => string,
+): string {
+  const { vertices, segments } = vn;
+  const segByPair = new Map<string, VNSegment>();
+  for (const s of segments) {
+    segByPair.set(`${s.start}>${s.end}`, s);
+    segByPair.set(`${s.end}>${s.start}`, s);
+  }
+  const hasTangent = (s: VNSegment | undefined) =>
+    !!s &&
+    (s.tanStart.x !== 0 ||
+      s.tanStart.y !== 0 ||
+      s.tanEnd.x !== 0 ||
+      s.tanEnd.y !== 0);
+
+  const loops = traceLoops(vn);
+  if (loops.length === 0) return "";
+
+  const parts: string[] = [];
+  for (const loop of loops) {
+    const n = loop.length;
+    if (n < 2) continue;
+    const pts = loop.map((vi) => vertices[vi]);
+
+    // If any segment in this loop carries tangents, emit exact béziers/lines.
+    const anyCurve = loop.some((vi, i) => {
+      const a = loop[i];
+      const b = loop[(i + 1) % n];
+      return hasTangent(segByPair.get(`${a}>${b}`));
+    });
+
+    if (anyCurve || cornerRadius <= 0) {
+      let d = `M${fmt(pts[0].x)} ${fmt(pts[0].y)}`;
+      for (let i = 0; i < n; i++) {
+        const aIdx = loop[i];
+        const bIdx = loop[(i + 1) % n];
+        const a = vertices[aIdx];
+        const b = vertices[bIdx];
+        const seg = segByPair.get(`${aIdx}>${bIdx}`);
+        if (hasTangent(seg)) {
+          // Tangents are relative to their vertices; orient to travel a→b.
+          const forward = seg!.start === aIdx;
+          const ts = forward ? seg!.tanStart : seg!.tanEnd;
+          const te = forward ? seg!.tanEnd : seg!.tanStart;
+          const c1x = a.x + ts.x;
+          const c1y = a.y + ts.y;
+          const c2x = b.x + te.x;
+          const c2y = b.y + te.y;
+          d += `C${fmt(c1x)} ${fmt(c1y)} ${fmt(c2x)} ${fmt(c2y)} ${fmt(b.x)} ${fmt(b.y)}`;
+        } else {
+          d += `L${fmt(b.x)} ${fmt(b.y)}`;
+        }
+      }
+      parts.push(d + "Z");
+      continue;
+    }
+
+    // All-straight loop → rounded polygon.
+    const corners = pts.map((v, i) => {
+      const prev = pts[(i - 1 + n) % n];
+      const next = pts[(i + 1) % n];
+      const inDx = v.x - prev.x;
+      const inDy = v.y - prev.y;
+      const outDx = next.x - v.x;
+      const outDy = next.y - v.y;
+      const inLen = Math.hypot(inDx, inDy) || 1;
+      const outLen = Math.hypot(outDx, outDy) || 1;
+      const ax = -inDx / inLen;
+      const ay = -inDy / inLen;
+      const bx = outDx / outLen;
+      const by = outDy / outLen;
+      let cosA = ax * bx + ay * by;
+      cosA = Math.max(-1, Math.min(1, cosA));
+      const ang = Math.acos(cosA);
+      const half = ang / 2;
+      let dist = half > 1e-4 ? cornerRadius / Math.tan(half) : 0;
+      dist = Math.min(dist, inLen / 2, outLen / 2);
+      const rEff = dist * Math.tan(half);
+      const cross = inDx * outDy - inDy * outDx;
+      return {
+        t1: { x: v.x + ax * dist, y: v.y + ay * dist },
+        t2: { x: v.x + bx * dist, y: v.y + by * dist },
+        rEff,
+        sweep: cross < 0 ? 1 : 0,
+      };
+    });
+    let d = `M${fmt(corners[0].t1.x)} ${fmt(corners[0].t1.y)}`;
+    for (let i = 0; i < n; i++) {
+      const c = corners[i];
+      const nx = corners[(i + 1) % n];
+      if (c.rEff > 0.01) {
+        d += `A${fmt(c.rEff)} ${fmt(c.rEff)} 0 0 ${c.sweep} ${fmt(c.t2.x)} ${fmt(c.t2.y)}`;
+      }
+      d += `L${fmt(nx.t1.x)} ${fmt(nx.t1.y)}`;
+    }
+    parts.push(d + "Z");
+  }
+  return parts.join(" ");
 }
 
 // ---------------------------------------------------------------------------
@@ -513,7 +726,7 @@ export async function figmaClipboardToSVG(html: string): Promise<string | null> 
   const decoded = await decodeFigmaKiwi(html);
   if (!decoded) return null;
 
-  const { defs, allChanges, selected } = decoded;
+  const { defs, allChanges, selected, blobs } = decoded;
 
   // Build parent → sorted-children from ALL changes (not just selected).
   // Selected nodes are only the roots of what was copied; their descendants
@@ -689,9 +902,31 @@ export async function figmaClipboardToSVG(html: string): Promise<string | null> 
         return childSVG
           ? `<g transform="${transform}"${opacityAttr}>${childSVG}</g>`
           : "";
-      default:
+      default: {
         // VECTOR, LINE, BOOLEAN_OPERATION, STAR, REGULAR_POLYGON, etc.
-        // Path data lives in a separate blob pool; approximate with a rect.
+        // Real path geometry lives in the blob pool, referenced by
+        // vectorData.vectorNetworkBlob. Decode it into an SVG path.
+        const vectorData = n.vectorData as KiwiValue | undefined;
+        const blobIdx = vectorData?.vectorNetworkBlob as number | undefined;
+        if (
+          (fill || (stroke && strokeW > 0)) &&
+          blobIdx !== undefined &&
+          blobs[blobIdx]
+        ) {
+          const vn = decodeVectorNetwork(blobs[blobIdx]);
+          const d = vn
+            ? vectorNetworkToPath(vn, (n.cornerRadius as number) || 0, f)
+            : "";
+          if (d) {
+            return (
+              `<g transform="${transform}"${opacityAttr}>` +
+              `<path d="${d}" ${fillAttr}${strokeAttr}/>` +
+              childSVG +
+              `</g>`
+            );
+          }
+        }
+        // Fallback: approximate with the bounding rect.
         if (fill || (stroke && strokeW > 0)) {
           return (
             `<g transform="${transform}"${opacityAttr}>` +
@@ -703,6 +938,7 @@ export async function figmaClipboardToSVG(html: string): Promise<string | null> 
         return childSVG
           ? `<g transform="${transform}">${childSVG}</g>`
           : "";
+      }
     }
   }
 

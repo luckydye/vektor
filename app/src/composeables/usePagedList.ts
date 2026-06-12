@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/vue-query";
+import { useQuery } from "./query.ts";
 import {
   type ComputedRef,
   computed,

@@ -261,3 +261,7 @@
   @apply disabled:opacity-50 disabled:cursor-not-allowed;
   @apply button-with-icon;
 }
+
+@utility text-shadow {
+  text-shadow: 2px 2px 0px var(--color-neutral-50);
+}

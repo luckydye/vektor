@@ -1,5 +1,5 @@
-import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import type { App } from "vue";
+import { QueryClient, QueryPlugin } from "./composeables/query.ts";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -11,5 +11,5 @@ const queryClient = new QueryClient({
 });
 
 export default (app: App) => {
-  app.use(VueQueryPlugin, { queryClient });
+  app.use(QueryPlugin, { queryClient });
 };

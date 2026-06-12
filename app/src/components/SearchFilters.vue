@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useQuery } from "@tanstack/vue-query";
+import { useQuery } from "../composeables/query.ts";
 import { ref } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { api, type PropertyFilter } from "../api/client.ts";

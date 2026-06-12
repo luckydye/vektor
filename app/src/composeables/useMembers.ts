@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/vue-query";
+import { useQuery } from "./query.ts";
 import { computed } from "vue";
 import { api } from "../api/client.ts";
 import { useSpace } from "./useSpace.ts";

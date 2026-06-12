@@ -614,7 +614,7 @@ function syncStrokesFromY() {
 }
 
 function defaultColor(type: CanvasShapeType) {
-  if (type === "image") return "#ffffff";
+  if (type === "image") return "transparent";
   if (type === "video") return "#000000";
   if (type === "section") return "rgba(255, 255, 255, 0.02)";
   if (type === "text") return "#ffffff";
@@ -2506,7 +2506,7 @@ onUnmounted(() => {
             ...(shape.type === 'text'
               ? {}
               : { width: `${shape.width}px`, height: `${shape.height}px` }),
-            background: shape.color,
+            ...(shape.type === 'image' ? {} : { background: shape.color }),
           }"
           :ref="(el) => trackTextShapeSize(el, shape)"
         >
@@ -3083,7 +3083,12 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.canvas-shape.image,
+.canvas-shape.image {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .canvas-shape.video {
   border-color: transparent;
   background: var(--canvas-image-bg);
@@ -3092,6 +3097,10 @@ onUnmounted(() => {
 .canvas-shape.image .canvas-shape-image,
 .canvas-shape.video .canvas-shape-image {
   cursor: move;
+}
+
+.canvas-shape.image .canvas-shape-image {
+  background: transparent;
 }
 
 .canvas-shape.section {

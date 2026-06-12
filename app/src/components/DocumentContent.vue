@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useQuery } from "@tanstack/vue-query";
+import { useQuery } from "../composeables/query.ts";
 import { applyPatch, parsePatch } from "diff";
 import {
   computed,

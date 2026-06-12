@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/vue-query";
+import { useQuery } from "./query.ts";
 import { computed, type Ref } from "vue";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";

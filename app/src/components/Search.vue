@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useInfiniteQuery } from "@tanstack/vue-query";
+import { useInfiniteQuery } from "../composeables/query.ts";
 import { computed, onMounted, ref } from "vue";
 import {
   chevronDownThinIcon,
