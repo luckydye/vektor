@@ -45,7 +45,7 @@ const DEFAULT_FEATURES: Record<string, Feature[]> = {
     Feature.VIEW_AUDIT,
     Feature.MANAGE_EXTENSIONS,
   ],
-  editor: [Feature.COMMENT, Feature.VIEW_HISTORY, Feature.VIEW_AUDIT],
+  editor: [Feature.COMMENT, Feature.VIEW_HISTORY],
   viewer: [],
 };
 

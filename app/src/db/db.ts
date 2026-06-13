@@ -8,11 +8,30 @@ import * as schema from "./schema.ts";
 const DATA_DIR = "./data";
 const AUTH_DB_PATH = join(DATA_DIR, "auth.db");
 
+type DrizzleDb = ReturnType<typeof drizzle>;
+
+// When running in-memory, pin singletons on globalThis so the compiled Astro
+// SSR bundle (which inlines its own copy of this module) shares the same
+// instances rather than creating isolated duplicates.
+declare global {
+  // biome-ignore lint/style/noVar: globalThis augmentation requires var
+  var __vektor_auth_db: DrizzleDb | undefined;
+  // biome-ignore lint/style/noVar: globalThis augmentation requires var
+  var __vektor_space_db_cache: Map<string, DrizzleDb> | undefined;
+  // biome-ignore lint/style/noVar: globalThis augmentation requires var
+  var __vektor_space_db_preparation: Map<string, Promise<void>> | undefined;
+}
+
 function createAuthDb() {
   if (isInMemoryDb()) {
-    return drizzle({
-      connection: { source: ":memory:", create: true, readwrite: true },
-    });
+    if (!globalThis.__vektor_auth_db) {
+      const db = drizzle({
+        connection: { source: ":memory:", create: true, readwrite: true },
+      });
+      prepateAuthDb(db);
+      globalThis.__vektor_auth_db = db;
+    }
+    return globalThis.__vektor_auth_db;
   }
 
   if (!existsSync(DATA_DIR)) {
@@ -29,14 +48,31 @@ function createAuthDb() {
 }
 
 const authDb = createAuthDb();
-prepateAuthDb(authDb);
+if (!isInMemoryDb()) prepateAuthDb(authDb);
 
 export function getAuthDb() {
   return authDb;
 }
 
-const spaceDbCache = new Map<string, ReturnType<typeof drizzle>>();
-const spaceDbPreparation = new Map<string, Promise<void>>();
+const spaceDbCache: Map<string, DrizzleDb> = (() => {
+  if (isInMemoryDb()) {
+    if (!globalThis.__vektor_space_db_cache) {
+      globalThis.__vektor_space_db_cache = new Map();
+    }
+    return globalThis.__vektor_space_db_cache;
+  }
+  return new Map();
+})();
+
+const spaceDbPreparation: Map<string, Promise<void>> = (() => {
+  if (isInMemoryDb()) {
+    if (!globalThis.__vektor_space_db_preparation) {
+      globalThis.__vektor_space_db_preparation = new Map();
+    }
+    return globalThis.__vektor_space_db_preparation;
+  }
+  return new Map();
+})();
 
 export async function getSpaceDb(spaceId: string) {
   const cached = spaceDbCache.get(spaceId);

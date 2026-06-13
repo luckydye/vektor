@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createJobToken } from "../src/jobs/jobToken.ts";
 
+process.env.AUTH_SECRET ??= "job-token-test-secret-do-not-use-in-production";
+
 const PORT = 7481;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 

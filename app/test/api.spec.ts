@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createJobToken } from "../src/jobs/jobToken.ts";
 import { LOCAL_USER, LOCAL_USER_ID } from "../src/noAuth.ts";
 
+process.env.AUTH_SECRET ??= "api-test-secret-do-not-use-in-production";
+
 const PORT = 7482;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
@@ -35,6 +37,7 @@ beforeAll(async () => {
       VEKTOR_NO_AUTH: "1",
       VEKTOR_IN_MEMORY_DB: "1",
       VEKTOR_API_ONLY: "1",
+      AUTH_SECRET: process.env.AUTH_SECRET ?? "api-test-secret-do-not-use-in-production",
       HOST: "127.0.0.1",
       NODE_ENV: "test",
       WIKI_OTEL_ENABLED: "0",

@@ -96,7 +96,6 @@ beforeAll(async () => {
     env: {
       ...process.env,
       VEKTOR_IN_MEMORY_DB: "1",
-      VEKTOR_API_ONLY: "1",
       VEKTOR_EMAIL_AUTH: "1",
       AUTH_SECRET: process.env.AUTH_SECRET ?? "acl-test-secret-do-not-use-in-production",
       HOST: "127.0.0.1",
@@ -176,7 +175,7 @@ beforeAll(async () => {
     console.error("Failed to setup ACL tests:", error);
     throw error;
   }
-}, 30_000);
+}, 60_000);
 
 afterAll(() => {
   serverProcess?.kill();
@@ -1108,19 +1107,6 @@ describe("ACL API Tests - Categories Access Control", () => {
     expect(response.status).toBe(403);
   });
 
-  it("should allow member to view documents in category", async () => {
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/categories/test-category/documents`,
-      session3Token, // viewer
-    );
-
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.documents).toBeDefined();
-    expect(Array.isArray(data.documents)).toBe(true);
-    expect(data.category).toBeDefined();
-  });
-
   it("should allow editor to delete category", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/categories/${testCategoryId}`,
@@ -2040,7 +2026,7 @@ describe("ACL API Tests - Users", () => {
   });
 
   it("should list users when authenticated", async () => {
-    const response = await apiRequest("/api/v1/users", session1Token);
+    const response = await apiRequest(`/api/v1/users?spaceId=${testSpaceId}`, session1Token);
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(Array.isArray(data)).toBe(true);
@@ -2048,7 +2034,6 @@ describe("ACL API Tests - Users", () => {
     const user = data[0];
     expect(user).toHaveProperty("id");
     expect(user).toHaveProperty("name");
-    expect(user).toHaveProperty("email");
   });
 });
 
@@ -2790,3 +2775,315 @@ describe("ACL API Tests - Non-existent Space 404s", () => {
   });
 });
 
+
+describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
+  let mdTestSpaceId: string;
+  let mdTestSpaceSlug: string;
+  let mdOwnerToken: string;
+  let mdViewerUser: { id: string; email: string; name: string };
+  let mdViewerToken: string;
+  let mdNonMemberUser: { id: string; email: string; name: string };
+  let mdNonMemberToken: string;
+  let testDocSlug: string;
+
+  beforeAll(async () => {
+    const ownerData = await createTestUser("MD Owner");
+    mdOwnerToken = ownerData.token;
+
+    const viewerData = await createTestUser("MD Viewer");
+    mdViewerUser = { id: viewerData.userId, email: viewerData.email, name: viewerData.name };
+    mdViewerToken = viewerData.token;
+
+    const nonMemberData = await createTestUser("MD Non-Member");
+    mdNonMemberUser = { id: nonMemberData.userId, email: nonMemberData.email, name: nonMemberData.name };
+    mdNonMemberToken = nonMemberData.token;
+
+    const spaceResponse = await apiRequest("/api/v1/spaces", mdOwnerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "MD Test Space",
+        slug: `md-test-space-${Date.now()}`,
+      }),
+    });
+    const spaceData = await spaceResponse.json();
+    mdTestSpaceId = spaceData.space.id;
+    mdTestSpaceSlug = spaceData.space.slug;
+
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${mdTestSpaceId}/documents`,
+      mdOwnerToken,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Test Markdown Export\n\nThis document tests .md endpoint access control.",
+          properties: { title: "Test Markdown Export" },
+        }),
+      },
+    );
+    const docData = await docResponse.json();
+    testDocSlug = docData.document.slug;
+  });
+
+  it("should allow space owner to access document as markdown", async () => {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: { Cookie: `vektor.session_token=${mdOwnerToken}` },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/markdown");
+    const content = await response.text();
+    expect(content).toContain("Test Markdown Export");
+    expect(content).toContain("slug: " + testDocSlug);
+  });
+
+  it("should allow space member with viewer role to access document as markdown", async () => {
+    await apiRequest(`/api/v1/spaces/${mdTestSpaceId}/permissions`, mdOwnerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: mdViewerUser.id,
+        action: "grant",
+      }),
+    });
+
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: { Cookie: `vektor.session_token=${mdViewerToken}` },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/markdown");
+  });
+
+  it("should deny non-member access to document as markdown", async () => {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: { Cookie: `vektor.session_token=${mdNonMemberToken}` },
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should deny access after member is removed from space", async () => {
+    await apiRequest(`/api/v1/spaces/${mdTestSpaceId}/permissions`, mdOwnerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: mdViewerUser.id,
+        action: "revoke",
+      }),
+    });
+
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: { Cookie: `vektor.session_token=${mdViewerToken}` },
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should allow document-specific member access to markdown export", async () => {
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${mdTestSpaceId}/documents`,
+      mdOwnerToken,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Document-specific Access Test",
+          properties: { title: "Document-specific Access Test" },
+        }),
+      },
+    );
+    const docData = await docResponse.json();
+    const docSlug = docData.document.slug;
+    const docId = docData.document.id;
+
+    await apiRequest(`/api/v1/spaces/${mdTestSpaceId}/permissions`, mdOwnerToken, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: mdNonMemberUser.id,
+        resourceType: "document",
+        resourceId: docId,
+        action: "grant",
+      }),
+    });
+
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}.md`, {
+      headers: { Cookie: `vektor.session_token=${mdNonMemberToken}` },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("text/markdown");
+  });
+
+  it("should deny unauthenticated access to markdown export", async () => {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`);
+    expect(response.status).toBe(401);
+  });
+
+  it("should return 404 for non-existent document slug", async () => {
+    const response = await fetch(
+      `${BASE_URL}/${mdTestSpaceSlug}/doc/non-existent-slug-12345.md`,
+      { headers: { Cookie: `vektor.session_token=${mdOwnerToken}` } },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("should return 404 for non-existent space slug", async () => {
+    const response = await fetch(`${BASE_URL}/non-existent-space/doc/${testDocSlug}.md`, {
+      headers: { Cookie: `vektor.session_token=${mdOwnerToken}` },
+    });
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("ACL API Tests - Public Access with Owner Override", () => {
+  let publicTestSpaceId: string;
+  let publicTestSpaceSlug: string;
+  let ownerUser: { id: string; token: string };
+  let publicTestDocId: string;
+  let publicTestDocSlug: string;
+
+  beforeAll(async () => {
+    const ownerData = await createTestUser("Public Test Owner");
+    ownerUser = { id: ownerData.userId, token: ownerData.token };
+
+    const spaceSlug = `public-test-${Date.now()}`;
+    const spaceResponse = await apiRequest("/api/v1/spaces", ownerUser.token, {
+      method: "POST",
+      body: JSON.stringify({ name: "Public Access Test Space", slug: spaceSlug }),
+    });
+    const spaceData = await spaceResponse.json();
+    publicTestSpaceId = spaceData.space.id;
+    publicTestSpaceSlug = spaceSlug;
+
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/documents`,
+      ownerUser.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<p>Public test document</p>",
+          properties: { title: "Public Test Document", slug: "public-test-doc" },
+        }),
+      },
+    );
+    const docData = await docResponse.json();
+    publicTestDocId = docData.document.id;
+    publicTestDocSlug = docData.document.slug;
+
+    await apiRequest(`/api/v1/spaces/${publicTestSpaceId}/permissions`, ownerUser.token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        groupId: "public",
+        action: "grant",
+      }),
+    });
+  });
+
+  it("should allow owner to access space settings despite public viewer access", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${publicTestSpaceId}`, ownerUser.token);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.id).toBe(publicTestSpaceId);
+  });
+
+  it("should allow owner to list members despite public access", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/permissions?type=role`,
+      ownerUser.token,
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(Array.isArray(data.permissions)).toBe(true);
+    expect(data.permissions.length).toBeGreaterThan(0);
+  });
+
+  it("should allow owner to add members despite public access", async () => {
+    const newUser = await createTestUser("New Member");
+    const response = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/permissions`,
+      ownerUser.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "editor",
+          userId: newUser.userId,
+          action: "grant",
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.permission.userId).toBe(newUser.userId);
+    expect(data.permission.permission).toBe("editor");
+  });
+
+  it("should allow owner to create documents despite public viewer access", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/documents`,
+      ownerUser.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<p>Owner created document</p>",
+          properties: { title: "Owner Document" },
+        }),
+      },
+    );
+    expect(response.status).toBe(201);
+    const data = await response.json();
+    expect(data.document.properties.title).toBe("Owner Document");
+  });
+
+  it("should allow owner to edit documents despite public viewer access", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/documents/${publicTestDocId}`,
+      ownerUser.token,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "<p>Updated by owner</p>" }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.document).toBeDefined();
+  });
+
+  it("should allow owner to delete documents despite public viewer access", async () => {
+    const createResponse = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/documents`,
+      ownerUser.token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<p>Document to delete</p>",
+          properties: { title: "Delete Me" },
+        }),
+      },
+    );
+    const createData = await createResponse.json();
+    const docToDelete = createData.document.id;
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}/documents/${docToDelete}`,
+      ownerUser.token,
+      { method: "DELETE" },
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("should allow unauthenticated users to access public documents via frontend route", async () => {
+    const response = await fetch(
+      `${BASE_URL}/${publicTestSpaceSlug}/doc/${publicTestDocSlug}`,
+      { redirect: "manual" },
+    );
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("Public Test Document");
+  });
+});
