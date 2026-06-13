@@ -1,9 +1,23 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
 
-const DATA_DIR = "./data";
-const BASE_URL = "http://127.0.0.1:4321";
+const PORT = 7484;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+let serverProcess: ReturnType<typeof Bun.spawn>;
+
+async function waitForServer(timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
+      if (res.status < 500) return;
+    } catch {
+      // not ready yet
+    }
+    await Bun.sleep(100);
+  }
+  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
+}
 
 let testUser1: { id: string; email: string; name: string };
 let testUser2: { id: string; email: string; name: string };
@@ -42,7 +56,7 @@ async function createTestUser(name: string) {
   const cookies = response.headers.get("set-cookie");
   let sessionCookie = "";
   if (cookies) {
-    const match = cookies.match(/better-auth\.session_token=([^;]+)/);
+    const match = cookies.match(/vektor\.session_token=([^;]+)/);
     if (match) {
       sessionCookie = match[1];
     }
@@ -67,7 +81,7 @@ async function apiRequest(
 ): Promise<Response> {
   const headers = new Headers(options.headers);
   if (sessionToken) {
-    headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
+    headers.set("Cookie", `vektor.session_token=${sessionToken}`);
   }
   headers.set("Content-Type", "application/json");
 
@@ -78,6 +92,23 @@ async function apiRequest(
 }
 
 beforeAll(async () => {
+  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+    env: {
+      ...process.env,
+      VEKTOR_IN_MEMORY_DB: "1",
+      VEKTOR_API_ONLY: "1",
+      VEKTOR_EMAIL_AUTH: "1",
+      AUTH_SECRET: process.env.AUTH_SECRET ?? "acl-test-secret-do-not-use-in-production",
+      HOST: "127.0.0.1",
+      NODE_ENV: "test",
+      WIKI_OTEL_ENABLED: "0",
+    },
+    stdout: "ignore",
+    stderr: "ignore",
+    cwd: import.meta.dir + "/..",
+  });
+  await waitForServer();
+
   try {
     // Create three test users
     const user1Data = await createTestUser("Test User 1");
@@ -145,16 +176,10 @@ beforeAll(async () => {
     console.error("Failed to setup ACL tests:", error);
     throw error;
   }
-});
+}, 30_000);
 
-afterAll(async () => {
-  if (testSpaceId && existsSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`))) {
-    rmSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`), { force: true });
-  }
-  if (featuresTestSpaceId && existsSync(join(DATA_DIR, "spaces", `${featuresTestSpaceId}.db`))) {
-    rmSync(join(DATA_DIR, "spaces", `${featuresTestSpaceId}.db`), { force: true });
-  }
-  console.log("ACL test cleanup complete");
+afterAll(() => {
+  serverProcess?.kill();
 });
 
 beforeAll(async () => {
@@ -1653,16 +1678,10 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
     testDocSlug = docData.document.slug;
   });
 
-  afterAll(async () => {
-    if (mdTestSpaceId && existsSync(join(DATA_DIR, "spaces", `${mdTestSpaceId}.db`))) {
-      rmSync(join(DATA_DIR, "spaces", `${mdTestSpaceId}.db`), { force: true });
-    }
-  });
-
   it("should allow space owner to access document as markdown", async () => {
     const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
       headers: {
-        Cookie: `better-auth.session_token=${mdOwnerToken}`,
+        Cookie: `vektor.session_token=${mdOwnerToken}`,
       },
     });
 
@@ -1687,7 +1706,7 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
 
     const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
       headers: {
-        Cookie: `better-auth.session_token=${mdViewerToken}`,
+        Cookie: `vektor.session_token=${mdViewerToken}`,
       },
     });
 
@@ -1698,7 +1717,7 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   it("should deny non-member access to document as markdown", async () => {
     const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
       headers: {
-        Cookie: `better-auth.session_token=${mdNonMemberToken}`,
+        Cookie: `vektor.session_token=${mdNonMemberToken}`,
       },
     });
 
@@ -1719,7 +1738,7 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
 
     const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
       headers: {
-        Cookie: `better-auth.session_token=${mdViewerToken}`,
+        Cookie: `vektor.session_token=${mdViewerToken}`,
       },
     });
 
@@ -1762,7 +1781,7 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
     // Non-member should be able to access markdown export with document-level permission
     const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}.md`, {
       headers: {
-        Cookie: `better-auth.session_token=${mdNonMemberToken}`,
+        Cookie: `vektor.session_token=${mdNonMemberToken}`,
       },
     });
 
@@ -1781,7 +1800,7 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       `${BASE_URL}/${mdTestSpaceSlug}/doc/non-existent-slug-12345.md`,
       {
         headers: {
-          Cookie: `better-auth.session_token=${mdOwnerToken}`,
+          Cookie: `vektor.session_token=${mdOwnerToken}`,
         },
       },
     );
@@ -1792,7 +1811,7 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   it("should return 404 for non-existent space slug", async () => {
     const response = await fetch(`${BASE_URL}/non-existent-space/doc/${testDocSlug}.md`, {
       headers: {
-        Cookie: `better-auth.session_token=${mdOwnerToken}`,
+        Cookie: `vektor.session_token=${mdOwnerToken}`,
       },
     });
 

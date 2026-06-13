@@ -137,13 +137,9 @@ describe("in-memory server — spaces", () => {
     expect(spaces[0].id).toBe(spaceId);
   });
 
-  it("returns null for a non-existent space (no-auth bypasses existence check)", async () => {
-    // In no-auth mode verifySpaceRole short-circuits before the existence check,
-    // so the response is 200 with a null body rather than 404.
+  it("returns 404 for a non-existent space", async () => {
     const res = await api("/api/v1/spaces/space_doesnotexist");
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toBeNull();
+    expect(res.status).toBe(404);
   });
 });
 

@@ -80,7 +80,7 @@ export const auth = betterAuth({
   // Throttle abuse (credential stuffing, enumeration) with stricter limits on
   // the sensitive auth endpoints.
   rateLimit: {
-    enabled: true,
+    enabled: appConfig.NODE_ENV !== "test",
     window: 60,
     max: 100,
     customRules: {

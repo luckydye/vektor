@@ -46,7 +46,7 @@ async function createTestUser(name: string) {
   const cookies = response.headers.get("set-cookie");
   let sessionCookie = "";
   if (cookies) {
-    const match = cookies.match(/better-auth\.session_token=([^;]+)/);
+    const match = cookies.match(/vektor\.session_token=([^;]+)/);
     if (match) {
       sessionCookie = match[1];
     }
@@ -96,7 +96,7 @@ async function apiRequest(
 ): Promise<Response> {
   const headers = new Headers(options.headers);
   if (sessionToken) {
-    headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
+    headers.set("Cookie", `vektor.session_token=${sessionToken}`);
   }
   headers.set("Content-Type", "application/json");
 
@@ -109,7 +109,7 @@ async function apiRequest(
 async function pageRequest(path: string, sessionToken: string): Promise<Response> {
   const headers = new Headers();
   if (sessionToken) {
-    headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
+    headers.set("Cookie", `vektor.session_token=${sessionToken}`);
   }
 
   return fetch(`${BASE_URL}${path}`, {
