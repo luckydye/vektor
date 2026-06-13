@@ -1,13 +1,9 @@
-import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 
-const DATA_DIR = "./data";
-const AUTH_DB_PATH = join(DATA_DIR, "auth.db");
-const BASE_URL = "http://127.0.0.1:4321";
+const PORT = 7479;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 const SNAPSHOT_DIR = join(__dirname, "snapshots");
 const SNAPSHOT_FILE = join(SNAPSHOT_DIR, "performance-baseline.json");
 
@@ -20,8 +16,7 @@ const PERFORMANCE_THRESHOLDS = {
   auditLogQuery: { max: 300, warningPercent: 25 },
 };
 
-let testUser: { id: string; email: string; name: string };
-let sessionToken: string;
+let serverProcess: ReturnType<typeof Bun.spawn>;
 let testSpaceId: string;
 const documentIds: string[] = [];
 
@@ -191,55 +186,22 @@ function compareWithBaseline(baseline: BenchmarkResult | null) {
   return { hasRegression, hasWarning };
 }
 
-async function createTestUser() {
-  const testEmail = `perf-test-${Date.now()}@example.com`;
-  const testPassword = "TestPassword123!";
-
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: testEmail,
-      password: testPassword,
-      name: "Performance Test User",
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const token = data.token;
-
-  const cookies = response.headers.get("set-cookie");
-  let sessionCookie = "";
-  if (cookies) {
-    const match = cookies.match(/better-auth\.session_token=([^;]+)/);
-    if (match) {
-      sessionCookie = match[1];
+async function waitForServer(timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
+      if (res.status < 500) return;
+    } catch {
+      // not ready yet
     }
+    await Bun.sleep(100);
   }
-
-  if (!sessionCookie) {
-    sessionCookie = `${token}.${Buffer.from(token).toString("base64")}`;
-  }
-
-  return {
-    userId: data.user.id,
-    token: sessionCookie,
-    email: testEmail,
-    name: data.user.name,
-  };
+  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
 }
 
 async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  if (sessionToken) {
-    headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
-  }
   headers.set("Content-Type", "application/json");
 
   return fetch(`${BASE_URL}${path}`, {
@@ -249,11 +211,22 @@ async function apiRequest(path: string, options: RequestInit = {}): Promise<Resp
 }
 
 beforeAll(async () => {
-  const { userId, token, email, name } = await createTestUser();
-  testUser = { id: userId, email, name };
-  sessionToken = token;
+  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+    env: {
+      ...process.env,
+      VEKTOR_NO_AUTH: "1",
+      VEKTOR_IN_MEMORY_DB: "1",
+      VEKTOR_API_ONLY: "1",
+      HOST: "127.0.0.1",
+      NODE_ENV: "test",
+      WIKI_OTEL_ENABLED: "0",
+    },
+    stdout: "ignore",
+    stderr: "ignore",
+    cwd: import.meta.dir + "/..",
+  });
 
-  console.log("Performance test user created:", testUser.email);
+  await waitForServer();
 
   const spaceResponse = await apiRequest("/api/v1/spaces", {
     method: "POST",
@@ -273,23 +246,8 @@ beforeAll(async () => {
   console.log("Performance test space created:", testSpaceId);
 });
 
-afterAll(async () => {
-  if (testSpaceId && existsSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`))) {
-    rmSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`), { force: true });
-  }
-
-  if (testUser?.id && existsSync(AUTH_DB_PATH)) {
-    const authSqlite = new Database(AUTH_DB_PATH);
-    const authDb = drizzle({ client: authSqlite });
-
-    await authDb.run(sql`DELETE FROM account WHERE user_id = ${testUser.id}`);
-    await authDb.run(sql`DELETE FROM session WHERE user_id = ${testUser.id}`);
-    await authDb.run(sql`DELETE FROM user WHERE id = ${testUser.id}`);
-
-    authSqlite.close();
-
-    console.log("Performance test user cleaned up");
-  }
+afterAll(() => {
+  serverProcess?.kill();
 });
 
 describe.if(import.meta.env.TEST_PERF)(
@@ -328,7 +286,7 @@ describe.if(import.meta.env.TEST_PERF)(
                 category: categories[i % categories.length],
                 status: statuses[i % statuses.length],
                 tags: tags.slice(0, (i % tags.length) + 1).join(","),
-                author: testUser.name,
+                author: "Performance Test User",
                 priority: String((i % 5) + 1),
                 version: "1.0.0",
               },

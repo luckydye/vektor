@@ -1,68 +1,29 @@
-import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
+import { LOCAL_USER_ID } from "../src/noAuth.ts";
 
-const DATA_DIR = "./data";
-const AUTH_DB_PATH = join(DATA_DIR, "auth.db");
-const BASE_URL = "http://127.0.0.1:4321";
+const PORT = 7480;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-let testUser: { id: string; email: string; name: string };
-let sessionToken: string;
+let serverProcess: ReturnType<typeof Bun.spawn>;
 let testSpaceId: string;
 let readonlyTestDocId: string;
 
-async function createTestUser() {
-  const testEmail = `test-readonly-${Date.now()}@example.com`;
-  const testPassword = "TestPassword123!";
-
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: testEmail,
-      password: testPassword,
-      name: "Readonly Test User",
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const token = data.token;
-
-  const cookies = response.headers.get("set-cookie");
-  let sessionCookie = "";
-  if (cookies) {
-    const match = cookies.match(/better-auth\.session_token=([^;]+)/);
-    if (match) {
-      sessionCookie = match[1];
+async function waitForServer(timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
+      if (res.status < 500) return;
+    } catch {
+      // not ready yet
     }
+    await Bun.sleep(100);
   }
-
-  if (!sessionCookie) {
-    sessionCookie = `${token}.${Buffer.from(token).toString("base64")}`;
-  }
-
-  return {
-    userId: data.user.id,
-    token: sessionCookie,
-    email: testEmail,
-    name: data.user.name,
-  };
+  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
 }
 
 async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  if (sessionToken) {
-    headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
-  }
   headers.set("Content-Type", "application/json");
 
   return fetch(`${BASE_URL}${path}`, {
@@ -73,16 +34,29 @@ async function apiRequest(path: string, options: RequestInit = {}): Promise<Resp
 
 beforeAll(async () => {
   try {
-    const { userId, token, email, name } = await createTestUser();
-    testUser = { id: userId, email, name };
-    sessionToken = token;
+    serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+      env: {
+        ...process.env,
+        VEKTOR_NO_AUTH: "1",
+        VEKTOR_IN_MEMORY_DB: "1",
+        VEKTOR_API_ONLY: "1",
+        HOST: "127.0.0.1",
+        NODE_ENV: "test",
+        WIKI_OTEL_ENABLED: "0",
+      },
+      stdout: "ignore",
+      stderr: "ignore",
+      cwd: import.meta.dir + "/..",
+    });
+
+    await waitForServer();
 
     // Create test space
     const spaceResponse = await apiRequest("/api/v1/spaces", {
       method: "POST",
       body: JSON.stringify({
         name: "Readonly Test Space",
-        slug: `readonly-test-space-${Date.now()}`,
+        slug: "readonly-test-space",
       }),
     });
 
@@ -114,32 +88,12 @@ beforeAll(async () => {
     readonlyTestDocId = docData.document.id;
   } catch (error) {
     console.error("Setup failed:", error);
-    console.error("Make sure the dev server is running on http://127.0.0.1:4321");
     throw error;
   }
 });
 
-afterAll(async () => {
-  try {
-    if (testSpaceId) {
-      await apiRequest(`/api/v1/spaces/${testSpaceId}`, {
-        method: "DELETE",
-      });
-    }
-
-    if (existsSync(AUTH_DB_PATH)) {
-      const authSqlite = new Database(AUTH_DB_PATH);
-      const authDb = drizzle({ client: authSqlite });
-
-      if (testUser?.email) {
-        await authDb.run(sql.raw(`DELETE FROM user WHERE email = '${testUser.email}'`));
-      }
-
-      authSqlite.close();
-    }
-  } catch (error) {
-    console.error("Cleanup failed:", error);
-  }
+afterAll(() => {
+  serverProcess?.kill();
 });
 
 describe("API Tests - Readonly Documents", () => {
@@ -243,7 +197,7 @@ describe("API Tests - Readonly Documents", () => {
     const lockLog = auditData.auditLogs.find((log: any) => log.event === "lock");
 
     expect(lockLog).toBeDefined();
-    expect(lockLog.userId).toBe(testUser.id);
+    expect(lockLog.userId).toBe(LOCAL_USER_ID);
     expect(lockLog.details.message).toContain("readonly");
   });
 
@@ -277,7 +231,7 @@ describe("API Tests - Readonly Documents", () => {
     const unlockLog = auditData.auditLogs.find((log: any) => log.event === "unlock");
 
     expect(unlockLog).toBeDefined();
-    expect(unlockLog.userId).toBe(testUser.id);
+    expect(unlockLog.userId).toBe(LOCAL_USER_ID);
     expect(unlockLog.details.message).toContain("readonly");
   });
 

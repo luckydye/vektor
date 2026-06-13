@@ -1,39 +1,29 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createJobToken } from "../src/jobs/jobToken.ts";
 
-const BASE_URL = process.env.VEKTOR_TEST_URL ?? "http://127.0.0.1:4321";
+const PORT = 7481;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-let sessionToken: string;
+let serverProcess: ReturnType<typeof Bun.spawn>;
 let testSpaceId: string;
 let testDocumentId: string;
 
-async function createTestUser() {
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: `test-jobtoken-${Date.now()}-${Math.random()}@example.com`,
-      password: "TestPassword123!",
-      name: "Job Token Tester",
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
+async function waitForServer(timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
+      if (res.status < 500) return;
+    } catch {
+      // not ready yet
+    }
+    await Bun.sleep(100);
   }
-  const data = await response.json();
-  const cookies = response.headers.get("set-cookie");
-  const match = cookies?.match(/better-auth\.session_token=([^;]+)/);
-  return match
-    ? match[1]!
-    : `${data.token}.${Buffer.from(data.token).toString("base64")}`;
+  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
 }
 
-async function sessionRequest(
-  path: string,
-  options: RequestInit = {},
-): Promise<Response> {
+async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
   headers.set("Content-Type", "application/json");
   return fetch(`${BASE_URL}${path}`, { ...options, headers });
 }
@@ -50,20 +40,40 @@ function jobRequest(
 }
 
 beforeAll(async () => {
-  sessionToken = await createTestUser();
-  const spaceResponse = await sessionRequest("/api/v1/spaces", {
+  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+    env: {
+      ...process.env,
+      VEKTOR_NO_AUTH: "1",
+      VEKTOR_IN_MEMORY_DB: "1",
+      VEKTOR_API_ONLY: "1",
+      HOST: "127.0.0.1",
+      NODE_ENV: "test",
+      WIKI_OTEL_ENABLED: "0",
+    },
+    stdout: "ignore",
+    stderr: "ignore",
+    cwd: import.meta.dir + "/..",
+  });
+
+  await waitForServer();
+
+  const spaceResponse = await apiRequest("/api/v1/spaces", {
     method: "POST",
-    body: JSON.stringify({ name: "Job Token Space", slug: `job-token-${Date.now()}` }),
+    body: JSON.stringify({ name: "Job Token Space", slug: "job-token" }),
   });
   expect(spaceResponse.status).toBe(201);
   testSpaceId = (await spaceResponse.json()).space.id;
 
-  const docResponse = await sessionRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+  const docResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
     method: "POST",
     body: JSON.stringify({ content: "<p>secret</p>", properties: { title: "Secret" } }),
   });
   expect(docResponse.status).toBe(201);
   testDocumentId = (await docResponse.json()).document.id;
+});
+
+afterAll(() => {
+  serverProcess?.kill();
 });
 
 describe("X-Job-Token validation on document routes", () => {
@@ -82,7 +92,7 @@ describe("X-Job-Token validation on document routes", () => {
     expect(response.status).toBe(401);
 
     // Content must be unchanged.
-    const read = await sessionRequest(docPath());
+    const read = await apiRequest(docPath());
     expect((await read.json()).document.content).toBe("<p>secret</p>");
   });
 

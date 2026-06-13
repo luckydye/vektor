@@ -13,6 +13,8 @@ let session2Token: string;
 let session3Token: string;
 let testSpaceId: string;
 let testDocumentId: string;
+let featuresTestSpaceId: string;
+let featuresTestDocumentId: string;
 
 async function createTestUser(name: string) {
   const testEmail = `test-acl-${Date.now()}-${Math.random()}@example.com`;
@@ -149,7 +151,69 @@ afterAll(async () => {
   if (testSpaceId && existsSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`))) {
     rmSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`), { force: true });
   }
+  if (featuresTestSpaceId && existsSync(join(DATA_DIR, "spaces", `${featuresTestSpaceId}.db`))) {
+    rmSync(join(DATA_DIR, "spaces", `${featuresTestSpaceId}.db`), { force: true });
+  }
   console.log("ACL test cleanup complete");
+});
+
+beforeAll(async () => {
+  try {
+    const uniqueSlug = `features-test-space-${Date.now()}`;
+    const spaceResponse = await apiRequest("/api/v1/spaces", session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Features Test Space",
+        slug: uniqueSlug,
+      }),
+    });
+
+    if (!spaceResponse.ok) {
+      const errorText = await spaceResponse.text();
+      throw new Error(`Failed to create features space (${spaceResponse.status}): ${errorText}`);
+    }
+
+    const spaceData = await spaceResponse.json();
+    featuresTestSpaceId = spaceData.space.id;
+
+    await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: testUser2.id,
+        action: "grant",
+      }),
+    });
+
+    await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: testUser3.id,
+        action: "grant",
+      }),
+    });
+
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Features Test Document\n\nThis is a test document for feature permissions.",
+          properties: { title: "Features Test Document" },
+        }),
+      },
+    );
+
+    const docData = await docResponse.json();
+    featuresTestDocumentId = docData.document.id;
+  } catch (error) {
+    console.error("Failed to setup feature permissions tests:", error);
+    throw error;
+  }
 });
 
 describe("ACL API Tests - Space Members", () => {
@@ -1929,3 +1993,625 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
     expect(html).toContain("Public Test Document");
   });
 });
+
+describe("ACL API Tests - Unauthenticated Access", () => {
+  it("should return 401 for unauthenticated access to audit logs", async () => {
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}/audit-logs`,
+      { headers: { "Content-Type": "application/json" } },
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("should return 401 for unauthenticated access to contributors", async () => {
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}/contributors`,
+      { headers: { "Content-Type": "application/json" } },
+    );
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("ACL API Tests - Users", () => {
+  it("should return 401 for unauthenticated request to list users", async () => {
+    const response = await fetch(`${BASE_URL}/api/v1/users`, {
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("should list users when authenticated", async () => {
+    const response = await apiRequest("/api/v1/users", session1Token);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThan(0);
+    const user = data[0];
+    expect(user).toHaveProperty("id");
+    expect(user).toHaveProperty("name");
+    expect(user).toHaveProperty("email");
+  });
+});
+
+describe("Permissions API - Get Current User Permissions", () => {
+  it("should return all features and owner role for owner", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions/me`,
+      session1Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+
+    expect(data.role).toBe("owner");
+    expect(data.features).toBeDefined();
+    expect(data.features.comment).toBe(true);
+    expect(data.features.view_history).toBe(true);
+    expect(data.features.view_audit).toBe(true);
+    expect(data.features.manage_extensions).toBe(true);
+  });
+
+  it("should return default editor features for editor", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions/me`,
+      session2Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+
+    expect(data.role).toBe("editor");
+    expect(data.features).toBeDefined();
+    expect(data.features.comment).toBe(true);
+    expect(data.features.view_history).toBe(true);
+    expect(data.features.view_audit).toBe(false);
+    expect(data.features.manage_extensions).toBe(false);
+  });
+
+  it("should return viewer role and no features by default", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions/me`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+
+    expect(data.role).toBe("viewer");
+    expect(data.features).toBeDefined();
+    expect(data.features.comment).toBe(false);
+    expect(data.features.view_history).toBe(false);
+    expect(data.features.view_audit).toBe(false);
+    expect(data.features.manage_extensions).toBe(false);
+  });
+});
+
+describe("Permissions API - Comments Feature", () => {
+  it("should allow owner to create comments", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "Owner comment test",
+          reference: "120",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.comment).toBeDefined();
+    expect(data.comment.content).toBe("Owner comment test");
+  });
+
+  it("should allow editor to create comments", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      session2Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "Editor comment test",
+          reference: "240",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.comment).toBeDefined();
+    expect(data.comment.content).toBe("Editor comment test");
+  });
+
+  it("should deny viewer from creating comments by default", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      session3Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "Viewer comment test - should fail",
+          reference: "360",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+
+  it("should allow viewer to read comments", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.comments).toBeDefined();
+    expect(Array.isArray(data.comments)).toBe(true);
+  });
+
+  it("should require reference for top-level comments", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "Missing reference",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("Reference is required");
+  });
+});
+
+describe("Permissions API - Document History Feature", () => {
+  it("should allow owner to view document history", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/revisions`,
+      session1Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.revisions).toBeDefined();
+  });
+
+  it("should allow editor to view document history", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/revisions`,
+      session2Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.revisions).toBeDefined();
+  });
+
+  it("should deny viewer from viewing document history by default", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/revisions`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+});
+
+describe("Permissions API - Audit Logs Feature", () => {
+  it("should allow owner to view space audit logs", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs`,
+      session1Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.auditLogs).toBeDefined();
+  });
+
+  it("should allow owner to view document audit logs", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      session1Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.auditLogs).toBeDefined();
+  });
+
+  it("should deny editor from viewing space audit logs by default", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs`,
+      session2Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+
+  it("should deny editor from viewing document audit logs by default", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      session2Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+
+  it("should deny viewer from viewing space audit logs", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/audit-logs`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+
+  it("should deny viewer from viewing document audit logs", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+});
+
+describe("Permissions API - Unified Permissions Management", () => {
+  it("should allow owner to list all permissions", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.permissions).toBeDefined();
+    expect(Array.isArray(data.permissions)).toBe(true);
+  });
+
+  it("should allow owner to list only role permissions", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions?type=role`,
+      session1Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.permissions).toBeDefined();
+    const rolePerms = data.permissions.filter((p: any) => p.type === "role");
+    expect(rolePerms.length).toBeGreaterThan(0);
+  });
+
+  it("should allow owner to list only feature permissions", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions?type=feature`,
+      session1Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.permissions).toBeDefined();
+  });
+
+  it("should deny editor from listing permissions", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session2Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+
+  it("should deny viewer from listing permissions", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+});
+
+describe("Permissions API - Grant/Deny/Revoke Features", () => {
+  it("should allow owner to grant feature to user", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          roleOrFeature: "comment",
+          userId: testUser3.id,
+          action: "grant",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.permission).toBeDefined();
+    expect(data.permission.userId).toBe(testUser3.id);
+    expect(data.permission.resourceId).toBe("comment");
+  });
+
+  it("should allow viewer to comment after feature grant", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/comments`,
+      session3Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "Viewer comment after grant",
+          reference: "480",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.comment.content).toBe("Viewer comment after grant");
+  });
+
+  it("should reflect granted feature in user permissions", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions/me`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.features.comment).toBe(true);
+  });
+
+  it("should allow owner to deny feature from user", async () => {
+    await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "feature",
+        roleOrFeature: "view_history",
+        userId: testUser2.id,
+        action: "deny",
+      }),
+    });
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/revisions`,
+      session2Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+  });
+
+  it("should allow owner to revoke feature (revert to default)", async () => {
+    const revokeResponse = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          roleOrFeature: "view_history",
+          userId: testUser2.id,
+          action: "revoke",
+        }),
+      },
+    );
+
+    expect(revokeResponse.ok).toBe(true);
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/revisions`,
+      session2Token,
+    );
+
+    expect(response.ok).toBe(true);
+  });
+
+  it("should reject invalid feature name", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          roleOrFeature: "invalid_feature",
+          userId: testUser3.id,
+          action: "grant",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject invalid action", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          roleOrFeature: "comment",
+          userId: testUser3.id,
+          action: "invalid_action",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(400);
+  });
+
+  it("should reject request without userId or groupId", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          roleOrFeature: "comment",
+          action: "grant",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("Permissions API - Grant/Deny/Revoke Roles", () => {
+  it("should allow owner to grant role to user via permissions endpoint", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "editor",
+          userId: testUser3.id,
+          action: "grant",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.permission).toBeDefined();
+  });
+
+  it("should allow owner to revoke role via permissions endpoint", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "role",
+          roleOrFeature: "editor",
+          userId: testUser3.id,
+          action: "revoke",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+  });
+});
+
+describe("Permissions API - Group-based Permissions", () => {
+  it("should allow owner to grant feature to group", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          roleOrFeature: "view_audit",
+          groupId: "public",
+          action: "grant",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.permission).toBeDefined();
+    expect(data.permission.groupId).toBe("public");
+  });
+
+  it("should allow owner to revoke group feature", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          type: "feature",
+          roleOrFeature: "view_audit",
+          groupId: "public",
+          action: "revoke",
+        }),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+  });
+});
+
+describe("Permissions API - Edge Cases", () => {
+  it("should handle user with both user-specific and group-based feature grants", async () => {
+    await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "feature",
+        roleOrFeature: "view_history",
+        groupId: "public",
+        action: "grant",
+      }),
+    });
+
+    await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "feature",
+        roleOrFeature: "view_history",
+        userId: testUser3.id,
+        action: "deny",
+      }),
+    });
+
+    const response = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/revisions`,
+      session3Token,
+    );
+
+    expect(response.ok).toBe(false);
+    expect(response.status).toBe(403);
+
+    await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "feature",
+        roleOrFeature: "view_history",
+        userId: testUser3.id,
+        action: "revoke",
+      }),
+    });
+    await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "feature",
+        roleOrFeature: "view_history",
+        groupId: "public",
+        action: "revoke",
+      }),
+    });
+  });
+});
+

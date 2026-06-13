@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as Y from "yjs";
 import {
   WsMsgType,
@@ -8,36 +8,28 @@ import {
   wsEncodeYjsUpdate,
 } from "../src/utils/realtime.ts";
 
-const BASE_URL = process.env.VEKTOR_TEST_URL ?? "http://127.0.0.1:4321";
+const PORT = 7477;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-let sessionToken: string;
+let serverProcess: ReturnType<typeof Bun.spawn>;
 let testSpaceId: string;
 
-async function createTestUser() {
-  const testEmail = `test-edit-${Date.now()}-${Math.random()}@example.com`;
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: testEmail,
-      password: "TestPassword123!",
-      name: "Edit Tester",
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
+async function waitForServer(timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
+      if (res.status < 500) return;
+    } catch {
+      // not ready yet
+    }
+    await Bun.sleep(100);
   }
-  const data = await response.json();
-  const cookies = response.headers.get("set-cookie");
-  const match = cookies?.match(/better-auth\.session_token=([^;]+)/);
-  return match
-    ? match[1]!
-    : `${data.token}.${Buffer.from(data.token).toString("base64")}`;
+  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
 }
 
 async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
   headers.set("Content-Type", "application/json");
   return fetch(`${BASE_URL}${path}`, { ...options, headers });
 }
@@ -76,13 +68,33 @@ async function editDocument(
 }
 
 beforeAll(async () => {
-  sessionToken = await createTestUser();
+  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+    env: {
+      ...process.env,
+      VEKTOR_NO_AUTH: "1",
+      VEKTOR_IN_MEMORY_DB: "1",
+      VEKTOR_API_ONLY: "1",
+      HOST: "127.0.0.1",
+      NODE_ENV: "test",
+      WIKI_OTEL_ENABLED: "0",
+    },
+    stdout: "ignore",
+    stderr: "ignore",
+    cwd: import.meta.dir + "/..",
+  });
+
+  await waitForServer();
+
   const response = await apiRequest("/api/v1/spaces", {
     method: "POST",
-    body: JSON.stringify({ name: "Edit Test Space", slug: `edit-test-${Date.now()}` }),
+    body: JSON.stringify({ name: "Edit Test Space", slug: "edit-test" }),
   });
   expect(response.status).toBe(201);
   testSpaceId = (await response.json()).space.id;
+});
+
+afterAll(() => {
+  serverProcess?.kill();
 });
 
 describe("Document edit operations", () => {
@@ -183,9 +195,7 @@ describe("Document edit operations", () => {
   it("applies edits through a live Yjs room and broadcasts to clients", async () => {
     const documentId = await createDocument("<h1>Title</h1>\n<p>one</p>\n<p>two</p>");
 
-    const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`, {
-      headers: { Cookie: `better-auth.session_token=${sessionToken}` },
-    });
+    const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`);
     ws.binaryType = "arraybuffer";
 
     const frames: { type: number; payload: Uint8Array }[] = [];
@@ -325,9 +335,7 @@ describe("Document edit operations", () => {
       "canvas",
     );
 
-    const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`, {
-      headers: { Cookie: `better-auth.session_token=${sessionToken}` },
-    });
+    const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`);
     ws.binaryType = "arraybuffer";
     const received: Uint8Array[] = [];
     const presenceFrames: Uint8Array[] = [];

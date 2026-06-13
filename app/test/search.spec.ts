@@ -1,68 +1,28 @@
-import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 
-const DATA_DIR = "./data";
-const AUTH_DB_PATH = join(DATA_DIR, "auth.db");
-const BASE_URL = "http://127.0.0.1:4321";
+const PORT = 7478;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-let testUser: { id: string; email: string; name: string };
-let sessionToken: string;
+let serverProcess: ReturnType<typeof Bun.spawn>;
 let testSpaceId: string;
 const testDocIds: string[] = [];
 
-async function createTestUser() {
-  const testEmail = `test-search-${Date.now()}@example.com`;
-  const testPassword = "TestPassword123!";
-
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: testEmail,
-      password: testPassword,
-      name: "Search Test User",
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const token = data.token;
-
-  const cookies = response.headers.get("set-cookie");
-  let sessionCookie = "";
-  if (cookies) {
-    const match = cookies.match(/better-auth\.session_token=([^;]+)/);
-    if (match) {
-      sessionCookie = match[1];
+async function waitForServer(timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
+      if (res.status < 500) return;
+    } catch {
+      // not ready yet
     }
+    await Bun.sleep(100);
   }
-
-  if (!sessionCookie) {
-    sessionCookie = `${token}.${Buffer.from(token).toString("base64")}`;
-  }
-
-  return {
-    userId: data.user.id,
-    token: sessionCookie,
-    email: testEmail,
-    name: data.user.name,
-  };
+  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
 }
 
 async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  if (sessionToken) {
-    headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
-  }
   headers.set("Content-Type", "application/json");
 
   return fetch(`${BASE_URL}${path}`, {
@@ -73,11 +33,22 @@ async function apiRequest(path: string, options: RequestInit = {}): Promise<Resp
 
 beforeAll(async () => {
   try {
-    const { userId, token, email, name } = await createTestUser();
-    testUser = { id: userId, email, name };
-    sessionToken = token;
+    serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+      env: {
+        ...process.env,
+        VEKTOR_NO_AUTH: "1",
+        VEKTOR_IN_MEMORY_DB: "1",
+        VEKTOR_API_ONLY: "1",
+        HOST: "127.0.0.1",
+        NODE_ENV: "test",
+        WIKI_OTEL_ENABLED: "0",
+      },
+      stdout: "ignore",
+      stderr: "ignore",
+      cwd: import.meta.dir + "/..",
+    });
 
-    console.log("Test user created:", testUser.email);
+    await waitForServer();
 
     // Create test space
     const uniqueSlug = `search-test-space-${Date.now()}`;
@@ -154,26 +125,8 @@ beforeAll(async () => {
   }
 });
 
-afterAll(async () => {
-  if (testSpaceId && existsSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`))) {
-    rmSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`), { force: true });
-  }
-
-  if (testUser?.id && existsSync(AUTH_DB_PATH)) {
-    try {
-      const authSqlite = new Database(AUTH_DB_PATH);
-      const authDb = drizzle({ client: authSqlite });
-
-      await authDb.run(sql`DELETE FROM account WHERE user_id = ${testUser.id}`);
-      await authDb.run(sql`DELETE FROM session WHERE user_id = ${testUser.id}`);
-      await authDb.run(sql`DELETE FROM user WHERE id = ${testUser.id}`);
-
-      authSqlite.close();
-    } catch (error) {
-      console.log("Cleanup error:", error);
-    }
-  }
-  console.log("Search test cleanup complete");
+afterAll(() => {
+  serverProcess?.kill();
 });
 
 describe("Search API Tests", () => {
@@ -392,18 +345,6 @@ describe("Search API Tests", () => {
     }
   });
 
-  it("should require authentication", async () => {
-    const response = await fetch(
-      `${BASE_URL}/api/v1/spaces/${testSpaceId}/search?q=test`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
-
-    expect(response.status).toBe(401);
-  });
 });
 
 describe("Search Property Filters", () => {

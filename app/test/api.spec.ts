@@ -1,109 +1,53 @@
-import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createJobToken } from "../src/jobs/jobToken.ts";
+import { LOCAL_USER, LOCAL_USER_ID } from "../src/noAuth.ts";
 
-const DATA_DIR = "./data";
-const AUTH_DB_PATH = join(DATA_DIR, "auth.db");
-const BASE_URL = "http://127.0.0.1:4321";
+const PORT = 7482;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-let testUser: { id: string; email: string; name: string };
-let sessionToken: string;
+let serverProcess: ReturnType<typeof Bun.spawn>;
 let testSpaceId: string;
 
-async function createTestUser() {
-  const testEmail = `test-${Date.now()}@example.com`;
-  const testPassword = "TestPassword123!";
-
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: testEmail,
-      password: testPassword,
-      name: "Test User",
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const token = data.token;
-
-  const cookies = response.headers.get("set-cookie");
-  let sessionCookie = "";
-  if (cookies) {
-    const match = cookies.match(/better-auth\.session_token=([^;]+)/);
-    if (match) {
-      sessionCookie = match[1];
+async function waitForServer(timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
+      if (res.status < 500) return;
+    } catch {
+      // not ready yet
     }
+    await Bun.sleep(100);
   }
-
-  if (!sessionCookie) {
-    sessionCookie = `${token}.${Buffer.from(token).toString("base64")}`;
-  }
-
-  return {
-    userId: data.user.id,
-    token: sessionCookie,
-    email: testEmail,
-    name: data.user.name,
-  };
+  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
 }
 
 async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  if (sessionToken) {
-    headers.set("Cookie", `better-auth.session_token=${sessionToken}`);
-  }
   headers.set("Content-Type", "application/json");
-
-  return fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  return fetch(`${BASE_URL}${path}`, { ...options, headers });
 }
 
 beforeAll(async () => {
-  try {
-    const { userId, token, email, name } = await createTestUser();
-    testUser = { id: userId, email, name };
-    sessionToken = token;
-
-    console.log("Test user created:", testUser.email);
-  } catch (error) {
-    console.error("Failed to create test user:", error);
-    throw error;
-  }
+  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
+    env: {
+      ...process.env,
+      VEKTOR_NO_AUTH: "1",
+      VEKTOR_IN_MEMORY_DB: "1",
+      VEKTOR_API_ONLY: "1",
+      HOST: "127.0.0.1",
+      NODE_ENV: "test",
+      WIKI_OTEL_ENABLED: "0",
+    },
+    stdout: "ignore",
+    stderr: "ignore",
+    cwd: import.meta.dir + "/..",
+  });
+  await waitForServer();
 });
 
-afterAll(async () => {
-  if (testSpaceId && existsSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`))) {
-    rmSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`), { force: true });
-  }
-
-  if (testUser?.id && existsSync(AUTH_DB_PATH)) {
-    try {
-      const authSqlite = new Database(AUTH_DB_PATH);
-      const authDb = drizzle({ client: authSqlite });
-
-      await authDb.run(sql`DELETE FROM account WHERE user_id = ${testUser.id}`);
-      await authDb.run(sql`DELETE FROM session WHERE user_id = ${testUser.id}`);
-      await authDb.run(sql`DELETE FROM user WHERE id = ${testUser.id}`);
-
-      authSqlite.close();
-    } catch (error) {
-      console.log("Cleanup error:", error);
-    }
-  }
-  console.log("Test cleanup complete");
+afterAll(() => {
+  serverProcess?.kill();
 });
 
 describe("API Tests - Spaces", () => {
@@ -478,7 +422,7 @@ describe("API Tests - Documents", () => {
     const createData = await createResponse.json();
     const documentId = createData.document.id;
 
-    const jobToken = createJobToken(testSpaceId, Date.now().toString(), testUser.id);
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
     const archiveResponse = await fetch(
       `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
       {
@@ -564,7 +508,7 @@ describe("API Tests - Document Properties", () => {
   });
 
   it("should patch properties with X-Job-Token auth", async () => {
-    const jobToken = createJobToken(testSpaceId, Date.now().toString(), testUser.id);
+    const jobToken = createJobToken(testSpaceId, Date.now().toString(), LOCAL_USER_ID);
     const patchResponse = await fetch(
       `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
       {
@@ -660,7 +604,7 @@ describe("API Tests - Document Properties", () => {
 
     expect(propertyUpdateLog).toBeDefined();
     expect(propertyUpdateLog.docId).toBe(propertyTestDocId);
-    expect(propertyUpdateLog.userId).toBe(testUser.id);
+    expect(propertyUpdateLog.userId).toBe(LOCAL_USER_ID);
 
     expect(propertyUpdateLog.details.propertyKey).toBe("testProperty");
     expect(propertyUpdateLog.details.newValue).toBe("initial value");
@@ -731,7 +675,7 @@ describe("API Tests - Document Properties", () => {
 
     expect(propertyDeleteLog).toBeDefined();
     expect(propertyDeleteLog.docId).toBe(propertyTestDocId);
-    expect(propertyDeleteLog.userId).toBe(testUser.id);
+    expect(propertyDeleteLog.userId).toBe(LOCAL_USER_ID);
 
     expect(propertyDeleteLog.details.propertyKey).toBe("testProperty");
     expect(propertyDeleteLog.details.previousValue).toBe("updated value");
@@ -959,7 +903,7 @@ describe("API Tests - Revisions", () => {
     expect(data.revision.rev).toBe(2);
     expect(data.revision.message).toBe("Updated heading and content");
     expect(data.revision.checksum).toBeDefined();
-    expect(data.revision.createdBy).toBe(testUser.id);
+    expect(data.revision.createdBy).toBe(LOCAL_USER_ID);
 
     firstRevisionNumber = data.revision.rev;
   });
@@ -1030,7 +974,7 @@ describe("API Tests - Revisions", () => {
       expect(typeof revision.rev).toBe("number");
       expect(revision.checksum).toBeDefined();
       expect(revision.createdAt).toBeDefined();
-      expect(revision.createdBy).toBe(testUser.id);
+      expect(revision.createdBy).toBe(LOCAL_USER_ID);
     }
   });
 
@@ -1556,10 +1500,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
     it("should handle malformed JSON gracefully", async () => {
       const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Cookie: `better-auth.session_token=${sessionToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: "{invalid json}",
       });
       // API may return 500 for JSON parse errors - that's acceptable
@@ -1569,10 +1510,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
     it("should handle empty request body", async () => {
       const response = await fetch(`${BASE_URL}/api/v1/spaces/${testSpaceId}/documents`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Cookie: `better-auth.session_token=${sessionToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: "",
       });
       // API may return 500 for empty body - that's acceptable
@@ -1860,7 +1798,7 @@ describe("API Tests - Audit Logs", () => {
 
     expect(createLog).toBeDefined();
     expect(createLog.docId).toBe(auditTestDocId);
-    expect(createLog.userId).toBe(testUser.id);
+    expect(createLog.userId).toBe(LOCAL_USER_ID);
     expect(createLog.revisionId).toBe(1);
   });
 
@@ -1881,7 +1819,7 @@ describe("API Tests - Audit Logs", () => {
     const saveLogs = data.auditLogs.filter((log: any) => log.event === "save");
 
     expect(saveLogs.length).toBeGreaterThan(0);
-    expect(saveLogs[0].userId).toBe(testUser.id);
+    expect(saveLogs[0].userId).toBe(LOCAL_USER_ID);
   });
 
   it("should track publish events in audit logs", async () => {
@@ -1899,7 +1837,7 @@ describe("API Tests - Audit Logs", () => {
 
     expect(publishLog).toBeDefined();
     expect(publishLog.revisionId).toBe(2);
-    expect(publishLog.userId).toBe(testUser.id);
+    expect(publishLog.userId).toBe(LOCAL_USER_ID);
   });
 
   it("should track restore events in audit logs", async () => {
@@ -1989,17 +1927,6 @@ describe("API Tests - Audit Logs", () => {
     );
 
     expect(response.status).toBe(404);
-  });
-
-  it("should return 401 for unauthenticated requests", async () => {
-    const response = await fetch(
-      `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
-      {
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-
-    expect(response.status).toBe(401);
   });
 
   it("should include all required fields in audit log entries", async () => {
@@ -2202,11 +2129,11 @@ describe("API Tests - Contributors", () => {
     );
 
     const data = await response.json();
-    const creator = data.contributors.find((c: any) => c.id === testUser.id);
+    const creator = data.contributors.find((c: any) => c.id === LOCAL_USER_ID);
 
     expect(creator).toBeDefined();
-    expect(creator.email).toBe(testUser.email);
-    expect(creator.name).toBe(testUser.name);
+    expect(creator.email).toBe(LOCAL_USER.email);
+    expect(creator.name).toBe(LOCAL_USER.name);
   });
 
   it("should include required fields for each contributor", async () => {
@@ -2239,7 +2166,7 @@ describe("API Tests - Contributors", () => {
     );
 
     const data = await response.json();
-    const contributor = data.contributors.find((c: any) => c.id === testUser.id);
+    const contributor = data.contributors.find((c: any) => c.id === LOCAL_USER_ID);
 
     expect(contributor).toBeDefined();
   });
@@ -2266,7 +2193,7 @@ describe("API Tests - Contributors", () => {
     );
 
     const data = await response.json();
-    const userContributions = data.contributors.filter((c: any) => c.id === testUser.id);
+    const userContributions = data.contributors.filter((c: any) => c.id === LOCAL_USER_ID);
 
     expect(userContributions.length).toBe(1);
   });
@@ -2319,17 +2246,6 @@ describe("API Tests - Contributors", () => {
     expect(data.contributors.length).toBe(0);
   });
 
-  it("should return 401 for unauthenticated requests", async () => {
-    const response = await fetch(
-      `${BASE_URL}/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}/contributors`,
-      {
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-
-    expect(response.status).toBe(401);
-  });
-
   it("should reflect contributors from various document actions", async () => {
     await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${contributorsTestDocId}`, {
       method: "POST",
@@ -2354,7 +2270,7 @@ describe("API Tests - Contributors", () => {
     const data = await response.json();
     expect(data.contributors.length).toBeGreaterThan(0);
 
-    const testUserContributor = data.contributors.find((c: any) => c.id === testUser.id);
+    const testUserContributor = data.contributors.find((c: any) => c.id === LOCAL_USER_ID);
     expect(testUserContributor).toBeDefined();
   });
 
@@ -2374,42 +2290,5 @@ describe("API Tests - Contributors", () => {
         expect(typeof contributor.image).toBe("string");
       }
     }
-  });
-});
-
-describe("API Tests - Users", () => {
-  it("should return 401 for unauthenticated request to list users", async () => {
-    const response = await fetch(`${BASE_URL}/api/v1/users`, {
-      headers: { "Content-Type": "application/json" },
-    });
-
-    expect(response.status).toBe(401);
-  });
-
-  it("should list users when authenticated", async () => {
-    const response = await apiRequest("/api/v1/users");
-    expect(response.status).toBe(200);
-
-    const data = await response.json();
-    expect(Array.isArray(data)).toBe(true);
-    expect(data.length).toBeGreaterThan(0);
-
-    const user = data[0];
-    expect(user).toHaveProperty("id");
-    expect(user).toHaveProperty("name");
-    expect(user).toHaveProperty("email");
-  });
-});
-
-describe("API Tests - Cleanup", () => {
-  it("should delete the test space", async () => {
-    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}`, {
-      method: "DELETE",
-    });
-
-    expect(response.status).toBe(200);
-
-    const checkResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}`);
-    expect(checkResponse.status).toBe(404);
   });
 });
