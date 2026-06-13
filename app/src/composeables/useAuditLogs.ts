@@ -1,44 +1,34 @@
-import { type Ref, ref, watchEffect } from "vue";
-import { type AuditLog, api } from "../api/client.ts";
+import { computed } from "vue";
+import { api } from "../api/client.ts";
+import { usePagedList } from "./usePagedList.ts";
 import { useSpace } from "./useSpace.ts";
 
-export function useAuditLogs(documentId: string) {
+export function useAuditLogs(documentId: string, pageSize = 50) {
   const { currentSpaceId } = useSpace();
-  const auditLogs: Ref<AuditLog[]> = ref([]);
-  const isLoading: Ref<boolean> = ref(false);
-  const error: Ref<string | null> = ref(null);
 
-  watchEffect(() => {
-    if (currentSpaceId.value) {
-      fetchAuditLogs();
-    }
+  const paged = usePagedList({
+    queryKey: computed(() => ["document_audit_logs", currentSpaceId.value, documentId]),
+    fetcher: ({ limit, offset }) =>
+      api.documentAuditLogs
+        .get(currentSpaceId.value as string, documentId, { limit, offset })
+        .then((r) => ({ items: r.auditLogs, total: r.total })),
+    enabled: computed(() => !!currentSpaceId.value),
+    pageSize,
   });
 
-  async function fetchAuditLogs(): Promise<void> {
-    if (!currentSpaceId.value) {
-      return;
-    }
-
-    isLoading.value = true;
-    error.value = null;
-
-    try {
-      const { auditLogs: logs } = await api.documentAuditLogs.get(
-        currentSpaceId.value,
-        documentId,
-      );
-      auditLogs.value = logs;
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Unknown error";
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
   return {
-    auditLogs,
-    isLoading,
-    error,
-    fetchAuditLogs,
+    auditLogs: paged.items,
+    isLoading: paged.isLoading,
+    isFetching: paged.isFetching,
+    error: computed(() => paged.error.value?.message ?? null),
+    fetchAuditLogs: paged.refresh,
+    // Pagination controls
+    page: paged.page,
+    totalPages: paged.totalPages,
+    total: paged.total,
+    hasPrevPage: paged.hasPrevPage,
+    hasNextPage: paged.hasNextPage,
+    nextPage: paged.nextPage,
+    prevPage: paged.prevPage,
   };
 }
