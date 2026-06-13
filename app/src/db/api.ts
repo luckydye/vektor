@@ -233,13 +233,13 @@ export async function verifySpaceOwnership(
 }
 
 export async function verifySpaceAccess(spaceId: string, userId: string): Promise<void> {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return;
-  }
-
   const space = await getSpace(spaceId);
   if (!space) {
     throw notFoundResponse("Space");
+  }
+
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return;
   }
 
   if (space.createdBy === userId) {
@@ -265,13 +265,13 @@ export async function verifySpaceRole(
   userId: string,
   requiredRole: string,
 ): Promise<void> {
-  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
-    return;
-  }
-
   const space = await getSpace(spaceId);
   if (!space) {
     throw notFoundResponse("Space");
+  }
+
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return;
   }
 
   if (space.createdBy === userId) {

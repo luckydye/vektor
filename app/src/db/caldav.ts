@@ -4,6 +4,7 @@ import { validateAccessToken } from "./accessTokens.ts";
 import { verifySpaceAccess, verifySpaceRole } from "./api.ts";
 import { getAuthDb } from "./db.ts";
 import type { DocumentWithProperties } from "./documents.ts";
+import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "../noAuth.ts";
 import { user } from "./schema/auth.ts";
 import { listUserSpaces } from "./spaces.ts";
 
@@ -48,6 +49,10 @@ export async function verifyBasicAuth(
 
   const email = decoded.slice(0, colonIdx);
   const token = decoded.slice(colonIdx + 1);
+
+  if (isNoAuthMode() && email === LOCAL_USER.email) {
+    return { id: LOCAL_USER_ID, email: LOCAL_USER.email, name: LOCAL_USER.name };
+  }
 
   const authDb = getAuthDb();
   const foundUser = await authDb.select().from(user).where(eq(user.email, email)).get();

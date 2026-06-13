@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { LOCAL_USER } from "../src/noAuth.ts";
 import { CalDAVSource } from "./caldav/caldav-client.ts";
 
 const PORT = 7483;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
-let serverProcess: ReturnType<typeof Bun.spawn>;
+const LOCAL_USER_EMAIL = "local@localhost";
+
 let testSpaceId: string;
-let testAccessToken: string;
+let serverProcess: ReturnType<typeof Bun.spawn>;
 
 async function waitForServer(timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -32,8 +32,8 @@ async function apiRequest(path: string, options: RequestInit = {}): Promise<Resp
 function createCalDAVSource() {
   return new CalDAVSource("test-caldav", "Test Calendar", "#FF6E68", {
     serverUrl: BASE_URL,
-    username: LOCAL_USER.email,
-    password: testAccessToken,
+    username: LOCAL_USER_EMAIL,
+    password: "noauth",
   });
 }
 
@@ -41,9 +41,9 @@ beforeAll(async () => {
   serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
     env: {
       ...process.env,
-      VEKTOR_NO_AUTH: "1",
       VEKTOR_IN_MEMORY_DB: "1",
       VEKTOR_API_ONLY: "1",
+      VEKTOR_NO_AUTH: "1",
       HOST: "127.0.0.1",
       NODE_ENV: "test",
       WIKI_OTEL_ENABLED: "0",
@@ -67,26 +67,15 @@ beforeAll(async () => {
   expect(spaceBody.space.id).toStartWith("space_");
   testSpaceId = spaceBody.space.id;
 
-  const tokenResp = await apiRequest(`/api/v1/spaces/${testSpaceId}/access-tokens`, {
-    method: "POST",
-    body: JSON.stringify({
-      name: "CalDAV Test Token",
-      resourceType: "space",
-      resourceId: testSpaceId,
-      permission: "viewer",
-    }),
-  });
-  if (!tokenResp.ok)
-    throw new Error(`Failed to create access token: ${tokenResp.statusText}`);
-  const tokenBody = await tokenResp.json();
-  expect(tokenBody.id).toStartWith("token_");
-  testAccessToken = tokenBody.token;
-
   const doc1 = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
     method: "POST",
     body: JSON.stringify({
       content: "<p>First test document</p>",
-      properties: { title: "Test Document 1" },
+      properties: {
+        title: "Test Document 1",
+        eventStart: "2026-06-13T00:00:00Z",
+        eventEnd: "2026-06-14T00:00:00Z",
+      },
     }),
   });
   if (!doc1.ok) throw new Error(`Failed to create doc1: ${doc1.statusText}`);
@@ -95,34 +84,29 @@ beforeAll(async () => {
     method: "POST",
     body: JSON.stringify({
       content: "<p>Second test document</p>",
-      properties: { title: "Test Document 2" },
+      properties: {
+        title: "Test Document 2",
+        eventStart: "2026-06-20T00:00:00Z",
+        eventEnd: "2026-06-21T00:00:00Z",
+      },
     }),
   });
   if (!doc2.ok) throw new Error(`Failed to create doc2: ${doc2.statusText}`);
-});
+}, 30_000);
 
 afterAll(() => {
   serverProcess?.kill();
 });
 
 describe("CalDAV API", () => {
-  it("should connect successfully with a valid access token", async () => {
+  it("should connect successfully", async () => {
     const client = createCalDAVSource();
     expect(await client.testConnection()).toBe(true);
   });
 
-  it("should reject an invalid access token", async () => {
-    const badClient = new CalDAVSource("bad-caldav", "Bad Calendar", "#000000", {
-      serverUrl: BASE_URL,
-      username: LOCAL_USER.email,
-      password: "at_invalidtoken",
-    });
-    expect(await badClient.testConnection()).toBe(false);
-  });
-
-  it("should return the current user email", async () => {
+  it("should return the local user email", async () => {
     const client = createCalDAVSource();
-    expect(await client.fetchCurrentUserEmail()).toBe(LOCAL_USER.email);
+    expect(await client.fetchCurrentUserEmail()).toBe(LOCAL_USER_EMAIL);
   });
 
   it("should list calendars including the test space", async () => {

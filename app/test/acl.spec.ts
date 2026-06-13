@@ -2615,3 +2615,159 @@ describe("Permissions API - Edge Cases", () => {
   });
 });
 
+describe("ACL API Tests - Contributors", () => {
+  let contributorsDocId: string;
+
+  beforeAll(async () => {
+    const resp = await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/documents`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "<p>contributors test</p>",
+        properties: { title: "Contributors Test Doc" },
+      }),
+    });
+    if (!resp.ok) throw new Error(`Failed to create contributors doc: ${resp.statusText}`);
+    contributorsDocId = (await resp.json()).document.id;
+  });
+
+  it("should return 401 for unauthenticated request", async () => {
+    const resp = await fetch(
+      `${BASE_URL}/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}/contributors`,
+    );
+    expect(resp.status).toBe(401);
+  });
+
+  it("should return contributors array for authenticated user", async () => {
+    const resp = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}/contributors`,
+      session1Token,
+    );
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    expect(Array.isArray(data.contributors)).toBe(true);
+  });
+
+  it("should include the document creator", async () => {
+    const resp = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}/contributors`,
+      session1Token,
+    );
+    const { contributors } = await resp.json();
+    const creator = contributors.find((c: any) => c.id === testUser1.id);
+    expect(creator).toBeDefined();
+    expect(creator.email).toBe(testUser1.email);
+    expect(creator.name).toBe(testUser1.name);
+  });
+
+  it("should include required fields for each contributor", async () => {
+    const resp = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}/contributors`,
+      session1Token,
+    );
+    const { contributors } = await resp.json();
+    expect(contributors.length).toBeGreaterThan(0);
+    for (const c of contributors) {
+      expect(typeof c.id).toBe("string");
+      expect(typeof c.name).toBe("string");
+      expect(typeof c.email).toBe("string");
+      expect("image" in c).toBe(true);
+    }
+  });
+
+  it("should include contributors who saved revisions", async () => {
+    await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({ html: "<p>updated</p>", message: "contributor save" }),
+      },
+    );
+    const resp = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}/contributors`,
+      session1Token,
+    );
+    const { contributors } = await resp.json();
+    expect(contributors.find((c: any) => c.id === testUser1.id)).toBeDefined();
+  });
+
+  it("should return unique contributors only (multiple saves by same user)", async () => {
+    await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}`,
+      session1Token,
+      { method: "POST", body: JSON.stringify({ html: "<p>save 2</p>", message: "save 2" }) },
+    );
+    await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}`,
+      session1Token,
+      { method: "POST", body: JSON.stringify({ html: "<p>save 3</p>", message: "save 3" }) },
+    );
+    const resp = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}/contributors`,
+      session1Token,
+    );
+    const { contributors } = await resp.json();
+    expect(contributors.filter((c: any) => c.id === testUser1.id).length).toBe(1);
+  });
+
+  it("should return empty array for non-existent document", async () => {
+    const resp = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/non-existent-doc/contributors`,
+      session1Token,
+    );
+    expect(resp.status).toBe(200);
+    const { contributors } = await resp.json();
+    expect(contributors).toEqual([]);
+  });
+});
+
+describe("ACL API Tests - Non-existent Space 404s", () => {
+  it("should return 404 for GET on non-existent space", async () => {
+    const fakeSpaceId = crypto.randomUUID();
+    const resp = await apiRequest(`/api/v1/spaces/${fakeSpaceId}`, session1Token);
+    expect(resp.status).toBe(404);
+    const data = await resp.json();
+    expect(data.error).toContain("Space not found");
+  });
+
+  it("should return 404 for malformed space ID", async () => {
+    const resp = await apiRequest(`/api/v1/spaces/not-a-valid-id`, session1Token);
+    expect(resp.status).toBe(404);
+  });
+
+  it("should return 404 when creating a document in a non-existent space", async () => {
+    const fakeSpaceId = crypto.randomUUID();
+    const resp = await apiRequest(`/api/v1/spaces/${fakeSpaceId}/documents`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({ content: "# Test", properties: { title: "Test" } }),
+    });
+    expect(resp.status).toBe(404);
+  });
+
+  it("should return 404 when listing categories in a non-existent space", async () => {
+    const fakeSpaceId = crypto.randomUUID();
+    const resp = await apiRequest(`/api/v1/spaces/${fakeSpaceId}/categories`, session1Token);
+    expect(resp.status).toBe(404);
+  });
+
+  it("should return 404 when fetching document history in a non-existent space", async () => {
+    const fakeSpaceId = crypto.randomUUID();
+    const fakeDocId = crypto.randomUUID();
+    const resp = await apiRequest(
+      `/api/v1/spaces/${fakeSpaceId}/documents/${fakeDocId}/revisions`,
+      session1Token,
+    );
+    expect(resp.status).toBe(404);
+  });
+
+  it("should return 404 for contributors endpoint on non-existent space", async () => {
+    const fakeSpaceId = crypto.randomUUID();
+    const fakeDocId = crypto.randomUUID();
+    const resp = await apiRequest(
+      `/api/v1/spaces/${fakeSpaceId}/documents/${fakeDocId}/contributors`,
+      session1Token,
+    );
+    expect(resp.status).toBe(404);
+  });
+});
+

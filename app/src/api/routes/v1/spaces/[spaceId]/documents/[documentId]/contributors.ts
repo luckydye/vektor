@@ -38,16 +38,17 @@ export const GET: APIRoute = (context) =>
     // Fetch user information from auth database
     const authDb = getAuthDb();
     const userIdsArray = Array.from(userIds);
-    const contributors = await authDb
-      .select({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
-      })
-      .from(user)
-      .where(inArray(user.id, userIdsArray))
-      .all();
+    const contributors: { id: string; name: string; email: string; image: string | null }[] =
+      await authDb
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+        })
+        .from(user)
+        .where(inArray(user.id, userIdsArray))
+        .all();
 
     return jsonResponse({ contributors });
   }, "Failed to list contributors");
