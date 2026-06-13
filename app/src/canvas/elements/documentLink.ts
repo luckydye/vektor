@@ -1,4 +1,5 @@
 import { ref, type Ref } from "vue";
+import "../../editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "../../api/ApiClient.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
@@ -91,32 +92,6 @@ export function documentShapeTitle(
   return preview?.title || shape.text || "Untitled";
 }
 
-export function isCanvasSnapshotContent(content: string): boolean {
-  const trimmed = content.trimStart();
-  if (!trimmed.startsWith("{")) return false;
-  try {
-    const parsed = JSON.parse(content) as { version?: unknown; shapes?: unknown };
-    return parsed?.version === 1 && Array.isArray(parsed.shapes);
-  } catch {
-    return false;
-  }
-}
-
-export function documentShapeContentHtml(preview?: DocumentPreviewState): string {
-  const content = preview?.content.trim() ?? "";
-  if (!content || preview?.type === "canvas" || isCanvasSnapshotContent(content)) {
-    return "";
-  }
-  return content;
-}
-
-export function documentShapeFallback(preview?: DocumentPreviewState): string {
-  if (!preview || preview.status === "loading") return "Loading document content...";
-  if (preview.status === "error") return "Unable to load document content.";
-  if (preview.type === "canvas") return "Canvas document";
-  return "No document content";
-}
-
 export function droppedDocumentId(
   transfer: DataTransfer | null,
   knownDocuments: Array<Pick<DocumentWithProperties, "id">>,
@@ -184,12 +159,16 @@ export function createDocumentLinkController(
     return documentShapeTitle(shape, cachedPreview(shape));
   }
 
-  function shapeContentHtml(shape: CanvasShape): string {
-    return documentShapeContentHtml(cachedPreview(shape));
+  function shapeStatus(shape: CanvasShape): DocumentPreviewState["status"] {
+    return cachedPreview(shape)?.status ?? "loading";
   }
 
-  function shapeFallback(shape: CanvasShape): string {
-    return documentShapeFallback(cachedPreview(shape));
+  function shapeType(shape: CanvasShape): string {
+    return cachedPreview(shape)?.type ?? "document";
+  }
+
+  function shapeContent(shape: CanvasShape): string {
+    return cachedPreview(shape)?.content ?? "";
   }
 
   // Places a card on the canvas that links to another document by stable id.
@@ -217,8 +196,9 @@ export function createDocumentLinkController(
     loadPreview,
     documentIdForShape,
     shapeTitle,
-    shapeContentHtml,
-    shapeFallback,
+    shapeStatus,
+    shapeType,
+    shapeContent,
     insertDocumentLink,
   };
 }

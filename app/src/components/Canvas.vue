@@ -7,10 +7,8 @@ import {
   canvasSectionIcon,
   canvasSelectIcon,
   canvasTextIcon,
-  chevronRightThinIcon,
   clipboardDocumentIcon,
   copyIcon,
-  documentIcon,
   pencilIcon,
   redoArrowIcon,
   scissorsIcon,
@@ -962,10 +960,14 @@ async function addDroppedCanvasFiles(
   }
 }
 
-function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
+function onDocumentShapeOpen(shape: CanvasShape, event: Event) {
   event.preventDefault();
   if (dragMoved) return;
-  const documentId = documentLinks.documentIdForShape(shape);
+  const requestedDocumentId =
+    event instanceof CustomEvent && typeof event.detail?.documentId === "string"
+      ? event.detail.documentId
+      : null;
+  const documentId = requestedDocumentId ?? documentLinks.documentIdForShape(shape);
   if (!documentId) return;
   window.dispatchEvent(
     new CustomEvent("view-document", {
@@ -2388,43 +2390,19 @@ onUnmounted(() => {
             @pointerdown.stop="startShapeDrag(shape, $event)"
             @click.capture="onFileShapeClick"
           ></file-attachment>
-          <div
+          <document-attachment
             v-else-if="shape.type === 'document'"
-            class="canvas-shape-doc"
-          >
-            <div
-              class="canvas-shape-doc-header"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-            >
-              <span class="svg-icon canvas-shape-doc-icon" v-html="documentIcon"></span>
-              <span class="canvas-shape-doc-title">{{ documentLinks.shapeTitle(shape) }}</span>
-              <button
-                type="button"
-                class="canvas-shape-doc-open"
-                draggable="false"
-                aria-label="Open document"
-                @pointerdown.stop="dragMoved = false"
-                @dragstart.prevent
-                @click="onDocumentShapeClick(shape, $event)"
-              >
-                <span class="svg-icon canvas-shape-doc-open-icon" v-html="chevronRightThinIcon"></span>
-              </button>
-            </div>
-            <div
-              class="canvas-shape-doc-body"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-              @wheel.stop
-            >
-              <div
-                v-if="documentLinks.shapeContentHtml(shape)"
-                class="canvas-shape-doc-content"
-                v-html="documentLinks.shapeContentHtml(shape)"
-              ></div>
-              <p v-else class="canvas-shape-doc-empty">
-                {{ documentLinks.shapeFallback(shape) }}
-              </p>
-            </div>
-          </div>
+            class="canvas-shape-document"
+            :title="documentLinks.shapeTitle(shape)"
+            :type="documentLinks.shapeType(shape)"
+            :status="documentLinks.shapeStatus(shape)"
+            :content="documentLinks.shapeContent(shape)"
+            :space-id="props.spaceId"
+            :document-id="documentLinks.documentIdForShape(shape) || ''"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+            @wheel.stop
+            @open-document="onDocumentShapeOpen(shape, $event)"
+          ></document-attachment>
           <div
             v-else-if="shape.type !== 'section'"
             class="canvas-shape-textwrap"
@@ -3095,185 +3073,15 @@ onUnmounted(() => {
   background: var(--canvas-handle-bg);
 }
 
-/* Document preview card: a draggable surface with an explicit open target. */
 .canvas-shape.document {
   background: var(--canvas-doc-bg) !important;
   cursor: move;
 }
 
-.canvas-shape-doc {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
+.canvas-shape-document {
   width: 100%;
   height: 100%;
-  color: var(--canvas-text);
-  font: inherit;
-}
-
-.canvas-shape-doc-header {
-  display: flex;
-  min-width: 0;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid var(--canvas-doc-divider);
-  padding: 10px 12px;
   cursor: move;
-}
-
-.canvas-shape-doc-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  color: var(--canvas-doc-accent);
-}
-
-.canvas-shape-doc-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.canvas-shape-doc-open {
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  padding: 0;
-  color: var(--canvas-muted);
-  cursor: pointer;
-  font: inherit;
-  text-decoration: none;
-}
-
-.canvas-shape-doc-open:hover {
-  background: var(--canvas-tool-hover-bg);
-  color: var(--canvas-text);
-}
-
-.canvas-shape-doc-open-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.canvas-shape-doc-body {
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
-  padding: 12px 14px 16px;
-  color: var(--canvas-doc-content);
-  cursor: move;
-  scrollbar-width: thin;
-}
-
-.canvas-shape-doc-content {
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.canvas-shape-doc-content :deep(*) {
-  max-width: 100%;
-}
-
-.canvas-shape-doc-content :deep(h1),
-.canvas-shape-doc-content :deep(h2),
-.canvas-shape-doc-content :deep(h3),
-.canvas-shape-doc-content :deep(h4) {
-  margin: 0.8em 0 0.35em;
-  color: var(--canvas-text);
-  font-weight: 750;
-  line-height: 1.18;
-}
-
-.canvas-shape-doc-content :deep(h1:first-child),
-.canvas-shape-doc-content :deep(h2:first-child),
-.canvas-shape-doc-content :deep(h3:first-child),
-.canvas-shape-doc-content :deep(h4:first-child),
-.canvas-shape-doc-content :deep(p:first-child),
-.canvas-shape-doc-content :deep(ul:first-child),
-.canvas-shape-doc-content :deep(ol:first-child),
-.canvas-shape-doc-content :deep(table:first-child) {
-  margin-top: 0;
-}
-
-.canvas-shape-doc-content :deep(h1) {
-  font-size: 22px;
-}
-
-.canvas-shape-doc-content :deep(h2) {
-  font-size: 18px;
-}
-
-.canvas-shape-doc-content :deep(h3) {
-  font-size: 15px;
-}
-
-.canvas-shape-doc-content :deep(p),
-.canvas-shape-doc-content :deep(ul),
-.canvas-shape-doc-content :deep(ol),
-.canvas-shape-doc-content :deep(blockquote),
-.canvas-shape-doc-content :deep(pre),
-.canvas-shape-doc-content :deep(table) {
-  margin: 0.55em 0;
-}
-
-.canvas-shape-doc-content :deep(ul),
-.canvas-shape-doc-content :deep(ol) {
-  padding-left: 1.25em;
-}
-
-.canvas-shape-doc-content :deep(img),
-.canvas-shape-doc-content :deep(video) {
-  display: block;
-  height: auto;
-  border-radius: 6px;
-}
-
-.canvas-shape-doc-content :deep(table) {
-  display: block;
-  overflow: auto;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.canvas-shape-doc-content :deep(th),
-.canvas-shape-doc-content :deep(td) {
-  border: 1px solid var(--canvas-doc-divider);
-  padding: 4px 6px;
-  text-align: left;
-}
-
-.canvas-shape-doc-content :deep(pre),
-.canvas-shape-doc-content :deep(code) {
-  border-radius: 4px;
-  background: var(--canvas-tool-hover-bg);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.canvas-shape-doc-content :deep(pre) {
-  overflow: auto;
-  padding: 8px;
-}
-
-.canvas-shape-doc-empty {
-  margin: 0;
-  color: var(--canvas-muted);
-  font-size: 13px;
-  line-height: 1.4;
 }
 
 .canvas-section-header {

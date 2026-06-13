@@ -40,7 +40,12 @@ function getTextContent(nodes: AnyNode[]): string {
 }
 
 // Elements that should be kept as raw HTML in the markdown output
-const HTML_PASSTHROUGH_TAGS = new Set(["table", "figma-embed", "file-attachment"]);
+const HTML_PASSTHROUGH_TAGS = new Set([
+  "table",
+  "figma-embed",
+  "file-attachment",
+  "document-attachment",
+]);
 
 function attrsToString(attrs: html5parser.IAttribute[]): string {
   return attrs

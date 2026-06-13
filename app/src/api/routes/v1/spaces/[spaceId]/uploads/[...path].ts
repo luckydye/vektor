@@ -36,6 +36,8 @@ const MIME_TYPES: Record<string, string> = {
   csv: "text/csv",
   // Archive
   zip: "application/zip",
+  // 3D models
+  obj: "model/obj",
 };
 
 export const GET: APIRoute = (context) =>

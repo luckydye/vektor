@@ -4,6 +4,7 @@ import docStyles from "../../styles/document.css?inline";
 import "./textarea.ts";
 import "./expression.ts";
 import "./file-attachment.ts";
+import "./document-attachment.ts";
 import { Editor } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import DragHandle from "@tiptap/extension-drag-handle";

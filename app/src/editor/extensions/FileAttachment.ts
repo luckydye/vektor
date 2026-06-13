@@ -22,6 +22,7 @@ const DOCUMENT_EXTENSIONS = [
   "xls",
   "csv",
   "zip",
+  "obj",
 ];
 
 function getFileExtension(filename: string): string {
@@ -47,6 +48,7 @@ function isSupportedDocumentFile(file: File): boolean {
     "application/msword",
     "application/pdf",
     "application/zip",
+    "model/obj",
     "text/markdown",
     "text/plain",
     "text/csv",

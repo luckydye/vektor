@@ -6,8 +6,8 @@ export const fileElement: CanvasElementDefinition = {
   type: "file",
   defaultText: "",
   defaultColor: "transparent",
-  defaultSize: { width: 150, height: 130 },
-  minSize: { width: 220, height: 120 },
+  defaultSize: { width: 220, height: 150 },
+  minSize: { width: 220, height: 150 },
   isValid: (shape) => Boolean(shape.src),
 };
 

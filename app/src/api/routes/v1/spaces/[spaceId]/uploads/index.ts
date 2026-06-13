@@ -44,6 +44,7 @@ const ALLOWED_TYPES = [
   "application/json", // .json
   "application/xml", // .xml
   "text/xml", // .xml (alternative)
+  "model/obj", // .obj
 ];
 
 const ALLOWED_EXTENSIONS = [
@@ -71,6 +72,7 @@ const ALLOWED_EXTENSIONS = [
   "txt",
   "json",
   "xml",
+  "obj",
 ];
 const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB for documents
 
