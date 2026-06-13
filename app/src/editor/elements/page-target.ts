@@ -1,3 +1,5 @@
+const DOCUMENT_ID_MIME = "application/x-vektor-document-id";
+
 /**
  * page-target
  *
@@ -20,6 +22,8 @@
  * - data-drag-over: Automatically added when another element is dragged over this one
  *
  * Events:
+ * - document-drag-start: Fired when this document starts being dragged
+ *   detail: { documentId: string }
  * - document-parent-change: Fired when a document is dropped onto this element
  *   detail: { documentId: string, newParentId: string }
  *
@@ -36,24 +40,31 @@ customElements.define(
   class extends HTMLElement {
     dragCounter = 0;
 
+    private readonly onDragStart = this.handleDragStart.bind(this);
+    private readonly onDragEnd = this.handleDragEnd.bind(this);
+    private readonly onDragEnter = this.handleDragEnter.bind(this);
+    private readonly onDragLeave = this.handleDragLeave.bind(this);
+    private readonly onDragOver = this.handleDragOver.bind(this);
+    private readonly onDrop = this.handleDrop.bind(this);
+
     connectedCallback() {
       this.setAttribute("draggable", "true");
 
-      this.addEventListener("dragstart", this.handleDragStart.bind(this));
-      this.addEventListener("dragend", this.handleDragEnd.bind(this));
-      this.addEventListener("dragenter", this.handleDragEnter.bind(this));
-      this.addEventListener("dragleave", this.handleDragLeave.bind(this));
-      this.addEventListener("dragover", this.handleDragOver.bind(this));
-      this.addEventListener("drop", this.handleDrop.bind(this));
+      this.addEventListener("dragstart", this.onDragStart);
+      this.addEventListener("dragend", this.onDragEnd);
+      this.addEventListener("dragenter", this.onDragEnter);
+      this.addEventListener("dragleave", this.onDragLeave);
+      this.addEventListener("dragover", this.onDragOver);
+      this.addEventListener("drop", this.onDrop);
     }
 
     disconnectedCallback() {
-      this.removeEventListener("dragstart", this.handleDragStart.bind(this));
-      this.removeEventListener("dragend", this.handleDragEnd.bind(this));
-      this.removeEventListener("dragenter", this.handleDragEnter.bind(this));
-      this.removeEventListener("dragleave", this.handleDragLeave.bind(this));
-      this.removeEventListener("dragover", this.handleDragOver.bind(this));
-      this.removeEventListener("drop", this.handleDrop.bind(this));
+      this.removeEventListener("dragstart", this.onDragStart);
+      this.removeEventListener("dragend", this.onDragEnd);
+      this.removeEventListener("dragenter", this.onDragEnter);
+      this.removeEventListener("dragleave", this.onDragLeave);
+      this.removeEventListener("dragover", this.onDragOver);
+      this.removeEventListener("drop", this.onDrop);
     }
 
     handleDragStart(e: DragEvent) {
@@ -65,9 +76,17 @@ customElements.define(
       if (!e.dataTransfer) return;
 
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("application/x-vektor-document-id", documentId);
+      e.dataTransfer.setData(DOCUMENT_ID_MIME, documentId);
       e.dataTransfer.setData("text/plain", documentId);
       this.setAttribute("data-dragging", "true");
+
+      this.dispatchEvent(
+        new CustomEvent("document-drag-start", {
+          bubbles: true,
+          composed: true,
+          detail: { documentId },
+        }),
+      );
 
       e.stopPropagation();
     }
@@ -128,7 +147,9 @@ customElements.define(
 
       if (!e.dataTransfer) return;
 
-      const draggedDocumentId = e.dataTransfer.getData("text/plain");
+      const draggedDocumentId =
+        e.dataTransfer.getData(DOCUMENT_ID_MIME) ||
+        e.dataTransfer.getData("text/plain");
       const targetDocumentId = this.getAttribute("data-document-id");
 
       if (!draggedDocumentId || !targetDocumentId) {

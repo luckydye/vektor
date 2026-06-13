@@ -148,17 +148,6 @@ const navigateToDocument = async (doc) => {
   closePalette();
 };
 
-// Lets a document be dragged out of the palette and dropped onto a navigation
-// category/document. The custom MIME type carries the stable id for Canvas;
-// text/plain is kept for existing category/page drop handlers.
-const handleDocumentDragStart = (e, documentId) => {
-  if (!e.dataTransfer || !documentId) return;
-  e.dataTransfer.effectAllowed = "move";
-  e.dataTransfer.setData("application/x-vektor-document-id", documentId);
-  e.dataTransfer.setData("text/plain", documentId);
-  closePalette();
-};
-
 const executeAction = (actionId) => {
   closePalette();
   Actions.run(actionId);
@@ -239,74 +228,80 @@ Actions.register("ui:toggle:palatte", {
               <p class="text-sm">No results found, mate</p>
             </div>
 
-            <button
+            <component
+              :is="result.type === 'document' ? 'page-target' : 'div'"
               v-for="(result, index) in filteredResults"
               :key="result.type === 'document' ? 'doc-' + result.data.id : 'action-' + result.id"
-              :draggable="result.type === 'document'"
-              class="w-full text-left px-4 py-3 hover:bg-neutral-300 border-b border-neutral-100 last:border-b-0 flex items-center justify-between gap-3 [&[draggable=true]]:cursor-grab"
-              :class="{
-                'bg-neutral-50 hover:bg-neutral-50': index === selectedIndex,
-              }"
-              @click="result.type === 'document' ? navigateToDocument(result.data) : executeAction(result.id)"
-              @dragstart="result.type === 'document' && handleDocumentDragStart($event, result.data.id)"
-              @mouseenter="selectedIndex = index"
+              v-bind="result.type === 'document' ? { 'data-document-id': result.data.id } : {}"
+              class="block border-b border-neutral-100 last:border-b-0 [&[data-dragging]]:opacity-50"
+              @document-drag-start="closePalette"
             >
-              <div class="flex items-center gap-3 flex-1 min-w-0">
-                <!-- Document icon -->
-                <div
-                  v-if="result.type === 'document'"
-                  class="svg-icon w-5 h-5 flex-shrink-0"
-                  :class="index === selectedIndex ? 'text-neutral-600' : 'text-neutral-400'"
-                  v-html="documentIcon"
-                />
-                <!-- Action icon -->
-                <div
-                  v-else
-                  class="svg-icon w-5 h-5 flex-shrink-0"
-                  :class="index === selectedIndex ? 'text-neutral-600' : 'text-neutral-400'"
-                  v-html="boltIcon"
-                />
-                <div class="flex-1 min-w-0">
-                  <!-- Document content -->
-                  <template v-if="result.type === 'document'">
-                    <p class="font-medium truncate text-neutral-900">
-                      {{ result.data.properties?.title || "Untitled Document" }}
-                    </p>
-                    <p class="text-xs text-neutral-900 truncate flex items-center gap-2">
-                      <span>/{{ result.data.slug }}</span>
-                      <span v-if="getLastVisited(result.data)" class="text-neutral">
-                        • {{ formatRelativeTime(getLastVisited(result.data)) }}
-                      </span>
-                    </p>
-                  </template>
-                  <!-- Action content -->
-                  <template v-else>
-                    <p class="font-medium truncate text-neutral-900">
-                      {{ result.data.title || result.id }}
-                    </p>
-                    <p class="text-xs text-neutral truncate flex items-center gap-2">
-                      <span v-if="result.data.description">{{ result.data.description }}</span>
-                    </p>
-                  </template>
-                </div>
+              <button
+                class="w-full text-left px-4 py-3 hover:bg-neutral-300 flex items-center justify-between gap-3"
+                :class="{
+                  'bg-neutral-50 hover:bg-neutral-50': index === selectedIndex,
+                  'cursor-grab active:cursor-grabbing': result.type === 'document',
+                }"
+                @click="result.type === 'document' ? navigateToDocument(result.data) : executeAction(result.id)"
+                @mouseenter="selectedIndex = index"
+              >
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                  <!-- Document icon -->
+                  <div
+                    v-if="result.type === 'document'"
+                    class="svg-icon w-5 h-5 flex-shrink-0"
+                    :class="index === selectedIndex ? 'text-neutral-600' : 'text-neutral-400'"
+                    v-html="documentIcon"
+                  />
+                  <!-- Action icon -->
+                  <div
+                    v-else
+                    class="svg-icon w-5 h-5 flex-shrink-0"
+                    :class="index === selectedIndex ? 'text-neutral-600' : 'text-neutral-400'"
+                    v-html="boltIcon"
+                  />
+                  <div class="flex-1 min-w-0">
+                    <!-- Document content -->
+                    <template v-if="result.type === 'document'">
+                      <p class="font-medium truncate text-neutral-900">
+                        {{ result.data.properties?.title || "Untitled Document" }}
+                      </p>
+                      <p class="text-xs text-neutral-900 truncate flex items-center gap-2">
+                        <span>/{{ result.data.slug }}</span>
+                        <span v-if="getLastVisited(result.data)" class="text-neutral">
+                          • {{ formatRelativeTime(getLastVisited(result.data)) }}
+                        </span>
+                      </p>
+                    </template>
+                    <!-- Action content -->
+                    <template v-else>
+                      <p class="font-medium truncate text-neutral-900">
+                        {{ result.data.title || result.id }}
+                      </p>
+                      <p class="text-xs text-neutral truncate flex items-center gap-2">
+                        <span v-if="result.data.description">{{ result.data.description }}</span>
+                      </p>
+                    </template>
+                  </div>
 
-                <kbd
-                  v-for="shortcut in Actions.getShortcutsForAction(result.id)"
-                  :key="shortcut"
-                  class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded-sm font-mono text-[10px] capitalize"
-                >
-                  {{ shortcut }}
-                </kbd>
-              </div>
-              <div
-                class="svg-icon"
-                :class="twMerge(
-                  'w-4 h-4 text-neutral flex-none invisible',
-                  index === selectedIndex && 'visible'
-                )"
-                v-html="chevronRightThinIcon"
-              />
-            </button>
+                  <kbd
+                    v-for="shortcut in Actions.getShortcutsForAction(result.id)"
+                    :key="shortcut"
+                    class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded-sm font-mono text-[10px] capitalize"
+                  >
+                    {{ shortcut }}
+                  </kbd>
+                </div>
+                <div
+                  class="svg-icon"
+                  :class="twMerge(
+                    'w-4 h-4 text-neutral flex-none invisible',
+                    index === selectedIndex && 'visible'
+                  )"
+                  v-html="chevronRightThinIcon"
+                />
+              </button>
+            </component>
           </div>
 
           <div class="px-4 py-3 bg-neutral-100 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral">
