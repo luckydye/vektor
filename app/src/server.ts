@@ -167,6 +167,9 @@ async function handleRealtimeWebSocket(
 
   const subscriptions = new Set<string>();
   const yjsRooms = new Set<string>();
+  // Rooms this connection may mutate (editor role). Viewers can join to receive
+  // state but may not send updates.
+  const yjsEditableRooms = new Set<string>();
   const joinedPresence = new Map<string, Set<string>>();
   const off = subscribeToSyncEvents((event) => {
     if (event.spaceId !== spaceId) return;
@@ -195,6 +198,10 @@ async function handleRealtimeWebSocket(
       if (type === WsMsgType.YjsUpdate) {
         const { documentId, update } = wsDecodeYjsUpdate(payload);
         const roomKey = `${spaceId}:${documentId}`;
+        // Only editors may mutate the room. Viewers receive state on join but
+        // their updates are dropped (a read-only client should never produce
+        // them anyway).
+        if (!yjsEditableRooms.has(roomKey)) return;
         const room = yRooms.get(roomKey);
         if (!room?.doc) return;
 
@@ -211,11 +218,20 @@ async function handleRealtimeWebSocket(
 
       if (type === WsMsgType.YjsJoin) {
         const { documentId } = wsDecodeJson<{ documentId: string }>(payload);
+        // Editors get read+write; viewers may still join to receive state
+        // (the room is the single source of truth for rendering). Anyone
+        // without view access is rejected.
+        let canEdit = false;
         try {
           await verifyDocumentRole(spaceId, documentId, userId, "editor");
+          canEdit = true;
         } catch {
-          websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-          return;
+          try {
+            await verifyDocumentRole(spaceId, documentId, userId, "viewer");
+          } catch {
+            websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+            return;
+          }
         }
 
         const roomKey = `${spaceId}:${documentId}`;
@@ -226,6 +242,7 @@ async function handleRealtimeWebSocket(
 
         room.clients.add(websocket);
         yjsRooms.add(roomKey);
+        if (canEdit) yjsEditableRooms.add(roomKey);
 
         websocket.send(wsEncodeYjsUpdate(documentId, Y.encodeStateAsUpdate(room.doc)));
         return;

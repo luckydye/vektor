@@ -471,7 +471,12 @@ function createEditor(
 
   editor = new Editor({
     element: editorElement,
-    content: html,
+    // With a collaborative room the Yjs doc is the single source of truth: the
+    // server seeds it from persisted content (see yjsRooms.ts) and syncs it
+    // down. Seeding `content` here too would write the same HTML into the doc
+    // on every client under different Yjs ids, so the contents diverge/duplicate
+    // instead of merging. Only seed when there is no room (standalone editor).
+    content: documentId ? undefined : html,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
       disableCollaboration();

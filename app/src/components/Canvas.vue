@@ -12,6 +12,34 @@ import {
   undoArrowIcon,
 } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
+import {
+  type CanvasShape,
+  type CanvasShapeType,
+  type CanvasSnapshot,
+  type CanvasStroke,
+  type CanvasStrokeSnapshot,
+  type CanvasTool,
+  createDocumentLinkShape,
+  initialDocumentPreview as createInitialDocumentPreview,
+  createMediaShape,
+  createNoteShape,
+  createTextShape,
+  type DocumentPreviewState,
+  defaultColorForShape,
+  defaultSizeForShape,
+  defaultTextForShape,
+  documentShapeContentHtml as documentLinkContentHtml,
+  documentShapeFallback as documentLinkFallback,
+  documentShapeTitle as documentLinkTitle,
+  dragHasDocumentLink,
+  droppedDocumentId as getDroppedDocumentId,
+  isCanvasShapeType,
+  isMediaElementType,
+  isValidCanvasShape,
+  minSizeForShape,
+  NOTE_COLORS,
+  shouldRemoveTextShape,
+} from "../canvas/elements/index.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
@@ -52,43 +80,7 @@ const props = defineProps<{
   documentId?: string;
 }>();
 
-type CanvasTool = "select" | "draw" | "note" | "text" | "section";
-type CanvasShapeType = "note" | "text" | "image" | "video" | "section" | "document";
 type DrawStrokeMode = "pencil" | "pen";
-
-type CanvasShape = {
-  id: string;
-  type: CanvasShapeType;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  text: string;
-  color: string;
-  src?: string;
-  alt?: string;
-  // For "document" shapes: the linked document's stable id.
-  docId?: string;
-  updatedAt: number;
-};
-
-type CanvasSnapshot = {
-  version: 1;
-  shapes: CanvasShape[];
-  strokes?: CanvasStrokeSnapshot[];
-};
-
-type CanvasStrokeSnapshot = {
-  id: string;
-  points: FreehandPoint[];
-  style: FreehandStrokeStyle;
-  updatedAt: number;
-};
-
-type CanvasStroke = FreehandStroke & {
-  id: string;
-  updatedAt: number;
-};
 
 type CanvasPresenceState = {
   kind: "canvas";
@@ -227,7 +219,6 @@ const FIT_ICON_PATHS = [
   "M3 16v3a2 2 0 0 0 2 2h3",
   "M16 21h3a2 2 0 0 0 2-2v-3",
 ];
-const NOTE_COLORS = ["#fef3c7", "#dcfce7", "#dbeafe", "#fae8ff", "#fee2e2"] as const;
 const PEN_COLORS = [
   "#111827",
   "#ef4444",
@@ -252,13 +243,6 @@ const DRAW_STROKE_MODES: Array<{
     paths: ["M12 3l5 5-3.5 10.5L12 21l-1.5-2.5L7 8z", "M7 8l5 5 5-5", "M12 13l-1.5 5.5"],
   },
 ];
-const MIN_NOTE_SIZE = { width: 140, height: 96 };
-const MIN_SECTION_SIZE = { width: 240, height: 160 };
-const MIN_MEDIA_SIZE = { width: 80, height: 60 };
-const MIN_TEXT_SIZE = { width: 32, height: 40 };
-const MIN_DOC_SIZE = { width: 280, height: 180 };
-// Default footprint of a document preview card dropped on the canvas.
-const DOC_CARD_SIZE = { width: 380, height: 280 };
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
@@ -302,14 +286,6 @@ const { document: documentData, saveDocument } = useDocument(props.documentId, "
 // metadata. The persisted canvas reference remains id-only.
 const { documents } = useDocuments();
 
-type DocumentPreviewState = {
-  status: "loading" | "loaded" | "error";
-  title: string;
-  type?: string | null;
-  content: string;
-  error?: string;
-};
-
 const documentPreviews = ref(new Map<string, DocumentPreviewState>());
 
 const roomId = props.documentId || crypto.randomUUID();
@@ -344,7 +320,6 @@ const contextMenuPos = ref<{ x: number; y: number } | null>(null);
 let contextMenuInsertWorld: { x: number; y: number } | null = null;
 let isReady = false;
 let savePrunedInvalidShapesWhenReady = false;
-let hasSeededInitialContent = false;
 let hasJoinedYjsRoom = false;
 let viewportControls: ViewportControls | null = null;
 let resizeObserver: ResizeObserver | null = null;
@@ -507,8 +482,9 @@ function syncTextShapeSize(id: string, element: HTMLElement) {
   const shape = yShapes.get(id);
   if (!shape) return;
 
-  const width = Math.max(MIN_TEXT_SIZE.width, Math.ceil(element.offsetWidth));
-  const height = Math.max(MIN_TEXT_SIZE.height, Math.ceil(element.offsetHeight));
+  const minSize = minSizeForShape("text");
+  const width = Math.max(minSize.width, Math.ceil(element.offsetWidth));
+  const height = Math.max(minSize.height, Math.ceil(element.offsetHeight));
   if (
     toNumber(shape.get("width"), 0) === width &&
     toNumber(shape.get("height"), 0) === height
@@ -560,43 +536,21 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
     source instanceof Y.Map ? source.get(key) : source[key];
 
   const typeValue = read("type");
-  const type: CanvasShapeType =
-    typeValue === "text" ||
-    typeValue === "note" ||
-    typeValue === "image" ||
-    typeValue === "video" ||
-    typeValue === "section" ||
-    typeValue === "document"
-      ? typeValue
-      : "note";
-
-  const defaultWidth =
-    type === "text"
-      ? 220
-      : type === "section"
-        ? 560
-        : type === "document"
-          ? DOC_CARD_SIZE.width
-          : 240;
-  const defaultHeight =
-    type === "text"
-      ? 88
-      : type === "section"
-        ? 340
-        : type === "document"
-          ? DOC_CARD_SIZE.height
-          : 150;
-  const minWidth = type === "document" ? MIN_DOC_SIZE.width : 80;
-  const minHeight = type === "document" ? MIN_DOC_SIZE.height : 48;
+  const type: CanvasShapeType = isCanvasShapeType(typeValue) ? typeValue : "note";
+  const defaultSize = defaultSizeForShape(type);
+  const minSize = minSizeForShape(type);
   return {
     id,
     type,
     x: toNumber(read("x"), 0),
     y: toNumber(read("y"), 0),
-    width: Math.max(minWidth, toNumber(read("width"), defaultWidth)),
-    height: Math.max(minHeight, toNumber(read("height"), defaultHeight)),
+    width: Math.max(minSize.width, toNumber(read("width"), defaultSize.width)),
+    height: Math.max(minSize.height, toNumber(read("height"), defaultSize.height)),
     text: typeof read("text") === "string" ? String(read("text")) : "",
-    color: typeof read("color") === "string" ? String(read("color")) : defaultColor(type),
+    color:
+      typeof read("color") === "string"
+        ? String(read("color"))
+        : defaultColorForShape(type),
     src: typeof read("src") === "string" ? String(read("src")) : undefined,
     alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
     docId: typeof read("docId") === "string" ? String(read("docId")) : undefined,
@@ -655,10 +609,6 @@ function toStroke(
   };
 }
 
-function isValidCanvasShape(shape: CanvasShape): boolean {
-  return shape.type !== "document" || Boolean(shape.docId);
-}
-
 function syncShapesFromY() {
   let removedInvalid = false;
   for (const [id, value] of yShapes.entries()) {
@@ -707,24 +657,6 @@ function syncStrokesFromY() {
   renderInk();
 }
 
-function defaultColor(type: CanvasShapeType) {
-  if (type === "image") return "transparent";
-  if (type === "video") return "#000000";
-  if (type === "section") return "rgba(255, 255, 255, 0.02)";
-  if (type === "text") return "#ffffff";
-  // Theme-aware surface so the card reads correctly in light and dark mode.
-  if (type === "document") return "var(--canvas-doc-bg)";
-  return NOTE_COLORS[0];
-}
-
-function defaultText(type: CanvasShapeType) {
-  if (type === "image" || type === "video") return "";
-  if (type === "section") return "Section";
-  if (type === "text") return "Text";
-  if (type === "document") return "Untitled";
-  return "Note";
-}
-
 function createShapeMap(shape: CanvasShape) {
   const map = new Y.Map<unknown>();
   map.set("type", shape.type);
@@ -747,58 +679,6 @@ function createStrokeMap(stroke: CanvasStrokeSnapshot) {
   map.set("style", { ...stroke.style });
   map.set("updatedAt", stroke.updatedAt);
   return map;
-}
-
-function parseSnapshot(content: string | null | undefined): CanvasSnapshot | null {
-  if (!content?.trim()) return null;
-  try {
-    const parsed = JSON.parse(content) as Partial<CanvasSnapshot>;
-    if (!parsed || !Array.isArray(parsed.shapes)) return null;
-    const strokes = Array.isArray(parsed.strokes)
-      ? parsed.strokes
-          .filter((stroke): stroke is CanvasStrokeSnapshot =>
-            Boolean(
-              stroke && typeof stroke.id === "string" && Array.isArray(stroke.points),
-            ),
-          )
-          .map((stroke) => ({
-            id: stroke.id,
-            points: stroke.points.filter(isFreehandPoint).map(cloneFreehandPoint),
-            style: { ...FREEHAND_STYLE, ...(stroke.style ?? {}) },
-            updatedAt: toNumber(stroke.updatedAt, Date.now()),
-          }))
-      : [];
-    return {
-      version: 1,
-      shapes: parsed.shapes
-        .filter((shape): shape is CanvasShape =>
-          Boolean(shape && typeof shape.id === "string"),
-        )
-        .map((shape) => toShape(shape.id, shape))
-        .filter(isValidCanvasShape),
-      strokes,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function seedFromSnapshot(snapshot: CanvasSnapshot | null) {
-  // Origin "seed" keeps this out of the undo history (UndoManager tracks only
-  // origin null) while still broadcasting to the room (origin !== "remote").
-  ydoc.transact(() => {
-    yShapes.clear();
-    yStrokes.clear();
-    if (!snapshot) return;
-    for (const shape of snapshot.shapes) {
-      yShapes.set(shape.id, createShapeMap(shape));
-    }
-    for (const stroke of snapshot.strokes ?? []) {
-      yStrokes.set(stroke.id, createStrokeMap(stroke));
-    }
-  }, "seed");
-  syncShapesFromY();
-  syncStrokesFromY();
 }
 
 function joinYjsRoomOnce() {
@@ -1222,22 +1102,15 @@ async function addMediaFile(file: File, at: { x: number; y: number }) {
     const src = await uploadMediaFile(file);
     const naturalSize = await (type === "video" ? videoSize(src) : imageSize(src));
     const size = fitImageSize(naturalSize.width, naturalSize.height);
-    const id = `shape-${crypto.randomUUID()}`;
-    const shape: CanvasShape = {
-      id,
+    const shape = createMediaShape({
       type,
-      x: Math.round(at.x - size.width / 2),
-      y: Math.round(at.y - size.height / 2),
-      width: size.width,
-      height: size.height,
-      text: "",
-      color: defaultColor(type),
+      at,
+      size,
       src,
       alt: file.name,
-      updatedAt: Date.now(),
-    };
-    yShapes.set(id, createShapeMap(shape));
-    selectOnlyShape(id);
+    });
+    yShapes.set(shape.id, createShapeMap(shape));
+    selectOnlyShape(shape.id);
     activeTool.value = "select";
     saveState.value = "idle";
     dispatchSaveStatus();
@@ -1260,11 +1133,6 @@ async function addMediaFiles(files: File[], at: { x: number; y: number }) {
   }
 }
 
-function documentLabel(doc: { properties?: { title?: string | null } | null }): string {
-  const title = doc.properties?.title;
-  return title?.trim() ? title.trim() : "Untitled";
-}
-
 function setDocumentPreview(documentId: string, preview: DocumentPreviewState) {
   const next = new Map(documentPreviews.value);
   next.set(documentId, preview);
@@ -1277,13 +1145,7 @@ function cachedDocumentPreview(shape: CanvasShape): DocumentPreviewState | undef
 }
 
 function initialDocumentPreview(documentId: string): DocumentPreviewState {
-  const doc = documents.value.find((entry) => entry.id === documentId);
-  return {
-    status: "loading",
-    title: doc ? documentLabel(doc) : "Untitled",
-    type: doc?.type,
-    content: "",
-  };
+  return createInitialDocumentPreview(documentId, documents.value);
 }
 
 async function loadDocumentPreview(documentId: string) {
@@ -1296,7 +1158,7 @@ async function loadDocumentPreview(documentId: string) {
     const doc = await api.document.get(props.spaceId, documentId);
     setDocumentPreview(documentId, {
       status: "loaded",
-      title: documentLabel(doc),
+      title: createInitialDocumentPreview(documentId, [doc]).title,
       type: doc.type,
       content: typeof doc.content === "string" ? doc.content : "",
     });
@@ -1316,59 +1178,25 @@ function documentIdForShape(shape: CanvasShape): string | undefined {
 }
 
 function documentShapeTitle(shape: CanvasShape): string {
-  return cachedDocumentPreview(shape)?.title || shape.text || "Untitled";
-}
-
-function isCanvasSnapshotContent(content: string) {
-  const trimmed = content.trimStart();
-  if (!trimmed.startsWith("{")) return false;
-  try {
-    const parsed = JSON.parse(content) as { version?: unknown; shapes?: unknown };
-    return parsed?.version === 1 && Array.isArray(parsed.shapes);
-  } catch {
-    return false;
-  }
+  return documentLinkTitle(shape, cachedDocumentPreview(shape));
 }
 
 function documentShapeContentHtml(shape: CanvasShape): string {
-  const preview = cachedDocumentPreview(shape);
-  const content = preview?.content.trim() ?? "";
-  if (!content || preview?.type === "canvas" || isCanvasSnapshotContent(content)) {
-    return "";
-  }
-  return content;
+  return documentLinkContentHtml(cachedDocumentPreview(shape));
 }
 
 function documentShapeFallback(shape: CanvasShape): string {
-  const preview = cachedDocumentPreview(shape);
-  if (!preview || preview.status === "loading") return "Loading document content...";
-  if (preview.status === "error") return "Unable to load document content.";
-  if (preview.type === "canvas") return "Canvas document";
-  return "No document content";
+  return documentLinkFallback(cachedDocumentPreview(shape));
 }
 
 // Places a card on the canvas that links to another document by stable id.
 function insertDocumentLink(documentId: string, at: { x: number; y: number }): boolean {
-  const linkedDocumentId = documentId.trim();
-  if (!linkedDocumentId) return false;
-
-  const doc = documents.value.find((entry) => entry.id === linkedDocumentId);
-  const id = `shape-${crypto.randomUUID()}`;
-  const shape: CanvasShape = {
-    id,
-    type: "document",
-    x: Math.round(at.x - DOC_CARD_SIZE.width / 2),
-    y: Math.round(at.y - DOC_CARD_SIZE.height / 2),
-    width: DOC_CARD_SIZE.width,
-    height: DOC_CARD_SIZE.height,
-    text: doc ? documentLabel(doc) : "Untitled",
-    color: defaultColor("document"),
-    docId: linkedDocumentId,
-    updatedAt: Date.now(),
-  };
-  yShapes.set(id, createShapeMap(shape));
-  selectOnlyShape(id);
-  void loadDocumentPreview(linkedDocumentId);
+  const doc = documents.value.find((entry) => entry.id === documentId.trim());
+  const shape = createDocumentLinkShape(documentId, at, doc);
+  if (!shape) return false;
+  yShapes.set(shape.id, createShapeMap(shape));
+  selectOnlyShape(shape.id);
+  if (shape.docId) void loadDocumentPreview(shape.docId);
   activeTool.value = "select";
   saveImmediately();
   return true;
@@ -1386,28 +1214,30 @@ function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
   );
 }
 
-function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
-  const id = `shape-${crypto.randomUUID()}`;
-  const text = defaultText(type);
-  const shape: CanvasShape = {
-    id,
-    type,
-    x: Math.round(at.x),
-    y: Math.round(at.y),
-    // Text shapes auto-size to their content; the observer corrects this
-    // placeholder right after mount.
-    width: type === "text" ? MIN_TEXT_SIZE.width : type === "section" ? 560 : 240,
-    height: type === "text" ? MIN_TEXT_SIZE.height : type === "section" ? 340 : 150,
-    text,
-    color: type === "note" ? noteColor.value : defaultColor(type),
-    updatedAt: Date.now(),
-  };
-  yShapes.set(id, createShapeMap(shape));
-  selectOnlyShape(id);
+function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
+  const shape =
+    type === "note"
+      ? createNoteShape(at, noteColor.value)
+      : type === "text"
+        ? createTextShape(at)
+        : {
+            id: `shape-${crypto.randomUUID()}`,
+            type: "section",
+            x: Math.round(at.x),
+            y: Math.round(at.y),
+            ...defaultSizeForShape(type),
+            text: defaultTextForShape(type),
+            color: defaultColorForShape(type),
+            updatedAt: Date.now(),
+          };
+  yShapes.set(shape.id, createShapeMap(shape));
+  selectOnlyShape(shape.id);
   activeTool.value = "select";
   nextTick(() => {
     const input = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
-      type === "section" ? `[data-section-title="${id}"]` : `[data-shape-text="${id}"]`,
+      type === "section"
+        ? `[data-section-title="${shape.id}"]`
+        : `[data-shape-text="${shape.id}"]`,
     );
     input?.focus();
     input?.select();
@@ -1423,7 +1253,7 @@ function handleTextBlur(shape: CanvasShape, event: FocusEvent) {
   // editing ends. Notes and sections keep their box even when empty.
   if (shape.type !== "text") return;
   const value = (event.target as HTMLTextAreaElement).value;
-  if (value.trim() !== "") return;
+  if (!shouldRemoveTextShape(value)) return;
   yShapes.delete(shape.id);
   if (selectedShapeIds.value.has(shape.id)) {
     selectedShapeIds.value.delete(shape.id);
@@ -1677,21 +1507,14 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
 function startShapeResize(shape: CanvasShape, event: PointerEvent) {
   if (event.button !== 0 || shape.type === "text") return;
   selectOnlyShape(shape.id);
-  const isMedia = shape.type === "image" || shape.type === "video";
+  const isMedia = isMediaElementType(shape.type);
   dragState = {
     type: "resize",
     pointerId: event.pointerId,
     shapeId: shape.id,
     startPointer: screenToWorld(screenPoint(event)),
     startSize: { width: shape.width, height: shape.height },
-    minSize:
-      shape.type === "section"
-        ? MIN_SECTION_SIZE
-        : shape.type === "document"
-          ? MIN_DOC_SIZE
-          : isMedia
-            ? MIN_MEDIA_SIZE
-            : MIN_NOTE_SIZE,
+    minSize: minSizeForShape(shape.type),
     // Media keeps its aspect ratio; notes and sections resize freely.
     aspect: isMedia && shape.height > 0 ? shape.width / shape.height : undefined,
   };
@@ -1827,7 +1650,13 @@ function handleViewportPointerDown(event: PointerEvent) {
     return;
   }
 
-  addShape(activeTool.value, screenToWorld(point));
+  if (
+    activeTool.value === "note" ||
+    activeTool.value === "text" ||
+    activeTool.value === "section"
+  ) {
+    addShape(activeTool.value, screenToWorld(point));
+  }
   event.preventDefault();
 }
 
@@ -2056,27 +1885,6 @@ function dragHasMediaFiles(transfer: DataTransfer | null) {
   return transfer.types.includes("Files");
 }
 
-// Documents dragged from the sidebar/command palette carry their id as
-// application/x-vektor-document-id. Plain text is accepted only as a
-// compatibility fallback when it matches a known document id.
-const DOCUMENT_ID_MIME = "application/x-vektor-document-id";
-
-function droppedDocumentId(transfer: DataTransfer | null): string | null {
-  if (!transfer) return null;
-  const typed = transfer.getData(DOCUMENT_ID_MIME).trim();
-  if (typed) return typed;
-
-  const plain = transfer.getData("text/plain").trim();
-  if (!plain) return null;
-  return documents.value.some((doc) => doc.id === plain) ? plain : null;
-}
-
-function dragHasDocumentLink(transfer: DataTransfer | null) {
-  return Boolean(
-    transfer?.types.includes(DOCUMENT_ID_MIME) || transfer?.types.includes("text/plain"),
-  );
-}
-
 function handleDragOver(event: DragEvent) {
   const hasMedia = dragHasMediaFiles(event.dataTransfer);
   if (!hasMedia && !dragHasDocumentLink(event.dataTransfer)) return;
@@ -2100,7 +1908,7 @@ function handleDrop(event: DragEvent) {
   }
 
   // A document dragged from the sidebar or command palette becomes a link card.
-  const droppedId = droppedDocumentId(event.dataTransfer);
+  const droppedId = getDroppedDocumentId(event.dataTransfer, documents.value);
   if (droppedId && insertDocumentLink(droppedId, insertionPointFromEvent(event))) {
     event.preventDefault();
   }
@@ -2332,22 +2140,22 @@ async function pasteFigmaClipboard(
         type: "image/svg+xml",
       });
       const src = await uploadMediaFile(file);
-      const id = `shape-${crypto.randomUUID()}`;
-      const shape: CanvasShape = {
-        id,
+      const shape = createMediaShape({
         type: "image",
-        x: Math.round(groupLeft + (frame.x - minX) * scale),
-        y: Math.round(groupTop + (frame.y - minY) * scale),
-        width: Math.max(1, Math.round(frame.width * scale)),
-        height: Math.max(1, Math.round(frame.height * scale)),
-        text: "",
-        color: defaultColor("image"),
+        at: {
+          x: groupLeft + (frame.x - minX) * scale,
+          y: groupTop + (frame.y - minY) * scale,
+        },
+        size: {
+          width: Math.max(1, Math.round(frame.width * scale)),
+          height: Math.max(1, Math.round(frame.height * scale)),
+        },
         src,
         alt: frame.name,
-        updatedAt: Date.now(),
-      };
-      yShapes.set(id, createShapeMap(shape));
-      createdIds.push(id);
+        origin: "top-left",
+      });
+      yShapes.set(shape.id, createShapeMap(shape));
+      createdIds.push(shape.id);
     }
     selectedShapeIds.value = new Set(createdIds);
     activeTool.value = "select";
@@ -2549,15 +2357,14 @@ function handleKeydown(event: KeyboardEvent) {
   if (key === "f") fitView();
 }
 
+// The Yjs room is the single source of truth: the server seeds the doc from
+// persisted content (see yjsRooms.ts) and sends it on join. The client never
+// seeds its own doc — independently-seeded docs assign different Yjs item ids
+// to the same shapes, so merges conflict and peers' edits never render. We
+// only join; content arrives via the room and renders through the observers.
 watch(
-  () => documentData.value?.content,
-  (content) => {
-    if (hasSeededInitialContent) return;
-    if (props.documentId && content === undefined) return;
-    hasSeededInitialContent = true;
-    seedFromSnapshot(parseSnapshot(content));
-    joinYjsRoomOnce();
-  },
+  () => props.documentId,
+  () => joinYjsRoomOnce(),
   { immediate: true },
 );
 
@@ -2608,13 +2415,25 @@ watch(
 onMounted(() => {
   yShapes.observeDeep((_events, transaction) => {
     syncShapesFromY();
-    if (transaction.origin !== "seed") scheduleSave();
+    // Persist only this client's own edits (local edits have origin null; undo/
+    // redo carry the UndoManager origin). Remote changes are persisted by their
+    // originator — the peer that made them, or the server for agent edits — so
+    // re-saving them here would mean every client rewrites the doc on every
+    // change, including the initial room state that arrives as "remote" on load.
+    if (transaction.origin !== "remote" && transaction.origin !== "seed")
+      scheduleSave();
     refreshUndoState();
     fitInitialViewIfNeeded(transaction.origin !== null);
   });
   yStrokes.observeDeep((_events, transaction) => {
     syncStrokesFromY();
-    if (transaction.origin !== "seed") scheduleSave();
+    // Persist only this client's own edits (local edits have origin null; undo/
+    // redo carry the UndoManager origin). Remote changes are persisted by their
+    // originator — the peer that made them, or the server for agent edits — so
+    // re-saving them here would mean every client rewrites the doc on every
+    // change, including the initial room state that arrives as "remote" on load.
+    if (transaction.origin !== "remote" && transaction.origin !== "seed")
+      scheduleSave();
     refreshUndoState();
     fitInitialViewIfNeeded(transaction.origin !== null);
   });
@@ -2655,7 +2474,7 @@ onMounted(() => {
   colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   colorSchemeMedia.addEventListener("change", updateThemeMode);
 
-  if (hasSeededInitialContent) joinYjsRoomOnce();
+  joinYjsRoomOnce();
 
   setupPresence();
   isReady = true;
@@ -2663,8 +2482,9 @@ onMounted(() => {
     savePrunedInvalidShapesWhenReady = false;
     saveImmediately();
   }
-  // Content already present at mount (seeded synchronously or preloaded from
-  // the Yjs room) is initial — frame it now that the screen has been measured.
+  // If the room state already arrived before mount, frame it now that the
+  // screen has been measured; otherwise the Yjs observer frames it on first
+  // sync. Either way the first content to land counts as initial.
   fitInitialViewIfNeeded(true);
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pointermove", handlePointerMove);
@@ -3027,7 +2847,22 @@ onUnmounted(() => {
           '--presence-color': presence.user.color || getPresenceColor(presence.user.id),
         }"
       >
-        <span class="canvas-presence-cursor"></span>
+        <svg
+          class="canvas-presence-cursor"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M4.5 4.2a.6.6 0 0 1 .77-.77l13.2 5.36a.6.6 0 0 1-.07 1.13l-5.05 1.3a1.6 1.6 0 0 0-1.15 1.15l-1.3 5.05a.6.6 0 0 1-1.13.07z"
+            fill="var(--presence-color)"
+            stroke="#fff"
+            stroke-width="1.2"
+            stroke-linejoin="round"
+          />
+        </svg>
         <span class="canvas-presence-label">{{ presence.user.name }}</span>
       </div>
 
@@ -3950,17 +3785,15 @@ onUnmounted(() => {
 
 .canvas-presence-cursor {
   position: absolute;
-  width: 0;
-  height: 0;
-  border-top: 14px solid var(--presence-color);
-  border-right: 9px solid transparent;
-  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.25));
+  left: -3px;
+  top: -2px;
+  filter: drop-shadow(0 1px 1.5px rgba(15, 23, 42, 0.3));
 }
 
 .canvas-presence-label {
   position: absolute;
-  left: 10px;
-  top: 12px;
+  left: 14px;
+  top: 16px;
   border-radius: 4px;
   background: var(--presence-color);
   padding: 3px 6px;
