@@ -1,3 +1,4 @@
+import { ref, type Ref } from "vue";
 import type { DocumentWithProperties } from "../../api/ApiClient.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
@@ -9,6 +10,23 @@ export type DocumentPreviewState = {
   type?: string | null;
   content: string;
   error?: string;
+};
+
+type DocumentPreviewSource = Pick<
+  DocumentWithProperties,
+  "id" | "properties" | "type"
+>;
+
+type LoadedDocumentPreviewSource = DocumentPreviewSource & {
+  content?: unknown;
+};
+
+export type DocumentLinkControllerOptions = {
+  documents: Ref<DocumentPreviewSource[]>;
+  fetchDocument: (documentId: string) => Promise<LoadedDocumentPreviewSource>;
+  insertShape: (shape: CanvasShape) => void;
+  selectShape: (shapeId: string) => void;
+  afterInsert?: () => void;
 };
 
 export const documentLinkElement: CanvasElementDefinition = {
@@ -51,7 +69,7 @@ export function createDocumentLinkShape(
 
 export function initialDocumentPreview(
   documentId: string,
-  docs: Array<Pick<DocumentWithProperties, "id" | "properties" | "type">>,
+  docs: DocumentPreviewSource[],
 ): DocumentPreviewState {
   const doc = docs.find((entry) => entry.id === documentId);
   return {
@@ -60,6 +78,10 @@ export function initialDocumentPreview(
     type: doc?.type,
     content: "",
   };
+}
+
+export function documentIdForShape(shape: CanvasShape): string | undefined {
+  return shape.docId;
 }
 
 export function documentShapeTitle(
@@ -112,4 +134,91 @@ export function dragHasDocumentLink(transfer: DataTransfer | null): boolean {
   return Boolean(
     transfer?.types.includes(DOCUMENT_ID_MIME) || transfer?.types.includes("text/plain"),
   );
+}
+
+export function createDocumentLinkController(
+  options: DocumentLinkControllerOptions,
+) {
+  const previews = ref(new Map<string, DocumentPreviewState>());
+
+  function setPreview(documentId: string, preview: DocumentPreviewState) {
+    const next = new Map(previews.value);
+    next.set(documentId, preview);
+    previews.value = next;
+  }
+
+  function initialPreview(documentId: string): DocumentPreviewState {
+    return initialDocumentPreview(documentId, options.documents.value);
+  }
+
+  function cachedPreview(shape: CanvasShape): DocumentPreviewState | undefined {
+    const documentId = documentIdForShape(shape);
+    return documentId ? previews.value.get(documentId) : undefined;
+  }
+
+  async function loadPreview(documentId: string) {
+    const existing = previews.value.get(documentId);
+    if (existing?.status === "loading" || existing?.status === "loaded") return;
+
+    setPreview(documentId, initialPreview(documentId));
+
+    try {
+      const doc = await options.fetchDocument(documentId);
+      setPreview(documentId, {
+        status: "loaded",
+        title: initialDocumentPreview(documentId, [doc]).title,
+        type: doc.type,
+        content: typeof doc.content === "string" ? doc.content : "",
+      });
+    } catch (error) {
+      const fallback = previews.value.get(documentId) ?? initialPreview(documentId);
+      setPreview(documentId, {
+        ...fallback,
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  function shapeTitle(shape: CanvasShape): string {
+    return documentShapeTitle(shape, cachedPreview(shape));
+  }
+
+  function shapeContentHtml(shape: CanvasShape): string {
+    return documentShapeContentHtml(cachedPreview(shape));
+  }
+
+  function shapeFallback(shape: CanvasShape): string {
+    return documentShapeFallback(cachedPreview(shape));
+  }
+
+  // Places a card on the canvas that links to another document by stable id.
+  function insertDocumentLink(
+    documentId: string,
+    at: { x: number; y: number },
+  ): boolean {
+    const doc = options.documents.value.find(
+      (entry) => entry.id === documentId.trim(),
+    );
+    const shape = createDocumentLinkShape(documentId, at, doc);
+    if (!shape) return false;
+
+    options.insertShape(shape);
+    options.selectShape(shape.id);
+    if (shape.docId) void loadPreview(shape.docId);
+    options.afterInsert?.();
+    return true;
+  }
+
+  return {
+    previews,
+    cachedPreview,
+    initialPreview,
+    loadPreview,
+    documentIdForShape,
+    shapeTitle,
+    shapeContentHtml,
+    shapeFallback,
+    insertDocumentLink,
+  };
 }

@@ -2,10 +2,16 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as Y from "yjs";
 import {
+  canvasFitViewIcon,
+  canvasNoteIcon,
+  canvasSectionIcon,
+  canvasSelectIcon,
+  canvasTextIcon,
   chevronRightThinIcon,
   clipboardDocumentIcon,
   copyIcon,
   documentIcon,
+  pencilIcon,
   redoArrowIcon,
   scissorsIcon,
   trashIcon,
@@ -13,56 +19,69 @@ import {
 } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import {
-  type CanvasShape,
-  type CanvasShapeType,
-  type CanvasSnapshot,
-  type CanvasStroke,
-  type CanvasStrokeSnapshot,
-  type CanvasTool,
-  createDocumentLinkShape,
-  initialDocumentPreview as createInitialDocumentPreview,
-  createMediaShape,
-  createNoteShape,
-  createTextShape,
-  type DocumentPreviewState,
+  addCanvasDrawingPoint,
+  type CanvasDrawingSession,
+  cloneFreehandPoint,
+  createStrokeMap,
+  DRAW_STROKE_MODES,
+  type DrawStrokeMode,
+  FREEHAND_STYLE,
+  finishCanvasDrawingStroke,
+  hitTestCanvasStroke,
+  PEN_COLORS,
+  renderCanvasInk,
+  startCanvasDrawingStroke,
+  strokeStyleFromUnknown,
+  toCanvasStroke,
+} from "../canvas/elements/drawing.ts";
+import {
+  createDocumentLinkController,
+  dragHasDocumentLink,
+  droppedDocumentId as getDroppedDocumentId,
+} from "../canvas/elements/documentLink.ts";
+import {
+  isFigmaClipboardHtml,
+  pasteFigmaClipboard,
+} from "../canvas/elements/figma.ts";
+import {
+  createUploadedMediaShape,
+  dragHasMediaFiles,
+  isMediaElementType,
+  mediaFilesFromDataTransfer,
+  uploadMediaFile,
+} from "../canvas/elements/media.ts";
+import { createNoteShape, NOTE_COLORS } from "../canvas/elements/note.ts";
+import {
   defaultColorForShape,
   defaultSizeForShape,
   defaultTextForShape,
-  documentShapeContentHtml as documentLinkContentHtml,
-  documentShapeFallback as documentLinkFallback,
-  documentShapeTitle as documentLinkTitle,
-  dragHasDocumentLink,
-  droppedDocumentId as getDroppedDocumentId,
   isCanvasShapeType,
-  isMediaElementType,
   isValidCanvasShape,
   minSizeForShape,
-  NOTE_COLORS,
-  shouldRemoveTextShape,
-} from "../canvas/elements/index.ts";
+} from "../canvas/elements/registry.ts";
+import { createTextShape, shouldRemoveTextShape } from "../canvas/elements/text.ts";
+import type {
+  CanvasShape,
+  CanvasShapeType,
+  CanvasSnapshot,
+  CanvasStroke,
+  CanvasStrokeSnapshot,
+  CanvasTool,
+} from "../canvas/elements/types.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { figmaClipboardToFrames } from "../utils/figma-clipboard.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
 import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import {
-  buildFreehandStroke,
   buildTransform,
   computeSnapGuides,
-  createFreehandStrokeBuilder,
   createViewportControls,
-  drawFreehandOutline,
-  drawFreehandStroke,
-  drawSnapGuides,
   drawWorldDots,
   drawWorldGrid,
   type FitReference,
   type FreehandPoint,
   type FreehandStroke,
-  type FreehandStrokeBuilder,
-  type FreehandStrokeOptions,
-  type FreehandStrokeStyle,
   panCameraByScreenDelta,
   type ScreenSize,
   type SnapGuide,
@@ -79,8 +98,6 @@ const props = defineProps<{
   spaceId: string;
   documentId?: string;
 }>();
-
-type DrawStrokeMode = "pencil" | "pen";
 
 type CanvasPresenceState = {
   kind: "canvas";
@@ -130,117 +147,43 @@ type DragState =
 type Rect = { x: number; y: number; width: number; height: number };
 
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
-const FREEHAND_STYLE: FreehandStrokeStyle = {
-  color: "#111827",
-  width: 10,
-  opacity: 1,
-  lineCap: "round",
-  lineJoin: "round",
-};
-// Width bounds are in world units; the renderer scales them by zoom. Pen mode
-// intentionally has a broad range so velocity and stylus pressure read clearly.
-const FREEHAND_PEN_VELOCITY = {
-  minWidth: 2,
-  maxWidth: 18,
-  smoothing: 0.45,
-};
-// The stroke reaches its thinnest at roughly this pointer speed in screen px/ms.
-const SCREEN_VELOCITY_FULL = 2.4;
-
-// addVelocityWidths measures velocity in world units/ms, so it would otherwise
-// taper differently depending on zoom. Multiplying the scale by the current
-// world→screen scale makes the taper track on-screen pointer speed instead.
-function freehandOptions(
-  style: FreehandStrokeStyle = FREEHAND_STYLE,
-  mode: DrawStrokeMode = "pen",
-): FreehandStrokeOptions {
-  return {
-    minDistance: 2,
-    simplifyTolerance: 0.75,
-    smoothing: 0.9,
-    style,
-    velocityWidth:
-      mode === "pen"
-        ? {
-            ...FREEHAND_PEN_VELOCITY,
-            scale: (1 / SCREEN_VELOCITY_FULL) * transform.value.scale,
-          }
-        : undefined,
-  };
-}
 type ToolDef = {
   id: CanvasTool;
   label: string;
   shortcut: string;
-  paths: string[];
+  icon: string;
 };
 
-// Outline (stroke) icon paths on a 24×24 grid, drawn with currentColor.
 const CANVAS_TOOLS: ToolDef[] = [
   {
     id: "select",
     label: "Select",
     shortcut: "V",
-    paths: [
-      "M4.5 4.2a.6.6 0 0 1 .77-.77l13.2 5.36a.6.6 0 0 1-.07 1.13l-5.05 1.3a1.6 1.6 0 0 0-1.15 1.15l-1.3 5.05a.6.6 0 0 1-1.13.07z",
-    ],
+    icon: canvasSelectIcon,
   },
   {
     id: "draw",
     label: "Draw",
     shortcut: "D",
-    paths: ["M16.5 4.5l3 3L8 19l-4 1 1-4z", "M14.5 6.5l3 3"],
+    icon: pencilIcon,
   },
   {
     id: "note",
     label: "Note",
     shortcut: "N",
-    paths: [
-      "M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8l6-6V6a2 2 0 0 0-2-2z",
-      "M14 20v-6h6",
-    ],
+    icon: canvasNoteIcon,
   },
   {
     id: "text",
     label: "Text",
     shortcut: "T",
-    paths: ["M5 6V4h14v2", "M9.5 20h5", "M12 4v16"],
+    icon: canvasTextIcon,
   },
   {
     id: "section",
     label: "Section",
     shortcut: "S",
-    paths: ["M4 9h16", "M4 15h16", "M9 4v16", "M15 4v16"],
-  },
-];
-const FIT_ICON_PATHS = [
-  "M8 3H5a2 2 0 0 0-2 2v3",
-  "M21 8V5a2 2 0 0 0-2-2h-3",
-  "M3 16v3a2 2 0 0 0 2 2h3",
-  "M16 21h3a2 2 0 0 0 2-2v-3",
-];
-const PEN_COLORS = [
-  "#111827",
-  "#ef4444",
-  "#f97316",
-  "#22c55e",
-  "#3b82f6",
-  "#8b5cf6",
-] as const;
-const DRAW_STROKE_MODES: Array<{
-  id: DrawStrokeMode;
-  label: string;
-  paths: string[];
-}> = [
-  {
-    id: "pencil",
-    label: "Pencil",
-    paths: ["M16.5 4.5l3 3L8 19l-4 1 1-4z", "M14.5 6.5l3 3"],
-  },
-  {
-    id: "pen",
-    label: "Pen",
-    paths: ["M12 3l5 5-3.5 10.5L12 21l-1.5-2.5L7 8z", "M7 8l5 5 5-5", "M12 13l-1.5 5.5"],
+    icon: canvasSectionIcon,
   },
 ];
 const viewportRef = ref<HTMLElement | null>(null);
@@ -286,13 +229,21 @@ const { document: documentData, saveDocument } = useDocument(props.documentId, "
 // metadata. The persisted canvas reference remains id-only.
 const { documents } = useDocuments();
 
-const documentPreviews = ref(new Map<string, DocumentPreviewState>());
-
 const roomId = props.documentId || crypto.randomUUID();
 const presenceClientId = crypto.randomUUID();
 const ydoc = new Y.Doc();
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
+const documentLinks = createDocumentLinkController({
+  documents,
+  fetchDocument: (documentId) => api.document.get(props.spaceId, documentId),
+  insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
+  selectShape: (shapeId) => selectOnlyShape(shapeId),
+  afterInsert: () => {
+    activeTool.value = "select";
+    saveImmediately();
+  },
+});
 // Tracks only local edits (default trackedOrigins = {null}); remote/agent
 // updates arrive with origin "remote" and are excluded, so undo/redo only
 // reverts this user's own changes.
@@ -311,8 +262,7 @@ let dragState: DragState | null = null;
 // True once a shape drag has actually moved the selection. Document-link cards
 // read this to tell a click (open the document) from a drag (just reposition).
 let dragMoved = false;
-let freehandBuilder: FreehandStrokeBuilder | null = null;
-let freehandPointerId: number | null = null;
+let drawingSession: CanvasDrawingSession | null = null;
 const activeFreehandStroke = ref<FreehandStroke | null>(null);
 // Screen-space position of the long-press context menu, null when hidden.
 const contextMenuPos = ref<{ x: number; y: number } | null>(null);
@@ -558,55 +508,11 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
   };
 }
 
-function isFreehandPoint(value: unknown): value is FreehandPoint {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as FreehandPoint).x === "number" &&
-    typeof (value as FreehandPoint).y === "number"
-  );
-}
-
-function cloneFreehandPoint(point: FreehandPoint): FreehandPoint {
-  return {
-    x: point.x,
-    y: point.y,
-    pressure: point.pressure,
-    time: point.time,
-    velocity: point.velocity,
-    width: point.width,
-  };
-}
-
 function toStroke(
   id: string,
   source: Y.Map<unknown> | CanvasStrokeSnapshot,
 ): CanvasStroke {
-  const read = (key: keyof CanvasStrokeSnapshot) =>
-    source instanceof Y.Map ? source.get(key) : source[key];
-  const pointsValue = read("points");
-  const points = Array.isArray(pointsValue)
-    ? pointsValue.filter(isFreehandPoint).map(cloneFreehandPoint)
-    : [];
-  const styleValue = read("style");
-  const style =
-    typeof styleValue === "object" && styleValue !== null
-      ? { ...FREEHAND_STYLE, ...(styleValue as Partial<FreehandStrokeStyle>) }
-      : FREEHAND_STYLE;
-  // Persisted points already carry the widths computed while drawing.
-  // Recomputing velocity widths here would depend on the viewer's current
-  // zoom (and on the pre-layout 1×1 screen during initial load), so only
-  // derive widths when none were stored.
-  const options = freehandOptions(style);
-  if (points.some((point) => point.width !== undefined)) {
-    options.velocityWidth = undefined;
-  }
-  const stroke = buildFreehandStroke(points, options);
-  return {
-    id,
-    updatedAt: toNumber(read("updatedAt"), Date.now()),
-    ...stroke,
-  };
+  return toCanvasStroke(id, source, transform.value.scale);
 }
 
 function syncShapesFromY() {
@@ -670,14 +576,6 @@ function createShapeMap(shape: CanvasShape) {
   if (shape.alt) map.set("alt", shape.alt);
   if (shape.docId) map.set("docId", shape.docId);
   map.set("updatedAt", shape.updatedAt);
-  return map;
-}
-
-function createStrokeMap(stroke: CanvasStrokeSnapshot) {
-  const map = new Y.Map<unknown>();
-  map.set("points", stroke.points.map(cloneFreehandPoint));
-  map.set("style", { ...stroke.style });
-  map.set("updatedAt", stroke.updatedAt);
   return map;
 }
 
@@ -839,20 +737,6 @@ function defaultInkColor() {
   return canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
 }
 
-function themedStroke(stroke: FreehandStroke): FreehandStroke {
-  if (stroke.style.color !== FREEHAND_STYLE.color) {
-    return stroke;
-  }
-
-  return {
-    ...stroke,
-    style: {
-      ...stroke.style,
-      color: defaultInkColor(),
-    },
-  };
-}
-
 function renderGrid() {
   const canvas = gridRef.value;
   const context = canvas?.getContext("2d");
@@ -896,37 +780,17 @@ function renderInk() {
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
 
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.clearRect(0, 0, screen.value.width, screen.value.height);
-  for (const stroke of strokes.value) {
-    drawFreehandStroke(context, themedStroke(stroke), transform.value);
-  }
-  if (activeFreehandStroke.value) {
-    drawFreehandStroke(
-      context,
-      themedStroke(activeFreehandStroke.value),
-      transform.value,
-    );
-  }
-  drawStrokeSelection(context);
-  drawSnapGuides(context, activeSnapGuides.value, transform.value, screen.value, {
-    color: "#2563eb",
+  renderCanvasInk({
+    context,
+    dpr,
+    screen: screen.value,
+    transform: transform.value,
+    strokes: strokes.value,
+    activeStroke: activeFreehandStroke.value,
+    selectedStrokeIds: selectedStrokeIds.value,
+    snapGuides: activeSnapGuides.value,
+    defaultInkColor: defaultInkColor(),
   });
-}
-
-function drawStrokeSelection(context: CanvasRenderingContext2D) {
-  if (selectedStrokeIds.value.size === 0) return;
-
-  context.save();
-  context.strokeStyle = "#2563eb";
-  context.lineWidth = 1.5;
-  context.setLineDash([]);
-  for (const id of selectedStrokeIds.value) {
-    const stroke = strokes.value.find((s) => s.id === id);
-    if (!stroke || stroke.points.length === 0) continue;
-    drawFreehandOutline(context, stroke, transform.value, 4);
-  }
-  context.restore();
 }
 
 function resize() {
@@ -1008,20 +872,6 @@ function setupPresence() {
   presenceTimer = setInterval(updatePresence, 120);
 }
 
-function isImageFile(file: File) {
-  if (file.type.startsWith("image/")) return true;
-  return /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name);
-}
-
-function isVideoFile(file: File) {
-  if (file.type.startsWith("video/")) return true;
-  return /\.(mp4|webm|mov|m4v|ogv)$/i.test(file.name);
-}
-
-function isMediaFile(file: File) {
-  return isVideoFile(file) || isImageFile(file);
-}
-
 function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   if (event) return screenToWorld(screenPoint(event));
   if (localPointer.value) return localPointer.value;
@@ -1031,84 +881,21 @@ function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   });
 }
 
-async function uploadMediaFile(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file, file.name || "upload");
-  if (props.documentId) formData.append("documentId", props.documentId);
-
-  const response = await fetch(`/api/v1/spaces/${props.spaceId}/uploads`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-
-  const result = (await response.json()) as { url: string };
-  return result.url;
-}
-
-function imageSize(src: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () =>
-      resolve({
-        width: image.naturalWidth || 320,
-        height: image.naturalHeight || 220,
-      });
-    image.onerror = () => resolve({ width: 320, height: 220 });
-    image.src = src;
-  });
-}
-
-function videoSize(src: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.muted = true;
-    video.onloadedmetadata = () =>
-      resolve({
-        width: video.videoWidth || 320,
-        height: video.videoHeight || 220,
-      });
-    video.onerror = () => resolve({ width: 320, height: 220 });
-    video.src = src;
-  });
-}
-
-function fitImageSize(width: number, height: number) {
-  const maxWidth = 480;
-  const maxHeight = 360;
-  const scale = Math.min(
-    1,
-    maxWidth / Math.max(1, width),
-    maxHeight / Math.max(1, height),
-  );
-  return {
-    width: Math.max(80, Math.round(width * scale)),
-    height: Math.max(60, Math.round(height * scale)),
-  };
-}
-
 async function addMediaFile(file: File, at: { x: number; y: number }) {
-  if (!isMediaFile(file)) return;
-  const type: CanvasShapeType = isVideoFile(file) ? "video" : "image";
   saveState.value = "saving";
   saveError.value = null;
   dispatchSaveStatus();
 
   try {
-    const src = await uploadMediaFile(file);
-    const naturalSize = await (type === "video" ? videoSize(src) : imageSize(src));
-    const size = fitImageSize(naturalSize.width, naturalSize.height);
-    const shape = createMediaShape({
-      type,
-      at,
-      size,
-      src,
-      alt: file.name,
+    const shape = await createUploadedMediaShape(file, at, {
+      spaceId: props.spaceId,
+      documentId: props.documentId,
     });
+    if (!shape) {
+      saveState.value = "idle";
+      dispatchSaveStatus();
+      return;
+    }
     yShapes.set(shape.id, createShapeMap(shape));
     selectOnlyShape(shape.id);
     activeTool.value = "select";
@@ -1121,8 +908,11 @@ async function addMediaFile(file: File, at: { x: number; y: number }) {
   }
 }
 
-function mediaFilesFromList(files: FileList | File[]) {
-  return Array.from(files).filter(isMediaFile);
+function uploadCanvasMediaFile(file: File): Promise<string> {
+  return uploadMediaFile(file, {
+    spaceId: props.spaceId,
+    documentId: props.documentId,
+  });
 }
 
 async function addMediaFiles(files: File[], at: { x: number; y: number }) {
@@ -1133,79 +923,10 @@ async function addMediaFiles(files: File[], at: { x: number; y: number }) {
   }
 }
 
-function setDocumentPreview(documentId: string, preview: DocumentPreviewState) {
-  const next = new Map(documentPreviews.value);
-  next.set(documentId, preview);
-  documentPreviews.value = next;
-}
-
-function cachedDocumentPreview(shape: CanvasShape): DocumentPreviewState | undefined {
-  const documentId = documentIdForShape(shape);
-  return documentId ? documentPreviews.value.get(documentId) : undefined;
-}
-
-function initialDocumentPreview(documentId: string): DocumentPreviewState {
-  return createInitialDocumentPreview(documentId, documents.value);
-}
-
-async function loadDocumentPreview(documentId: string) {
-  const existing = documentPreviews.value.get(documentId);
-  if (existing?.status === "loading" || existing?.status === "loaded") return;
-
-  setDocumentPreview(documentId, initialDocumentPreview(documentId));
-
-  try {
-    const doc = await api.document.get(props.spaceId, documentId);
-    setDocumentPreview(documentId, {
-      status: "loaded",
-      title: createInitialDocumentPreview(documentId, [doc]).title,
-      type: doc.type,
-      content: typeof doc.content === "string" ? doc.content : "",
-    });
-  } catch (error) {
-    const fallback =
-      documentPreviews.value.get(documentId) ?? initialDocumentPreview(documentId);
-    setDocumentPreview(documentId, {
-      ...fallback,
-      status: "error",
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
-
-function documentIdForShape(shape: CanvasShape): string | undefined {
-  return shape.docId;
-}
-
-function documentShapeTitle(shape: CanvasShape): string {
-  return documentLinkTitle(shape, cachedDocumentPreview(shape));
-}
-
-function documentShapeContentHtml(shape: CanvasShape): string {
-  return documentLinkContentHtml(cachedDocumentPreview(shape));
-}
-
-function documentShapeFallback(shape: CanvasShape): string {
-  return documentLinkFallback(cachedDocumentPreview(shape));
-}
-
-// Places a card on the canvas that links to another document by stable id.
-function insertDocumentLink(documentId: string, at: { x: number; y: number }): boolean {
-  const doc = documents.value.find((entry) => entry.id === documentId.trim());
-  const shape = createDocumentLinkShape(documentId, at, doc);
-  if (!shape) return false;
-  yShapes.set(shape.id, createShapeMap(shape));
-  selectOnlyShape(shape.id);
-  if (shape.docId) void loadDocumentPreview(shape.docId);
-  activeTool.value = "select";
-  saveImmediately();
-  return true;
-}
-
 function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
   event.preventDefault();
   if (dragMoved) return;
-  const documentId = documentIdForShape(shape);
+  const documentId = documentLinks.documentIdForShape(shape);
   if (!documentId) return;
   window.dispatchEvent(
     new CustomEvent("view-document", {
@@ -1330,11 +1051,7 @@ function setPenColor(color: string) {
     for (const id of selectedStrokeIds.value) {
       const stroke = yStrokes.get(id);
       if (!stroke) continue;
-      const styleValue = stroke.get("style");
-      const style =
-        typeof styleValue === "object" && styleValue !== null
-          ? { ...FREEHAND_STYLE, ...(styleValue as Partial<FreehandStrokeStyle>) }
-          : { ...FREEHAND_STYLE };
+      const style = strokeStyleFromUnknown(stroke.get("style"));
       stroke.set("style", { ...style, color });
       stroke.set("updatedAt", Date.now());
     }
@@ -1360,86 +1077,28 @@ function deleteSelectedShape() {
   selectedStrokeIds.value = new Set();
 }
 
-function distanceToSegment(
-  point: { x: number; y: number },
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lengthSq = dx * dx + dy * dy;
-  if (lengthSq === 0) return Math.hypot(point.x - a.x, point.y - a.y);
-  let t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
-}
-
-function strokeHitTest(world: { x: number; y: number }): string | null {
-  const scale = transform.value.scale || 1;
-  // Search topmost (last drawn) first.
-  for (let i = strokes.value.length - 1; i >= 0; i -= 1) {
-    const stroke = strokes.value[i];
-    const points = stroke.points;
-    const threshold = stroke.style.width / 2 + 8 / scale;
-    if (points.length === 1) {
-      if (Math.hypot(world.x - points[0].x, world.y - points[0].y) <= threshold) {
-        return stroke.id;
-      }
-      continue;
-    }
-    for (let j = 1; j < points.length; j += 1) {
-      if (distanceToSegment(world, points[j - 1], points[j]) <= threshold) {
-        return stroke.id;
-      }
-    }
-  }
-  return null;
-}
-
-function freehandPoint(event: PointerEvent): FreehandPoint {
-  const point = screenToWorld(screenPoint(event));
-  // Only trust pressure from a stylus. Mice report a constant 0.5 while a button
-  // is held, and touch rarely reports meaningful pressure, so for those inputs
-  // width falls back to velocity-based tapering.
-  const hasStylusPressure =
-    drawStrokeMode.value === "pen" && event.pointerType === "pen" && event.pressure > 0;
-  return {
-    x: point.x,
-    y: point.y,
-    pressure: hasStylusPressure ? event.pressure : undefined,
-    time: event.timeStamp,
-  };
-}
-
 function startFreehand(event: PointerEvent) {
-  if (event.button !== 0 || (event.pointerType === "touch" && !event.isPrimary)) return;
+  const started = startCanvasDrawingStroke(event, screenToWorld(screenPoint(event)), {
+    color: penColor.value,
+    mode: drawStrokeMode.value,
+    worldToScreenScale: transform.value.scale,
+  });
+  if (!started) return;
+
   clearSelection();
-  freehandPointerId = event.pointerId;
-  freehandBuilder = createFreehandStrokeBuilder(
-    freehandOptions({ ...FREEHAND_STYLE, color: penColor.value }, drawStrokeMode.value),
-  );
-  activeFreehandStroke.value = freehandBuilder.startAt(freehandPoint(event));
+  drawingSession = started.session;
+  activeFreehandStroke.value = started.stroke;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
 }
 
 function finishFreehand(event: PointerEvent) {
-  if (!freehandBuilder || freehandPointerId !== event.pointerId) return;
-  const finished = freehandBuilder.finish();
-  if (finished.points.length > 0) {
-    const id = `stroke-${crypto.randomUUID()}`;
-    yStrokes.set(
-      id,
-      createStrokeMap({
-        id,
-        points: finished.points.map(cloneFreehandPoint),
-        style: { ...finished.style },
-        updatedAt: Date.now(),
-      }),
-    );
+  if (!drawingSession || drawingSession.pointerId !== event.pointerId) return;
+  const finished = finishCanvasDrawingStroke(drawingSession);
+  if (finished) {
+    yStrokes.set(finished.id, createStrokeMap(finished));
   }
-  freehandBuilder = null;
-  freehandPointerId = null;
+  drawingSession = null;
   activeFreehandStroke.value = null;
   renderInk();
 }
@@ -1629,7 +1288,11 @@ function handleViewportPointerDown(event: PointerEvent) {
 
   if (activeTool.value === "select") {
     const additive = event.shiftKey;
-    const hitStroke = strokeHitTest(screenToWorld(point));
+    const hitStroke = hitTestCanvasStroke(
+      strokes.value,
+      screenToWorld(point),
+      transform.value.scale,
+    );
     if (hitStroke) {
       selectStroke(hitStroke, additive);
       event.preventDefault();
@@ -1755,8 +1418,12 @@ function handlePointerMove(event: PointerEvent) {
   const point = screenPoint(event);
   localPointer.value = screenToWorld(point);
 
-  if (freehandBuilder && freehandPointerId === event.pointerId) {
-    activeFreehandStroke.value = freehandBuilder.addPoint(freehandPoint(event));
+  if (drawingSession && drawingSession.pointerId === event.pointerId) {
+    activeFreehandStroke.value = addCanvasDrawingPoint(
+      drawingSession,
+      event,
+      screenToWorld(point),
+    );
     renderInk();
     event.preventDefault();
     return;
@@ -1869,22 +1536,6 @@ function handlePointerLeave() {
   updatePresence();
 }
 
-// During dragover the browser hides file contents (dataTransfer.files is
-// empty); only item kind/type metadata is available to decide acceptance.
-function dragHasMediaFiles(transfer: DataTransfer | null) {
-  if (!transfer) return false;
-  if (transfer.items.length > 0) {
-    return Array.from(transfer.items).some(
-      (item) =>
-        item.kind === "file" &&
-        (item.type === "" ||
-          item.type.startsWith("image/") ||
-          item.type.startsWith("video/")),
-    );
-  }
-  return transfer.types.includes("Files");
-}
-
 function handleDragOver(event: DragEvent) {
   const hasMedia = dragHasMediaFiles(event.dataTransfer);
   if (!hasMedia && !dragHasDocumentLink(event.dataTransfer)) return;
@@ -1902,14 +1553,17 @@ function handleDrop(event: DragEvent) {
     // Prevent the browser from navigating to the file even when the dropped
     // files turn out not to be media we can place.
     event.preventDefault();
-    const media = mediaFilesFromList(clipboardFiles(event.dataTransfer));
+    const media = mediaFilesFromDataTransfer(event.dataTransfer);
     if (media.length > 0) void addMediaFiles(media, insertionPointFromEvent(event));
     return;
   }
 
   // A document dragged from the sidebar or command palette becomes a link card.
   const droppedId = getDroppedDocumentId(event.dataTransfer, documents.value);
-  if (droppedId && insertDocumentLink(droppedId, insertionPointFromEvent(event))) {
+  if (
+    droppedId &&
+    documentLinks.insertDocumentLink(droppedId, insertionPointFromEvent(event))
+  ) {
     event.preventDefault();
   }
 }
@@ -2102,74 +1756,6 @@ function pasteCanvasClipboard(
   renderInk();
 }
 
-// Map Figma NodeType strings to canvas shape types and decide which node types
-// are worth showing on the canvas (skip pure-layout/decorator nodes).
-// Pastes a Figma selection: each top-level node becomes its own image shape,
-// laid out to preserve the relative positions and sizes they had in Figma.
-// Returns false when nothing is renderable so the caller can fall back to the
-// OS clipboard's bitmap flavor.
-async function pasteFigmaClipboard(
-  html: string,
-  at: { x: number; y: number },
-): Promise<boolean> {
-  const frames = await figmaClipboardToFrames(html);
-  if (!frames || frames.length === 0) return false;
-
-  // Shared scale keeps the frames' relative sizes; clamp the largest so a
-  // screen-sized frame doesn't paste enormous.
-  const maxW = Math.max(...frames.map((f) => f.width));
-  const maxH = Math.max(...frames.map((f) => f.height));
-  const scale = Math.min(1, 480 / Math.max(1, maxW), 360 / Math.max(1, maxH));
-
-  // World-space bounding box of the whole selection.
-  const minX = Math.min(...frames.map((f) => f.x));
-  const minY = Math.min(...frames.map((f) => f.y));
-  const maxX = Math.max(...frames.map((f) => f.x + f.width));
-  const maxY = Math.max(...frames.map((f) => f.y + f.height));
-  const groupLeft = at.x - ((maxX - minX) * scale) / 2;
-  const groupTop = at.y - ((maxY - minY) * scale) / 2;
-
-  saveState.value = "saving";
-  saveError.value = null;
-  dispatchSaveStatus();
-
-  const createdIds: string[] = [];
-  try {
-    for (const frame of frames) {
-      const file = new File([frame.svg], `${frame.name || "figma"}.svg`, {
-        type: "image/svg+xml",
-      });
-      const src = await uploadMediaFile(file);
-      const shape = createMediaShape({
-        type: "image",
-        at: {
-          x: groupLeft + (frame.x - minX) * scale,
-          y: groupTop + (frame.y - minY) * scale,
-        },
-        size: {
-          width: Math.max(1, Math.round(frame.width * scale)),
-          height: Math.max(1, Math.round(frame.height * scale)),
-        },
-        src,
-        alt: frame.name,
-        origin: "top-left",
-      });
-      yShapes.set(shape.id, createShapeMap(shape));
-      createdIds.push(shape.id);
-    }
-    selectedShapeIds.value = new Set(createdIds);
-    activeTool.value = "select";
-    saveState.value = "idle";
-    dispatchSaveStatus();
-    return true;
-  } catch (err) {
-    saveState.value = "error";
-    saveError.value = err instanceof Error ? err.message : String(err);
-    dispatchSaveStatus();
-    return createdIds.length > 0;
-  }
-}
-
 function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select")) return;
@@ -2188,7 +1774,7 @@ function handlePaste(event: ClipboardEvent) {
   }
 
   // 2. Images / video pasted from the clipboard.
-  const media = mediaFilesFromList(clipboardFiles(event.clipboardData));
+  const media = mediaFilesFromDataTransfer(event.clipboardData);
   if (media.length > 0) {
     event.preventDefault();
     void addMediaFiles(media, insertionPointFromEvent());
@@ -2198,9 +1784,28 @@ function handlePaste(event: ClipboardEvent) {
   // 3. Figma selection — HTML blob with figmeta + kiwi binary scene data. Must
   //    run before the plain-text bail below because Figma also populates text/plain.
   const html = event.clipboardData?.getData("text/html") ?? "";
-  if (html.includes("(figmeta)") && html.includes("(figma)")) {
+  if (isFigmaClipboardHtml(html)) {
     event.preventDefault();
-    void pasteFigmaClipboard(html, insertionPointFromEvent());
+    saveState.value = "saving";
+    saveError.value = null;
+    dispatchSaveStatus();
+    void pasteFigmaClipboard(html, insertionPointFromEvent(), {
+      uploadMediaFile: uploadCanvasMediaFile,
+      insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
+    }).then((result) => {
+      if (result.createdIds.length > 0) {
+        selectedShapeIds.value = new Set(result.createdIds);
+        activeTool.value = "select";
+      }
+      if (result.error) {
+        saveState.value = "error";
+        saveError.value =
+          result.error instanceof Error ? result.error.message : String(result.error);
+      } else {
+        saveState.value = "idle";
+      }
+      dispatchSaveStatus();
+    });
     return;
   }
 
@@ -2216,26 +1821,6 @@ function handlePaste(event: ClipboardEvent) {
     event.preventDefault();
     pasteCanvasClipboard(internal, insertionPointFromEvent());
   }
-}
-
-// Images on the clipboard (e.g. a screenshot or "copy image") may arrive in
-// `files`, in `items` as a file entry, or both. Collect from both and dedupe so
-// a single pasted image isn't inserted twice.
-function clipboardFiles(data: DataTransfer | null | undefined): File[] {
-  if (!data) return [];
-  const files = Array.from(data.files ?? []);
-  for (const item of Array.from(data.items ?? [])) {
-    if (item.kind !== "file") continue;
-    const file = item.getAsFile();
-    if (file) files.push(file);
-  }
-  const seen = new Set<string>();
-  return files.filter((file) => {
-    const key = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 // The canvas renders full-bleed behind the fixed navigation sidebar, so the
@@ -2389,12 +1974,12 @@ watch(
       .map((shape) => ({
         shapeId: shape.id,
         docId: shape.docId ?? null,
-        resolvedDocId: documentIdForShape(shape) ?? null,
+        resolvedDocId: documentLinks.documentIdForShape(shape) ?? null,
       })),
   (documentRefs) => {
     for (const ref of documentRefs) {
       if (ref.resolvedDocId) {
-        void loadDocumentPreview(ref.resolvedDocId);
+        void documentLinks.loadPreview(ref.resolvedDocId);
       }
     }
   },
@@ -2453,8 +2038,7 @@ onMounted(() => {
     onTouchGestureStart: () => {
       dragState = null;
       isPanning.value = false;
-      freehandBuilder = null;
-      freehandPointerId = null;
+      drawingSession = null;
       activeFreehandStroke.value = null;
       renderInk();
     },
@@ -2550,18 +2134,11 @@ onUnmounted(() => {
           :title="mode.label"
           @click="drawStrokeMode = mode.id"
         >
-          <svg
-            class="canvas-draw-mode-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+          <div
+            class="svg-icon canvas-draw-mode-icon"
             aria-hidden="true"
-          >
-            <path v-for="(d, i) in mode.paths" :key="i" :d="d" />
-          </svg>
+            v-html="mode.icon"
+          />
         </button>
       </span>
       <span
@@ -2620,18 +2197,7 @@ onUnmounted(() => {
         :data-tooltip="`${tool.label} · ${tool.shortcut}`"
         @click="activeTool = tool.id"
       >
-        <svg
-          class="canvas-tool-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path v-for="(d, i) in tool.paths" :key="i" :d="d" />
-        </svg>
+        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="tool.icon" />
       </button>
       <span class="canvas-divider"></span>
       <button
@@ -2662,18 +2228,7 @@ onUnmounted(() => {
         data-tooltip="Fit to view · F"
         @click="fitView()"
       >
-        <svg
-          class="canvas-tool-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path v-for="(d, i) in FIT_ICON_PATHS" :key="i" :d="d" />
-        </svg>
+        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="canvasFitViewIcon" />
       </button>
       <span v-if="saveState === 'error'" class="canvas-save-state error">{{ saveError }}</span>
     </div>
@@ -2783,7 +2338,7 @@ onUnmounted(() => {
               @pointerdown.stop="startShapeDrag(shape, $event)"
             >
               <span class="svg-icon canvas-shape-doc-icon" v-html="documentIcon"></span>
-              <span class="canvas-shape-doc-title">{{ documentShapeTitle(shape) }}</span>
+              <span class="canvas-shape-doc-title">{{ documentLinks.shapeTitle(shape) }}</span>
               <button
                 type="button"
                 class="canvas-shape-doc-open"
@@ -2802,12 +2357,12 @@ onUnmounted(() => {
               @wheel.stop
             >
               <div
-                v-if="documentShapeContentHtml(shape)"
+                v-if="documentLinks.shapeContentHtml(shape)"
                 class="canvas-shape-doc-content"
-                v-html="documentShapeContentHtml(shape)"
+                v-html="documentLinks.shapeContentHtml(shape)"
               ></div>
               <p v-else class="canvas-shape-doc-empty">
-                {{ documentShapeFallback(shape) }}
+                {{ documentLinks.shapeFallback(shape) }}
               </p>
             </div>
           </div>

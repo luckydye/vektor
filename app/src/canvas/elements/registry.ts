@@ -9,12 +9,6 @@ import type {
   CanvasShapeType,
 } from "./types.ts";
 
-export * from "./documentLink.ts";
-export * from "./media.ts";
-export * from "./note.ts";
-export * from "./text.ts";
-export * from "./types.ts";
-
 const elementDefinitions = [
   noteElement,
   textElement,
