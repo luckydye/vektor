@@ -1,4 +1,5 @@
 import { documentLinkElement } from "./documentLink.ts";
+import { fileElement } from "./files.ts";
 import { imageElement, videoElement } from "./media.ts";
 import { noteElement } from "./note.ts";
 import { textElement } from "./text.ts";
@@ -14,6 +15,7 @@ const elementDefinitions = [
   textElement,
   imageElement,
   videoElement,
+  fileElement,
   documentLinkElement,
 ] satisfies CanvasElementDefinition[];
 

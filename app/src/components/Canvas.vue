@@ -40,12 +40,16 @@ import {
   droppedDocumentId as getDroppedDocumentId,
 } from "../canvas/elements/documentLink.ts";
 import {
+  canvasFilesFromDataTransfer,
+  createUploadedFileShape,
+  dragHasCanvasFiles,
+} from "../canvas/elements/files.ts";
+import {
   isFigmaClipboardHtml,
   pasteFigmaClipboard,
 } from "../canvas/elements/figma.ts";
 import {
   createUploadedMediaShape,
-  dragHasMediaFiles,
   isMediaElementType,
   mediaFilesFromDataTransfer,
   uploadMediaFile,
@@ -915,10 +919,45 @@ function uploadCanvasMediaFile(file: File): Promise<string> {
   });
 }
 
-async function addMediaFiles(files: File[], at: { x: number; y: number }) {
+async function addCanvasFile(file: File, at: { x: number; y: number }) {
+  saveState.value = "saving";
+  saveError.value = null;
+  dispatchSaveStatus();
+
+  try {
+    const shape = await createUploadedFileShape(file, at, {
+      spaceId: props.spaceId,
+      documentId: props.documentId,
+    });
+    if (!shape) {
+      saveState.value = "idle";
+      dispatchSaveStatus();
+      return;
+    }
+    yShapes.set(shape.id, createShapeMap(shape));
+    selectOnlyShape(shape.id);
+    activeTool.value = "select";
+    saveState.value = "idle";
+    dispatchSaveStatus();
+  } catch (err) {
+    saveState.value = "error";
+    saveError.value = err instanceof Error ? err.message : String(err);
+    dispatchSaveStatus();
+  }
+}
+
+async function addDroppedCanvasFiles(
+  media: File[],
+  files: File[],
+  at: { x: number; y: number },
+) {
   let offset = 0;
-  for (const file of files) {
+  for (const file of media) {
     await addMediaFile(file, { x: at.x + offset, y: at.y + offset });
+    offset += 24;
+  }
+  for (const file of files) {
+    await addCanvasFile(file, { x: at.x + offset, y: at.y + offset });
     offset += 24;
   }
 }
@@ -933,6 +972,12 @@ function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
       detail: { spaceId: props.spaceId, documentId },
     }),
   );
+}
+
+function onFileShapeClick(event: MouseEvent) {
+  if (!dragMoved) return;
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
@@ -1537,24 +1582,28 @@ function handlePointerLeave() {
 }
 
 function handleDragOver(event: DragEvent) {
-  const hasMedia = dragHasMediaFiles(event.dataTransfer);
-  if (!hasMedia && !dragHasDocumentLink(event.dataTransfer)) return;
+  const hasFiles = dragHasCanvasFiles(event.dataTransfer);
+  if (!hasFiles && !dragHasDocumentLink(event.dataTransfer)) return;
   event.preventDefault();
   if (event.dataTransfer) {
     // Document drags from the sidebar/palette advertise effectAllowed "move";
     // a mismatched "copy" dropEffect makes the browser reject the drop, so we
     // mirror "move" for those. OS file drops carry copy semantics.
-    event.dataTransfer.dropEffect = hasMedia ? "copy" : "move";
+    event.dataTransfer.dropEffect = hasFiles ? "copy" : "move";
   }
 }
 
 function handleDrop(event: DragEvent) {
-  if (dragHasMediaFiles(event.dataTransfer)) {
+  if (dragHasCanvasFiles(event.dataTransfer)) {
     // Prevent the browser from navigating to the file even when the dropped
-    // files turn out not to be media we can place.
+    // files turn out not to be something we can place.
     event.preventDefault();
     const media = mediaFilesFromDataTransfer(event.dataTransfer);
-    if (media.length > 0) void addMediaFiles(media, insertionPointFromEvent(event));
+    const files = canvasFilesFromDataTransfer(event.dataTransfer);
+    const at = insertionPointFromEvent(event);
+    if (media.length > 0 || files.length > 0) {
+      void addDroppedCanvasFiles(media, files, at);
+    }
     return;
   }
 
@@ -1773,11 +1822,13 @@ function handlePaste(event: ClipboardEvent) {
     return;
   }
 
-  // 2. Images / video pasted from the clipboard.
+  // 2. Files pasted from the clipboard. Images/video keep their native canvas
+  //    renderers; everything else uses the shared file attachment renderer.
   const media = mediaFilesFromDataTransfer(event.clipboardData);
-  if (media.length > 0) {
+  const files = canvasFilesFromDataTransfer(event.clipboardData);
+  if (media.length > 0 || files.length > 0) {
     event.preventDefault();
-    void addMediaFiles(media, insertionPointFromEvent());
+    void addDroppedCanvasFiles(media, files, insertionPointFromEvent());
     return;
   }
 
@@ -2329,6 +2380,14 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
+          <file-attachment
+            v-else-if="shape.type === 'file' && shape.src"
+            class="canvas-shape-file"
+            :src="shape.src"
+            :filename="shape.alt || shape.text || 'file'"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+            @click.capture="onFileShapeClick"
+          ></file-attachment>
           <div
             v-else-if="shape.type === 'document'"
             class="canvas-shape-doc"
@@ -2951,13 +3010,27 @@ onUnmounted(() => {
   background: var(--canvas-image-bg);
 }
 
+.canvas-shape.file {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .canvas-shape.image .canvas-shape-image,
-.canvas-shape.video .canvas-shape-image {
+.canvas-shape.video .canvas-shape-image,
+.canvas-shape.file .canvas-shape-file {
   cursor: move;
 }
 
 .canvas-shape.image .canvas-shape-image {
   background: transparent;
+}
+
+.canvas-shape-file {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .canvas-shape.section {

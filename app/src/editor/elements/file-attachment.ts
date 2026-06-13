@@ -68,9 +68,10 @@ const FILE_COLORS: Record<FileType, string> = {
   unknown: "#6b7280",
 };
 
-customElements.define(
-  "file-attachment",
-  class FileAttachmentElement extends HTMLElement {
+if (typeof customElements !== "undefined" && !customElements.get("file-attachment")) {
+  customElements.define(
+    "file-attachment",
+    class FileAttachmentElement extends HTMLElement {
     shadow: ShadowRoot;
     previewEl: HTMLElement | null = null;
 
@@ -116,6 +117,7 @@ customElements.define(
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
           }
           .preview-area {
+            flex: 1;
             min-height: 100px;
             display: flex;
             align-items: center;
@@ -244,5 +246,6 @@ customElements.define(
         this.removeAttribute("filename");
       }
     }
-  },
-);
+    },
+  );
+}
