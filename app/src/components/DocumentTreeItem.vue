@@ -9,12 +9,12 @@
       
       <div v-else class="flex-none w-4"></div>
 
-      <a :href="getDocumentUrl(doc.slug)" :class="[
+      <a :href="getDocumentUrl(doc.slug)" draggable="true" :class="[
         'flex-1 px-3 py-2 text-sm rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive
           ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'
-      ]">
+      ]" @dragstart="handleDocumentDragStart">
         <span>{{ doc.properties.title || 'Untitled' }}</span>
         <span v-if="doc.mentionCount && doc.mentionCount > 0" class="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-blue-500 text-white font-medium">
           {{ doc.mentionCount }}
@@ -56,6 +56,7 @@ const props = defineProps({
 defineEmits(["toggle"]);
 
 const { currentSpace } = useSpace();
+const DOCUMENT_ID_MIME = "application/x-vektor-document-id";
 
 const children = computed(() => {
   const docCategory = props.doc.properties.category || props.doc.properties.collection;
@@ -87,5 +88,12 @@ function getDocumentUrl(docSlug) {
     return `/${currentSpace.value.slug}/doc/${docSlug}`;
   }
   return `/doc/${docSlug}`;
+}
+
+function handleDocumentDragStart(event) {
+  if (!event.dataTransfer || !props.doc.id) return;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData(DOCUMENT_ID_MIME, props.doc.id);
+  event.dataTransfer.setData("text/plain", props.doc.id);
 }
 </script>

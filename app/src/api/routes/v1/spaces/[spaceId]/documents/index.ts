@@ -55,9 +55,9 @@ export const GET: APIRoute = (context) =>
       ? jobAuth.type === "user"
         ? jobAuth.user.id
         : jobAuth.userId
-      : auth!.type === "user"
-        ? auth!.user.id
-        : getTokenUserId(auth!.token.tokenId);
+      : auth.type === "user"
+        ? auth.user.id
+        : getTokenUserId(auth.token.tokenId);
     const viewer: AclViewer | null = aclUserId
       ? { userId: aclUserId, userGroups: await getUserGroups(aclUserId) }
       : null;

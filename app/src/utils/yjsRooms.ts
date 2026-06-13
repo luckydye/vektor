@@ -37,6 +37,7 @@ type CanvasShape = {
   color?: string;
   src?: string;
   alt?: string;
+  docId?: string;
   updatedAt?: number;
 };
 
@@ -74,6 +75,7 @@ function loadCanvasYDoc(content: string): Y.Doc {
       map.set("color", shape.color ?? "#fef3c7");
       if (shape.src) map.set("src", shape.src);
       if (shape.alt) map.set("alt", shape.alt);
+      if (shape.docId) map.set("docId", shape.docId);
       map.set("updatedAt", shape.updatedAt ?? Date.now());
       shapes.set(shape.id, map);
     }
@@ -404,7 +406,8 @@ function broadcastCanvasAgentPresence(
   changed: CanvasShapePosition[],
 ): void {
   if (changed.length === 0) return;
-  const last = changed[changed.length - 1]!;
+  const last = changed.at(-1);
+  if (!last) return;
   setAgentPresence(key, documentId, room, {
     kind: "canvas",
     pointer: { x: last.x, y: last.y },

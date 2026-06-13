@@ -149,14 +149,12 @@ const navigateToDocument = async (doc) => {
 };
 
 // Lets a document be dragged out of the palette and dropped onto a navigation
-// category/document. Uses the same `text/plain` + documentId protocol as the
-// search results' <page-target>, so the existing category-target/page-target
-// drop handlers work unchanged. The palette closes on drag start to reveal the
-// navigation as the drop target — the in-flight drag survives because the
-// payload is set synchronously here, before the overlay unmounts.
+// category/document. The custom MIME type carries the stable id for Canvas;
+// text/plain is kept for existing category/page drop handlers.
 const handleDocumentDragStart = (e, documentId) => {
   if (!e.dataTransfer || !documentId) return;
   e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("application/x-vektor-document-id", documentId);
   e.dataTransfer.setData("text/plain", documentId);
   closePalette();
 };

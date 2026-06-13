@@ -65,6 +65,7 @@ customElements.define(
       if (!e.dataTransfer) return;
 
       e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("application/x-vektor-document-id", documentId);
       e.dataTransfer.setData("text/plain", documentId);
       this.setAttribute("data-dragging", "true");
 
