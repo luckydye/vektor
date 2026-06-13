@@ -96,7 +96,7 @@ export interface ApiRoute {
 }
 
 /**
- * The complete set of HTTP routes served by the Express API.
+ * The complete set of HTTP routes served by the Hono API.
  *
  * Patterns use Astro's bracket syntax: `[param]` for a single segment and
  * `[...rest]` for a catch-all. Order does not matter — the router sorts by

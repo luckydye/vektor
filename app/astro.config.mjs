@@ -31,7 +31,7 @@ export default defineConfig({
         maxAge: 86400,
       },
       proxy: {
-        // API routes are served by the Express server (src/server.ts), not Astro.
+        // API routes are served by the Hono server (src/server.ts), not Astro.
         "/api": { target: "http://127.0.0.1:8080", changeOrigin: true },
         "/.well-known/caldav": { target: "http://127.0.0.1:8080", changeOrigin: true },
         "/auth": { target: "http://127.0.0.1:8080", changeOrigin: true },

@@ -19,5 +19,3 @@ declare namespace App {
     publicEnv: PublicEnv;
   }
 }
-
-declare module "express";

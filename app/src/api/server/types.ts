@@ -2,7 +2,7 @@ import type { APIContext, APIRoute } from "astro";
 
 /**
  * The subset of Astro's `APIContext` that the migrated API route handlers
- * actually consume. The Express adapter constructs an object of this shape so
+ * actually consume. The Hono adapter constructs an object of this shape so
  * the handlers can run without the Astro runtime.
  */
 export type ApiContext = Pick<APIContext, "request" | "params" | "url" | "locals">;

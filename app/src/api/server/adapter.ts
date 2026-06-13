@@ -114,7 +114,7 @@ function requestUrl(req: IncomingMessage): string {
 }
 
 /**
- * Build a Web `Request` and an `ApiContext` from an incoming Express request,
+ * Build a Web `Request` and an `ApiContext` from an incoming Node request,
  * populating `locals` the same way the Astro middleware did.
  */
 export async function buildApiContext(
@@ -171,7 +171,7 @@ export async function buildApiContext(
   };
 }
 
-/** Write a Web `Response` produced by a route handler to the Express response. */
+/** Write a Web `Response` produced by a route handler to the Node response. */
 export async function sendWebResponse(
   res: ServerResponse,
   response: Response,

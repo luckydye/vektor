@@ -1,8 +1,8 @@
-import type { Request as ExRequest, Response as ExResponse, NextFunction } from "express";
+import type { Context, Next } from "hono";
 import { authTrustedOrigins } from "#auth";
 import { appLogger } from "#observability/logger.ts";
 import { apiRoutes } from "../routes.ts";
-import { buildApiContext, PayloadTooLargeError, sendWebResponse } from "./adapter.ts";
+import { buildApiContext, PayloadTooLargeError } from "./adapter.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiRouteMethod, ApiRouteModule } from "./types.ts";
 
@@ -31,16 +31,16 @@ const trustedOrigins = new Set(
  * navigations) pass through — they are not forgeable by a hostile web page.
  * This is an explicit second layer on top of the SameSite cookie default.
  */
-function isCrossSiteForgery(req: ExRequest, method: string): boolean {
+function isCrossSiteForgery(c: Context, method: string): boolean {
   if (SAFE_METHODS.has(method)) return false;
-  const origin = req.headers.origin;
+  const origin = c.req.header("origin");
   if (!origin) return false;
   if (trustedOrigins.has(origin)) return false;
   // Same-origin fallback for deployments without WIKI_SITE_URL: the browser
   // sets Host to the target server, so Origin host === Host implies the
   // request came from a page served by this very host.
   try {
-    return new URL(origin).host !== req.headers.host;
+    return new URL(origin).host !== c.req.header("host");
   } catch {
     return true;
   }
@@ -59,35 +59,29 @@ function resolveHandler(module: ApiRouteModule, method: string) {
   return handler;
 }
 
-function jsonError(res: ExResponse, status: number, message: string): void {
-  res.status(status).json({ error: message });
+function jsonError(status: number, message: string): Response {
+  return Response.json({ error: message }, { status });
 }
 
 /**
- * Express middleware that serves the migrated API routes. Non-API paths fall
+ * Hono middleware that serves the migrated API routes. Non-API paths fall
  * through to the next handler (e.g. the Astro frontend handler, when mounted).
  */
-export async function apiRouter(
-  req: ExRequest,
-  res: ExResponse,
-  next: NextFunction,
-): Promise<void> {
-  const pathname = req.path;
+export async function apiRouter(c: Context, next: Next): Promise<Response | undefined> {
+  const pathname = c.req.path;
   if (!isApiPath(pathname)) {
-    next();
+    await next();
     return;
   }
 
   const match = matchRoute(compiledRoutes, pathname);
   if (!match) {
-    jsonError(res, 404, "Not found");
-    return;
+    return jsonError(404, "Not found");
   }
 
-  const method = (req.method ?? "GET").toUpperCase();
-  if (isCrossSiteForgery(req, method)) {
-    jsonError(res, 403, "Cross-origin request rejected");
-    return;
+  const method = c.req.method.toUpperCase();
+  if (isCrossSiteForgery(c, method)) {
+    return jsonError(403, "Cross-origin request rejected");
   }
 
   const handler = resolveHandler(match.module, method);
@@ -95,36 +89,30 @@ export async function apiRouter(
     const allowed = Object.keys(match.module)
       .filter((key) => key !== "ALL")
       .join(", ");
-    res.setHeader("Allow", allowed);
-    jsonError(res, 405, "Method not allowed");
-    return;
+    return Response.json(
+      { error: "Method not allowed" },
+      { status: 405, headers: { Allow: allowed } },
+    );
   }
 
   try {
-    const context = await buildApiContext(req, match.params);
+    const context = await buildApiContext(c.env.incoming, match.params);
     const result = await handler(context as never);
 
     if (!(result instanceof Response)) {
       appLogger.error("API handler returned a non-Response value", { path: pathname });
-      jsonError(res, 500, "Internal server error");
-      return;
+      return jsonError(500, "Internal server error");
     }
 
-    await sendWebResponse(res, result);
+    return result;
   } catch (error) {
     if (error instanceof PayloadTooLargeError) {
-      if (!res.headersSent) jsonError(res, 413, "Request body too large");
-      else res.end();
-      return;
+      return jsonError(413, "Request body too large");
     }
     appLogger.error("Unhandled API route error", {
       path: pathname,
       error: error instanceof Error ? error.message : String(error),
     });
-    if (!res.headersSent) {
-      jsonError(res, 500, "Internal server error");
-    } else {
-      res.end();
-    }
+    return jsonError(500, "Internal server error");
   }
 }

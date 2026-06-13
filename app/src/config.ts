@@ -203,7 +203,7 @@ export function isTrustProxyEnabled(): boolean {
 
 /**
  * Runtime environment exposed to the browser. Single source of truth for the
- * Astro middleware and the Express API adapter — only ever add non-secret
+ * Astro middleware and the Hono API adapter — only ever add non-secret
  * values here.
  */
 export function getPublicEnv(): App.PublicEnv {

@@ -1,9 +1,10 @@
 import "./observability/bootstrap.ts";
-import type { IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { dev } from "astro";
-import express, { type NextFunction, type Request, type Response } from "express";
+import { Hono } from "hono";
 import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
+import { sendWebResponse } from "./api/server/adapter.ts";
 import { apiRouter } from "./api/server/router.ts";
 import { auth } from "./auth.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
@@ -12,7 +13,10 @@ import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
 import { appLogger } from "./observability/logger.ts";
-import { createEmbeddedClientAssetMiddleware } from "./utils/clientAssets.ts";
+import {
+  createEmbeddedClientAssetMiddleware,
+  createFileSystemClientAssetMiddleware,
+} from "./utils/clientAssets.ts";
 import {
   isDocumentRealtimeTopic,
   isWorkflowRunRealtimeTopic,
@@ -30,6 +34,17 @@ import {
 } from "./utils/realtime.ts";
 import { getRoom, loadYDoc, type YRoom, yRooms } from "./utils/yjsRooms.ts";
 
+type Bindings = {
+  incoming: IncomingMessage;
+  outgoing: ServerResponse;
+};
+
+type AstroMiddleware = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  next: (error?: unknown) => void,
+) => void | Promise<void>;
+
 function broadcastPresence(
   room: YRoom,
   sender: WebSocket,
@@ -45,25 +60,21 @@ function broadcastPresence(
   }
 }
 
-const app = express();
-
-// Only honor X-Forwarded-* headers when an operator confirms a trusted reverse
-// proxy sits in front of the app — otherwise clients can spoof their IP/proto.
-if (isTrustProxyEnabled()) {
-  app.set("trust proxy", true);
-}
+const app = new Hono<{ Bindings: Bindings }>();
 
 const realtimeWebSocketServer = new WebSocketServer({ noServer: true });
 const getWss = () => realtimeWebSocketServer;
 
 // Logging
-app.use((req: Request & { time?: string }, res: Response, next: NextFunction) => {
+app.use("*", async (c, next) => {
+  const req = c.env.incoming as IncomingMessage & { time?: string };
+  const res = c.env.outgoing;
   const startTime = Date.now();
   req.time = new Date(startTime).toString();
   appLogger.info("HTTP request", {
     method: req.method,
-    host: req.hostname,
-    path: req.path,
+    host: c.req.header("host") ?? req.headers.host,
+    path: c.req.path,
     time: req.time,
   });
 
@@ -71,8 +82,8 @@ app.use((req: Request & { time?: string }, res: Response, next: NextFunction) =>
     const durationMs = Date.now() - startTime;
     const attributes = {
       method: req.method,
-      host: req.hostname,
-      path: req.path,
+      host: c.req.header("host") ?? req.headers.host,
+      path: c.req.path,
       statusCode: res.statusCode,
       durationMs,
     };
@@ -93,12 +104,12 @@ app.use((req: Request & { time?: string }, res: Response, next: NextFunction) =>
     }
     appLogger.warn("HTTP connection closed before response completed", {
       method: req.method,
-      host: req.hostname,
-      path: req.path,
+      host: c.req.header("host") ?? req.headers.host,
+      path: c.req.path,
     });
   });
 
-  next();
+  await next();
 });
 
 const realtimeSpaceTopics = new Set<string>([
@@ -401,26 +412,100 @@ async function handleRealtimeWebSocket(
   });
 }
 
-// Serve the API directly from Express so it can operate without the Astro
-// frontend. Mounted before express.json so handlers receive the raw request
-// body (JSON, multipart, binary uploads, MCP, …).
-app.use(apiRouter);
+function buildHeaders(req: IncomingMessage): Headers {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(key, item);
+    } else {
+      headers.set(key, value);
+    }
+  }
+  return headers;
+}
 
-app.use(
-  express.json({
-    limit: "100mb",
-    type: (req: IncomingMessage) => {
-      // Skip express.json for MCP routes — they parse the body themselves
-      if (req.url?.includes("/mcp")) return false;
-      const ct = req.headers["content-type"] ?? "";
-      return ct.includes("application/json");
-    },
-  }),
-);
-app.post("/sync", (req: Request, res: Response) => {
-  const events = Array.isArray(req.body) ? req.body : [req.body];
+function requestUrl(req: IncomingMessage): string {
+  const socketEncrypted = (req.socket as { encrypted?: boolean })?.encrypted;
+  const forwardedProto = isTrustProxyEnabled()
+    ? req.headers["x-forwarded-proto"]
+    : undefined;
+  const proto =
+    (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)
+      ?.split(",")[0]
+      ?.trim() || (socketEncrypted ? "https" : "http");
+  const host = req.headers.host ?? "localhost";
+  return `${proto}://${host}${req.url ?? "/"}`;
+}
+
+function createHonoRequest(req: IncomingMessage): Request {
+  const method = (req.method ?? "GET").toUpperCase();
+  const init: RequestInit & { duplex?: "half" } = {
+    method,
+    headers: buildHeaders(req),
+  };
+
+  if (method !== "GET" && method !== "HEAD") {
+    init.body = req as unknown as BodyInit;
+    init.duplex = "half";
+  }
+
+  return new Request(requestUrl(req), init);
+}
+
+function isApiPath(pathname: string): boolean {
+  return (
+    pathname === "/api" ||
+    pathname.startsWith("/api/") ||
+    pathname === "/.well-known/caldav"
+  );
+}
+
+function shouldRunAstroFallback(
+  response: Response,
+  req: IncomingMessage,
+  res: ServerResponse,
+): boolean {
+  if (!astroHandler || response.status !== 404 || res.headersSent || res.writableEnded) {
+    return false;
+  }
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  return !isApiPath(pathname);
+}
+
+async function runAstroHandler(
+  handler: AstroMiddleware,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const done = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    };
+
+    Promise.resolve(handler(req, res, done)).then(() => {
+      if (!settled) resolve();
+    }, reject);
+  });
+}
+
+// Serve the API directly from Hono so it can operate without the Astro
+// frontend. The API adapter reads the raw Node request body itself so JSON,
+// multipart, binary uploads, MCP, and CalDAV requests keep their original bytes.
+app.use("*", apiRouter);
+
+app.post("/sync", async (c) => {
+  const body = await c.req.json();
+  const events = Array.isArray(body) ? body : [body];
   publishSyncEvents(events);
-  res.status(200).end();
+  return new Response(null, { status: 200 });
 });
 
 // The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
@@ -428,13 +513,14 @@ app.post("/sync", (req: Request, res: Response) => {
 const apiOnly = config().API_ONLY === "1" || config().API_ONLY === "true";
 
 let devServer: Awaited<ReturnType<typeof dev>> | undefined;
+let astroHandler: AstroMiddleware | undefined;
 
 if (!apiOnly) {
   if (import.meta.env.DEV) {
-    app.use("/", express.static("dist/client/", { maxAge: 3_600_000 }));
+    app.use("*", createFileSystemClientAssetMiddleware("dist/client"));
   } else {
     const { embeddedClientAssets } = await import("../generated/client-assets.ts");
-    app.use("/", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
+    app.use("*", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
   }
 
   if (import.meta.env.DEV) {
@@ -448,9 +534,8 @@ if (!apiOnly) {
       },
     });
   } else {
-    import("../dist/server/entry.mjs").then(({ handler }) => {
-      app.use(handler);
-    });
+    const { handler } = await import("../dist/server/entry.mjs");
+    astroHandler = handler as AstroMiddleware;
   }
 } else {
   appLogger.info("Starting in API-only mode (Astro frontend disabled)");
@@ -464,7 +549,37 @@ const portArg =
     : runtimeArgv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length);
 const port = Number.parseInt(portArg ?? "8080", 10);
 const host = config().SERVER_HOST ?? "0.0.0.0";
-const server = app.listen(port, host, () => {
+const server = createServer(async (req, res) => {
+  try {
+    const response = await app.fetch(createHonoRequest(req), {
+      incoming: req,
+      outgoing: res,
+    });
+
+    if (shouldRunAstroFallback(response, req, res)) {
+      await runAstroHandler(astroHandler as AstroMiddleware, req, res);
+      return;
+    }
+
+    if (!res.writableEnded) {
+      await sendWebResponse(res, response);
+    }
+  } catch (error) {
+    appLogger.error("Unhandled HTTP server error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    if (!res.headersSent && !res.writableEnded) {
+      await sendWebResponse(
+        res,
+        Response.json({ error: "Internal server error" }, { status: 500 }),
+      );
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  }
+});
+
+server.listen(port, host, () => {
   appLogger.info("Server listening", { host, port });
 });
 

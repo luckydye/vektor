@@ -57,7 +57,7 @@
     "cron-parser": "^5.5.0",
     "diff": "^8.0.2",
     "drizzle-orm": "^0.44.6",
-    "express": "^5.1.0",
+    "hono": "^4.10.7",
     "html5parser": "^2.0.2",
     "just-bash": "^3.0.1",
     "lit-html": "^3.3.1",
