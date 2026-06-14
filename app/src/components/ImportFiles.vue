@@ -129,7 +129,7 @@ Actions.register("import:toggle", {
       >
         <div class="svg-icon w-12 h-12 mx-auto mb-4 text-blue-600" v-html="uploadIcon" />
 
-        <p class="text-size-title-2 font-semibold text-neutral-900 mb-2">
+        <p class="text-size-title font-semibold text-neutral-900 mb-2">
           {{ dragOver ? 'Drop file here' : 'Drag and drop a file or' }}
         </p>
 

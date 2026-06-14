@@ -407,7 +407,7 @@ const statusBadgeClass: Record<string, string> = {
 
     <div class="flex justify-between gap-4">
         <!-- Title -->
-        <h2 class="text-size-title-2 font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle || "Untitled" }}</h2>
+        <h2 class="text-size-title font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle || "Untitled" }}</h2>
     
         <!-- Header -->
         <div class="flex items-center justify-between gap-12">

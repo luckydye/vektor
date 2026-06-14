@@ -85,8 +85,8 @@ onUnmounted(() => {
         class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
         @click="handleCreateDocument('canvas')"
       >
-        <div class="font-medium text-size-small leading-[1.4285714285714286em]">Canvas</div>
-        <div class="text-size-extra-small text-neutral-500">Whiteboard with tldraw</div>
+        <div class="font-medium text-size-small">Canvas</div>
+        <div class="text-size-small text-neutral-500">Whiteboard with tldraw</div>
       </button>
       <div v-if="canvasEnabled" class="border-t border-neutral-100 my-[4px]"></div>
       <button
@@ -94,8 +94,8 @@ onUnmounted(() => {
         class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
         @click="handleImportClick"
       >
-        <div class="font-medium text-size-small leading-[1.4285714285714286em]">Import</div>
-        <div class="text-size-extra-small text-neutral-500">Import files into space</div>
+        <div class="font-medium text-size-small">Import</div>
+        <div class="text-size-small text-neutral-500">Import files into space</div>
       </button>
     </div>
   </div>

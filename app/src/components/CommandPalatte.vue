@@ -205,7 +205,7 @@ Actions.register("ui:toggle:palatte", {
                 v-model="searchQuery"
                 type="text"
                 placeholder="Find documents..."
-                class="flex-1 outline-none text-neutral-900 text-size-title-2"
+                class="flex-1 outline-none text-neutral-900 text-size-title"
                 @keydown="handleResultKeydown"
               />
               <kbd

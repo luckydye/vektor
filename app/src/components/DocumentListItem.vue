@@ -65,7 +65,7 @@ const isSearchResult = (
         </div>
         
       <div class="flex justify-between items-start gap-4 mb-2">
-        <h3 class="text-size-title-2 font-semibold group-hover:text-neutral-900 text-neutral-500 leading-tight">
+        <h3 class="text-size-title font-semibold group-hover:text-neutral-900 text-neutral-500 leading-tight">
           {{ getDocumentTitle(document) }}
         </h3>
       </div>

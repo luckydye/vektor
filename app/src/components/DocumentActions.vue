@@ -428,10 +428,10 @@ watchEffect(() => {
             :disabled="isSaving"
             @click="saveAsSuggestion"
           >
-            <div class="font-medium text-size-small leading-[1.4285714285714286em]">
+            <div class="font-medium text-size-small">
               Save as suggestion
             </div>
-            <div class="text-size-extra-small text-neutral-500">
+            <div class="text-size-small text-neutral-500">
               Create an open suggestion instead of publishing
             </div>
           </button>

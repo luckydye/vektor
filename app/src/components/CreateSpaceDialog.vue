@@ -99,7 +99,7 @@ watch(
             Slug
           </label>
           <Input v-model="newSpaceSlug" placeholder="my-wiki" class="text-black" />
-          <p class="mt-5xs text-extra-small">
+          <p class="mt-5xs text-small">
             Only lowercase letters, numbers, and hyphens
           </p>
         </div>
@@ -113,7 +113,7 @@ watch(
               class="h-10 w-20 border border-neutral-100 rounded-md cursor-pointer" />
             <Input v-model="brandColor" placeholder="#42516d" class="flex-1 text-black" />
           </div>
-          <p class="mt-5xs text-extra-small">
+          <p class="mt-5xs text-small">
             Used for the header and sidebar
           </p>
         </div>

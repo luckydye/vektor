@@ -433,7 +433,7 @@ async function copyMemberId(memberId) {
     @click.self="showAddMember = false"
   >
     <div class="bg-background rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-      <h3 class="text-size-title-2 font-semibold text-neutral-900 mb-4">Add Access</h3>
+      <h3 class="text-size-title font-semibold text-neutral-900 mb-4">Add Access</h3>
       <form @submit.prevent="handleAddMember" class="space-y-4">
         <div>
           <label for="member-type" class="block text-size-medium font-medium text-neutral-900 mb-1">

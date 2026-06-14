@@ -20,12 +20,12 @@ const handleClick = () => {
 </script>
 
 <template>
-  <button type="button" class="flex items-center gap-2.5 px-3xs py-[8px] w-full rounded-md transition-colors text-left" :class="{
+  <button type="button" class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors text-left" :class="{
     'bg-primary-50': selected,
     'hover:bg-primary-10': !selected,
   }" @click="handleClick">
-    <div v-if="icon" v-html="icon" class="w-[18px] h-[18px] flex-shrink-0" />
-    <span class="text-size-medium leading-[1.4285714285714286em] font-normal text-neutral-950 capitalize">
+    <div v-if="icon" v-html="icon" class="w-[18px] h-[18px] shrink-0" />
+    <span class="text-size-base font-normal text-neutral-950 capitalize">
       {{ label }}
     </span>
   </button>

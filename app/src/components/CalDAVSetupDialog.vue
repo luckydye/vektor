@@ -73,7 +73,7 @@ onUnmounted(() => {
                 :title="serverUrl"
                 @click="copy(serverUrl, 'url')"
               >{{ serverUrl }}</button>
-              <span v-if="copied === 'url'" class="text-extra-small text-green-500 shrink-0">Copied!</span>
+              <span v-if="copied === 'url'" class="text-small text-green-500 shrink-0">Copied!</span>
             </div>
 
             <div class="flex items-center gap-4xs">
@@ -84,7 +84,7 @@ onUnmounted(() => {
                 :title="user?.email"
                 @click="user?.email && copy(user.email, 'email')"
               >{{ user?.email ?? '—' }}</button>
-              <span v-if="copied === 'email'" class="text-extra-small text-green-500 shrink-0">Copied!</span>
+              <span v-if="copied === 'email'" class="text-small text-green-500 shrink-0">Copied!</span>
             </div>
 
             <div class="flex items-center gap-4xs">

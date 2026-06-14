@@ -182,7 +182,7 @@ const groupedRuns = computed(() => {
 
 <template>
   <div v-if="runs.length > 0 || isLoading">
-    <h2 class="text-size-title-2 font-semibold mb-3">Workflows</h2>
+    <h2 class="text-size-title font-semibold mb-3">Workflows</h2>
     <div v-if="isLoading && runs.length === 0" class="text-size-medium text-neutral-500 py-4">Loading runs...</div>
     <div class="space-y-6">
       <div v-for="group in groupedRuns" :key="group.date" class="space-y-3">

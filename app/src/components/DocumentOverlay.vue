@@ -220,7 +220,7 @@ function formatCommentTime(date: Date | string): string {
                     <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0">
                       <div class="flex items-center gap-3 min-w-0">
                         <div class="svg-icon w-5 h-5 text-neutral-400 shrink-0" v-html="documentIcon" />
-                        <h2 v-if="documentData" class="text-size-title-2 font-semibold text-foreground truncate">
+                        <h2 v-if="documentData" class="text-size-title font-semibold text-foreground truncate">
                           {{ documentData.title }}
                         </h2>
                         <div v-else-if="loading" class="h-6 w-48 bg-neutral-200 rounded-sm animate-pulse" />

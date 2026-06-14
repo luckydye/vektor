@@ -171,7 +171,7 @@ onMounted(() => {
     <!-- Edit Property Popover -->
     <a-blur v-if="isEditPopoverOpen && property" enabled @exit="handleExit" class="absolute -top-4xs -left-4xs bg-neutral-10 border border-neutral-100 rounded-lg p-5xs flex flex-col z-50 shadow-large">
       <!-- Property name input with delete button -->
-      <div class="flex items-center gap-4xs px-4xs w-full">
+      <div class="flex items-center gap-4xs px-3xs w-full">
         <div v-if="icon" v-html="icon" />
         <div class="flex-1 overflow-hidden py-5xs whitespace-nowrap">
           <input
