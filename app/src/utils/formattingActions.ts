@@ -298,6 +298,16 @@ export function registerFormattingActions() {
     },
   });
 
+  Actions.register("format:hardbreak", {
+    title: t("Hard Break"),
+    description: t("Insert a hard line break"),
+    group: "formatting",
+    run: async () => {
+      if (!isEditorAvailable()) return;
+      getEditor().chain().focus().setHardBreak().run();
+    },
+  });
+
   // Links
   Actions.register("format:link", {
     title: t("Insert Link"),
@@ -667,6 +677,7 @@ export function unregisterFormattingActions() {
     "format:blockquote",
     "format:codeblock",
     "format:horizontalrule",
+    "format:hardbreak",
     "format:link",
     "format:unlink",
     "format:undo",

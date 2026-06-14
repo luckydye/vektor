@@ -58,9 +58,13 @@ if (
             }
             a-shortcut {
               --background-color: transparent;
-              color: black;
-              background: var(--color-neutral-100);
+              color: var(--color-neutral-400);
+              background: var(--color-neutral-50);
               border-radius: var(--radius-sm);
+            }
+            button:hover a-shortcut {
+              color: var(--color-neutral-700);
+              background-color: var(--color-neutral-50);
             }
             button {
               border: none;
@@ -69,10 +73,9 @@ if (
               align-items: center;
               gap: 0.5rem;
               padding: 0.25rem 0.5rem;
-              color: var(--color-neutral-900);
+              color: var(--color-neutral-400);
               background-color: var(--color-neutral-10);
               border-radius: var(--radius-md);
-              transition: all 0.15s ease;
               font-weight: bold;
               font-size: 0.75rem;
               font-family: monospace;

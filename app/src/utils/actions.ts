@@ -188,8 +188,10 @@ export class Actions {
       pressed[event.code.toLocaleLowerCase()] = true;
     }
 
-    actionsLoop: for (const [actionId, shortcuts] of globalShortcuts) {
-      for (const shortcut of shortcuts) {
+    let matchingActionId: string | undefined;
+
+    for (const [actionId, shortcuts] of globalShortcuts) {
+      shortcutsLoop: for (const shortcut of shortcuts) {
         const mappedShortcut: PressedKeysMap = {
           meta: false,
           ctrl: false,
@@ -219,12 +221,16 @@ export class Actions {
 
         // check if pressed matches with mapped shortcuut
         for (const key in mappedShortcut) {
-          if (pressed[key] !== mappedShortcut[key]) continue actionsLoop;
+          if (pressed[key] !== mappedShortcut[key]) continue shortcutsLoop;
         }
 
-        return actionId;
+        if (Actions.get(actionId)) {
+          matchingActionId = actionId;
+        }
       }
     }
+
+    return matchingActionId;
   }
 }
 

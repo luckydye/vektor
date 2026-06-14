@@ -1,8 +1,8 @@
-import docStyles from "../../styles/document.css?inline";
-import "./textarea.ts";
-import "./expression.ts";
-import "./file-attachment.ts";
-import "./document-attachment.ts";
+import docStyles from "../styles/document.css?inline";
+import "./elements/textarea.ts";
+import "./elements/expression.ts";
+import "./elements/file-attachment.ts";
+import "./elements/document-attachment.ts";
 import { Editor, Extension } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import DragHandle from "@tiptap/extension-drag-handle";
@@ -11,17 +11,17 @@ import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import * as Y from "yjs";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
-import type { IndexedDBStore } from "../../utils/storage.ts";
+import type { IndexedDBStore } from "../utils/storage.ts";
 import {
   colorForPresenceProfile,
   findYSyncState,
   type DocumentPresenceProfile,
-} from "../collaboration.ts";
-import { ExtensionSuggestions } from "../extensions/ExtensionSuggestions.ts";
-import { InlineSuggestions } from "../extensions/InlineSuggestions.ts";
-import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
-import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
-import { contentExtensions, type EditorContext } from "../extensions.ts";
+} from "./collaboration.ts";
+import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
+import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
+import { MentionSuggestons } from "./extensions/MentionSuggestons.ts";
+import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
+import { contentExtensions, type EditorContext } from "./extensions.ts";
 
 declare global {
   interface Window {

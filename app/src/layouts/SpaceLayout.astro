@@ -94,7 +94,7 @@ const publicEnvVars = () => Astro.locals.publicEnv;
     <script>
       import "../editor/elements/textarea.ts";
       import "../editor/elements/expression.ts";
-      import "../editor/elements/document.ts";
+      import "../editor/document.ts";
       import "../editor/elements/figma-embed.ts";
       import "../editor/elements/html-block.ts";
       import "../editor/elements/ticket-link.ts";
@@ -132,8 +132,10 @@ const publicEnvVars = () => Astro.locals.publicEnv;
       import { Actions } from "../utils/actions.js";
       import shortcuts from "../config/shortcuts.json";
 
-      for (const [shortcut, action] of Object.entries(shortcuts)) {
-        Actions.mapShortcut(shortcut, action);
+      for (const [shortcut, actions] of Object.entries(shortcuts)) {
+        for (const action of Array.isArray(actions) ? actions : [actions]) {
+          Actions.mapShortcut(shortcut, action);
+        }
       }
     </script>
 
