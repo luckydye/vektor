@@ -768,7 +768,7 @@ if (
             .toolbar-section {
               max-width: 95vw;
               overflow-x: auto;
-              padding: 0.25rem;
+              padding: 0.125rem;
               border-radius: 0.375rem;
               background: var(--color-neutral-50, #e5e5e5);
               box-shadow: 2px 10px 8px rgba(15, 23, 42, 0.015);
@@ -777,14 +777,12 @@ if (
 
             .menu-btn {
               position: relative;
-              min-width: 2rem;
-              min-height: 2rem;
               display: inline-flex;
               align-items: center;
               justify-content: center;
               border: 0;
               border-radius: 0.25rem;
-              padding: 0.5rem 0.625rem;
+              padding: 0.25rem 0.25rem;
               color: inherit;
               background: transparent;
               font: inherit;
@@ -820,8 +818,8 @@ if (
 
             .icon,
             .svg-icon {
-              width: 1.5em;
-              height: 1.5em;
+              width: 1.25rem;
+              height: 1.25rem;
               display: inline-flex;
               align-items: center;
             }

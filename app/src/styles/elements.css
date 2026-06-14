@@ -12,6 +12,7 @@ a-popover:not(:defined) {
   color: var(--color-neutral-700, #374151);
   font: inherit;
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
+  font-size: var(--text-size-normal)
 }
 
 .document-heading-option {
