@@ -2,7 +2,6 @@ import { type Editor, mergeAttributes, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
-import { api } from "../../api/client.ts";
 
 export interface FileAttachmentOptions {
   spaceId: string;
@@ -62,6 +61,7 @@ async function uploadFile(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
+  const { api } = await import("../../api/client.ts");
   const result = await api.uploads.post(spaceId, file, file.name, documentId);
   return result.url;
 }

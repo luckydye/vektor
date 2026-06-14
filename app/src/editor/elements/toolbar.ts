@@ -1,0 +1,1099 @@
+import type { Editor } from "@tiptap/core";
+import "@sv/elements/popover";
+import { html, render } from "lit-html";
+import {
+  alignCenterIcon,
+  alignJustifyIcon,
+  alignLeftIcon,
+  alignRightIcon,
+  boldIcon,
+  cellMergeIcon,
+  chevronDownIcon,
+  closeThickIcon,
+  columnDeleteIcon,
+  columns2Icon,
+  columns3Icon,
+  columns4Icon,
+  expressionCellIcon,
+  highlightIcon,
+  imageFullWidthIcon,
+  indentIcon,
+  italicIcon,
+  linkIcon,
+  listCheckIcon,
+  listOrderedIcon,
+  listUnorderedIcon,
+  moreIcon,
+  outdentIcon,
+  pasteIcon,
+  plusOverlayIcon,
+  restoreArrowIcon,
+  rowDeleteIcon,
+  scissorsIcon,
+  strikethroughIcon,
+  tableColumnAddAfterIcon,
+  tableColumnAddBeforeIcon,
+  tableDeleteIcon,
+  tableHeaderCellIcon,
+  tableRowAddAfterIcon,
+  tableRowIcon,
+  tableSplitCellIcon,
+  textColorIcon,
+  underlineIcon,
+} from "../../assets/icons.ts";
+import {
+  getImageAttributes,
+  isImageSelected,
+  resetImageSize,
+  toggleImageFullWidth,
+} from "../commands/imageCommands.ts";
+import { Actions } from "../../utils/actions.ts";
+import {
+  registerFormattingActions,
+  unregisterFormattingActions,
+} from "../../utils/formattingActions.ts";
+
+declare global {
+  interface Window {
+    __editor?: Editor;
+  }
+}
+
+function getEditor() {
+  return window.__editor;
+}
+
+function editorReady(editor: Editor | undefined): editor is Editor {
+  return !!editor && !editor.isDestroyed;
+}
+
+if (
+  typeof customElements !== "undefined" &&
+  typeof HTMLElement !== "undefined" &&
+  !customElements.get("document-toolbar")
+) {
+  customElements.define(
+    "document-toolbar",
+    class DocumentToolbarElement extends HTMLElement {
+      private root: ShadowRoot;
+      private unsubscribeTextColor: (() => void) | null = null;
+      private unsubscribeBgColor: (() => void) | null = null;
+      private registeredActions = false;
+      private shouldShow = false;
+      private interacting = false;
+      private secondaryOpen = false;
+      private headingLevel = 0;
+      private inColumnLayout = false;
+      private columnCount = 2;
+      private imageActive = false;
+      private imageDisplay: string | null = null;
+      private textColor = "#000000";
+      private bgColor = "transparent";
+      private tableActive = false;
+      private cellBackgroundColor = "transparent";
+      private copiedRow: unknown = null;
+      private floatingStyle = "";
+      private tableStyle = "";
+
+      constructor() {
+        super();
+        this.root = this.attachShadow({ mode: "open" });
+      }
+
+      connectedCallback() {
+        window.addEventListener("document:edit", this.handleEditorAvailable);
+        window.addEventListener("editor-ready", this.handleEditorAvailable);
+        window.addEventListener("edit-mode-start", this.handleEditorAvailable);
+        window.addEventListener("edit-mode-cancel", this.handleEditModeEnd);
+        window.addEventListener("editor-update", this.update);
+        window.addEventListener("resize", this.updatePosition, { passive: true });
+        document.addEventListener("keydown", this.handleKeyDown);
+        document.addEventListener("pointerup", this.handlePointerUp);
+        document.addEventListener("scroll", this.updatePosition, {
+          passive: true,
+          capture: true,
+        });
+
+        this.unsubscribeTextColor = Actions.subscribe("format:color:text:open", () => {
+          this.textColorInput?.click();
+        });
+        this.unsubscribeBgColor = Actions.subscribe("format:color:background:open", () => {
+          this.bgColorInput?.click();
+        });
+
+        this.handleEditorAvailable();
+        this.paint();
+      }
+
+      disconnectedCallback() {
+        if (this.registeredActions) {
+          unregisterFormattingActions();
+          this.registeredActions = false;
+        }
+
+        window.removeEventListener("document:edit", this.handleEditorAvailable);
+        window.removeEventListener("editor-ready", this.handleEditorAvailable);
+        window.removeEventListener("edit-mode-start", this.handleEditorAvailable);
+        window.removeEventListener("edit-mode-cancel", this.handleEditModeEnd);
+        window.removeEventListener("editor-update", this.update);
+        window.removeEventListener("resize", this.updatePosition);
+        document.removeEventListener("keydown", this.handleKeyDown);
+        document.removeEventListener("pointerup", this.handlePointerUp);
+        document.removeEventListener("scroll", this.updatePosition);
+
+        this.unsubscribeTextColor?.();
+        this.unsubscribeBgColor?.();
+      }
+
+      private get menu() {
+        return this.root.querySelector<HTMLElement>(".floating-menu");
+      }
+
+      private get tableMenu() {
+        return this.root.querySelector<HTMLElement>(".table-toolbar");
+      }
+
+      private get textColorInput() {
+        return this.root.querySelector<HTMLInputElement>("[data-text-color]");
+      }
+
+      private get bgColorInput() {
+        return this.root.querySelector<HTMLInputElement>("[data-bg-color]");
+      }
+
+      private get cellBgColorInput() {
+        return this.root.querySelector<HTMLInputElement>("[data-cell-bg-color]");
+      }
+
+      private handleEditorAvailable = () => {
+        if (!this.registeredActions && editorReady(getEditor())) {
+          registerFormattingActions();
+          this.registeredActions = true;
+        }
+        this.update();
+      };
+
+      private handleEditModeEnd = () => {
+        this.shouldShow = false;
+        this.tableActive = false;
+        this.secondaryOpen = false;
+        this.interacting = false;
+        this.imageActive = false;
+        if (this.registeredActions) {
+          unregisterFormattingActions();
+          this.registeredActions = false;
+        }
+        this.paint();
+      };
+
+      private handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== "Escape") return;
+        this.shouldShow = false;
+        this.secondaryOpen = false;
+        this.interacting = false;
+        this.paint();
+      };
+
+      private handlePointerUp = (event: PointerEvent) => {
+        const target = event.target;
+        const targetNode = target instanceof Node ? target : null;
+        if (targetNode && this.menu?.contains(targetNode)) return;
+        if (targetNode && this.tableMenu?.contains(targetNode)) return;
+
+        window.setTimeout(() => {
+          this.interacting = false;
+          this.paint();
+        }, 100);
+      };
+
+      private update = () => {
+        const editor = getEditor();
+        if (!editorReady(editor)) {
+          this.shouldShow = false;
+          this.secondaryOpen = false;
+          this.tableActive = false;
+          this.paint();
+          return;
+        }
+
+        this.inColumnLayout = editor.isActive("columnLayout");
+        this.imageActive = isImageSelected(editor);
+        this.tableActive = editor.isActive("table");
+        this.updateHeadingLevel(editor);
+        this.updateColors(editor);
+        this.updateColumnInfo(editor);
+        this.updateImageInfo(editor);
+        this.updateCellBackground(editor);
+
+        const wasShowing = this.shouldShow;
+        let nextShouldShow = false;
+
+        if (this.inColumnLayout || this.imageActive) {
+          nextShouldShow = true;
+        } else {
+          const { from, to } = editor.state.selection;
+          const selectedText = editor.state.doc.textBetween(from, to, " ");
+          nextShouldShow = from !== to && selectedText.trim().length > 0;
+        }
+
+        if (!wasShowing || !nextShouldShow) {
+          this.secondaryOpen = false;
+        }
+
+        this.shouldShow = nextShouldShow;
+
+        if (!this.shouldShow) {
+        }
+
+        this.updatePosition();
+      };
+
+      private updatePosition = () => {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+
+        if (this.shouldShow) {
+          const { state, view } = editor;
+          const left = this.leftAlignedToolbarPosition(editor, this.menu?.offsetWidth ?? 600);
+          const top = this.verticalToolbarPosition(
+            editor,
+            Math.max(this.menu?.offsetHeight ?? 48, 48),
+          );
+          this.floatingStyle = `left:${left}px;top:${top}px;`;
+        }
+
+        if (this.tableActive) {
+          this.tableStyle = this.getTableStyle(editor);
+        } else {
+          this.tableStyle = "";
+        }
+
+        this.paint();
+      };
+
+      private getTableStyle(editor: Editor) {
+        const { state, view } = editor;
+        const { from } = state.selection;
+        const $from = state.doc.resolve(from);
+        let tableDepth: number | null = null;
+
+        for (let depth = $from.depth; depth > 0; depth--) {
+          if ($from.node(depth).type.name === "table") {
+            tableDepth = depth;
+            break;
+          }
+        }
+
+        if (tableDepth === null) return "";
+
+        const coords = view.coordsAtPos($from.before(tableDepth));
+        const left = this.leftAlignedToolbarPosition(editor, this.tableMenu?.offsetWidth ?? 400);
+        return `left:${left}px;top:${coords.top}px;`;
+      }
+
+      private leftAlignedToolbarPosition(editor: Editor, toolbarWidth: number) {
+        const padding = 8;
+        const editorLeft = editor.view.dom.getBoundingClientRect().left;
+        const maxLeft = window.innerWidth - toolbarWidth - padding;
+        return Math.min(Math.max(editorLeft, padding), Math.max(padding, maxLeft));
+      }
+
+      private verticalToolbarPosition(editor: Editor, toolbarHeight: number) {
+        const padding = 8;
+        const gap = 10;
+        const { from, to } = editor.state.selection;
+        const start = editor.view.coordsAtPos(from);
+        const end = editor.view.coordsAtPos(to);
+        const selectionTop = Math.min(start.top, end.top);
+        const selectionBottom = Math.max(start.bottom, end.bottom);
+        const topCandidate = selectionTop - toolbarHeight - gap;
+        const bottomCandidate = selectionBottom + gap;
+        const maxTop = window.innerHeight - toolbarHeight - padding;
+
+        if (topCandidate >= padding) {
+          return topCandidate;
+        }
+
+        if (bottomCandidate <= maxTop) {
+          return bottomCandidate;
+        }
+
+        return Math.min(Math.max(topCandidate, padding), Math.max(padding, maxTop));
+      }
+
+      private updateHeadingLevel(editor: Editor) {
+        for (let level = 1; level <= 6; level++) {
+          if (editor.isActive("heading", { level })) {
+            this.headingLevel = level;
+            return;
+          }
+        }
+        this.headingLevel = 0;
+      }
+
+      private updateColors(editor: Editor) {
+        const attrs = editor.getAttributes("textStyle");
+        this.textColor = attrs.color || "#000000";
+        this.bgColor = attrs.backgroundColor || "transparent";
+      }
+
+      private updateColumnInfo(editor: Editor) {
+        if (!this.inColumnLayout) return;
+        this.columnCount = editor.getAttributes("columnLayout").columns || 2;
+      }
+
+      private updateImageInfo(editor: Editor) {
+        if (!this.imageActive) return;
+        const attrs = getImageAttributes(editor);
+        this.imageDisplay = attrs?.display || null;
+      }
+
+      private updateCellBackground(editor: Editor) {
+        if (!this.tableActive) return;
+        this.cellBackgroundColor =
+          editor.getAttributes("tableCell").backgroundColor || "transparent";
+      }
+
+      private chain() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return null;
+        return editor.chain().focus() as any;
+      }
+
+      private isActive(nameOrAttrs: string | Record<string, unknown>, attrs?: Record<string, unknown>) {
+        const editor = getEditor();
+        return editorReady(editor) ? editor.isActive(nameOrAttrs as never, attrs as never) : false;
+      }
+
+      private canIndent() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return false;
+        return editor.can().sinkListItem("listItem") || editor.can().sinkListItem("taskItem");
+      }
+
+      private canOutdent() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return false;
+        return editor.can().liftListItem("listItem") || editor.can().liftListItem("taskItem");
+      }
+
+      private setHeading(level: number, event?: Event) {
+        if (level === 0) {
+          this.chain()?.setParagraph().run();
+        } else {
+          this.chain()?.toggleHeading({ level }).run();
+        }
+        event?.target?.dispatchEvent(new CustomEvent("exit", { bubbles: true, composed: true }));
+        this.update();
+      }
+
+      private setLink() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+
+        const previousUrl = editor.getAttributes("link").href;
+        const url = window.prompt("Enter URL:", previousUrl);
+        if (url === null) return;
+        if (url === "") {
+          editor.chain().focus().extendMarkRange("link").unsetLink().run();
+        } else {
+          editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+        }
+        this.update();
+      }
+
+      private indentListItem() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+        if (editor.isActive("taskItem") && editor.can().sinkListItem("taskItem")) {
+          editor.chain().focus().sinkListItem("taskItem").run();
+        } else if (editor.can().sinkListItem("listItem")) {
+          editor.chain().focus().sinkListItem("listItem").run();
+        }
+        this.update();
+      }
+
+      private outdentListItem() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+        if (editor.isActive("taskItem") && editor.can().liftListItem("taskItem")) {
+          editor.chain().focus().liftListItem("taskItem").run();
+        } else if (editor.can().liftListItem("listItem")) {
+          editor.chain().focus().liftListItem("listItem").run();
+        }
+        this.update();
+      }
+
+      private setColumnCount(count: number) {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+
+        if (!editor.isActive("columnLayout")) {
+          (editor.chain().focus() as any).setColumnLayout({ columns: count }).run();
+          this.update();
+          return;
+        }
+
+        const { state } = editor;
+        const { $from } = state.selection;
+        for (let d = $from.depth; d > 0; d--) {
+          const node = $from.node(d);
+          if (node.type.name !== "columnLayout") continue;
+
+          const pos = $from.before(d);
+          const tr = state.tr;
+          const currentColumns = node.content.childCount;
+
+          if (count > currentColumns) {
+            for (let i = currentColumns; i < count; i++) {
+              const columnNode = editor.schema.nodes.columnItem.create(
+                null,
+                editor.schema.nodes.paragraph.create(),
+              );
+              tr.insert(pos + node.nodeSize - 1, columnNode);
+            }
+          } else if (count < currentColumns) {
+            let offset = 0;
+            for (let i = 0; i < currentColumns; i++) {
+              const child = node.child(i);
+              if (i >= count) {
+                tr.delete(pos + 1 + offset, pos + 1 + offset + child.nodeSize);
+              } else {
+                offset += child.nodeSize;
+              }
+            }
+          }
+
+          tr.setNodeMarkup(pos, null, { columns: count });
+          editor.view.dispatch(tr);
+          this.update();
+          return;
+        }
+      }
+
+      private deleteColumnLayout() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+
+        const { state } = editor;
+        const { $from } = state.selection;
+        for (let d = $from.depth; d > 0; d--) {
+          const node = $from.node(d);
+          if (node.type.name !== "columnLayout") continue;
+
+          const pos = $from.before(d);
+          const tr = state.tr;
+          tr.delete(pos, pos + node.nodeSize);
+          editor.view.dispatch(tr);
+          this.update();
+          return;
+        }
+      }
+
+      private cutRow() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+
+        const { $from } = editor.state.selection;
+        for (let d = $from.depth; d > 0; d--) {
+          const node = $from.node(d);
+          if (node.type.name === "tableRow") {
+            this.copiedRow = node.toJSON();
+            editor.chain().focus().deleteRow().run();
+            this.update();
+            return;
+          }
+        }
+      }
+
+      private pasteRow() {
+        const editor = getEditor();
+        if (!editorReady(editor) || !this.copiedRow) return;
+
+        const { state, view } = editor;
+        const { tr, selection, schema } = state;
+        const { $from } = selection;
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type.name === "tableRow") {
+            tr.insert($from.after(d), schema.nodeFromJSON(this.copiedRow));
+            view.dispatch(tr);
+            this.update();
+            return;
+          }
+        }
+      }
+
+      private onTextColor(event: Event) {
+        const value = (event.target as HTMLInputElement).value;
+        this.chain()?.setColor(value).run();
+        this.update();
+      }
+
+      private onBgColor(event: Event) {
+        const value = (event.target as HTMLInputElement).value;
+        this.chain()?.setBackgroundColor(value).run();
+        this.update();
+      }
+
+      private onCellBgColor(event: Event) {
+        const value = (event.target as HTMLInputElement).value;
+        this.chain()?.setCellAttribute("backgroundColor", value).run();
+        this.update();
+      }
+
+      private button(
+        label: unknown,
+        title: string,
+        onClick: () => void,
+        options: { active?: boolean; disabled?: boolean; danger?: boolean } = {},
+      ) {
+        const classes = ["menu-btn"];
+        if (options.active) classes.push("active");
+        if (options.danger) classes.push("danger");
+        return html`
+          <button
+            class=${classes.join(" ")}
+            title=${title}
+            type="button"
+            ?disabled=${options.disabled}
+            @mousedown=${(event: MouseEvent) => {
+              event.preventDefault();
+            }}
+            @click=${() => {
+              onClick();
+              this.update();
+            }}
+          >
+            ${label}
+          </button>
+        `;
+      }
+
+      private icon(svg: string) {
+        return html`<span class="svg-icon icon" .innerHTML=${svg}></span>`;
+      }
+
+      private paint() {
+        render(this.template(), this.root);
+      }
+
+      private template() {
+        return html`
+          <style>
+            :host {
+              display: contents;
+            }
+
+            .floating-menu,
+            .table-toolbar {
+              position: fixed;
+              z-index: 50;
+              display: flex;
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 0.25rem;
+              color: var(--color-neutral-700, #374151);
+              font-family: inherit;
+            }
+
+            .table-toolbar {
+              z-index: 40;
+              align-items: center;
+              gap: 0.125rem;
+              padding: 0.25rem;
+              border-radius: 0.375rem;
+              background: var(--color-neutral-50, #e5e5e5);
+              box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
+              transform: translateY(calc(-100% - 0.5rem));
+            }
+
+            .toolbar-section,
+            .menu-group {
+              display: flex;
+              align-items: center;
+              gap: 0.125rem;
+            }
+
+            .toolbar-section {
+              max-width: 95vw;
+              overflow-x: auto;
+              padding: 0.25rem;
+              border-radius: 0.375rem;
+              background: var(--color-neutral-50, #e5e5e5);
+              box-shadow: 2px 10px 8px rgba(15, 23, 42, 0.015);
+              border: 1px solid var(--color-neutral-100, #d1d5db);
+            }
+
+            .menu-btn {
+              position: relative;
+              min-width: 2rem;
+              min-height: 2rem;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              border: 0;
+              border-radius: 0.25rem;
+              padding: 0.5rem 0.625rem;
+              color: inherit;
+              background: transparent;
+              font: inherit;
+              font-size: 0.875rem;
+              font-weight: 600;
+              cursor: pointer;
+            }
+
+            .menu-btn:hover {
+              background: var(--color-neutral-100, #f5f5f5);
+            }
+
+            .menu-btn.active {
+              color: white;
+              background: var(--color-blue-500, #3b82f6);
+            }
+
+            .menu-btn.danger {
+              color: var(--color-red-600, #dc2626);
+            }
+
+            .menu-btn:disabled {
+              cursor: default;
+              opacity: 0.45;
+            }
+
+            .menu-divider {
+              width: 1px;
+              height: 1.5rem;
+              margin: 0 0.25rem;
+              background: var(--color-neutral-300, #d4d4d4);
+            }
+
+            .icon,
+            .svg-icon {
+              width: 1.5em;
+              height: 1.5em;
+              display: inline-flex;
+            }
+
+            .icon-overlay,
+            .icon-overlay-danger {
+              position: absolute;
+              top: -0.125rem;
+              right: -0.125rem;
+              width: 0.75rem;
+              height: 0.75rem;
+            }
+
+            .icon-overlay {
+              color: var(--color-green-600, #16a34a);
+            }
+
+            .icon-overlay-danger {
+              color: var(--color-red-600, #dc2626);
+            }
+
+            .color-picker-wrapper {
+              position: relative;
+              display: flex;
+              align-items: center;
+              gap: 0.125rem;
+            }
+
+            .color-trigger {
+              flex-direction: column;
+              gap: 0.125rem;
+              padding-top: 0.375rem;
+              padding-bottom: 0.25rem;
+            }
+
+            .color-bar {
+              width: 100%;
+              height: 2px;
+              border-radius: 999px;
+              background: currentColor;
+            }
+
+            input[type="color"] {
+              position: absolute;
+              width: 0;
+              height: 0;
+              opacity: 0;
+              pointer-events: none;
+            }
+
+            .heading-dropdown {
+              z-index: 9999;
+              width: 140px;
+              padding: 0.25rem 0;
+              border: 1px solid var(--color-neutral-100, #f5f5f5);
+              border-radius: 0.375rem;
+              background: var(--color-background, white);
+              box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
+            }
+
+            a-popover-trigger {
+              display: inline-flex;
+            }
+
+            a-popover {
+              display: block;
+            }
+
+            .heading-option {
+              width: 100%;
+              border: 0;
+              padding: 0.375rem 0.75rem;
+              text-align: left;
+              background: transparent;
+              color: inherit;
+              cursor: pointer;
+            }
+
+            .heading-option:hover,
+            .heading-option.active {
+              background: var(--color-neutral-100, #f5f5f5);
+            }
+
+            @media (max-width: 1023px) {
+              .columns-section {
+                display: none;
+              }
+            }
+          </style>
+
+          ${this.shouldShow ? this.renderFormattingToolbar() : null}
+          ${this.tableActive ? this.renderTableToolbar() : null}
+        `;
+      }
+
+      private renderFormattingToolbar() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return null;
+
+        return html`
+          <div
+            class="floating-menu"
+            style=${this.floatingStyle}
+            @mousedown=${() => {
+              this.interacting = true;
+            }}
+            @mouseup=${() => {
+              window.setTimeout(() => {
+                this.interacting = false;
+              }, 100);
+            }}
+          >
+            <div class="toolbar-section">
+              <div class="menu-group">
+                <a-popover-trigger showdelay="0" hidedelay="100">
+                  <button
+                    slot="trigger"
+                    class="menu-btn heading-trigger"
+                    title="Heading Level"
+                    type="button"
+                    @mousedown=${(event: MouseEvent) => {
+                      event.preventDefault();
+                    }}
+                  >
+                    <span class="heading-label">${this.headingLevel === 0 ? "P" : `H${this.headingLevel}`}</span>
+                    ${this.icon(chevronDownIcon)}
+                  </button>
+                  <a-popover placements="bottom-start">
+                    ${this.renderHeadingDropdown()}
+                  </a-popover>
+                </a-popover-trigger>
+              </div>
+              <div class="menu-divider"></div>
+
+              <div class="menu-group">
+                ${this.button(this.icon(boldIcon), "Bold", () => this.chain()?.toggleBold().run(), {
+                  active: this.isActive("bold"),
+                })}
+                ${this.button(this.icon(italicIcon), "Italic", () => this.chain()?.toggleItalic().run(), {
+                  active: this.isActive("italic"),
+                })}
+                ${this.button(this.icon(underlineIcon), "Underline", () => this.chain()?.toggleUnderline().run(), {
+                  active: this.isActive("underline"),
+                })}
+              </div>
+              <div class="menu-divider"></div>
+
+              <div class="menu-group">
+                ${this.button(this.icon(listUnorderedIcon), "Bullet List", () => this.chain()?.toggleBulletList().run(), {
+                  active: this.isActive("bulletList"),
+                })}
+                ${this.button(this.icon(listOrderedIcon), "Numbered List", () => this.chain()?.toggleOrderedList().run(), {
+                  active: this.isActive("orderedList"),
+                })}
+                ${this.button(this.icon(listCheckIcon), "Task List", () => this.chain()?.toggleTaskList().run(), {
+                  active: this.isActive("taskList"),
+                })}
+                ${this.button(this.icon(indentIcon), "Indent List Item", () => this.indentListItem(), {
+                  disabled: !this.canIndent(),
+                })}
+                ${this.button(this.icon(outdentIcon), "Outdent List Item", () => this.outdentListItem(), {
+                  disabled: !this.canOutdent(),
+                })}
+              </div>
+              <div class="menu-divider"></div>
+
+              <div class="menu-group">
+                ${this.button(this.icon(alignLeftIcon), "Align Left", () => this.chain()?.setTextAlign("left").run(), {
+                  active: this.isActive({ textAlign: "left" }),
+                })}
+                ${this.button(this.icon(alignCenterIcon), "Align Center", () => this.chain()?.setTextAlign("center").run(), {
+                  active: this.isActive({ textAlign: "center" }),
+                })}
+                ${this.button(this.icon(alignRightIcon), "Align Right", () => this.chain()?.setTextAlign("right").run(), {
+                  active: this.isActive({ textAlign: "right" }),
+                })}
+                ${this.button(this.icon(alignJustifyIcon), "Justify", () => this.chain()?.setTextAlign("justify").run(), {
+                  active: this.isActive({ textAlign: "justify" }),
+                })}
+              </div>
+              <div class="menu-group">
+                ${this.button(this.icon(moreIcon), "More Formatting", () => {
+                  this.secondaryOpen = !this.secondaryOpen;
+                }, { active: this.secondaryOpen })}
+              </div>
+            </div>
+
+            ${this.secondaryOpen
+              ? html`
+                  <div class="toolbar-section toolbar-section--secondary">
+                    ${this.imageActive
+                      ? html`
+                          <div class="menu-group">
+                            ${this.button(this.icon(imageFullWidthIcon), "Toggle Full Width", () => {
+                              toggleImageFullWidth(editor);
+                            }, { active: this.imageDisplay === "full" })}
+                            ${this.button(this.icon(restoreArrowIcon), "Reset Image Size", () => {
+                              resetImageSize(editor);
+                            })}
+                          </div>
+                          <div class="menu-divider"></div>
+                        `
+                      : null}
+
+                    <div class="menu-group">
+                      ${this.button(this.icon(strikethroughIcon), "Strikethrough", () => this.chain()?.toggleStrike().run(), {
+                        active: this.isActive("strike"),
+                      })}
+                      ${this.button(this.icon(linkIcon), "Link", () => this.setLink(), {
+                        active: this.isActive("link"),
+                      })}
+                    </div>
+                    <div class="menu-divider"></div>
+
+                    <div class="menu-group">
+                      ${this.button(this.icon(alignLeftIcon), "Align Left", () => this.chain()?.setTextAlign("left").run(), {
+                        active: this.isActive({ textAlign: "left" }),
+                      })}
+                      ${this.button(this.icon(alignCenterIcon), "Align Center", () => this.chain()?.setTextAlign("center").run(), {
+                        active: this.isActive({ textAlign: "center" }),
+                      })}
+                      ${this.button(this.icon(alignRightIcon), "Align Right", () => this.chain()?.setTextAlign("right").run(), {
+                        active: this.isActive({ textAlign: "right" }),
+                      })}
+                      ${this.button(this.icon(alignJustifyIcon), "Justify", () => this.chain()?.setTextAlign("justify").run(), {
+                        active: this.isActive({ textAlign: "justify" }),
+                      })}
+                    </div>
+                    <div class="menu-divider"></div>
+
+                    <div class="menu-group">
+                      <div class="color-picker-wrapper">
+                        ${this.button(
+                          html`${this.icon(textColorIcon)}
+                            <span class="color-bar" style=${`background:${this.textColor}`}></span>`,
+                          "Text Color",
+                          () => this.textColorInput?.click(),
+                          { active: this.textColor !== "#000000" },
+                        )}
+                        <input data-text-color type="color" .value=${this.textColor} @input=${this.onTextColor} />
+                      </div>
+                      <div class="color-picker-wrapper">
+                        ${this.button(
+                          html`${this.icon(highlightIcon)}
+                            <span class="color-bar" style=${`background:${this.bgColor}`}></span>`,
+                          "Background Color",
+                          () => this.bgColorInput?.click(),
+                          { active: this.bgColor !== "transparent" },
+                        )}
+                        <input
+                          data-bg-color
+                          type="color"
+                          .value=${this.bgColor === "transparent" ? "#ffff00" : this.bgColor}
+                          @input=${this.onBgColor}
+                        />
+                        ${this.bgColor !== "transparent"
+                          ? this.button(this.icon(closeThickIcon), "Clear Background Color", () =>
+                              this.chain()?.unsetBackgroundColor().run(),
+                            )
+                          : null}
+                      </div>
+                    </div>
+
+                    ${this.inColumnLayout
+                      ? html`
+                          <div class="menu-divider"></div>
+                          <div class="menu-group columns-section">
+                            ${[
+                              [2, columns2Icon],
+                              [3, columns3Icon],
+                              [4, columns4Icon],
+                            ].map(([count, icon]) =>
+                              this.button(this.icon(icon as string), `${count} Columns`, () => this.setColumnCount(count as number), {
+                                active: this.columnCount === count,
+                              }),
+                            )}
+                            ${this.button(this.icon(closeThickIcon), "Delete Column Layout", () =>
+                              this.deleteColumnLayout(),
+                            { danger: true })}
+                          </div>
+                        `
+                      : null}
+                  </div>
+                `
+              : null}
+          </div>
+        `;
+      }
+
+      private renderHeadingDropdown() {
+        return html`
+          <div class="heading-dropdown">
+            ${[0, 2, 3, 4].map((level) => html`
+              <button
+                class=${`heading-option${this.headingLevel === level ? " active" : ""}`}
+                type="button"
+                @mousedown=${(event: MouseEvent) => {
+                  event.preventDefault();
+                }}
+                @click=${(event: Event) => this.setHeading(level, event)}
+              >
+                ${level === 0 ? "Paragraph" : `Heading ${level}`}
+              </button>
+            `)}
+          </div>
+        `;
+      }
+
+      private renderTableToolbar() {
+        return html`
+          <div class="table-toolbar" style=${this.tableStyle}>
+            <div class="menu-group">
+              ${this.button(
+                html`${this.icon(tableColumnAddBeforeIcon)}
+                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                "Add Column Before",
+                () => this.chain()?.addColumnBefore().run(),
+              )}
+              ${this.button(
+                html`${this.icon(tableColumnAddAfterIcon)}
+                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                "Add Column After",
+                () => this.chain()?.addColumnAfter().run(),
+              )}
+              ${this.button(
+                html`${this.icon(columnDeleteIcon)}
+                  <span class="svg-icon icon-overlay-danger" .innerHTML=${closeThickIcon}></span>`,
+                "Delete Column",
+                () => this.chain()?.deleteColumn().run(),
+                { danger: true },
+              )}
+            </div>
+            <div class="menu-divider"></div>
+
+            <div class="menu-group">
+              ${this.button(
+                html`${this.icon(tableRowIcon)}
+                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                "Add Row Before",
+                () => this.chain()?.addRowBefore().run(),
+              )}
+              ${this.button(
+                html`${this.icon(tableRowAddAfterIcon)}
+                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                "Add Row After",
+                () => this.chain()?.addRowAfter().run(),
+              )}
+              ${this.button(
+                html`${this.icon(rowDeleteIcon)}
+                  <span class="svg-icon icon-overlay-danger" .innerHTML=${closeThickIcon}></span>`,
+                "Delete Row",
+                () => this.chain()?.deleteRow().run(),
+                { danger: true },
+              )}
+              ${this.button(
+                html`${this.icon(rowDeleteIcon)}
+                  <span class="svg-icon icon-overlay" .innerHTML=${scissorsIcon}></span>`,
+                "Cut Row",
+                () => this.cutRow(),
+              )}
+              ${this.button(
+                html`${this.icon(rowDeleteIcon)}
+                  <span class="svg-icon icon-overlay" .innerHTML=${pasteIcon}></span>`,
+                "Paste Row",
+                () => this.pasteRow(),
+                { disabled: !this.copiedRow },
+              )}
+            </div>
+            <div class="menu-divider"></div>
+
+            <div class="menu-group">
+              ${this.button(this.icon(tableHeaderCellIcon), "Toggle Header Cell", () =>
+                this.chain()?.toggleHeaderCell().run(),
+              { active: this.isActive("tableHeader") })}
+              ${this.button(this.icon(cellMergeIcon), "Merge Cells", () =>
+                this.chain()?.mergeCells().run(),
+              )}
+              ${this.button(this.icon(tableSplitCellIcon), "Split Cell", () =>
+                this.chain()?.splitCell().run(),
+              )}
+            </div>
+            <div class="menu-divider"></div>
+
+            <div class="menu-group">
+              ${this.button(this.icon(expressionCellIcon), "Insert Expression Cell", () =>
+                this.chain()?.insertExpressionCell({ formula: "=" }).run(),
+              )}
+            </div>
+            <div class="menu-divider"></div>
+
+            <div class="menu-group">
+              <div class="color-picker-wrapper">
+                ${this.button(
+                  html`${this.icon(highlightIcon)}
+                    <span class="color-bar" style=${`background:${this.cellBackgroundColor}`}></span>`,
+                  "Cell Background Color",
+                  () => this.cellBgColorInput?.click(),
+                  { active: this.cellBackgroundColor !== "transparent" },
+                )}
+                <input
+                  data-cell-bg-color
+                  type="color"
+                  .value=${this.cellBackgroundColor === "transparent"
+                    ? "#ffffff"
+                    : this.cellBackgroundColor}
+                  @input=${this.onCellBgColor}
+                />
+                ${this.cellBackgroundColor !== "transparent"
+                  ? this.button(this.icon(closeThickIcon), "Clear Cell Background", () =>
+                      this.chain()?.setCellAttribute("backgroundColor", null).run(),
+                    )
+                  : null}
+              </div>
+            </div>
+            <div class="menu-divider"></div>
+
+            <div class="menu-group">
+              ${this.button(this.icon(tableDeleteIcon), "Delete Table", () =>
+                this.chain()?.deleteTable().run(),
+              { danger: true })}
+            </div>
+          </div>
+        `;
+      }
+    },
+  );
+}

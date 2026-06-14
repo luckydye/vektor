@@ -1,0 +1,60 @@
+---
+import "../styles/index.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Editor Sandbox</title>
+  </head>
+
+  <body class="bg-neutral-10 text-neutral-900">
+    <main class="min-h-screen p-12">
+      <document-toolbar></document-toolbar>
+      <document-view
+        id="editor-sandbox"
+        space-id="editor-sandbox"
+        class="block min-h-screen"
+      ></document-view>
+      <document-statusbar
+        class="block fixed left-0 right-0 bottom-0 px-10 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"
+      ></document-statusbar>
+    </main>
+
+    <script>
+      import "../editor/elements/textarea.ts";
+      import "../editor/elements/expression.ts";
+      import "../editor/elements/document.ts";
+      import "../editor/elements/figma-embed.ts";
+      import "../editor/elements/html-block.ts";
+      import "../editor/elements/ticket-link.ts";
+      import "../editor/elements/user-mention.ts";
+      import "../editor/elements/scroll.ts";
+      import "../editor/elements/page-target.ts";
+      import "../editor/elements/category-target.ts";
+      import "../editor/elements/drawer.ts";
+      import "../editor/elements/shortcut.ts";
+      import "../editor/elements/toolbar.ts";
+      import "../editor/elements/statusbar.ts";
+      import "../editor/elements/table-view.ts";
+      import "../editor/elements/cake.ts";
+
+      async function exposeEditorSandbox() {
+        await customElements.whenDefined("document-view");
+
+        const editorEl = document.getElementById("editor-sandbox");
+        if (!editorEl) return;
+
+        window.dispatchEvent(new CustomEvent("document:edit"));
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", exposeEditorSandbox, { once: true });
+      } else {
+        exposeEditorSandbox();
+      }
+    </script>
+  </body>
+</html>

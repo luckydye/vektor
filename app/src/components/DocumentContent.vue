@@ -11,22 +11,27 @@ import {
   watch,
 } from "vue";
 import { clockIcon } from "~/src/assets/icons.ts";
+import * as Y from "yjs";
+import {
+  absolutePositionToRelativePosition,
+  ySyncPluginKey,
+} from "y-prosemirror";
 import { api } from "../api/client.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
+import type { DocumentPresenceProfile } from "../editor/elements/document.ts";
 import docStyles from "../styles/document.css?inline";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { realtimeTopics, type PresenceEnvelope } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
 import CommentManager from "./CommentManager.vue";
 import DiffView from "./DiffView.vue";
-import ToolbarFormatting from "./ToolbarFormatting.vue";
-import ToolbarTable from "./ToolbarTable.vue";
 import WorkflowView from "./WorkflowView.vue";
+import "../editor/elements/toolbar.ts";
 
 const props = defineProps({
   documentId: {
@@ -79,12 +84,29 @@ const editorViewEl = ref(null);
 const tableViewEl = ref(null);
 const isMounted = ref(false);
 const getEditor = () => globalThis.__editor;
+let leaveEditorCollaboration: (() => void) | null = null;
+let leaveEditorPresence: (() => void) | null = null;
+let editorPresenceTimer: ReturnType<typeof setInterval> | null = null;
+let editorPresenceHandle: {
+  update: (state: DocumentPresenceState) => void;
+  leave: () => void;
+} | null = null;
+const editorPresenceClientId =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `editor:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+const remoteEditorPresences = new Map<
+  string,
+  PresenceEnvelope<DocumentPresenceState>
+>();
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
     reloadIfReady();
   }
 };
+
+type DocumentPresenceState = NonNullable<DocumentPresenceProfile["state"]>;
 
 const user = useUserProfile();
 const { saveStatus, saveError, saveDocument, cancelDebounce } = useDocument(
@@ -155,28 +177,141 @@ watch([saveStatus, saveError], () => {
   }
 });
 
-async function initEditor() {
+async function setupEditorBridge() {
   if (!editorViewEl.value) return;
-  if (!user.value) return;
 
   await customElements.whenDefined("document-view");
 
   // Re-check after async wait — state may have changed
   if (!editorViewEl.value) return;
-  if (!user.value) return;
 
+  if (props.documentId && !leaveEditorCollaboration) {
+    const { joinYjsRoom } = await import("../utils/sync.ts");
+    leaveEditorCollaboration = joinYjsRoom(
+      props.spaceId,
+      props.documentId,
+      editorViewEl.value.collaborationDocument,
+    );
+  }
+  await setupEditorPresence();
   window.dispatchEvent(
     new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }),
   );
   isEditingReady.value = true;
   window.dispatchEvent(new CustomEvent("document:edit"));
+}
 
-  editorViewEl.value.init(
+function getPresenceColor(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
+}
+
+function editorPresenceState(): DocumentPresenceState {
+  const editor = getEditor();
+  const view = editorViewEl.value;
+  if (!editor || !view) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  const focused = editor.isFocused || editor.view.hasFocus();
+  if (!focused) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  const syncState = ySyncPluginKey.getState(editor.state);
+  const mapping = syncState?.binding?.mapping;
+  if (!mapping) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  try {
+    const fragment = view.collaborationDocument.getXmlFragment("default");
+    const { anchor, head } = editor.state.selection;
+    return {
+      kind: "editor",
+      focused,
+      selection: {
+        anchor: Y.relativePositionToJSON(
+          absolutePositionToRelativePosition(anchor, fragment, mapping),
+        ),
+        head: Y.relativePositionToJSON(
+          absolutePositionToRelativePosition(head, fragment, mapping),
+        ),
+      },
+    };
+  } catch {
+    return { kind: "editor", focused: false, selection: null };
+  }
+}
+
+function renderEditorPresence() {
+  editorViewEl.value?.setPresenceProfiles(
+    [...remoteEditorPresences.values()].map((presence) => ({
+      clientId: presence.clientId,
+      user: presence.user,
+      state: presence.state,
+    })),
+  );
+}
+
+function updateEditorPresence() {
+  editorPresenceHandle?.update(editorPresenceState());
+}
+
+function clearEditorPresence() {
+  if (editorPresenceTimer) {
+    clearInterval(editorPresenceTimer);
+    editorPresenceTimer = null;
+  }
+  leaveEditorPresence?.();
+  leaveEditorPresence = null;
+  editorPresenceHandle = null;
+  remoteEditorPresences.clear();
+  renderEditorPresence();
+}
+
+async function setupEditorPresence() {
+  if (!props.documentId || !user.value || editorPresenceHandle) return;
+
+  const { joinPresenceRoom } = await import("../utils/sync.ts");
+  if (!props.documentId || !user.value || editorPresenceHandle) return;
+
+  editorPresenceHandle = joinPresenceRoom<DocumentPresenceState>(
     props.spaceId,
     props.documentId,
-    user.value,
-    renderedHtml.value,
+    editorPresenceClientId,
+    {
+      id: user.value.id,
+      name: user.value.name,
+      image: user.value.image,
+      color: getPresenceColor(user.value.id),
+    },
+    (event) => {
+      if (event.type === "presence-snapshot") {
+        remoteEditorPresences.clear();
+        for (const presence of event.presences) {
+          if (presence.clientId !== editorPresenceClientId) {
+            remoteEditorPresences.set(presence.clientId, presence);
+          }
+        }
+      } else if (event.type === "presence-update") {
+        if (event.presence.clientId !== editorPresenceClientId) {
+          remoteEditorPresences.set(event.presence.clientId, event.presence);
+        }
+      } else {
+        remoteEditorPresences.delete(event.clientId);
+      }
+
+      renderEditorPresence();
+    },
+    editorPresenceState(),
   );
+  leaveEditorPresence = editorPresenceHandle.leave;
+  editorPresenceTimer = setInterval(updateEditorPresence, 120);
 }
 
 function syncInlineSuggestions() {
@@ -288,15 +423,21 @@ function handleInlineSuggestionAccept(
 }
 
 watch(isEditing, (editing) => {
+  if (!editing) {
+    leaveEditorCollaboration?.();
+    leaveEditorCollaboration = null;
+    clearEditorPresence();
+  }
+
   if (editing && !viewingRevision.value) {
-    // Wait for the v-if to render the document-view element
-    requestAnimationFrame(initEditor);
+    // Wait for Vue to render the document-view element
+    requestAnimationFrame(setupEditorBridge);
   }
 });
 
-watch(user, (newUser) => {
-  if (newUser && isEditing.value && !isEditingReady.value && editorViewEl.value) {
-    requestAnimationFrame(initEditor);
+watch(user, () => {
+  if (isEditing.value && isEditingReady.value) {
+    void setupEditorPresence();
   }
 });
 
@@ -419,11 +560,13 @@ onMounted(() => {
   }
 
   if (props.initialEditMode) {
-    requestAnimationFrame(initEditor);
+    requestAnimationFrame(setupEditorBridge);
   }
 });
 
 onUnmounted(() => {
+  leaveEditorCollaboration?.();
+  clearEditorPresence();
   window.removeEventListener("edit-mode-start", handleEditModeStart);
   window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
   window.removeEventListener(
@@ -551,9 +694,7 @@ useSync(
 
 <template>
   <div>
-    <!-- Floating Text Formatting Menu -->
-    <ToolbarFormatting />
-    <ToolbarTable />
+    <document-toolbar></document-toolbar>
 
     <!-- Revision Disclaimer Banner -->
     <div
@@ -628,7 +769,12 @@ useSync(
     v-if="isEditing && !viewingRevision && !props.readonly"
     :class="['h-full', !isEditingReady && 'opacity-0']"
   >
-    <document-view ref="editorViewEl"></document-view>
+    <document-view
+      ref="editorViewEl"
+      :space-id="props.spaceId"
+      :document-id="props.documentId"
+      :initial-html="renderedHtml"
+    ></document-view>
   </div>
   
   <document-statusbar

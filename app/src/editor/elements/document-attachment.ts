@@ -8,7 +8,6 @@ import {
   tableRowIcon,
 } from "~/src/assets/icons.ts";
 import type { WorkflowRunStatus } from "../../api/ApiClient.ts";
-import { api } from "../../api/client.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;
@@ -561,6 +560,7 @@ if (
 
       async loadWorkflowPreview(spaceId: string, documentId: string, key: string) {
         try {
+          const { api } = await import("../../api/client.ts");
           const latest = await api.workflows.getLatestRun(spaceId, documentId);
           if (this.workflowPreviewKey !== key) return;
           if (!latest) {

@@ -100,6 +100,8 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
     let popup: HTMLDivElement | null = null;
     let selectedIndex = 0;
     let items: ContentItem[] = [];
+    const popupPadding = 8;
+    const popupGap = 8;
 
     function closePopup() {
       if (popup) {
@@ -210,6 +212,32 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       );
     }
 
+    function placePopup(buttonRect: DOMRect) {
+      if (!popup) return;
+
+      const popupRect = popup.getBoundingClientRect();
+      const popupWidth = popupRect.width || 320;
+      const popupHeight = popupRect.height || 260;
+      const maxLeft = window.innerWidth - popupWidth - popupPadding;
+      const maxTop = window.innerHeight - popupHeight - popupPadding;
+      const aboveTop = buttonRect.top - popupHeight - popupGap;
+      const belowTop = buttonRect.bottom + popupGap;
+      const top =
+        aboveTop >= popupPadding
+          ? aboveTop
+          : belowTop <= maxTop
+            ? belowTop
+            : Math.min(Math.max(aboveTop, popupPadding), Math.max(popupPadding, maxTop));
+      const left = Math.min(
+        Math.max(buttonRect.left, popupPadding),
+        Math.max(popupPadding, maxLeft),
+      );
+
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
+      popup.style.bottom = "auto";
+    }
+
     function openPopup(buttonRect: DOMRect) {
       if (popup) {
         closePopup();
@@ -221,14 +249,17 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       popup = document.createElement("div");
       popup.style.position = "fixed";
       popup.style.zIndex = "50";
-      popup.style.left = `${buttonRect.left}px`;
-      popup.style.bottom = `${window.innerHeight - buttonRect.top + 8}px`;
+      popup.style.left = `${popupPadding}px`;
+      popup.style.top = `${popupPadding}px`;
+      popup.style.maxWidth = `calc(100vw - ${popupPadding * 2}px)`;
+      popup.style.maxHeight = `calc(100vh - ${popupPadding * 2}px)`;
       popup.style.pointerEvents = "auto";
 
       popup.addEventListener("mousedown", (e) => e.preventDefault());
 
       document.body.appendChild(popup);
       renderPopup();
+      placePopup(buttonRect);
 
       // Add event listeners after a brief delay to avoid immediate close
       setTimeout(() => {

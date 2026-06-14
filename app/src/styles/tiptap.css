@@ -61,7 +61,7 @@
     color: var(--color-forground);
     position: relative;
     padding-right: 0.33em;
-    padding-top: 0.25em;
+    padding-top: 0.05em;
   }
 }
 
@@ -82,15 +82,25 @@
 /* Trailing node plus button */
 .trailing-node-plus-button {
   user-select: none;
-  display: inline-flex;
+  box-sizing: border-box;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
+  max-width: 100%;
   padding: 0.5rem 0.75rem;
+  margin-left: -1rem;
   color: var(--color-neutral-500);
   background-color: transparent;
   border-radius: var(--radius-md);
   transition: all 0.15s ease;
   font-size: 0.875rem;
+}
+
+.trailing-node-plus-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trailing-node-plus-button:hover {

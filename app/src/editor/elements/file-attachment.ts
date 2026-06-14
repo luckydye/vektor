@@ -168,7 +168,11 @@ const FILE_COLORS: Record<FileType, string> = {
   unknown: "#6b7280",
 };
 
-if (typeof customElements !== "undefined" && !customElements.get("file-attachment")) {
+if (
+  typeof customElements !== "undefined" &&
+  typeof HTMLElement !== "undefined" &&
+  !customElements.get("file-attachment")
+) {
   customElements.define(
     "file-attachment",
     class FileAttachmentElement extends HTMLElement {

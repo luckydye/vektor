@@ -48,7 +48,12 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
               (ext) => ext.name === "mention-suggestons",
             )?.options;
 
+            if (!options?.documentId) {
+              return [];
+            }
+
             if (!cachedMembers || !cachedDocs) {
+              const { api } = await import("~/src/api/client.ts");
               const [members, docsResponse] = await Promise.all([
                 api.spaceMembers.get(options.spaceId).catch(() => []),
                 api.documents

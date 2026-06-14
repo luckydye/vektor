@@ -1,32 +1,25 @@
-import { authClient } from "~/src/composeables/auth-client.ts";
-import { detectAppType, stripScriptTags } from "~/src/utils/utils.ts";
 import docStyles from "../../styles/document.css?inline";
 import "./textarea.ts";
 import "./expression.ts";
 import "./file-attachment.ts";
 import "./document-attachment.ts";
-import { Editor } from "@tiptap/core";
+import { Editor, Extension } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { Dropcursor } from "@tiptap/extensions";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import {
-  absolutePositionToRelativePosition,
-  relativePositionToAbsolutePosition,
-} from "y-prosemirror";
 import * as Y from "yjs";
-import type { User } from "../../api/client.ts";
-import type { PresenceEnvelope, PresenceUser } from "../../utils/realtime.ts";
+import {
+  relativePositionToAbsolutePosition,
+  ySyncPluginKey,
+} from "y-prosemirror";
 import type { IndexedDBStore } from "../../utils/storage.ts";
-import { joinPresenceRoom, joinYjsRoom } from "../../utils/sync.ts";
 import { ExtensionSuggestions } from "../extensions/ExtensionSuggestions.ts";
 import { InlineSuggestions } from "../extensions/InlineSuggestions.ts";
 import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
 import { contentExtensions } from "../extensions.ts";
-
-type ProsemirrorMapping = Parameters<typeof relativePositionToAbsolutePosition>[3];
 
 declare global {
   interface Window {
@@ -40,167 +33,152 @@ type EditorStoreEntry = {
   createdAt: number;
 };
 
-type EditorPresenceState = {
+type DocumentPresenceState = {
   kind: "editor";
-  focused: boolean;
-  selection: {
-    anchor: Record<string, unknown>;
-    head: Record<string, unknown>;
+  focused?: boolean;
+  selection?: {
+    anchor?: unknown;
+    head?: unknown;
   } | null;
 };
 
-const editorPresencePluginKey = new PluginKey("wiki-editor-presence");
+export type DocumentPresenceProfile = {
+  clientId: string;
+  user: {
+    id: string;
+    name: string;
+    color?: string | null;
+  };
+  state: DocumentPresenceState | null;
+};
 
-function getYSyncState(state: Editor["state"]) {
-  const plugin = state.plugins.find((candidate) => candidate.key === "y-sync$");
-  return plugin?.getState(state) as
-    | {
-        binding?: { mapping?: Map<unknown, { nodeSize: number }> };
-      }
-    | undefined;
-}
+const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
+  "document-presence",
+);
 
-function getPresenceColor(seed: string) {
+function safePresenceColor(profile: DocumentPresenceProfile) {
+  if (profile.user.color && /^#[0-9a-f]{3,8}$/i.test(profile.user.color)) {
+    return profile.user.color;
+  }
+
   let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
+  const seed = profile.user.id || profile.clientId;
+  for (let i = 0; i < seed.length; i += 1) {
     hash = (hash << 5) - hash + seed.charCodeAt(i);
     hash |= 0;
   }
-
   return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
 }
 
-function serializeRelativePosition(position: unknown) {
-  return JSON.parse(JSON.stringify(position)) as Record<string, unknown>;
-}
-
-function toPresenceUser(user: User): PresenceUser {
-  return {
-    id: user.id,
-    name: user.name,
-    image: user.image,
-    color: getPresenceColor(user.id),
-  };
-}
-
-function createPresencePlugin(
+function relativePresencePositionToAbsolute(
+  state: EditorState,
   ydoc: Y.Doc,
-  localClientId: string,
-  getPresences: () => Map<string, PresenceEnvelope<EditorPresenceState>>,
+  position: unknown,
 ) {
-  const docType = ydoc.getXmlFragment("default");
+  const syncState = ySyncPluginKey.getState(state);
+  const mapping = syncState?.binding?.mapping;
+  if (!mapping || !position) {
+    return null;
+  }
 
-  return new Plugin({
-    key: editorPresencePluginKey,
-    state: {
-      init: () => 0,
-      apply(tr, value) {
-        return tr.getMeta(editorPresencePluginKey) === "refresh" ? value + 1 : value;
-      },
-    },
-    props: {
-      decorations(state) {
-        const syncState = getYSyncState(state);
-        const mapping = syncState?.binding?.mapping;
-        if (!mapping) {
-          return DecorationSet.empty;
-        }
+  try {
+    const fragment = ydoc.getXmlFragment("default");
+    const relativePosition = Y.createRelativePositionFromJSON(position as never);
+    return relativePositionToAbsolutePosition(
+      ydoc,
+      fragment,
+      relativePosition,
+      mapping,
+    );
+  } catch {
+    return null;
+  }
+}
 
-        const decorations: Decoration[] = [];
-        for (const presence of getPresences().values()) {
-          if (presence.clientId === localClientId) {
-            continue;
-          }
+function createPresenceWidget(profile: DocumentPresenceProfile, color: string) {
+  const caret = document.createElement("span");
+  caret.className = "collaboration-carets__caret";
+  caret.style.borderColor = color;
 
-          const remoteState = presence.state;
-          if (remoteState?.kind !== "editor" || !remoteState.selection) {
-            continue;
-          }
+  const label = document.createElement("span");
+  label.className = "collaboration-carets__label";
+  label.style.backgroundColor = color;
+  label.textContent = profile.user.name || "User";
+  caret.append(label);
 
-          const anchor = relativePositionToAbsolutePosition(
-            ydoc,
-            docType,
-            Y.createRelativePositionFromJSON(remoteState.selection.anchor),
-            mapping as unknown as ProsemirrorMapping,
-          );
-          const head = relativePositionToAbsolutePosition(
-            ydoc,
-            docType,
-            Y.createRelativePositionFromJSON(remoteState.selection.head),
-            mapping as unknown as ProsemirrorMapping,
-          );
+  return caret;
+}
 
-          if (anchor === null || head === null) {
-            continue;
-          }
+function createDocumentPresenceExtension(ydoc: Y.Doc) {
+  return Extension.create({
+    name: "documentPresence",
 
-          const from = Math.min(anchor, head);
-          const to = Math.max(anchor, head);
-          const color = presence.user.color ?? getPresenceColor(presence.user.id);
+    addProseMirrorPlugins() {
+      return [
+        new Plugin<DocumentPresenceProfile[]>({
+          key: documentPresencePluginKey,
+          state: {
+            init: () => [],
+            apply(transaction, value) {
+              const next = transaction.getMeta(documentPresencePluginKey);
+              return Array.isArray(next) ? next : value;
+            },
+          },
+          props: {
+            decorations(state) {
+              const profiles = documentPresencePluginKey.getState(state) ?? [];
+              const decorations: Decoration[] = [];
 
-          if (from !== to) {
-            decorations.push(
-              Decoration.inline(from, to, {
-                class: "ProseMirror-yjs-selection",
-                style: `background-color: color-mix(in srgb, ${color} 24%, transparent);`,
-              }),
-            );
-          }
-
-          decorations.push(
-            Decoration.widget(
-              head,
-              () => {
-                const caret = document.createElement("span");
-                caret.className = "collaboration-carets__caret";
-                Object.assign(caret.style, {
-                  borderLeft: `2px solid ${color}`,
-                  marginLeft: "-1px",
-                  marginRight: "-1px",
-                  pointerEvents: "none",
-                  position: "relative",
-                  display: "inline-block",
-                  height: "1.1em",
-                  verticalAlign: "text-top",
-                });
-                if (!remoteState.focused) {
-                  caret.style.opacity = "0.65";
+              for (const profile of profiles) {
+                if (profile.state?.kind !== "editor" || !profile.state.selection) {
+                  continue;
                 }
 
-                const label = document.createElement("span");
-                label.className = "collaboration-carets__label";
-                Object.assign(label.style, {
-                  position: "absolute",
-                  left: "-1px",
-                  top: "-1.45em",
-                  backgroundColor: color,
-                  color: "#111",
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  lineHeight: "1",
-                  whiteSpace: "nowrap",
-                  borderRadius: "var(--radius-xs) var(--radius-xs) var(--radius-xs) 0",
-                  padding: "0.15rem 0.35rem",
-                  boxShadow: "0 1px 2px rgb(0 0 0 / 0.18)",
-                });
-                label.textContent = presence.user.name;
-                if (!remoteState.focused) {
-                  label.style.opacity = "0.75";
+                const anchor = relativePresencePositionToAbsolute(
+                  state,
+                  ydoc,
+                  profile.state.selection.anchor,
+                );
+                const head = relativePresencePositionToAbsolute(
+                  state,
+                  ydoc,
+                  profile.state.selection.head,
+                );
+                if (anchor === null || head === null) continue;
+
+                const maxPos = state.doc.content.size;
+                const from = Math.max(0, Math.min(anchor, head, maxPos));
+                const to = Math.max(0, Math.min(Math.max(anchor, head), maxPos));
+                const color = safePresenceColor(profile);
+
+                if (from !== to) {
+                  decorations.push(
+                    Decoration.inline(
+                      from,
+                      to,
+                      {
+                        class: "ProseMirror-yjs-selection",
+                        style: `background-color: color-mix(in srgb, ${color} 28%, transparent);`,
+                      },
+                      { inclusiveStart: false, inclusiveEnd: false },
+                    ),
+                  );
                 }
 
-                caret.appendChild(label);
-                return caret;
-              },
-              {
-                key: `${presence.clientId}:${presence.updatedAt}`,
-                side: -1,
-              },
-            ),
-          );
-        }
+                decorations.push(
+                  Decoration.widget(
+                    Math.max(0, Math.min(head, maxPos)),
+                    () => createPresenceWidget(profile, color),
+                    { side: -1, key: `presence:${profile.clientId}` },
+                  ),
+                );
+              }
 
-        return DecorationSet.create(state.doc, decorations);
-      },
+              return DecorationSet.create(state.doc, decorations);
+            },
+          },
+        }),
+      ];
     },
   });
 }
@@ -209,15 +187,9 @@ function createEditor(
   editorElement: HTMLElement,
   spaceId: string,
   documentId: string | undefined,
-  user: User,
+  ydoc: Y.Doc,
   html?: string,
 ) {
-  const ydoc = new Y.Doc();
-  const presenceClientId = crypto.randomUUID();
-  const presenceUser = toPresenceUser(user);
-  const remotePresences = new Map<string, PresenceEnvelope<EditorPresenceState>>();
-  const leaveYjsRoom = documentId ? joinYjsRoom(spaceId, documentId, ydoc) : () => {};
-
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
   let lastPointerX = 0;
   let lastPointerY = 0;
@@ -226,56 +198,6 @@ function createEditor(
   let dragHandleElement: HTMLElement | null = null;
 
   let editor: Editor;
-  const presencePlugin = createPresencePlugin(
-    ydoc,
-    presenceClientId,
-    () => remotePresences,
-  );
-  let leavePresenceRoom = () => {};
-  let presenceHandle: {
-    update: (state: EditorPresenceState) => void;
-    leave: () => void;
-  } | null = null;
-
-  const refreshPresenceDecorations = () => {
-    if (!editor?.view) return;
-    editor.view.dispatch(editor.state.tr.setMeta(editorPresencePluginKey, "refresh"));
-  };
-
-  const buildPresenceState = (): EditorPresenceState => {
-    const selection = editor?.state.selection;
-    const syncState = editor ? getYSyncState(editor.state) : undefined;
-    const mapping = syncState?.binding?.mapping;
-
-    if (!editor || !selection || !mapping) {
-      return {
-        kind: "editor",
-        focused: editor?.isFocused ?? false,
-        selection: null,
-      };
-    }
-
-    return {
-      kind: "editor",
-      focused: editor.isFocused,
-      selection: {
-        anchor: serializeRelativePosition(
-          absolutePositionToRelativePosition(
-            selection.anchor,
-            ydoc.getXmlFragment("default"),
-            mapping as unknown as ProsemirrorMapping,
-          ),
-        ),
-        head: serializeRelativePosition(
-          absolutePositionToRelativePosition(
-            selection.head,
-            ydoc.getXmlFragment("default"),
-            mapping as unknown as ProsemirrorMapping,
-          ),
-        ),
-      },
-    };
-  };
 
   const trackPointerPosition = (clientX: number, clientY: number) => {
     lastPointerX = clientX;
@@ -483,45 +405,12 @@ function createEditor(
       disableCollaboration();
     },
     onCreate: async ({ editor: currentEditor }) => {
-      currentEditor.registerPlugin(presencePlugin);
       currentEditor.commands.focus();
-      if (!documentId) {
-        return;
-      }
-      const presence = joinPresenceRoom<EditorPresenceState>(
-        spaceId,
-        documentId,
-        presenceClientId,
-        presenceUser,
-        (event) => {
-          if (event.type === "presence-snapshot") {
-            remotePresences.clear();
-            for (const presence of event.presences) {
-              if (presence.clientId === presenceClientId) continue;
-              remotePresences.set(presence.clientId, presence);
-            }
-          } else if (event.type === "presence-update") {
-            if (event.presence.clientId === presenceClientId) {
-              return;
-            }
-            remotePresences.set(event.presence.clientId, event.presence);
-          } else {
-            remotePresences.delete(event.clientId);
-          }
-          refreshPresenceDecorations();
-        },
-        buildPresenceState(),
-      );
-      presenceHandle = presence;
-      leavePresenceRoom = presence.leave;
-      presence.update(buildPresenceState());
     },
     onUpdate: () => {},
     onDestroy: () => {
       cleanupDragHandleSync();
       cleanupBlockDropIndicator();
-      leavePresenceRoom();
-      leaveYjsRoom();
     },
     extensions: [
       ...contentExtensions(spaceId, documentId),
@@ -559,17 +448,9 @@ function createEditor(
       Collaboration.configure({
         document: ydoc,
       }),
-    ],
-  });
 
-  editor.on("selectionUpdate", () => {
-    presenceHandle?.update(buildPresenceState());
-  });
-  editor.on("focus", () => {
-    presenceHandle?.update(buildPresenceState());
-  });
-  editor.on("blur", () => {
-    presenceHandle?.update(buildPresenceState());
+      createDocumentPresenceExtension(ydoc),
+    ],
   });
 
   editor.view.dom.addEventListener("mousemove", handleEditorMouseMove);
@@ -593,9 +474,30 @@ class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   editor?: Editor;
   store?: IndexedDBStore<EditorStoreEntry>;
+  private ydoc?: Y.Doc;
+
+  static get observedAttributes() {
+    return ["space-id", "document-id", "initial-html"];
+  }
 
   get root() {
     return this.shadowRoot;
+  }
+
+  get collaborationDocument() {
+    if (!this.ydoc) {
+      this.ydoc = new Y.Doc();
+    }
+
+    return this.ydoc;
+  }
+
+  setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
+    if (!this.editor) return;
+
+    this.editor.view.dispatch(
+      this.editor.state.tr.setMeta(documentPresencePluginKey, profiles),
+    );
   }
 
   connectedCallback() {
@@ -634,20 +536,30 @@ class DocumentView extends HTMLElement {
     });
 
     this.attachListeners();
+    this.maybeStartEditor();
   }
 
-  init(spaceId: string, documentId: string | undefined, user: User, html?: string) {
-    // init is called from the outside, will overwrite shadow innerHTML
+  attributeChangedCallback() {
+    this.maybeStartEditor();
+  }
+
+  private maybeStartEditor() {
     const shadow = this.root;
-    if (!shadow) {
-      throw new Error("No shadow root");
+    if (!this.isConnected || !shadow || this.editor || !this.hasEditorConfig()) {
+      return;
     }
 
     shadow.innerHTML = `<style>${docStyles}</style>`;
     shadow.append(this.element);
 
     this.element.className = "tiptap";
-    this.editor = createEditor(this.element, spaceId, documentId, user, html);
+    this.editor = createEditor(
+      this.element,
+      this.getAttribute("space-id") || "standalone",
+      this.getAttribute("document-id") || undefined,
+      this.collaborationDocument,
+      this.getAttribute("initial-html") || "",
+    );
 
     const handleUpdate = () => {
       window.dispatchEvent(new Event("editor-update"));
@@ -659,6 +571,14 @@ class DocumentView extends HTMLElement {
     window.__editor = this.editor;
 
     return this.editor;
+  }
+
+  private hasEditorConfig() {
+    return (
+      this.hasAttribute("space-id") ||
+      this.hasAttribute("document-id") ||
+      this.hasAttribute("initial-html")
+    );
   }
 
   attachListeners() {
@@ -751,230 +671,6 @@ class DocumentView extends HTMLElement {
   }
 }
 
-customElements.define("document-view", class extends DocumentView {});
-
-function createFigmaEmbedUrl(figmaUrl: string): string {
-  return `https://www.figma.com/embed?embed_host=share&url=${encodeURIComponent(figmaUrl)}`;
+if (typeof customElements !== "undefined" && !customElements.get("document-view")) {
+  customElements.define("document-view", class extends DocumentView {});
 }
-
-customElements.define(
-  "figma-embed",
-  class extends HTMLElement {
-    connectedCallback() {
-      const figmaUrl = this.dataset.figmaUrl;
-      if (!figmaUrl) return;
-
-      const height = this.getAttribute("height") || "450px";
-
-      const shadow = this.attachShadow({ mode: "open" });
-      shadow.innerHTML = `
-      <style>
-        :host {
-          display: block;
-          border: 1px solid #e5e7eb;
-          border-radius: var(--radius-xl);
-          overflow: hidden;
-        }
-      </style>
-    `;
-
-      const iframe = document.createElement("iframe");
-      iframe.src = createFigmaEmbedUrl(figmaUrl);
-      iframe.style.cssText = "width: 100%; height: 100%; display: block; border: none;";
-      if (height) {
-        iframe.style.height = `${height}px`;
-      }
-      iframe.setAttribute("allowfullscreen", "true");
-
-      shadow.appendChild(iframe);
-    }
-  },
-);
-
-customElements.define(
-  "html-block",
-  class extends HTMLElement {
-    shadow: ShadowRoot | null = null;
-    editmode: boolean = false;
-
-    connectedCallback() {
-      this.shadow = this.attachShadow({ mode: "open" });
-      this.updateContent();
-    }
-
-    attributeChangedCallback(name: string, oldValue: string, newValue: string) {
-      if (name === "data-html" && oldValue !== newValue) {
-        this.updateContent();
-      }
-      if (name === "contenteditable") {
-        this.editmode = this.hasAttribute("contenteditable");
-        this.updateContent();
-      }
-    }
-
-    static get observedAttributes() {
-      return ["data-html", "contenteditable"];
-    }
-
-    private updateContent() {
-      if (!this.shadow) return;
-
-      const htmlString = this.getAttribute("data-html");
-
-      const container = document.createElement("div");
-      container.innerHTML = stripScriptTags(htmlString || "");
-      container.contentEditable = this.closest(".tiptap") ? "true" : "false";
-      container.addEventListener("input", () => {
-        const html = container.innerHTML;
-        this.dispatchEvent(new CustomEvent("change", { detail: html }));
-      });
-
-      this.shadow.appendChild(container);
-    }
-  },
-);
-
-function getTicketUrlTemplate(
-  appType: "jira" | "youtrack" | "linear" | "github" | "gitlab",
-  baseUrl: string,
-): string {
-  if (!baseUrl) {
-    return "";
-  }
-
-  const cleanUrl = baseUrl.replace(/\/$/, "");
-
-  switch (appType) {
-    case "jira":
-      return `${cleanUrl}/browse/{ticketId}`;
-    case "youtrack":
-      return `${cleanUrl}/issue/{ticketId}`;
-    case "linear":
-      return `${cleanUrl}/issue/{ticketId}`;
-    case "github":
-      return `${cleanUrl}/issues/{ticketId}`;
-    case "gitlab":
-      return `${cleanUrl}/-/issues/{ticketId}`;
-    default:
-      return `${cleanUrl}/{ticketId}`;
-  }
-}
-
-customElements.define(
-  "ticket-link",
-  class extends HTMLElement {
-    constructor() {
-      super();
-
-      this.addEventListener("click", this.click);
-      this.addEventListener("auxclick", this.click);
-    }
-
-    click() {
-      const connectionLabel = this.getAttribute("data-connection-label");
-      if (!connectionLabel) {
-        throw new Error("No connection label");
-      }
-
-      const appType = detectAppType(connectionLabel);
-      if (!appType) {
-        throw new Error("Missing valid appType");
-      }
-
-      const ticketId = this.getAttribute("data-ticket-id");
-      if (!ticketId) {
-        throw new Error("Missing ticketId");
-      }
-
-      const connectionUrl = this.getAttribute("data-connection-url");
-      if (!connectionUrl) {
-        throw new Error("Missing connectionUrl");
-      }
-
-      const baseUrl = new URL(connectionUrl).origin;
-      const urlTemplate = getTicketUrlTemplate(appType, baseUrl);
-      const ticketUrl = urlTemplate.replace("{ticketId}", ticketId);
-      window.open(ticketUrl, "_blank");
-    }
-  },
-);
-
-// Custom element for user mentions in the editor
-// Renders @mentions with click handling and tooltip support
-//
-// Usage in HTML:
-//   <user-mention email="user@example.com">@John Doe</user-mention>
-//
-// Event handling:
-//   editor.view.dom.addEventListener('mention-click', (e) => {
-//     console.log('Mentioned user:', e.detail.email);
-//     // Navigate to user profile, show tooltip, etc.
-//   });
-customElements.define(
-  "user-mention",
-  class UserMentionElement extends HTMLElement {
-    connectedCallback() {
-      this.setAttribute("role", "button");
-      this.setAttribute("tabindex", "0");
-
-      this.addEventListener("click", this.handleClick);
-      this.addEventListener("keydown", this.handleKeyDown);
-
-      // Check if this mention is for the current user
-      this.checkSelfMention();
-    }
-
-    async checkSelfMention() {
-      const mentionEmail = this.getAttribute("email");
-      if (!mentionEmail) return;
-
-      try {
-        const { data: session } = await authClient.getSession();
-        if (session?.user?.email === mentionEmail) {
-          this.setAttribute("data-self-mention", "true");
-        }
-      } catch {
-        // Silently fail if we can't check
-      }
-    }
-
-    disconnectedCallback() {
-      this.removeEventListener("click", this.handleClick);
-      this.removeEventListener("keydown", this.handleKeyDown);
-    }
-
-    handleClick = (event: Event) => {
-      event.preventDefault();
-      const email = this.getAttribute("email");
-
-      if (email) {
-        this.dispatchEvent(
-          new CustomEvent("mention-click", {
-            detail: { email },
-            bubbles: true,
-            composed: true,
-          }),
-        );
-      }
-    };
-
-    handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        this.handleClick(event);
-      }
-    };
-
-    get email(): string | null {
-      return this.getAttribute("email");
-    }
-
-    set email(value: string | null) {
-      if (value) {
-        this.setAttribute("email", value);
-      } else {
-        this.removeAttribute("email");
-      }
-    }
-  },
-);

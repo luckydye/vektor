@@ -44,7 +44,7 @@ body[data-editing] main {
 
 document-view {
   max-width: 100%;
-  overflow: auto;
+
   display: block;
   position: relative;
   z-index: 0;
