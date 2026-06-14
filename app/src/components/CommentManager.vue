@@ -114,7 +114,7 @@ function handleMouseMove(e: MouseEvent) {
     return;
   }
 
-  if (e.clientX > window.innerWidth - EDGE_THRESHOLD_PX && e.clientY > 100) {
+  if (e.clientX > window.innerWidth - EDGE_THRESHOLD_PX && e.clientY > 200) {
     showAddBubble.value = true;
     bubbleY.value = e.clientY;
     fadeAddBubble.value = isNearCommentBubble(e.clientX, e.clientY);

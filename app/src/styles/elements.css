@@ -67,10 +67,6 @@ body[data-editing] main {
   display: none;
 }
 
-[data-editing="true"] .breadcrumbs {
-  opacity: 0;
-}
-
 document-view {
   max-width: 100%;
 
