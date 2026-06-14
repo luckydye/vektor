@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { canvasPenIcon, pencilIcon } from "../../assets/icons.ts";
+import type { TranslationKey } from "../../utils/lang.ts";
 import {
   buildFreehandStroke,
   createFreehandStrokeBuilder,
@@ -54,7 +55,7 @@ export const PEN_COLORS = [
 
 export const DRAW_STROKE_MODES: Array<{
   id: DrawStrokeMode;
-  label: string;
+  label: TranslationKey;
   icon: string;
 }> = [
   {
@@ -252,7 +253,9 @@ export function addCanvasDrawingPoint(
   world: { x: number; y: number },
 ): FreehandStroke | null {
   if (session.pointerId !== event.pointerId) return null;
-  return session.builder.addPoint(freehandPointFromPointerEvent(event, world, session.mode));
+  return session.builder.addPoint(
+    freehandPointFromPointerEvent(event, world, session.mode),
+  );
 }
 
 export function finishCanvasDrawingStroke(
@@ -268,10 +271,7 @@ export function finishCanvasDrawingStroke(
   };
 }
 
-function themedStroke(
-  stroke: FreehandStroke,
-  defaultInkColor: string,
-): FreehandStroke {
+function themedStroke(stroke: FreehandStroke, defaultInkColor: string): FreehandStroke {
   if (stroke.style.color !== FREEHAND_STYLE.color) {
     return stroke;
   }

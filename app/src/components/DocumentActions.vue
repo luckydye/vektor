@@ -12,6 +12,7 @@ import { useHeaderImage } from "../composeables/useHeaderImage.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
+import { t } from "../utils/lang.ts";
 import Contributors from "./Contributors.vue";
 import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
 import WorkflowRunButton from "./WorkflowRunButton.vue";
@@ -44,8 +45,8 @@ const editorSaveFunction = ref<
 
 function registerEditAction() {
   Actions.register("document:edit", {
-    title: "Edit Document",
-    description: "Start editing mode for current document",
+    title: t("Edit Document"),
+    description: t("Start editing mode for current document"),
     group: "edit",
     run: async () => startEditing(),
   });
@@ -60,8 +61,8 @@ function startEditing() {
   window.dispatchEvent(new CustomEvent("edit-mode-start"));
 
   Actions.register("document:save", {
-    title: "Publish Document",
-    description: "Publish current document and exit edit mode",
+    title: t("Publish Document"),
+    description: t("Publish current document and exit edit mode"),
     group: "edit",
     run: async () => stopEditing("revision"),
   });
@@ -72,9 +73,9 @@ function startEditing() {
 registerEditAction();
 
 Actions.register("document:print", {
-  title: "Print",
+  title: t("Print"),
   icon: () => "print",
-  description: "Print current document",
+  description: t("Print current document"),
   group: "document",
   run: async () => {
     window.print();
@@ -82,9 +83,9 @@ Actions.register("document:print", {
 });
 
 Actions.register("document:export", {
-  title: "Export",
+  title: t("Export"),
   icon: () => "download",
-  description: "Export current document to markdown",
+  description: t("Export current document to markdown"),
   group: "document",
   run: async () => {
     window.open(`${location.href}.md`, "_blank");
@@ -92,9 +93,9 @@ Actions.register("document:export", {
 });
 
 Actions.register("document:accesstoken", {
-  title: "Copy API Command",
+  title: t("Copy API Command"),
   icon: () => "webhook",
-  description: "Creates API token to access this document",
+  description: t("Creates API token to access this document"),
   group: "document",
   run: async () => {
     if (isCreatingToken.value) return;
@@ -247,9 +248,9 @@ watchEffect(() => {
 
     if (isPinned) {
       Actions.register("document:unpin", {
-        title: "Unpin from Home",
+        title: t("Unpin from Home"),
         icon: () => "pin-filled",
-        description: "Remove this document from the space home page",
+        description: t("Remove this document from the space home page"),
         group: "document",
         run: async () => {
           await api.space.patch(currentSpace.value!.id, {
@@ -260,9 +261,9 @@ watchEffect(() => {
       });
     } else {
       Actions.register("document:pin", {
-        title: "Pin to Home",
+        title: t("Pin to Home"),
         icon: () => "pin",
-        description: "Showcase this document on the space home page",
+        description: t("Showcase this document on the space home page"),
         group: "document",
         run: async () => {
           await api.space.patch(currentSpace.value!.id, {
@@ -280,9 +281,9 @@ watchEffect(() => {
 
   if (userCanEdit.value === true) {
     Actions.register("document:archive", {
-      title: "Archive Document",
+      title: t("Archive Document"),
       icon: () => "archive",
-      description: "Archive current document",
+      description: t("Archive current document"),
       group: "document:danger",
       run: async () => {
         if (!confirm("Are you sure you want to archive this document?")) {
@@ -328,18 +329,18 @@ watchEffect(() => {
     supportsHeaderImage(props.documentType)
   ) {
     Actions.register("document:set-header", {
-      title: props.headerImage ? "Change header" : "Add header image",
+      title: props.headerImage ? t("Change header") : t("Add header image"),
       icon: () => "image",
-      description: "Set the header image for this document",
+      description: t("Set the header image for this document"),
       group: "document",
       run: async () => changeHeaderImage(documentId),
     });
 
     if (props.headerImage) {
       Actions.register("document:remove-header", {
-        title: "Remove header image",
+        title: t("Remove header image"),
         icon: () => "image",
-        description: "Remove the header image from this document",
+        description: t("Remove the header image from this document"),
         group: "document:danger",
         run: async () => removeHeaderImage(documentId),
       });

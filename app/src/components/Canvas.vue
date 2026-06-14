@@ -17,6 +17,11 @@ import {
 } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import {
+  createDocumentLinkController,
+  dragHasDocumentLink,
+  droppedDocumentId as getDroppedDocumentId,
+} from "../canvas/elements/documentLink.ts";
+import {
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
   cloneFreehandPoint,
@@ -32,20 +37,12 @@ import {
   strokeStyleFromUnknown,
   toCanvasStroke,
 } from "../canvas/elements/drawing.ts";
-import {
-  createDocumentLinkController,
-  dragHasDocumentLink,
-  droppedDocumentId as getDroppedDocumentId,
-} from "../canvas/elements/documentLink.ts";
+import { isFigmaClipboardHtml, pasteFigmaClipboard } from "../canvas/elements/figma.ts";
 import {
   canvasFilesFromDataTransfer,
   createUploadedFileShape,
   dragHasCanvasFiles,
 } from "../canvas/elements/files.ts";
-import {
-  isFigmaClipboardHtml,
-  pasteFigmaClipboard,
-} from "../canvas/elements/figma.ts";
 import {
   createUploadedMediaShape,
   isMediaElementType,
@@ -73,6 +70,7 @@ import type {
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
+import { type TranslationKey, t } from "../utils/lang.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
 import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import {
@@ -151,7 +149,7 @@ type Rect = { x: number; y: number; width: number; height: number };
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
 type ToolDef = {
   id: CanvasTool;
-  label: string;
+  label: TranslationKey;
   shortcut: string;
   icon: string;
 };
@@ -2058,8 +2056,7 @@ onMounted(() => {
     // originator — the peer that made them, or the server for agent edits — so
     // re-saving them here would mean every client rewrites the doc on every
     // change, including the initial room state that arrives as "remote" on load.
-    if (transaction.origin !== "remote" && transaction.origin !== "seed")
-      scheduleSave();
+    if (transaction.origin !== "remote" && transaction.origin !== "seed") scheduleSave();
     refreshUndoState();
     fitInitialViewIfNeeded(transaction.origin !== null);
   });
@@ -2070,8 +2067,7 @@ onMounted(() => {
     // originator — the peer that made them, or the server for agent edits — so
     // re-saving them here would mean every client rewrites the doc on every
     // change, including the initial room state that arrives as "remote" on load.
-    if (transaction.origin !== "remote" && transaction.origin !== "seed")
-      scheduleSave();
+    if (transaction.origin !== "remote" && transaction.origin !== "seed") scheduleSave();
     refreshUndoState();
     fitInitialViewIfNeeded(transaction.origin !== null);
   });
@@ -2174,7 +2170,7 @@ onUnmounted(() => {
       <span
         v-if="activeTool === 'draw'"
         class="canvas-draw-modes"
-        aria-label="Draw mode"
+        :aria-label="t('Draw mode')"
       >
         <button
           v-for="mode in DRAW_STROKE_MODES"
@@ -2182,9 +2178,9 @@ onUnmounted(() => {
           type="button"
           class="canvas-draw-mode"
           :class="{ active: drawStrokeMode === mode.id }"
-          :aria-label="mode.label"
+          :aria-label="t(mode.label)"
           :aria-pressed="drawStrokeMode === mode.id"
-          :title="mode.label"
+          :title="t(mode.label)"
           @click="drawStrokeMode = mode.id"
         >
           <div
@@ -2201,7 +2197,7 @@ onUnmounted(() => {
       <span
         v-if="activeTool === 'note' || selectedShape?.type === 'note'"
         class="canvas-note-colors"
-        aria-label="Note color"
+        :aria-label="t('Note color')"
       >
         <button
           v-for="color in NOTE_COLORS"
@@ -2210,7 +2206,7 @@ onUnmounted(() => {
           class="canvas-color-swatch"
           :class="{ active: (selectedShape?.type === 'note' ? selectedShape.color : noteColor) === color }"
           :style="{ background: color }"
-          :aria-label="`Set note color ${color}`"
+          :aria-label="`${t('Set note color')} ${color}`"
           @click="setNoteColor(color)"
         ></button>
       </span>
@@ -2224,7 +2220,7 @@ onUnmounted(() => {
       <span
         v-if="activeTool === 'draw' || selectedStrokeIds.size > 0"
         class="canvas-note-colors"
-        aria-label="Pen color"
+        :aria-label="t('Pen color')"
       >
         <button
           v-for="color in PEN_COLORS"
@@ -2233,7 +2229,7 @@ onUnmounted(() => {
           class="canvas-color-swatch"
           :class="{ active: (selectedStrokeIds.size > 0 ? selectedStrokeColor : penColor) === color }"
           :style="{ background: color }"
-          :aria-label="`Set pen color ${color}`"
+          :aria-label="`${t('Set pen color')} ${color}`"
           @click="setPenColor(color)"
         ></button>
       </span>
@@ -2245,9 +2241,9 @@ onUnmounted(() => {
         type="button"
         class="canvas-tool"
         :class="{ active: activeTool === tool.id }"
-        :aria-label="tool.label"
+        :aria-label="t(tool.label)"
         :aria-pressed="activeTool === tool.id"
-        :data-tooltip="`${tool.label} · ${tool.shortcut}`"
+        :data-tooltip="`${t(tool.label)} · ${tool.shortcut}`"
         @click="activeTool = tool.id"
       >
         <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="tool.icon" />
@@ -2256,8 +2252,8 @@ onUnmounted(() => {
       <button
         type="button"
         class="canvas-tool"
-        aria-label="Undo"
-        data-tooltip="Undo · ⌘Z"
+        :aria-label="t('Undo')"
+        :data-tooltip="`${t('Undo')} · ⌘Z`"
         :disabled="!canUndo"
         @click="undo"
       >
@@ -2266,8 +2262,8 @@ onUnmounted(() => {
       <button
         type="button"
         class="canvas-tool"
-        aria-label="Redo"
-        data-tooltip="Redo · ⌘⇧Z"
+        :aria-label="t('Redo')"
+        :data-tooltip="`${t('Redo')} · ⌘⇧Z`"
         :disabled="!canRedo"
         @click="redo"
       >
@@ -2277,8 +2273,8 @@ onUnmounted(() => {
       <button
         type="button"
         class="canvas-tool"
-        aria-label="Fit to view"
-        data-tooltip="Fit to view · F"
+        :aria-label="t('Fit to view')"
+        :data-tooltip="`${t('Fit to view')} · F`"
         @click="fitView()"
       >
         <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="canvasFitViewIcon" />
@@ -2351,7 +2347,7 @@ onUnmounted(() => {
               :data-section-title="shape.id"
               :value="shape.text"
               spellcheck="false"
-              aria-label="Section headline"
+              :aria-label="t('Section headline')"
               @focus="selectOnlyShape(shape.id)"
               @pointerdown.stop
               @input="updateShapeText(shape, ($event.target as HTMLInputElement).value)"
@@ -2423,7 +2419,7 @@ onUnmounted(() => {
             v-if="shape.type !== 'text' && selectedShape?.id === shape.id"
             type="button"
             class="canvas-resize-handle"
-            :aria-label="`Resize ${shape.type}`"
+            :aria-label="`${t('Resize')} ${shape.type}`"
             @pointerdown.stop="startShapeResize(shape, $event)"
           ></button>
         </article>
@@ -2480,8 +2476,8 @@ onUnmounted(() => {
         <button
           type="button"
           class="canvas-tool"
-          aria-label="Copy"
-          data-tooltip="Copy · ⌘C"
+          :aria-label="t('Copy')"
+          :data-tooltip="`${t('Copy')} · ⌘C`"
           @click="copySelectionToClipboard"
         >
           <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="copyIcon" />
@@ -2489,8 +2485,8 @@ onUnmounted(() => {
         <button
           type="button"
           class="canvas-tool"
-          aria-label="Cut"
-          data-tooltip="Cut · ⌘X"
+          :aria-label="t('Cut')"
+          :data-tooltip="`${t('Cut')} · ⌘X`"
           @click="cutSelectionToClipboard"
         >
           <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="scissorsIcon" />
@@ -2499,8 +2495,8 @@ onUnmounted(() => {
         <button
           type="button"
           class="canvas-tool danger"
-          aria-label="Delete"
-          data-tooltip="Delete · ⌫"
+          :aria-label="t('Delete')"
+          :data-tooltip="`${t('Delete')} · ⌫`"
           @click="deleteSelectedShape"
         >
           <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="trashIcon" />
@@ -2519,7 +2515,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="canvas-tool"
-            aria-label="Copy"
+            :aria-label="t('Copy')"
             @click="copySelectionToClipboard(); contextMenuPos = null"
           >
             <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="copyIcon" />
@@ -2527,7 +2523,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="canvas-tool"
-            aria-label="Cut"
+            :aria-label="t('Cut')"
             @click="cutSelectionToClipboard(); contextMenuPos = null"
           >
             <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="scissorsIcon" />
@@ -2537,7 +2533,7 @@ onUnmounted(() => {
         <button
           type="button"
           class="canvas-tool"
-          aria-label="Paste"
+          :aria-label="t('Paste')"
           @click="pasteFromContextMenu"
         >
           <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="clipboardDocumentIcon" />
@@ -2547,7 +2543,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="canvas-tool danger"
-            aria-label="Delete"
+            :aria-label="t('Delete')"
             @click="deleteSelectedShape(); contextMenuPos = null"
           >
             <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="trashIcon" />

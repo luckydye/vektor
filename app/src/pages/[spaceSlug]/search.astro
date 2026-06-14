@@ -2,7 +2,10 @@
 import SearchComponent from "../../components/Search.vue";
 import { verifySpaceAccess } from "../../db/api.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
+import { t } from "../../utils/lang.ts";
 import { resolveSpacePage } from "../../utils/spacePage.ts";
+
+const lang = Astro.preferredLocale || "en";
 
 const result = await resolveSpacePage(Astro);
 if (result.response) {
@@ -21,9 +24,9 @@ await verifySpaceAccess(space.id, user.id);
 <SpaceLayout title={`Search - ${space.name} - Wiki`}>
   <div data-inset class="pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl lg:ml-(--inset-left) lg:mr-(--inset-right)">
     <div class="mb-8">
-        <h1 class="text-3xl font-bold text-neutral-900">Find Documents</h1>
+        <h1 class="text-3xl font-bold text-neutral-900">{t("Find Documents", lang)}</h1>
         <p class="mt-2 text-sm text-neutral-600">
-            Search across all documents you have access to in this space with semantic ranking
+            {t("Search across all documents you have access to in this space with semantic ranking", lang)}
         </p>
     </div>
       

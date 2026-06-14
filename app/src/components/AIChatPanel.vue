@@ -28,6 +28,7 @@ import {
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
+import { t } from "../utils/lang.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
@@ -1136,9 +1137,9 @@ function renderMarkdown(content: string): string {
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 Actions.register("ai-chat:toggle", {
-  title: "AI Chat",
+  title: t("AI Chat"),
   icon: () => "sparkles",
-  description: "Open AI chat to ask questions about this document",
+  description: t("Open AI chat to ask questions about this document"),
   group: "document",
   run: async () => {
     toggleWindow("ai-chat", { side: "right", width: 380 });

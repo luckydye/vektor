@@ -217,6 +217,7 @@ function workflowPreviewHtml(state: WorkflowPreviewState | null): string {
 
 if (
   typeof customElements !== "undefined" &&
+  typeof HTMLElement !== "undefined" &&
   !customElements.get("document-attachment")
 ) {
   customElements.define(

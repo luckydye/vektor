@@ -8,5 +8,5 @@
   "tab": "format:list:indent",
   "shift-tab": "format:list:outdent",
   "meta-l": "revisions:toggle",
-  "meta-r": "ai-chat:toggle"
+  "meta-enter": "ai-chat:toggle"
 }

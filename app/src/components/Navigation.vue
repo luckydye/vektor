@@ -6,6 +6,7 @@ import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "../composeables/useSpace.ts";
 import { extensions } from "../utils/extensions.ts";
+import { t } from "../utils/lang.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
 import DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
@@ -95,7 +96,7 @@ const userCanAccessSettings = computed(() => {
 
 // Check if current user can edit
 const userCanEdit = computed(() => {
-  if(isLoading.value) {
+  if (isLoading.value) {
     return false;
   }
   return canEdit(currentSpace.value?.userRole);
@@ -135,8 +136,8 @@ const handleCreateDoc = () => {
 };
 
 Actions.register("document:create", {
-  title: "Create Document",
-  description: "Create a new document",
+  title: t("Create Document"),
+  description: t("Create a new document"),
   run: async () => {
     if (currentSpace.value) {
       window.location.href = `/${currentSpace.value.slug}/new`;
@@ -145,8 +146,8 @@ Actions.register("document:create", {
 });
 
 Actions.register("find:open", {
-  title: "Find",
-  description: "Open find document dialog",
+  title: t("Find"),
+  description: t("Open find document dialog"),
   run: async () => {
     if (currentSpace.value) {
       window.location.href = `/${currentSpace.value.slug}/search`;
@@ -181,20 +182,20 @@ Actions.mapShortcut("meta-shift-f", "find:open");
     <div v-if="!isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
         <MenuLink
             :icon="homeIcon"
-            text="Home"
+            :text="t('Home')"
             :href="`/${spaceSlug}/`"
             :is-active="activeRoute === 'home'"
         />
         <MenuLink
             v-if="userCanAccessSettings"
             :icon="settingsIcon"
-            text="Settings"
+            :text="t('Settings')"
             :href="`/${spaceSlug}/settings`"
             :is-active="activeRoute === 'settings'"
         />
         <MenuLink
             :icon="searchIcon"
-            text="Find"
+            :text="t('Find')"
             :href="`/${spaceSlug}/search`"
             :is-active="activeRoute === 'search'"
         >

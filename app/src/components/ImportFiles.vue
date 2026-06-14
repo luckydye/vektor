@@ -4,6 +4,7 @@ import { alertCircleIcon, uploadIcon } from "~/src/assets/icons.ts";
 import { useImport } from "../composeables/useImport.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
+import { t } from "../utils/lang.ts";
 
 const show = ref(false);
 
@@ -95,9 +96,9 @@ function getSupportedFilesText(): string {
 }
 
 Actions.register("import:toggle", {
-  title: "Import",
+  title: t("Import"),
   icon: () => "import",
-  description: "Open or close the import menu",
+  description: t("Open or close the import menu"),
   run: async () => {
     show.value = !show.value;
   },

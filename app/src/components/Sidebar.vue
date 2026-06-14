@@ -2,6 +2,7 @@
 import { twMerge } from "tailwind-merge";
 import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Actions } from "../utils/actions.ts";
+import { t } from "../utils/lang.ts";
 import { Icon } from "./index.ts";
 import Navigation from "./Navigation.vue";
 import UserProfile from "./UserProfile.vue";
@@ -119,8 +120,8 @@ const stopResize = () => {
 
 onMounted(() => {
   Actions.register("ui:toggle:sidebar", {
-    title: "Toggle Sidebar",
-    description: "Open or close the sidebar menu",
+    title: t("Toggle Sidebar"),
+    description: t("Open or close the sidebar menu"),
     group: "navigation",
     run: async () => {
       const targetWidth =
@@ -134,8 +135,8 @@ onMounted(() => {
   });
 
   Actions.register("sidebar:toggle", {
-    title: "Toggle Sidebar",
-    description: "Open or close the sidebar menu",
+    title: t("Toggle Sidebar"),
+    description: t("Open or close the sidebar menu"),
     group: "navigation",
     run: async () => {
       isMobileOpen.value = !isMobileOpen.value;

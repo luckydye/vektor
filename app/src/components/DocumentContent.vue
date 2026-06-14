@@ -21,10 +21,12 @@ import docStyles from "../styles/document.css?inline";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
+import Canvas from "./Canvas.vue";
 import CommentManager from "./CommentManager.vue";
 import DiffView from "./DiffView.vue";
 import ToolbarFormatting from "./ToolbarFormatting.vue";
 import ToolbarTable from "./ToolbarTable.vue";
+import WorkflowView from "./WorkflowView.vue";
 
 const props = defineProps({
   documentId: {
@@ -41,6 +43,10 @@ const props = defineProps({
   spaceId: {
     type: String,
     required: true,
+  },
+  spaceSlug: {
+    type: String,
+    default: "",
   },
   documentType: {
     type: String,
@@ -71,6 +77,7 @@ const renderedHtml = ref(props.initialHtml || "");
 const readViewEl = ref(null);
 const editorViewEl = ref(null);
 const tableViewEl = ref(null);
+const isMounted = ref(false);
 const getEditor = () => globalThis.__editor;
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
@@ -378,6 +385,8 @@ async function handleRevisionDiff(event) {
 }
 
 onMounted(() => {
+  isMounted.value = true;
+
   if (
     !props.readonly &&
     props.documentType !== "canvas" &&
@@ -633,4 +642,21 @@ useSync(
     :documentId="props.documentId"
     :currentRev="documentData?.currentRev"
   />
+
+  <main class="relative">
+    <div v-if="isMounted && props.documentType === 'canvas'" class="h-screen">
+      <Canvas
+        :documentId="props.documentId"
+        :spaceId="props.spaceId"
+      />
+    </div>
+    <WorkflowView
+      v-else-if="isMounted && props.documentType === 'workflow' && props.documentId"
+      :documentId="props.documentId"
+      :spaceId="props.spaceId"
+      :spaceSlug="props.spaceSlug"
+    />
+
+    <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
+  </main>
 </template>

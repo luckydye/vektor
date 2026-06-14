@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { Actions } from "./actions.ts";
+import { t } from "./lang.ts";
 
 /**
  * Get the global editor instance
@@ -22,8 +23,8 @@ const isEditorAvailable = () => {
 export function registerFormattingActions() {
   // Text formatting
   Actions.register("format:bold", {
-    title: "Bold",
-    description: "Toggle bold formatting",
+    title: t("Bold"),
+    description: t("Toggle bold formatting"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -32,8 +33,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:italic", {
-    title: "Italic",
-    description: "Toggle italic formatting",
+    title: t("Italic"),
+    description: t("Toggle italic formatting"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -42,8 +43,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:underline", {
-    title: "Underline",
-    description: "Toggle underline formatting",
+    title: t("Underline"),
+    description: t("Toggle underline formatting"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -52,8 +53,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:strikethrough", {
-    title: "Strikethrough",
-    description: "Toggle strikethrough formatting",
+    title: t("Strikethrough"),
+    description: t("Toggle strikethrough formatting"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -62,8 +63,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:code", {
-    title: "Inline Code",
-    description: "Toggle inline code formatting",
+    title: t("Inline Code"),
+    description: t("Toggle inline code formatting"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -72,8 +73,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:subscript", {
-    title: "Subscript",
-    description: "Toggle subscript formatting",
+    title: t("Subscript"),
+    description: t("Toggle subscript formatting"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -82,8 +83,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:superscript", {
-    title: "Superscript",
-    description: "Toggle superscript formatting",
+    title: t("Superscript"),
+    description: t("Toggle superscript formatting"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -93,8 +94,8 @@ export function registerFormattingActions() {
 
   // Headings
   Actions.register("format:heading:paragraph", {
-    title: "Paragraph",
-    description: "Convert to normal paragraph",
+    title: t("Paragraph"),
+    description: t("Convert to normal paragraph"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -103,8 +104,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:heading:1", {
-    title: "Heading 1",
-    description: "Convert to heading level 1",
+    title: t("Heading 1"),
+    description: t("Convert to heading level 1"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -113,8 +114,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:heading:2", {
-    title: "Heading 2",
-    description: "Convert to heading level 2",
+    title: t("Heading 2"),
+    description: t("Convert to heading level 2"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -123,8 +124,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:heading:3", {
-    title: "Heading 3",
-    description: "Convert to heading level 3",
+    title: t("Heading 3"),
+    description: t("Convert to heading level 3"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -133,8 +134,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:heading:4", {
-    title: "Heading 4",
-    description: "Convert to heading level 4",
+    title: t("Heading 4"),
+    description: t("Convert to heading level 4"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -143,8 +144,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:heading:5", {
-    title: "Heading 5",
-    description: "Convert to heading level 5",
+    title: t("Heading 5"),
+    description: t("Convert to heading level 5"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -153,8 +154,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:heading:6", {
-    title: "Heading 6",
-    description: "Convert to heading level 6",
+    title: t("Heading 6"),
+    description: t("Convert to heading level 6"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -164,8 +165,8 @@ export function registerFormattingActions() {
 
   // Lists
   Actions.register("format:list:bullet", {
-    title: "Bullet List",
-    description: "Toggle bullet list",
+    title: t("Bullet List"),
+    description: t("Toggle bullet list"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -174,8 +175,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:list:ordered", {
-    title: "Numbered List",
-    description: "Toggle numbered list",
+    title: t("Numbered List"),
+    description: t("Toggle numbered list"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -184,8 +185,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:list:task", {
-    title: "Task List",
-    description: "Toggle task/checkbox list",
+    title: t("Task List"),
+    description: t("Toggle task/checkbox list"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -194,8 +195,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:list:indent", {
-    title: "Indent List Item",
-    description: "Indent the current list item",
+    title: t("Indent List Item"),
+    description: t("Indent the current list item"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -210,8 +211,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:list:outdent", {
-    title: "Outdent List Item",
-    description: "Outdent the current list item",
+    title: t("Outdent List Item"),
+    description: t("Outdent the current list item"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -227,8 +228,8 @@ export function registerFormattingActions() {
 
   // Text alignment
   Actions.register("format:align:left", {
-    title: "Align Left",
-    description: "Align text to the left",
+    title: t("Align Left"),
+    description: t("Align text to the left"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -237,8 +238,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:align:center", {
-    title: "Align Center",
-    description: "Center align text",
+    title: t("Align Center"),
+    description: t("Center align text"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -247,8 +248,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:align:right", {
-    title: "Align Right",
-    description: "Align text to the right",
+    title: t("Align Right"),
+    description: t("Align text to the right"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -257,8 +258,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:align:justify", {
-    title: "Justify",
-    description: "Justify text alignment",
+    title: t("Justify"),
+    description: t("Justify text alignment"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -268,8 +269,8 @@ export function registerFormattingActions() {
 
   // Block elements
   Actions.register("format:blockquote", {
-    title: "Blockquote",
-    description: "Toggle blockquote",
+    title: t("Blockquote"),
+    description: t("Toggle blockquote"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -278,8 +279,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:codeblock", {
-    title: "Code Block",
-    description: "Toggle code block",
+    title: t("Code Block"),
+    description: t("Toggle code block"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -288,8 +289,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:horizontalrule", {
-    title: "Horizontal Rule",
-    description: "Insert horizontal divider line",
+    title: t("Horizontal Rule"),
+    description: t("Insert horizontal divider line"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -299,8 +300,8 @@ export function registerFormattingActions() {
 
   // Links
   Actions.register("format:link", {
-    title: "Insert Link",
-    description: "Add or edit a hyperlink",
+    title: t("Insert Link"),
+    description: t("Add or edit a hyperlink"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -322,8 +323,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:unlink", {
-    title: "Remove Link",
-    description: "Remove hyperlink from selection",
+    title: t("Remove Link"),
+    description: t("Remove hyperlink from selection"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -333,8 +334,8 @@ export function registerFormattingActions() {
 
   // History
   Actions.register("format:undo", {
-    title: "Undo",
-    description: "Undo the last action",
+    title: t("Undo"),
+    description: t("Undo the last action"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -343,8 +344,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:redo", {
-    title: "Redo",
-    description: "Redo the last undone action",
+    title: t("Redo"),
+    description: t("Redo the last undone action"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -354,8 +355,8 @@ export function registerFormattingActions() {
 
   // Table operations
   Actions.register("format:table:insert", {
-    title: "Insert Table",
-    description: "Insert a new table",
+    title: t("Insert Table"),
+    description: t("Insert a new table"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -368,8 +369,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:delete", {
-    title: "Delete Table",
-    description: "Delete the current table",
+    title: t("Delete Table"),
+    description: t("Delete the current table"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -378,8 +379,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:addColumnBefore", {
-    title: "Add Column Before",
-    description: "Add a column before the current one",
+    title: t("Add Column Before"),
+    description: t("Add a column before the current one"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -388,8 +389,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:addColumnAfter", {
-    title: "Add Column After",
-    description: "Add a column after the current one",
+    title: t("Add Column After"),
+    description: t("Add a column after the current one"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -398,8 +399,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:deleteColumn", {
-    title: "Delete Column",
-    description: "Delete the current column",
+    title: t("Delete Column"),
+    description: t("Delete the current column"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -408,8 +409,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:addRowBefore", {
-    title: "Add Row Before",
-    description: "Add a row before the current one",
+    title: t("Add Row Before"),
+    description: t("Add a row before the current one"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -418,8 +419,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:addRowAfter", {
-    title: "Add Row After",
-    description: "Add a row after the current one",
+    title: t("Add Row After"),
+    description: t("Add a row after the current one"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -428,8 +429,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:deleteRow", {
-    title: "Delete Row",
-    description: "Delete the current row",
+    title: t("Delete Row"),
+    description: t("Delete the current row"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -438,8 +439,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:mergeCells", {
-    title: "Merge Cells",
-    description: "Merge selected cells",
+    title: t("Merge Cells"),
+    description: t("Merge selected cells"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -448,8 +449,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:splitCell", {
-    title: "Split Cell",
-    description: "Split the current cell",
+    title: t("Split Cell"),
+    description: t("Split the current cell"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -458,8 +459,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:toggleHeaderRow", {
-    title: "Toggle Header Row",
-    description: "Toggle the header row of the table",
+    title: t("Toggle Header Row"),
+    description: t("Toggle the header row of the table"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -468,8 +469,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:table:toggleHeaderColumn", {
-    title: "Toggle Header Column",
-    description: "Toggle the header column of the table",
+    title: t("Toggle Header Column"),
+    description: t("Toggle the header column of the table"),
     group: "table",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -479,8 +480,8 @@ export function registerFormattingActions() {
 
   // Column layout
   Actions.register("format:columns:2", {
-    title: "2 Columns",
-    description: "Insert or set 2-column layout",
+    title: t("2 Columns"),
+    description: t("Insert or set 2-column layout"),
     group: "layout",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -495,8 +496,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:columns:3", {
-    title: "3 Columns",
-    description: "Insert or set 3-column layout",
+    title: t("3 Columns"),
+    description: t("Insert or set 3-column layout"),
     group: "layout",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -510,8 +511,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:columns:4", {
-    title: "4 Columns",
-    description: "Insert or set 4-column layout",
+    title: t("4 Columns"),
+    description: t("Insert or set 4-column layout"),
     group: "layout",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -525,8 +526,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:columns:delete", {
-    title: "Delete Column Layout",
-    description: "Remove the column layout",
+    title: t("Delete Column Layout"),
+    description: t("Remove the column layout"),
     group: "layout",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -550,8 +551,8 @@ export function registerFormattingActions() {
 
   // Clear formatting
   Actions.register("format:clear", {
-    title: "Clear Formatting",
-    description: "Remove all formatting from selection",
+    title: t("Clear Formatting"),
+    description: t("Remove all formatting from selection"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -561,8 +562,8 @@ export function registerFormattingActions() {
 
   // Text color (these require user input, so they just focus the relevant input)
   Actions.register("format:color:text", {
-    title: "Text Color",
-    description: "Change text color",
+    title: t("Text Color"),
+    description: t("Change text color"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -572,8 +573,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:color:background", {
-    title: "Background Color",
-    description: "Change text background color",
+    title: t("Background Color"),
+    description: t("Change text background color"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
@@ -582,8 +583,8 @@ export function registerFormattingActions() {
   });
 
   Actions.register("format:color:clear", {
-    title: "Clear Background Color",
-    description: "Remove background color from text",
+    title: t("Clear Background Color"),
+    description: t("Remove background color from text"),
     // group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;

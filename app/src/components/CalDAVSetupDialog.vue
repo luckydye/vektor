@@ -4,6 +4,7 @@ import { closeIcon } from "~/src/assets/icons.ts";
 import { ButtonSecondary } from "~/src/components/index.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import { Actions } from "../utils/actions.ts";
+import { t } from "../utils/lang.ts";
 
 const show = ref(false);
 const user = useUserProfile();
@@ -22,8 +23,8 @@ async function copy(text: string, key: string) {
 }
 
 Actions.register("caldav:setup", {
-  title: "CalDAV Setup",
-  description: "Show CalDAV calendar integration setup guide",
+  title: t("CalDAV Setup"),
+  description: t("Show CalDAV calendar integration setup guide"),
   group: "settings",
   run: async () => {
     show.value = true;

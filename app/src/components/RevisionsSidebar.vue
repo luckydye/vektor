@@ -16,6 +16,7 @@ import { useRevisions } from "../composeables/useRevisions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
+import { t } from "../utils/lang.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import ActivityFeed from "./ActivityFeed.vue";
 import DockedPanel from "./DockedPanel.vue";
@@ -206,9 +207,9 @@ function exitPopover(e: Event) {
 // ---------------------------------------------------------------------------
 
 Actions.register("revisions:toggle", {
-  title: "Activity",
+  title: t("Activity"),
   icon: () => "history",
-  description: "Open or close the document activity",
+  description: t("Open or close the document activity"),
   group: "document",
   run: async () => {
     toggleWindow("revisions", { side: "right", width: 420 });
