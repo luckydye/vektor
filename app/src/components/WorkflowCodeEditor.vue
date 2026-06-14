@@ -171,7 +171,7 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col h-full">
-    <div class="flex items-center justify-between px-3 py-2 border-b border-neutral-200 bg-neutral-50 text-xs text-neutral-400 shrink-0">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-neutral-200 bg-neutral-50 text-size-small text-neutral-400 shrink-0">
       <span>JavaScript</span>
       <span v-if="saving">Saving…</span>
       <span v-else-if="savedAt" class="text-emerald-500">Saved</span>

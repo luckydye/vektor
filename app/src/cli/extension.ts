@@ -64,7 +64,7 @@ function createViewTs(id: string, name: string): string {
 
 export function activate(ctx: ExtensionContext): void {
   ctx.views.register("${id}", async (container) => {
-    container.innerHTML = \`<div class="p-6"><h1 class="text-3xl font-bold">${name}</h1></div>\`;
+    container.innerHTML = \`<div class="p-6"><h1 class="text-size-display font-bold">${name}</h1></div>\`;
   });
 }
 

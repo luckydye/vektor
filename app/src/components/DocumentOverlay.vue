@@ -220,7 +220,7 @@ function formatCommentTime(date: Date | string): string {
                     <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0">
                       <div class="flex items-center gap-3 min-w-0">
                         <div class="svg-icon w-5 h-5 text-neutral-400 shrink-0" v-html="documentIcon" />
-                        <h2 v-if="documentData" class="text-lg font-semibold text-foreground truncate">
+                        <h2 v-if="documentData" class="text-size-title-2 font-semibold text-foreground truncate">
                           {{ documentData.title }}
                         </h2>
                         <div v-else-if="loading" class="h-6 w-48 bg-neutral-200 rounded-sm animate-pulse" />
@@ -230,7 +230,7 @@ function formatCommentTime(date: Date | string): string {
                         <button
                           v-if="documentData"
                           @click="navigateToDocument"
-                          class="px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
+                          class="px-3 py-1.5 text-size-medium font-medium text-neutral-600 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
                           title="Open full document"
                         >
                           Open
@@ -263,7 +263,7 @@ function formatCommentTime(date: Date | string): string {
                         <p class="text-neutral-600">{{ error }}</p>
                         <button
                           @click="closeOverlay"
-                          class="mt-4 px-4 py-2 text-sm font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded-sm hover:bg-neutral-50 transition-colors"
+                          class="mt-4 px-4 py-2 text-size-medium font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded-sm hover:bg-neutral-50 transition-colors"
                         >
                           Close
                         </button>
@@ -277,7 +277,7 @@ function formatCommentTime(date: Date | string): string {
                         <!-- Comments Header -->
                         <div class="px-6 py-4 flex items-center gap-2">
                           <div class="svg-icon w-4 h-4 text-neutral-600" v-html="commentIcon" />
-                          <h3 class="text-sm font-semibold text-foreground">
+                          <h3 class="text-size-medium font-semibold text-foreground">
                             Comments ({{ comments.length }})
                           </h3>
                         </div>
@@ -285,27 +285,27 @@ function formatCommentTime(date: Date | string): string {
                         <!-- Comments List -->
                         <div class="px-6 pb-6 space-y-6">
                           <div v-if="comments.length === 0" class="py-8 text-center">
-                            <p class="text-sm text-neutral-500">No comments yet. Be the first to comment!</p>
+                            <p class="text-size-medium text-neutral-500">No comments yet. Be the first to comment!</p>
                           </div>
 
                           <div v-for="comment in comments" :key="comment.id" class="flex gap-3">
                             <!-- Avatar -->
-                            <div class="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-blue-600 flex items-center justify-center text-xs font-semibold text-white shrink-0">
+                            <div class="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-blue-600 flex items-center justify-center text-size-small font-semibold text-white shrink-0">
                               {{ getInitials(comment.createdByUser?.name || comment.createdBy) }}
                             </div>
 
                             <!-- Comment Content -->
                             <div class="flex-1 min-w-0">
                               <div class="flex items-baseline gap-2">
-                                <span class="text-sm font-semibold text-foreground">
+                                <span class="text-size-medium font-semibold text-foreground">
                                   {{ comment.createdByUser?.name || comment.createdBy }}
                                 </span>
-                                <span class="text-xs text-neutral-500">
+                                <span class="text-size-small text-neutral-500">
                                   {{ formatCommentTime(comment.createdAt) }}
                                 </span>
                               </div>
 
-                              <p class="mt-1 text-sm text-neutral-700 leading-relaxed">
+                              <p class="mt-1 text-size-medium text-neutral-700 leading-relaxed">
                                 {{ comment.content }}
                               </p>
                             </div>
@@ -315,17 +315,17 @@ function formatCommentTime(date: Date | string): string {
                         <!-- Add Comment Input -->
                         <div class="px-6 py-4 border-t border-neutral-100 bg-white">
                           <div class="flex gap-3">
-                            <div class="w-8 h-8 rounded-full bg-linear-to-br from-purple-400 to-purple-600 flex items-center justify-center text-xs font-semibold text-white shrink-0">
+                            <div class="w-8 h-8 rounded-full bg-linear-to-br from-purple-400 to-purple-600 flex items-center justify-center text-size-small font-semibold text-white shrink-0">
                               You
                             </div>
                             <div class="flex-1">
                               <textarea
                                 placeholder="Add a comment..."
-                                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-sm bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-sm bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                                 rows="2"
                               />
                               <div class="mt-2 flex justify-end gap-2">
-                                <button class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors">
+                                <button class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors">
                                   Comment
                                 </button>
                               </div>

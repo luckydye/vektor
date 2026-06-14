@@ -98,7 +98,7 @@ function toggleMode() {
 
 <template>
   <div class="p-6 bg-background rounded-md w-[400px] mx-auto space-y-4">
-    <h2 v-if="showPasswordLogin || showSsoLogin" class="text-2xl font-semibold text-center mb-6">
+    <h2 v-if="showPasswordLogin || showSsoLogin" class="text-size-title font-semibold text-center mb-6">
       {{ showPasswordLogin ? (isSignUp ? "Sign Up" : "Sign In") : "Sign In" }}
     </h2>
 
@@ -130,7 +130,7 @@ function toggleMode() {
         />
       </FormField>
 
-      <div v-if="error" class="text-red-600 text-sm p-2 bg-red-50 rounded-sm">
+      <div v-if="error" class="text-red-600 text-size-medium p-2 bg-red-50 rounded-sm">
         {{ error }}
       </div>
 
@@ -144,7 +144,7 @@ function toggleMode() {
       <button
         type="button"
         @click="toggleMode"
-        class="w-full text-sm text-neutral-900 hover:text-neutral-900 transition-colors"
+        class="w-full text-size-medium text-neutral-900 hover:text-neutral-900 transition-colors"
         :disabled="loading"
       >
         {{ isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up" }}
@@ -155,7 +155,7 @@ function toggleMode() {
       <div class="absolute inset-0 flex items-center">
         <div class="w-full border-t border-neutral"></div>
       </div>
-      <div class="relative flex justify-center text-sm">
+      <div class="relative flex justify-center text-size-medium">
         <span class="px-2 bg-background text-neutral">Or</span>
       </div>
     </div>
@@ -168,7 +168,7 @@ function toggleMode() {
       :disabled="loading"
     />
 
-    <div v-if="!showPasswordLogin && !showSsoLogin" class="text-sm text-center text-neutral">
+    <div v-if="!showPasswordLogin && !showSsoLogin" class="text-size-medium text-center text-neutral">
       No login method configured.
     </div>
   </div>

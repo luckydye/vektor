@@ -80,7 +80,7 @@ const addHasPropertyFilter = () => {
       <div
         v-for="(filter, index) in modelValue"
         :key="index"
-        class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-800 rounded-full text-sm"
+        class="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-800 rounded-full text-size-medium"
       >
         <span class="font-medium">{{ filter.key }}</span>
         <span v-if="filter.value !== null" class="text-blue-600">=</span>
@@ -103,7 +103,7 @@ const addHasPropertyFilter = () => {
           v-for="prop in availableProperties"
           :key="prop.name"
           @click="selectPropertyKey(prop.name)"
-          class="px-3 py-1.5 text-sm rounded-lg border transition-colors"
+          class="px-3 py-1.5 text-size-medium rounded-lg border transition-colors"
           :class="selectedPropertyKey === prop.name ? 'bg-blue-500 border-blue-500 text-white' : 'bg-background border-neutral-100 text-neutral-700 hover:border-neutral-400'"
         >
           {{ prop.name }}
@@ -113,21 +113,21 @@ const addHasPropertyFilter = () => {
       <!-- Value Selection (shown when property is selected) -->
       <div v-if="selectedPropertyKey && selectedProperty()" class="mt-3 pt-3 border-t border-neutral-100">
         <div class="flex flex-wrap gap-1.5 items-center">
-          <span class="text-sm text-neutral-500 mr-1">{{ selectedPropertyKey }} =</span>
+          <span class="text-size-medium text-neutral-500 mr-1">{{ selectedPropertyKey }} =</span>
           <button
             v-for="val in selectedProperty()!.values.slice(0, 20)"
             :key="val"
             @click="selectPropertyValue(val)"
-            class="px-2.5 py-1 text-sm rounded-sm border bg-background border-neutral-100 text-neutral-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
+            class="px-2.5 py-1 text-size-medium rounded-sm border bg-background border-neutral-100 text-neutral-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
           >
             {{ val }}
           </button>
-          <span v-if="selectedProperty()!.values.length > 20" class="text-sm text-neutral-400">
+          <span v-if="selectedProperty()!.values.length > 20" class="text-size-medium text-neutral-400">
             +{{ selectedProperty()!.values.length - 20 }} more
           </span>
           <button
             @click="addHasPropertyFilter"
-            class="px-2.5 py-1 text-sm rounded-sm border border-dashed border-neutral-100 text-neutral-500 hover:border-blue-400 hover:text-blue-600 transition-colors italic"
+            class="px-2.5 py-1 text-size-medium rounded-sm border border-dashed border-neutral-100 text-neutral-500 hover:border-blue-400 hover:text-blue-600 transition-colors italic"
           >
             any value
           </button>
@@ -135,7 +135,7 @@ const addHasPropertyFilter = () => {
       </div>
     </div>
 
-    <div v-else class="text-sm text-neutral-500">
+    <div v-else class="text-size-medium text-neutral-500">
       No properties available for filtering
     </div>
   </div>

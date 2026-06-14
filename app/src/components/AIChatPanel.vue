@@ -1175,7 +1175,7 @@ onUnmounted(() => {
                 <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide">Recent conversations</p>
                 <button
                   @click="startNewChat"
-                  class="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium transition-colors"
+                  class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
                 >
                   <div class="svg-icon w-3.5 h-3.5" v-html="plusThinIcon" />
                   New chat
@@ -1202,8 +1202,8 @@ onUnmounted(() => {
             </div>
 
             <div class="flex-1 min-w-0">
-              <p class="text-sm text-neutral-800 truncate">{{ session.title }}</p>
-              <p class="text-xs mt-0.5">
+              <p class="text-size-medium text-neutral-800 truncate">{{ session.title }}</p>
+              <p class="text-size-small mt-0.5">
                 <template v-if="getSessionStatus(session) === 'generating'">
                   <span class="text-primary-500 font-medium">Generating response…</span>
                 </template>
@@ -1250,7 +1250,7 @@ onUnmounted(() => {
         >
           <div
             v-if="message.role === 'system'"
-            class="px-3 py-1 bg-neutral-100 text-neutral-600 rounded-full text-xs"
+            class="px-3 py-1 bg-neutral-100 text-neutral-600 rounded-full text-size-small"
           >
             {{ message.content }}
           </div>
@@ -1259,7 +1259,7 @@ onUnmounted(() => {
             class="max-w-[85%] status-bubble rounded-xl px-3 py-2 shadow-sm"
           >
             <div class="text-[11px] uppercase tracking-wide status-bubble-label mb-1">Agent log</div>
-            <pre class="text-xs leading-relaxed whitespace-pre-wrap font-mono">{{ message.content }}</pre>
+            <pre class="text-size-small leading-relaxed whitespace-pre-wrap font-mono">{{ message.content }}</pre>
           </div>
           <template v-else-if="message.role === 'thinking'">
             <div class="w-7 h-7 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 mt-0.5">
@@ -1270,7 +1270,7 @@ onUnmounted(() => {
                 <div class="px-3.5 py-2 border-b border-neutral-200 text-[11px] font-medium uppercase tracking-wide text-neutral-500 shrink-0">
                   Thinking
                 </div>
-                <pre class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 overflow-y-auto flex-1 min-h-0 thinking-content">{{ message.content }}</pre>
+                <pre class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 overflow-y-auto flex-1 min-h-0 thinking-content">{{ message.content }}</pre>
               </div>
               <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
                 {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
@@ -1285,7 +1285,7 @@ onUnmounted(() => {
             </div>
             <div class="flex-1 min-w-0">
               <div class="bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm">
-                <div class="px-3.5 py-3 text-sm text-neutral-800 leading-relaxed markdown-content" v-html="renderMarkdown(message.content)"></div>
+                <div class="px-3.5 py-3 text-size-medium text-neutral-800 leading-relaxed markdown-content" v-html="renderMarkdown(message.content)"></div>
               </div>
               <!-- Timestamp + model + copy/refresh icons -->
               <div class="flex items-center justify-between mt-1.5 px-0.5">
@@ -1324,7 +1324,7 @@ onUnmounted(() => {
                   </span>
                 </div>
                 <pre
-                  class="px-3.5 py-3 text-xs leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
+                  class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
                   :style="
                     message.toolPhase === 'result' && !isToolMessageExpanded(message, index)
                       ? { maxHeight: '12rem' }
@@ -1343,7 +1343,7 @@ onUnmounted(() => {
             v-else
             class="max-w-[80%] bg-primary-600 text-white rounded-xl px-3.5 py-2.5 ml-auto"
           >
-            <p class="text-sm whitespace-pre-wrap leading-relaxed">{{ message.content }}</p>
+            <p class="text-size-medium whitespace-pre-wrap leading-relaxed">{{ message.content }}</p>
             <div v-if="message.attachments?.length" class="mt-2 space-y-1.5">
               <a
                 v-for="attachment in message.attachments"
@@ -1351,7 +1351,7 @@ onUnmounted(() => {
                 :href="attachment.url"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="block rounded-lg border border-white/20 bg-white/10 px-2 py-1.5 text-xs hover:bg-white/15 transition-colors"
+                class="block rounded-lg border border-white/20 bg-white/10 px-2 py-1.5 text-size-small hover:bg-white/15 transition-colors"
               >
                 <span class="font-medium">{{ attachment.name }}</span>
                 <span class="opacity-80 ml-1">({{ formatFileSize(attachment.size) }})</span>
@@ -1383,7 +1383,7 @@ onUnmounted(() => {
             </div>
             <pre
               v-if="formatToolPreview(waitingState.tool)"
-              class="px-3.5 py-2.5 text-xs leading-relaxed whitespace-pre-wrap font-mono text-neutral-500 max-h-20 overflow-hidden"
+              class="px-3.5 py-2.5 text-size-small leading-relaxed whitespace-pre-wrap font-mono text-neutral-500 max-h-20 overflow-hidden"
             >{{ formatToolPreview(waitingState.tool) }}</pre>
           </div>
         </div>
@@ -1409,7 +1409,7 @@ onUnmounted(() => {
         <button
           @click="startNewChat"
           :disabled="isGenerating"
-          class="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           title="New chat"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
@@ -1419,7 +1419,7 @@ onUnmounted(() => {
         <button
           v-if="sessions.length > 0"
           @click="showSessionPicker = true"
-          class="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-700 transition-colors"
+          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 transition-colors"
           title="Recent conversations"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="clockIcon" />
@@ -1461,7 +1461,7 @@ onUnmounted(() => {
                 FILE
               </div>
               <div class="min-w-0 max-w-36">
-                <p class="truncate text-xs text-neutral-700">{{ attachment.name }}</p>
+                <p class="truncate text-size-small text-neutral-700">{{ attachment.name }}</p>
                 <p class="text-[10px] text-neutral-500">{{ formatFileSize(attachment.size) }}</p>
               </div>
               <button
@@ -1492,7 +1492,7 @@ onUnmounted(() => {
             @paste="onPasteFiles"
             rows="1"
             placeholder="Ask anything..."
-            class="flex-1 bg-transparent text-sm text-neutral-800 placeholder-neutral-400 focus:outline-none resize-none max-h-40 leading-5"
+            class="flex-1 bg-transparent text-size-medium text-neutral-800 placeholder-neutral-400 focus:outline-none resize-none max-h-40 leading-5"
             style="field-sizing: content"
           />
           <button
@@ -1513,8 +1513,8 @@ onUnmounted(() => {
             <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
           </button>
         </div>
-          <p v-if="isUploadingFiles" class="mt-2 text-xs text-neutral-500">Uploading files...</p>
-          <p v-if="uploadError" class="mt-2 text-xs text-red-600">{{ uploadError }}</p>
+          <p v-if="isUploadingFiles" class="mt-2 text-size-small text-neutral-500">Uploading files...</p>
+          <p v-if="uploadError" class="mt-2 text-size-small text-red-600">{{ uploadError }}</p>
         </div>
       </div>
 
@@ -1526,19 +1526,19 @@ onUnmounted(() => {
       class="max-h-56 overflow-y-auto rounded-lg border border-neutral-200 bg-neutral-10 shadow-lg"
       :style="mentionOverlayStyle"
     >
-      <div v-if="mentionLoading" class="px-2.5 py-2 text-xs text-neutral-500">
+      <div v-if="mentionLoading" class="px-2.5 py-2 text-size-small text-neutral-500">
         Loading documents...
       </div>
       <button
         v-for="(suggestion, idx) in mentionSuggestions"
         :key="suggestion.id"
         type="button"
-        class="flex w-full items-center justify-between px-2.5 py-2 text-left text-sm transition-colors"
+        class="flex w-full items-center justify-between px-2.5 py-2 text-left text-size-medium transition-colors"
         :class="idx === mentionActiveIndex ? 'bg-primary-50 text-primary-700' : 'hover:bg-neutral-50 text-neutral-700'"
         @mousedown.prevent="selectMention(suggestion)"
       >
         <span class="truncate font-medium">{{ suggestion.title }}</span>
-        <span class="ml-2 truncate text-xs opacity-70">{{ suggestion.slug }}</span>
+        <span class="ml-2 truncate text-size-small opacity-70">{{ suggestion.slug }}</span>
       </button>
     </div>
   </Teleport>

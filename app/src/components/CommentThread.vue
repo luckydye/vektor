@@ -99,7 +99,7 @@ onMounted(() => {
     <!-- Header -->
     <div class="flex items-center justify-between p-3 border-b border-neutral-100 bg-neutral-50/80 rounded-t-lg backdrop-blur-sm">
       <div class="flex items-center gap-2">
-        <h3 class="font-semibold text-neutral-800 text-sm">Thread</h3>
+        <h3 class="font-semibold text-neutral-800 text-size-medium">Thread</h3>
         <span v-if="comments.length > 0" class="text-[10px] font-medium text-neutral-500 bg-neutral-200/50 px-1.5 py-0.5 rounded-full">
           {{ comments.length }}
         </span>
@@ -112,8 +112,8 @@ onMounted(() => {
     <!-- Comments List -->
     <div ref="commentListRef" class="flex-1 p-3 overflow-y-auto space-y-4">
       <div v-if="comments.length === 0" class="flex flex-col items-center justify-center h-24 text-center text-neutral-400">
-        <p class="text-sm font-medium text-neutral-500">No comments yet</p>
-        <p class="text-xs opacity-75">Start the conversation!</p>
+        <p class="text-size-medium font-medium text-neutral-500">No comments yet</p>
+        <p class="text-size-small opacity-75">Start the conversation!</p>
       </div>
 
       <div v-for="comment in comments" :key="comment.id" class="flex gap-2 group">
@@ -121,7 +121,7 @@ onMounted(() => {
 
         <div class="flex-1 min-w-0">
           <div class="flex items-baseline gap-2 mb-0.5">
-            <span class="text-xs font-semibold text-neutral-900 truncate">
+            <span class="text-size-small font-semibold text-neutral-900 truncate">
               {{ getUserName(comment.createdBy) }}
             </span>
             <span class="text-[10px] text-neutral-400 whitespace-nowrap">
@@ -138,7 +138,7 @@ onMounted(() => {
             </ButtonGhost>
           </div>
 
-          <div class="text-sm text-neutral-700 leading-relaxed whitespace-pre-wrap break-words">
+          <div class="text-size-medium text-neutral-700 leading-relaxed whitespace-pre-wrap break-words">
             {{ comment.content }}
           </div>
         </div>
@@ -152,7 +152,7 @@ onMounted(() => {
           ref="textareaRef"
           v-model="newCommentContent"
           rows="2"
-          class="block w-full p-2 pr-20 text-sm bg-neutral-50 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none transition-shadow placeholder:text-neutral-400"
+          class="block w-full p-2 pr-20 text-size-medium bg-neutral-50 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none transition-shadow placeholder:text-neutral-400"
           placeholder="Reply..."
           @keydown.enter.ctrl.prevent="handleSubmit"
         ></textarea>
@@ -161,7 +161,7 @@ onMounted(() => {
           <ButtonPrimary
             @click="handleSubmit"
             :disabled="isSubmitting || !newCommentContent.trim()"
-            class="text-xs font-medium"
+            class="text-size-small font-medium"
             title="Send"
           >
             <span v-if="isSubmitting">...</span>

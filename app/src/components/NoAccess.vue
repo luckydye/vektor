@@ -17,11 +17,11 @@ const t = useTranslations();
         <div class="svg-icon mx-auto h-24 w-24 text-red-500" v-html="lockIcon" />
       </div>
 
-      <h1 class="text-3xl font-bold text-neutral-900 mb-4">
+      <h1 class="text-size-display font-bold text-neutral-900 mb-4">
         {{t("access_denied")}}
       </h1>
 
-      <p class="text-lg text-neutral-900 mb-8">
+      <p class="text-size-title-2 text-neutral-900 mb-8">
         Sorry mate, you don't have permission to view this page. If you reckon this is a mistake, have a chat with your administrator.
       </p>
 

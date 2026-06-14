@@ -31,7 +31,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
 </script>
 
 <template>
-  <nav v-if="showBreadcrumbs" aria-label="Breadcrumb" class="breadcrumbs text-sm text-neutral-600">
+  <nav v-if="showBreadcrumbs" aria-label="Breadcrumb" class="breadcrumbs text-size-medium text-neutral-600">
     <ol class="flex items-center gap-1 flex-wrap">
       <!-- Category -->
       <li v-if="category" class="flex items-center gap-1.5">

@@ -765,10 +765,10 @@ useSync(
             <div class="flex items-center gap-3">
                 <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
                 <div>
-                    <p class="text-sm font-semibold text-amber-900">
+                    <p class="text-size-medium font-semibold text-amber-900">
                         Viewing {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
                     </p>
-                    <p class="my-0! text-xs text-amber-700">
+                    <p class="my-0! text-size-small text-amber-700">
                         {{
                             viewingSuggestion
                                 ? "This suggestion is read-only until it is applied."
@@ -778,7 +778,7 @@ useSync(
                 </div>
             </div>
             <button @click="closeRevisionView"
-                class="px-4 py-2 text-sm font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors">
+                class="px-4 py-2 text-size-medium font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors">
                 Show published version
             </button>
         </div>

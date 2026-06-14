@@ -328,7 +328,7 @@ onUnmounted(() => {
   <div class="document-tree">
     <!-- Categories Header with Edit Button -->
     <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
-      <h3 class="text-xs font-medium text-neutral-900 uppercase tracking-wider opacity-50">
+      <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">
         Categories
       </h3>
       <button
@@ -342,7 +342,7 @@ onUnmounted(() => {
     </div>
 
     <div v-if="!isEditMode && categories.length === 0" class="px-3 py-4 text-center">
-      <p class="text-sm text-neutral-500">No categories yet</p>
+      <p class="text-size-medium text-neutral-500">No categories yet</p>
     </div>
 
     <!-- Categories List and Documents -->
@@ -358,7 +358,7 @@ onUnmounted(() => {
           @dragleave="isEditMode && handleDragLeave()"
           @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
         >
-          <div class="group/category flex items-center gap-2 text-sm text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
+          <div class="group/category flex items-center gap-2 text-size-medium text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
             :class="{
               'bg-blue-50 border border-blue-300': dragOverIndex === categories.findIndex(c => c.id === category.id) && isEditMode,
               'cursor-move': isEditMode
@@ -368,7 +368,7 @@ onUnmounted(() => {
               <div class="svg-icon flex-none w-4 h-4 transition-transform"
                 :class="{ 'rotate-90': expandedItems.has(category.id) }" v-html="chevronRightThinIcon" />
 
-              <div class="flex-none w-6 h-6 rounded-sm flex items-center justify-center text-xs font-semibold" :style="{
+              <div class="flex-none w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold" :style="{
                 backgroundColor: category.color || '#E5E7EB',
                 color: getTextColor(category.color)
               }">
@@ -420,7 +420,7 @@ onUnmounted(() => {
       <button
         v-if="isEditMode"
         @click="startCreating"
-        class="w-full flex items-center gap-3 px-3 py-2 text-sm text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
+        class="w-full flex items-center gap-3 px-3 py-2 text-size-medium text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
       >
         <div class="svg-icon w-4 h-4 shrink-0" v-html="plusSmallIcon" />
         <span>Add category</span>
@@ -432,46 +432,46 @@ onUnmounted(() => {
       <div v-if="showAddForm || editingId" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
         <div class="bg-background rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
           <form @submit.prevent="handleSave" class="space-y-4">
-            <div class="text-sm font-semibold text-neutral-900">
+            <div class="text-size-medium font-semibold text-neutral-900">
               {{ editingId ? 'Edit Category' : 'New Category' }}
             </div>
 
             <div>
-              <label class="block text-xs font-medium text-neutral-900 mb-1">Name</label>
+              <label class="block text-size-small font-medium text-neutral-900 mb-1">Name</label>
               <input
                 v-model="formData.name"
                 type="text"
                 required
-                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Category name"
               />
             </div>
 
             <div>
-              <label class="block text-xs font-medium text-neutral-900 mb-1">Slug</label>
+              <label class="block text-size-small font-medium text-neutral-900 mb-1">Slug</label>
               <input
                 v-model="formData.slug"
                 type="text"
                 required
                 pattern="[a-z0-9-]+"
-                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="slug-name"
               />
-              <p class="mt-1 text-xs text-neutral">Lowercase, numbers, hyphens only</p>
+              <p class="mt-1 text-size-small text-neutral">Lowercase, numbers, hyphens only</p>
             </div>
 
             <div>
-              <label class="block text-xs font-medium text-neutral-900 mb-1">Description</label>
+              <label class="block text-size-small font-medium text-neutral-900 mb-1">Description</label>
               <textarea
                 v-model="formData.description"
                 rows="2"
-                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Description (optional)"
               />
             </div>
 
             <div>
-              <label class="block text-xs font-medium text-neutral-900 mb-2">Color</label>
+              <label class="block text-size-small font-medium text-neutral-900 mb-2">Color</label>
               <div class="flex gap-2 items-center">
                 <input
                   v-model="formData.color"
@@ -483,24 +483,24 @@ onUnmounted(() => {
                   type="text"
                   placeholder="#4ECDC4"
                   pattern="^#[0-9A-Fa-f]{6}$"
-                  class="flex-1 px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
             <div>
-              <label class="block text-xs font-medium text-neutral-900 mb-1">Icon</label>
+              <label class="block text-size-small font-medium text-neutral-900 mb-1">Icon</label>
               <input
                 v-model="formData.icon"
                 type="text"
                 maxlength="10"
-                class="w-full px-3 py-2 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Icon (emoji or text)"
               />
             </div>
 
             <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
-              <p class="text-xs text-red-600">{{ formError }}</p>
+              <p class="text-size-small text-red-600">{{ formError }}</p>
             </div>
 
             <div class="flex gap-2 pt-2">
@@ -508,14 +508,14 @@ onUnmounted(() => {
                 type="button"
                 @click="cancelEdit"
                 :disabled="isSaving"
-                class="flex-1 px-4 py-2 text-sm font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+                class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 :disabled="isSaving"
-                class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
               </button>

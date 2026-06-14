@@ -8,7 +8,7 @@
         <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
           <div class="svg-icon w-8 h-8 text-blue-600" v-html="folderLargeIcon" />
         </div>
-        <h2 class="text-2xl font-bold text-neutral-900 mb-2">Welcome to Your Wiki!</h2>
+        <h2 class="text-size-title font-bold text-neutral-900 mb-2">Welcome to Your Wiki!</h2>
         <p class="text-neutral">
           G'day! Let's get you sorted by creating your first space. Spaces help organize your documents and knowledge.
         </p>
@@ -16,7 +16,7 @@
 
       <form @submit.prevent="handleCreateSpace" class="space-y-4">
         <div>
-          <label for="space-name" class="block text-sm font-medium text-neutral-900 mb-1">
+          <label for="space-name" class="block text-size-medium font-medium text-neutral-900 mb-1">
             Space Name
           </label>
           <input
@@ -31,7 +31,7 @@
         </div>
 
         <div>
-          <label for="space-slug" class="block text-sm font-medium text-neutral-900 mb-1">
+          <label for="space-slug" class="block text-size-medium font-medium text-neutral-900 mb-1">
             Slug
           </label>
           <input
@@ -44,13 +44,13 @@
             class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             :disabled="isCreating"
           />
-          <p class="mt-1 text-xs text-neutral">
+          <p class="mt-1 text-size-small text-neutral">
             Only lowercase letters, numbers, and hyphens
           </p>
         </div>
 
         <div>
-          <label for="brand-color" class="block text-sm font-medium text-neutral-900 mb-1">
+          <label for="brand-color" class="block text-size-medium font-medium text-neutral-900 mb-1">
             Brand Color
           </label>
           <div class="flex gap-2 items-center">
@@ -68,13 +68,13 @@
               class="flex-1 px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <p class="mt-1 text-xs text-neutral">
+          <p class="mt-1 text-size-small text-neutral">
             Used for the header and sidebar
           </p>
         </div>
 
         <div>
-          <label for="logo-svg" class="block text-sm font-medium text-neutral-900 mb-1">
+          <label for="logo-svg" class="block text-size-medium font-medium text-neutral-900 mb-1">
             Logo (SVG)
           </label>
           <div class="space-y-2">
@@ -92,19 +92,19 @@
                 type="button"
                 @click="logoSvg = ''"
                 :disabled="isCreating"
-                class="ml-auto text-xs text-red-600 hover:text-red-800"
+                class="ml-auto text-size-small text-red-600 hover:text-red-800"
               >
                 Remove
               </button>
             </div>
           </div>
-          <p class="mt-1 text-xs text-neutral">
+          <p class="mt-1 text-size-small text-neutral">
             Upload an SVG file for your space logo
           </p>
         </div>
 
         <div v-if="error" class="p-3 bg-red-50 border border-red-200 rounded-md">
-          <p class="text-sm text-red-600">{{ error }}</p>
+          <p class="text-size-medium text-red-600">{{ error }}</p>
         </div>
 
         <button
@@ -117,7 +117,7 @@
       </form>
 
       <div class="mt-6 pt-4 border-t border-neutral">
-        <p class="text-xs text-neutral-900 text-center">
+        <p class="text-size-small text-neutral-900 text-center">
           You can create more spaces later from the space selector
         </p>
       </div>

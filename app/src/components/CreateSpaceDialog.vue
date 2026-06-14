@@ -84,7 +84,7 @@ watch(
 <template>
   <div v-if="show" class="fixed inset-0 z-100 flex items-center justify-center bg-black/30 text-white overflow-hidden backdrop-blur-sm" @click.self="handleClose">
     <div class="rounded-lg p-s w-full max-w-md min-w-[250px]">
-      <h2 class="text-xl font-semibold text-foreground mb-3xs">Create New Space</h2>
+      <h2 class="text-size-large font-semibold text-foreground mb-3xs">Create New Space</h2>
 
       <form @submit.prevent="handleSubmit" class="flex flex-col gap-3xs">
         <div>

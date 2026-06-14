@@ -48,7 +48,7 @@ const isSearchResult = (
       class="group block py-4 transition-all"
     >
         
-        <div class="flex items-center gap-4 flex-wrap text-xs text-neutral-500 mb-3">
+        <div class="flex items-center gap-4 flex-wrap text-size-small text-neutral-500 mb-3">
           <span class="flex items-center gap-1.5">
             <div class="svg-icon w-4 h-4" v-html="clockIcon" />
             Updated {{ formatDate(document.updatedAt) }}
@@ -59,20 +59,20 @@ const isSearchResult = (
             class="inline-flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded-sm font-medium"
             :title="`${key}: ${value}`"
           >
-            <span class="text-neutral-400 text-xs capitalize">{{ key }}:</span>
+            <span class="text-neutral-400 text-size-small capitalize">{{ key }}:</span>
             <span class="text-neutral-700">{{ value }}</span>
           </span>
         </div>
         
       <div class="flex justify-between items-start gap-4 mb-2">
-        <h3 class="text-lg font-semibold group-hover:text-neutral-900 text-neutral-500 leading-tight">
+        <h3 class="text-size-title-2 font-semibold group-hover:text-neutral-900 text-neutral-500 leading-tight">
           {{ getDocumentTitle(document) }}
         </h3>
       </div>
 
       <div 
         v-if="showSnippet && isSearchResult(document)" 
-        class="mb-3 leading-relaxed text-neutral-600 text-sm [&_mark]:bg-amber-100 [&_mark]:px-0.5 [&_mark]:rounded-sm [&_mark]:font-medium [&_mark]:text-amber-800" 
+        class="mb-3 leading-relaxed text-neutral-600 text-size-medium [&_mark]:bg-amber-100 [&_mark]:px-0.5 [&_mark]:rounded-sm [&_mark]:font-medium [&_mark]:text-amber-800" 
       >
         <document-view>
             <template v-html="document.snippet"></template>

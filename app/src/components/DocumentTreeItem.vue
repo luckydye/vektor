@@ -10,13 +10,13 @@
       <div v-else class="flex-none w-4"></div>
 
       <a :href="getDocumentUrl(doc.slug)" :class="[
-        'flex-1 px-3 py-2 text-sm rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
+        'flex-1 px-3 py-1.5 text-size-medium rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive
           ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'
       ]">
         <span>{{ doc.properties.title || 'Untitled' }}</span>
-        <span v-if="doc.mentionCount && doc.mentionCount > 0" class="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-blue-500 text-white font-medium">
+        <span v-if="doc.mentionCount && doc.mentionCount > 0" class="ml-2 px-1.5 py-0.5 text-size-small rounded-full bg-blue-500 text-white font-medium">
           {{ doc.mentionCount }}
         </span>
       </a>

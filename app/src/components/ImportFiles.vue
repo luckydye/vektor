@@ -115,8 +115,8 @@ Actions.register("import:toggle", {
       @dragleave="handleDragLeave"
     >
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-bold text-neutral-900">Import WIF Archive</h2>
-        <button @click="closeOverlay" class="text-neutral hover:text-neutral text-3xl leading-none w-8 h-8 flex items-center justify-center">
+        <h2 class="text-size-title font-bold text-neutral-900">Import WIF Archive</h2>
+        <button @click="closeOverlay" class="text-neutral hover:text-neutral text-size-display leading-none w-8 h-8 flex items-center justify-center">
           ×
         </button>
       </div>
@@ -129,21 +129,21 @@ Actions.register("import:toggle", {
       >
         <div class="svg-icon w-12 h-12 mx-auto mb-4 text-blue-600" v-html="uploadIcon" />
 
-        <p class="text-lg font-semibold text-neutral-900 mb-2">
+        <p class="text-size-title-2 font-semibold text-neutral-900 mb-2">
           {{ dragOver ? 'Drop file here' : 'Drag and drop a file or' }}
         </p>
 
         <button
           @click="openFileDialog"
           :disabled="importing || !currentSpace"
-          class="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md text-size-medium font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <div class="svg-icon w-4 h-4" v-html="uploadIcon" />
           <span v-if="importing">Importing...</span>
           <span v-else>Choose File</span>
         </button>
 
-        <p class="text-sm text-neutral-900 mt-4">
+        <p class="text-size-medium text-neutral-900 mt-4">
           {{ getSupportedFilesText() }}
         </p>
 
@@ -161,8 +161,8 @@ Actions.register("import:toggle", {
     <div v-if="showDialog" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" @click="closeAll">
       <div class="bg-background rounded-lg shadow-2xl max-w-[800px] w-full max-h-[80vh] overflow-hidden flex flex-col mx-4" @click.stop>
         <div class="flex items-center justify-between px-6 py-4 border-b border-neutral">
-          <h3 class="text-xl font-semibold text-neutral-900">Import Results</h3>
-          <button @click="closeAll" class="text-neutral hover:text-neutral text-3xl leading-none w-8 h-8 flex items-center justify-center">
+          <h3 class="text-size-large font-semibold text-neutral-900">Import Results</h3>
+          <button @click="closeAll" class="text-neutral hover:text-neutral text-size-display leading-none w-8 h-8 flex items-center justify-center">
             &times;
           </button>
         </div>
@@ -175,25 +175,25 @@ Actions.register("import:toggle", {
         <div v-else-if="progress" class="px-6 py-6 overflow-y-auto flex-1">
           <div class="grid grid-cols-4 gap-4 mb-6">
             <div class="text-center p-4 bg-neutral-300 rounded-lg">
-              <span class="block text-3xl font-bold text-neutral-900">{{ progress.totalFiles }}</span>
-              <span class="block text-xs uppercase tracking-wide text-neutral-900 mt-1">Total Files</span>
+              <span class="block text-size-display font-bold text-neutral-900">{{ progress.totalFiles }}</span>
+              <span class="block text-size-small uppercase tracking-wide text-neutral-900 mt-1">Total Files</span>
             </div>
             <div class="text-center p-4 bg-green-50 rounded-lg">
-              <span class="block text-3xl font-bold text-green-600">{{ progress.imported }}</span>
-              <span class="block text-xs uppercase tracking-wide text-neutral-900 mt-1">Imported</span>
+              <span class="block text-size-display font-bold text-green-600">{{ progress.imported }}</span>
+              <span class="block text-size-small uppercase tracking-wide text-neutral-900 mt-1">Imported</span>
             </div>
             <div class="text-center p-4 bg-yellow-50 rounded-lg">
-              <span class="block text-3xl font-bold text-yellow-600">{{ progress.skipped }}</span>
-              <span class="block text-xs uppercase tracking-wide text-neutral-900 mt-1">Skipped</span>
+              <span class="block text-size-display font-bold text-yellow-600">{{ progress.skipped }}</span>
+              <span class="block text-size-small uppercase tracking-wide text-neutral-900 mt-1">Skipped</span>
             </div>
             <div class="text-center p-4 bg-red-50 rounded-lg">
-              <span class="block text-3xl font-bold text-red-600">{{ progress.failed }}</span>
-              <span class="block text-xs uppercase tracking-wide text-neutral-900 mt-1">Failed</span>
+              <span class="block text-size-display font-bold text-red-600">{{ progress.failed }}</span>
+              <span class="block text-size-small uppercase tracking-wide text-neutral-900 mt-1">Failed</span>
             </div>
           </div>
 
           <div v-if="progress.documents.length > 0" class="mt-6">
-            <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-900 mb-3">Created Documents</h4>
+            <h4 class="text-size-small font-semibold uppercase tracking-wide text-neutral-900 mb-3">Created Documents</h4>
             <ul class="space-y-0">
               <li v-for="doc in progress.documents" :key="doc.id" class="py-2 border-b border-neutral-100 last:border-b-0">
                 <a :href="`/spaces/${currentSpace?.slug}/docs/${doc.slug}`" class="text-blue-600 hover:underline font-medium">
@@ -204,9 +204,9 @@ Actions.register("import:toggle", {
           </div>
 
           <div v-if="progress.errors.length > 0" class="mt-6">
-            <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-900 mb-3">Errors</h4>
+            <h4 class="text-size-small font-semibold uppercase tracking-wide text-neutral-900 mb-3">Errors</h4>
             <ul class="space-y-0">
-              <li v-for="(err, idx) in progress.errors" :key="idx" class="py-2 border-b border-neutral-100 last:border-b-0 text-sm text-red-600">
+              <li v-for="(err, idx) in progress.errors" :key="idx" class="py-2 border-b border-neutral-100 last:border-b-0 text-size-medium text-red-600">
                 <strong>{{ err.file }}:</strong> {{ err.error }}
               </li>
             </ul>

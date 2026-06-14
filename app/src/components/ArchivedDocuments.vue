@@ -74,12 +74,12 @@ const handleDelete = async (documentId: string) => {
 
     <div v-else>
       <div class="overflow-x-auto border border-neutral-100 rounded-md">
-        <table class="min-w-full text-sm">
+        <table class="min-w-full text-size-medium">
           <thead class="bg-neutral-50">
             <tr>
-              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Title</th>
-              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Archived</th>
-              <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Title</th>
+              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Archived</th>
+              <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-neutral-100">
@@ -91,8 +91,8 @@ const handleDelete = async (documentId: string) => {
               </td>
               <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(doc.updatedAt) }}</td>
               <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
-                <button @click="handleRestore(doc.id)" class="text-xs text-green-600 hover:text-green-800">Restore</button>
-                <button @click="handleDelete(doc.id)" class="text-xs text-red-600 hover:text-red-800">Delete Permanently</button>
+                <button @click="handleRestore(doc.id)" class="text-size-small text-green-600 hover:text-green-800">Restore</button>
+                <button @click="handleDelete(doc.id)" class="text-size-small text-red-600 hover:text-red-800">Delete Permanently</button>
               </td>
             </tr>
           </tbody>
@@ -103,15 +103,15 @@ const handleDelete = async (documentId: string) => {
         <button
           @click="prevPage"
           :disabled="!hasPrevPage || isFetching"
-          class="px-3 py-1.5 text-xs font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
         </button>
-        <span class="text-xs text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
+        <span class="text-size-small text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
         <button
           @click="nextPage"
           :disabled="!hasNextPage || isFetching"
-          class="px-3 py-1.5 text-xs font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
         </button>

@@ -62,7 +62,7 @@ const userInitials = computed(() => {
     />
     <div
         v-else
-        class="bg-linear-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm w-full h-full leading-[2.2rem]"
+        class="bg-linear-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-bold text-size-medium w-full h-full leading-[2.2rem]"
     >
         {{ userInitials }}
     </div>

@@ -295,7 +295,7 @@ const canSearch = computed(() => {
     </div>
 
     <!-- Error Message -->
-    <div v-if="searchError" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-sm">
+    <div v-if="searchError" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-size-medium">
       <div class="svg-icon w-5 h-5 shrink-0" v-html="closeCircleFilledIcon" />
       {{ searchError.message ?? 'Search failed' }}
     </div>
@@ -303,7 +303,7 @@ const canSearch = computed(() => {
     <!-- Search Results -->
     <div v-if="results.length > 0" class="mt-8">
     <div class="mb-6 pb-4 border-b-1 border-neutral-100">
-      <p class="text-sm text-neutral-700">
+      <p class="text-size-medium text-neutral-700">
         <span class="font-semibold">{{ total }}</span>
         result{{ total !== 1 ? "s" : "" }}
         <span v-if="activeFilters.length > 0" class="text-neutral-500">
@@ -329,19 +329,19 @@ const canSearch = computed(() => {
       <button
         @click="handlePrevPage"
         :disabled="!hasPrevPage || isFetchingSearch"
-        class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         <div class="svg-icon w-5 h-5" v-html="chevronLeftLargeIcon" />
         Previous
       </button>
-      <span class="text-sm text-neutral-500">
+      <span class="text-size-medium text-neutral-500">
         Page <span class="font-semibold">{{ page }}</span> of
         <span class="font-semibold">{{ totalPages }}</span>
       </span>
       <button
         @click="handleNextPage"
         :disabled="!hasNextPage || isFetchingSearch"
-        class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-blue-500 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         Next
         <div class="svg-icon w-5 h-5" v-html="chevronRightThinIcon" />
@@ -352,7 +352,7 @@ const canSearch = computed(() => {
     <!-- No Results -->
     <div v-else-if="hasSearched && !isSearching && !searchError">
       <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300" v-html="searchMagnifierIcon" />
-      <h3 class="text-2xl font-semibold text-neutral-800 mb-2">No results found</h3>
+      <h3 class="text-size-title font-semibold text-neutral-800 mb-2">No results found</h3>
       <p class="text-neutral-600 mb-8">
         <span v-if="searchQuery.trim()">
           No documents match your search for
@@ -365,10 +365,10 @@ const canSearch = computed(() => {
 
       <div class="max-w-md mx-auto p-6 bg-neutral-50 border border-neutral-100 rounded-lg text-left">
         <p class="font-semibold text-neutral-700 mb-3">💡 Search tips:</p>
-        <ul class="list-disc pl-6 space-y-2 text-sm text-neutral-600">
-          <li>Use natural language for broader matches: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-xs font-mono text-neutral-800">database design basics</code></li>
-          <li>Exact phrases still help when you know the wording: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-xs font-mono text-neutral-800">"programming language"</code></li>
-          <li>Short prefixes can still work for common terms: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-xs font-mono text-neutral-800">java</code></li>
+        <ul class="list-disc pl-6 space-y-2 text-size-medium text-neutral-600">
+          <li>Use natural language for broader matches: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-size-small font-mono text-neutral-800">database design basics</code></li>
+          <li>Exact phrases still help when you know the wording: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-size-small font-mono text-neutral-800">"programming language"</code></li>
+          <li>Short prefixes can still work for common terms: <code class="px-1.5 py-0.5 bg-neutral-200 rounded-sm text-size-small font-mono text-neutral-800">java</code></li>
           <li>Use property filters to narrow down by metadata</li>
           <li>Make sure you have access to the documents you're searching for</li>
         </ul>
@@ -378,7 +378,7 @@ const canSearch = computed(() => {
     <!-- All Documents (when not searching) -->
     <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length > 0" class="mt-8">
       <div class="mb-6 pb-4 border-b-1 border-neutral-100">
-        <p class="text-sm text-neutral-700">
+        <p class="text-size-medium text-neutral-700">
           <span class="font-semibold">{{ allDocuments.length }}</span>
           document{{ allDocuments.length !== 1 ? "s" : "" }}
           <span v-if="documentsData && documentsData.pages[0]" class="text-neutral-500">
@@ -407,7 +407,7 @@ const canSearch = computed(() => {
         <button
           @click="() => fetchNextPage()"
           :disabled="isFetchingNextPage"
-          class="flex items-center gap-2 px-6 py-3 bg-background border-2 border-neutral-100 rounded-lg font-medium text-sm hover:border-blue-500 hover:text-blue-600 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all"
+          class="flex items-center gap-2 px-6 py-3 bg-background border-2 border-neutral-100 rounded-lg font-medium text-size-medium hover:border-blue-500 hover:text-blue-600 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all"
         >
           <div v-if="!isFetchingNextPage" class="svg-icon w-5 h-5" v-html="chevronDownThinIcon" />
           <div v-else class="svg-icon w-5 h-5 animate-spin" v-html="spinnerIcon" />
@@ -419,13 +419,13 @@ const canSearch = computed(() => {
     <!-- Loading Documents -->
     <div v-else-if="!hasSearched && isLoadingDocuments" class="text-center">
       <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300 animate-spin" v-html="spinnerIcon" />
-      <h3 class="text-center text-xl font-semibold text-neutral-700">Loading documents...</h3>
+      <h3 class="text-center text-size-large font-semibold text-neutral-700">Loading documents...</h3>
     </div>
 
     <!-- No Documents -->
     <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length === 0">
       <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300" v-html="documentIcon" />
-      <h3 class="text-center text-xl font-semibold text-neutral-700 mb-2">No documents yet</h3>
+      <h3 class="text-center text-size-large font-semibold text-neutral-700 mb-2">No documents yet</h3>
       <p class="text-center text-neutral-500">There are no documents in this space yet</p>
     </div>
   </div>

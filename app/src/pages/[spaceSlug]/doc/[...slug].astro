@@ -162,10 +162,10 @@ if (diffMins >= 1 && diffMins < 60) {
         <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 lg:mx-10">
           <div class="flex items-start justify-between gap-3">
             <div class="space-y-2">
-              <div class="text-yellow-600 font-semibold text-sm">
+              <div class="text-yellow-600 font-semibold text-size-medium">
                 ⚠️ This document is archived
               </div>
-              <p class="text-yellow-700 text-sm">
+              <p class="text-yellow-700 text-size-medium">
                 This document has been archived and is no longer actively maintained. You can view it here, but it may be out of date.
               </p>
             </div>
@@ -212,7 +212,7 @@ if (diffMins >= 1 && diffMins < 60) {
             </div>
 
             {document.updatedAt ? (
-                <div class="flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                <div class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500">
                     {updatedAtStr && <span>Updated {updatedAtStr}</span>}
                 </div>
             ) : null}

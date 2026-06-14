@@ -333,19 +333,19 @@ async function copyMemberId(memberId) {
 
     <!-- Error State -->
     <div v-if="error" class="p-4 bg-red-50 border border-red-200 rounded-md">
-      <p class="text-sm text-red-600">{{ error }}</p>
+      <p class="text-size-medium text-red-600">{{ error }}</p>
     </div>
 
     <!-- Members List -->
     <div v-if="!isLoading && !loadingUsers && rolePermissions.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
-      <table class="min-w-full text-sm">
+      <table class="min-w-full text-size-medium">
         <thead class="bg-neutral-50">
           <tr>
-            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Member</th>
-            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Type</th>
-            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Role</th>
-            <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Added</th>
-            <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Member</th>
+            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Type</th>
+            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Role</th>
+            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Added</th>
+            <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
@@ -353,14 +353,14 @@ async function copyMemberId(memberId) {
             <td class="px-4 py-2.5">
               <div class="flex items-center gap-3">
                 <div :class="[getMemberBgColor(perm), 'flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center']">
-                  <span v-if="perm.permission.userId" class="text-white text-xs font-medium">
+                  <span v-if="perm.permission.userId" class="text-white text-size-small font-medium">
                     {{ getUserInitials(getMemberName(perm)) }}
                   </span>
                   <div v-else class="svg-icon w-4 h-4 text-white" v-html="usersIcon" />
                 </div>
                 <div>
                   <div class="font-medium text-neutral-900">{{ getMemberName(perm) }}</div>
-                  <div v-if="getMemberEmail(perm)" class="text-xs text-neutral-500">{{ getMemberEmail(perm) }}</div>
+                  <div v-if="getMemberEmail(perm)" class="text-size-small text-neutral-500">{{ getMemberEmail(perm) }}</div>
                 </div>
                 <button
                   v-if="perm.permission.userId"
@@ -379,14 +379,14 @@ async function copyMemberId(memberId) {
                 v-if="canEditMember(perm.permission.userId, perm)"
                 :value="perm.permission.permission"
                 @change="(e) => handleRoleChange(perm, e.target.value)"
-                class="text-sm border border-neutral-100 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="text-size-medium border border-neutral-100 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 :disabled="updatingMember === (perm.permission.userId || perm.permission.groupId)"
               >
                 <option value="viewer">Viewer</option>
                 <option value="editor">Editor</option>
                 <option value="owner">Owner</option>
               </select>
-              <span v-else class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="getRoleBadgeClass(perm.permission.permission)">
+              <span v-else class="inline-flex items-center px-2 py-0.5 rounded-full text-size-small font-medium" :class="getRoleBadgeClass(perm.permission.permission)">
                 {{ perm.permission.permission }}
               </span>
             </td>
@@ -396,7 +396,7 @@ async function copyMemberId(memberId) {
                 v-if="canRemoveMember(perm)"
                 @click="handleRemoveMember(perm)"
                 :disabled="removingMember === (perm.permission.userId || perm.permission.groupId)"
-                class="text-xs text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {{ removingMember === (perm.permission.userId || perm.permission.groupId) ? 'Removing...' : 'Remove' }}
               </button>
@@ -418,7 +418,7 @@ async function copyMemberId(memberId) {
         <div class="flex justify-end">
             <button
             @click="showAddMember = true"
-            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
             Add Access
             </button>
@@ -433,10 +433,10 @@ async function copyMemberId(memberId) {
     @click.self="showAddMember = false"
   >
     <div class="bg-background rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-      <h3 class="text-lg font-semibold text-neutral-900 mb-4">Add Access</h3>
+      <h3 class="text-size-title-2 font-semibold text-neutral-900 mb-4">Add Access</h3>
       <form @submit.prevent="handleAddMember" class="space-y-4">
         <div>
-          <label for="member-type" class="block text-sm font-medium text-neutral-900 mb-1">
+          <label for="member-type" class="block text-size-medium font-medium text-neutral-900 mb-1">
             Type
           </label>
           <select
@@ -450,7 +450,7 @@ async function copyMemberId(memberId) {
         </div>
 
         <div>
-          <label for="member-id" class="block text-sm font-medium text-neutral-900 mb-1">
+          <label for="member-id" class="block text-size-medium font-medium text-neutral-900 mb-1">
             {{ newMemberType === "user" ? "User" : "Group ID" }}
           </label>
           <select
@@ -475,13 +475,13 @@ async function copyMemberId(memberId) {
             placeholder="e.g., admins, developers"
             class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <p v-if="newMemberType === 'group'" class="mt-1 text-xs text-neutral-500">
+          <p v-if="newMemberType === 'group'" class="mt-1 text-size-small text-neutral-500">
             The group name from your OAuth provider's wiki_groups field
           </p>
         </div>
 
         <div>
-          <label for="member-role" class="block text-sm font-medium text-neutral-900 mb-1">
+          <label for="member-role" class="block text-size-medium font-medium text-neutral-900 mb-1">
             Permission Level
           </label>
           <select
@@ -496,21 +496,21 @@ async function copyMemberId(memberId) {
         </div>
 
         <div v-if="addMemberError" class="p-3 bg-red-50 border border-red-200 rounded-md">
-          <p class="text-sm text-red-600">{{ addMemberError }}</p>
+          <p class="text-size-medium text-red-600">{{ addMemberError }}</p>
         </div>
 
         <div class="flex gap-3">
           <button
             type="button"
             @click="showAddMember = false; addMemberError = null; newMemberId = ''; newMemberType = 'user'; newMemberRole = 'viewer';"
-            class="flex-1 px-4 py-2 text-sm font-medium text-neutral-900 bg-neutral-100 rounded-md hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-500"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-neutral-100 rounded-md hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-500"
           >
             Cancel
           </button>
           <button
             type="submit"
             :disabled="addingMember"
-            class="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {{ addingMember ? 'Adding...' : 'Add Access' }}
           </button>

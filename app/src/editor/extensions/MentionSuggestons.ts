@@ -213,12 +213,12 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
 
             render(
               html`
-              <div class="w-72 bg-background border border-neutral-100 rounded-sm shadow-lg overflow-hidden text-sm" role="listbox" @keydown=${(e: Event) => e.stopPropagation()}>
+              <div class="w-72 bg-background border border-neutral-100 rounded-sm shadow-lg overflow-hidden text-size-medium" role="listbox" @keydown=${(e: Event) => e.stopPropagation()}>
                 <ul class="max-h-64 overflow-auto" @mousedown=${onItemMouseDown}>
                   ${
                     people.length > 0
                       ? html`
-                    <li class="px-3 py-1.5 text-xs font-medium text-neutral-400 uppercase tracking-wider select-none">People</li>
+                    <li class="px-3 py-1.5 text-size-small font-medium text-neutral-400 uppercase tracking-wider select-none">People</li>
                     ${people.map((item) => {
                       const gi = getGlobalIndex(item);
                       return html`
@@ -231,11 +231,11 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                         ${
                           item.image
                             ? html`<img src=${item.image} alt=${item.label} class="w-6 h-6 rounded-full object-cover" />`
-                            : html`<div class="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-xs text-neutral-700">${item.label ? item.label.slice(0, 1).toUpperCase() : "?"}</div>`
+                            : html`<div class="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-size-small text-neutral-700">${item.label ? item.label.slice(0, 1).toUpperCase() : "?"}</div>`
                         }
                         <div class="flex flex-col">
                           <span class="font-medium leading-4">${item.label}</span>
-                          <span class="text-xs text-neutral-500 leading-4">${item.email}</span>
+                          <span class="text-size-small text-neutral-500 leading-4">${item.email}</span>
                         </div>
                       </li>`;
                     })}
@@ -245,7 +245,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                   ${
                     docs.length > 0
                       ? html`
-                    <li class="px-3 py-1.5 text-xs font-medium text-neutral-400 uppercase tracking-wider select-none ${people.length > 0 ? "border-t border-neutral-100" : ""}">Documents</li>
+                    <li class="px-3 py-1.5 text-size-small font-medium text-neutral-400 uppercase tracking-wider select-none ${people.length > 0 ? "border-t border-neutral-100" : ""}">Documents</li>
                     ${docs.map((item) => {
                       const gi = getGlobalIndex(item);
                       return html`
@@ -255,7 +255,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                         aria-selected=${gi === selectedIndex}
                         @click=${(e: MouseEvent) => onItemClick(e, props, gi)}
                       >
-                        <div class="w-6 h-6 rounded-sm flex items-center justify-center text-xs text-neutral-500 bg-neutral-100">
+                        <div class="w-6 h-6 rounded-sm flex items-center justify-center text-size-small text-neutral-500 bg-neutral-100">
                           <span class="svg-icon w-3.5 h-3.5">${unsafeHTML(documentIcon)}</span>
                         </div>
                         <span class="font-medium leading-4 truncate">${item.label}</span>

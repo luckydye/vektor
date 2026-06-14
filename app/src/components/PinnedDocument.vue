@@ -60,8 +60,8 @@ async function unpin() {
         class="flex items-center gap-2 group"
       >
         <div class="svg-icon w-3.5 h-3.5 text-amber-500 shrink-0" v-html="pinPushpinIcon" />
-        <span class="text-xs font-semibold text-amber-600 uppercase tracking-wide">Pinned</span>
-        <span v-if="doc" class="text-sm font-semibold text-neutral-800 group-hover:text-blue-600 transition-colors">
+        <span class="text-size-small font-semibold text-amber-600 uppercase tracking-wide">Pinned</span>
+        <span v-if="doc" class="text-size-medium font-semibold text-neutral-800 group-hover:text-blue-600 transition-colors">
           {{ doc.properties?.title || 'Untitled' }}
         </span>
         <span v-else class="h-4 w-40 bg-amber-100 animate-pulse rounded-sm"></span>
@@ -69,7 +69,7 @@ async function unpin() {
       <button
         v-if="userCanEdit"
         @click="unpin"
-        class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors"
+        class="text-size-small text-neutral-400 hover:text-neutral-700 transition-colors"
       >
         Unpin
       </button>
@@ -81,8 +81,8 @@ async function unpin() {
           :href="`/${spaceSlug}/doc/${doc.slug}`"
           class="mt-3 flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 hover:bg-neutral-100 transition-colors"
         >
-          <span class="text-sm font-medium text-neutral-800">{{ doc.properties?.title || 'Untitled' }}</span>
-          <span class="ml-auto text-xs text-neutral-400 capitalize">{{ doc.type }}</span>
+          <span class="text-size-medium font-medium text-neutral-800">{{ doc.properties?.title || 'Untitled' }}</span>
+          <span class="ml-auto text-size-small text-neutral-400 capitalize">{{ doc.type }}</span>
         </a>
       </template>
       <document-view v-else ref="viewEl" class="block"></document-view>

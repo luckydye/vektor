@@ -133,7 +133,7 @@ onMounted(() => {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-2xl font-bold">Recent Activity</h2>
+      <h2 class="text-size-title font-bold">Recent Activity</h2>
     </div>
 
     <!-- Error state -->

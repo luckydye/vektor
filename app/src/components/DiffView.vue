@@ -65,19 +65,19 @@ function lineClass(line: DiffLine) {
       class="border border-neutral-200 rounded-lg overflow-hidden bg-white"
     >
       <header class="px-4 py-2 border-b border-neutral-200 bg-neutral-50">
-        <code class="text-xs text-neutral-600">{{ hunk.header }}</code>
+        <code class="text-size-small text-neutral-600">{{ hunk.header }}</code>
       </header>
 
       <div class="grid grid-cols-2 divide-x divide-neutral-200">
-        <div class="px-3 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500 bg-neutral-50 border-b border-neutral-200">
+        <div class="px-3 py-2 text-size-small font-medium uppercase tracking-wide text-neutral-500 bg-neutral-50 border-b border-neutral-200">
           {{ leftLabel }}
         </div>
-        <div class="px-3 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500 bg-neutral-50 border-b border-neutral-200">
+        <div class="px-3 py-2 text-size-small font-medium uppercase tracking-wide text-neutral-500 bg-neutral-50 border-b border-neutral-200">
           {{ rightLabel }}
         </div>
       </div>
 
-      <div class="grid grid-cols-2 divide-x divide-neutral-200 font-mono text-sm">
+      <div class="grid grid-cols-2 divide-x divide-neutral-200 font-mono text-size-medium">
         <template v-for="(row, rowIndex) in hunk.rows" :key="rowIndex">
           <div
             class="whitespace-pre-wrap break-words px-3 py-1.5 min-h-8"

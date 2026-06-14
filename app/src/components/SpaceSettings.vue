@@ -6,7 +6,7 @@
         :class="activeTab === tab.id
           ? 'bg-neutral-100 text-neutral-900 font-medium'
           : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800'"
-        class="whitespace-nowrap lg:w-full text-left px-3 py-1.5 text-sm rounded-md transition-colors">
+        class="whitespace-nowrap lg:w-full text-left px-3 py-1.5 text-size-medium rounded-md transition-colors">
         {{ tab.label }}
       </button>
     </nav>
@@ -16,51 +16,51 @@
 
     <!-- General Settings -->
     <section v-if="activeTab === 'general'">
-      <h2 class="text-xl font-semibold text-neutral-900 mb-4">General Settings</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">General Settings</h2>
       <form @submit.prevent="handleSave">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label for="settings-space-name" class="block text-xs font-medium text-neutral-700 mb-1">
+            <label for="settings-space-name" class="block text-size-small font-medium text-neutral-700 mb-1">
               Space Name
             </label>
             <input id="settings-space-name" v-model="localName" type="text" required
-              class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label for="settings-space-slug" class="block text-xs font-medium text-neutral-700 mb-1">
+            <label for="settings-space-slug" class="block text-size-small font-medium text-neutral-700 mb-1">
               Slug
             </label>
             <input id="settings-space-slug" v-model="localSlug" type="text" required pattern="[a-z0-9-]+"
-              class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <p class="mt-0.5 text-xs text-neutral-500">lowercase letters, numbers, hyphens only</p>
+              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <p class="mt-0.5 text-size-small text-neutral-500">lowercase letters, numbers, hyphens only</p>
           </div>
           <div class="md:col-span-2">
-            <label for="settings-space-description" class="block text-xs font-medium text-neutral-700 mb-1">
+            <label for="settings-space-description" class="block text-size-small font-medium text-neutral-700 mb-1">
               Description
             </label>
             <input id="settings-space-description" v-model="localDescription" type="text"
               placeholder="e.g., Engineering / Documentation"
-              class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label for="settings-brand-color" class="block text-xs font-medium text-neutral-700 mb-1">
+            <label for="settings-brand-color" class="block text-size-small font-medium text-neutral-700 mb-1">
               Brand Color
             </label>
             <div class="flex gap-2 items-center">
               <input id="settings-brand-color" v-model="localBrandColor" type="color"
                 class="h-8 w-12 border border-neutral-100 rounded-sm cursor-pointer" />
               <input v-model="localBrandColor" type="text" placeholder="#1e293b" pattern="^#[0-9A-Fa-f]{6}$"
-                class="flex-1 px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+                class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             </div>
           </div>
           <div>
-            <label for="settings-logo-svg" class="block text-xs font-medium text-neutral-700 mb-1">
+            <label for="settings-logo-svg" class="block text-size-small font-medium text-neutral-700 mb-1">
               Logo
             </label>
             <div class="flex items-center gap-2">
               <input id="settings-logo-svg" type="file" accept="image/svg+xml,image/png,image/jpeg"
                 @change="handleLogoUpload"
-                class="flex-1 text-sm file:mr-2 file:py-1 file:px-2 file:rounded-sm file:border-0 file:text-xs file:bg-neutral-100 file:text-neutral-700 hover:file:bg-neutral-200" />
+                class="flex-1 text-size-medium file:mr-2 file:py-1 file:px-2 file:rounded-sm file:border-0 file:text-size-small file:bg-neutral-100 file:text-neutral-700 hover:file:bg-neutral-200" />
               <div v-if="localLogoSvg" class="flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded-sm">
                 <div v-if="localLogoSvg.startsWith('<')" v-html="localLogoSvg" class="h-5 flex items-center [&>svg]:h-5 [&>svg]:w-auto"></div>
                 <img v-else :src="localLogoSvg" class="h-5" />
@@ -71,12 +71,12 @@
             </div>
           </div>
         </div>
-        <div v-if="error" class="mt-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
+        <div v-if="error" class="mt-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
           {{ error }}
         </div>
         <div class="mt-4 flex justify-end">
           <button type="submit" :disabled="isSaving"
-            class="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+            class="px-4 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
             {{ isSaving ? 'Saving...' : 'Save Changes' }}
           </button>
         </div>
@@ -84,7 +84,7 @@
 
       <div class="pt-12">
         <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-neutral-900 mb-4">Members</h2>
+            <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Members</h2>
         </div>
         
         <SpaceMembers />
@@ -94,11 +94,11 @@
     <!-- Access Tokens -->
     <section v-if="activeTab === 'api'">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-semibold text-neutral-900 mb-4">Access Tokens</h2>
-        <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
+        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Access Tokens</h2>
+        <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-size-small text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
       </div>
       <div>
-        <div v-if="tokenError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
+        <div v-if="tokenError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
           {{ tokenError }}
         </div>
 
@@ -107,14 +107,14 @@
           <form @submit.prevent="handleCreateToken" class="space-y-3">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-medium text-neutral-700 mb-1">Name</label>
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
                 <input v-model="newTokenName" type="text" required placeholder="e.g. CI Deploy Token" autofocus
-                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label class="block text-xs font-medium text-neutral-700 mb-1">Permission</label>
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Permission</label>
                 <select v-model="newTokenPermission"
-                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="viewer">Viewer</option>
                   <option value="editor">Editor</option>
                   <option value="extensions">Extensions (install/update)</option>
@@ -122,37 +122,37 @@
               </div>
               <template v-if="newTokenPermission !== 'extensions'">
                 <div>
-                  <label class="block text-xs font-medium text-neutral-700 mb-1">Resource Type</label>
+                  <label class="block text-size-small font-medium text-neutral-700 mb-1">Resource Type</label>
                   <select v-model="newTokenResourceType"
-                    class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="space">Space</option>
                     <option value="document">Document</option>
                     <option value="extension">Extension</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs font-medium text-neutral-700 mb-1">
+                  <label class="block text-size-small font-medium text-neutral-700 mb-1">
                     Resource ID
                     <span v-if="newTokenResourceType === 'space'" class="text-neutral-400 font-normal">(space ID auto-filled)</span>
                   </label>
                   <input v-model="newTokenResourceId" type="text" required
                     :disabled="newTokenResourceType === 'space'"
-                    class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-100 disabled:text-neutral-400" />
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-100 disabled:text-neutral-400" />
                 </div>
               </template>
-              <div v-else class="md:col-span-2 text-xs text-neutral-500 self-center">
+              <div v-else class="md:col-span-2 text-size-small text-neutral-500 self-center">
                 Grants space-wide permission to install and update extensions. No resource needed.
               </div>
               <div>
-                <label class="block text-xs font-medium text-neutral-700 mb-1">Expires in days <span class="text-neutral-400 font-normal">(optional)</span></label>
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Expires in days <span class="text-neutral-400 font-normal">(optional)</span></label>
                 <input v-model.number="newTokenExpiresInDays" type="number" min="1" placeholder="Never"
-                  class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
             <div class="flex justify-end gap-2">
-              <button type="button" @click="handleCancelCreateToken" class="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-800">Cancel</button>
+              <button type="button" @click="handleCancelCreateToken" class="px-3 py-1.5 text-size-medium text-neutral-600 hover:text-neutral-800">Cancel</button>
               <button type="submit" :disabled="isSubmittingToken"
-                class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
+                class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
                 {{ isSubmittingToken ? 'Creating...' : 'Create Token' }}
               </button>
             </div>
@@ -161,53 +161,53 @@
 
         <!-- Created Token Display (shown once after creation) -->
         <div v-if="createdTokenValue" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
-          <p class="text-xs font-medium text-green-800 mb-2">Token created — copy it now, it won't be shown again.</p>
+          <p class="text-size-small font-medium text-green-800 mb-2">Token created — copy it now, it won't be shown again.</p>
           <div class="flex items-center gap-2">
-            <code class="flex-1 px-2 py-1.5 text-xs bg-background border border-green-200 rounded-sm font-mono break-all select-all">{{ createdTokenValue }}</code>
+            <code class="flex-1 px-2 py-1.5 text-size-small bg-background border border-green-200 rounded-sm font-mono break-all select-all">{{ createdTokenValue }}</code>
             <button type="button" @click="handleCopyToken"
-              class="shrink-0 px-2 py-1.5 text-xs font-medium text-green-700 bg-green-100 border border-green-300 rounded-sm hover:bg-green-200">
+              class="shrink-0 px-2 py-1.5 text-size-small font-medium text-green-700 bg-green-100 border border-green-300 rounded-sm hover:bg-green-200">
               {{ tokenCopied ? 'Copied!' : 'Copy' }}
             </button>
           </div>
-          <button type="button" @click="createdTokenValue = null; tokenCopied = false" class="mt-2 text-xs text-green-700 hover:text-green-900">Dismiss</button>
+          <button type="button" @click="createdTokenValue = null; tokenCopied = false" class="mt-2 text-size-small text-green-700 hover:text-green-900">Dismiss</button>
         </div>
 
-        <div v-if="isLoadingTokens" class="text-center py-6 text-sm text-neutral-500">Loading tokens...</div>
-        <div v-else-if="accessTokens.length === 0 && !isCreatingToken" class="text-center py-6 text-sm text-neutral-500">No access tokens created yet</div>
+        <div v-if="isLoadingTokens" class="text-center py-6 text-size-medium text-neutral-500">Loading tokens...</div>
+        <div v-else-if="accessTokens.length === 0 && !isCreatingToken" class="text-center py-6 text-size-medium text-neutral-500">No access tokens created yet</div>
         <div v-else-if="accessTokens.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
-          <table class="min-w-full text-sm">
+          <table class="min-w-full text-size-medium">
             <thead class="bg-neutral-50">
               <tr>
-                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Name</th>
-                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</th>
-                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Resources</th>
-                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
-                <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Expires</th>
-                <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Name</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Status</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Resources</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Expires</th>
+                <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-for="token in accessTokens" :key="token.id" class="hover:bg-neutral-50">
                 <td class="px-4 py-2.5 font-medium text-neutral-900">{{ token.name }}</td>
                 <td class="px-4 py-2.5 whitespace-nowrap">
-                  <span v-if="token.revokedAt" class="px-1.5 py-0.5 text-xs rounded-sm bg-red-100 text-red-700">Revoked</span>
-                  <span v-else-if="token.expiresAt && new Date(token.expiresAt) < new Date()" class="px-1.5 py-0.5 text-xs rounded-sm bg-yellow-100 text-yellow-700">Expired</span>
-                  <span v-else class="px-1.5 py-0.5 text-xs rounded-sm bg-green-100 text-green-700">Active</span>
+                  <span v-if="token.revokedAt" class="px-1.5 py-0.5 text-size-small rounded-sm bg-red-100 text-red-700">Revoked</span>
+                  <span v-else-if="token.expiresAt && new Date(token.expiresAt) < new Date()" class="px-1.5 py-0.5 text-size-small rounded-sm bg-yellow-100 text-yellow-700">Expired</span>
+                  <span v-else class="px-1.5 py-0.5 text-size-small rounded-sm bg-green-100 text-green-700">Active</span>
                 </td>
                 <td class="px-4 py-2.5">
                   <div class="flex flex-wrap gap-1">
                     <span v-for="resource in token.resources" :key="`${resource.resourceType}-${resource.resourceId}`"
-                      class="px-1.5 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-sm">
+                      class="px-1.5 py-0.5 text-size-small bg-blue-50 text-blue-700 rounded-sm">
                       {{ resource.resourceType }}: {{ resource.permission }}
                     </span>
-                    <span v-if="!token.resources?.length" class="text-xs text-neutral-400 italic">None</span>
+                    <span v-if="!token.resources?.length" class="text-size-small text-neutral-400 italic">None</span>
                   </div>
                 </td>
                 <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ token.lastUsedAt ? formatDate(token.lastUsedAt) : '—' }}</td>
                 <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ token.expiresAt ? formatDate(token.expiresAt) : '—' }}</td>
                 <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
-                  <button v-if="!token.revokedAt" @click="handleRevokeToken(token.id)" class="text-xs text-red-600 hover:text-red-800">Revoke</button>
-                  <button @click="handleDeleteToken(token.id)" class="text-xs text-neutral-500 hover:text-neutral-700">Delete</button>
+                  <button v-if="!token.revokedAt" @click="handleRevokeToken(token.id)" class="text-size-small text-red-600 hover:text-red-800">Revoke</button>
+                  <button @click="handleDeleteToken(token.id)" class="text-size-small text-neutral-500 hover:text-neutral-700">Delete</button>
                 </td>
               </tr>
             </tbody>
@@ -218,20 +218,20 @@
 
     <!-- MCP Server -->
     <section v-if="activeTab === 'api'" class="mt-8 pt-6 border-t border-neutral-100">
-      <h2 class="text-sm font-semibold text-neutral-900 mb-2">MCP Server</h2>
-      <p class="text-sm text-neutral-600 mb-4">
+      <h2 class="text-size-medium font-semibold text-neutral-900 mb-2">MCP Server</h2>
+      <p class="text-size-medium text-neutral-600 mb-4">
         Connect AI tools like Claude Desktop, Cursor, or Claude Code to this space via the
         <a href="https://modelcontextprotocol.io" target="_blank" class="text-blue-600 hover:text-blue-800 underline">Model Context Protocol</a>.
         Create an access token above, then add this configuration to your MCP client:
       </p>
       <div class="relative">
-        <pre class="p-3 text-xs font-mono bg-neutral-50 border border-neutral-200 rounded-md overflow-x-auto whitespace-pre">{{ mcpConfigJson }}</pre>
+        <pre class="p-3 text-size-small font-mono bg-neutral-50 border border-neutral-200 rounded-md overflow-x-auto whitespace-pre">{{ mcpConfigJson }}</pre>
         <button type="button" @click="handleCopyMcpConfig" :disabled="isCopyingMcpConfig"
-          class="absolute top-2 right-2 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-sm hover:bg-neutral-100 disabled:opacity-50">
+          class="absolute top-2 right-2 px-2 py-1 text-size-small font-medium text-neutral-600 bg-white border border-neutral-200 rounded-sm hover:bg-neutral-100 disabled:opacity-50">
           {{ isCopyingMcpConfig ? 'Creating token...' : mcpConfigCopied ? 'Copied with token!' : 'Copy with new token' }}
         </button>
       </div>
-      <p class="mt-3 text-xs text-neutral-500">
+      <p class="mt-3 text-size-small text-neutral-500">
         Clicking copy creates a new access token and includes it in the copied config.
         Available tools: <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">list_documents</code>,
         <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">search_documents</code>,
@@ -244,17 +244,17 @@
     <!-- Secrets -->
     <section v-if="activeTab === 'secrets'">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-semibold text-neutral-900 mb-4">Secrets</h2>
+        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Secrets</h2>
         <button
           v-if="!isCreatingSecret"
           @click="isCreatingSecret = true"
-          class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+          class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
         >
           + Create Secret
         </button>
       </div>
 
-      <div v-if="secretsError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
+      <div v-if="secretsError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
         {{ secretsError }}
       </div>
 
@@ -265,32 +265,32 @@
         <form @submit.prevent="handleCreateSecret" class="space-y-3">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-medium text-neutral-700 mb-1">Name</label>
+              <label class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
               <input
                 v-model="newSecretName"
                 type="text"
                 required
                 placeholder="e.g. OPENAI_API_KEY"
-                class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
+                class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
               />
             </div>
             <div>
-              <label class="block text-xs font-medium text-neutral-700 mb-1">Description</label>
+              <label class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
               <input
                 v-model="newSecretDescription"
                 type="text"
                 placeholder="Optional description"
-                class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               />
             </div>
             <div class="md:col-span-2">
-              <label class="block text-xs font-medium text-neutral-700 mb-1">Secret Value</label>
+              <label class="block text-size-small font-medium text-neutral-700 mb-1">Secret Value</label>
               <input
                 v-model="newSecretValue"
                 type="password"
                 required
                 placeholder="Will be encrypted at rest"
-                class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
+                class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
               />
             </div>
           </div>
@@ -298,14 +298,14 @@
             <button
               type="button"
               @click="handleCancelCreateSecret"
-              class="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-800"
+              class="px-3 py-1.5 text-size-medium text-neutral-600 hover:text-neutral-800"
             >
               Cancel
             </button>
             <button
               type="submit"
               :disabled="isSubmittingSecret"
-              class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
+              class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
             >
               {{ isSubmittingSecret ? "Saving..." : "Save Secret" }}
             </button>
@@ -313,19 +313,19 @@
         </form>
       </div>
 
-      <div v-if="isLoadingSecrets" class="text-center py-6 text-sm text-neutral-500">Loading secrets...</div>
-      <div v-else-if="secrets.length === 0 && !isCreatingSecret" class="text-center py-6 text-sm text-neutral-500">
+      <div v-if="isLoadingSecrets" class="text-center py-6 text-size-medium text-neutral-500">Loading secrets...</div>
+      <div v-else-if="secrets.length === 0 && !isCreatingSecret" class="text-center py-6 text-size-medium text-neutral-500">
         No secrets configured
       </div>
       <div v-else-if="secrets.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
-        <table class="min-w-full text-sm">
+        <table class="min-w-full text-size-medium">
           <thead class="bg-neutral-50">
             <tr>
-              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Name</th>
-              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Description</th>
-              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
-              <th class="px-4 py-2.5 text-left text-xs font-medium text-neutral-500 uppercase tracking-wide">Updated</th>
-              <th class="px-4 py-2.5 text-right text-xs font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Name</th>
+              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Description</th>
+              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
+              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Updated</th>
+              <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-neutral-100">
@@ -337,14 +337,14 @@
               <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
                 <button
                   @click="handleRevealSecret(secret.name)"
-                  class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                  class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                 >
                   Reveal
                 </button>
-                <button @click="handleRotateSecret(secret.name)" class="text-xs text-neutral-500 hover:text-neutral-700">
+                <button @click="handleRotateSecret(secret.name)" class="text-size-small text-neutral-500 hover:text-neutral-700">
                   Rotate
                 </button>
-                <button @click="handleDeleteSecret(secret.name)" class="text-xs text-red-600 hover:text-red-800">
+                <button @click="handleDeleteSecret(secret.name)" class="text-size-small text-red-600 hover:text-red-800">
                   Delete
                 </button>
               </td>
@@ -355,29 +355,29 @@
 
       <div v-if="selectedSecretName" class="mt-4 p-3 bg-neutral-50 border border-neutral-200 rounded-md">
         <div class="flex items-center justify-between mb-2">
-          <p class="text-xs font-medium text-neutral-700">Secret: <span class="font-mono">{{ selectedSecretName }}</span></p>
-          <button @click="selectedSecretName = null; selectedSecretValue = null;" class="text-xs text-neutral-500 hover:text-neutral-700">Close</button>
+          <p class="text-size-small font-medium text-neutral-700">Secret: <span class="font-mono">{{ selectedSecretName }}</span></p>
+          <button @click="selectedSecretName = null; selectedSecretValue = null;" class="text-size-small text-neutral-500 hover:text-neutral-700">Close</button>
         </div>
         <div class="flex items-center gap-2 mb-3">
-          <code class="flex-1 px-2 py-1.5 text-xs bg-background border border-neutral-200 rounded-sm font-mono break-all select-all">{{
+          <code class="flex-1 px-2 py-1.5 text-size-small bg-background border border-neutral-200 rounded-sm font-mono break-all select-all">{{
             selectedSecretValue ?? (isLoadingSecretValue ? "Loading..." : "Not loaded")
           }}</code>
           <button
             type="button"
             @click="handleCopySelectedSecret"
             :disabled="!selectedSecretValue"
-            class="shrink-0 px-2 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 border border-neutral-200 rounded-sm hover:bg-neutral-200 disabled:opacity-50"
+            class="shrink-0 px-2 py-1.5 text-size-small font-medium text-neutral-700 bg-neutral-100 border border-neutral-200 rounded-sm hover:bg-neutral-200 disabled:opacity-50"
           >
             Copy
           </button>
         </div>
 
         <div class="pt-3 border-t border-neutral-200">
-          <p class="text-xs font-medium text-neutral-700 mb-2">Grant Access</p>
+          <p class="text-size-small font-medium text-neutral-700 mb-2">Grant Access</p>
           <div class="flex flex-wrap items-center gap-2">
             <select
               v-model="selectedGrantUserId"
-              class="px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 min-w-[260px]"
+              class="px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 min-w-[260px]"
             >
               <option value="" disabled>
                 {{
@@ -395,18 +395,18 @@
             <button
               @click="handleGrantSecretAccess"
               :disabled="!selectedGrantUserId || !selectedSecretName || isGrantingSecretAccess"
-              class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
+              class="px-3 py-1.5 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
             >
               {{ isGrantingSecretAccess ? "Granting..." : "Grant Viewer" }}
             </button>
           </div>
 
-          <div v-if="isLoadingSecretPermissions" class="mt-2 text-xs text-neutral-500">Loading grants...</div>
+          <div v-if="isLoadingSecretPermissions" class="mt-2 text-size-small text-neutral-500">Loading grants...</div>
           <div v-else-if="secretPermissions.length > 0" class="mt-2 flex flex-wrap gap-1">
             <span
               v-for="perm in secretPermissions"
               :key="`${perm.userId || perm.groupId}-${perm.permission}`"
-              class="inline-flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 rounded-sm"
+              class="inline-flex items-center gap-1 px-2 py-1 text-size-small bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 rounded-sm"
             >
               {{ formatSecretPermissionTarget(perm) }} ({{ perm.permission }})
               <button
@@ -424,34 +424,34 @@
 
     <!-- Extensions -->
     <section v-if="activeTab === 'extensions'">
-      <h2 class="text-xl font-semibold text-neutral-900 mb-4">Extensions</h2>
-      <p class="text-sm text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Extensions</h2>
+      <p class="text-size-medium text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
       <ExtensionSettings />
     </section>
 
     <!-- Jobs -->
     <section v-if="activeTab === 'jobs'">
-      <h2 class="text-xl font-semibold text-neutral-900 mb-4">Jobs</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Jobs</h2>
       <JobsSettings />
     </section>
 
     <!-- Archive -->
     <section v-if="activeTab === 'archive'">
-      <h2 class="text-xl font-semibold text-neutral-900 mb-4">Archived Documents</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Archived Documents</h2>
       <ArchivedDocuments v-if="currentSpace" :space-id="currentSpace.id" :space-slug="currentSpace.slug" />
     </section>
 
     <!-- Danger Zone -->
     <section v-if="activeTab === 'general'" class="mt-8 pt-6 border-t border-red-200">
-      <h2 class="text-sm font-semibold text-red-700 mb-4">Danger Zone</h2>
+      <h2 class="text-size-medium font-semibold text-red-700 mb-4">Danger Zone</h2>
       <div class="border-2 border-red-200 rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-medium text-neutral-900">Delete this space</p>
-            <p class="text-xs text-neutral-500">All documents and data will be archived. This cannot be undone.</p>
+            <p class="text-size-medium font-medium text-neutral-900">Delete this space</p>
+            <p class="text-size-small text-neutral-500">All documents and data will be archived. This cannot be undone.</p>
           </div>
           <button type="button" @click="showDeleteConfirm = true"
-            class="px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+            class="px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
             Delete Space
           </button>
         </div>
@@ -465,24 +465,24 @@
   <div v-if="showDeleteConfirm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showDeleteConfirm = false">
     <div class="bg-background rounded-lg shadow-xl w-full mx-4 p-5">
       <h3 class="text-base font-semibold text-neutral-900 mb-3">Delete Space</h3>
-      <p class="text-sm text-neutral-600 mb-3">
+      <p class="text-size-medium text-neutral-600 mb-3">
         Are you sure you want to delete <strong>{{ currentSpace?.name }}</strong>? This action will archive all documents and data.
       </p>
-      <p class="text-sm text-neutral-600 mb-3">
-        Type <code class="px-1.5 py-0.5 bg-neutral-100 rounded-sm font-mono text-sm">{{ currentSpace?.slug }}</code> to confirm:
+      <p class="text-size-medium text-neutral-600 mb-3">
+        Type <code class="px-1.5 py-0.5 bg-neutral-100 rounded-sm font-mono text-size-medium">{{ currentSpace?.slug }}</code> to confirm:
       </p>
       <input v-model="deleteConfirmText" type="text" placeholder="Type space slug"
-        class="w-full px-3 py-1.5 text-sm border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 mb-3" />
-      <div v-if="deleteError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600">
+        class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 mb-3" />
+      <div v-if="deleteError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
         {{ deleteError }}
       </div>
       <div class="flex gap-2">
         <button type="button" @click="showDeleteConfirm = false; deleteConfirmText = ''; deleteError = null;"
-          class="flex-1 px-3 py-1.5 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-md hover:bg-neutral-200">
+          class="flex-1 px-3 py-1.5 text-size-medium font-medium text-neutral-700 bg-neutral-100 rounded-md hover:bg-neutral-200">
           Cancel
         </button>
         <button type="button" @click="handleDeleteSpace" :disabled="deleteConfirmText !== currentSpace?.slug || isDeleting"
-          class="flex-1 px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+          class="flex-1 px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
           {{ isDeleting ? 'Deleting...' : 'Delete Space' }}
         </button>
       </div>

@@ -233,7 +233,7 @@ function isInternal(url: string): boolean {
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
                 />
               </template>
-              <span class="text-xs text-neutral-500 truncate">
+              <span class="text-size-small text-neutral-500 truncate">
                 {{ activePreview.data.siteName || getDomain(activePreview.url) }}
               </span>
             </div>
@@ -241,7 +241,7 @@ function isInternal(url: string): boolean {
             <!-- Title -->
             <h4
               v-if="activePreview.data.title"
-              class="font-medium text-sm text-neutral-900 dark:text-neutral-100 line-clamp-2"
+              class="font-medium text-size-medium text-neutral-900 dark:text-neutral-100 line-clamp-2"
             >
               {{ activePreview.data.title }}
             </h4>
@@ -249,7 +249,7 @@ function isInternal(url: string): boolean {
             <!-- Description -->
             <p
               v-if="activePreview.data.description"
-              class="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2"
+              class="text-size-small text-neutral-600 dark:text-neutral-400 line-clamp-2"
             >
               {{ activePreview.data.description }}
             </p>
@@ -257,7 +257,7 @@ function isInternal(url: string): boolean {
             <!-- Updated time (internal links) -->
             <p
               v-if="activePreview.data.updatedAt"
-              class="text-xs text-neutral-400"
+              class="text-size-small text-neutral-400"
             >
               {{ formatDate(activePreview.data.updatedAt) }}
             </p>

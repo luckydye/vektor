@@ -189,21 +189,21 @@ watch(
 
     <div
       v-if="integrationsError"
-      class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-sm text-red-600"
+      class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600"
     >
       {{ integrationsError }}
     </div>
     <div
       v-if="integrationsMessage"
-      class="mb-3 p-2 bg-green-50 border border-green-200 rounded-sm text-sm text-green-700"
+      class="mb-3 p-2 bg-green-50 border border-green-200 rounded-sm text-size-medium text-green-700"
     >
       {{ integrationsMessage }}
     </div>
 
-    <div v-if="!currentSpace?.id" class="text-sm text-neutral-500">
+    <div v-if="!currentSpace?.id" class="text-size-medium text-neutral-500">
       Open a space to manage integrations.
     </div>
-    <div v-else-if="isLoadingIntegrations" class="text-sm text-neutral-500">
+    <div v-else-if="isLoadingIntegrations" class="text-size-medium text-neutral-500">
       Loading integrations...
     </div>
     <div v-else class="space-y-2">
@@ -214,10 +214,10 @@ watch(
       >
         <div class="items-start justify-between">
           <div>
-            <p class="text-sm font-medium text-foreground">
+            <p class="text-size-medium font-medium text-foreground">
               {{ getIntegrationConnection(provider)?.label || provider }}
             </p>
-            <p class="text-xs text-neutral-500 mt-0.5">
+            <p class="text-size-small text-neutral-500 mt-0.5">
               <template v-if="getIntegrationConnection(provider)?.connected">
                 Connected as
                 {{
@@ -231,13 +231,13 @@ watch(
             </p>
             <p
               v-if="getIntegrationConnection(provider)?.configured === false"
-              class="text-xs text-amber-700 mt-1"
+              class="text-size-small text-amber-700 mt-1"
             >
               Missing config: {{ getIntegrationConnection(provider)?.missingConfig.join(", ") }}
             </p>
             <p
               v-if="getIntegrationConnection(provider)?.instanceUrl"
-              class="text-xs text-neutral-500 mt-1"
+              class="text-size-small text-neutral-500 mt-1"
             >
               Instance: {{ getIntegrationConnection(provider)?.instanceUrl }}
             </p>
@@ -248,7 +248,7 @@ watch(
               type="button"
               :disabled="disconnectingProvider === provider"
               @click="handleDisconnectIntegration(provider)"
-              class="px-2.5 py-1 text-xs font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
+              class="px-2.5 py-1 text-size-small font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
             >
               {{ disconnectingProvider === provider ? "Disconnecting..." : "Disconnect" }}
             </button>
@@ -257,7 +257,7 @@ watch(
               type="button"
               :disabled="connectingProvider === provider"
               @click="handleConnectIntegration(provider)"
-              class="px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              class="px-2.5 py-1 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               {{ connectingProvider === provider ? "Redirecting..." : "Connect" }}
             </button>

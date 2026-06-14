@@ -314,7 +314,7 @@ onUnmounted(() => {
     >
       <!-- Drag dots -->
       <div class="svg-icon w-3.5 h-3.5 text-neutral-400 shrink-0" v-html="dragDotsIcon" />
-      <span class="text-sm text-neutral-800 font-semibold flex-1">{{ title }}</span>
+      <span class="text-size-medium text-neutral-800 font-semibold flex-1">{{ title }}</span>
       <!-- Right controls -->
       <div class="panel-close flex items-center gap-0.5">
         <!-- Dock/undock toggle -->

@@ -143,7 +143,7 @@ onMounted(() => {
   <a-blur v-if="isOpen" enabled @exit="handleExit" class="absolute -top-4xs -left-5xs bg-neutral-10 border border-neutral-100 rounded-lg p-5xs flex flex-col gap-4xs z-50 shadow-large min-w-[200px]">
     <!-- Select Mode: Choose existing property or create new -->
     <template v-if="mode === 'select'">
-      <div class="text-xs font-medium text-neutral-600 px-4xs mt-4xs">
+      <div class="text-size-small font-medium text-neutral-600 px-4xs mt-4xs">
         Add Property
       </div>
       <SelectMenu
@@ -156,10 +156,10 @@ onMounted(() => {
     <!-- Create Mode: Property name input and type selection -->
     <template v-else-if="mode === 'create'">
       <div class="flex items-center justify-between px-4xs mt-4xs">
-        <div class="text-xs font-medium text-neutral-600">
+        <div class="text-size-small font-medium text-neutral-600">
           New Property
         </div>
-        <button @click="handleBack" class="text-xs text-neutral-500 hover:text-neutral-700">
+        <button @click="handleBack" class="text-size-small text-neutral-500 hover:text-neutral-700">
           Back
         </button>
       </div>

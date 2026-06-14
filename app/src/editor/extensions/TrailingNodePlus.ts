@@ -173,7 +173,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       render(
         html`
           <div
-            class="w-80 bg-background border border-neutral-100 rounded-lg shadow-xl overflow-hidden text-sm"
+            class="w-80 bg-background border border-neutral-100 rounded-lg shadow-xl overflow-hidden text-size-medium"
             role="listbox"
             @mousedown=${(e: Event) => e.preventDefault()}
           >
@@ -194,13 +194,13 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                     }}
                   >
                     <div
-                      class="w-10 h-10 flex items-center justify-center bg-neutral-300 rounded-sm font-bold text-neutral-900 text-sm shrink-0"
+                      class="w-10 h-10 flex items-center justify-center bg-neutral-300 rounded-sm font-bold text-neutral-900 text-size-medium shrink-0"
                     >
                       ${item.icon}
                     </div>
                     <div class="flex-1 min-w-0">
-                      <div class="font-medium text-neutral-900 text-sm">${item.title}</div>
-                      <div class="text-xs text-neutral-900 mt-0.5">${item.description}</div>
+                      <div class="font-medium text-neutral-900 text-size-medium">${item.title}</div>
+                      <div class="text-size-small text-neutral-900 mt-0.5">${item.description}</div>
                     </div>
                   </li>
                 `,

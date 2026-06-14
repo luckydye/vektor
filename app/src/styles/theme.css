@@ -2,11 +2,15 @@
   /* text */
   --font-sans: system-ui, sans-serif;
 
-  --text-size-extra-small: 0.6rem; /* 9.6px */
-  --text-size-small: 0.7rem; /* 11.2px */
-  --text-size-base: 0.8rem; /* 12.8px */
-  --text-size-title-2: 1.1rem; /* 17.6px */
-  --text-size-title: 1.8rem; /* 28.8px */
+  --text-size-extra-small: 0.5rem; /* 8px */
+  --text-size-small: 0.625rem; /* 10px */
+  --text-size-base: 0.6875rem; /* 11px */
+  --text-size-medium: 0.8125rem; /* 13px */
+  --text-size-title-2: 0.9375rem; /* 15px */
+  --text-size-large: 1.0625rem; /* 17px */
+  --text-size-title: 1.5rem; /* 24px */
+  --text-size-display: 1.625rem; /* 26px */
+  --text-size-hero: 3.1875rem; /* 51px */
 
   --container-xs: 120px;
   --container-sm: 180px;
@@ -76,11 +80,15 @@
   --color-gray-950: #0b0c10;
 
   /* other */
-  --line-height-extra-smaller: 0.8rem;
-  --line-height-extra-small: 0.9rem;
-  --line-height-small: 1rem;
-  --line-height-base: 1.2rem;
-  --line-height-interactive: 1.6rem;
+  --line-height-extra-small: 0.75rem; /* 12px */
+  --line-height-small: 0.875rem; /* 14px */
+  --line-height-base: 1rem; /* 16px */
+  --line-height-medium: 1.125rem; /* 18px */
+  --line-height-title-2: 1.25rem; /* 20px */
+  --line-height-large: 1.5rem; /* 24px */
+  --line-height-title: 2rem; /* 32px */
+  --line-height-display: 2.125rem; /* 34px */
+  --line-height-hero: 3.75rem; /* 60px */
 }
 
 /* Dark mode overrides */
@@ -170,52 +178,52 @@
 
 /* Text Style Utilities */
 @utility text-link {
-  font-size: 0.7rem; /* 11.2px */
+  font-size: var(--text-size-small);
   font-weight: 400;
-  line-height: 1.2rem; /* 19.2px */
+  line-height: var(--line-height-small);
   letter-spacing: 0em;
 }
 @utility text-label {
-  font-size: 0.6rem; /* 9.6px */
+  font-size: var(--text-size-extra-small);
   font-weight: 400;
-  line-height: 0.9rem; /* 14.4px */
+  line-height: var(--line-height-extra-small);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 @utility text-interactive {
-  font-size: 0.8rem;
+  font-size: var(--text-size-base);
   font-weight: 500;
-  line-height: 1.6rem; /* 25.6px */
+  line-height: var(--line-height-medium);
   letter-spacing: 0em;
 }
 @utility text-base {
-  font-size: 0.8rem; /* 12.8px */
+  font-size: var(--text-size-base);
   font-weight: 400;
-  line-height: 1.2rem; /* 19.2px */
+  line-height: var(--line-height-base);
   letter-spacing: 0em;
 }
 @utility text-subtitle {
-  font-size: 0.6rem; /* 9.6px */
+  font-size: var(--text-size-extra-small);
   font-weight: 500;
-  line-height: 0.9rem; /* 14.4px */
+  line-height: var(--line-height-extra-small);
   letter-spacing: 0em;
 }
 @utility text-title {
-  font-size: 1.8rem; /* 28.8px */
+  font-size: var(--text-size-title);
   font-weight: 400;
-  line-height: 1.2rem; /* 19.2px */
+  line-height: var(--line-height-title);
   letter-spacing: 0em;
 }
 @utility text-title-2 {
-  font-size: 1.1rem; /* 17.6px */
+  font-size: var(--text-size-title-2);
   font-weight: 400;
-  line-height: 1.2rem; /* 19.2px */
+  line-height: var(--line-height-title-2);
   letter-spacing: 0em;
 }
 @utility text-footnote {
-  font-size: 0.6rem; /* 9.6px */
+  font-size: var(--text-size-extra-small);
   font-weight: 500;
-  line-height: 0.8rem; /* 12.8px */
+  line-height: var(--line-height-extra-small);
   letter-spacing: 0em;
 }
 

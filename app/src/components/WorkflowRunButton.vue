@@ -72,7 +72,7 @@ onUnmounted(() => {
   <button
     v-if="isActiveRun"
     type="button"
-    class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
     :disabled="cancelling"
     @click="cancelRun"
   >
@@ -83,7 +83,7 @@ onUnmounted(() => {
   <button
     v-else
     type="button"
-    class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
     :disabled="starting"
     @click="startRun"
   >

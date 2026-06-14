@@ -71,7 +71,7 @@ onUnmounted(() => {
       class="m-12 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700"
     >
       <p class="font-medium">Extension Error</p>
-      <p class="text-sm mt-1">{{ error }}</p>
+      <p class="text-size-medium mt-1">{{ error }}</p>
     </div>
 
     <extension-view ref="containerRef" :class="twMerge(loading && 'hidden')"></extension-view>

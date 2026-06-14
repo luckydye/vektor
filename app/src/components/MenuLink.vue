@@ -21,7 +21,7 @@ const props = defineProps<{
       'overflow-hidden whitespace-nowrap',
     )"
   >
-    <div class="flex-1 flex items-center @max-xs:justify-center text-sm">
+    <div class="flex-1 flex items-center @max-xs:justify-center text-size-medium">
         <div v-html="icon" class="icon inline flex-none" />
         <span class="@max-xs:hidden">{{ text }}</span>
     </div>
@@ -30,7 +30,7 @@ const props = defineProps<{
 
     <span
       v-if="badge !== undefined && badge > 0"
-      class="ml-auto bg-primary-100 text-neutral-800 px-1.5 py-0.5 rounded-sm text-xs font-medium"
+      class="ml-auto bg-primary-100 text-neutral-800 px-1.5 py-0.5 rounded-sm text-size-small font-medium"
     >
       {{ badge }}
     </span>

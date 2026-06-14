@@ -9,7 +9,7 @@
         <span class="sr-only">Menu</span>
       </button>
 
-      <span v-if="spaceName" class="text-sm font-semibold text-neutral-800 truncate max-w-[140px]">
+      <span v-if="spaceName" class="text-size-medium font-semibold text-neutral-800 truncate max-w-[140px]">
         {{ spaceName }}
       </span>
 

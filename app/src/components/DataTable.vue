@@ -161,16 +161,16 @@ onUnmounted(() => {
       v-model="filter"
       type="text"
       placeholder="Filter…"
-      class="w-full rounded-md border border-neutral-200 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400"
+      class="w-full rounded-md border border-neutral-200 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-size-medium focus:outline-none focus:ring-2 focus:ring-neutral-400"
     />
     <div class="overflow-x-auto rounded-lg border border-neutral-200">
-      <table class="text-sm" style="table-layout: fixed; width: max-content; min-width: 100%;">
+      <table class="text-size-medium" style="table-layout: fixed; width: max-content; min-width: 100%;">
         <thead>
           <tr class="bg-neutral-50 dark:bg-neutral-800 text-left">
             <th
               v-for="col in columns"
               :key="col"
-              class="relative px-3 py-2 text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide whitespace-nowrap border-b border-neutral-200 cursor-pointer select-none hover:text-neutral-700 dark:hover:text-neutral-200 overflow-hidden"
+              class="relative px-3 py-2 text-size-small font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide whitespace-nowrap border-b border-neutral-200 cursor-pointer select-none hover:text-neutral-700 dark:hover:text-neutral-200 overflow-hidden"
               :style="{ width: colWidth(col) }"
               @click="toggleSort(col)"
             >
@@ -219,12 +219,12 @@ onUnmounted(() => {
             </td>
           </tr>
           <tr v-if="filtered.length === 0">
-            <td :colspan="columns.length" class="px-3 py-4 text-center text-xs text-neutral-400">No results</td>
+            <td :colspan="columns.length" class="px-3 py-4 text-center text-size-small text-neutral-400">No results</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div class="flex items-center justify-between text-xs text-neutral-400">
+    <div class="flex items-center justify-between text-size-small text-neutral-400">
       <div class="flex items-center gap-2">
         <span>{{ filtered.length }} / {{ data.length }} rows</span>
         <button

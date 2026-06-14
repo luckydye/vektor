@@ -205,11 +205,11 @@ Actions.register("ui:toggle:palatte", {
                 v-model="searchQuery"
                 type="text"
                 placeholder="Find documents..."
-                class="flex-1 outline-none text-neutral-900 text-lg"
+                class="flex-1 outline-none text-neutral-900 text-size-title-2"
                 @keydown="handleResultKeydown"
               />
               <kbd
-                class="hidden sm:inline-block px-2 py-1 text-xs font-semibold text-neutral-900 neutral border border-neutral-100 rounded-sm"
+                class="hidden sm:inline-block px-2 py-1 text-size-small font-semibold text-neutral-900 neutral border border-neutral-100 rounded-sm"
               >
                 ESC
               </kbd>
@@ -225,7 +225,7 @@ Actions.register("ui:toggle:palatte", {
                 class="svg-icon w-12 h-12 mx-auto mb-3 text-neutral"
                 v-html="documentIcon"
               />
-              <p class="text-sm">No results found, mate</p>
+              <p class="text-size-medium">No results found, mate</p>
             </div>
 
             <component
@@ -266,7 +266,7 @@ Actions.register("ui:toggle:palatte", {
                       <p class="font-medium truncate text-neutral-900">
                         {{ result.data.properties?.title || "Untitled Document" }}
                       </p>
-                      <p class="text-xs text-neutral-900 truncate flex items-center gap-2">
+                      <p class="text-size-small text-neutral-900 truncate flex items-center gap-2">
                         <span>/{{ result.data.slug }}</span>
                         <span v-if="getLastVisited(result.data)" class="text-neutral">
                           • {{ formatRelativeTime(getLastVisited(result.data)) }}
@@ -278,7 +278,7 @@ Actions.register("ui:toggle:palatte", {
                       <p class="font-medium truncate text-neutral-900">
                         {{ result.data.title || result.id }}
                       </p>
-                      <p class="text-xs text-neutral truncate flex items-center gap-2">
+                      <p class="text-size-small text-neutral truncate flex items-center gap-2">
                         <span v-if="result.data.description">{{ result.data.description }}</span>
                       </p>
                     </template>
@@ -304,7 +304,7 @@ Actions.register("ui:toggle:palatte", {
             </component>
           </div>
 
-          <div class="px-4 py-3 bg-neutral-100 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral">
+          <div class="px-4 py-3 bg-neutral-100 border-t border-neutral-100 flex items-center justify-between text-size-small text-neutral">
             <div class="flex items-center gap-4">
               <span class="flex items-center gap-1">
                 <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">↑↓</kbd>

@@ -396,7 +396,7 @@ const statusBadgeClass: Record<string, string> = {
   <Teleport v-if="sourceExtensionHref" to="#workflow-breadcrumb-slot">
     <a
       :href="sourceExtensionHref"
-      class="inline-flex items-center gap-1.5 text-sm text-neutral-400 hover:text-neutral-600 transition-colors"
+      class="inline-flex items-center gap-1.5 text-size-medium text-neutral-400 hover:text-neutral-600 transition-colors"
     >
       <div class="svg-icon w-4 h-4" v-html="chevronLeftThinIcon" />
       Back
@@ -407,17 +407,17 @@ const statusBadgeClass: Record<string, string> = {
 
     <div class="flex justify-between gap-4">
         <!-- Title -->
-        <h2 class="text-lg font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle || "Untitled" }}</h2>
+        <h2 class="text-size-title-2 font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle || "Untitled" }}</h2>
     
         <!-- Header -->
         <div class="flex items-center justify-between gap-12">
             <div class="flex items-center gap-3">
-                <span v-if="selectedRunCreatedAt" class="text-xs text-neutral-400">
+                <span v-if="selectedRunCreatedAt" class="text-size-small text-neutral-400">
                   {{ formatDate(selectedRunCreatedAt) }}
                 </span>
                 <div v-if="selectedRunDetail" class="flex items-center gap-3">
                     <span
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium capitalize"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-size-medium font-medium capitalize"
                         :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
                         >
                         <div v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'" class="svg-icon w-3 h-3 animate-spin" v-html="spinnerQuarterIcon" />
@@ -432,7 +432,7 @@ const statusBadgeClass: Record<string, string> = {
     <!-- Pipeline progress -->
     
     <!-- Input fields -->
-    <details v-if="selectedRunInputs" class="text-xs">
+    <details v-if="selectedRunInputs" class="text-size-small">
       <summary class="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">Input fields</summary>
       <div class="mt-2 space-y-2">
         <div v-for="(val, key) in selectedRunInputs" :key="key" class="rounded-lg border border-neutral-200 overflow-hidden">
@@ -445,7 +445,7 @@ const statusBadgeClass: Record<string, string> = {
     <!-- Logs (expandable) -->
     <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
         <button
-            class="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
+            class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
             @click="logsExpanded = !logsExpanded"
         >
         <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
@@ -462,7 +462,7 @@ const statusBadgeClass: Record<string, string> = {
     </div>
     
     <!-- No runs yet -->
-    <div v-if="!selectedRunDetail" class="text-sm text-neutral-400 py-8 text-center">
+    <div v-if="!selectedRunDetail" class="text-size-medium text-neutral-400 py-8 text-center">
       {{ selectedRunError ?? 'No runs yet. Click "Run Workflow" to execute.' }}
     </div>
 
@@ -481,13 +481,13 @@ const statusBadgeClass: Record<string, string> = {
       <div v-if="outputDocumentId && outputDocumentHref" class="inline-flex items-center gap-2">
         <a
           :href="outputDocumentHref"
-          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
         >
           <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
           {{ outputDocumentTitle ?? "Open document" }}
         </a>
         <button
-          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
           title="Download as Markdown"
           @click="downloadDocument(outputDocumentHref!, outputDocumentTitle ?? 'document')"
         >
@@ -501,13 +501,13 @@ const statusBadgeClass: Record<string, string> = {
           :href="selectedRunFileUrl"
           target="_blank"
           rel="noreferrer"
-          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
         >
           <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
           {{ selectedRunFileName }}
         </a>
         <button
-          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
           title="Download"
           @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!)"
         >
@@ -519,7 +519,7 @@ const statusBadgeClass: Record<string, string> = {
 
     <!-- Run history -->
     <div v-if="runList.length > 0 || runTotalPages > 1">
-      <div class="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-6">Run history</div>
+      <div class="text-size-small font-semibold text-neutral-400 uppercase tracking-wide mb-6">Run history</div>
       <div class="space-y-1">
         <div
           v-for="run in runList"
@@ -527,17 +527,17 @@ const statusBadgeClass: Record<string, string> = {
           class="rounded-md border border-transparent transition-colors"
           :class="expandedHistoryRuns.has(run.runId) ? 'border-neutral-200 bg-neutral-50' : ''"
         >
-          <div class="flex items-center justify-between py-2 text-sm">
+          <div class="flex items-center justify-between py-2 text-size-medium">
             <button class="flex items-center gap-2 text-left" @click="selectRun(run.runId)">
-              <span class="text-neutral-500 text-xs">{{ formatDate(run.createdAt) }}</span>
+              <span class="text-neutral-500 text-size-small">{{ formatDate(run.createdAt) }}</span>
               <span
-                class="px-2 py-0.5 rounded-full text-xs font-medium capitalize"
+                class="px-2 py-0.5 rounded-full text-size-small font-medium capitalize"
                 :class="statusBadgeClass[run.status] ?? 'bg-neutral-100 text-neutral-500'"
               >{{ run.status }}</span>
             </button>
             <button
               v-if="run.status === 'completed'"
-              class="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 transition-colors ml-2"
+              class="flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors ml-2"
               @click="toggleHistoryRun(run.runId)"
             >
               <div class="svg-icon w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
@@ -556,22 +556,22 @@ const statusBadgeClass: Record<string, string> = {
               <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
                 <a
                   :href="historyOutputDocumentHref(run.runId)!"
-                  class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-sm font-medium text-neutral-800"
+                  class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
                 >
                   <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
                   {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
                 </a>
                 <button
-                  class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-sm text-neutral-500"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
                   title="Download as Markdown"
                   @click="downloadDocument(historyOutputDocumentHref(run.runId)!, historyOutputDocumentTitle(run.runId) ?? 'document')"
                 >
                   <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
                 </button>
               </div>
-              <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-xs text-neutral-400">No output</p>
+              <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-size-small text-neutral-400">No output</p>
             </template>
-            <div v-else class="text-xs text-neutral-400">Loading…</div>
+            <div v-else class="text-size-small text-neutral-400">Loading…</div>
           </div>
         </div>
       </div>
@@ -581,15 +581,15 @@ const statusBadgeClass: Record<string, string> = {
         <button
           @click="runPrevPage"
           :disabled="!runHasPrevPage"
-          class="px-2.5 py-1 text-xs font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          class="px-2.5 py-1 text-size-small font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Previous
         </button>
-        <span class="text-xs text-neutral-400">{{ runPage }} / {{ runTotalPages }}</span>
+        <span class="text-size-small text-neutral-400">{{ runPage }} / {{ runTotalPages }}</span>
         <button
           @click="runNextPage"
           :disabled="!runHasNextPage"
-          class="px-2.5 py-1 text-xs font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          class="px-2.5 py-1 text-size-small font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Next
         </button>

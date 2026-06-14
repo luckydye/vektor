@@ -150,13 +150,13 @@ const activityGroups = computed((): ActivityGroup[] => {
                   :size="28"
                 />
               </div>
-              <span class="text-sm font-semibold text-primary-600 leading-[1.7rem] @md:leading-[2.175rem]">
+              <span class="text-size-medium font-semibold text-primary-600 leading-[1.7rem] @md:leading-[2.175rem]">
                 {{ getUserName(group.userId) }}
               </span>
-              <span class="text-neutral-300 select-none text-xs">•</span>
-              <span class="text-sm text-neutral-600">{{ getGroupSummary(group.items) }}</span>
-              <span class="text-neutral-300 select-none text-xs">·</span>
-              <span class="text-xs text-neutral-400 whitespace-nowrap">
+              <span class="text-neutral-300 select-none text-size-small">•</span>
+              <span class="text-size-medium text-neutral-600">{{ getGroupSummary(group.items) }}</span>
+              <span class="text-neutral-300 select-none text-size-small">·</span>
+              <span class="text-size-small text-neutral-400 whitespace-nowrap">
                 {{ formatActivityTime(group.time) }}
               </span>
             </div>
@@ -173,7 +173,7 @@ const activityGroups = computed((): ActivityGroup[] => {
                   <!-- Property change pill -->
                   <div
                     v-if="hasPropertyChange(entry)"
-                    class="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs bg-neutral-100 rounded-sm px-2.5 py-1.5 text-neutral-700"
+                    class="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-size-small bg-neutral-100 rounded-sm px-2.5 py-1.5 text-neutral-700"
                   >
                     <span class="font-medium text-neutral-500">
                       {{ formatPropertyKey(entry.details?.propertyKey) }}:
@@ -194,7 +194,7 @@ const activityGroups = computed((): ActivityGroup[] => {
                        multi-item groups so the entry has visible content. -->
                   <div
                     v-else-if="group.items.length > 1"
-                    class="flex items-center gap-1.5 text-xs text-neutral-500"
+                    class="flex items-center gap-1.5 text-size-small text-neutral-500"
                   >
                     <span class="font-medium text-neutral-600">{{ getAuditEventLabel(entry.event) }}</span>
                     <span v-if="getDocumentName?.(entry.docId)">{{ getDocumentName(entry.docId) }}</span>
