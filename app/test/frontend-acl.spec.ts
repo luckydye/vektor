@@ -222,7 +222,6 @@ beforeAll(async () => {
     const privateDocData = await privateDocResponse.json();
     privateDocumentId = privateDocData.document.id;
     privateDocumentSlug = privateDocData.document.slug;
-
   } catch (error) {
     console.error("Failed to setup frontend ACL tests:", error);
     throw error;

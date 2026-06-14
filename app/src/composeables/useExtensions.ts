@@ -1,4 +1,3 @@
-import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { computed, ref } from "vue";
 import {
   api,
@@ -8,6 +7,7 @@ import {
   type ExtensionRouteMenuItem,
 } from "../api/client.ts";
 import { extensions } from "../utils/extensions.ts";
+import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
 export type { ExtensionInfo, ExtensionRoute, ExtensionRouteMenuItem };

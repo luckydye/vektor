@@ -1,13 +1,5 @@
 import type { App, MaybeRef, Ref, ShallowRef } from "vue";
-import {
-  computed,
-  isRef,
-  onScopeDispose,
-  ref,
-  shallowRef,
-  toValue,
-  watch,
-} from "vue";
+import { computed, isRef, onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 
 type QueryKey = readonly unknown[];
 type QueryKeyInput = MaybeRef<QueryKey>;
@@ -71,10 +63,7 @@ interface UseMutationOptions<TData, TVariables, TContext> {
 
 interface UseInfiniteQueryOptions<TPage, TPageParam> {
   enabled?: MaybeRef<boolean>;
-  getNextPageParam: (
-    lastPage: TPage,
-    allPages: TPage[],
-  ) => TPageParam | undefined;
+  getNextPageParam: (lastPage: TPage, allPages: TPage[]) => TPageParam | undefined;
   initialPageParam: TPageParam;
   queryFn: (context: { pageParam: TPageParam }) => Promise<TPage>;
   queryKey: QueryKeyInput;
@@ -129,7 +118,9 @@ function toError(error: unknown): Error {
 function keysMatch(key: unknown[], prefix: unknown[]): boolean {
   if (prefix.length > key.length) return false;
 
-  return prefix.every((part, index) => stableStringify(part) === stableStringify(key[index]));
+  return prefix.every(
+    (part, index) => stableStringify(part) === stableStringify(key[index]),
+  );
 }
 
 function resolveEnabled(enabled: MaybeRef<boolean> | undefined): boolean {
@@ -237,7 +228,10 @@ function isFresh(entry: QueryEntry): boolean {
   return entry.hasData.value && Date.now() - entry.updatedAt < entry.staleTime;
 }
 
-async function fetchEntry<T>(entry: QueryEntry<T>, force = false): Promise<T | undefined> {
+async function fetchEntry<T>(
+  entry: QueryEntry<T>,
+  force = false,
+): Promise<T | undefined> {
   if (!force && isFresh(entry)) {
     return entry.data.value;
   }
@@ -330,8 +324,7 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
     }
 
     entry.queryFn = options.queryFn;
-    entry.staleTime =
-      options.staleTime ?? queryClient.getDefaultOptions().staleTime ?? 0;
+    entry.staleTime = options.staleTime ?? queryClient.getDefaultOptions().staleTime ?? 0;
     currentEntry = entry;
     isEnabled.value = enabled;
     hasPlaceholder = false;
@@ -407,11 +400,9 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
   };
 }
 
-export function useMutation<
-  TData = unknown,
-  TVariables = void,
-  TContext = unknown,
->(options: UseMutationOptions<TData, TVariables, TContext>) {
+export function useMutation<TData = unknown, TVariables = void, TContext = unknown>(
+  options: UseMutationOptions<TData, TVariables, TContext>,
+) {
   const data = shallowRef<TData | undefined>(undefined);
   const error = shallowRef<Error | null>(null);
   const isPending = ref(false);

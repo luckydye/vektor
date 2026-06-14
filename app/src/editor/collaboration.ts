@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
-import * as Y from "yjs";
 import type { ProsemirrorMapping } from "y-prosemirror";
+import * as Y from "yjs";
 
 export type DocumentPresenceState = {
   kind: "editor";

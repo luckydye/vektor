@@ -1,9 +1,15 @@
 {
-  "meta-k": ["ui:toggle:palatte", "format:link"],
+  "meta-k": [
+    "ui:toggle:palatte",
+    "format:link"
+  ],
   "meta-e": "document:edit",
   "meta-s": "document:save",
   "meta-l": "revisions:toggle",
-  "meta-enter": ["ai-chat:toggle", "format:hardbreak"],
+  "meta-enter": [
+    "ai-chat:toggle",
+    "format:hardbreak"
+  ],
 
   "meta-b": "format:bold",
   "ctrl-b": "format:bold",

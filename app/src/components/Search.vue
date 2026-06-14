@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useInfiniteQuery } from "../composeables/query.ts";
 import { computed, onMounted, ref } from "vue";
 import {
   chevronDownThinIcon,
@@ -17,6 +16,7 @@ import {
   type PropertyFilter,
   type SearchResult,
 } from "../api/client.ts";
+import { useInfiniteQuery } from "../composeables/query.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import DocumentListItem from "./DocumentListItem.vue";

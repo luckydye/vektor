@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { type Ref, ref } from "vue";
 import "../../editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "../../api/ApiClient.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
@@ -13,10 +13,7 @@ export type DocumentPreviewState = {
   error?: string;
 };
 
-type DocumentPreviewSource = Pick<
-  DocumentWithProperties,
-  "id" | "properties" | "type"
->;
+type DocumentPreviewSource = Pick<DocumentWithProperties, "id" | "properties" | "type">;
 
 type LoadedDocumentPreviewSource = DocumentPreviewSource & {
   content?: unknown;
@@ -111,9 +108,7 @@ export function dragHasDocumentLink(transfer: DataTransfer | null): boolean {
   );
 }
 
-export function createDocumentLinkController(
-  options: DocumentLinkControllerOptions,
-) {
+export function createDocumentLinkController(options: DocumentLinkControllerOptions) {
   const previews = ref(new Map<string, DocumentPreviewState>());
 
   function setPreview(documentId: string, preview: DocumentPreviewState) {
@@ -172,13 +167,8 @@ export function createDocumentLinkController(
   }
 
   // Places a card on the canvas that links to another document by stable id.
-  function insertDocumentLink(
-    documentId: string,
-    at: { x: number; y: number },
-  ): boolean {
-    const doc = options.documents.value.find(
-      (entry) => entry.id === documentId.trim(),
-    );
+  function insertDocumentLink(documentId: string, at: { x: number; y: number }): boolean {
+    const doc = options.documents.value.find((entry) => entry.id === documentId.trim());
     const shape = createDocumentLinkShape(documentId, at, doc);
     if (!shape) return false;
 

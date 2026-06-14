@@ -6,10 +6,7 @@ import {
   figmaClipboardToSVG,
 } from "../src/utils/figma-clipboard.ts";
 
-const html = readFileSync(
-  join(import.meta.dir, "fixtures/figma-clipboard.html"),
-  "utf8",
-);
+const html = readFileSync(join(import.meta.dir, "fixtures/figma-clipboard.html"), "utf8");
 const svgHtml = readFileSync(
   join(import.meta.dir, "fixtures/figma-clipboard-svg.html"),
   "utf8",

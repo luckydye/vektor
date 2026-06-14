@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useQuery } from "../composeables/query.ts";
 import { applyPatch, parsePatch } from "diff";
 import {
   computed,
@@ -10,25 +9,26 @@ import {
   ref,
   watch,
 } from "vue";
-import { clockIcon } from "~/src/assets/icons.ts";
-import * as Y from "yjs";
 import { absolutePositionToRelativePosition } from "y-prosemirror";
+import * as Y from "yjs";
+import { clockIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
+import { useQuery } from "../composeables/query.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import {
+  type DocumentPresenceProfile,
   findYSyncState,
   getPresenceColor,
-  type DocumentPresenceProfile,
 } from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
+import { Actions } from "../utils/actions.ts";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
-import { realtimeTopics, type PresenceEnvelope } from "../utils/realtime.ts";
-import { Actions } from "../utils/actions.ts";
+import { type PresenceEnvelope, realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
 import CommentManager from "./CommentManager.vue";
 import DiffView from "./DiffView.vue";
@@ -86,8 +86,7 @@ const diffPatch = ref("");
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
-const readViewEl = ref(null);
-const editorViewEl = ref(null);
+const documentViewEl = ref(null);
 const tableViewEl = ref(null);
 const isMounted = ref(false);
 const getEditor = () => globalThis.__editor;
@@ -110,10 +109,7 @@ const editorPresenceClientId =
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `editor:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-const remoteEditorPresences = new Map<
-  string,
-  PresenceEnvelope<DocumentPresenceState>
->();
+const remoteEditorPresences = new Map<string, PresenceEnvelope<DocumentPresenceState>>();
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
@@ -236,19 +232,19 @@ watch([saveStatus, saveError], () => {
 });
 
 async function setupEditorBridge() {
-  if (!editorViewEl.value) return;
+  if (!documentViewEl.value) return;
 
   await customElements.whenDefined("document-view");
 
   // Re-check after async wait — state may have changed
-  if (!editorViewEl.value) return;
+  if (!documentViewEl.value) return;
 
   if (props.documentId && !leaveEditorCollaboration) {
     const { joinYjsRoom } = await import("../utils/sync.ts");
     leaveEditorCollaboration = joinYjsRoom(
       props.spaceId,
       props.documentId,
-      editorViewEl.value.collaborationDocument,
+      documentViewEl.value.collaborationDocument,
     );
   }
   await setupEditorPresence();
@@ -298,7 +294,7 @@ function editorPresenceState(): DocumentPresenceState {
 }
 
 function renderEditorPresence() {
-  editorViewEl.value?.setPresenceProfiles(
+  documentViewEl.value?.setPresenceProfiles(
     [...remoteEditorPresences.values()].map((presence) => ({
       clientId: presence.clientId,
       user: presence.user,
@@ -486,10 +482,11 @@ watch(isEditing, (editing) => {
     leaveEditorCollaboration?.();
     leaveEditorCollaboration = null;
     clearEditorPresence();
+    documentViewEl.value?.destroyEditor();
+    nextTick(renderReadView);
   }
 
   if (editing && !viewingRevision.value) {
-    // Wait for Vue to render the document-view element
     requestAnimationFrame(setupEditorBridge);
   }
 });
@@ -698,7 +695,7 @@ function renderTableView() {
 }
 
 function renderReadView() {
-  if (!readViewEl.value) return;
+  if (!documentViewEl.value) return;
   if (isEditing.value || viewingRevision.value) return;
   if (
     props.documentType === "canvas" ||
@@ -707,7 +704,7 @@ function renderReadView() {
   )
     return;
 
-  const container = readViewEl.value;
+  const container = documentViewEl.value;
   const root = container.shadowRoot;
 
   if (!root) {
@@ -731,7 +728,7 @@ function renderReadView() {
   root.appendChild(content);
 }
 
-watch([renderedHtml, isEditing, viewingRevision, readViewEl], () => {
+watch([renderedHtml, isEditing, viewingRevision, documentViewEl], () => {
   renderReadView();
   renderTableView();
 });
@@ -753,117 +750,87 @@ useSync(
 </script>
 
 <template>
-  <div>
+    <div>
+        <!-- Revision Disclaimer Banner -->
+        <div v-if="viewingRevision"
+            class="sticky top-0 z-60 bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center justify-between duration-300 mb-10"
+            :style="{ marginRight: sidebarOpen ? '432px' : '0' }">
+            <div class="flex items-center gap-3">
+                <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
+                <div>
+                    <p class="text-sm font-semibold text-amber-900">
+                        Viewing {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
+                    </p>
+                    <p class="my-0! text-xs text-amber-700">
+                        {{
+                            viewingSuggestion
+                                ? "This suggestion is read-only until it is applied."
+                                : "This is a historical version of the document. Changes cannot be made."
+                        }}
+                    </p>
+                </div>
+            </div>
+            <button @click="closeRevisionView"
+                class="px-4 py-2 text-sm font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors">
+                Show published version
+            </button>
+        </div>
+
+        <!-- Revision View with Diff -->
+        <div v-if="viewingRevision && showingDiff">
+            <div>
+                <DiffView :patch="diffPatch" />
+            </div>
+        </div>
+
+        <!-- Revision View -->
+        <div v-if="viewingRevision && !showingDiff && props.documentType !== 'app'">
+            <document-view>
+                <template v-html="revisionContent"></template>
+            </document-view>
+        </div>
+
+    </div>
+
+    <main class="relative">
+        <!-- CSV Spreadsheet View -->
+        <table-view v-if="!isEditing && !viewingRevision && props.documentType === 'csv'" ref="tableViewEl"
+            class="block flex-1 min-h-0"></table-view>
+        <!-- App View -->
+        <div v-if="props.documentType === 'app' && !viewingRevision" class="h-full">
+            <AppView :html="renderedHtml" />
+        </div>
+
+        <!-- App Revision View -->
+        <div v-if="props.documentType === 'app' && viewingRevision && !showingDiff" class="h-full">
+            <AppView :html="revisionContent" />
+        </div>
+
+        <!-- Document View (read + edit, single persistent instance) -->
+        <div v-if="!viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
+            :class="isEditing ? 'h-full' : ''">
+            <document-view ref="documentViewEl" v-bind="isEditing && !props.readonly ? { editor: '' } : {}"
+                :editor-context.prop="isEditing && !props.readonly ? { spaceId: props.spaceId, documentId: props.documentId } : undefined">
+                <template v-if="isEditing" v-html="renderedHtml"></template>
+            </document-view>
+        </div>
+
+        <div v-if="isMounted && props.documentType === 'canvas'" class="h-screen">
+            <Canvas :documentId="props.documentId" :spaceId="props.spaceId" />
+        </div>
+
+        <WorkflowView v-else-if="isMounted && props.documentType === 'workflow' && props.documentId"
+            :documentId="props.documentId" :spaceId="props.spaceId" :spaceSlug="props.spaceSlug" />
+
+        <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
+    </main>
+
     <document-toolbar></document-toolbar>
 
-    <!-- Revision Disclaimer Banner -->
-    <div
-      v-if="viewingRevision"
-      class="sticky top-0 z-60 bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center justify-between duration-300 mb-10"
-      :style="{ marginRight: sidebarOpen ? '432px' : '0' }"
-    >
-      <div class="flex items-center gap-3">
-        <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
-        <div>
-            <p class="text-sm font-semibold text-amber-900">
-            Viewing {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
-          </p>
-          <p class="my-0! text-xs text-amber-700">
-            {{
-              viewingSuggestion
-                ? "This suggestion is read-only until it is applied."
-                : "This is a historical version of the document. Changes cannot be made."
-            }}
-          </p>
-        </div>
-      </div>
-      <button
-        @click="closeRevisionView"
-        class="px-4 py-2 text-sm font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors"
-      >
-        Show published version
-      </button>
-    </div>
+    <CommentManager v-if="props.documentId && supportsComments(props.documentType)" :spaceId="props.spaceId"
+        :documentId="props.documentId" :currentRev="documentData?.currentRev" />
 
-    <!-- Revision View with Diff -->
-    <div v-if="viewingRevision && showingDiff">
-      <div>
-        <DiffView
-          :patch="diffPatch"
-        />
-      </div>
-    </div>
-
-    <!-- Revision View -->
-    <div v-if="viewingRevision && !showingDiff && props.documentType !== 'app'">
-      <document-view>
-        <template v-html="revisionContent"></template>
-      </document-view>
-    </div>
-
-    <!-- Read View -->
-    <div v-if="!isEditing && !viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'">
-      <document-view ref="readViewEl"></document-view>
-    </div>
-
-    <!-- App View -->
-    <div v-if="props.documentType === 'app' && !viewingRevision" class="h-full">
-      <AppView :html="renderedHtml" />
-    </div>
-
-    <!-- App Revision View -->
-    <div v-if="props.documentType === 'app' && viewingRevision && !showingDiff" class="h-full">
-      <AppView :html="revisionContent" />
-    </div>
-  </div>
-
-  <!-- CSV Spreadsheet View — fragment root so it inherits height from the flex parent directly -->
-  <table-view
-    v-if="!isEditing && !viewingRevision && props.documentType === 'csv'"
-    ref="tableViewEl"
-    class="block flex-1 min-h-0"
-  ></table-view>
-
-  <!-- Editor -->
-  <div
-    v-if="isEditing && !viewingRevision && !props.readonly"
-    :class="['h-full', !isEditingReady && 'opacity-0']"
-  >
-    <document-view
-      ref="editorViewEl"
-      editor
-      :editor-context.prop="{ spaceId: props.spaceId, documentId: props.documentId }"
-    >
-      <template v-html="renderedHtml"></template>
-    </document-view>
-  </div>
-  
-  <document-statusbar
-    v-if="isEditing && !viewingRevision && !props.readonly && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
-    class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"
-  ></document-statusbar>
-
-  <CommentManager
-    v-if="props.documentId && supportsComments(props.documentType)"
-    :spaceId="props.spaceId"
-    :documentId="props.documentId"
-    :currentRev="documentData?.currentRev"
-  />
-
-  <main class="relative">
-    <div v-if="isMounted && props.documentType === 'canvas'" class="h-screen">
-      <Canvas
-        :documentId="props.documentId"
-        :spaceId="props.spaceId"
-      />
-    </div>
-    <WorkflowView
-      v-else-if="isMounted && props.documentType === 'workflow' && props.documentId"
-      :documentId="props.documentId"
-      :spaceId="props.spaceId"
-      :spaceSlug="props.spaceSlug"
-    />
-
-    <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
-  </main>
+    <document-statusbar
+        v-if="isEditing && !viewingRevision && !props.readonly && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
+        class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
 </template>

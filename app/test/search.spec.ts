@@ -344,7 +344,6 @@ describe("Search API Tests", () => {
       expect(data.total).toBeGreaterThan(1);
     }
   });
-
 });
 
 describe("Search Property Filters", () => {

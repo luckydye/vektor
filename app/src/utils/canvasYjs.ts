@@ -65,10 +65,7 @@ function seedStroke(target: Y.Map<Y.Map<unknown>>, stroke: RawStroke): void {
   if (typeof stroke.id !== "string") return;
   const map = new Y.Map<unknown>();
   map.set("points", Array.isArray(stroke.points) ? stroke.points : []);
-  map.set(
-    "style",
-    stroke.style && typeof stroke.style === "object" ? stroke.style : {},
-  );
+  map.set("style", stroke.style && typeof stroke.style === "object" ? stroke.style : {});
   map.set("updatedAt", typeof stroke.updatedAt === "number" ? stroke.updatedAt : 0);
   target.set(stroke.id, map);
 }

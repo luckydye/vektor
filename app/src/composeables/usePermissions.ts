@@ -10,8 +10,18 @@ const PERMISSION_HIERARCHY: Record<Permission, number> = {
 
 const FEATURE_DEFAULTS: Record<Permission, Record<Feature, boolean>> = {
   owner: { comment: true, view_history: true, view_audit: true, manage_extensions: true },
-  editor: { comment: true, view_history: true, view_audit: false, manage_extensions: false },
-  viewer: { comment: false, view_history: false, view_audit: false, manage_extensions: false },
+  editor: {
+    comment: true,
+    view_history: true,
+    view_audit: false,
+    manage_extensions: false,
+  },
+  viewer: {
+    comment: false,
+    view_history: false,
+    view_audit: false,
+    manage_extensions: false,
+  },
 };
 
 export function hasPermission(
@@ -53,18 +63,30 @@ export function hasFeature(
   return defaults[feature];
 }
 
-export function canComment(userRole: string | undefined, overrides?: FeatureOverrides): boolean {
+export function canComment(
+  userRole: string | undefined,
+  overrides?: FeatureOverrides,
+): boolean {
   return hasFeature(userRole, "comment", overrides);
 }
 
-export function canViewHistory(userRole: string | undefined, overrides?: FeatureOverrides): boolean {
+export function canViewHistory(
+  userRole: string | undefined,
+  overrides?: FeatureOverrides,
+): boolean {
   return hasFeature(userRole, "view_history", overrides);
 }
 
-export function canViewAudit(userRole: string | undefined, overrides?: FeatureOverrides): boolean {
+export function canViewAudit(
+  userRole: string | undefined,
+  overrides?: FeatureOverrides,
+): boolean {
   return hasFeature(userRole, "view_audit", overrides);
 }
 
-export function canManageExtensions(userRole: string | undefined, overrides?: FeatureOverrides): boolean {
+export function canManageExtensions(
+  userRole: string | undefined,
+  overrides?: FeatureOverrides,
+): boolean {
   return hasFeature(userRole, "manage_extensions", overrides);
 }

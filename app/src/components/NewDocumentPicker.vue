@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import {
-  boltIcon,
-  fileTextIcon,
-  imageIcon,
-} from "~/src/assets/icons.ts";
+import { boltIcon, fileTextIcon, imageIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceSlug: string;

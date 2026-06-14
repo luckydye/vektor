@@ -1,4 +1,3 @@
-import { useQuery } from "./query.ts";
 import {
   type ComputedRef,
   computed,
@@ -8,6 +7,7 @@ import {
   toValue,
   watch,
 } from "vue";
+import { useQuery } from "./query.ts";
 
 export interface PagedListOptions<T> {
   /**

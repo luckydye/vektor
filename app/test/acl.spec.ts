@@ -194,7 +194,9 @@ beforeAll(async () => {
 
     if (!spaceResponse.ok) {
       const errorText = await spaceResponse.text();
-      throw new Error(`Failed to create features space (${spaceResponse.status}): ${errorText}`);
+      throw new Error(
+        `Failed to create features space (${spaceResponse.status}): ${errorText}`,
+      );
     }
 
     const spaceData = await spaceResponse.json();
@@ -226,7 +228,8 @@ beforeAll(async () => {
       {
         method: "POST",
         body: JSON.stringify({
-          content: "# Features Test Document\n\nThis is a test document for feature permissions.",
+          content:
+            "# Features Test Document\n\nThis is a test document for feature permissions.",
           properties: { title: "Features Test Document" },
         }),
       },
@@ -2026,7 +2029,10 @@ describe("ACL API Tests - Users", () => {
   });
 
   it("should list users when authenticated", async () => {
-    const response = await apiRequest(`/api/v1/users?spaceId=${testSpaceId}`, session1Token);
+    const response = await apiRequest(
+      `/api/v1/users?spaceId=${testSpaceId}`,
+      session1Token,
+    );
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(Array.isArray(data)).toBe(true);
@@ -2623,14 +2629,19 @@ describe("ACL API Tests - Contributors", () => {
   let contributorsDocId: string;
 
   beforeAll(async () => {
-    const resp = await apiRequest(`/api/v1/spaces/${featuresTestSpaceId}/documents`, session1Token, {
-      method: "POST",
-      body: JSON.stringify({
-        content: "<p>contributors test</p>",
-        properties: { title: "Contributors Test Doc" },
-      }),
-    });
-    if (!resp.ok) throw new Error(`Failed to create contributors doc: ${resp.statusText}`);
+    const resp = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "<p>contributors test</p>",
+          properties: { title: "Contributors Test Doc" },
+        }),
+      },
+    );
+    if (!resp.ok)
+      throw new Error(`Failed to create contributors doc: ${resp.statusText}`);
     contributorsDocId = (await resp.json()).document.id;
   });
 
@@ -2699,12 +2710,18 @@ describe("ACL API Tests - Contributors", () => {
     await apiRequest(
       `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}`,
       session1Token,
-      { method: "POST", body: JSON.stringify({ html: "<p>save 2</p>", message: "save 2" }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ html: "<p>save 2</p>", message: "save 2" }),
+      },
     );
     await apiRequest(
       `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}`,
       session1Token,
-      { method: "POST", body: JSON.stringify({ html: "<p>save 3</p>", message: "save 3" }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ html: "<p>save 3</p>", message: "save 3" }),
+      },
     );
     const resp = await apiRequest(
       `/api/v1/spaces/${featuresTestSpaceId}/documents/${contributorsDocId}/contributors`,
@@ -2741,16 +2758,23 @@ describe("ACL API Tests - Non-existent Space 404s", () => {
 
   it("should return 404 when creating a document in a non-existent space", async () => {
     const fakeSpaceId = crypto.randomUUID();
-    const resp = await apiRequest(`/api/v1/spaces/${fakeSpaceId}/documents`, session1Token, {
-      method: "POST",
-      body: JSON.stringify({ content: "# Test", properties: { title: "Test" } }),
-    });
+    const resp = await apiRequest(
+      `/api/v1/spaces/${fakeSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({ content: "# Test", properties: { title: "Test" } }),
+      },
+    );
     expect(resp.status).toBe(404);
   });
 
   it("should return 404 when listing categories in a non-existent space", async () => {
     const fakeSpaceId = crypto.randomUUID();
-    const resp = await apiRequest(`/api/v1/spaces/${fakeSpaceId}/categories`, session1Token);
+    const resp = await apiRequest(
+      `/api/v1/spaces/${fakeSpaceId}/categories`,
+      session1Token,
+    );
     expect(resp.status).toBe(404);
   });
 
@@ -2775,7 +2799,6 @@ describe("ACL API Tests - Non-existent Space 404s", () => {
   });
 });
 
-
 describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   let mdTestSpaceId: string;
   let mdTestSpaceSlug: string;
@@ -2791,11 +2814,19 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
     mdOwnerToken = ownerData.token;
 
     const viewerData = await createTestUser("MD Viewer");
-    mdViewerUser = { id: viewerData.userId, email: viewerData.email, name: viewerData.name };
+    mdViewerUser = {
+      id: viewerData.userId,
+      email: viewerData.email,
+      name: viewerData.name,
+    };
     mdViewerToken = viewerData.token;
 
     const nonMemberData = await createTestUser("MD Non-Member");
-    mdNonMemberUser = { id: nonMemberData.userId, email: nonMemberData.email, name: nonMemberData.name };
+    mdNonMemberUser = {
+      id: nonMemberData.userId,
+      email: nonMemberData.email,
+      name: nonMemberData.name,
+    };
     mdNonMemberToken = nonMemberData.token;
 
     const spaceResponse = await apiRequest("/api/v1/spaces", mdOwnerToken, {
@@ -2815,7 +2846,8 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          content: "# Test Markdown Export\n\nThis document tests .md endpoint access control.",
+          content:
+            "# Test Markdown Export\n\nThis document tests .md endpoint access control.",
           properties: { title: "Test Markdown Export" },
         }),
       },
@@ -2985,7 +3017,10 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
   });
 
   it("should allow owner to access space settings despite public viewer access", async () => {
-    const response = await apiRequest(`/api/v1/spaces/${publicTestSpaceId}`, ownerUser.token);
+    const response = await apiRequest(
+      `/api/v1/spaces/${publicTestSpaceId}`,
+      ownerUser.token,
+    );
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.id).toBe(publicTestSpaceId);

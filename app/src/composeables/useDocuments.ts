@@ -1,6 +1,6 @@
-import { useQuery } from "./query.ts";
 import { computed } from "vue";
 import { api } from "../api/client.ts";
+import { useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 
 export function useDocuments() {

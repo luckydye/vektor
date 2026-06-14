@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useQuery } from "../composeables/query.ts";
 import { ref } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { api, type PropertyFilter } from "../api/client.ts";
+import { useQuery } from "../composeables/query.ts";
 
 const props = defineProps<{
   spaceId: string;

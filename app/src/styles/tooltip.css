@@ -36,7 +36,9 @@
   pointer-events: none;
   opacity: 0;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28);
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
   z-index: 100;
 }
 
@@ -50,7 +52,9 @@
   border-top-color: var(--tooltip-bg);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
   z-index: 100;
 }
 

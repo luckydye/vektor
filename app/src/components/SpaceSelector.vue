@@ -38,7 +38,9 @@ const emit = defineEmits<{
 
 const currentSpace = computed(() => {
   if (props.modelValue) {
-    return props.spaces?.find((s) => s.id === props.modelValue) || props.spaces?.[0] || null;
+    return (
+      props.spaces?.find((s) => s.id === props.modelValue) || props.spaces?.[0] || null
+    );
   }
   return props.spaces?.[0] || null;
 });

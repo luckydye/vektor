@@ -7,14 +7,14 @@ import { Editor, Extension } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { Dropcursor } from "@tiptap/extensions";
-import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
+import { type EditorState, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import * as Y from "yjs";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
+import * as Y from "yjs";
 import {
   colorForPresenceProfile,
-  findYSyncState,
   type DocumentPresenceProfile,
+  findYSyncState,
 } from "./collaboration.ts";
 import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
 import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
@@ -552,6 +552,20 @@ class DocumentView extends HTMLElement {
     window.__editor = this.tiptapEditor;
 
     return this.tiptapEditor;
+  }
+
+  destroyEditor() {
+    if (!this.tiptapEditor) return;
+    const editor = this.tiptapEditor;
+    this.tiptapEditor = undefined;
+    editor.destroy();
+    if (window.__editor === editor) {
+      window.__editor = undefined;
+    }
+    const shadow = this.root;
+    if (shadow) {
+      shadow.innerHTML = `<style>${docStyles}</style>`;
+    }
   }
 
   private hasEditorConfig() {

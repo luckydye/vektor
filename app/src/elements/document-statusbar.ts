@@ -92,8 +92,7 @@ if (
 
           <div class="container">
             ${actions.map(([id, action]) => {
-              const shortcut = Actions.getShortcutsForAction(id)?.values().next()
-                .value;
+              const shortcut = Actions.getShortcutsForAction(id)?.values().next().value;
 
               if (!shortcut) return null;
 

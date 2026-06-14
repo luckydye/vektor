@@ -1,8 +1,8 @@
-import { useQuery } from "./query.ts";
 import { computed, type Ref } from "vue";
 import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
+import { useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
 

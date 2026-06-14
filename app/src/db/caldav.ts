@@ -1,10 +1,10 @@
 import type { APIContext } from "astro";
 import { eq } from "drizzle-orm";
+import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "../noAuth.ts";
 import { validateAccessToken } from "./accessTokens.ts";
 import { verifySpaceAccess, verifySpaceRole } from "./api.ts";
 import { getAuthDb } from "./db.ts";
 import type { DocumentWithProperties } from "./documents.ts";
-import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "../noAuth.ts";
 import { user } from "./schema/auth.ts";
 import { listUserSpaces } from "./spaces.ts";
 

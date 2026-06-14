@@ -2,11 +2,7 @@
 // Renders document previews by document type and emits `open-document` from the
 // explicit open button.
 
-import {
-  chevronRightThinIcon,
-  documentIcon,
-  tableRowIcon,
-} from "~/src/assets/icons.ts";
+import { chevronRightThinIcon, documentIcon, tableRowIcon } from "~/src/assets/icons.ts";
 import type { WorkflowRunStatus } from "../../api/ApiClient.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
@@ -113,9 +109,10 @@ function extractTableData(
 }
 
 function renderTablePreview(rows: Record<string, unknown>[]): string {
-  const columns = Array.from(
-    new Set(rows.flatMap((row) => Object.keys(row))),
-  ).slice(0, 6);
+  const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).slice(
+    0,
+    6,
+  );
   if (columns.length === 0) return "";
 
   return `
@@ -253,9 +250,7 @@ if (
         const documentId = this.getAttribute("document-id") || "";
         const icon = type === "csv" ? tableRowIcon : documentIcon;
         const workflow =
-          type === "workflow"
-            ? this.ensureWorkflowPreview(spaceId, documentId)
-            : null;
+          type === "workflow" ? this.ensureWorkflowPreview(spaceId, documentId) : null;
 
         this.shadow.innerHTML = `
           <style>
@@ -542,12 +537,10 @@ if (
         });
       }
 
-      ensureWorkflowPreview(
-        spaceId: string,
-        documentId: string,
-      ): WorkflowPreviewState {
+      ensureWorkflowPreview(spaceId: string, documentId: string): WorkflowPreviewState {
         const key = `${spaceId}:${documentId}`;
-        if (!spaceId || !documentId) return { status: "error", message: "Missing workflow id." };
+        if (!spaceId || !documentId)
+          return { status: "error", message: "Missing workflow id." };
         if (this.workflowPreviewKey === key && this.workflowPreview.status !== "idle") {
           return this.workflowPreview;
         }

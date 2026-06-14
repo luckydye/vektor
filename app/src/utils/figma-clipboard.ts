@@ -476,10 +476,8 @@ interface VectorNetwork {
 function decodeVectorNetwork(bytes: Uint8Array): VectorNetwork | null {
   if (bytes.length < 16) return null;
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const u32 = (w: number) =>
-    w * 4 + 4 <= bytes.length ? dv.getUint32(w * 4, true) : 0;
-  const f32 = (w: number) =>
-    w * 4 + 4 <= bytes.length ? dv.getFloat32(w * 4, true) : 0;
+  const u32 = (w: number) => (w * 4 + 4 <= bytes.length ? dv.getUint32(w * 4, true) : 0);
+  const f32 = (w: number) => (w * 4 + 4 <= bytes.length ? dv.getFloat32(w * 4, true) : 0);
 
   const vertexCount = u32(0);
   const segmentCount = u32(1);
@@ -555,10 +553,7 @@ function vectorNetworkToPath(
   }
   const hasTangent = (s: VNSegment | undefined) =>
     !!s &&
-    (s.tanStart.x !== 0 ||
-      s.tanStart.y !== 0 ||
-      s.tanEnd.x !== 0 ||
-      s.tanEnd.y !== 0);
+    (s.tanStart.x !== 0 || s.tanStart.y !== 0 || s.tanEnd.x !== 0 || s.tanEnd.y !== 0);
 
   const loops = traceLoops(vn);
   if (loops.length === 0) return "";
@@ -685,11 +680,7 @@ export async function parseFigmaClipboard(
     });
     const fillColor = solidFill?.color as KiwiValue | undefined;
     const fill = fillColor
-      ? toHex(
-          fillColor.r as number,
-          fillColor.g as number,
-          fillColor.b as number,
-        )
+      ? toHex(fillColor.r as number, fillColor.g as number, fillColor.b as number)
       : undefined;
 
     const textData = n.textData as KiwiValue | undefined;
@@ -755,8 +746,7 @@ function buildRenderContext(decoded: {
   for (const kids of childrenOf.values()) {
     kids.sort(
       (a, b) =>
-        (nodeOrder.get(nodeGuidKey(a)!) ?? 0) -
-        (nodeOrder.get(nodeGuidKey(b)!) ?? 0),
+        (nodeOrder.get(nodeGuidKey(a)!) ?? 0) - (nodeOrder.get(nodeGuidKey(b)!) ?? 0),
     );
   }
   const f = (n: number) => parseFloat(n.toFixed(3)).toString();
@@ -770,8 +760,7 @@ function solidColorOf(
   if (!paints?.length) return null;
   const p = paints.find(
     (p) =>
-      enumName(defs, "PaintType", p.type as number) === "SOLID" &&
-      p.visible !== false,
+      enumName(defs, "PaintType", p.type as number) === "SOLID" && p.visible !== false,
   );
   if (!p?.color) return null;
   const c = p.color as KiwiValue;
@@ -832,16 +821,12 @@ function renderNode(
     ? `fill="${fill.hex}" fill-opacity="${f(fill.opacity)}"`
     : `fill="none"`;
   const strokeAttr =
-    stroke && strokeW > 0
-      ? ` stroke="${stroke.hex}" stroke-width="${f(strokeW)}"`
-      : "";
+    stroke && strokeW > 0 ? ` stroke="${stroke.hex}" stroke-width="${f(strokeW)}"` : "";
 
   // Children are in parent-local space, so pass offsets of 0
   const k = nodeGuidKey(n);
   const kids = k ? (childrenOf.get(k) ?? []) : [];
-  const childSVG = kids
-    .map((c) => renderNode(c, 0, 0, ctx, counter))
-    .join("");
+  const childSVG = kids.map((c) => renderNode(c, 0, 0, ctx, counter)).join("");
 
   switch (type) {
     case "RECTANGLE":
@@ -895,20 +880,14 @@ function renderNode(
     case "COMPONENT_SET":
     case "SECTION":
       // Containers: transparent background, just wrap children
-      return childSVG
-        ? `<g transform="${transform}"${opacityAttr}>${childSVG}</g>`
-        : "";
+      return childSVG ? `<g transform="${transform}"${opacityAttr}>${childSVG}</g>` : "";
     default: {
       // VECTOR, LINE, BOOLEAN_OPERATION, STAR, REGULAR_POLYGON, etc.
       // Real path geometry lives in the blob pool, referenced by
       // vectorData.vectorNetworkBlob. Decode it into an SVG path.
       const vectorData = n.vectorData as KiwiValue | undefined;
       const blobIdx = vectorData?.vectorNetworkBlob as number | undefined;
-      if (
-        (fill || (stroke && strokeW > 0)) &&
-        blobIdx !== undefined &&
-        blobs[blobIdx]
-      ) {
+      if ((fill || (stroke && strokeW > 0)) && blobIdx !== undefined && blobs[blobIdx]) {
         const vn = decodeVectorNetwork(blobs[blobIdx]);
         // Vertices are stored in the vector's normalizedSize space; scale them
         // to the node's actual rendered size (Figma scales the network to fit).
@@ -990,9 +969,7 @@ function renderRoot(
  * shapes out preserving their relative positions. Returns null if nothing in
  * the selection is renderable (e.g. a pure image selection).
  */
-export async function figmaClipboardToFrames(
-  html: string,
-): Promise<FigmaFrame[] | null> {
+export async function figmaClipboardToFrames(html: string): Promise<FigmaFrame[] | null> {
   const decoded = await decodeFigmaKiwi(html);
   if (!decoded) return null;
   const ctx = buildRenderContext(decoded);
@@ -1048,9 +1025,7 @@ export async function figmaClipboardToSVG(html: string): Promise<string | null> 
   const vw = Math.round(maxX - minX);
   const vh = Math.round(maxY - minY);
   const counter = { n: 0 };
-  const body = roots
-    .map((n) => renderNode(n, minX, minY, ctx, counter))
-    .join("\n");
+  const body = roots.map((n) => renderNode(n, minX, minY, ctx, counter)).join("\n");
 
   if (counter.n === 0) return null;
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { computed, effectScope, nextTick, ref, type App } from "vue";
+import { type App, computed, effectScope, nextTick, ref } from "vue";
 import {
   QueryClient,
   QueryPlugin,

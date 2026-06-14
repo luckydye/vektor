@@ -148,8 +148,7 @@ customElements.define(
       if (!e.dataTransfer) return;
 
       const draggedDocumentId =
-        e.dataTransfer.getData(DOCUMENT_ID_MIME) ||
-        e.dataTransfer.getData("text/plain");
+        e.dataTransfer.getData(DOCUMENT_ID_MIME) || e.dataTransfer.getData("text/plain");
       const targetDocumentId = this.getAttribute("data-document-id");
 
       if (!draggedDocumentId || !targetDocumentId) {

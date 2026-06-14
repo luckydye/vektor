@@ -1252,7 +1252,6 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
       );
       expect(response.status).toBe(404);
     });
-
   });
 
   describe("Missing Required Fields", () => {

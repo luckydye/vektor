@@ -59,9 +59,7 @@ export function createFileShape(params: {
     id: `shape-${crypto.randomUUID()}`,
     type: "file",
     x: Math.round(
-      origin === "center"
-        ? params.at.x - fileElement.defaultSize.width / 2
-        : params.at.x,
+      origin === "center" ? params.at.x - fileElement.defaultSize.width / 2 : params.at.x,
     ),
     y: Math.round(
       origin === "center"
