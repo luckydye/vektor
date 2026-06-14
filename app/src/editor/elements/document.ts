@@ -364,12 +364,7 @@ function createEditor(
     enableCoreExtensions: {
       keymap: false,
     },
-    // With a collaborative room the Yjs doc is the single source of truth: the
-    // server seeds it from persisted content (see yjsRooms.ts) and syncs it
-    // down. Seeding `content` here too would write the same HTML into the doc
-    // on every client under different Yjs ids, so the contents diverge/duplicate
-    // instead of merging. Only seed when there is no room (standalone editor).
-    content: context.documentId ? undefined : html,
+    content: html,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
       disableCollaboration();
@@ -445,10 +440,11 @@ function createEditor(
 
 class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
-  editor?: Editor;
+  private tiptapEditor?: Editor;
   store?: IndexedDBStore<EditorStoreEntry>;
-  editorContext: EditorContext = {};
   private ydoc?: Y.Doc;
+  private _editorContext: EditorContext = {};
+  private startEditorQueued = false;
 
   static get observedAttributes() {
     return ["editor"];
@@ -467,11 +463,20 @@ class DocumentView extends HTMLElement {
   }
 
   setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
-    if (!this.editor) return;
+    if (!this.tiptapEditor) return;
 
-    this.editor.view.dispatch(
-      this.editor.state.tr.setMeta(documentPresencePluginKey, profiles),
+    this.tiptapEditor.view.dispatch(
+      this.tiptapEditor.state.tr.setMeta(documentPresencePluginKey, profiles),
     );
+  }
+
+  get editorContext() {
+    return this._editorContext;
+  }
+
+  set editorContext(context: EditorContext) {
+    this._editorContext = context || {};
+    this.queueMaybeStartEditor();
   }
 
   connectedCallback() {
@@ -503,16 +508,25 @@ class DocumentView extends HTMLElement {
     });
 
     this.attachListeners();
-    this.maybeStartEditor();
+    this.queueMaybeStartEditor();
   }
 
   attributeChangedCallback() {
-    this.maybeStartEditor();
+    this.queueMaybeStartEditor();
+  }
+
+  private queueMaybeStartEditor() {
+    if (this.startEditorQueued) return;
+    this.startEditorQueued = true;
+    queueMicrotask(() => {
+      this.startEditorQueued = false;
+      this.maybeStartEditor();
+    });
   }
 
   private maybeStartEditor() {
     const shadow = this.root;
-    if (!this.isConnected || !shadow || this.editor || !this.hasEditorConfig()) {
+    if (!this.isConnected || !shadow || this.tiptapEditor || !this.hasEditorConfig()) {
       return;
     }
 
@@ -520,7 +534,7 @@ class DocumentView extends HTMLElement {
     shadow.append(this.element);
 
     this.element.className = "tiptap";
-    this.editor = createEditor(
+    this.tiptapEditor = createEditor(
       this.element,
       this.collaborationDocument,
       this.editorContext,
@@ -531,12 +545,12 @@ class DocumentView extends HTMLElement {
       window.dispatchEvent(new Event("editor-update"));
     };
 
-    this.editor.on("selectionUpdate", handleUpdate);
-    this.editor.on("update", handleUpdate);
+    this.tiptapEditor.on("selectionUpdate", handleUpdate);
+    this.tiptapEditor.on("update", handleUpdate);
 
-    window.__editor = this.editor;
+    window.__editor = this.tiptapEditor;
 
-    return this.editor;
+    return this.tiptapEditor;
   }
 
   private hasEditorConfig() {
@@ -561,7 +575,7 @@ class DocumentView extends HTMLElement {
     this.root?.addEventListener(
       "input",
       (_e) => {
-        if (this.editor) return; // we ignore checkbox changes in read mode only
+        if (this.tiptapEditor) return; // we ignore checkbox changes in read mode only
 
         window.dispatchEvent(new CustomEvent("edit-mode-start"));
       },
