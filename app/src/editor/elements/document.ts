@@ -10,11 +10,13 @@ import { Dropcursor } from "@tiptap/extensions";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import * as Y from "yjs";
-import {
-  relativePositionToAbsolutePosition,
-  ySyncPluginKey,
-} from "y-prosemirror";
+import { relativePositionToAbsolutePosition } from "y-prosemirror";
 import type { IndexedDBStore } from "../../utils/storage.ts";
+import {
+  colorForPresenceProfile,
+  findYSyncState,
+  type DocumentPresenceProfile,
+} from "../collaboration.ts";
 import { ExtensionSuggestions } from "../extensions/ExtensionSuggestions.ts";
 import { InlineSuggestions } from "../extensions/InlineSuggestions.ts";
 import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
@@ -33,60 +35,26 @@ type EditorStoreEntry = {
   createdAt: number;
 };
 
-type DocumentPresenceState = {
-  kind: "editor";
-  focused?: boolean;
-  selection?: {
-    anchor?: unknown;
-    head?: unknown;
-  } | null;
-};
-
-export type DocumentPresenceProfile = {
-  clientId: string;
-  user: {
-    id: string;
-    name: string;
-    color?: string | null;
-  };
-  state: DocumentPresenceState | null;
-};
-
 const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
   "document-presence",
 );
-
-function safePresenceColor(profile: DocumentPresenceProfile) {
-  if (profile.user.color && /^#[0-9a-f]{3,8}$/i.test(profile.user.color)) {
-    return profile.user.color;
-  }
-
-  let hash = 0;
-  const seed = profile.user.id || profile.clientId;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
-}
 
 function relativePresencePositionToAbsolute(
   state: EditorState,
   ydoc: Y.Doc,
   position: unknown,
 ) {
-  const syncState = ySyncPluginKey.getState(state);
+  const syncState = findYSyncState(state);
   const mapping = syncState?.binding?.mapping;
   if (!mapping || !position) {
     return null;
   }
 
   try {
-    const fragment = ydoc.getXmlFragment("default");
     const relativePosition = Y.createRelativePositionFromJSON(position as never);
     return relativePositionToAbsolutePosition(
       ydoc,
-      fragment,
+      syncState.type,
       relativePosition,
       mapping,
     );
@@ -146,10 +114,10 @@ function createDocumentPresenceExtension(ydoc: Y.Doc) {
                 );
                 if (anchor === null || head === null) continue;
 
-                const maxPos = state.doc.content.size;
+                const maxPos = Math.max(state.doc.content.size - 1, 0);
                 const from = Math.max(0, Math.min(anchor, head, maxPos));
                 const to = Math.max(0, Math.min(Math.max(anchor, head), maxPos));
-                const color = safePresenceColor(profile);
+                const color = colorForPresenceProfile(profile);
 
                 if (from !== to) {
                   decorations.push(
@@ -158,9 +126,9 @@ function createDocumentPresenceExtension(ydoc: Y.Doc) {
                       to,
                       {
                         class: "ProseMirror-yjs-selection",
-                        style: `background-color: color-mix(in srgb, ${color} 28%, transparent);`,
+                        style: `background-color: ${color}70;`,
                       },
-                      { inclusiveStart: false, inclusiveEnd: false },
+                      { inclusiveStart: false, inclusiveEnd: true },
                     ),
                   );
                 }
@@ -169,7 +137,7 @@ function createDocumentPresenceExtension(ydoc: Y.Doc) {
                   Decoration.widget(
                     Math.max(0, Math.min(head, maxPos)),
                     () => createPresenceWidget(profile, color),
-                    { side: -1, key: `presence:${profile.clientId}` },
+                    { side: 10, key: `presence:${profile.clientId}` },
                   ),
                 );
               }

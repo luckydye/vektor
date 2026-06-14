@@ -12,17 +12,18 @@ import {
 } from "vue";
 import { clockIcon } from "~/src/assets/icons.ts";
 import * as Y from "yjs";
-import {
-  absolutePositionToRelativePosition,
-  ySyncPluginKey,
-} from "y-prosemirror";
+import { absolutePositionToRelativePosition } from "y-prosemirror";
 import { api } from "../api/client.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
-import type { DocumentPresenceProfile } from "../editor/elements/document.ts";
+import {
+  findYSyncState,
+  getPresenceColor,
+  type DocumentPresenceProfile,
+} from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
@@ -91,6 +92,7 @@ let editorPresenceHandle: {
   update: (state: DocumentPresenceState) => void;
   leave: () => void;
 } | null = null;
+let lastEditorPresenceState = "";
 const editorPresenceClientId =
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -201,15 +203,6 @@ async function setupEditorBridge() {
   window.dispatchEvent(new CustomEvent("document:edit"));
 }
 
-function getPresenceColor(seed: string) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
-}
-
 function editorPresenceState(): DocumentPresenceState {
   const editor = getEditor();
   const view = editorViewEl.value;
@@ -222,24 +215,23 @@ function editorPresenceState(): DocumentPresenceState {
     return { kind: "editor", focused: false, selection: null };
   }
 
-  const syncState = ySyncPluginKey.getState(editor.state);
+  const syncState = findYSyncState(editor);
   const mapping = syncState?.binding?.mapping;
   if (!mapping) {
     return { kind: "editor", focused: false, selection: null };
   }
 
   try {
-    const fragment = view.collaborationDocument.getXmlFragment("default");
     const { anchor, head } = editor.state.selection;
     return {
       kind: "editor",
       focused,
       selection: {
         anchor: Y.relativePositionToJSON(
-          absolutePositionToRelativePosition(anchor, fragment, mapping),
+          absolutePositionToRelativePosition(anchor, syncState.type, mapping),
         ),
         head: Y.relativePositionToJSON(
-          absolutePositionToRelativePosition(head, fragment, mapping),
+          absolutePositionToRelativePosition(head, syncState.type, mapping),
         ),
       },
     };
@@ -259,7 +251,14 @@ function renderEditorPresence() {
 }
 
 function updateEditorPresence() {
-  editorPresenceHandle?.update(editorPresenceState());
+  if (!editorPresenceHandle) return;
+
+  const state = editorPresenceState();
+  const serialized = JSON.stringify(state);
+  if (serialized === lastEditorPresenceState) return;
+
+  lastEditorPresenceState = serialized;
+  editorPresenceHandle.update(state);
 }
 
 function clearEditorPresence() {
@@ -270,6 +269,7 @@ function clearEditorPresence() {
   leaveEditorPresence?.();
   leaveEditorPresence = null;
   editorPresenceHandle = null;
+  lastEditorPresenceState = "";
   remoteEditorPresences.clear();
   renderEditorPresence();
 }
@@ -311,6 +311,7 @@ async function setupEditorPresence() {
     editorPresenceState(),
   );
   leaveEditorPresence = editorPresenceHandle.leave;
+  lastEditorPresenceState = JSON.stringify(editorPresenceState());
   editorPresenceTimer = setInterval(updateEditorPresence, 120);
 }
 
