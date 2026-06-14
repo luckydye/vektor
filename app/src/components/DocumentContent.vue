@@ -29,6 +29,7 @@ import { Actions } from "../utils/actions.ts";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { type PresenceEnvelope, realtimeTopics } from "../utils/realtime.ts";
+import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import Canvas from "./Canvas.vue";
 import CommentManager from "./CommentManager.vue";
 import DiffView from "./DiffView.vue";
@@ -240,7 +241,6 @@ async function setupEditorBridge() {
   if (!documentViewEl.value) return;
 
   if (props.documentId && !leaveEditorCollaboration) {
-    const { joinYjsRoom } = await import("../utils/sync.ts");
     leaveEditorCollaboration = joinYjsRoom(
       props.spaceId,
       props.documentId,
@@ -330,7 +330,6 @@ function clearEditorPresence() {
 async function setupEditorPresence() {
   if (!props.documentId || !user.value || editorPresenceHandle) return;
 
-  const { joinPresenceRoom } = await import("../utils/sync.ts");
   if (!props.documentId || !user.value || editorPresenceHandle) return;
 
   editorPresenceHandle = joinPresenceRoom<DocumentPresenceState>(
@@ -479,8 +478,6 @@ function handleInlineSuggestionAccept(
 watch(isEditing, (editing) => {
   if (!editing) {
     unregisterEditorActions();
-    leaveEditorCollaboration?.();
-    leaveEditorCollaboration = null;
     clearEditorPresence();
     documentViewEl.value?.destroyEditor();
     nextTick(renderReadView);
@@ -613,6 +610,16 @@ onMounted(() => {
 
   if (props.documentType === "csv") {
     import("../editor/elements/table-view.ts").then(renderTableView);
+  }
+
+  // Pre-warm the ydoc so it's populated before the editor starts on first edit.
+  // Keeping the room open in read mode is fine — it stays current with remote changes.
+  if (props.documentId && documentViewEl.value && !leaveEditorCollaboration) {
+    leaveEditorCollaboration = joinYjsRoom(
+      props.spaceId,
+      props.documentId,
+      documentViewEl.value.collaborationDocument,
+    );
   }
 
   if (props.initialEditMode) {
