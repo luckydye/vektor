@@ -197,9 +197,9 @@ onUnmounted(() => {
                 )" />
             </button>
             
-            <div class="flex flex-col bg-background/90 rounded-lg backdrop-blur-xl overflow-hidden border border-neutral-100 w-full h-full">
+            <div class="before:backdrop-surface-blur flex flex-col bg-background/90 rounded-lg relative overflow-hidden border border-neutral-100 w-full h-full">
                 <!-- Navigation -->
-                <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
+                <wiki-scroll name="navigation" class="z-1 flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
                     <Navigation />
                 </wiki-scroll>
 

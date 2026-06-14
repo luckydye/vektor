@@ -265,3 +265,10 @@
 @utility text-shadow {
   text-shadow: 2px 2px 0px var(--color-neutral-50);
 }
+
+@utility backdrop-surface-blur {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  backdrop-filter: blur(28px);
+}
