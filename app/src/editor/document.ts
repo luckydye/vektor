@@ -11,7 +11,6 @@ import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import * as Y from "yjs";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
-import type { IndexedDBStore } from "../utils/storage.ts";
 import {
   colorForPresenceProfile,
   findYSyncState,
@@ -28,12 +27,6 @@ declare global {
     __editor?: Editor;
   }
 }
-
-type EditorStoreEntry = {
-  documentId: string;
-  content: string;
-  createdAt: number;
-};
 
 const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
   "document-presence",
@@ -361,9 +354,7 @@ function createEditor(
 
   editor = new Editor({
     element: editorElement,
-    enableCoreExtensions: {
-      keymap: false,
-    },
+    enableCoreExtensions: true,
     content: html,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
@@ -441,7 +432,6 @@ function createEditor(
 class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   private tiptapEditor?: Editor;
-  store?: IndexedDBStore<EditorStoreEntry>;
   private ydoc?: Y.Doc;
   private _editorContext: EditorContext = {};
   private startEditorQueued = false;

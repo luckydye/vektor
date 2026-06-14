@@ -2,7 +2,6 @@
 import { computed } from "vue";
 import { useContributors } from "../composeables/useContributors.ts";
 import Avatar from "./Avatar.vue";
-import Tooltip from "./Tooltip.vue";
 
 interface Props {
   documentId?: string;
@@ -25,8 +24,7 @@ const remainingCount = computed(() => {
 </script>
 
 <template>
-  <Tooltip v-if="!isLoading && !error && contributors.length > 0" text="Authors" position="top">
-    <div class="flex items-center gap-2">
+  <div v-if="!isLoading && !error && contributors.length > 0" class="flex items-center gap-2" data-tooltip="Authors">
       <div class="flex items-center">
         <div v-for="(contributor, index) in displayContributors" :key="contributor.id" class="relative" :style="{
           marginLeft: index > 0 ? `-18px` : '0',
@@ -45,8 +43,7 @@ const remainingCount = computed(() => {
           +{{ remainingCount }}
         </div>
       </div>
-    </div>
-  </Tooltip>
+  </div>
 </template>
 
 <style scoped>

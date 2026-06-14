@@ -2569,8 +2569,6 @@ onUnmounted(() => {
   --canvas-tool-active-border: #bfdbfe;
   --canvas-tool-active-text: #1d4ed8;
   --canvas-divider-color: #e5e7eb;
-  --canvas-tooltip-bg: #111827;
-  --canvas-tooltip-text: #f9fafb;
   --canvas-grid-minor: rgba(15, 23, 42, 0.07);
   --canvas-grid-major: rgba(15, 23, 42, 0.13);
   --canvas-ink-color: #111827;
@@ -2614,8 +2612,6 @@ onUnmounted(() => {
     --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
     --canvas-tool-active-text: #bfdbfe;
     --canvas-divider-color: rgba(255, 255, 255, 0.12);
-    --canvas-tooltip-bg: #e5e7eb;
-    --canvas-tooltip-text: #111827;
     --canvas-grid-minor: rgba(255, 255, 255, 0.07);
     --canvas-grid-major: rgba(255, 255, 255, 0.13);
     --canvas-ink-color: #f3f4f6;
@@ -2653,8 +2649,6 @@ onUnmounted(() => {
   --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
   --canvas-tool-active-text: #bfdbfe;
   --canvas-divider-color: rgba(255, 255, 255, 0.12);
-  --canvas-tooltip-bg: #e5e7eb;
-  --canvas-tooltip-text: #111827;
   --canvas-grid-minor: rgba(255, 255, 255, 0.07);
   --canvas-grid-major: rgba(255, 255, 255, 0.13);
   --canvas-ink-color: #f3f4f6;
@@ -2743,45 +2737,6 @@ onUnmounted(() => {
   color: var(--canvas-text);
 }
 
-/* Hover tooltip that escapes the toolbar (above the button). */
-.canvas-tool[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 9px);
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
-  padding: 5px 9px;
-  border-radius: 7px;
-  background: var(--canvas-tooltip-bg);
-  color: var(--canvas-tooltip-text);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.canvas-tool[data-tooltip]::before {
-  content: "";
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
-  border: 5px solid transparent;
-  border-top-color: var(--canvas-tooltip-bg);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.canvas-tool[data-tooltip]:hover::after,
-.canvas-tool[data-tooltip]:hover::before {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
 
 .canvas-tool.active,
 .canvas-tool.primary {

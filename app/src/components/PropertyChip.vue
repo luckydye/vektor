@@ -5,7 +5,6 @@ import Icon from "./Icon.vue";
 import type { Property } from "./PropertyPopover.vue";
 import type { SelectMenuItem } from "./SelectMenu.vue";
 import SelectMenu from "./SelectMenu.vue";
-import Tooltip from "./Tooltip.vue";
 import "@sv/elements/blur";
 import "@sv/elements/calendar";
 import { plusIcon } from "~/src/assets/icons.ts";
@@ -118,19 +117,20 @@ onMounted(() => {
 
 <template>
   <div class="relative">
-    <Tooltip v-if="property" :text="property.name" position="top">
-      <button
-        type="button"
-        :class="{
-          'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
-          'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
-          'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
-          'py-1': true,
-          'cursor-pointer': property !== null,
-          'cursor-default': property === null,
-        }"
-        @click="handleClick"
-      >
+    <button
+      v-if="property"
+      type="button"
+      :data-tooltip="property.name"
+      :class="{
+        'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
+        'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
+        'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
+        'py-1': true,
+        'cursor-pointer': property !== null,
+        'cursor-default': property === null,
+      }"
+      @click="handleClick"
+    >
         <div v-if="icon" v-html="icon" />
         <div v-if="!icon" class="w-[18px] h-[18px] rounded-sm flex items-center justify-center bg-primary-500" />
         <span
@@ -142,8 +142,7 @@ onMounted(() => {
         >
           {{ label }}
         </span>
-      </button>
-    </Tooltip>
+    </button>
 
     <button
       v-else

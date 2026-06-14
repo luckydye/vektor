@@ -311,8 +311,8 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                 });
 
                 decorations.push(
-                  Decoration.widget(lastNodePos + 1, widget, {
-                    side: 0,
+                  Decoration.widget(doc.content.size, widget, {
+                    side: 1,
                     key: "trailing-plus-button",
                   }),
                 );
