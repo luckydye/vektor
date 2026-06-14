@@ -11,12 +11,12 @@ import "../styles/index.css";
   </head>
 
   <body class="bg-neutral-10 text-neutral-900">
-    <main class="min-h-screen p-12">
+    <main class="p-12 box-border">
       <document-toolbar></document-toolbar>
       <document-view
         id="editor-sandbox"
-        space-id="editor-sandbox"
-        class="block min-h-screen"
+        editor
+        class="block"
       ></document-view>
       <document-statusbar
         class="block fixed left-0 right-0 bottom-0 px-10 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"
@@ -37,9 +37,47 @@ import "../styles/index.css";
       import "../editor/elements/drawer.ts";
       import "../editor/elements/shortcut.ts";
       import "../editor/elements/toolbar.ts";
-      import "../editor/elements/statusbar.ts";
+      import "../elements/document-statusbar.ts";
       import "../editor/elements/table-view.ts";
       import "../editor/elements/cake.ts";
+      import { Actions } from "../utils/actions.ts";
+      import {
+        registerFormattingActions,
+        unregisterFormattingActions,
+      } from "../utils/formattingActions.ts";
+
+      function getToolbar() {
+        return document.querySelector("document-toolbar");
+      }
+
+      function registerEditorSandboxActions() {
+        registerFormattingActions();
+        Actions.register("toolbar:dismiss", {
+          title: "Dismiss toolbar",
+          description: "Hide the editor toolbar",
+          group: "formatting",
+          run: async () => {
+            getToolbar()?.dismiss?.();
+          },
+        });
+        Actions.mapShortcut("escape", "toolbar:dismiss");
+        Actions.subscribe("format:color:text:open", () => {
+          getToolbar()?.openTextColorPicker?.();
+        });
+        Actions.subscribe("format:color:background:open", () => {
+          getToolbar()?.openBackgroundColorPicker?.();
+        });
+
+        window.addEventListener(
+          "beforeunload",
+          () => {
+            unregisterFormattingActions();
+            Actions.unmapShortcut("escape", "toolbar:dismiss");
+            Actions.unregister("toolbar:dismiss");
+          },
+          { once: true },
+        );
+      }
 
       async function exposeEditorSandbox() {
         await customElements.whenDefined("document-view");
@@ -48,6 +86,7 @@ import "../styles/index.css";
         if (!editorEl) return;
 
         window.dispatchEvent(new CustomEvent("document:edit"));
+        registerEditorSandboxActions();
       }
 
       if (document.readyState === "loading") {

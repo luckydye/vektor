@@ -28,11 +28,17 @@ import docStyles from "../styles/document.css?inline";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { realtimeTopics, type PresenceEnvelope } from "../utils/realtime.ts";
+import { Actions } from "../utils/actions.ts";
 import Canvas from "./Canvas.vue";
 import CommentManager from "./CommentManager.vue";
 import DiffView from "./DiffView.vue";
 import WorkflowView from "./WorkflowView.vue";
 import "../editor/elements/toolbar.ts";
+import "../elements/document-statusbar.ts";
+import {
+  registerFormattingActions,
+  unregisterFormattingActions,
+} from "../utils/formattingActions.ts";
 
 const props = defineProps({
   documentId: {
@@ -85,9 +91,16 @@ const editorViewEl = ref(null);
 const tableViewEl = ref(null);
 const isMounted = ref(false);
 const getEditor = () => globalThis.__editor;
+type DocumentToolbarElement = HTMLElement & {
+  dismiss?: () => void;
+  openTextColorPicker?: () => void;
+  openBackgroundColorPicker?: () => void;
+};
 let leaveEditorCollaboration: (() => void) | null = null;
 let leaveEditorPresence: (() => void) | null = null;
 let editorPresenceTimer: ReturnType<typeof setInterval> | null = null;
+let editorActionsRegistered = false;
+let leaveEditorActionSubscriptions: Array<() => void> = [];
 let editorPresenceHandle: {
   update: (state: DocumentPresenceState) => void;
   leave: () => void;
@@ -120,6 +133,48 @@ const suggestionPatches = ref<Record<number, string>>({});
 
 const AppView = defineAsyncComponent(() => import("./AppView.vue"));
 
+function getDocumentToolbar() {
+  return document.querySelector<DocumentToolbarElement>("document-toolbar");
+}
+
+function registerEditorActions() {
+  if (editorActionsRegistered) return;
+
+  registerFormattingActions();
+  Actions.register("toolbar:dismiss", {
+    title: "Dismiss toolbar",
+    description: "Hide the editor toolbar",
+    group: "formatting",
+    run: async () => {
+      getDocumentToolbar()?.dismiss?.();
+    },
+  });
+  Actions.mapShortcut("escape", "toolbar:dismiss");
+
+  leaveEditorActionSubscriptions = [
+    Actions.subscribe("format:color:text:open", () => {
+      getDocumentToolbar()?.openTextColorPicker?.();
+    }),
+    Actions.subscribe("format:color:background:open", () => {
+      getDocumentToolbar()?.openBackgroundColorPicker?.();
+    }),
+  ];
+  editorActionsRegistered = true;
+}
+
+function unregisterEditorActions() {
+  if (!editorActionsRegistered) return;
+
+  unregisterFormattingActions();
+  Actions.unmapShortcut("escape", "toolbar:dismiss");
+  Actions.unregister("toolbar:dismiss");
+  for (const leave of leaveEditorActionSubscriptions) {
+    leave();
+  }
+  leaveEditorActionSubscriptions = [];
+  editorActionsRegistered = false;
+}
+
 function handleEditModeStart() {
   if (!viewingRevision.value && !props.readonly) {
     isEditing.value = true;
@@ -128,6 +183,7 @@ function handleEditModeStart() {
 
 async function handleEditModeCancel() {
   cancelDebounce();
+  unregisterEditorActions();
   isEditingReady.value = false;
   isEditing.value = false;
 
@@ -196,6 +252,7 @@ async function setupEditorBridge() {
     );
   }
   await setupEditorPresence();
+  registerEditorActions();
   window.dispatchEvent(
     new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }),
   );
@@ -425,6 +482,7 @@ function handleInlineSuggestionAccept(
 
 watch(isEditing, (editing) => {
   if (!editing) {
+    unregisterEditorActions();
     leaveEditorCollaboration?.();
     leaveEditorCollaboration = null;
     clearEditorPresence();
@@ -566,6 +624,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  unregisterEditorActions();
   leaveEditorCollaboration?.();
   clearEditorPresence();
   window.removeEventListener("edit-mode-start", handleEditModeStart);
@@ -772,10 +831,11 @@ useSync(
   >
     <document-view
       ref="editorViewEl"
-      :space-id="props.spaceId"
-      :document-id="props.documentId"
-      :initial-html="renderedHtml"
-    ></document-view>
+      editor
+      :editor-context.prop="{ spaceId: props.spaceId, documentId: props.documentId }"
+    >
+      <template v-html="renderedHtml"></template>
+    </document-view>
   </div>
   
   <document-statusbar

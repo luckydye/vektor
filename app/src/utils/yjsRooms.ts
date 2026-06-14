@@ -42,7 +42,7 @@ export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.D
   if (!dbDoc?.content) return new Y.Doc();
   if (dbDoc.type === "canvas") return loadCanvasYDoc(dbDoc.content);
 
-  const extensions = contentExtensions(spaceId, documentId);
+  const extensions = contentExtensions({ spaceId, documentId });
   const json = generateJSON(dbDoc.content, extensions);
   const schema = getSchema(extensions);
   const pmDoc = Node.fromJSON(schema, json);
@@ -169,7 +169,7 @@ function normalizeHtmlContent(
 ): string {
   if (!content.trim()) return content;
   try {
-    const extensions = contentExtensions(spaceId, documentId);
+    const extensions = contentExtensions({ spaceId, documentId });
     const json = generateJSON(content, extensions) as {
       type: string;
       content?: unknown[];
@@ -201,7 +201,7 @@ export function getLiveDocumentContent(
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (room?.doc) {
     if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(room.doc));
-    return toCleanHtml(room.doc, contentExtensions(spaceId, documentId));
+    return toCleanHtml(room.doc, contentExtensions({ spaceId, documentId }));
   }
   if (type === "canvas" || isJsonContent(persisted)) return persisted;
   return normalizeHtmlContent(spaceId, documentId, persisted);
@@ -459,7 +459,7 @@ export async function transformDocumentContent(
     return { content: JSON.stringify(canvasSnapshotFromDoc(doc)), live: true };
   }
 
-  const extensions = contentExtensions(spaceId, documentId);
+  const extensions = contentExtensions({ spaceId, documentId });
   const schema = getSchema(extensions);
 
   const currentHtml = toCleanHtml(doc, extensions);

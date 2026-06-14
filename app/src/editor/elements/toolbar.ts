@@ -41,17 +41,145 @@ import {
   textColorIcon,
   underlineIcon,
 } from "../../assets/icons.ts";
-import {
-  getImageAttributes,
-  isImageSelected,
-  resetImageSize,
-  toggleImageFullWidth,
-} from "../commands/imageCommands.ts";
-import { Actions } from "../../utils/actions.ts";
-import {
-  registerFormattingActions,
-  unregisterFormattingActions,
-} from "../../utils/formattingActions.ts";
+
+/**
+ * Resolve the currently selected image node, or null if no image is selected
+ */
+function getSelectedImageNode(editor: Editor) {
+  const { state } = editor;
+  const { selection } = state;
+  const { $from } = selection;
+
+  const node =
+    $from.parent.type.name === "image" ? $from.parent : state.doc.nodeAt(selection.from);
+
+  return node?.type.name === "image" ? node : null;
+}
+
+/**
+ * Toggle full-width display for the currently selected image
+ * Switches between full-width (100%) and original size
+ *
+ * @example
+ * // Toggle full-width on/off
+ * toggleImageFullWidth(editor);
+ *
+ * @example
+ * // Use in a toolbar button
+ * <button onclick={() => toggleImageFullWidth(globalThis.__editor)}>
+ *   Toggle Full Width
+ * </button>
+ *
+ * @example
+ * // Use with keyboard shortcut (Alt + F)
+ * editor.on('keydown', (event) => {
+ *   if (event.altKey && event.key === 'f' && isImageSelected(editor)) {
+ *     event.preventDefault();
+ *     toggleImageFullWidth(editor);
+ *   }
+ * });
+ */
+function toggleImageFullWidth(editor: Editor) {
+  const node = getSelectedImageNode(editor);
+
+  if (!node) {
+    return false;
+  }
+
+  const currentDisplay = node.attrs.display;
+  const newDisplay = currentDisplay === "full" ? null : "full";
+
+  return editor.commands.updateAttributes("image", {
+    display: newDisplay,
+    width: null, // Clear width when setting display mode
+  });
+}
+
+/**
+ * Reset image to its original size (removes width and display attributes)
+ *
+ * @example
+ * resetImageSize(editor);
+ *
+ * @example
+ * // Use with keyboard shortcut (Alt + R)
+ * editor.on('keydown', (event) => {
+ *   if (event.altKey && event.key === 'r' && isImageSelected(editor)) {
+ *     event.preventDefault();
+ *     resetImageSize(editor);
+ *   }
+ * });
+ */
+function resetImageSize(editor: Editor) {
+  return editor.commands.updateAttributes("image", {
+    width: null,
+    display: null,
+  });
+}
+
+/**
+ * Check if the currently selected node is an image
+ * Useful for enabling/disabling image-related toolbar buttons
+ *
+ * @example
+ * if (isImageSelected(editor)) {
+ *   console.log("An image is selected!");
+ * }
+ *
+ * @example
+ * // Disable toolbar button when no image is selected
+ * <button
+ *   disabled={!isImageSelected(editor)}
+ *   onclick={() => toggleImageFullWidth(editor)}
+ * >
+ *   Full Width
+ * </button>
+ */
+export function isImageSelected(editor: Editor): boolean {
+  return getSelectedImageNode(editor) !== null;
+}
+
+/**
+ * Get the current image attributes (width, display, src, etc.)
+ * Returns null if no image is selected
+ *
+ * @example
+ * const attrs = getImageAttributes(editor);
+ * if (attrs) {
+ *   console.log("Width:", attrs.width);
+ *   console.log("Display:", attrs.display);
+ *   console.log("Source:", attrs.src);
+ * }
+ *
+ * @example
+ * // Show current image dimensions in UI
+ * const attrs = getImageAttributes(editor);
+ * const statusText = attrs
+ *   ? `${attrs.display === 'full' ? 'Full Width' : attrs.width || 'Auto'}`
+ *   : 'No image selected';
+ *
+ * @example
+ * // Programmatically resize all images in document
+ * function resizeAllImages(editor, width) {
+ *   const { state } = editor;
+ *   let tr = state.tr;
+ *
+ *   state.doc.descendants((node, pos) => {
+ *     if (node.type.name === 'image') {
+ *       tr = tr.setNodeMarkup(pos, null, {
+ *         ...node.attrs,
+ *         width: width,
+ *         display: null
+ *       });
+ *     }
+ *   });
+ *
+ *   editor.view.dispatch(tr);
+ * }
+ */
+export function getImageAttributes(editor: Editor) {
+  return getSelectedImageNode(editor)?.attrs ?? null;
+}
 
 declare global {
   interface Window {
@@ -76,9 +204,6 @@ if (
     "document-toolbar",
     class DocumentToolbarElement extends HTMLElement {
       private root: ShadowRoot;
-      private unsubscribeTextColor: (() => void) | null = null;
-      private unsubscribeBgColor: (() => void) | null = null;
-      private registeredActions = false;
       private shouldShow = false;
       private interacting = false;
       private secondaryOpen = false;
@@ -94,6 +219,7 @@ if (
       private copiedRow: unknown = null;
       private floatingStyle = "";
       private tableStyle = "";
+      private dismissedSelectionKey: string | null = null;
 
       constructor() {
         super();
@@ -107,18 +233,10 @@ if (
         window.addEventListener("edit-mode-cancel", this.handleEditModeEnd);
         window.addEventListener("editor-update", this.update);
         window.addEventListener("resize", this.updatePosition, { passive: true });
-        document.addEventListener("keydown", this.handleKeyDown);
         document.addEventListener("pointerup", this.handlePointerUp);
         document.addEventListener("scroll", this.updatePosition, {
           passive: true,
           capture: true,
-        });
-
-        this.unsubscribeTextColor = Actions.subscribe("format:color:text:open", () => {
-          this.textColorInput?.click();
-        });
-        this.unsubscribeBgColor = Actions.subscribe("format:color:background:open", () => {
-          this.bgColorInput?.click();
         });
 
         this.handleEditorAvailable();
@@ -126,23 +244,14 @@ if (
       }
 
       disconnectedCallback() {
-        if (this.registeredActions) {
-          unregisterFormattingActions();
-          this.registeredActions = false;
-        }
-
         window.removeEventListener("document:edit", this.handleEditorAvailable);
         window.removeEventListener("editor-ready", this.handleEditorAvailable);
         window.removeEventListener("edit-mode-start", this.handleEditorAvailable);
         window.removeEventListener("edit-mode-cancel", this.handleEditModeEnd);
         window.removeEventListener("editor-update", this.update);
         window.removeEventListener("resize", this.updatePosition);
-        document.removeEventListener("keydown", this.handleKeyDown);
         document.removeEventListener("pointerup", this.handlePointerUp);
         document.removeEventListener("scroll", this.updatePosition);
-
-        this.unsubscribeTextColor?.();
-        this.unsubscribeBgColor?.();
       }
 
       private get menu() {
@@ -166,10 +275,6 @@ if (
       }
 
       private handleEditorAvailable = () => {
-        if (!this.registeredActions && editorReady(getEditor())) {
-          registerFormattingActions();
-          this.registeredActions = true;
-        }
         this.update();
       };
 
@@ -179,20 +284,29 @@ if (
         this.secondaryOpen = false;
         this.interacting = false;
         this.imageActive = false;
-        if (this.registeredActions) {
-          unregisterFormattingActions();
-          this.registeredActions = false;
-        }
+        this.dismissedSelectionKey = null;
         this.paint();
       };
 
-      private handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key !== "Escape") return;
+      dismiss() {
+        const editor = getEditor();
+        if (editorReady(editor)) {
+          this.dismissedSelectionKey = this.toolbarSelectionKey(editor);
+        }
         this.shouldShow = false;
+        this.tableActive = false;
         this.secondaryOpen = false;
         this.interacting = false;
         this.paint();
-      };
+      }
+
+      openTextColorPicker() {
+        this.textColorInput?.click();
+      }
+
+      openBackgroundColorPicker() {
+        this.bgColorInput?.click();
+      }
 
       private handlePointerUp = (event: PointerEvent) => {
         const target = event.target;
@@ -226,6 +340,10 @@ if (
         this.updateCellBackground(editor);
 
         const wasShowing = this.shouldShow;
+        const selectionKey = this.toolbarSelectionKey(editor);
+        if (this.dismissedSelectionKey && this.dismissedSelectionKey !== selectionKey) {
+          this.dismissedSelectionKey = null;
+        }
         let nextShouldShow = false;
 
         if (this.inColumnLayout || this.imageActive) {
@@ -234,6 +352,11 @@ if (
           const { from, to } = editor.state.selection;
           const selectedText = editor.state.doc.textBetween(from, to, " ");
           nextShouldShow = from !== to && selectedText.trim().length > 0;
+        }
+
+        if (nextShouldShow && this.dismissedSelectionKey === selectionKey) {
+          nextShouldShow = false;
+          this.tableActive = false;
         }
 
         if (!wasShowing || !nextShouldShow) {
@@ -247,6 +370,17 @@ if (
 
         this.updatePosition();
       };
+
+      private toolbarSelectionKey(editor: Editor) {
+        const { from, to } = editor.state.selection;
+        return [
+          from,
+          to,
+          editor.isActive("columnLayout") ? "columns" : "",
+          isImageSelected(editor) ? "image" : "",
+          editor.isActive("table") ? "table" : "",
+        ].join(":");
+      }
 
       private updatePosition = () => {
         const editor = getEditor();
@@ -672,6 +806,7 @@ if (
               width: 1.5em;
               height: 1.5em;
               display: inline-flex;
+              align-items: center;
             }
 
             .icon-overlay,
@@ -720,37 +855,12 @@ if (
               pointer-events: none;
             }
 
-            .heading-dropdown {
-              z-index: 9999;
-              width: 140px;
-              padding: 0.25rem 0;
-              border: 1px solid var(--color-neutral-100, #f5f5f5);
-              border-radius: 0.375rem;
-              background: var(--color-background, white);
-              box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
-            }
-
             a-popover-trigger {
               display: inline-flex;
             }
 
             a-popover {
               display: block;
-            }
-
-            .heading-option {
-              width: 100%;
-              border: 0;
-              padding: 0.375rem 0.75rem;
-              text-align: left;
-              background: transparent;
-              color: inherit;
-              cursor: pointer;
-            }
-
-            .heading-option:hover,
-            .heading-option.active {
-              background: var(--color-neutral-100, #f5f5f5);
             }
 
             @media (max-width: 1023px) {
@@ -827,29 +937,9 @@ if (
                 ${this.button(this.icon(listCheckIcon), "Task List", () => this.chain()?.toggleTaskList().run(), {
                   active: this.isActive("taskList"),
                 })}
-                ${this.button(this.icon(indentIcon), "Indent List Item", () => this.indentListItem(), {
-                  disabled: !this.canIndent(),
-                })}
-                ${this.button(this.icon(outdentIcon), "Outdent List Item", () => this.outdentListItem(), {
-                  disabled: !this.canOutdent(),
-                })}
               </div>
               <div class="menu-divider"></div>
 
-              <div class="menu-group">
-                ${this.button(this.icon(alignLeftIcon), "Align Left", () => this.chain()?.setTextAlign("left").run(), {
-                  active: this.isActive({ textAlign: "left" }),
-                })}
-                ${this.button(this.icon(alignCenterIcon), "Align Center", () => this.chain()?.setTextAlign("center").run(), {
-                  active: this.isActive({ textAlign: "center" }),
-                })}
-                ${this.button(this.icon(alignRightIcon), "Align Right", () => this.chain()?.setTextAlign("right").run(), {
-                  active: this.isActive({ textAlign: "right" }),
-                })}
-                ${this.button(this.icon(alignJustifyIcon), "Justify", () => this.chain()?.setTextAlign("justify").run(), {
-                  active: this.isActive({ textAlign: "justify" }),
-                })}
-              </div>
               <div class="menu-group">
                 ${this.button(this.icon(moreIcon), "More Formatting", () => {
                   this.secondaryOpen = !this.secondaryOpen;
@@ -901,6 +991,16 @@ if (
                     <div class="menu-divider"></div>
 
                     <div class="menu-group">
+                      ${this.button(this.icon(indentIcon), "Indent List Item", () => this.indentListItem(), {
+                        disabled: !this.canIndent(),
+                      })}
+                      ${this.button(this.icon(outdentIcon), "Outdent List Item", () => this.outdentListItem(), {
+                        disabled: !this.canOutdent(),
+                      })}
+                    </div>
+                    <div class="menu-divider"></div>
+
+                    <div class="menu-group">
                       <div class="color-picker-wrapper">
                         ${this.button(
                           html`${this.icon(textColorIcon)}
@@ -909,7 +1009,12 @@ if (
                           () => this.textColorInput?.click(),
                           { active: this.textColor !== "#000000" },
                         )}
-                        <input data-text-color type="color" .value=${this.textColor} @input=${this.onTextColor} />
+                        <input
+                          data-text-color
+                          type="color"
+                          .value=${this.textColor}
+                          @input=${(event: Event) => this.onTextColor(event)}
+                        />
                       </div>
                       <div class="color-picker-wrapper">
                         ${this.button(
@@ -923,7 +1028,7 @@ if (
                           data-bg-color
                           type="color"
                           .value=${this.bgColor === "transparent" ? "#ffff00" : this.bgColor}
-                          @input=${this.onBgColor}
+                          @input=${(event: Event) => this.onBgColor(event)}
                         />
                         ${this.bgColor !== "transparent"
                           ? this.button(this.icon(closeThickIcon), "Clear Background Color", () =>
@@ -961,10 +1066,10 @@ if (
 
       private renderHeadingDropdown() {
         return html`
-          <div class="heading-dropdown">
+          <div class="document-heading-dropdown">
             ${[0, 2, 3, 4].map((level) => html`
               <button
-                class=${`heading-option${this.headingLevel === level ? " active" : ""}`}
+                class=${`document-heading-option${this.headingLevel === level ? " active" : ""}`}
                 type="button"
                 @mousedown=${(event: MouseEvent) => {
                   event.preventDefault();
@@ -1075,7 +1180,7 @@ if (
                   .value=${this.cellBackgroundColor === "transparent"
                     ? "#ffffff"
                     : this.cellBackgroundColor}
-                  @input=${this.onCellBgColor}
+                  @input=${(event: Event) => this.onCellBgColor(event)}
                 />
                 ${this.cellBackgroundColor !== "transparent"
                   ? this.button(this.icon(closeThickIcon), "Clear Cell Background", () =>

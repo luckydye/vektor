@@ -21,7 +21,7 @@ import { ExtensionSuggestions } from "../extensions/ExtensionSuggestions.ts";
 import { InlineSuggestions } from "../extensions/InlineSuggestions.ts";
 import { MentionSuggestons } from "../extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "../extensions/TrailingNodePlus.ts";
-import { contentExtensions } from "../extensions.ts";
+import { contentExtensions, type EditorContext } from "../extensions.ts";
 
 declare global {
   interface Window {
@@ -153,9 +153,8 @@ function createDocumentPresenceExtension(ydoc: Y.Doc) {
 
 function createEditor(
   editorElement: HTMLElement,
-  spaceId: string,
-  documentId: string | undefined,
   ydoc: Y.Doc,
+  context: EditorContext = {},
   html?: string,
 ) {
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
@@ -362,12 +361,15 @@ function createEditor(
 
   editor = new Editor({
     element: editorElement,
+    enableCoreExtensions: {
+      keymap: false,
+    },
     // With a collaborative room the Yjs doc is the single source of truth: the
     // server seeds it from persisted content (see yjsRooms.ts) and syncs it
     // down. Seeding `content` here too would write the same HTML into the doc
     // on every client under different Yjs ids, so the contents diverge/duplicate
     // instead of merging. Only seed when there is no room (standalone editor).
-    content: documentId ? undefined : html,
+    content: context.documentId ? undefined : html,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
       disableCollaboration();
@@ -381,9 +383,12 @@ function createEditor(
       cleanupBlockDropIndicator();
     },
     extensions: [
-      ...contentExtensions(spaceId, documentId),
+      ...contentExtensions(context),
 
-      TrailingNodePlus,
+      TrailingNodePlus.configure({
+        spaceId: context.spaceId ?? "",
+        documentId: context.documentId,
+      }),
 
       DragHandle.configure({
         computePositionConfig: {
@@ -406,8 +411,8 @@ function createEditor(
         class: "wiki-dropcursor",
       }),
       MentionSuggestons.configure({
-        spaceId: spaceId,
-        documentId: documentId,
+        spaceId: context.spaceId ?? "",
+        documentId: context.documentId,
       }),
 
       ExtensionSuggestions,
@@ -442,10 +447,11 @@ class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   editor?: Editor;
   store?: IndexedDBStore<EditorStoreEntry>;
+  editorContext: EditorContext = {};
   private ydoc?: Y.Doc;
 
   static get observedAttributes() {
-    return ["space-id", "document-id", "initial-html"];
+    return ["editor"];
   }
 
   get root() {
@@ -488,13 +494,6 @@ class DocumentView extends HTMLElement {
       }
     }
 
-    this.addEventListener("keydown", (e) => {
-      const action = Actions.getActionForShortcut(e);
-      if (action) return;
-
-      e.stopPropagation();
-    });
-
     let attached = false;
     this.addEventListener("pointerover", () => {
       if (!attached) {
@@ -523,10 +522,9 @@ class DocumentView extends HTMLElement {
     this.element.className = "tiptap";
     this.editor = createEditor(
       this.element,
-      this.getAttribute("space-id") || "standalone",
-      this.getAttribute("document-id") || undefined,
       this.collaborationDocument,
-      this.getAttribute("initial-html") || "",
+      this.editorContext,
+      this.initialHtml(),
     );
 
     const handleUpdate = () => {
@@ -542,11 +540,21 @@ class DocumentView extends HTMLElement {
   }
 
   private hasEditorConfig() {
-    return (
-      this.hasAttribute("space-id") ||
-      this.hasAttribute("document-id") ||
-      this.hasAttribute("initial-html")
-    );
+    return this.hasAttribute("editor");
+  }
+
+  private initialHtml() {
+    const template = this.querySelector("template");
+    if (template) {
+      return Array.from(template.content.childNodes)
+        .map((node) => {
+          if (node instanceof Element) return node.outerHTML;
+          return node.textContent || "";
+        })
+        .join("");
+    }
+
+    return this.innerHTML;
   }
 
   attachListeners() {

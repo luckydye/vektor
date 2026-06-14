@@ -184,6 +184,10 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
         key: new PluginKey("fileAttachmentPlugin"),
         props: {
           handlePaste(view, event) {
+            if (!spaceId) {
+              return false;
+            }
+
             const items = Array.from(event.clipboardData?.items || []);
             const fileItems = items.filter((item) => {
               const file = item.getAsFile();
@@ -205,6 +209,10 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
           },
 
           handleDrop(view, event) {
+            if (!spaceId) {
+              return false;
+            }
+
             const hasFiles = event.dataTransfer?.files?.length;
             if (!hasFiles) return false;
 

@@ -176,6 +176,10 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
         key: new PluginKey("imageUploadPlugin"),
         props: {
           handlePaste(view, event) {
+            if (!spaceId) {
+              return false;
+            }
+
             const items = Array.from(event.clipboardData?.items || []);
             const imageItems = items.filter((item) => item.type.indexOf("image") === 0);
 
@@ -203,6 +207,10 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
           },
 
           handleDrop(view, event) {
+            if (!spaceId) {
+              return false;
+            }
+
             const hasFiles = event.dataTransfer?.files?.length;
 
             if (!hasFiles) {
@@ -252,6 +260,11 @@ export async function handleImageUpload(
   spaceId: string,
   documentId?: string,
 ): Promise<void> {
+  if (!spaceId) {
+    alert("Image upload is not available in this editor.");
+    return;
+  }
+
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "image/*";

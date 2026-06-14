@@ -1,4 +1,4 @@
-import type { Extensions } from "@tiptap/core";
+import type { AnyExtension, Extensions } from "@tiptap/core";
 import Bold from "@tiptap/extension-bold";
 import BulletList from "@tiptap/extension-bullet-list";
 import Code from "@tiptap/extension-code";
@@ -30,6 +30,11 @@ import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { Mentions } from "./extensions/Mentions.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";
 
+export type EditorContext = {
+  spaceId?: string;
+  documentId?: string;
+};
+
 const colwidthAttribute = {
   default: [200],
   parseHTML: (element: HTMLElement) => {
@@ -47,83 +52,101 @@ const colwidthAttribute = {
   },
 };
 
-export function contentExtensions(spaceId: string, documentId?: string): Extensions {
+function withoutDefaultKeyboardShortcuts<T extends AnyExtension>(extension: T): T {
+  return extension.extend({
+    addKeyboardShortcuts: () => ({}),
+  }) as T;
+}
+
+export function contentExtensions(context: EditorContext = {}): Extensions {
+  const { spaceId = "", documentId } = context;
+
   return [
-    Document,
-    Paragraph,
-    Text,
-    Link,
-    Bold.extend({
-      addKeyboardShortcuts: () => ({}),
-    }),
-    Italic.extend({
-      addKeyboardShortcuts: () => ({}),
-    }),
-    Strike,
-    Underline.extend({
-      addKeyboardShortcuts: () => ({}),
-    }),
-    Superscript,
-    Subscript,
-    TextStyle,
-    TextAlign.configure({
-      types: ["heading", "paragraph"],
-    }),
-    HardBreak,
-    BackgroundColor,
-    Color,
-    Heading.configure({
-      levels: [1, 2, 3],
-    }),
-    BulletList,
-    OrderedList,
-    ListItem,
-    ImageUpload.configure({
-      spaceId: spaceId,
-      documentId: documentId,
-    }),
-    FileAttachment.configure({
-      spaceId: spaceId,
-      documentId: documentId,
-    }),
-    Table.configure({
-      resizable: true,
-    }),
-    TableRow,
-    TableHeader.extend({
-      addAttributes() {
-        return {
-          ...this.parent?.(),
-          colwidth: colwidthAttribute,
-        };
-      },
-    }),
-    TableCell.extend({
-      addAttributes() {
-        return {
-          ...this.parent?.(),
-          colwidth: colwidthAttribute,
-          backgroundColor: {
-            default: null,
-            parseHTML: (element) => element.style.backgroundColor || null,
-            renderHTML: (attributes) => {
-              if (!attributes.backgroundColor) {
-                return {};
-              }
-              return {
-                style: `background-color: ${attributes.backgroundColor}`,
-              };
+    withoutDefaultKeyboardShortcuts(Document),
+    withoutDefaultKeyboardShortcuts(Paragraph),
+    withoutDefaultKeyboardShortcuts(Text),
+    withoutDefaultKeyboardShortcuts(Link),
+    withoutDefaultKeyboardShortcuts(Bold),
+    withoutDefaultKeyboardShortcuts(Italic),
+    withoutDefaultKeyboardShortcuts(Strike),
+    withoutDefaultKeyboardShortcuts(Underline),
+    withoutDefaultKeyboardShortcuts(Superscript),
+    withoutDefaultKeyboardShortcuts(Subscript),
+    withoutDefaultKeyboardShortcuts(TextStyle),
+    withoutDefaultKeyboardShortcuts(
+      TextAlign.configure({
+        types: ["heading", "paragraph"],
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(HardBreak),
+    withoutDefaultKeyboardShortcuts(BackgroundColor),
+    withoutDefaultKeyboardShortcuts(Color),
+    withoutDefaultKeyboardShortcuts(
+      Heading.configure({
+        levels: [1, 2, 3, 4],
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(BulletList),
+    withoutDefaultKeyboardShortcuts(OrderedList),
+    withoutDefaultKeyboardShortcuts(ListItem),
+    withoutDefaultKeyboardShortcuts(
+      ImageUpload.configure({
+        spaceId: spaceId,
+        documentId: documentId,
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(
+      FileAttachment.configure({
+        spaceId: spaceId,
+        documentId: documentId,
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(
+      Table.configure({
+        resizable: true,
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(TableRow),
+    withoutDefaultKeyboardShortcuts(
+      TableHeader.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            colwidth: colwidthAttribute,
+          };
+        },
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(
+      TableCell.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            colwidth: colwidthAttribute,
+            backgroundColor: {
+              default: null,
+              parseHTML: (element) => element.style.backgroundColor || null,
+              renderHTML: (attributes) => {
+                if (!attributes.backgroundColor) {
+                  return {};
+                }
+                return {
+                  style: `background-color: ${attributes.backgroundColor}`,
+                };
+              },
             },
-          },
-        };
-      },
-    }),
-    TaskItem.configure({
-      nested: true,
-    }),
-    TaskList,
-    Code,
-    CodeBlock,
+          };
+        },
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(
+      TaskItem.configure({
+        nested: true,
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(TaskList),
+    withoutDefaultKeyboardShortcuts(Code),
+    withoutDefaultKeyboardShortcuts(CodeBlock),
 
     // custom extensions
     TicketLink,
