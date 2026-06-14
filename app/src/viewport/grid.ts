@@ -106,6 +106,87 @@ export interface DrawWorldDotsOptions {
 }
 
 const DEFAULT_DOT_RADIUS = 1.2;
+const DOT_PATTERN_TILE_SIZE = 64;
+const DOT_PATTERN_CACHE_LIMIT = 64;
+const dotPatternTiles = new Map<string, CanvasImageSource>();
+
+function positiveModulo(value: number, divisor: number) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function roundedPatternSpacing(screenSpacing: number) {
+  return Math.max(1, Math.round(screenSpacing * 4) / 4);
+}
+
+function getDotPatternTile(
+  color: string,
+  radius: number,
+  screenSpacing: number,
+): CanvasImageSource {
+  const roundedSpacing = roundedPatternSpacing(screenSpacing);
+  const sourceRadius = Math.max(0.5, (radius * DOT_PATTERN_TILE_SIZE) / roundedSpacing);
+  const key = `${color}|${sourceRadius.toFixed(3)}`;
+  const cached = dotPatternTiles.get(key);
+  if (cached) return cached;
+
+  const surface =
+    typeof OffscreenCanvas === "function"
+      ? new OffscreenCanvas(DOT_PATTERN_TILE_SIZE, DOT_PATTERN_TILE_SIZE)
+      : document.createElement("canvas");
+  surface.width = DOT_PATTERN_TILE_SIZE;
+  surface.height = DOT_PATTERN_TILE_SIZE;
+  const surfaceCtx = surface.getContext("2d") as
+    | CanvasRenderingContext2D
+    | OffscreenCanvasRenderingContext2D
+    | null;
+  if (!surfaceCtx) return surface;
+
+  surfaceCtx.fillStyle = color;
+  surfaceCtx.beginPath();
+  for (const x of [0, DOT_PATTERN_TILE_SIZE]) {
+    for (const y of [0, DOT_PATTERN_TILE_SIZE]) {
+      surfaceCtx.moveTo(x + sourceRadius, y);
+      surfaceCtx.arc(x, y, sourceRadius, 0, Math.PI * 2);
+    }
+  }
+  surfaceCtx.fill();
+
+  if (dotPatternTiles.size >= DOT_PATTERN_CACHE_LIMIT) {
+    const oldestKey = dotPatternTiles.keys().next().value;
+    if (oldestKey) dotPatternTiles.delete(oldestKey);
+  }
+  dotPatternTiles.set(key, surface);
+  return surface;
+}
+
+function drawWorldDotsAsPaths(
+  ctx: CanvasRenderingContext2D,
+  transform: WorldTransform,
+  screen: ScreenSize,
+  size: number,
+  color: string,
+  radius: number,
+): void {
+  const bounds = visibleWorldBounds(screen, transform);
+  const startX = Math.floor(bounds.minX / size) * size;
+  const startY = Math.floor(bounds.minY / size) * size;
+  const endX = Math.ceil(bounds.maxX / size) * size;
+  const endY = Math.ceil(bounds.maxY / size) * size;
+
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let x = startX; x <= endX; x += size) {
+    const sx = worldToScreen(x, 0, transform).x;
+    for (let y = startY; y <= endY; y += size) {
+      const sy = worldToScreen(0, y, transform).y;
+      ctx.moveTo(sx + radius, sy);
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    }
+  }
+  ctx.fill();
+  ctx.restore();
+}
 
 // Draws a dot at each grid intersection. Mirrors drawWorldGrid's world→screen
 // placement so dots line up with where grid lines would cross.
@@ -126,24 +207,30 @@ export function drawWorldDots(
     return;
   }
 
-  const bounds = visibleWorldBounds(screen, transform);
-  const startX = Math.floor(bounds.minX / size) * size;
-  const startY = Math.floor(bounds.minY / size) * size;
-  const endX = Math.ceil(bounds.maxX / size) * size;
-  const endY = Math.ceil(bounds.maxY / size) * size;
   const radius = options.radius ?? DEFAULT_DOT_RADIUS;
+  const color = options.color ?? DEFAULT_GRID_COLOR;
+  const patternTile = getDotPatternTile(color, radius, screenSpacing);
+  const pattern = ctx.createPattern(patternTile, "repeat");
+
+  if (
+    !pattern ||
+    typeof pattern.setTransform !== "function" ||
+    typeof DOMMatrix !== "function"
+  ) {
+    drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius);
+    return;
+  }
+
+  const offsetX = positiveModulo(transform.dx, screenSpacing);
+  const offsetY = positiveModulo(transform.dy, screenSpacing);
+  pattern.setTransform(
+    new DOMMatrix()
+      .translateSelf(offsetX, offsetY)
+      .scaleSelf(screenSpacing / DOT_PATTERN_TILE_SIZE),
+  );
 
   ctx.save();
-  ctx.fillStyle = options.color ?? DEFAULT_GRID_COLOR;
-  ctx.beginPath();
-  for (let x = startX; x <= endX; x += size) {
-    const sx = worldToScreen(x, 0, transform).x;
-    for (let y = startY; y <= endY; y += size) {
-      const sy = worldToScreen(0, y, transform).y;
-      ctx.moveTo(sx + radius, sy);
-      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-    }
-  }
-  ctx.fill();
+  ctx.fillStyle = pattern;
+  ctx.fillRect(0, 0, screen.width, screen.height);
   ctx.restore();
 }
