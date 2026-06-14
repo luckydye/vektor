@@ -386,6 +386,17 @@ function createEditor(
           dragHandleElement = element;
           return element;
         },
+        onNodeChange: ({ node, pos }) => {
+          if (!node) return;
+          const { doc } = editor.state;
+          const isTrailingNode =
+            node.type.name === "paragraph" &&
+            node.content.size === 0 &&
+            pos + node.nodeSize === doc.content.size;
+          if (isTrailingNode) {
+            editor.commands.setMeta("hideDragHandle", true);
+          }
+        },
         onElementDragEnd: () => {
           // Reset plugin state after a drag so handle can reappear on the same block.
           editor.commands.setMeta("hideDragHandle", true);
