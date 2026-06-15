@@ -152,7 +152,7 @@ export function toHtmlIfMarkdown(
   }
 
   const mimeType = getMimeType(contentType);
-  if (!MARKDOWN_TYPES.has(mimeType ?? "")) {
+  if (!MARKDOWN_TYPES.has(mimeType ?? "") && documentType !== "markdown") {
     return content;
   }
   return marked.parse(content, { breaks: true, gfm: true }) as string;

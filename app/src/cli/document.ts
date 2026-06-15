@@ -72,14 +72,41 @@ async function readSource(source?: string): Promise<string> {
   return Bun.file(source).text();
 }
 
+type Frontmatter = Record<string, string>;
+
+function parseFrontmatter(raw: string): { meta: Frontmatter; content: string } {
+  if (!raw.startsWith("---\n") && !raw.startsWith("---\r\n")) {
+    return { meta: {}, content: raw };
+  }
+  const rest = raw.slice(raw.indexOf("\n") + 1);
+  const end = rest.search(/^---\s*$/m);
+  if (end === -1) return { meta: {}, content: raw };
+
+  const meta: Frontmatter = {};
+  for (const line of rest.slice(0, end).split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon > 0) {
+      const key = line.slice(0, colon).trim();
+      const value = line.slice(colon + 1).trim().replace(/^["']|["']$/g, "");
+      if (key) meta[key] = value;
+    }
+  }
+
+  const content = rest.slice(end).replace(/^---\s*\n?/, "").trimStart();
+  return { meta, content };
+}
+
+// Fields extracted from frontmatter that map to first-class document fields.
+const FIRST_CLASS = new Set(["title", "slug", "type", "guid", "created", "modified"]);
+
 export async function commandWrite(docId: string, source?: string): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
-
-  const content = await readSource(source);
+  const raw = await readSource(source);
+  const { content } = parseFrontmatter(raw);
 
   await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents/${docId}`, {
     method: "PUT",
-    headers: { "Content-Type": "text/html" },
+    headers: { "Content-Type": "text/markdown" },
     body: content,
   });
 }
@@ -90,18 +117,31 @@ export async function commandCreate(flags: {
   source?: string;
 }): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
+  const raw = await readSource(flags.source);
+  const { meta, content } = parseFrontmatter(raw);
 
-  const content = await readSource(flags.source);
+  const type = flags.type ?? meta.type ?? "markdown";
+  const slug = flags.slug ?? meta.slug ?? meta.guid;
+  const title = meta.title;
 
-  const contentType = flags.type === "markdown" ? "text/markdown" : "text/html";
-  const extraHeaders: Record<string, string> = {};
-  if (flags.slug) extraHeaders["X-Document-Slug"] = flags.slug;
-  if (flags.type) extraHeaders["X-Document-Type"] = flags.type;
+  // Everything not used as a first-class field goes into properties.
+  const properties: Record<string, string> = {};
+  if (title) properties.title = title;
+  for (const [key, value] of Object.entries(meta)) {
+    if (!FIRST_CLASS.has(key)) properties[key] = value;
+  }
 
   const data = (await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents`, {
     method: "POST",
-    headers: { "Content-Type": contentType, ...extraHeaders },
-    body: content,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content,
+      type,
+      ...(slug ? { slug } : {}),
+      ...(meta.created ? { createdAt: meta.created } : {}),
+      ...(meta.modified ? { updatedAt: meta.modified } : {}),
+      ...(Object.keys(properties).length > 0 ? { properties } : {}),
+    }),
   })) as { document: { id: string; slug: string } };
 
   process.stdout.write(`${data.document.id}\t${data.document.slug}\n`);

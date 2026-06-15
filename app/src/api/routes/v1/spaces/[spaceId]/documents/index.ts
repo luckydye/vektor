@@ -143,6 +143,8 @@ export const POST: APIRoute = (context) =>
     let properties: Record<string, unknown> | undefined;
     let parentId: string | undefined;
     let type: string | undefined;
+    let createdAt: Date | undefined;
+    let updatedAt: Date | undefined;
 
     if (contentType === "application/json") {
       const body = await parseJsonBody(context.request);
@@ -151,6 +153,8 @@ export const POST: APIRoute = (context) =>
         properties: jsonProperties,
         parentId: jsonParentId,
         type: jsonType,
+        createdAt: jsonCreatedAt,
+        updatedAt: jsonUpdatedAt,
       } = body;
 
       if (!jsonContent || typeof jsonContent !== "string") {
@@ -161,6 +165,8 @@ export const POST: APIRoute = (context) =>
       properties = jsonProperties;
       parentId = jsonParentId;
       type = jsonType;
+      if (jsonCreatedAt && typeof jsonCreatedAt === "string") createdAt = new Date(jsonCreatedAt);
+      if (jsonUpdatedAt && typeof jsonUpdatedAt === "string") updatedAt = new Date(jsonUpdatedAt);
       content = toHtmlIfMarkdown(content, contentType, type);
     } else {
       const rawContent = await context.request.text();
@@ -190,6 +196,8 @@ export const POST: APIRoute = (context) =>
       properties,
       parentId,
       type,
+      createdAt,
+      updatedAt,
     );
     return createdResponse({ document });
   }, "Failed to create document");
