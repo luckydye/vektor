@@ -675,6 +675,7 @@ class DocumentView extends HTMLElement {
     if (window.__editor === editor) {
       window.__editor = undefined;
     }
+    window.dispatchEvent(new Event("editor-destroyed"));
     const shadow = this.root;
     if (shadow) {
       shadow.innerHTML = `<style>${docStyles}</style>`;

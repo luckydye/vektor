@@ -231,6 +231,7 @@ if (
         window.addEventListener("editor-ready", this.handleEditorAvailable);
         window.addEventListener("edit-mode-start", this.handleEditorAvailable);
         window.addEventListener("edit-mode-cancel", this.handleEditModeEnd);
+        window.addEventListener("editor-destroyed", this.handleEditModeEnd);
         window.addEventListener("editor-update", this.update);
         window.addEventListener("resize", this.updatePosition, { passive: true });
         document.addEventListener("pointerup", this.handlePointerUp);
@@ -248,6 +249,7 @@ if (
         window.removeEventListener("editor-ready", this.handleEditorAvailable);
         window.removeEventListener("edit-mode-start", this.handleEditorAvailable);
         window.removeEventListener("edit-mode-cancel", this.handleEditModeEnd);
+        window.removeEventListener("editor-destroyed", this.handleEditModeEnd);
         window.removeEventListener("editor-update", this.update);
         window.removeEventListener("resize", this.updatePosition);
         document.removeEventListener("pointerup", this.handlePointerUp);
@@ -772,8 +774,11 @@ if (
 
             .table-toolbar {
               z-index: 40;
+              flex-direction: row;
               align-items: center;
               gap: 2px;
+              max-width: 95vw;
+              overflow-x: auto;
               padding: 4px;
               border-radius: 10px;
               border: 1px solid var(--tb-border);
