@@ -6,7 +6,7 @@
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import type { ChatMessage } from "../agent/core.ts";
-import { createJobToken } from "../jobs/jobToken.ts";
+import { config } from "../config.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 const useColor = process.stdout.isTTY === true;
@@ -21,7 +21,6 @@ const c = {
 export type AgentCliOptions = {
   prompt?: string;
   doc?: string;
-  user?: string;
   once?: boolean;
 };
 
@@ -100,7 +99,7 @@ async function runTurn(
   host: string,
   spaceId: string,
   sessionId: string,
-  jobToken: string,
+  authHeaders: Record<string, string>,
   history: ChatMessage[],
   userText: string,
   documentId: string | undefined,
@@ -108,11 +107,7 @@ async function runTurn(
 ): Promise<ChatMessage[]> {
   const res = await fetch(`${host}/api/v1/chat/acp`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Job-Token": jobToken,
-      "X-Space-Id": spaceId,
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: randomUUID(),
@@ -194,9 +189,8 @@ async function runTurn(
 export async function commandAgent(options: AgentCliOptions): Promise<void> {
   const host = resolveHost().replace(/\/$/, "");
   const spaceId = await resolveSpaceId(host, undefined);
-  const userId = options.user ?? null;
-  const jobToken = createJobToken(spaceId, Date.now().toString(), userId);
-  const authHeaders = { "X-Job-Token": jobToken, "X-Space-Id": spaceId };
+  const token = config().CLI_ACCESS_TOKEN;
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const sessionId = randomUUID();
 
   let documentId: string | undefined;
@@ -222,7 +216,7 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
         host,
         spaceId,
         sessionId,
-        jobToken,
+        authHeaders,
         history,
         userText,
         documentId,

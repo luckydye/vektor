@@ -16,6 +16,7 @@ import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
 import { getUserProfile } from "#db/userProfiles.ts";
 import { createJobToken, parseJobToken, verifyJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 // ---------------------------------------------------------------------------
 // JSON-RPC 2.0 types
@@ -641,29 +642,24 @@ export const POST: APIRoute = (context) =>
         let jobToken: string;
         let userId: string | null = null;
 
-        if (!context.locals.user) {
-          const providedJobToken = context.request.headers.get("X-Job-Token");
+        const providedJobToken = context.request.headers.get("X-Job-Token");
+        if (providedJobToken) {
+          // Job-to-job: verify and reuse the provided token as-is.
           const headerSpaceId = context.request.headers.get("X-Space-Id");
-          if (
-            !providedJobToken ||
-            !headerSpaceId ||
-            !verifyJobToken(providedJobToken, headerSpaceId)
-          ) {
+          if (!headerSpaceId || !verifyJobToken(providedJobToken, headerSpaceId)) {
             throw unauthorizedResponse();
           }
           if (headerSpaceId !== spaceId) {
             return badRequestResponse("spaceId does not match job token scope");
           }
           const parsed = parseJobToken(providedJobToken, spaceId);
-          if (!parsed) {
-            throw unauthorizedResponse();
-          }
+          if (!parsed) throw unauthorizedResponse();
           jobToken = providedJobToken;
         } else {
-          const user = requireUser(context);
-          await verifySpaceRole(spaceId, user.id, "viewer");
-          userId = user.id;
-          jobToken = createJobToken(spaceId, Date.now().toString(), user.id);
+          // Session cookie or Bearer token: server mints the job token.
+          const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
+          userId = auth.type === "user" ? auth.user.id : (auth.userId ?? null);
+          jobToken = createJobToken(spaceId, Date.now().toString(), userId);
         }
 
         // Load existing conversation history, user profile, and connected integrations from DB.
@@ -752,23 +748,18 @@ export const POST: APIRoute = (context) =>
 
         let userId: string | null = null;
 
-        if (!context.locals.user) {
-          const providedJobToken = context.request.headers.get("X-Job-Token");
+        const cancelJobToken = context.request.headers.get("X-Job-Token");
+        if (cancelJobToken) {
           const headerSpaceId = context.request.headers.get("X-Space-Id");
-          if (
-            !providedJobToken ||
-            !headerSpaceId ||
-            !verifyJobToken(providedJobToken, headerSpaceId)
-          ) {
+          if (!headerSpaceId || !verifyJobToken(cancelJobToken, headerSpaceId)) {
             throw unauthorizedResponse();
           }
           if (headerSpaceId !== spaceId) {
             return badRequestResponse("spaceId does not match job token scope");
           }
         } else {
-          const user = requireUser(context);
-          await verifySpaceRole(spaceId, user.id, "viewer");
-          userId = user.id;
+          const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
+          userId = auth.type === "user" ? auth.user.id : (auth.userId ?? null);
         }
 
         const key = getActiveTurnKey({ spaceId, userId, chatId: sessionId });
