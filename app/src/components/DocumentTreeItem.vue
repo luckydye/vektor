@@ -22,7 +22,7 @@
       </a>
     </div>
 
-    <div v-if="isExpanded && hasChildren" class="pl-2 ml-2 border-l border-neutral-100 space-y-1">
+    <div v-if="isExpanded && hasChildren" class="pl-2 mt-1 ml-2 border-l border-neutral-100 space-y-1">
       <DocumentTreeItem v-for="child in children" :key="child.id" :doc="child" :all-docs="allDocs"
         :active-doc-id="activeDocId" :expanded-items="expandedItems" @toggle="$emit('toggle', $event)" />
     </div>

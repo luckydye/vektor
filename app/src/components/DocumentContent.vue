@@ -825,7 +825,7 @@ useSync(
             <document-view ref="documentViewEl" v-bind="isEditing && !props.readonly ? { editor: '' } : {}"
                 :space-id="props.spaceId" :document-id="props.documentId"
                 :editor-context.prop="isEditing && !props.readonly ? { spaceId: props.spaceId, documentId: props.documentId } : undefined">
-                <template v-if="isEditing" v-html="renderedHtml"></template>
+                <template v-html="renderedHtml"></template>
             </document-view>
         </div>
 

@@ -18,6 +18,7 @@
  */
 
 import { commandAgent } from "./src/cli/agent.ts";
+import { commandLogin } from "./src/cli/login.ts";
 import {
   commandCategoryCreate,
   commandCategoryEdit,
@@ -79,6 +80,7 @@ Usage:
   vektor [--space <id>] <command> [args]
 
 Commands:
+  vektor login
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor agent [prompt...] [--doc <slug|id>] [--once]
   vektor workflow run <docId> [--input key=value ...] [--json]
@@ -116,6 +118,11 @@ async function main(): Promise<void> {
   if (!command) {
     printUsage();
     process.exit(1);
+  }
+
+  if (command === "login") {
+    await commandLogin();
+    return;
   }
 
   if (command === "serve") {
