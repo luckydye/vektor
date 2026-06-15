@@ -822,7 +822,7 @@ useSync(
         </div>
 
         <!-- Document View (read + edit, single persistent instance) -->
-        <div v-if="!viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
+        <div v-if="!viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv' && props.documentType !== 'workflow'"
             :class="isEditing ? 'h-full' : ''">
             <document-view ref="documentViewEl" v-bind="isEditing && !props.readonly ? { editor: '' } : {}"
                 :space-id="props.spaceId" :document-id="props.documentId"
