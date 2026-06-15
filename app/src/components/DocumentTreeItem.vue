@@ -1,7 +1,7 @@
 <template>
   <page-target :data-document-id="doc.id"
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50">
-    <div class="pl-3 flex items-center gap-1">
+    <div class="flex items-center gap-1">
       <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
         :aria-label="isExpanded ? 'Collapse' : 'Expand'">
         <div class="svg-icon w-3 h-3 transition-transform text-neutral" :class="{ 'rotate-90': isExpanded }" v-html="chevronRightThinIcon" />
