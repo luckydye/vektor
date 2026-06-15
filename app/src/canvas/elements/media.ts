@@ -47,17 +47,19 @@ export function mediaFilesFromList(files: FileList | File[]) {
 }
 
 // Images on the clipboard (e.g. a screenshot or "copy image") may arrive in
-// `files`, in `items` as a file entry, or both. Collect from both and dedupe so
-// a single pasted image is not inserted twice.
+// `files`, in `items` as a file entry, or both. Prefer `files` when present so
+// the same pasted image is not inserted twice.
 export function mediaFilesFromDataTransfer(
   data: DataTransfer | null | undefined,
 ): File[] {
   if (!data) return [];
   const files = Array.from(data.files ?? []);
-  for (const item of Array.from(data.items ?? [])) {
-    if (item.kind !== "file") continue;
-    const file = item.getAsFile();
-    if (file) files.push(file);
+  if (files.length === 0) {
+    for (const item of Array.from(data.items ?? [])) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
   }
   const seen = new Set<string>();
   return mediaFilesFromList(

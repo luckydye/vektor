@@ -10,6 +10,7 @@ const props = defineProps<{
   data: Record<string, unknown>[];
   spaceSlug: string;
   documentId?: string;
+  exportFileName?: string;
 }>();
 
 const filter = ref("");
@@ -80,7 +81,7 @@ function downloadExcel() {
     tableColumns,
     ...filtered.value.map((row) => tableColumns.map((col) => cellText(row[col]))),
   ];
-  downloadExcelRows(rows, "data.xls");
+  downloadExcelRows(rows, props.exportFileName ?? "data.xlsx");
 }
 
 function isDocumentIdColumn(column: string): boolean {

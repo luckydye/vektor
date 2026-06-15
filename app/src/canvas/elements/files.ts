@@ -24,10 +24,12 @@ export function canvasFilesFromDataTransfer(
 ): File[] {
   if (!data) return [];
   const files = Array.from(data.files ?? []);
-  for (const item of Array.from(data.items ?? [])) {
-    if (item.kind !== "file") continue;
-    const file = item.getAsFile();
-    if (file) files.push(file);
+  if (files.length === 0) {
+    for (const item of Array.from(data.items ?? [])) {
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
   }
   const seen = new Set<string>();
   return canvasFilesFromList(

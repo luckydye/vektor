@@ -53,7 +53,7 @@ const {
     api.workflows
       .listRuns(props.spaceId, { filterDocumentId: props.documentId, limit, offset })
       .then((r) => ({ items: r.runs, total: r.total })),
-  pageSize: 20,
+  pageSize: 5,
 });
 
 function runIdFromUrl(): string | null {
@@ -154,12 +154,12 @@ const selectedRunFileUrl = computed(() => {
   return typeof file === "string" ? file : null;
 });
 
-async function downloadFile(url: string, fileName: string) {
+async function downloadFile(url: string, fileName: string, exportFileName = fileName) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Download failed: ${response.status}`);
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (fileName.toLowerCase().endsWith(".csv") || contentType.includes("text/csv")) {
-    downloadExcelRows(parseCsvRows(await response.text()), fileName);
+    downloadExcelRows(parseCsvRows(await response.text()), exportFileName);
     return;
   }
   const blob = await response.blob();
@@ -350,6 +350,12 @@ function historyOutputData(runId: string): Record<string, unknown>[] | null {
   return extractTableData(historyRunDetails.value.get(runId)?.output);
 }
 
+function historyRunTitle(run: RunSummary): string | null {
+  const title =
+    run.runtimeInputs?.title ?? historyRunDetails.value.get(run.runId)?.runtimeInputs?.title;
+  return typeof title === "string" ? title : null;
+}
+
 function historyOutputDocumentHref(runId: string): string | null {
   return historyRunDocHrefs.value.get(runId) ?? null;
 }
@@ -444,25 +450,6 @@ const statusBadgeClass: Record<string, string> = {
       </div>
     </details>
     
-    <!-- Logs (expandable) -->
-    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
-        <button
-            class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
-            @click="logsExpanded = !logsExpanded"
-        >
-        <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
-            Logs
-        </button>
-        <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[400px]">
-            <div class="font-mono text-[11px] space-y-0.5">
-                <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
-                <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
-                <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
-                </div>
-            </div>
-        </div>
-    </div>
-    
     <!-- No runs yet -->
     <div v-if="!selectedRunDetail" class="text-size-medium text-neutral-400 py-8 text-center">
       {{ selectedRunError ?? 'No runs yet. Click "Run Workflow" to execute.' }}
@@ -470,6 +457,8 @@ const statusBadgeClass: Record<string, string> = {
 
     <!-- Results -->
     <div v-if="selectedRunDetail?.status === 'completed'" class="space-y-4">
+        
+      <h3>Results</h3>
 
       <!-- HTML output -->
       <div v-if="outputHtml" class="rounded-xl border border-neutral-200 overflow-hidden">
@@ -477,7 +466,15 @@ const statusBadgeClass: Record<string, string> = {
       </div>
 
       <!-- Data table -->
-      <DataTable v-if="outputData" :data="outputData" :space-slug="props.spaceSlug" :document-id="props.documentId" />
+      <DataTable
+        v-if="outputData"
+        :data="outputData"
+        :space-slug="props.spaceSlug"
+        :document-id="props.documentId"
+        :export-file-name="selectedRunTitle ?? 'data'"
+      />
+      
+      <h3>Documents</h3>
 
       <!-- Document link -->
       <div v-if="outputDocumentId && outputDocumentHref" class="inline-flex items-center gap-2">
@@ -504,12 +501,31 @@ const statusBadgeClass: Record<string, string> = {
         <button
           class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
           title="Download"
-          @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!)"
+          @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
         >
           <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
         </button>
       </div>
 
+    </div>
+    
+    <!-- Logs (expandable) -->
+    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
+        <button
+            class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
+            @click="logsExpanded = !logsExpanded"
+        >
+        <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
+            Logs
+        </button>
+        <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[400px]">
+            <div class="font-mono text-[11px] space-y-0.5">
+                <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
+                <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
+                <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Run history -->
@@ -546,7 +562,13 @@ const statusBadgeClass: Record<string, string> = {
               <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
                 <div v-html="historyOutputHtml(run.runId)" class="p-4" />
               </div>
-              <DataTable v-if="historyOutputData(run.runId)" :data="historyOutputData(run.runId)!" :space-slug="props.spaceSlug" :document-id="props.documentId" />
+              <DataTable
+                v-if="historyOutputData(run.runId)"
+                :data="historyOutputData(run.runId)!"
+                :space-slug="props.spaceSlug"
+                :document-id="props.documentId"
+                :export-file-name="historyRunTitle(run) ?? 'data'"
+              />
 
               <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
                 <a
@@ -565,7 +587,7 @@ const statusBadgeClass: Record<string, string> = {
       </div>
 
       <!-- Run history pagination -->
-      <div v-if="runTotalPages > 1" class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-100">
+      <div v-if="runTotalPages > 1" class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-100 mb-12">
         <button
           @click="runPrevPage"
           :disabled="!runHasPrevPage"

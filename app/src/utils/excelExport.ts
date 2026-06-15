@@ -1,7 +1,14 @@
-const EXCEL_HTML_MIME = "application/vnd.ms-excel;charset=utf-8";
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MAX_EXCEL_CELL_LENGTH = 32767;
 
-function escapeHtml(value: string): string {
+type ZipEntry = {
+  name: string;
+  data: Uint8Array;
+};
+
+function escapeXml(value: string): string {
   return value
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -10,7 +17,11 @@ function escapeHtml(value: string): string {
 }
 
 export function excelFileName(fileName: string): string {
-  return fileName.replace(/\.[^.]+$/, "") + ".xls";
+  const baseName = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+    .trim();
+  return `${baseName || "data"}.xlsx`;
 }
 
 export function parseCsvRows(csv: string): string[][] {
@@ -59,27 +70,200 @@ export function parseCsvRows(csv: string): string[][] {
   return rows;
 }
 
-export function buildExcelHtml(rows: string[][]): string {
-  const body = rows
-    .map(
-      (row) =>
-        `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
-    )
+function columnName(index: number): string {
+  let name = "";
+  let value = index + 1;
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    value = Math.floor((value - 1) / 26);
+  }
+  return name;
+}
+
+function worksheetXml(rows: string[][]): string {
+  const rowXml = rows
+    .map((row, rowIndex) => {
+      const cells = row
+        .map((cell, columnIndex) => {
+          const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
+          const text = escapeXml(String(cell).slice(0, MAX_EXCEL_CELL_LENGTH));
+          return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+        })
+        .join("");
+
+      return `<row r="${rowIndex + 1}">${cells}</row>`;
+    })
     .join("");
 
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-</head>
-<body>
-  <table>${body}</table>
-</body>
-</html>`;
+  const columnCount = Math.max(...rows.map((row) => row.length), 1);
+  const rowCount = Math.max(rows.length, 1);
+  const dimension = `A1:${columnName(columnCount - 1)}${rowCount}`;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="${dimension}"/>
+  <sheetViews><sheetView workbookViewId="0"/></sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  <sheetData>${rowXml}</sheetData>
+</worksheet>`;
+}
+
+function textData(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
+const CRC_TABLE = new Uint32Array(
+  Array.from({ length: 256 }, (_, index) => {
+    let crc = index;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return crc >>> 0;
+  }),
+);
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ byte) & 0xff];
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function uint16(value: number): Uint8Array {
+  const data = new Uint8Array(2);
+  new DataView(data.buffer).setUint16(0, value, true);
+  return data;
+}
+
+function uint32(value: number): Uint8Array {
+  const data = new Uint8Array(4);
+  new DataView(data.buffer).setUint32(0, value, true);
+  return data;
+}
+
+function concat(parts: Uint8Array[]): Uint8Array {
+  const length = parts.reduce((total, part) => total + part.length, 0);
+  const data = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    data.set(part, offset);
+    offset += part.length;
+  }
+  return data;
+}
+
+function createZip(entries: ZipEntry[]): Uint8Array {
+  const fileParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const name = textData(entry.name);
+    const crc = crc32(entry.data);
+    const localHeader = concat([
+      uint32(0x04034b50),
+      uint16(20),
+      uint16(0x0800),
+      uint16(0),
+      uint16(0),
+      uint16(0),
+      uint32(crc),
+      uint32(entry.data.length),
+      uint32(entry.data.length),
+      uint16(name.length),
+      uint16(0),
+      name,
+    ]);
+
+    fileParts.push(localHeader, entry.data);
+
+    centralParts.push(
+      concat([
+        uint32(0x02014b50),
+        uint16(20),
+        uint16(20),
+        uint16(0x0800),
+        uint16(0),
+        uint16(0),
+        uint16(0),
+        uint32(crc),
+        uint32(entry.data.length),
+        uint32(entry.data.length),
+        uint16(name.length),
+        uint16(0),
+        uint16(0),
+        uint16(0),
+        uint16(0),
+        uint32(0),
+        uint32(offset),
+        name,
+      ]),
+    );
+
+    offset += localHeader.length + entry.data.length;
+  }
+
+  const centralDirectory = concat(centralParts);
+  const endRecord = concat([
+    uint32(0x06054b50),
+    uint16(0),
+    uint16(0),
+    uint16(entries.length),
+    uint16(entries.length),
+    uint32(centralDirectory.length),
+    uint32(offset),
+    uint16(0),
+  ]);
+
+  return concat([...fileParts, centralDirectory, endRecord]);
+}
+
+function buildXlsx(rows: string[][]): Uint8Array {
+  return createZip([
+    {
+      name: "[Content_Types].xml",
+      data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`),
+    },
+    {
+      name: "_rels/.rels",
+      data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`),
+    },
+    {
+      name: "xl/workbook.xml",
+      data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Data" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`),
+    },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`),
+    },
+    {
+      name: "xl/worksheets/sheet1.xml",
+      data: textData(worksheetXml(rows)),
+    },
+  ]);
 }
 
 export function downloadExcelRows(rows: string[][], fileName: string): void {
-  const blob = new Blob([buildExcelHtml(rows)], { type: EXCEL_HTML_MIME });
+  const blob = new Blob([buildXlsx(rows)], { type: XLSX_MIME });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = excelFileName(fileName);
