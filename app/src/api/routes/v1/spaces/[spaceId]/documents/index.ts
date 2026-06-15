@@ -168,10 +168,11 @@ export const POST: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      type = getDocumentTypeForContentType(contentType);
+      type = context.request.headers.get("X-Document-Type") ?? getDocumentTypeForContentType(contentType);
       content = toHtmlIfMarkdown(rawContent, contentType, type);
       const titleHeader = context.request.headers.get("X-Document-Title");
-      if (titleHeader) properties = { title: titleHeader };
+      const slugHeader = context.request.headers.get("X-Document-Slug");
+      if (titleHeader || slugHeader) properties = { ...(titleHeader ? { title: titleHeader } : {}), ...(slugHeader ? { slug: slugHeader } : {}) };
     }
 
     if (!content || typeof content !== "string") {

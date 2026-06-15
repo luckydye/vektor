@@ -87,10 +87,15 @@ export async function commandCreate(flags: {
 
   const content = await Bun.stdin.text();
 
+  const contentType = flags.type === "markdown" ? "text/markdown" : "text/html";
+  const extraHeaders: Record<string, string> = {};
+  if (flags.slug) extraHeaders["X-Document-Slug"] = flags.slug;
+  if (flags.type) extraHeaders["X-Document-Type"] = flags.type;
+
   const data = (await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, slug: flags.slug, type: flags.type }),
+    headers: { "Content-Type": contentType, ...extraHeaders },
+    body: content,
   })) as { document: { id: string; slug: string } };
 
   process.stdout.write(`${data.document.id}\t${data.document.slug}\n`);
