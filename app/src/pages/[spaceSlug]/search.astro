@@ -30,6 +30,6 @@ await verifySpaceAccess(space.id, user.id);
         </p>
     </div>
       
-    <SearchComponent client:load spaceId={space.id} spaceSlug={space.slug} />
+    <SearchComponent client:only="vue" spaceId={space.id} spaceSlug={space.slug} />
   </div>
 </SpaceLayout>

@@ -376,7 +376,7 @@ const canSearch = computed(() => {
     </div>
 
     <!-- All Documents (when not searching) -->
-    <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length > 0" class="mt-8">
+    <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length > 0" key="all-docs" class="mt-8">
       <div class="mb-6 pb-4 border-b-1 border-neutral-100">
         <p class="text-size-medium text-neutral-700">
           <span class="font-semibold">{{ allDocuments.length }}</span>
@@ -417,13 +417,13 @@ const canSearch = computed(() => {
     </div>
 
     <!-- Loading Documents -->
-    <div v-else-if="!hasSearched && isLoadingDocuments" class="text-center">
+    <div v-else-if="!hasSearched && isLoadingDocuments" key="loading-docs" class="text-center">
       <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300 animate-spin" v-html="spinnerIcon" />
       <h3 class="text-center text-size-large font-semibold text-neutral-700">Loading documents...</h3>
     </div>
 
     <!-- No Documents -->
-    <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length === 0">
+    <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length === 0" key="no-docs">
       <div class="svg-icon w-16 h-16 mx-auto mb-6 text-neutral-300" v-html="documentIcon" />
       <h3 class="text-center text-size-large font-semibold text-neutral-700 mb-2">No documents yet</h3>
       <p class="text-center text-neutral-500">There are no documents in this space yet</p>
