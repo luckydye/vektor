@@ -244,7 +244,7 @@ if (diffMins >= 1 && diffMins < 60) {
       <!-- Main Content -->
       <div
         class={twMerge(
-          'max-w-none text-neutral-700',
+          'max-w-none text-neutral-700 overflow-auto',
           document.type === 'csv' ? 'flex-1 min-h-0 overflow-hidden flex flex-col' : 'h-full',
           document.type !== 'canvas' && document.type !== 'app' && document.type !== 'csv' && document.type !== 'workflow' && "print:px-0 px-xs lg:px-xl"
         )}
