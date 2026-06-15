@@ -63,8 +63,7 @@ a-shortcut:not(:defined) {
   }
 }
 
-body[data-revision] main,
-body[data-editing] main {
+body[data-revision] main {
   display: none;
 }
 

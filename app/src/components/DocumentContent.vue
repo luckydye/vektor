@@ -258,7 +258,7 @@ async function setupEditorBridge() {
 
 function editorPresenceState(): DocumentPresenceState {
   const editor = getEditor();
-  const view = editorViewEl.value;
+  const view = documentViewEl.value;
   if (!editor || !view) {
     return { kind: "editor", focused: false, selection: null };
   }
