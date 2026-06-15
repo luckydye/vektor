@@ -817,6 +817,7 @@ useSync(
         <div v-if="!viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
             :class="isEditing ? 'h-full' : ''">
             <document-view ref="documentViewEl" v-bind="isEditing && !props.readonly ? { editor: '' } : {}"
+                :space-id="props.spaceId" :document-id="props.documentId"
                 :editor-context.prop="isEditing && !props.readonly ? { spaceId: props.spaceId, documentId: props.documentId } : undefined">
                 <template v-if="isEditing" v-html="renderedHtml"></template>
             </document-view>

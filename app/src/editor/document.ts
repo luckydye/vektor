@@ -17,11 +17,11 @@ import {
   findYSyncState,
 } from "./collaboration.ts";
 import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
-import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
 import {
   imageFilesFromDataTransfer,
   insertImageFilesAt,
 } from "./extensions/ImageUpload.ts";
+import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
 import { MentionSuggestons } from "./extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
 import { contentExtensions, type EditorContext } from "./extensions.ts";
@@ -290,6 +290,20 @@ function createEditor(
       if (!editor.view.dom.contains(element)) continue;
       if (element.closest(".wiki-inline-suggestion")) continue;
 
+      const columnItem = element.closest<HTMLElement>('div[data-type="column-item"]');
+      if (columnItem && editor.view.dom.contains(columnItem)) {
+        let current: HTMLElement | null = element;
+        while (current?.parentElement && current.parentElement !== columnItem) {
+          current = current.parentElement;
+        }
+
+        if (current?.parentElement === columnItem) {
+          return current;
+        }
+
+        return columnItem;
+      }
+
       let current: HTMLElement | null = element;
       while (current?.parentElement && current.parentElement !== editor.view.dom) {
         current = current.parentElement;
@@ -465,7 +479,7 @@ class DocumentView extends HTMLElement {
   private startEditorQueued = false;
 
   static get observedAttributes() {
-    return ["editor"];
+    return ["editor", "editor-context", "space-id", "document-id"];
   }
 
   get root() {
@@ -496,6 +510,88 @@ class DocumentView extends HTMLElement {
     this._editorContext = context || {};
     this.queueMaybeStartEditor();
   }
+
+  private parsedEditorContextAttribute(): EditorContext {
+    const raw = this.getAttribute("editor-context");
+    if (!raw) return {};
+
+    try {
+      const parsed = JSON.parse(raw) as EditorContext;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private resolvedEditorContext(): EditorContext {
+    const attributeContext = this.parsedEditorContextAttribute();
+    const spaceId =
+      this._editorContext.spaceId ||
+      attributeContext.spaceId ||
+      this.getAttribute("space-id") ||
+      document.body.dataset.spaceId ||
+      "";
+    const documentId =
+      this._editorContext.documentId ||
+      attributeContext.documentId ||
+      this.getAttribute("document-id") ||
+      undefined;
+
+    return { spaceId, documentId };
+  }
+
+  private handleFileDragOver = (event: DragEvent) => {
+    if (!this.tiptapEditor || !dragHasFiles(event.dataTransfer)) return;
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  private hideBlockDropIndicators() {
+    document
+      .querySelectorAll<HTMLElement>(".wiki-block-drop-indicator")
+      .forEach((indicator) => {
+        indicator.style.opacity = "0";
+        indicator.style.width = "0";
+      });
+  }
+
+  private handleFileDrop = (event: DragEvent) => {
+    const editor = this.tiptapEditor;
+    if (!editor || !dragHasFiles(event.dataTransfer)) return;
+
+    event.preventDefault();
+    this.hideBlockDropIndicators();
+
+    const images = imageFilesFromDataTransfer(event.dataTransfer);
+    if (images.length === 0) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    const coordinates = editor.view.posAtCoords({
+      left: event.clientX,
+      top: event.clientY,
+    });
+    const insertPos = coordinates?.pos ?? editor.state.selection.from;
+    const context = this.resolvedEditorContext();
+    const inserted = insertImageFilesAt(
+      editor,
+      editor.view,
+      images,
+      insertPos,
+      context.spaceId ?? "",
+      context.documentId,
+    );
+
+    if (!inserted) {
+      alert("Image upload is not available in this editor.");
+    }
+  };
 
   connectedCallback() {
     if (!this.root) {
@@ -555,7 +651,7 @@ class DocumentView extends HTMLElement {
     this.tiptapEditor = createEditor(
       this.element,
       this.collaborationDocument,
-      this.editorContext,
+      this.resolvedEditorContext(),
       this.initialHtml(),
     );
 
@@ -604,6 +700,19 @@ class DocumentView extends HTMLElement {
   }
 
   attachListeners() {
+    this.addEventListener("dragover", this.handleFileDragOver, {
+      capture: true,
+    });
+    this.addEventListener("drop", this.handleFileDrop, {
+      capture: true,
+    });
+    this.root?.addEventListener("dragover", this.handleFileDragOver, {
+      capture: true,
+    });
+    this.root?.addEventListener("drop", this.handleFileDrop, {
+      capture: true,
+    });
+
     this.root?.addEventListener(
       "input",
       (_e) => {

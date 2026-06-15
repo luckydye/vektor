@@ -189,6 +189,9 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
           function rerenderSelection() {
             if (!popup || !lastProps) return;
             renderList(lastProps);
+            popup
+              .querySelector(`[role="option"][aria-selected="true"]`)
+              ?.scrollIntoView({ block: "nearest" });
           }
 
           function renderList(props: MentionProps) {
