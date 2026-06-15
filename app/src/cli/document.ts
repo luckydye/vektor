@@ -111,6 +111,13 @@ export async function commandWrite(docId: string, source?: string): Promise<void
   });
 }
 
+function titleFromFilename(source?: string): string | undefined {
+  if (!source || source === "-") return undefined;
+  const base = source.split("/").pop() ?? source;
+  const name = base.includes(".") ? base.slice(0, base.lastIndexOf(".")) : base;
+  return name.replace(/[-_]+/g, " ").trim() || undefined;
+}
+
 export async function commandCreate(flags: {
   slug?: string;
   type?: string;
@@ -122,7 +129,7 @@ export async function commandCreate(flags: {
 
   const type = flags.type ?? meta.type ?? "markdown";
   const slug = flags.slug ?? meta.slug ?? meta.guid;
-  const title = meta.title;
+  const title = meta.title ?? titleFromFilename(flags.source);
 
   // Everything not used as a first-class field goes into properties.
   const properties: Record<string, string> = {};
