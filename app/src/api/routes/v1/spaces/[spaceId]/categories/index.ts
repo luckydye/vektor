@@ -5,17 +5,15 @@ import {
   jsonResponse,
   parseJsonBody,
   requireParam,
-  requireUser,
-  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { createCategory, listCategories, reorderCategories } from "#db/categories.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
     const categories = await listCategories(spaceId);
 
@@ -24,9 +22,8 @@ export const GET: APIRoute = (context) =>
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     const body = await parseJsonBody(context.request);
     const { name, slug, description, color, icon } = body;
@@ -48,9 +45,8 @@ export const POST: APIRoute = (context) =>
 
 export const PUT: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     const body = await parseJsonBody(context.request);
     const { categoryIds } = body;

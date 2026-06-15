@@ -5,19 +5,17 @@ import {
   notFoundResponse,
   parseJsonBody,
   requireParam,
-  requireUser,
   successResponse,
-  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { deleteCategory, getCategory, updateCategory } from "#db/categories.ts";
+import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "id");
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
     const categoryData = await getCategory(spaceId, id);
     if (!categoryData) {
@@ -29,10 +27,9 @@ export const GET: APIRoute = (context) =>
 
 export const PUT: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "id");
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     const body = await parseJsonBody(context.request);
     const { name, slug, description, color, icon } = body;
@@ -60,10 +57,9 @@ export const PUT: APIRoute = (context) =>
 
 export const DELETE: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const id = requireParam(context.params, "id");
-    await verifySpaceRole(spaceId, user.id, "editor");
+    await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     await deleteCategory(spaceId, id);
     return successResponse();

@@ -122,6 +122,7 @@ export async function commandCreate(flags: {
   slug?: string;
   type?: string;
   source?: string;
+  parent?: string;
 }): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
   const raw = await readSource(flags.source);
@@ -145,6 +146,7 @@ export async function commandCreate(flags: {
       content,
       type,
       ...(slug ? { slug } : {}),
+      ...(flags.parent ? { parentId: flags.parent } : {}),
       ...(meta.created ? { createdAt: meta.created } : {}),
       ...(meta.modified ? { updatedAt: meta.modified } : {}),
       ...(Object.keys(properties).length > 0 ? { properties } : {}),
@@ -167,6 +169,52 @@ export async function commandLs(flags: { limit?: string }): Promise<void> {
   for (const doc of data.documents) {
     process.stdout.write(`${doc.id}\t${doc.slug}\t${doc.title ?? ""}\n`);
   }
+}
+
+// vektor set <docId> [key=value ...] [-key ...] [--parent <id|->]
+//
+// Positional args after docId are property assignments:
+//   key=value   → set property
+//   -key        → delete property (value null)
+// --parent <id> sets the parent; --parent - clears it.
+export async function commandSet(
+  docId: string,
+  assignments: string[],
+  opts: { parent?: string },
+): Promise<void> {
+  const { host, token, spaceId } = await resolveConnection();
+  const base = `/api/v1/spaces/${spaceId}/documents/${docId}`;
+
+  // Send properties patch if any assignments were given.
+  if (assignments.length > 0) {
+    const properties: Record<string, string | null> = {};
+    for (const arg of assignments) {
+      if (arg.startsWith("-") && !arg.includes("=")) {
+        properties[arg.slice(1)] = null; // delete
+      } else {
+        const eq = arg.indexOf("=");
+        if (eq < 1) throw new Error(`Invalid property assignment: '${arg}' (expected key=value or -key)`);
+        properties[arg.slice(0, eq)] = arg.slice(eq + 1);
+      }
+    }
+    await apiFetch(host, token, base, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ properties }),
+    });
+  }
+
+  // Send parent patch separately (API does not allow combining with properties).
+  if (opts.parent !== undefined) {
+    const parentId = opts.parent === "-" || opts.parent === "none" ? null : opts.parent;
+    await apiFetch(host, token, base, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parentId }),
+    });
+  }
+
+  process.stdout.write(`updated\t${docId}\n`);
 }
 
 export async function commandSearch(query: string): Promise<void> {

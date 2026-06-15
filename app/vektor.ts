@@ -11,7 +11,7 @@
  *   vektor extension package [id]
  *   vektor extension upload [id] [--space <space-id>] [--token <api-token>]
  *   vektor cat <docId>
- *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>]    (types: markdown, document, csv, app; file defaults to stdin)
+ *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>] [--parent <docId>]    (types: markdown, document, csv, app; file defaults to stdin)
  *   vektor create [--slug <slug>] [--type <type>]
  *   vektor ls [--limit <n>]
  *   vektor query <query>
@@ -19,10 +19,17 @@
 
 import { commandAgent } from "./src/cli/agent.ts";
 import {
+  commandCategoryCreate,
+  commandCategoryEdit,
+  commandCategoryLs,
+  commandCategoryRm,
+} from "./src/cli/category.ts";
+import {
   commandCat,
   commandCreate as commandDocCreate,
   commandLs,
   commandSearch,
+  commandSet,
   commandWrite,
 } from "./src/cli/document.ts";
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
@@ -80,9 +87,14 @@ Commands:
   vektor extension package [id]
   vektor extension upload [id]
   vektor cat <docId>
-  vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>]    (types: markdown, document, csv, app; file defaults to stdin)
+  vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>] [--parent <docId>]    (types: markdown, document, csv, app; file defaults to stdin)
   vektor ls [--limit <n>]
   vektor query <query>
+  vektor set <docId> [key=value ...] [-key ...] [--parent <docId|->]
+  vektor category ls
+  vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
+  vektor category edit <id|slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
+  vektor category rm <id|slug>
 
 Env vars:
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
@@ -122,7 +134,6 @@ async function main(): Promise<void> {
     await commandAgent({
       prompt: positional.length > 0 ? positional.join(" ") : undefined,
       doc: flags.doc,
-      user: flags.user,
       once: "once" in flags,
     });
     return;
@@ -206,8 +217,16 @@ async function main(): Promise<void> {
     if (isDocId) {
       await commandWrite(positional[0], positional[1]);
     } else {
-      await commandDocCreate({ slug: flags.slug, type: flags.type ?? "markdown", source: positional[0] });
+      await commandDocCreate({ slug: flags.slug, type: flags.type ?? "markdown", source: positional[0], parent: flags.parent });
     }
+    return;
+  }
+
+  if (command === "set") {
+    const { positional, flags } = parseFlags(rest);
+    const [docId, ...assignments] = positional;
+    if (!docId) throw new Error("set requires a <docId>");
+    await commandSet(docId, assignments, { parent: flags.parent });
     return;
   }
 
@@ -223,8 +242,52 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "category") {
+    const [subcommand, ...subArgs] = rest;
+
+    if (subcommand === "ls" || subcommand === "list") {
+      await commandCategoryLs();
+      return;
+    }
+
+    if (subcommand === "create") {
+      const { positional, flags } = parseFlags(subArgs);
+      const name = positional.join(" ") || flags.name;
+      if (!name) throw new Error("category create requires a <name>");
+      await commandCategoryCreate({
+        name,
+        slug: flags.slug,
+        description: flags.description,
+        color: flags.color,
+        icon: flags.icon,
+      });
+      return;
+    }
+
+    if (subcommand === "edit") {
+      const { positional, flags } = parseFlags(subArgs);
+      if (!positional[0]) throw new Error("category edit requires an <id|slug>");
+      await commandCategoryEdit(positional[0], {
+        name: flags.name,
+        slug: flags.slug,
+        description: flags.description,
+        color: flags.color,
+        icon: flags.icon,
+      });
+      return;
+    }
+
+    if (subcommand === "rm" || subcommand === "delete") {
+      if (!subArgs[0]) throw new Error("category rm requires an <id|slug>");
+      await commandCategoryRm(subArgs[0]);
+      return;
+    }
+
+    throw new Error(`Unknown category subcommand: ${subcommand}\n\nTry: ls, create, edit, rm`);
+  }
+
   throw new Error(
-    `Unknown command: ${command}\n\nTry: serve, workflow, extension, cat, write, ls, query`,
+    `Unknown command: ${command}\n\nTry: serve, workflow, extension, cat, write, set, ls, query, category`,
   );
 }
 
