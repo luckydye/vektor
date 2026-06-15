@@ -1,4 +1,3 @@
-import type { Editor } from "@tiptap/core";
 import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
@@ -22,6 +21,17 @@ export interface MentionOptions {
   documentId: string | undefined;
 }
 
+type EditorMentionState = {
+  spaceId: string;
+  documentId: string | undefined;
+  cachedMembers: SpaceMember[] | null;
+  cachedDocs: DocumentWithProperties[] | null;
+};
+
+// Keyed by editor instance so each editor has its own config + cache.
+// Using `object` because the Editor type isn't importable without a side-effectful import.
+const editorState = new WeakMap<object, EditorMentionState>();
+
 export const MentionSuggestons = Mentions.extend<MentionOptions>({
   name: "mention-suggestons",
 
@@ -33,75 +43,67 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
       suggestion: {
         char: "@",
         allowSpaces: true,
-        items: (() => {
-          let cachedMembers: SpaceMember[] | null = null;
-          let cachedDocs: DocumentWithProperties[] | null = null;
+        items: async ({
+          query,
+          editor,
+        }: {
+          query: string;
+          editor: object;
+        }): Promise<MentionItem[]> => {
+          const state = editorState.get(editor);
+          if (!state?.spaceId) {
+            return [];
+          }
 
-          return async ({
-            query,
-            editor,
-          }: {
-            query: string;
-            editor: Editor;
-          }): Promise<MentionItem[]> => {
-            const options = editor.extensionManager.extensions.find(
-              (ext) => ext.name === "mention-suggestons",
-            )?.options;
+          if (!state.cachedMembers || !state.cachedDocs) {
+            const { api } = await import("~/src/api/client.ts");
+            const [members, docsResponse] = await Promise.all([
+              api.spaceMembers.get(state.spaceId).catch(() => []),
+              api.documents
+                .get(state.spaceId, { limit: 500 })
+                .catch(() => ({ documents: [] })),
+            ]);
+            state.cachedMembers = members || [];
+            state.cachedDocs = docsResponse.documents;
+          }
 
-            if (!options?.documentId) {
-              return [];
-            }
+          const q = query.toLowerCase();
 
-            if (!cachedMembers || !cachedDocs) {
-              const { api } = await import("~/src/api/client.ts");
-              const [members, docsResponse] = await Promise.all([
-                api.spaceMembers.get(options.spaceId).catch(() => []),
-                api.documents
-                  .get(options.spaceId, { limit: 500 })
-                  .catch(() => ({ documents: [] })),
-              ]);
-              cachedMembers = members || [];
-              cachedDocs = docsResponse.documents;
-            }
+          const people: MentionItem[] = state.cachedMembers
+            .filter((member: SpaceMember) => {
+              if (!member.user?.name) return false;
+              const userName = member.user.name;
+              const userEmail = member.user.email || "";
+              return (
+                userName.toLowerCase().includes(q) ||
+                userEmail.toLowerCase().includes(q)
+              );
+            })
+            .slice(0, 5)
+            .map((member: SpaceMember) => ({
+              id: member.user?.email || member.userId || "",
+              label: member.user?.name || "Unknown User",
+              email: member.user?.email || "",
+              image: member.user?.image || null,
+              type: "person" as const,
+            }));
 
-            const q = query.toLowerCase();
+          const docs: MentionItem[] = state.cachedDocs
+            .filter((doc: DocumentWithProperties) => {
+              if (state.documentId && doc.id === state.documentId) return false;
+              const title = doc.properties?.title || "";
+              return title.toLowerCase().includes(q);
+            })
+            .slice(0, 5)
+            .map((doc: DocumentWithProperties) => ({
+              id: doc.id,
+              label: doc.properties?.title || "Untitled",
+              slug: doc.slug,
+              type: "document" as const,
+            }));
 
-            const people: MentionItem[] = cachedMembers
-              .filter((member: SpaceMember) => {
-                if (!member.user?.name) return false;
-                const userName = member.user.name;
-                const userEmail = member.user.email || "";
-                return (
-                  userName.toLowerCase().includes(q) ||
-                  userEmail.toLowerCase().includes(q)
-                );
-              })
-              .slice(0, 5)
-              .map((member: SpaceMember) => ({
-                id: member.user?.email || member.userId,
-                label: member.user?.name || "Unknown User",
-                email: member.user?.email || "",
-                image: member.user?.image || null,
-                type: "person" as const,
-              }));
-
-            const docs: MentionItem[] = cachedDocs
-              .filter((doc: DocumentWithProperties) => {
-                if (doc.id === options.documentId) return false;
-                const title = doc.properties?.title || "";
-                return title.toLowerCase().includes(q);
-              })
-              .slice(0, 5)
-              .map((doc: DocumentWithProperties) => ({
-                id: doc.id,
-                label: doc.properties?.title || "Untitled",
-                slug: doc.slug,
-                type: "document" as const,
-              }));
-
-            return [...people, ...docs];
-          };
-        })(),
+          return [...people, ...docs];
+        },
 
         render: () => {
           let popup: HTMLDivElement | null = null;
@@ -136,7 +138,6 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
               if (!spaceSlug) return;
               const href = `/${spaceSlug}/doc/${item.id}`;
 
-              // Delete the @query range and insert a link directly
               const { editor, range } = props;
               editor
                 .chain()
@@ -196,19 +197,30 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
             currentItems = props.items || [];
             if (currentItems.length === 0) {
               selectedIndex = 0;
-            } else {
-              selectedIndex = Math.max(
-                0,
-                Math.min(selectedIndex, currentItems.length - 1),
+              popup.style.display = "";
+              movePopup(props);
+              render(
+                html`
+                <div class="w-72 bg-background border border-neutral-100 rounded-sm shadow-lg overflow-hidden text-size-medium">
+                  <p class="px-3 py-2 text-neutral-400">No results</p>
+                </div>
+              `,
+                popup,
               );
+              return;
             }
+
+            popup.style.display = "";
+            selectedIndex = Math.max(
+              0,
+              Math.min(selectedIndex, currentItems.length - 1),
+            );
 
             movePopup(props);
 
             const people = currentItems.filter((i) => i.type === "person");
             const docs = currentItems.filter((i) => i.type === "document");
 
-            // Build a flat index map so section rendering maps back to global indices
             const getGlobalIndex = (item: MentionItem) => currentItems.indexOf(item);
 
             render(
@@ -315,5 +327,21 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
         },
       },
     };
+  },
+
+  addProseMirrorPlugins() {
+    // Register config for this editor so the items function can read it reliably.
+    // We do this here because `this.options` in addProseMirrorPlugins reflects the
+    // actual configured values (spaceId, documentId), whereas accessing options from
+    // inside the items closure via extensionManager is unreliable in TipTap 3.x.
+    if (this.editor) {
+      editorState.set(this.editor, {
+        spaceId: this.options.spaceId,
+        documentId: this.options.documentId,
+        cachedMembers: null,
+        cachedDocs: null,
+      });
+    }
+    return this.parent?.() ?? [];
   },
 });

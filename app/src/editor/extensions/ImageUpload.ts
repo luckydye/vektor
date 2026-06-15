@@ -12,6 +12,7 @@ export interface ImageUploadOptions {
 }
 
 const PLACEHOLDER_TEXT = "⏳ Uploading image...";
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
 
 async function uploadImage(
   file: File,
@@ -38,8 +39,16 @@ async function uploadImage(
   return data.url;
 }
 
-function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/");
+export function isImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  return IMAGE_EXTENSIONS.includes(extension);
+}
+
+export function imageFilesFromDataTransfer(
+  data: DataTransfer | null | undefined,
+): File[] {
+  return Array.from(data?.files || []).filter((file) => isImageFile(file));
 }
 
 function findPlaceholder(editor: Editor): { from: number; to: number } | null {
@@ -100,6 +109,31 @@ function insertPlaceholderAndUpload(
   uploadImage(file, spaceId, documentId)
     .then((url) => replacePlaceholderWithImage(editor, url))
     .catch((error) => replacePlaceholderWithError(editor, error));
+}
+
+export function insertImageFilesAt(
+  editor: Editor,
+  view: EditorView,
+  files: File[],
+  insertPos: number,
+  spaceId: string,
+  documentId?: string,
+): boolean {
+  const images = files.filter((file) => isImageFile(file));
+  if (!spaceId || images.length === 0) return false;
+
+  images.forEach((file, index) => {
+    insertPlaceholderAndUpload(
+      editor,
+      view,
+      file,
+      insertPos + index * PLACEHOLDER_TEXT.length,
+      spaceId,
+      documentId,
+    );
+  });
+
+  return true;
 }
 
 class ResizableImageView extends ResizableNodeView {
@@ -217,9 +251,7 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
               return false;
             }
 
-            const images = Array.from(event.dataTransfer.files).filter((file) =>
-              isImageFile(file),
-            );
+            const images = imageFilesFromDataTransfer(event.dataTransfer);
 
             if (images.length === 0) {
               return false;
@@ -236,18 +268,14 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
               return false;
             }
 
-            for (const file of images) {
-              insertPlaceholderAndUpload(
-                editor,
-                view,
-                file,
-                coordinates.pos,
-                spaceId,
-                documentId,
-              );
-            }
-
-            return true;
+            return insertImageFilesAt(
+              editor,
+              view,
+              images,
+              coordinates.pos,
+              spaceId,
+              documentId,
+            );
           },
         },
       }),

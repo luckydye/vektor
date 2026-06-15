@@ -18,6 +18,10 @@ import {
 } from "./collaboration.ts";
 import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
 import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
+import {
+  imageFilesFromDataTransfer,
+  insertImageFilesAt,
+} from "./extensions/ImageUpload.ts";
 import { MentionSuggestons } from "./extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
 import { contentExtensions, type EditorContext } from "./extensions.ts";
@@ -31,6 +35,12 @@ declare global {
 const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
   "document-presence",
 );
+
+function dragHasFiles(transfer: DataTransfer | null) {
+  if (!transfer) return false;
+  if (Array.from(transfer.types).includes("Files")) return true;
+  return Array.from(transfer.items || []).some((item) => item.kind === "file");
+}
 
 function relativePresencePositionToAbsolute(
   state: EditorState,
@@ -326,6 +336,13 @@ function createEditor(
     if (isInlineSuggestionElement(event.target)) {
       hideBlockDropIndicator();
       return;
+    }
+
+    if (dragHasFiles(event.dataTransfer)) {
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
     }
 
     updateBlockDropIndicator(event);
