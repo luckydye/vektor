@@ -28,6 +28,7 @@ const props = defineProps<{
   documentId?: string;
   documentType?: string;
   initialProperties: Record<string, string | null | undefined> | undefined;
+  initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
 }>();
 
 // Reserved/internal properties that are managed through dedicated UI
@@ -105,9 +106,11 @@ const handleCreate = async (property: { name: string; type: string; value?: stri
 const getCategoryIcon = (categorySlug: string | undefined) => {
   if (!categorySlug) return null;
 
-  const category = categories.value.find(
-    (c) => c.slug === categorySlug || c.name === categorySlug,
-  );
+  const category =
+    categories.value.find((c) => c.slug === categorySlug || c.name === categorySlug) ||
+    (props.initialCategory?.slug === categorySlug || props.initialCategory?.name === categorySlug
+      ? props.initialCategory
+      : null);
 
   if (!category) return null;
 
@@ -123,9 +126,11 @@ const getPropertyLabel = (property: Property) => {
     const categorySlug = property.value;
     if (!categorySlug) return "Category";
 
-    const category = categories.value.find(
-      (c) => c.slug === categorySlug || c.name === categorySlug,
-    );
+    const category =
+      categories.value.find((c) => c.slug === categorySlug || c.name === categorySlug) ||
+      (props.initialCategory?.slug === categorySlug || props.initialCategory?.name === categorySlug
+        ? props.initialCategory
+        : null);
 
     return category ? category.name : categorySlug;
   }

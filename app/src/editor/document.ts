@@ -601,16 +601,7 @@ class DocumentView extends HTMLElement {
         createRange: document.createRange.bind(document),
       });
 
-      // on client navigation, declarative shadow DOM does not work
-      //  if its a server navigation, template is null here.
-      const template = this.querySelector("template");
-      if (template) {
-        const clone = template.content.cloneNode(true);
-        shadow.innerHTML = `
-          <style>${docStyles}</style>
-        `;
-        shadow.append(clone);
-      }
+      this.renderFromSlot();
     }
 
     let attached = false;
@@ -667,6 +658,31 @@ class DocumentView extends HTMLElement {
     return this.tiptapEditor;
   }
 
+  renderFromSlot() {
+    const shadow = this.root;
+    if (!shadow) return;
+
+    // Declarative shadow DOM / SSR: template child carries pre-rendered content
+    const template = this.querySelector("template");
+    if (template) {
+      shadow.innerHTML = `<style>${docStyles}</style>`;
+      shadow.append(template.content.cloneNode(true));
+      return;
+    }
+
+    // Client-side: first element child is the content div injected by the parent
+    const contentDiv = this.firstElementChild as HTMLElement | null;
+    if (contentDiv) {
+      shadow.innerHTML = `<style>${docStyles}</style>`;
+      const part = document.createElement("div");
+      part.setAttribute("part", "content");
+      const inner = document.createElement("div");
+      inner.innerHTML = contentDiv.innerHTML;
+      part.appendChild(inner);
+      shadow.appendChild(part);
+    }
+  }
+
   destroyEditor() {
     if (!this.tiptapEditor) return;
     const editor = this.tiptapEditor;
@@ -676,10 +692,7 @@ class DocumentView extends HTMLElement {
       window.__editor = undefined;
     }
     window.dispatchEvent(new Event("editor-destroyed"));
-    const shadow = this.root;
-    if (shadow) {
-      shadow.innerHTML = `<style>${docStyles}</style>`;
-    }
+    this.renderFromSlot();
   }
 
   private hasEditorConfig() {
@@ -695,6 +708,11 @@ class DocumentView extends HTMLElement {
           return node.textContent || "";
         })
         .join("");
+    }
+
+    const contentDiv = this.firstElementChild as HTMLElement | null;
+    if (contentDiv) {
+      return contentDiv.innerHTML;
     }
 
     return this.innerHTML;

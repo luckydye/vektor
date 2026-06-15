@@ -24,7 +24,6 @@ import {
   findYSyncState,
   getPresenceColor,
 } from "../editor/collaboration.ts";
-import docStyles from "../styles/document.css?inline";
 import { Actions } from "../utils/actions.ts";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
@@ -193,8 +192,6 @@ async function handleEditModeCancel() {
     renderedHtml.value = documentData.value.content;
   }
 
-  await nextTick();
-  renderReadView();
   await reloadIfReady();
 }
 
@@ -487,7 +484,6 @@ watch(isEditing, (editing) => {
     unregisterEditorActions();
     clearEditorPresence();
     documentViewEl.value?.destroyEditor();
-    nextTick(renderReadView);
   }
 
   if (editing && !viewingRevision.value) {
@@ -618,7 +614,6 @@ onMounted(() => {
   }
 
   applyLayout(props.initialLayout);
-  renderReadView();
 
   if (props.documentType === "csv") {
     import("../editor/elements/table-view.ts").then(renderTableView);
@@ -707,43 +702,11 @@ function renderTableView() {
   tableViewEl.value.setContent(renderedHtml.value);
 }
 
-function renderReadView() {
-  if (!documentViewEl.value) return;
-  if (isEditing.value || viewingRevision.value) return;
-  if (
-    props.documentType === "canvas" ||
-    props.documentType === "app" ||
-    props.documentType === "workflow"
-  )
-    return;
-
-  const container = documentViewEl.value;
-  const root = container.shadowRoot;
-
-  if (!root) {
-    requestAnimationFrame(renderReadView);
-    return;
-  }
-
-  root.innerHTML = "";
-
-  const style = document.createElement("style");
-  style.textContent = docStyles;
-
-  const content = document.createElement("div");
-  content.setAttribute("part", "content");
-
-  const inner = document.createElement("div");
-  inner.innerHTML = renderedHtml.value;
-
-  content.appendChild(inner);
-  root.appendChild(style);
-  root.appendChild(content);
-}
-
-watch([renderedHtml, isEditing, viewingRevision, documentViewEl], () => {
-  renderReadView();
+watch([renderedHtml, isEditing, viewingRevision], () => {
   renderTableView();
+  if (!isEditing.value && !viewingRevision.value) {
+    nextTick(() => documentViewEl.value?.renderFromSlot());
+  }
 });
 
 useSync(
@@ -820,7 +783,7 @@ useSync(
         </div>
 
         <!-- Document View (read + edit, single persistent instance) -->
-        <div v-if="!viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
+        <div v-if="!viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv' && props.documentType !== 'workflow'"
             :class="isEditing ? 'h-full' : ''">
             <document-view ref="documentViewEl" v-bind="isEditing && !props.readonly ? { editor: '' } : {}"
                 :space-id="props.spaceId" :document-id="props.documentId"

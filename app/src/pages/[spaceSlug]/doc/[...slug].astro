@@ -237,7 +237,7 @@ if (diffMins >= 1 && diffMins < 60) {
           "print:px-0 px-xs lg:px-xl mt-xs",
           document.type === 'canvas' && 'pointer-events-auto'
         )}>
-          <DocumentProperties client:only documentId={document.id} documentType={document.type ?? undefined} initialProperties={{ ...document.properties, parentId: document.parentId }} />
+          <DocumentProperties client:load documentId={document.id} documentType={document.type ?? undefined} initialProperties={{ ...document.properties, parentId: document.parentId }} initialCategory={category} />
         </div>
       </div>
 
