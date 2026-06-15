@@ -732,7 +732,30 @@ if (
         return html`
           <style>
             :host {
+              --tb-bg: rgba(255, 255, 255, 0.94);
+              --tb-border: #d1d5db;
+              --tb-shadow: rgba(15, 23, 42, 0.14);
+              --tb-text: #374151;
+              --tb-hover-bg: #f3f4f6;
+              --tb-active-bg: #dbeafe;
+              --tb-active-border: #bfdbfe;
+              --tb-active-text: #1d4ed8;
+              --tb-divider: #e5e7eb;
               display: contents;
+            }
+
+            @media (prefers-color-scheme: dark) {
+              :host {
+                --tb-bg: rgba(24, 24, 27, 0.94);
+                --tb-border: rgba(255, 255, 255, 0.12);
+                --tb-shadow: rgba(0, 0, 0, 0.38);
+                --tb-text: #d1d5db;
+                --tb-hover-bg: rgba(255, 255, 255, 0.08);
+                --tb-active-bg: rgba(37, 99, 235, 0.26);
+                --tb-active-border: rgba(96, 165, 250, 0.48);
+                --tb-active-text: #bfdbfe;
+                --tb-divider: rgba(255, 255, 255, 0.12);
+              }
             }
 
             .floating-menu,
@@ -743,18 +766,20 @@ if (
               flex-direction: column;
               align-items: flex-start;
               gap: 0.25rem;
-              color: var(--color-neutral-700, #374151);
+              color: var(--tb-text);
               font-family: inherit;
             }
 
             .table-toolbar {
               z-index: 40;
               align-items: center;
-              gap: 0.125rem;
-              padding: 0.25rem;
-              border-radius: 0.375rem;
-              background: var(--color-neutral-50, #e5e5e5);
-              box-shadow: 0 10px 20px rgba(15, 23, 42, 0.15);
+              gap: 2px;
+              padding: 4px;
+              border-radius: 10px;
+              border: 1px solid var(--tb-border);
+              background: var(--tb-bg);
+              box-shadow: 0 6px 18px var(--tb-shadow);
+              backdrop-filter: blur(8px);
               transform: translateY(calc(-100% - 0.5rem));
             }
 
@@ -762,17 +787,18 @@ if (
             .menu-group {
               display: flex;
               align-items: center;
-              gap: 0.125rem;
+              gap: 2px;
             }
 
             .toolbar-section {
               max-width: 95vw;
               overflow-x: auto;
-              padding: 0.125rem;
-              border-radius: 0.375rem;
-              background: var(--color-neutral-50, #e5e5e5);
-              box-shadow: 2px 10px 8px rgba(15, 23, 42, 0.015);
-              border: 1px solid var(--color-neutral-100, #d1d5db);
+              padding: 2px;
+              border-radius: 12px;
+              border: 1px solid var(--tb-border);
+              background: var(--tb-bg);
+              box-shadow: 0 10px 28px var(--tb-shadow);
+              backdrop-filter: blur(8px);
             }
 
             .menu-btn {
@@ -780,28 +806,32 @@ if (
               display: inline-flex;
               align-items: center;
               justify-content: center;
-              border: 0;
-              border-radius: 0.25rem;
-              padding: 0.25rem 0.25rem;
-              color: inherit;
+              min-width: 36px;
+              height: 36px;
+              border: 1px solid transparent;
+              border-radius: 8px;
+              padding: 0 6px;
+              color: var(--tb-text);
               background: transparent;
               font: inherit;
               font-size: 0.875rem;
               font-weight: 600;
               cursor: pointer;
+              transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
             }
 
-            .menu-btn:hover {
-              background: var(--color-neutral-100, #f5f5f5);
+            .menu-btn:hover:not(:disabled) {
+              background: var(--tb-hover-bg);
             }
 
             .menu-btn.active {
-              color: white;
-              background: var(--color-blue-500, #3b82f6);
+              border-color: var(--tb-active-border);
+              background: var(--tb-active-bg);
+              color: var(--tb-active-text);
             }
 
             .menu-btn.danger {
-              color: var(--color-red-600, #dc2626);
+              color: #b91c1c;
             }
 
             .menu-btn:disabled {
@@ -811,9 +841,9 @@ if (
 
             .menu-divider {
               width: 1px;
-              height: 1.5rem;
-              margin: 0 0.25rem;
-              background: var(--color-neutral-300, #d4d4d4);
+              height: 24px;
+              margin: 0 2px;
+              background: var(--tb-divider);
             }
 
             .icon,
@@ -845,7 +875,7 @@ if (
               position: relative;
               display: flex;
               align-items: center;
-              gap: 0.125rem;
+              gap: 2px;
             }
 
             .color-trigger {
