@@ -311,14 +311,23 @@ const selectedShape = computed(() => {
   return shapes.value.find((shape) => shape.id === id) ?? null;
 });
 
-// Shapes within the current viewport (plus a 400px screen-space margin to hide
-// pop-in during panning). Selected shapes are always included so drag/resize
-// handles stay mounted even when a shape is panned partially off-screen.
-const visibleShapes = computed(() => {
+// Non-GIF image shapes render on the images canvas — no DOM article needed.
+// All other shapes stay in the DOM permanently; content-visibility:auto in CSS
+// tells the browser to skip painting off-screen articles without JS involvement.
+const domShapes = computed(() =>
+  shapes.value.filter(
+    (shape) => shape.type !== "image" || isGifSrc(shape.src ?? ""),
+  ),
+);
+
+// Canvas-rendered image shapes within the current viewport. Used only by
+// renderImages() to avoid drawImage calls for off-screen images.
+const visibleImageShapes = computed(() => {
   const vr = worldViewportBounds(camera.value, screen.value, FIT_REFERENCE, 400);
   return shapes.value.filter(
     (shape) =>
-      selectedShapeIds.value.has(shape.id) ||
+      shape.type === "image" &&
+      !isGifSrc(shape.src ?? "") &&
       rectsIntersect(vr, { x: shape.x, y: shape.y, width: shape.width, height: shape.height }),
   );
 });
@@ -494,6 +503,10 @@ function syncTextShapeObservers() {
       observedTextShapes.delete(element);
     }
   }
+}
+
+function isGifSrc(src: string): boolean {
+  return /\.gif($|\?)/i.test(src);
 }
 
 function resolveMediaSrc(src: string): string {
@@ -803,8 +816,8 @@ function renderImages() {
   ctx.clearRect(0, 0, screen.value.width, screen.value.height);
 
   const t = transform.value;
-  for (const shape of visibleShapes.value) {
-    if (shape.type !== "image" || !shape.src) continue;
+  for (const shape of visibleImageShapes.value) {
+    if (shape.type !== "image" || !shape.src || isGifSrc(shape.src)) continue;
     const sx = shape.x * t.scale + t.dx;
     const sy = shape.y * t.scale + t.dy;
     const sw = shape.width * t.scale;
@@ -833,6 +846,12 @@ function renderImages() {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(cached, sx, sy, sw, sh);
+    }
+
+    if (selectedShapeIds.value.has(shape.id)) {
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx - 2, sy - 2, sw + 4, sh + 4);
     }
   }
 }
@@ -1365,6 +1384,16 @@ function applyMarqueeSelection(
   renderInk();
 }
 
+// Hit-tests canvas-rendered (non-GIF) image shapes in reverse paint order.
+function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | null {
+  for (let i = shapes.value.length - 1; i >= 0; i--) {
+    const shape = shapes.value[i];
+    if (shape.type !== "image" || isGifSrc(shape.src ?? "")) continue;
+    if (isPointInRect(worldPoint, shape)) return shape;
+  }
+  return null;
+}
+
 function isPointInRect(point: { x: number; y: number }, rect: Rect) {
   return (
     point.x >= rect.x &&
@@ -1403,9 +1432,25 @@ function handleViewportPointerDown(event: PointerEvent) {
 
   if (activeTool.value === "select") {
     const additive = event.shiftKey;
+    const worldPoint = screenToWorld(point);
+
+    const hitImage = hitTestImageShape(worldPoint);
+    if (hitImage) {
+      if (additive) {
+        toggleShapeSelection(hitImage.id);
+      } else if (!selectedShapeIds.value.has(hitImage.id)) {
+        selectOnlyShape(hitImage.id);
+      }
+      dragMoved = false;
+      dragState = buildShapeDragState(event);
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+
     const hitStroke = hitTestCanvasStroke(
       strokes.value,
-      screenToWorld(point),
+      worldPoint,
       transform.value.scale,
     );
     if (hitStroke) {
@@ -2083,6 +2128,10 @@ watch(
   { flush: "post" },
 );
 
+watch(selectedShapeIds, () => {
+  renderImages();
+});
+
 watch(
   () => documentData.value?.properties?.gridtype,
   (value) => applyGridType(value),
@@ -2376,7 +2425,7 @@ onUnmounted(() => {
         }"
       >
         <article
-          v-for="shape in visibleShapes"
+          v-for="shape in domShapes"
           :key="shape.id"
           class="canvas-shape"
           :class="[
@@ -2432,8 +2481,17 @@ onUnmounted(() => {
             class="canvas-shape-handle"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></div>
+          <img
+            v-if="shape.type === 'image' && shape.src && isGifSrc(shape.src)"
+            class="canvas-shape-image"
+            :src="shape.src"
+            :alt="shape.alt || ''"
+            draggable="false"
+            decoding="async"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+          />
           <div
-            v-if="shape.type === 'image'"
+            v-else-if="shape.type === 'image'"
             class="canvas-shape-image"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           />
@@ -2495,6 +2553,19 @@ onUnmounted(() => {
           ></button>
         </article>
       </div>
+
+      <!-- Resize handle for canvas-rendered image shapes (lives in screen space, not world div) -->
+      <button
+        v-if="selectedShape && selectedShape.type === 'image' && !isGifSrc(selectedShape.src ?? '')"
+        type="button"
+        class="canvas-resize-handle canvas-image-resize-handle"
+        :aria-label="`${t('Resize')} image`"
+        :style="{
+          left: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).x - 18}px`,
+          top: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).y - 18}px`,
+        }"
+        @pointerdown.stop="startShapeResize(selectedShape, $event)"
+      ></button>
 
       <div
         v-for="presence in remoteCanvasPresences"
@@ -2985,6 +3056,7 @@ onUnmounted(() => {
   border: 1px solid var(--canvas-shape-border);
   border-radius: 8px;
   box-shadow: 0 8px 22px var(--canvas-shape-shadow);
+  content-visibility: auto;
 }
 
 .canvas-shape.selected {
@@ -3207,6 +3279,13 @@ onUnmounted(() => {
 
 .canvas-shape.note .canvas-shape-text {
   color: #111827;
+}
+
+.canvas-image-resize-handle {
+  position: absolute;
+  right: auto;
+  bottom: auto;
+  z-index: 6;
 }
 
 .canvas-resize-handle {
