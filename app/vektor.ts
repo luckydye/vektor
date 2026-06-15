@@ -5,13 +5,13 @@
  *
  * Usage:
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
- *   vektor workflow run <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
- *   vektor workflow logs <runId> [--url <url>] [--space <id>] [--token <tok>]
+ *   vektor workflow run <docId> [--input key=value ...] [--json] [--space <id>] [--token <tok>]
+ *   vektor workflow logs <runId> [--space <id>] [--token <tok>]
  *   vektor extension create <id>
  *   vektor extension package [id]
- *   vektor extension upload [id] --url <wiki-url> --space <space-id> --token <api-token>
+ *   vektor extension upload [id] [--space <space-id>] [--token <api-token>]
  *   vektor cat <docId>
- *   vektor write <docId>
+ *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>]    (types: markdown, document, csv, app; file defaults to stdin)
  *   vektor create [--slug <slug>] [--type <type>]
  *   vektor ls [--limit <n>]
  *   vektor query <query>
@@ -56,14 +56,14 @@ function printUsage(): void {
   console.log(`
 Usage:
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
-  vektor agent [prompt...] [--doc <slug|id>] [--space <id>] [--url <host>] [--token <tok>] [--once]
-  vektor workflow run <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
-  vektor workflow logs <runId> [--url <url>] [--space <id>] [--token <tok>]
+  vektor agent [prompt...] [--doc <slug|id>] [--space <id>] [--token <tok>] [--once]
+  vektor workflow run <docId> [--input key=value ...] [--json] [--space <id>] [--token <tok>]
+  vektor workflow logs <runId> [--space <id>] [--token <tok>]
   vektor extension create <id>
   vektor extension package [id]
-  vektor extension upload [id] --url <wiki-url> --space <space-id> --token <api-token>
+  vektor extension upload [id] [--space <space-id>] [--token <api-token>]
   vektor cat <docId>
-  vektor write [<docId>] [--slug <slug>] [--type <type>]
+  vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>]    (types: markdown, document, csv, app; file defaults to stdin)
   vektor ls [--limit <n>]
   vektor query <query>
 
@@ -181,10 +181,11 @@ async function main(): Promise<void> {
 
   if (command === "write") {
     const { positional, flags } = parseFlags(rest);
-    if (positional[0]) {
-      await commandWrite(positional[0]);
+    const isDocId = positional[0] && !positional[0].includes("/") && !positional[0].includes(".") && positional[0] !== "-";
+    if (isDocId) {
+      await commandWrite(positional[0], positional[1]);
     } else {
-      await commandDocCreate({ slug: flags.slug, type: flags.type ?? "markdown" });
+      await commandDocCreate({ slug: flags.slug, type: flags.type ?? "markdown", source: positional[0] });
     }
     return;
   }

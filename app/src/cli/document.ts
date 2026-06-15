@@ -67,10 +67,15 @@ export async function commandCat(docId: string): Promise<void> {
   process.stdout.write(data.document.content);
 }
 
-export async function commandWrite(docId: string): Promise<void> {
+async function readSource(source?: string): Promise<string> {
+  if (!source || source === "-") return Bun.stdin.text();
+  return Bun.file(source).text();
+}
+
+export async function commandWrite(docId: string, source?: string): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
 
-  const content = await Bun.stdin.text();
+  const content = await readSource(source);
 
   await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents/${docId}`, {
     method: "PUT",
@@ -82,10 +87,11 @@ export async function commandWrite(docId: string): Promise<void> {
 export async function commandCreate(flags: {
   slug?: string;
   type?: string;
+  source?: string;
 }): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
 
-  const content = await Bun.stdin.text();
+  const content = await readSource(flags.source);
 
   const contentType = flags.type === "markdown" ? "text/markdown" : "text/html";
   const extraHeaders: Record<string, string> = {};
