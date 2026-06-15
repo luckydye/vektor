@@ -152,17 +152,17 @@ async function stopEditing(mode: "revision" | "suggestion" = "revision") {
   saveMode.value = mode;
   showSaveMenu.value = false;
 
-  if (editorSaveFunction.value) {
-    isSaving.value = true;
-    try {
-      await editorSaveFunction.value(mode);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    } catch (error) {
-      console.error("Failed to save:", error);
-    } finally {
-      isSaving.value = false;
-      saveMode.value = "revision";
-    }
+  if (!editorSaveFunction.value) return;
+
+  isSaving.value = true;
+  try {
+    await editorSaveFunction.value(mode);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } catch (error) {
+    console.error("Failed to save:", error);
+  } finally {
+    isSaving.value = false;
+    saveMode.value = "revision";
   }
 
   isEditing.value = false;
@@ -214,6 +214,7 @@ function handleClickOutside(event: MouseEvent) {
 onMounted(async () => {
   window.addEventListener("editor-ready", handleEditorReady as EventListener);
   document.addEventListener("click", handleClickOutside);
+  window.dispatchEvent(new CustomEvent("request-editor-ready"));
 
   Actions.subscribe("actions:register", () => {
     actions.value = Actions.group("document");
