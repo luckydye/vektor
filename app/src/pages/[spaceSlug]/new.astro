@@ -66,16 +66,16 @@ const spaceSlug = Astro.params.spaceSlug as string;
           type !== 'canvas' && "print:px-0 px-xs lg:px-xl"
         )}
       >
+        {showPicker && (
+          <NewDocumentPicker client:load spaceSlug={spaceSlug} />
+        )}
+        
         <DocumentContent
 			client:load
 			spaceId={space.id}
 			documentType={type}
 			initialEditMode={true}
 		/>
-
-        {showPicker && (
-          <NewDocumentPicker client:load spaceSlug={spaceSlug} />
-        )}
 
 	    <div class="h-full">
       		{type === "canvas" ? (

@@ -55,7 +55,10 @@ const {
   pageSize: 20,
 });
 
-function runIdFromHash(): string | null {
+function runIdFromUrl(): string | null {
+  const runParam = new URLSearchParams(window.location.search).get("run")?.trim();
+  if (runParam) return runParam;
+
   const hash = window.location.hash.slice(1).trim();
   if (!hash) return null;
   try {
@@ -65,9 +68,12 @@ function runIdFromHash(): string | null {
   }
 }
 
-function setRunHash(runId: string) {
-  if (runIdFromHash() === runId) return;
-  window.location.hash = encodeURIComponent(runId);
+function setRunSearchParam(runId: string) {
+  if (runIdFromUrl() === runId) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("run", runId);
+  url.hash = "";
+  window.history.replaceState({}, "", url);
 }
 
 // Follow the selected run with a per-run realtime subscription.
@@ -104,8 +110,8 @@ async function fetchSelectedRunDetail() {
   }
 }
 
-async function selectRun(runId: string, options: { updateHash?: boolean } = {}) {
-  if (options.updateHash ?? true) setRunHash(runId);
+async function selectRun(runId: string, options: { updateUrl?: boolean } = {}) {
+  if (options.updateUrl ?? true) setRunSearchParam(runId);
   selectedRunId.value = runId;
   logsExpanded.value = false;
   await fetchSelectedRunDetail();
@@ -173,9 +179,9 @@ watch(
   runList,
   async (newRuns) => {
     if (newRuns.length === 0) return;
-    const hashedRunId = runIdFromHash();
+    const urlRunId = runIdFromUrl();
     if (!selectedRunId.value) {
-      await selectRun(hashedRunId ?? newRuns[0].runId, { updateHash: false });
+      await selectRun(urlRunId ?? newRuns[0].runId, { updateUrl: false });
     }
   },
   { immediate: true },
@@ -198,24 +204,25 @@ watch(
   { immediate: true },
 );
 
-function handleHashChange() {
-  const runId = runIdFromHash();
+function handleUrlChange() {
+  const runId = runIdFromUrl();
   if (runId && runId !== selectedRunId.value) {
-    void selectRun(runId, { updateHash: false });
+    void selectRun(runId, { updateUrl: false });
   } else if (
     !runId &&
     runList.value[0] &&
     runList.value[0].runId !== selectedRunId.value
   ) {
-    void selectRun(runList.value[0].runId, { updateHash: false });
+    void selectRun(runList.value[0].runId, { updateUrl: false });
   }
 }
 
 onMounted(() => {
-  const hashedRunId = runIdFromHash();
-  if (hashedRunId && selectedRunId.value !== hashedRunId)
-    void selectRun(hashedRunId, { updateHash: false });
-  window.addEventListener("hashchange", handleHashChange);
+  const urlRunId = runIdFromUrl();
+  if (urlRunId && selectedRunId.value !== urlRunId)
+    void selectRun(urlRunId, { updateUrl: false });
+  window.addEventListener("popstate", handleUrlChange);
+  window.addEventListener("hashchange", handleUrlChange);
 
   // Any run change in the space refreshes the list (and the open run detail).
   // When a run is started elsewhere (e.g. the header button) and nothing is
@@ -231,7 +238,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener("hashchange", handleHashChange);
+  window.removeEventListener("popstate", handleUrlChange);
+  window.removeEventListener("hashchange", handleUrlChange);
   unsubscribeRuns?.();
   unsubscribeRun?.();
 });

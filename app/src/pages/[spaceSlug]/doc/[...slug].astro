@@ -22,6 +22,10 @@ import { readOnlyDocumentTypes } from "../../../utils/documentTypes.ts";
 
 const { spaceSlug, slug } = Astro.params;
 
+function redirectPreservingSearch(pathname: string) {
+  return Astro.redirect(`${pathname}${Astro.url.search}`);
+}
+
 if (!spaceSlug || !slug) {
   return Astro.redirect("/");
 }
@@ -36,7 +40,7 @@ if (!space) {
 }
 
 if (spaceSlug !== space.slug) {
-  return Astro.redirect(`/${space.slug}/doc/${slug}`);
+  return redirectPreservingSearch(`/${space.slug}/doc/${slug}`);
 }
 
 const document = await getDocumentBySlug(space.id, slug);
@@ -44,7 +48,7 @@ const document = await getDocumentBySlug(space.id, slug);
 if (!document) {
   const doc = await getDocument(space.id, slug);
   if (doc) {
-    return Astro.redirect(`/${space.slug}/doc/${doc?.slug}`);
+    return redirectPreservingSearch(`/${space.slug}/doc/${doc.slug}`);
   }
 
   return new Response(null, {
