@@ -23,21 +23,21 @@ function getEncryptionKey(): Buffer {
       return utf8;
     }
 
-    throw new Error("WIKI_SECRETS_ENCRYPTION_KEY must decode to exactly 32 bytes");
+    throw new Error("VEKTOR_SECRETS_ENCRYPTION_KEY must decode to exactly 32 bytes");
   }
 
   const fallback = config().AUTH_SECRET?.trim();
   if (!fallback) {
-    throw new Error("AUTH_SECRET (or WIKI_SECRETS_ENCRYPTION_KEY) must be configured");
+    throw new Error("AUTH_SECRET (or VEKTOR_SECRETS_ENCRYPTION_KEY) must be configured");
   }
 
   // Deriving the secrets key from AUTH_SECRET reuses signing entropy for
   // encryption. Tolerated for dev, but warn loudly in production so operators
-  // provision a dedicated WIKI_SECRETS_ENCRYPTION_KEY.
+  // provision a dedicated VEKTOR_SECRETS_ENCRYPTION_KEY.
   if (!warnedAboutFallbackKey && config().NODE_ENV === "production") {
     warnedAboutFallbackKey = true;
     console.warn(
-      "[secrets] WIKI_SECRETS_ENCRYPTION_KEY is not set; deriving the encryption " +
+      "[secrets] VEKTOR_SECRETS_ENCRYPTION_KEY is not set; deriving the encryption " +
         "key from AUTH_SECRET. Set a dedicated 32-byte key in production.",
     );
   }

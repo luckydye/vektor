@@ -8,7 +8,7 @@ import type { ApiContext } from "./types.ts";
  * Hard cap on buffered request bodies. The whole body is read into memory
  * before the handler runs, so an unbounded read is a trivial memory-exhaustion
  * DoS. Default leaves headroom for the largest legitimate payload (250MB
- * user uploads); override via WIKI_MAX_REQUEST_BYTES.
+ * user uploads); override via VEKTOR_MAX_REQUEST_BYTES.
  */
 function maxRequestBytes(): number {
   const raw = Number.parseInt(config().MAX_REQUEST_BYTES ?? "", 10);
@@ -64,7 +64,7 @@ function buildHeaders(req: IncomingMessage): Headers {
   return headers;
 }
 
-/** Canonical public origin (proto + host) from WIKI_SITE_URL, when configured. */
+/** Canonical public origin (proto + host) from VEKTOR_SITE_URL, when configured. */
 function configuredOrigin(): string | null {
   const siteUrl = config().SITE_URL;
   if (!siteUrl) return null;

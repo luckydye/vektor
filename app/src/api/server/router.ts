@@ -36,7 +36,7 @@ function isCrossSiteForgery(c: Context, method: string): boolean {
   const origin = c.req.header("origin");
   if (!origin) return false;
   if (trustedOrigins.has(origin)) return false;
-  // Same-origin fallback for deployments without WIKI_SITE_URL: the browser
+  // Same-origin fallback for deployments without VEKTOR_SITE_URL: the browser
   // sets Host to the target server, so Origin host === Host implies the
   // request came from a page served by this very host.
   try {

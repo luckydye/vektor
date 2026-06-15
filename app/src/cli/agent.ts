@@ -1,22 +1,11 @@
 /**
- * `vektor agent` — an interactive terminal agent, like Claude Code, that runs
- * the same internal Vektor agent loop used by the chat UI. The model runs
- * in-process (provider from env: OLLAMA_BASE_URL / ANTHROPIC_API_KEY /
- * OPENROUTER_API_KEY) and its bash tools (`vektor`, `recipes`, …) act on a
- * running Vektor instance over HTTP using a minted job token.
- *
- * Usage:
- *   vektor agent [prompt words...] [--doc <slug|id>] [--space <id>] [--url <host>]
- *                [--token <job-token>] [--once] [--user <userId>]
- *
- * With a prompt: runs one turn and exits. Without: opens a REPL (multi-turn).
- * Connection resolves like the other CLI commands: WIKI_HOST / --url,
- * WIKI_SPACE_ID / --space, AUTH_SECRET (to mint the job token) / --token.
+ * `vektor agent` — terminal chat UI backed by the server's ACP endpoint.
+ * Inference and tool execution run server-side; the CLI streams and renders events.
  */
 
 import { createInterface } from "node:readline";
-import type { AgentEvent, ChatMessage } from "../agent/core.ts";
-import { getAIProvider, runAgentPrompt } from "../agent/core.ts";
+import { randomUUID } from "node:crypto";
+import type { ChatMessage } from "../agent/core.ts";
 import { createJobToken } from "../jobs/jobToken.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
@@ -29,7 +18,7 @@ const c = {
   bold: (s: string) => (useColor ? `\x1b[1m${s}\x1b[0m` : s),
 };
 
-type AgentCliOptions = {
+export type AgentCliOptions = {
   prompt?: string;
   doc?: string;
   space?: string;
@@ -39,7 +28,6 @@ type AgentCliOptions = {
   once?: boolean;
 };
 
-/** Resolves a `--doc` value (id or slug) to a document id + type. */
 async function resolveDocument(
   host: string,
   spaceId: string,
@@ -59,7 +47,6 @@ async function resolveDocument(
     }
   }
 
-  // Fall back to matching by slug in the document list.
   const listRes = await fetch(`${host}/api/v1/spaces/${spaceId}/documents`, { headers });
   if (listRes.ok) {
     const data = (await listRes.json()) as {
@@ -74,123 +61,193 @@ async function resolveDocument(
   throw new Error(`Could not resolve document '${docArg}' in space ${spaceId}`);
 }
 
-function renderEvent(event: AgentEvent): void {
-  switch (event.type) {
-    case "text":
-      process.stdout.write(event.text);
-      break;
-    case "thinking":
-      process.stdout.write(c.dim(event.text));
-      break;
-    case "tool_call": {
-      let display = event.toolArguments;
-      try {
-        const args = JSON.parse(event.toolArguments) as { command?: string };
-        if (typeof args.command === "string") display = args.command;
-      } catch {
-        // keep raw arguments
-      }
-      process.stdout.write(
-        `\n${c.cyan("⏺")} ${c.bold(event.toolName)} ${c.dim(display)}\n`,
-      );
-      break;
-    }
-    case "tool_result": {
-      const lines = event.content.split("\n");
+function renderUpdate(update: Record<string, unknown>): void {
+  const kind = update.sessionUpdate as string;
+
+  if (kind === "agent_message_chunk") {
+    const content = update.content as { type: string; text: string } | undefined;
+    if (content?.type === "text") process.stdout.write(content.text);
+  } else if (kind === "generic") {
+    const generic = update.generic as { type: string; text: string } | undefined;
+    if (generic?.type === "thinking") process.stdout.write(c.dim(generic.text));
+  } else if (kind === "tool_call") {
+    const title = update.title as string;
+    const input = update.input as Record<string, unknown> | undefined;
+    let display = input ? JSON.stringify(input) : "";
+    if (typeof input?.command === "string") display = input.command;
+    else if (typeof input?.code === "string") display = input.code;
+    process.stdout.write(`\n${c.cyan("⏺")} ${c.bold(title)} ${c.dim(display)}\n`);
+  } else if (kind === "tool_call_update") {
+    const status = update.status as string;
+    if (status === "completed" || status === "failed") {
+      const contentList = update.content as
+        | Array<{ type: string; content: { type: string; text: string } }>
+        | undefined;
+      const text = contentList?.[0]?.content?.text ?? "";
+      const lines = text.split("\n");
       const shown = lines.slice(0, 12);
-      const prefix = event.isError ? c.red("  ⎿ ") : c.dim("  ⎿ ");
-      const body = shown
-        .map((line) => prefix + (line.length > 200 ? `${line.slice(0, 200)}…` : line))
-        .join("\n");
-      process.stdout.write(`${body}\n`);
+      const prefix = status === "failed" ? c.red("  ⎿ ") : c.dim("  ⎿ ");
+      process.stdout.write(
+        shown
+          .map((line) => prefix + (line.length > 200 ? `${line.slice(0, 200)}…` : line))
+          .join("\n") + "\n",
+      );
       if (lines.length > shown.length) {
         process.stdout.write(c.dim(`  ⎿ … ${lines.length - shown.length} more lines\n`));
       }
-      break;
     }
   }
 }
 
 async function runTurn(
-  messages: ChatMessage[],
-  ctx: {
-    apiUrl: string;
-    spaceId: string;
-    documentId?: string;
-    documentType?: string | null;
-    jobToken: string;
-  },
-): Promise<void> {
-  const controller = new AbortController();
-  const onInterrupt = () => controller.abort();
-  process.once("SIGINT", onInterrupt);
+  host: string,
+  spaceId: string,
+  sessionId: string,
+  jobToken: string,
+  history: ChatMessage[],
+  userText: string,
+  documentId: string | undefined,
+  signal: AbortSignal,
+): Promise<ChatMessage[]> {
+  const res = await fetch(`${host}/api/v1/chat/acp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Job-Token": jobToken,
+      "X-Space-Id": spaceId,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: randomUUID(),
+      method: "session/prompt",
+      params: {
+        sessionId,
+        spaceId,
+        ...(documentId ? { documentId } : {}),
+        messages: history,
+        prompt: [{ type: "text", text: userText }],
+      },
+    }),
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => String(res.status));
+    throw new Error(`ACP request failed (${res.status}): ${text}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let accumulatedText = "";
+  let finalError: string | undefined;
+
   try {
-    const result = await runAgentPrompt({
-      messages,
-      apiUrl: ctx.apiUrl,
-      spaceId: ctx.spaceId,
-      documentId: ctx.documentId,
-      documentType: ctx.documentType,
-      jobToken: ctx.jobToken,
-      signal: controller.signal,
-      onEvent: (event) => renderEvent(event),
-    });
-    messages.push({ role: "assistant", content: result.content });
-    process.stdout.write("\n");
-  } catch (error) {
-    if (controller.signal.aborted) {
-      process.stdout.write(c.dim("\n[interrupted]\n"));
-    } else {
-      process.stdout.write(
-        c.red(`\n[error] ${error instanceof Error ? error.message : String(error)}\n`),
-      );
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const parts = buf.split("\n\n");
+      buf = parts.pop() ?? "";
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6);
+        if (raw === "[DONE]") break outer;
+
+        let msg: Record<string, unknown>;
+        try {
+          msg = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          continue;
+        }
+
+        if (msg.method === "session/update") {
+          const params = msg.params as { update?: Record<string, unknown> } | undefined;
+          const update = params?.update;
+          if (update) {
+            if (
+              update.sessionUpdate === "agent_message_chunk" &&
+              (update.content as { text?: string } | undefined)?.text
+            ) {
+              accumulatedText += (update.content as { text: string }).text;
+            }
+            renderUpdate(update);
+          }
+        } else if ("error" in msg) {
+          finalError = (msg.error as { message?: string })?.message ?? "Agent request failed";
+        }
+      }
     }
   } finally {
-    process.removeListener("SIGINT", onInterrupt);
+    reader.releaseLock();
   }
+
+  if (finalError) throw new Error(finalError);
+
+  return [
+    ...history,
+    { role: "user", content: userText },
+    { role: "assistant", content: accumulatedText },
+  ];
 }
 
 export async function commandAgent(options: AgentCliOptions): Promise<void> {
   const host = (options.url ?? resolveHost()).replace(/\/$/, "");
-
-  // Fail fast with a clear message if no model provider is configured.
-  let providerLabel: string;
-  try {
-    const provider = getAIProvider();
-    providerLabel = `${provider.provider} (${provider.model})`;
-  } catch (error) {
-    throw new Error(error instanceof Error ? error.message : String(error));
-  }
-
   const spaceId = options.space ?? (await resolveSpaceId(host, undefined));
   const userId = options.user ?? null;
-  const jobToken =
-    options.token ?? createJobToken(spaceId, Date.now().toString(), userId);
+  const jobToken = options.token ?? createJobToken(spaceId, Date.now().toString(), userId);
   const authHeaders = { "X-Job-Token": jobToken, "X-Space-Id": spaceId };
+  const sessionId = randomUUID();
 
   let documentId: string | undefined;
-  let documentType: string | null | undefined;
   if (options.doc) {
     const resolved = await resolveDocument(host, spaceId, authHeaders, options.doc);
     documentId = resolved.id;
-    documentType = resolved.type;
   }
 
-  const ctx = { apiUrl: host, spaceId, documentId, documentType, jobToken };
-  const messages: ChatMessage[] = [];
+  let history: ChatMessage[] = [];
 
   process.stdout.write(
     c.dim(
-      `vektor agent · ${providerLabel} · ${host}\n` +
-        `space ${spaceId}${documentId ? ` · doc ${documentId}${documentType ? ` (${documentType})` : ""}` : ""}\n`,
+      `vektor agent · ${host} · space ${spaceId}${documentId ? ` · doc ${documentId}` : ""}\n`,
     ),
   );
 
-  // One-shot mode: a prompt was supplied on the command line.
+  async function doTurn(userText: string): Promise<void> {
+    const controller = new AbortController();
+    const onInterrupt = () => controller.abort();
+    process.once("SIGINT", onInterrupt);
+    try {
+      history = await runTurn(
+        host,
+        spaceId,
+        sessionId,
+        jobToken,
+        history,
+        userText,
+        documentId,
+        controller.signal,
+      );
+      process.stdout.write("\n");
+    } catch (error) {
+      if (controller.signal.aborted) {
+        process.stdout.write(c.dim("\n[interrupted]\n"));
+      } else {
+        process.stdout.write(
+          c.red(`\n[error] ${error instanceof Error ? error.message : String(error)}\n`),
+        );
+      }
+    } finally {
+      process.removeListener("SIGINT", onInterrupt);
+    }
+  }
+
   if (options.prompt) {
-    messages.push({ role: "user", content: options.prompt });
     process.stdout.write(`\n${c.green("›")} ${options.prompt}\n`);
-    await runTurn(messages, ctx);
+    await doTurn(options.prompt);
     if (options.once || !process.stdin.isTTY) return;
   }
 
@@ -199,7 +256,6 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
     return;
   }
 
-  // Interactive REPL.
   process.stdout.write(
     c.dim("\nType a message. Ctrl-C interrupts a turn, Ctrl-D or /exit quits.\n"),
   );
@@ -216,8 +272,7 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
     const text = line.trim();
     if (!text) continue;
     if (text === "/exit" || text === "/quit") break;
-    messages.push({ role: "user", content: text });
-    await runTurn(messages, ctx);
+    await doTurn(text);
   }
   rl.close();
   process.stdout.write(c.dim("\nbye\n"));

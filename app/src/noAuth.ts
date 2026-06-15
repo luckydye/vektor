@@ -54,7 +54,7 @@ if (isNoAuthMode()) {
       hostname.endsWith(".localhost");
     if (!isLocalHost) {
       throw new Error(
-        `VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with a non-local WIKI_SITE_URL (${siteUrl})`,
+        `VEKTOR_NO_AUTH=1 (no-auth super-user mode) cannot be used with a non-local VEKTOR_SITE_URL (${siteUrl})`,
       );
     }
   }

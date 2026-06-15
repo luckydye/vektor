@@ -131,7 +131,7 @@ Most errors are JSON:
 - Auth:
 - User session OR job headers `X-Job-Token` + `X-Space-Id`.
 - Config:
-- Requires `WIKI_ACP_COMMAND` to be set, for example `opencode acp`.
+- Requires `VEKTOR_ACP_COMMAND` to be set, for example `opencode acp`.
 - Body:
 - Chat-completions-like JSON with:
 - `messages` (required): array of `{ role, content }`

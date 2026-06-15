@@ -84,8 +84,8 @@ export function getOAuthProviderConfiguration(provider: OAuthIntegrationProvider
       appConfig.GITLAB_OAUTH_USERINFO_URL?.trim() || `${baseUrl}/api/v4/user`;
 
     const missing: string[] = [];
-    if (!clientId) missing.push("WIKI_GITLAB_OAUTH_CLIENT_ID");
-    if (!clientSecret) missing.push("WIKI_GITLAB_OAUTH_CLIENT_SECRET");
+    if (!clientId) missing.push("VEKTOR_GITLAB_OAUTH_CLIENT_ID");
+    if (!clientSecret) missing.push("VEKTOR_GITLAB_OAUTH_CLIENT_SECRET");
 
     if (missing.length > 0) {
       return { configured: false, missing };
@@ -130,16 +130,16 @@ export function getOAuthProviderConfiguration(provider: OAuthIntegrationProvider
       : appConfig.YOUTRACK_OAUTH_USERINFO_URL?.trim() || "";
 
   const missing: string[] = [];
-  if (!clientId) missing.push("WIKI_YOUTRACK_OAUTH_CLIENT_ID");
-  if (!clientSecret) missing.push("WIKI_YOUTRACK_OAUTH_CLIENT_SECRET");
+  if (!clientId) missing.push("VEKTOR_YOUTRACK_OAUTH_CLIENT_ID");
+  if (!clientSecret) missing.push("VEKTOR_YOUTRACK_OAUTH_CLIENT_SECRET");
   if (!authorizationUrl) {
-    missing.push("WIKI_YOUTRACK_OAUTH_AUTHORIZATION_URL or WIKI_YOUTRACK_OAUTH_BASE_URL");
+    missing.push("VEKTOR_YOUTRACK_OAUTH_AUTHORIZATION_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL");
   }
   if (!tokenUrl) {
-    missing.push("WIKI_YOUTRACK_OAUTH_TOKEN_URL or WIKI_YOUTRACK_OAUTH_BASE_URL");
+    missing.push("VEKTOR_YOUTRACK_OAUTH_TOKEN_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL");
   }
   if (!userInfoUrl) {
-    missing.push("WIKI_YOUTRACK_OAUTH_USERINFO_URL or WIKI_YOUTRACK_OAUTH_BASE_URL");
+    missing.push("VEKTOR_YOUTRACK_OAUTH_USERINFO_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL");
   }
 
   if (missing.length > 0) {

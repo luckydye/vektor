@@ -131,19 +131,19 @@ async function main() {
   const wikiUrl = process.argv[3] || "https://wiki.luckydye.de";
   const spaceId = process.argv[4] || "a6b43eab-d7fe-4656-b52d-dc1ac0db6deb";
   const documentId = process.argv[5] || "73738c7b-cabe-4d21-8698-0e40cf8fb41b";
-  const token = process.env.WIKI_TOKEN;
+  const token = process.env.VEKTOR_TOKEN;
   const basicAuthUsername = process.env.BASIC_AUTH_USERNAME;
   const basicAuthPassword = process.env.BASIC_AUTH_PASSWORD;
 
   if (!sourceUrl) {
     console.error("Usage: bun post-html.ts <sourceUrl> [wikiUrl] [spaceId] [documentId]");
-    console.error("Environment variable WIKI_TOKEN is required");
+    console.error("Environment variable VEKTOR_TOKEN is required");
     console.error("Optional: BASIC_AUTH_USERNAME and BASIC_AUTH_PASSWORD for basic auth");
     process.exit(1);
   }
 
   if (!token) {
-    throw new Error("WIKI_TOKEN environment variable is not set");
+    throw new Error("VEKTOR_TOKEN environment variable is not set");
   }
 
   const basicAuth =

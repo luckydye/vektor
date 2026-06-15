@@ -29,25 +29,25 @@ export function config() {
     const process = globalThis.process;
     return {
       // Feature flags
-      FEATURE_CANVAS: process.env.WIKI_FEATURE_CANVAS,
+      FEATURE_CANVAS: process.env.VEKTOR_FEATURE_CANVAS,
 
       /**
        * Public origin as in the browser
        */
-      SITE_URL: process.env.WIKI_SITE_URL,
+      SITE_URL: process.env.VEKTOR_SITE_URL,
       /**
        * API host origin (usually same as site_url)
        */
-      API_URL: process.env.WIKI_API_URL,
+      API_URL: process.env.VEKTOR_API_URL,
       /**
        * Host origin for sync server
        */
-      COLLABORATION_HOST: process.env.WIKI_COLLABORATION_HOST,
+      COLLABORATION_HOST: process.env.VEKTOR_COLLABORATION_HOST,
 
       /**
        * The default space to redirect to from root "/"
        */
-      DEFAULT_SPACE: process.env.WIKI_DEFAULT_SPACE,
+      DEFAULT_SPACE: process.env.VEKTOR_DEFAULT_SPACE,
       NO_AUTH: process.env.VEKTOR_NO_AUTH,
       IN_MEMORY_DB: process.env.VEKTOR_IN_MEMORY_DB,
       NODE_ENV: process.env.NODE_ENV,
@@ -56,9 +56,9 @@ export function config() {
        * Set to "1"/"true" when a trusted reverse proxy fronts the app; only
        * then are X-Forwarded-* headers honored.
        */
-      TRUST_PROXY: process.env.WIKI_TRUST_PROXY,
+      TRUST_PROXY: process.env.VEKTOR_TRUST_PROXY,
       /** Hard cap (bytes) for buffered API request bodies. */
-      MAX_REQUEST_BYTES: process.env.WIKI_MAX_REQUEST_BYTES,
+      MAX_REQUEST_BYTES: process.env.VEKTOR_MAX_REQUEST_BYTES,
       /** Set to "1"/"true" to run a headless API server without the Astro frontend. */
       API_ONLY: process.env.VEKTOR_API_ONLY,
       /** Interface the HTTP server binds to (default 0.0.0.0). */
@@ -70,9 +70,9 @@ export function config() {
       OAUTH_ALLOWED_GROUPS: process.env.OAUTH_ALLOWED_GROUPS,
 
       /** CLI connection settings (vektor document/workflow commands). */
-      CLI_HOST: process.env.WIKI_HOST,
-      CLI_SPACE_ID: process.env.WIKI_SPACE_ID,
-      CLI_ACCESS_TOKEN: process.env.WIKI_ACCESS_TOKEN,
+      CLI_HOST: process.env.VEKTOR_HOST,
+      CLI_SPACE_ID: process.env.VEKTOR_SPACE_ID,
+      CLI_ACCESS_TOKEN: process.env.VEKTOR_ACCESS_TOKEN,
 
       /**
        * better-auth secret token
@@ -92,21 +92,21 @@ export function config() {
       OAUTH_USERINFO_URL: process.env.OAUTH_USERINFO_URL,
       OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
 
-      GITLAB_OAUTH_BASE_URL: process.env.WIKI_GITLAB_OAUTH_BASE_URL,
-      GITLAB_OAUTH_CLIENT_ID: process.env.WIKI_GITLAB_OAUTH_CLIENT_ID,
-      GITLAB_OAUTH_CLIENT_SECRET: process.env.WIKI_GITLAB_OAUTH_CLIENT_SECRET,
-      GITLAB_OAUTH_SCOPES: process.env.WIKI_GITLAB_OAUTH_SCOPES,
-      GITLAB_OAUTH_AUTHORIZATION_URL: process.env.WIKI_GITLAB_OAUTH_AUTHORIZATION_URL,
-      GITLAB_OAUTH_TOKEN_URL: process.env.WIKI_GITLAB_OAUTH_TOKEN_URL,
-      GITLAB_OAUTH_USERINFO_URL: process.env.WIKI_GITLAB_OAUTH_USERINFO_URL,
+      GITLAB_OAUTH_BASE_URL: process.env.VEKTOR_GITLAB_OAUTH_BASE_URL,
+      GITLAB_OAUTH_CLIENT_ID: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_ID,
+      GITLAB_OAUTH_CLIENT_SECRET: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_SECRET,
+      GITLAB_OAUTH_SCOPES: process.env.VEKTOR_GITLAB_OAUTH_SCOPES,
+      GITLAB_OAUTH_AUTHORIZATION_URL: process.env.VEKTOR_GITLAB_OAUTH_AUTHORIZATION_URL,
+      GITLAB_OAUTH_TOKEN_URL: process.env.VEKTOR_GITLAB_OAUTH_TOKEN_URL,
+      GITLAB_OAUTH_USERINFO_URL: process.env.VEKTOR_GITLAB_OAUTH_USERINFO_URL,
 
-      YOUTRACK_OAUTH_CLIENT_ID: process.env.WIKI_YOUTRACK_OAUTH_CLIENT_ID,
-      YOUTRACK_OAUTH_CLIENT_SECRET: process.env.WIKI_YOUTRACK_OAUTH_CLIENT_SECRET,
-      YOUTRACK_OAUTH_SCOPES: process.env.WIKI_YOUTRACK_OAUTH_SCOPES,
-      YOUTRACK_OAUTH_BASE_URL: process.env.WIKI_YOUTRACK_OAUTH_BASE_URL,
-      YOUTRACK_OAUTH_AUTHORIZATION_URL: process.env.WIKI_YOUTRACK_OAUTH_AUTHORIZATION_URL,
-      YOUTRACK_OAUTH_TOKEN_URL: process.env.WIKI_YOUTRACK_OAUTH_TOKEN_URL,
-      YOUTRACK_OAUTH_USERINFO_URL: process.env.WIKI_YOUTRACK_OAUTH_USERINFO_URL,
+      YOUTRACK_OAUTH_CLIENT_ID: process.env.VEKTOR_YOUTRACK_OAUTH_CLIENT_ID,
+      YOUTRACK_OAUTH_CLIENT_SECRET: process.env.VEKTOR_YOUTRACK_OAUTH_CLIENT_SECRET,
+      YOUTRACK_OAUTH_SCOPES: process.env.VEKTOR_YOUTRACK_OAUTH_SCOPES,
+      YOUTRACK_OAUTH_BASE_URL: process.env.VEKTOR_YOUTRACK_OAUTH_BASE_URL,
+      YOUTRACK_OAUTH_AUTHORIZATION_URL: process.env.VEKTOR_YOUTRACK_OAUTH_AUTHORIZATION_URL,
+      YOUTRACK_OAUTH_TOKEN_URL: process.env.VEKTOR_YOUTRACK_OAUTH_TOKEN_URL,
+      YOUTRACK_OAUTH_USERINFO_URL: process.env.VEKTOR_YOUTRACK_OAUTH_USERINFO_URL,
 
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,
@@ -114,44 +114,44 @@ export function config() {
       ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
       OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
       OLLAMA_MODEL: process.env.OLLAMA_MODEL,
-      SEARCH_EMBEDDINGS_PROVIDER: process.env.WIKI_SEARCH_EMBEDDINGS_PROVIDER,
-      SEARCH_EMBEDDINGS_MODEL: process.env.WIKI_SEARCH_EMBEDDINGS_MODEL,
-      SEARCH_EMBEDDINGS_BASE_URL: process.env.WIKI_SEARCH_EMBEDDINGS_BASE_URL,
-      SEARCH_EMBEDDINGS_API_KEY: process.env.WIKI_SEARCH_EMBEDDINGS_API_KEY,
-      SECRETS_ENCRYPTION_KEY: process.env.WIKI_SECRETS_ENCRYPTION_KEY,
-      JOB_SANDBOX: process.env.WIKI_JOB_SANDBOX,
+      SEARCH_EMBEDDINGS_PROVIDER: process.env.VEKTOR_SEARCH_EMBEDDINGS_PROVIDER,
+      SEARCH_EMBEDDINGS_MODEL: process.env.VEKTOR_SEARCH_EMBEDDINGS_MODEL,
+      SEARCH_EMBEDDINGS_BASE_URL: process.env.VEKTOR_SEARCH_EMBEDDINGS_BASE_URL,
+      SEARCH_EMBEDDINGS_API_KEY: process.env.VEKTOR_SEARCH_EMBEDDINGS_API_KEY,
+      SECRETS_ENCRYPTION_KEY: process.env.VEKTOR_SECRETS_ENCRYPTION_KEY,
+      JOB_SANDBOX: process.env.VEKTOR_JOB_SANDBOX,
       // Escape hatch to run extension jobs in-process (NO isolation). Jobs can
       // read host files, env vars/secrets, and reach internal services, so this
       // must only ever be enabled for trusted local development.
-      JOB_ALLOW_UNSANDBOXED: process.env.WIKI_JOB_ALLOW_UNSANDBOXED,
+      JOB_ALLOW_UNSANDBOXED: process.env.VEKTOR_JOB_ALLOW_UNSANDBOXED,
 
       // OpenTelemetry
-      OTEL_ENABLED: process.env.WIKI_OTEL_ENABLED,
-      OTEL_SERVICE_NAME: process.env.WIKI_OTEL_SERVICE_NAME,
-      OTEL_EXPORTER_OTLP_ENDPOINT: process.env.WIKI_OTEL_EXPORTER_OTLP_ENDPOINT,
+      OTEL_ENABLED: process.env.VEKTOR_OTEL_ENABLED,
+      OTEL_SERVICE_NAME: process.env.VEKTOR_OTEL_SERVICE_NAME,
+      OTEL_EXPORTER_OTLP_ENDPOINT: process.env.VEKTOR_OTEL_EXPORTER_OTLP_ENDPOINT,
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:
-        process.env.WIKI_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+        process.env.VEKTOR_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:
-        process.env.WIKI_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
-      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: process.env.WIKI_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+        process.env.VEKTOR_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: process.env.VEKTOR_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
       OTEL_TRACES_SAMPLER:
-        process.env.WIKI_OTEL_TRACES_SAMPLER || "parentbased_traceidratio",
-      OTEL_TRACES_SAMPLER_ARG: process.env.WIKI_OTEL_TRACES_SAMPLER_ARG || "1",
+        process.env.VEKTOR_OTEL_TRACES_SAMPLER || "parentbased_traceidratio",
+        OTEL_TRACES_SAMPLER_ARG: process.env.VEKTOR_OTEL_TRACES_SAMPLER_ARG || "1",
       OTEL_METRICS_EXPORT_INTERVAL_MS:
-        process.env.WIKI_OTEL_METRICS_EXPORT_INTERVAL_MS || "10000",
+        process.env.VEKTOR_OTEL_METRICS_EXPORT_INTERVAL_MS || "10000",
       OTEL_LOGS_EXPORT_INTERVAL_MS:
-        process.env.WIKI_OTEL_LOGS_EXPORT_INTERVAL_MS || "10000",
-      OTEL_DIAG_LOG_LEVEL: process.env.WIKI_OTEL_DIAG_LOG_LEVEL || "error",
+        process.env.VEKTOR_OTEL_LOGS_EXPORT_INTERVAL_MS || "10000",
+        OTEL_DIAG_LOG_LEVEL: process.env.VEKTOR_OTEL_DIAG_LOG_LEVEL || "error",
     } as const;
   }
 
   const publicEnv = publicEnvVars();
   return {
-    FEATURE_CANVAS: publicEnv.WIKI_FEATURE_CANVAS,
-    SITE_URL: publicEnv.WIKI_SITE_URL,
-    API_URL: publicEnv.WIKI_API_URL,
-    COLLABORATION_HOST: publicEnv.WIKI_COLLABORATION_HOST,
-    DEFAULT_SPACE: publicEnv.WIKI_DEFAULT_SPACE,
+    FEATURE_CANVAS: publicEnv.VEKTOR_FEATURE_CANVAS,
+    SITE_URL: publicEnv.VEKTOR_SITE_URL,
+    API_URL: publicEnv.VEKTOR_API_URL,
+    COLLABORATION_HOST: publicEnv.VEKTOR_COLLABORATION_HOST,
+    DEFAULT_SPACE: publicEnv.VEKTOR_DEFAULT_SPACE,
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
@@ -194,7 +194,7 @@ export function getLlmWorkerConfig() {
 
 /**
  * True when the operator confirmed a trusted reverse proxy fronts the app
- * (WIKI_TRUST_PROXY=1/true); only then may X-Forwarded-* headers be honored.
+ * (VEKTOR_TRUST_PROXY=1/true); only then may X-Forwarded-* headers be honored.
  */
 export function isTrustProxyEnabled(): boolean {
   const raw = config().TRUST_PROXY;
@@ -209,11 +209,11 @@ export function isTrustProxyEnabled(): boolean {
 export function getPublicEnv(): App.PublicEnv {
   const appConfig = config();
   return {
-    WIKI_FEATURE_CANVAS: appConfig.FEATURE_CANVAS,
-    WIKI_SITE_URL: appConfig.SITE_URL,
-    WIKI_API_URL: appConfig.API_URL,
-    WIKI_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
-    WIKI_DEFAULT_SPACE: appConfig.DEFAULT_SPACE,
+    VEKTOR_FEATURE_CANVAS: appConfig.FEATURE_CANVAS,
+    VEKTOR_SITE_URL: appConfig.SITE_URL,
+    VEKTOR_API_URL: appConfig.API_URL,
+    VEKTOR_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
+    VEKTOR_DEFAULT_SPACE: appConfig.DEFAULT_SPACE,
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
     VEKTOR_NO_AUTH: appConfig.NO_AUTH,

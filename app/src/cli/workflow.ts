@@ -3,9 +3,9 @@
  *
  * Defaults to http://localhost:8080 and auto-discovers the first space
  * from a running vektor instance. Override with flags or env vars:
- *   WIKI_HOST         e.g. http://localhost:3000   (or --url)
- *   WIKI_SPACE_ID     space identifier             (or --space)
- *   WIKI_ACCESS_TOKEN API token                    (or --token, optional)
+ *   VEKTOR_HOST         e.g. http://localhost:3000   (or --url)
+ *   VEKTOR_SPACE_ID     space identifier             (or --space)
+ *   VEKTOR_ACCESS_TOKEN API token                    (or --token, optional)
  *
  * Usage:
  *   vektor workflow <docId> [--input key=value ...] [--file key=/path ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
@@ -50,7 +50,7 @@ function usage(): string {
   return [
     "Usage: vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]",
     "",
-    "Options read from env if flags are omitted: WIKI_HOST, WIKI_SPACE_ID, WIKI_ACCESS_TOKEN",
+    "Options read from env if flags are omitted: VEKTOR_HOST, VEKTOR_SPACE_ID, VEKTOR_ACCESS_TOKEN",
     "",
     "Examples:",
     "  vektor workflow abc123",
@@ -182,6 +182,27 @@ async function uploadFile(
   }
   const data = (await res.json()) as { url: string };
   return data.url;
+}
+
+export async function commandLogs(
+  runId: string,
+  opts: { url?: string; spaceId?: string; token?: string },
+): Promise<void> {
+  const url = opts.url ?? resolveHost();
+  const token = opts.token ?? config().CLI_ACCESS_TOKEN;
+  const spaceId = opts.spaceId ?? config().CLI_SPACE_ID ?? (await resolveSpaceId(url, token));
+
+  const run = (await apiFetch(
+    url,
+    token,
+    `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
+  )) as RunResponse;
+
+  for (const [nodeId, node] of Object.entries(run.nodes)) {
+    for (const line of node.logs) {
+      process.stdout.write(`[${nodeId}] ${line}\n`);
+    }
+  }
 }
 
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {

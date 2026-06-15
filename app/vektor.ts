@@ -5,15 +5,16 @@
  *
  * Usage:
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
- *   vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
+ *   vektor workflow run <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
+ *   vektor workflow logs <runId> [--url <url>] [--space <id>] [--token <tok>]
  *   vektor extension create <id>
  *   vektor extension package [id]
  *   vektor extension upload [id] --url <wiki-url> --space <space-id> --token <api-token>
- *   vektor document cat <docId>
- *   vektor document write <docId>
- *   vektor document create [--slug <slug>] [--type <type>]
- *   vektor document ls [--limit <n>]
- *   vektor document search <query>
+ *   vektor cat <docId>
+ *   vektor write <docId>
+ *   vektor create [--slug <slug>] [--type <type>]
+ *   vektor ls [--limit <n>]
+ *   vektor query <query>
  */
 
 import { commandAgent } from "./src/cli/agent.ts";
@@ -26,7 +27,7 @@ import {
 } from "./src/cli/document.ts";
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
-import { parseArgs, runWorkflow } from "./src/cli/workflow.ts";
+import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
 
 function parseFlags(args: string[]): {
   positional: string[];
@@ -56,18 +57,18 @@ function printUsage(): void {
 Usage:
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
   vektor agent [prompt...] [--doc <slug|id>] [--space <id>] [--url <host>] [--token <tok>] [--once]
-  vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
+  vektor workflow run <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
+  vektor workflow logs <runId> [--url <url>] [--space <id>] [--token <tok>]
   vektor extension create <id>
   vektor extension package [id]
   vektor extension upload [id] --url <wiki-url> --space <space-id> --token <api-token>
-  vektor document cat <docId>
-  vektor document write <docId>
-  vektor document create [--slug <slug>] [--type <type>]
-  vektor document ls [--limit <n>]
-  vektor document search <query>
+  vektor cat <docId>
+  vektor write [<docId>] [--slug <slug>] [--type <type>]
+  vektor ls [--limit <n>]
+  vektor query <query>
 
 Defaults to http://localhost:8080 and auto-discovers the first space.
-Override with WIKI_HOST, WIKI_SPACE_ID, WIKI_ACCESS_TOKEN.
+Override with VEKTOR_HOST, VEKTOR_SPACE_ID, VEKTOR_ACCESS_TOKEN.
 `);
 }
 
@@ -106,24 +107,37 @@ async function main(): Promise<void> {
   }
 
   if (command === "workflow") {
-    const options = parseArgs(rest);
-    const result = await runWorkflow(options);
+    const [subcommand, ...subArgs] = rest;
 
-    if (options.json) {
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (subcommand === "logs") {
+      const { positional, flags } = parseFlags(subArgs);
+      if (!positional[0]) throw new Error("workflow logs requires a <runId>");
+      await commandLogs(positional[0], { url: flags.url, spaceId: flags.space, token: flags.token });
       return;
     }
 
-    for (const [nodeId, node] of Object.entries(result.nodes)) {
-      process.stdout.write(
-        `${nodeId}: ${node.status}${node.error ? ` — ${node.error}` : ""}\n`,
-      );
+    if (subcommand === "run") {
+      const options = parseArgs(subArgs);
+      const result = await runWorkflow(options);
+
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+        return;
+      }
+
+      for (const [nodeId, node] of Object.entries(result.nodes)) {
+        process.stdout.write(
+          `${nodeId}: ${node.status}${node.error ? ` — ${node.error}` : ""}\n`,
+        );
+      }
+      if (result.output) {
+        process.stdout.write(`Output: ${JSON.stringify(result.output, null, 2)}\n`);
+      }
+      if (result.status === "failed") process.exit(1);
+      return;
     }
-    if (result.output) {
-      process.stdout.write(`Output: ${JSON.stringify(result.output, null, 2)}\n`);
-    }
-    if (result.status === "failed") process.exit(1);
-    return;
+
+    throw new Error(`Unknown workflow subcommand: ${subcommand}\n\nTry: run, logs`);
   }
 
   if (command === "extension") {
@@ -142,8 +156,8 @@ async function main(): Promise<void> {
 
     if (subcommand === "upload") {
       const { flags } = parseFlags(rest.slice(extensionId?.startsWith("--") ? 0 : 1));
-      const url = flags.url ?? process.env.WIKI_URL ?? resolveHost();
-      const token = flags.token ?? process.env.WIKI_TOKEN;
+      const url = flags.url ?? process.env.VEKTOR_URL ?? resolveHost();
+      const token = flags.token ?? process.env.VEKTOR_TOKEN;
       const space = flags.space ?? (await resolveSpaceId(url, token));
       await commandUpload(
         extensionId?.startsWith("--") ? undefined : extensionId,
@@ -159,45 +173,36 @@ async function main(): Promise<void> {
     );
   }
 
-  if (command === "document") {
+  if (command === "cat") {
+    if (!rest[0]) throw new Error("cat requires a <docId>");
+    await commandCat(rest[0]);
+    return;
+  }
+
+  if (command === "write") {
     const { positional, flags } = parseFlags(rest);
-    const [subcommand, ...subArgs] = positional;
-
-    if (subcommand === "cat") {
-      if (!subArgs[0]) throw new Error("document cat requires a <docId>");
-      await commandCat(subArgs[0]);
-      return;
+    if (positional[0]) {
+      await commandWrite(positional[0]);
+    } else {
+      await commandDocCreate({ slug: flags.slug, type: flags.type ?? "markdown" });
     }
+    return;
+  }
 
-    if (subcommand === "write") {
-      if (!subArgs[0]) throw new Error("document write requires a <docId>");
-      await commandWrite(subArgs[0]);
-      return;
-    }
+  if (command === "ls" || command === "list") {
+    const { flags } = parseFlags(rest);
+    await commandLs({ limit: flags.limit });
+    return;
+  }
 
-    if (subcommand === "create") {
-      await commandDocCreate({ slug: flags.slug, type: flags.type });
-      return;
-    }
-
-    if (subcommand === "ls") {
-      await commandLs({ limit: flags.limit });
-      return;
-    }
-
-    if (subcommand === "search") {
-      if (!subArgs[0]) throw new Error("document search requires a <query>");
-      await commandSearch(subArgs.join(" "));
-      return;
-    }
-
-    throw new Error(
-      `Unknown document subcommand: ${subcommand}\n\nTry: cat, write, create, ls, search`,
-    );
+  if (command === "query") {
+    if (!rest[0]) throw new Error("query requires a <query>");
+    await commandSearch(rest.join(" "));
+    return;
   }
 
   throw new Error(
-    `Unknown command: ${command}\n\nTry: serve, workflow, extension, document`,
+    `Unknown command: ${command}\n\nTry: serve, workflow, extension, cat, write, ls, query`,
   );
 }
 

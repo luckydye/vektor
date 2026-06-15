@@ -150,10 +150,10 @@ beforeAll(async () => {
       VEKTOR_NO_AUTH: "1",
       VEKTOR_IN_MEMORY_DB: "1",
       VEKTOR_API_ONLY: "1",
-      WIKI_JOB_ALLOW_UNSANDBOXED: "1",
+      VEKTOR_JOB_ALLOW_UNSANDBOXED: "1",
       HOST: "127.0.0.1",
       NODE_ENV: "test",
-      WIKI_OTEL_ENABLED: "0",
+      VEKTOR_OTEL_ENABLED: "0",
       // Required to sign job tokens used for sub-job API calls
       AUTH_SECRET: "test-secret-for-workflow-integration-testing",
     },

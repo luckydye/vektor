@@ -50,7 +50,7 @@ beforeAll(async () => {
       VEKTOR_API_ONLY: "1",
       HOST: "127.0.0.1",
       NODE_ENV: "test",
-      WIKI_OTEL_ENABLED: "0",
+      VEKTOR_OTEL_ENABLED: "0",
     },
     stdout: "ignore",
     stderr: "ignore",

@@ -44,7 +44,7 @@ beforeAll(async () => {
       HOST: "127.0.0.1",
       NODE_ENV: "test",
       // Silence OTEL noise in test output
-      WIKI_OTEL_ENABLED: "0",
+      VEKTOR_OTEL_ENABLED: "0",
     },
     stdout: "ignore",
     stderr: "ignore",

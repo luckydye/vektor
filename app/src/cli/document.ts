@@ -3,9 +3,9 @@
  *
  * Defaults to http://localhost:8080 and auto-discovers the first space
  * from a running vektor instance. Override with env vars:
- *   WIKI_HOST          e.g. http://localhost:3000
- *   WIKI_SPACE_ID      space identifier
- *   WIKI_ACCESS_TOKEN  API token (optional)
+ *   VEKTOR_HOST          e.g. http://localhost:3000
+ *   VEKTOR_SPACE_ID      space identifier
+ *   VEKTOR_ACCESS_TOKEN  API token (optional)
  *
  * Commands:
  *   document cat <docId>                       print document content to stdout

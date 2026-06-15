@@ -16,8 +16,8 @@ const exec = promisify(execFile);
 export class SandboxRequiredError extends Error {
   constructor() {
     super(
-      "Refusing to run extension job: no sandbox is configured. Set WIKI_JOB_SANDBOX=openshell, " +
-        "or WIKI_JOB_ALLOW_UNSANDBOXED=1 only in trusted local development.",
+      "Refusing to run extension job: no sandbox is configured. Set VEKTOR_JOB_SANDBOX=openshell, " +
+        "or VEKTOR_JOB_ALLOW_UNSANDBOXED=1 only in trusted local development.",
     );
     this.name = "SandboxRequiredError";
   }

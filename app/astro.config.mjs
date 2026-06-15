@@ -22,7 +22,7 @@ export default defineConfig({
       //
       tailwindcss(),
     ],
-    envPrefix: "WIKI_",
+    envPrefix: "VEKTOR_",
     server: {
       cors: {
         origin: "*",
