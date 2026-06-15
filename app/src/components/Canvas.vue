@@ -190,6 +190,8 @@ const CANVAS_TOOLS: ToolDef[] = [
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
+const imagesRef = ref<HTMLCanvasElement | null>(null);
+const imageCache = new Map<string, HTMLImageElement | "loading" | "error">();
 const shapes = ref<CanvasShape[]>([]);
 const strokes = ref<CanvasStroke[]>([]);
 const selectedShapeIds = ref<Set<string>>(new Set());
@@ -792,6 +794,49 @@ function renderGrid() {
   });
 }
 
+function renderImages() {
+  const canvas = imagesRef.value;
+  const ctx = canvas?.getContext("2d");
+  if (!canvas || !ctx) return;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, screen.value.width, screen.value.height);
+
+  const t = transform.value;
+  for (const shape of visibleShapes.value) {
+    if (shape.type !== "image" || !shape.src) continue;
+    const sx = shape.x * t.scale + t.dx;
+    const sy = shape.y * t.scale + t.dy;
+    const sw = shape.width * t.scale;
+    const sh = shape.height * t.scale;
+    if (sw <= 0 || sh <= 0) continue;
+
+    const cached = imageCache.get(shape.src);
+    if (!cached) {
+      imageCache.set(shape.src, "loading");
+      const img = new Image();
+      img.onload = () => {
+        imageCache.set(shape.src!, img);
+        renderImages();
+      };
+      img.onerror = () => {
+        imageCache.set(shape.src!, "error");
+        renderImages();
+      };
+      img.src = shape.src;
+    }
+
+    if (!cached || cached === "loading" || cached === "error") {
+      ctx.fillStyle = "rgba(128,128,128,0.15)";
+      ctx.fillRect(sx, sy, sw, sh);
+    } else {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(cached, sx, sy, sw, sh);
+    }
+  }
+}
+
 function renderInk() {
   const canvas = inkRef.value;
   const context = canvas?.getContext("2d");
@@ -831,8 +876,16 @@ function resize() {
     ink.style.width = `${screen.value.width}px`;
     ink.style.height = `${screen.value.height}px`;
   }
+  const images = imagesRef.value;
+  if (images) {
+    images.width = Math.round(screen.value.width * dpr);
+    images.height = Math.round(screen.value.height * dpr);
+    images.style.width = `${screen.value.width}px`;
+    images.style.height = `${screen.value.height}px`;
+  }
   renderGrid();
   renderInk();
+  renderImages();
 }
 
 function presenceState(): CanvasPresenceState {
@@ -2025,6 +2078,7 @@ watch(
   shapes,
   () => {
     void nextTick(syncTextShapeObservers);
+    renderImages();
   },
   { flush: "post" },
 );
@@ -2060,6 +2114,7 @@ watch(
   () => {
     renderGrid();
     renderInk();
+    renderImages();
     updatePresence();
   },
   { deep: true },
@@ -2165,6 +2220,7 @@ onUnmounted(() => {
   window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
   window.removeEventListener("document:property", handlePropertyEvent);
+  imageCache.clear();
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
   if (presenceTimer) clearInterval(presenceTimer);
@@ -2311,6 +2367,7 @@ onUnmounted(() => {
       @drop="handleDrop"
     >
       <canvas ref="gridRef" class="canvas-grid"></canvas>
+      <canvas ref="imagesRef" class="canvas-images"></canvas>
       <canvas ref="inkRef" class="canvas-ink"></canvas>
       <div
         class="canvas-world"
@@ -2375,14 +2432,9 @@ onUnmounted(() => {
             class="canvas-shape-handle"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></div>
-          <img
-            v-if="shape.type === 'image' && shape.src"
+          <div
+            v-if="shape.type === 'image'"
             class="canvas-shape-image"
-            :src="shape.src"
-            :alt="shape.alt || ''"
-            draggable="false"
-            decoding="async"
-            loading="lazy"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           />
           <video
@@ -2917,6 +2969,7 @@ onUnmounted(() => {
 }
 
 .canvas-grid,
+.canvas-images,
 .canvas-ink {
   position: absolute;
   inset: 0;
@@ -2971,6 +3024,8 @@ onUnmounted(() => {
 }
 
 .canvas-shape.image .canvas-shape-image {
+  width: 100%;
+  height: 100%;
   background: transparent;
 }
 
