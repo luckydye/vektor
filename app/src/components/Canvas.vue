@@ -91,6 +91,7 @@ import {
   type ViewportControls,
   screenToWorld as viewportScreenToWorld,
   worldToScreen as viewportWorldToScreen,
+  worldViewportBounds,
   type WorldRect,
 } from "../viewport/index.ts";
 
@@ -308,6 +309,18 @@ const selectedShape = computed(() => {
   return shapes.value.find((shape) => shape.id === id) ?? null;
 });
 
+// Shapes within the current viewport (plus a 400px screen-space margin to hide
+// pop-in during panning). Selected shapes are always included so drag/resize
+// handles stay mounted even when a shape is panned partially off-screen.
+const visibleShapes = computed(() => {
+  const vr = worldViewportBounds(camera.value, screen.value, FIT_REFERENCE, 400);
+  return shapes.value.filter(
+    (shape) =>
+      selectedShapeIds.value.has(shape.id) ||
+      rectsIntersect(vr, { x: shape.x, y: shape.y, width: shape.width, height: shape.height }),
+  );
+});
+
 const selectedStrokeColor = computed(() => {
   if (selectedStrokeIds.value.size === 0) return null;
   const selected = strokes.value.filter((stroke) =>
@@ -481,6 +494,10 @@ function syncTextShapeObservers() {
   }
 }
 
+function resolveMediaSrc(src: string): string {
+  return src.startsWith("/") ? `${window.location.origin}${src}` : src;
+}
+
 function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape {
   const read = (key: keyof CanvasShape) =>
     source instanceof Y.Map ? source.get(key) : source[key];
@@ -501,7 +518,7 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
       typeof read("color") === "string"
         ? String(read("color"))
         : defaultColorForShape(type),
-    src: typeof read("src") === "string" ? String(read("src")) : undefined,
+    src: typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined,
     alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
     docId: typeof read("docId") === "string" ? String(read("docId")) : undefined,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
@@ -572,7 +589,7 @@ function createShapeMap(shape: CanvasShape) {
   map.set("height", shape.height);
   map.set("text", shape.text);
   map.set("color", shape.color);
-  if (shape.src) map.set("src", shape.src);
+  if (shape.src) map.set("src", resolveMediaSrc(shape.src));
   if (shape.alt) map.set("alt", shape.alt);
   if (shape.docId) map.set("docId", shape.docId);
   map.set("updatedAt", shape.updatedAt);
@@ -2091,8 +2108,8 @@ onMounted(() => {
       activeFreehandStroke.value = null;
       renderInk();
     },
-    minZoom: 0.25,
-    maxZoom: 5,
+    minZoom: 0.15,
+    maxZoom: 10,
   });
 
   resizeObserver = new ResizeObserver(resize);
@@ -2302,7 +2319,7 @@ onUnmounted(() => {
         }"
       >
         <article
-          v-for="shape in shapes"
+          v-for="shape in visibleShapes"
           :key="shape.id"
           class="canvas-shape"
           :class="[
@@ -2364,6 +2381,8 @@ onUnmounted(() => {
             :src="shape.src"
             :alt="shape.alt || ''"
             draggable="false"
+            decoding="async"
+            loading="lazy"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           />
           <video

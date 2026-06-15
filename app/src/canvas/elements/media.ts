@@ -106,7 +106,8 @@ export async function uploadMediaFile(
   }
 
   const result = (await response.json()) as { url: string };
-  return result.url;
+  const url = result.url;
+  return url.startsWith("/") ? `${window.location.origin}${url}` : url;
 }
 
 export function imageSize(src: string): Promise<{ width: number; height: number }> {
