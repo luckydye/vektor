@@ -27,6 +27,7 @@ import {
 } from "./src/cli/document.ts";
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
+import { config } from "./src/config.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
 
 function parseFlags(args: string[]): {
@@ -52,28 +53,52 @@ function parseFlags(args: string[]): {
   return { positional, flags };
 }
 
+function stripFlag(argv: string[], flag: string): { argv: string[]; value: string | undefined } {
+  const result: string[] = [];
+  let value: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === `--${flag}` && argv[i + 1] && !argv[i + 1].startsWith("--")) {
+      value = argv[++i];
+    } else {
+      result.push(argv[i]);
+    }
+  }
+  return { argv: result, value };
+}
+
 function printUsage(): void {
   console.log(`
 Usage:
+  vektor [--space <id>] <command> [args]
+
+Commands:
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
-  vektor agent [prompt...] [--doc <slug|id>] [--space <id>] [--token <tok>] [--once]
-  vektor workflow run <docId> [--input key=value ...] [--json] [--space <id>] [--token <tok>]
-  vektor workflow logs <runId> [--space <id>] [--token <tok>]
+  vektor agent [prompt...] [--doc <slug|id>] [--once]
+  vektor workflow run <docId> [--input key=value ...] [--json]
+  vektor workflow logs <runId>
   vektor extension create <id>
   vektor extension package [id]
-  vektor extension upload [id] [--space <space-id>] [--token <api-token>]
+  vektor extension upload [id]
   vektor cat <docId>
   vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>]    (types: markdown, document, csv, app; file defaults to stdin)
   vektor ls [--limit <n>]
   vektor query <query>
 
-Defaults to http://localhost:8080 and auto-discovers the first space.
-Override with VEKTOR_HOST, VEKTOR_SPACE_ID, VEKTOR_ACCESS_TOKEN.
+Env vars:
+  VEKTOR_HOST           Server URL (default: http://localhost:8080)
+  VEKTOR_SPACE_ID       Space to use (default: first space on server)
+  VEKTOR_ACCESS_TOKEN   API token (required if auth is enabled)
 `);
 }
 
 async function main(): Promise<void> {
-  const argv = Bun.argv.slice(2);
+  let argv = Bun.argv.slice(2);
+
+  // Global flags resolved before routing.
+  const { argv: argvAfterSpace, value: spaceFlag } = stripFlag(argv, "space");
+  if (spaceFlag) process.env.VEKTOR_SPACE_ID = spaceFlag;
+  argv = argvAfterSpace;
+
   const [command, ...rest] = argv;
 
   if (!command) {
@@ -97,9 +122,6 @@ async function main(): Promise<void> {
     await commandAgent({
       prompt: positional.length > 0 ? positional.join(" ") : undefined,
       doc: flags.doc,
-      space: flags.space,
-      url: flags.url,
-      token: flags.token,
       user: flags.user,
       once: "once" in flags,
     });
@@ -112,7 +134,7 @@ async function main(): Promise<void> {
     if (subcommand === "logs") {
       const { positional, flags } = parseFlags(subArgs);
       if (!positional[0]) throw new Error("workflow logs requires a <runId>");
-      await commandLogs(positional[0], { url: flags.url, spaceId: flags.space, token: flags.token });
+      await commandLogs(positional[0]);
       return;
     }
 
@@ -155,10 +177,9 @@ async function main(): Promise<void> {
     }
 
     if (subcommand === "upload") {
-      const { flags } = parseFlags(rest.slice(extensionId?.startsWith("--") ? 0 : 1));
-      const url = flags.url ?? process.env.VEKTOR_URL ?? resolveHost();
-      const token = flags.token ?? process.env.VEKTOR_TOKEN;
-      const space = flags.space ?? (await resolveSpaceId(url, token));
+      const url = resolveHost();
+      const token = config().CLI_ACCESS_TOKEN;
+      const space = await resolveSpaceId(url, token);
       await commandUpload(
         extensionId?.startsWith("--") ? undefined : extensionId,
         url,

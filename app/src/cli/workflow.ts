@@ -8,7 +8,7 @@
  *   VEKTOR_ACCESS_TOKEN API token                    (or --token, optional)
  *
  * Usage:
- *   vektor workflow <docId> [--input key=value ...] [--file key=/path ...] [--json] [--url <url>] [--space <id>] [--token <tok>]
+ *   vektor workflow run <docId> [--input key=value ...] [--file key=/path ...] [--json]
  *
  * Examples:
  *   vektor workflow abc123 --input file=https://example.com/data.xlsx
@@ -37,7 +37,6 @@ export type CliOptions = {
   inputs: Record<string, unknown>;
   filePaths: Record<string, string>;
   json: boolean;
-  url: string;
   spaceId?: string;
   token: string | undefined;
 };
@@ -48,9 +47,9 @@ function assert(condition: unknown, message: string): asserts condition {
 
 function usage(): string {
   return [
-    "Usage: vektor workflow <docId> [--input key=value ...] [--json] [--url <url>] [--space <id>] [--token <tok>]",
+    "Usage: vektor workflow run <docId> [--input key=value ...] [--json]",
     "",
-    "Options read from env if flags are omitted: VEKTOR_HOST, VEKTOR_SPACE_ID, VEKTOR_ACCESS_TOKEN",
+    "Env vars: VEKTOR_HOST, VEKTOR_SPACE_ID, VEKTOR_ACCESS_TOKEN",
     "",
     "Examples:",
     "  vektor workflow abc123",
@@ -70,9 +69,6 @@ export function parseArgs(argv: string[]): CliOptions {
   const inputs: Record<string, unknown> = {};
   const filePaths: Record<string, string> = {};
   let json = false;
-  let urlFlag: string | undefined;
-  let spaceFlag: string | undefined;
-  let tokenFlag: string | undefined;
 
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
@@ -98,35 +94,16 @@ export function parseArgs(argv: string[]): CliOptions {
       json = true;
       continue;
     }
-    if (arg === "--url") {
-      urlFlag = argv[++i];
-      assert(urlFlag, "--url requires a value");
-      continue;
-    }
-    if (arg === "--space") {
-      spaceFlag = argv[++i];
-      assert(spaceFlag, "--space requires a value");
-      continue;
-    }
-    if (arg === "--token") {
-      tokenFlag = argv[++i];
-      assert(tokenFlag, "--token requires a value");
-      continue;
-    }
     throw new Error(`Unknown argument: ${arg}\n\n${usage()}`);
   }
-
-  const url = urlFlag ?? resolveHost();
-  const spaceId = spaceFlag ?? config().CLI_SPACE_ID;
 
   return {
     documentId,
     inputs,
     filePaths,
     json,
-    url,
-    spaceId: spaceId || undefined,
-    token: tokenFlag ?? config().CLI_ACCESS_TOKEN,
+    spaceId: config().CLI_SPACE_ID || undefined,
+    token: config().CLI_ACCESS_TOKEN,
   };
 }
 
@@ -184,13 +161,10 @@ async function uploadFile(
   return data.url;
 }
 
-export async function commandLogs(
-  runId: string,
-  opts: { url?: string; spaceId?: string; token?: string },
-): Promise<void> {
-  const url = opts.url ?? resolveHost();
-  const token = opts.token ?? config().CLI_ACCESS_TOKEN;
-  const spaceId = opts.spaceId ?? config().CLI_SPACE_ID ?? (await resolveSpaceId(url, token));
+export async function commandLogs(runId: string): Promise<void> {
+  const url = resolveHost();
+  const token = config().CLI_ACCESS_TOKEN;
+  const spaceId = config().CLI_SPACE_ID ?? (await resolveSpaceId(url, token));
 
   const run = (await apiFetch(
     url,
@@ -206,7 +180,8 @@ export async function commandLogs(
 }
 
 export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
-  const { url, token, documentId, inputs, filePaths, json } = options;
+  const { token, documentId, inputs, filePaths, json } = options;
+  const url = resolveHost();
   const spaceId = options.spaceId ?? (await resolveSpaceId(url, token));
 
   for (const [key, filePath] of Object.entries(filePaths)) {

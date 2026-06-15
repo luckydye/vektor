@@ -21,9 +21,6 @@ const c = {
 export type AgentCliOptions = {
   prompt?: string;
   doc?: string;
-  space?: string;
-  url?: string;
-  token?: string;
   user?: string;
   once?: boolean;
 };
@@ -195,10 +192,10 @@ async function runTurn(
 }
 
 export async function commandAgent(options: AgentCliOptions): Promise<void> {
-  const host = (options.url ?? resolveHost()).replace(/\/$/, "");
-  const spaceId = options.space ?? (await resolveSpaceId(host, undefined));
+  const host = resolveHost().replace(/\/$/, "");
+  const spaceId = await resolveSpaceId(host, undefined);
   const userId = options.user ?? null;
-  const jobToken = options.token ?? createJobToken(spaceId, Date.now().toString(), userId);
+  const jobToken = createJobToken(spaceId, Date.now().toString(), userId);
   const authHeaders = { "X-Job-Token": jobToken, "X-Space-Id": spaceId };
   const sessionId = randomUUID();
 
