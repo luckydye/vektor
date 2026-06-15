@@ -308,7 +308,7 @@ const selectedShape = computed(() => {
     return null;
   }
   const [id] = selectedShapeIds.value;
-  return shapes.value.find((shape) => shape.id === id) ?? null;
+  return shapesById.value.get(id) ?? null;
 });
 
 // Non-GIF image shapes render on the images canvas — no DOM article needed.
@@ -334,27 +334,29 @@ const visibleImageShapes = computed(() => {
 
 const selectedStrokeColor = computed(() => {
   if (selectedStrokeIds.value.size === 0) return null;
-  const selected = strokes.value.filter((stroke) =>
-    selectedStrokeIds.value.has(stroke.id),
-  );
-  if (selected.length === 0) return null;
-  const color = selected[0].style.color;
-  return selected.every((stroke) => stroke.style.color === color) ? color : null;
+  let color: string | null = null;
+  for (const id of selectedStrokeIds.value) {
+    const stroke = strokesById.value.get(id);
+    if (!stroke) continue;
+    if (color === null) color = stroke.style.color;
+    else if (stroke.style.color !== color) return null;
+  }
+  return color;
 });
 
-// Screen-space top-center anchor for the multi-selection overlay. Returns null
-// when fewer than 2 items are selected so the overlay stays hidden.
-const selectionAnchorPos = computed(() => {
-  const totalSelected = selectedShapeIds.value.size + selectedStrokeIds.value.size;
-  if (totalSelected < 2) return null;
+const shapesById = computed(() => new Map(shapes.value.map((s) => [s.id, s])));
+const strokesById = computed(() => new Map(strokes.value.map((s) => [s.id, s])));
 
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
+// World-space bounding box of the current multi-selection. Does NOT depend on
+// the camera transform, so pan/zoom never triggers the O(n×points) loop — only
+// actual selection or position changes do.
+const selectionWorldBounds = computed(() => {
+  if (selectedShapeIds.value.size + selectedStrokeIds.value.size < 2) return null;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
   for (const id of selectedShapeIds.value) {
-    const shape = shapes.value.find((s) => s.id === id);
+    const shape = shapesById.value.get(id);
     if (!shape) continue;
     minX = Math.min(minX, shape.x);
     minY = Math.min(minY, shape.y);
@@ -363,7 +365,7 @@ const selectionAnchorPos = computed(() => {
   }
 
   for (const id of selectedStrokeIds.value) {
-    const stroke = strokes.value.find((s) => s.id === id);
+    const stroke = strokesById.value.get(id);
     if (!stroke || stroke.points.length === 0) continue;
     for (const point of stroke.points) {
       minX = Math.min(minX, point.x);
@@ -374,8 +376,15 @@ const selectionAnchorPos = computed(() => {
   }
 
   if (!Number.isFinite(minX)) return null;
+  return { minX, minY, maxX, maxY };
+});
 
-  return worldToScreen({ x: (minX + maxX) / 2, y: minY });
+// Screen-space top-center anchor for the multi-selection overlay. O(1) —
+// just projects the cached world bounds through the current transform.
+const selectionAnchorPos = computed(() => {
+  const b = selectionWorldBounds.value;
+  if (!b) return null;
+  return worldToScreen({ x: (b.minX + b.maxX) / 2, y: b.minY });
 });
 
 function selectOnlyShape(id: string) {
@@ -1246,7 +1255,7 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
   const moveStrokes = new Map<string, { id: string; points: FreehandPoint[] }>();
 
   for (const id of selectedShapeIds.value) {
-    const shape = shapes.value.find((s) => s.id === id);
+    const shape = shapesById.value.get(id);
     if (!shape) continue;
     moveShapes.set(shape.id, { id: shape.id, x: shape.x, y: shape.y });
     if (shape.type === "section") {
@@ -1258,7 +1267,7 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
   }
   for (const id of selectedStrokeIds.value) {
     if (moveStrokes.has(id)) continue;
-    const stroke = strokes.value.find((s) => s.id === id);
+    const stroke = strokesById.value.get(id);
     if (stroke) {
       moveStrokes.set(id, { id, points: stroke.points.map(cloneFreehandPoint) });
     }
@@ -1494,7 +1503,7 @@ function movingGroupBounds(
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const moved of drag.shapes) {
-    const shape = shapes.value.find((s) => s.id === moved.id);
+    const shape = shapesById.value.get(moved.id);
     if (!shape) continue;
     minX = Math.min(minX, moved.x);
     minY = Math.min(minY, moved.y);
