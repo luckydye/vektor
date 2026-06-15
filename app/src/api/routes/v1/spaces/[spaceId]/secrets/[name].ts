@@ -103,7 +103,7 @@ export const HEAD: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
     const name = requireParam(context.params, "name");
-    await verifySpaceRole(spaceId, user.id, "owner");
+    await verifySpaceRole(spaceId, user.id, "editor");
 
     const secret = await getSpaceSecretMetadata(spaceId, name);
     if (!secret) {
