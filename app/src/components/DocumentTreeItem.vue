@@ -1,7 +1,7 @@
 <template>
   <page-target :data-document-id="doc.id"
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50">
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-1 px-1">
       <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
         :aria-label="isExpanded ? 'Collapse' : 'Expand'">
         <div class="svg-icon w-3 h-3 transition-transform text-neutral" :class="{ 'rotate-90': isExpanded }" v-html="chevronRightThinIcon" />
@@ -10,7 +10,7 @@
       <div v-else class="flex-none w-4"></div>
 
       <a :href="getDocumentUrl(doc.slug)" :class="[
-        'flex-1 px-3 py-1.5 text-size-medium rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
+        'flex-1 px-2 py-1.5 text-size-medium rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive
           ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'

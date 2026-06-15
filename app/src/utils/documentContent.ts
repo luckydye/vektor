@@ -8,14 +8,17 @@ import { marked } from "marked";
 function wrapInParagraph(content: string): string {
   if (/^<(p|ul|ol|h[1-6]|blockquote|pre|div)\b/.test(content)) return content;
   const blockStart = content.search(/<(ul|ol|p|h[1-6]|blockquote|pre|div)\b/);
-  if (blockStart > 0) return `<p>${content.slice(0, blockStart).trimEnd()}</p>${content.slice(blockStart)}`;
+  if (blockStart > 0)
+    return `<p>${content.slice(0, blockStart).trimEnd()}</p>${content.slice(blockStart)}`;
   return `<p>${content.trimEnd()}</p>`;
 }
 
 marked.use({
   renderer: {
     listitem(token) {
-      const inner = (this as { parser: { parse(t: unknown): string } }).parser.parse(token.tokens);
+      const inner = (this as { parser: { parse(t: unknown): string } }).parser.parse(
+        token.tokens,
+      );
       const content = inner.replace(/<input\b[^>]*disabled=""[^>]*>\s*/g, "");
       if (token.task) {
         const checked = token.checked ? "true" : "false";

@@ -133,7 +133,9 @@ export function getOAuthProviderConfiguration(provider: OAuthIntegrationProvider
   if (!clientId) missing.push("VEKTOR_YOUTRACK_OAUTH_CLIENT_ID");
   if (!clientSecret) missing.push("VEKTOR_YOUTRACK_OAUTH_CLIENT_SECRET");
   if (!authorizationUrl) {
-    missing.push("VEKTOR_YOUTRACK_OAUTH_AUTHORIZATION_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL");
+    missing.push(
+      "VEKTOR_YOUTRACK_OAUTH_AUTHORIZATION_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL",
+    );
   }
   if (!tokenUrl) {
     missing.push("VEKTOR_YOUTRACK_OAUTH_TOKEN_URL or VEKTOR_YOUTRACK_OAUTH_BASE_URL");

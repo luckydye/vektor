@@ -364,15 +364,15 @@ onUnmounted(() => {
               'cursor-move': isEditMode
             }"
           >
-            <button @click="toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1 py-2">
-              <div class="svg-icon flex-none w-4 h-4 transition-transform"
-                :class="{ 'rotate-90': expandedItems.has(category.id) }" v-html="chevronRightThinIcon" />
-
-              <div class="flex-none w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold" :style="{
+            <button @click="toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5">
+              <div class="flex-none relative w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold" :style="{
                 backgroundColor: category.color || '#E5E7EB',
                 color: getTextColor(category.color)
               }">
-                {{ category.icon || category.name.charAt(0).toUpperCase() }}
+                <span class="block group-hover/category:opacity-0 transition-opacity">{{ category.icon || category.name.charAt(0).toUpperCase() }}</span>
+                
+                <div class="opacity-0 group-hover/category:opacity-100 transition-opacity svg-icon flex-none w-4 h-4 transition-transform absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
+                    :class="{ 'rotate-90': expandedItems.has(category.id) }" v-html="chevronRightThinIcon" />
               </div>
 
               <span class="font-medium">{{ category.name }}</span>
@@ -382,7 +382,7 @@ onUnmounted(() => {
             <a
               v-if="!isEditMode && canEdit(currentSpace?.userRole)"
               :href="`/${currentSpace?.slug}/new?category=${category.slug}`"
-              class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-all shrink-0 mr-2"
+              class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-all shrink-0 mr-2 flex items-center gap-1"
               title="New document in this category"
               @click.stop
             >

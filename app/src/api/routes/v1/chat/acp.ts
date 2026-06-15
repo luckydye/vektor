@@ -666,7 +666,9 @@ export const POST: APIRoute = (context) =>
         const persistedSession =
           userId === null ? null : await getAIChatSession(spaceId, sessionId, userId);
         const history = (persistedSession?.conversationHistory ??
-          (userId === null && Array.isArray(params.messages) ? params.messages : [])) as ChatMessage[];
+          (userId === null && Array.isArray(params.messages)
+            ? params.messages
+            : [])) as ChatMessage[];
         const [userProfile, oauthIntegrations] = await Promise.all([
           userId !== null
             ? getUserProfile(spaceId, userId).catch(() => null)

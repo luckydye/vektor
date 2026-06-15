@@ -87,12 +87,18 @@ function parseFrontmatter(raw: string): { meta: Frontmatter; content: string } {
     const colon = line.indexOf(":");
     if (colon > 0) {
       const key = line.slice(0, colon).trim();
-      const value = line.slice(colon + 1).trim().replace(/^["']|["']$/g, "");
+      const value = line
+        .slice(colon + 1)
+        .trim()
+        .replace(/^["']|["']$/g, "");
       if (key) meta[key] = value;
     }
   }
 
-  const content = rest.slice(end).replace(/^---\s*\n?/, "").trimStart();
+  const content = rest
+    .slice(end)
+    .replace(/^---\s*\n?/, "")
+    .trimStart();
   return { meta, content };
 }
 
@@ -193,7 +199,10 @@ export async function commandSet(
         properties[arg.slice(1)] = null; // delete
       } else {
         const eq = arg.indexOf("=");
-        if (eq < 1) throw new Error(`Invalid property assignment: '${arg}' (expected key=value or -key)`);
+        if (eq < 1)
+          throw new Error(
+            `Invalid property assignment: '${arg}' (expected key=value or -key)`,
+          );
         properties[arg.slice(0, eq)] = arg.slice(eq + 1);
       }
     }

@@ -352,7 +352,8 @@ function historyOutputData(runId: string): Record<string, unknown>[] | null {
 
 function historyRunTitle(run: RunSummary): string | null {
   const title =
-    run.runtimeInputs?.title ?? historyRunDetails.value.get(run.runId)?.runtimeInputs?.title;
+    run.runtimeInputs?.title ??
+    historyRunDetails.value.get(run.runId)?.runtimeInputs?.title;
   return typeof title === "string" ? title : null;
 }
 

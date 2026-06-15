@@ -18,7 +18,6 @@
  */
 
 import { commandAgent } from "./src/cli/agent.ts";
-import { commandLogin } from "./src/cli/login.ts";
 import {
   commandCategoryCreate,
   commandCategoryEdit,
@@ -34,9 +33,10 @@ import {
   commandWrite,
 } from "./src/cli/document.ts";
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
+import { commandLogin } from "./src/cli/login.ts";
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
-import { config } from "./src/config.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
+import { config } from "./src/config.ts";
 
 function parseFlags(args: string[]): {
   positional: string[];
@@ -61,7 +61,10 @@ function parseFlags(args: string[]): {
   return { positional, flags };
 }
 
-function stripFlag(argv: string[], flag: string): { argv: string[]; value: string | undefined } {
+function stripFlag(
+  argv: string[],
+  flag: string,
+): { argv: string[]; value: string | undefined } {
   const result: string[] = [];
   let value: string | undefined;
   for (let i = 0; i < argv.length; i++) {
@@ -220,11 +223,20 @@ async function main(): Promise<void> {
 
   if (command === "write") {
     const { positional, flags } = parseFlags(rest);
-    const isDocId = positional[0] && !positional[0].includes("/") && !positional[0].includes(".") && positional[0] !== "-";
+    const isDocId =
+      positional[0] &&
+      !positional[0].includes("/") &&
+      !positional[0].includes(".") &&
+      positional[0] !== "-";
     if (isDocId) {
       await commandWrite(positional[0], positional[1]);
     } else {
-      await commandDocCreate({ slug: flags.slug, type: flags.type ?? "markdown", source: positional[0], parent: flags.parent });
+      await commandDocCreate({
+        slug: flags.slug,
+        type: flags.type ?? "markdown",
+        source: positional[0],
+        parent: flags.parent,
+      });
     }
     return;
   }
@@ -290,7 +302,9 @@ async function main(): Promise<void> {
       return;
     }
 
-    throw new Error(`Unknown category subcommand: ${subcommand}\n\nTry: ls, create, edit, rm`);
+    throw new Error(
+      `Unknown category subcommand: ${subcommand}\n\nTry: ls, create, edit, rm`,
+    );
   }
 
   throw new Error(

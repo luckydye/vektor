@@ -595,7 +595,9 @@ onMounted(() => {
   window.addEventListener("edit-mode-cancel", handleEditModeCancel);
   window.addEventListener("request-editor-ready", () => {
     if (isEditingReady.value) {
-      window.dispatchEvent(new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }));
+      window.dispatchEvent(
+        new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }),
+      );
     }
   });
   window.addEventListener(

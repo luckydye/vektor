@@ -91,8 +91,8 @@ import {
   type ViewportControls,
   screenToWorld as viewportScreenToWorld,
   worldToScreen as viewportWorldToScreen,
-  worldViewportBounds,
   type WorldRect,
+  worldViewportBounds,
 } from "../viewport/index.ts";
 
 const props = defineProps<{
@@ -315,9 +315,7 @@ const selectedShape = computed(() => {
 // All other shapes stay in the DOM permanently; content-visibility:auto in CSS
 // tells the browser to skip painting off-screen articles without JS involvement.
 const domShapes = computed(() =>
-  shapes.value.filter(
-    (shape) => shape.type !== "image" || isGifSrc(shape.src ?? ""),
-  ),
+  shapes.value.filter((shape) => shape.type !== "image" || isGifSrc(shape.src ?? "")),
 );
 
 // Canvas-rendered image shapes within the current viewport. Used only by
@@ -328,7 +326,12 @@ const visibleImageShapes = computed(() => {
     (shape) =>
       shape.type === "image" &&
       !isGifSrc(shape.src ?? "") &&
-      rectsIntersect(vr, { x: shape.x, y: shape.y, width: shape.width, height: shape.height }),
+      rectsIntersect(vr, {
+        x: shape.x,
+        y: shape.y,
+        width: shape.width,
+        height: shape.height,
+      }),
   );
 });
 
@@ -353,7 +356,10 @@ const strokesById = computed(() => new Map(strokes.value.map((s) => [s.id, s])))
 const selectionWorldBounds = computed(() => {
   if (selectedShapeIds.value.size + selectedStrokeIds.value.size < 2) return null;
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
 
   for (const id of selectedShapeIds.value) {
     const shape = shapesById.value.get(id);
@@ -542,7 +548,8 @@ function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape 
       typeof read("color") === "string"
         ? String(read("color"))
         : defaultColorForShape(type),
-    src: typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined,
+    src:
+      typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined,
     alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
     docId: typeof read("docId") === "string" ? String(read("docId")) : undefined,
     updatedAt: toNumber(read("updatedAt"), Date.now()),

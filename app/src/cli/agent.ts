@@ -3,8 +3,8 @@
  * Inference and tool execution run server-side; the CLI streams and renders events.
  */
 
-import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
+import { createInterface } from "node:readline";
 import type { ChatMessage } from "../agent/core.ts";
 import { config } from "../config.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
@@ -169,7 +169,8 @@ async function runTurn(
             renderUpdate(update);
           }
         } else if ("error" in msg) {
-          finalError = (msg.error as { message?: string })?.message ?? "Agent request failed";
+          finalError =
+            (msg.error as { message?: string })?.message ?? "Agent request failed";
         }
       }
     }
@@ -190,7 +191,9 @@ export async function commandAgent(options: AgentCliOptions): Promise<void> {
   const host = resolveHost().replace(/\/$/, "");
   const spaceId = await resolveSpaceId(host, undefined);
   const token = config().CLI_ACCESS_TOKEN;
-  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const authHeaders: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
   const sessionId = randomUUID();
 
   let documentId: string | undefined;

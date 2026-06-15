@@ -75,8 +75,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
               const userName = member.user.name;
               const userEmail = member.user.email || "";
               return (
-                userName.toLowerCase().includes(q) ||
-                userEmail.toLowerCase().includes(q)
+                userName.toLowerCase().includes(q) || userEmail.toLowerCase().includes(q)
               );
             })
             .slice(0, 5)
@@ -214,10 +213,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
             }
 
             popup.style.display = "";
-            selectedIndex = Math.max(
-              0,
-              Math.min(selectedIndex, currentItems.length - 1),
-            );
+            selectedIndex = Math.max(0, Math.min(selectedIndex, currentItems.length - 1));
 
             movePopup(props);
 

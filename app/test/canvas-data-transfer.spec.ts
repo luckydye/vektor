@@ -26,8 +26,6 @@ describe("canvas data transfer helpers", () => {
   it("does not collect pasted attachments from both files and items", () => {
     const file = new File(["doc"], "notes.pdf", { type: "application/pdf" });
 
-    expect(canvasFilesFromDataTransfer(transferWithFileAndItem(file))).toEqual([
-      file,
-    ]);
+    expect(canvasFilesFromDataTransfer(transferWithFileAndItem(file))).toEqual([file]);
   });
 });

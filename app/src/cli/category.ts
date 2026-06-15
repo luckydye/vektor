@@ -55,7 +55,8 @@ export async function commandCategoryLs(): Promise<void> {
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories`,
     { headers: authHeaders(token) },
   );
-  if (!res.ok) throw new Error(`Failed to list categories (${res.status}): ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`Failed to list categories (${res.status}): ${await res.text()}`);
   const { categories } = (await res.json()) as { categories: Category[] };
   for (const c of categories) {
     const meta = [c.color, c.icon].filter(Boolean).join(" ");
@@ -87,7 +88,8 @@ export async function commandCategoryCreate(flags: {
       }),
     },
   );
-  if (!res.ok) throw new Error(`Failed to create category (${res.status}): ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`Failed to create category (${res.status}): ${await res.text()}`);
   const { category } = (await res.json()) as { category: Category };
   process.stdout.write(`${category.id}\t${category.slug}\t${category.name}\n`);
 }
@@ -122,7 +124,8 @@ export async function commandCategoryEdit(
       }),
     },
   );
-  if (!res.ok) throw new Error(`Failed to update category (${res.status}): ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`Failed to update category (${res.status}): ${await res.text()}`);
   const { category } = (await res.json()) as { category: Category };
   process.stdout.write(`${category.id}\t${category.slug}\t${category.name}\n`);
 }
@@ -135,6 +138,7 @@ export async function commandCategoryRm(idOrSlug: string): Promise<void> {
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories/${existing.id}`,
     { method: "DELETE", headers: authHeaders(token) },
   );
-  if (!res.ok) throw new Error(`Failed to delete category (${res.status}): ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`Failed to delete category (${res.status}): ${await res.text()}`);
   process.stdout.write(`deleted\t${existing.id}\t${existing.slug}\n`);
 }

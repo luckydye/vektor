@@ -165,8 +165,10 @@ export const POST: APIRoute = (context) =>
       properties = jsonProperties;
       parentId = jsonParentId;
       type = jsonType;
-      if (jsonCreatedAt && typeof jsonCreatedAt === "string") createdAt = new Date(jsonCreatedAt);
-      if (jsonUpdatedAt && typeof jsonUpdatedAt === "string") updatedAt = new Date(jsonUpdatedAt);
+      if (jsonCreatedAt && typeof jsonCreatedAt === "string")
+        createdAt = new Date(jsonCreatedAt);
+      if (jsonUpdatedAt && typeof jsonUpdatedAt === "string")
+        updatedAt = new Date(jsonUpdatedAt);
       content = toHtmlIfMarkdown(content, contentType, type);
     } else {
       const rawContent = await context.request.text();
@@ -174,11 +176,17 @@ export const POST: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      type = context.request.headers.get("X-Document-Type") ?? getDocumentTypeForContentType(contentType);
+      type =
+        context.request.headers.get("X-Document-Type") ??
+        getDocumentTypeForContentType(contentType);
       content = toHtmlIfMarkdown(rawContent, contentType, type);
       const titleHeader = context.request.headers.get("X-Document-Title");
       const slugHeader = context.request.headers.get("X-Document-Slug");
-      if (titleHeader || slugHeader) properties = { ...(titleHeader ? { title: titleHeader } : {}), ...(slugHeader ? { slug: slugHeader } : {}) };
+      if (titleHeader || slugHeader)
+        properties = {
+          ...(titleHeader ? { title: titleHeader } : {}),
+          ...(slugHeader ? { slug: slugHeader } : {}),
+        };
     }
 
     if (!content || typeof content !== "string") {

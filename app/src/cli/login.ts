@@ -3,9 +3,11 @@ import { resolveHost } from "./resolve.ts";
 
 function openBrowser(url: string): void {
   const cmd =
-    process.platform === "darwin" ? "open" :
-    process.platform === "win32" ? "cmd" :
-    "xdg-open";
+    process.platform === "darwin"
+      ? "open"
+      : process.platform === "win32"
+        ? "cmd"
+        : "xdg-open";
   const args = process.platform === "win32" ? ["/c", "start", url] : [url];
   Bun.spawn([cmd, ...args], { stdout: "ignore", stderr: "ignore" });
 }
@@ -70,15 +72,19 @@ export async function commandLogin(): Promise<void> {
     },
   });
 
-  const loginUrl =
-    `${host}/api/v1/auth/cli?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+  const loginUrl = `${host}/api/v1/auth/cli?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 
-  process.stderr.write(`Opening browser for login…\nIf it doesn't open, visit:\n  ${loginUrl}\n`);
+  process.stderr.write(
+    `Opening browser for login…\nIf it doesn't open, visit:\n  ${loginUrl}\n`,
+  );
   openBrowser(loginUrl);
 
-  const timeout = setTimeout(() => {
-    rejectCallback(new Error("Login timed out after 5 minutes"));
-  }, 5 * 60 * 1000);
+  const timeout = setTimeout(
+    () => {
+      rejectCallback(new Error("Login timed out after 5 minutes"));
+    },
+    5 * 60 * 1000,
+  );
 
   try {
     const { token, spaceId } = await callbackPromise;

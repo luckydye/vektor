@@ -108,7 +108,8 @@ const getCategoryIcon = (categorySlug: string | undefined) => {
 
   const category =
     categories.value.find((c) => c.slug === categorySlug || c.name === categorySlug) ||
-    (props.initialCategory?.slug === categorySlug || props.initialCategory?.name === categorySlug
+    (props.initialCategory?.slug === categorySlug ||
+    props.initialCategory?.name === categorySlug
       ? props.initialCategory
       : null);
 
@@ -128,7 +129,8 @@ const getPropertyLabel = (property: Property) => {
 
     const category =
       categories.value.find((c) => c.slug === categorySlug || c.name === categorySlug) ||
-      (props.initialCategory?.slug === categorySlug || props.initialCategory?.name === categorySlug
+      (props.initialCategory?.slug === categorySlug ||
+      props.initialCategory?.name === categorySlug
         ? props.initialCategory
         : null);
 
