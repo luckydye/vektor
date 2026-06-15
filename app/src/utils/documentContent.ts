@@ -16,7 +16,7 @@ marked.use({
   renderer: {
     listitem(token) {
       const inner = (this as { parser: { parse(t: unknown): string } }).parser.parse(token.tokens);
-      const content = inner.replace(/<input\b[^>]*type="checkbox"[^>]*>\s*/g, "");
+      const content = inner.replace(/<input\b[^>]*disabled=""[^>]*>\s*/g, "");
       if (token.task) {
         const checked = token.checked ? "true" : "false";
         const checkedAttr = token.checked ? ' checked=""' : "";
@@ -33,7 +33,7 @@ marked.use({
       const body = token.items
         .map((item) => {
           const inner = parser.parse(item.tokens);
-          const content = inner.replace(/<input\b[^>]*type="checkbox"[^>]*>\s*/g, "");
+          const content = inner.replace(/<input\b[^>]*disabled=""[^>]*>\s*/g, "");
           const checked = item.checked ? "true" : "false";
           const checkedAttr = item.checked ? ' checked=""' : "";
           return `<li data-type="taskItem" data-checked="${checked}"><label><input type="checkbox"${checkedAttr}><span></span></label><div>${wrapInParagraph(content)}</div></li>`;

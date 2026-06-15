@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
   chevronDownThinIcon,
   chevronLeftLargeIcon,
@@ -203,6 +203,10 @@ onMounted(() => {
     committedFilters.value = [...activeFilters.value];
     hasSearched.value = true;
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener("scroll", handleScroll);
 });
 
 const handleSearch = () => {
