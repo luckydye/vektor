@@ -87,7 +87,12 @@ const diffPatch = ref("");
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
-const documentViewEl = ref(null);
+type DocumentViewElement = HTMLElement & {
+  collaborationDocument?: Y.Doc;
+  destroyEditor?: () => void;
+  setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
+};
+const documentViewEl = ref<DocumentViewElement | null>(null);
 const tableViewEl = ref(null);
 const isMounted = ref(false);
 const getEditor = () => globalThis.__editor;
@@ -233,20 +238,7 @@ watch([saveStatus, saveError], () => {
 });
 
 async function setupEditorBridge() {
-  if (!documentViewEl.value) return;
-
-  await customElements.whenDefined("document-view");
-
-  // Re-check after async wait — state may have changed
-  if (!documentViewEl.value) return;
-
-  if (props.documentId && !leaveEditorCollaboration) {
-    leaveEditorCollaboration = joinYjsRoom(
-      props.spaceId,
-      props.documentId,
-      documentViewEl.value.collaborationDocument,
-    );
-  }
+  if (!(await setupEditorCollaboration())) return;
   await setupEditorPresence();
   registerEditorActions();
   window.dispatchEvent(
@@ -254,6 +246,21 @@ async function setupEditorBridge() {
   );
   isEditingReady.value = true;
   window.dispatchEvent(new CustomEvent("document:edit"));
+}
+
+async function setupEditorCollaboration(): Promise<boolean> {
+  if (!props.documentId || leaveEditorCollaboration) return true;
+
+  await customElements.whenDefined("document-view");
+  await nextTick();
+
+  const ydoc = documentViewEl.value?.collaborationDocument;
+  if (!(ydoc instanceof Y.Doc)) {
+    return false;
+  }
+
+  leaveEditorCollaboration = joinYjsRoom(props.spaceId, props.documentId, ydoc);
+  return true;
 }
 
 function editorPresenceState(): DocumentPresenceState {
@@ -614,13 +621,7 @@ onMounted(() => {
 
   // Pre-warm the ydoc so it's populated before the editor starts on first edit.
   // Keeping the room open in read mode is fine — it stays current with remote changes.
-  if (props.documentId && documentViewEl.value && !leaveEditorCollaboration) {
-    leaveEditorCollaboration = joinYjsRoom(
-      props.spaceId,
-      props.documentId,
-      documentViewEl.value.collaborationDocument,
-    );
-  }
+  void setupEditorCollaboration();
 
   if (props.initialEditMode) {
     requestAnimationFrame(setupEditorBridge);

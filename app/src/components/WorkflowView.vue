@@ -12,6 +12,7 @@ import {
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
+import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import DataTable from "./DataTable.vue";
 
@@ -156,6 +157,11 @@ const selectedRunFileUrl = computed(() => {
 async function downloadFile(url: string, fileName: string) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (fileName.toLowerCase().endsWith(".csv") || contentType.includes("text/csv")) {
+    downloadExcelRows(parseCsvRows(await response.text()), fileName);
+    return;
+  }
   const blob = await response.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -352,18 +358,6 @@ function historyOutputDocumentTitle(runId: string): string | null {
   return historyRunDocTitles.value.get(runId) ?? null;
 }
 
-async function downloadDocument(href: string, title: string) {
-  const response = await fetch(`${href}.md`);
-  if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${title}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 const runFailureError = computed<{ nodeId: string; error: string } | null>(() => {
   if (selectedRunDetail.value?.status !== "failed") return null;
   for (const [nodeId, node] of Object.entries(selectedRunDetail.value.nodes)) {
@@ -494,13 +488,6 @@ const statusBadgeClass: Record<string, string> = {
           <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
           {{ outputDocumentTitle ?? "Open document" }}
         </a>
-        <button
-          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
-          title="Download as Markdown"
-          @click="downloadDocument(outputDocumentHref!, outputDocumentTitle ?? 'document')"
-        >
-          <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
-        </button>
       </div>
 
       <!-- File input -->
@@ -569,13 +556,6 @@ const statusBadgeClass: Record<string, string> = {
                   <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
                   {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
                 </a>
-                <button
-                  class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
-                  title="Download as Markdown"
-                  @click="downloadDocument(historyOutputDocumentHref(run.runId)!, historyOutputDocumentTitle(run.runId) ?? 'document')"
-                >
-                  <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
-                </button>
               </div>
               <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-size-small text-neutral-400">No output</p>
             </template>

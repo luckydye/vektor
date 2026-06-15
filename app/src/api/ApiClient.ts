@@ -1,4 +1,4 @@
-import { applyUpdate, type Doc as YDoc } from "yjs";
+import { applyUpdate, Doc as YDoc } from "yjs";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -2122,6 +2122,11 @@ export class ApiClient {
   }
 
   joinYjsRoom(spaceId: string, documentId: string, ydoc: YDoc): () => void {
+    if (!(ydoc instanceof YDoc)) {
+      console.warn("Ignoring Yjs room join without a Y.Doc", { documentId, spaceId });
+      return () => {};
+    }
+
     const connection = this.getRealtimeConnection(spaceId);
 
     let ydocs = connection.yjsRooms.get(documentId);

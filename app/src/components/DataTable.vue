@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
+import { downloadExcelRows } from "../utils/excelExport.ts";
 
 const PAGE_SIZE = 10;
 const DEFAULT_COL_WIDTH = 200;
@@ -73,22 +74,13 @@ function cellText(v: unknown): string {
   return String(v);
 }
 
-function downloadCsv() {
-  const csvCols = columns.value;
-  const escapeCsv = (s: string) =>
-    s.includes(",") || s.includes('"') || s.includes("\n")
-      ? `"${s.replace(/"/g, '""')}"`
-      : s;
-  const header = csvCols.map(escapeCsv).join(",");
-  const rows = filtered.value.map((row) =>
-    csvCols.map((col) => escapeCsv(cellText(row[col]))).join(","),
-  );
-  const blob = new Blob([`${header}\n${rows.join("\n")}`], { type: "text/csv" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "data.csv";
-  a.click();
-  URL.revokeObjectURL(a.href);
+function downloadExcel() {
+  const tableColumns = columns.value;
+  const rows = [
+    tableColumns,
+    ...filtered.value.map((row) => tableColumns.map((col) => cellText(row[col]))),
+  ];
+  downloadExcelRows(rows, "data.xls");
 }
 
 function isDocumentIdColumn(column: string): boolean {
@@ -229,11 +221,11 @@ onUnmounted(() => {
         <span>{{ filtered.length }} / {{ data.length }} rows</span>
         <button
           class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 transition-colors"
-          title="Download as CSV"
-          @click="downloadCsv"
+          title="Download as Excel"
+          @click="downloadExcel"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="arrowDownTrayIcon" />
-          CSV
+          Excel
         </button>
       </div>
       <div v-if="pageCount > 1" class="flex items-center gap-1">
