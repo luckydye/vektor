@@ -75,7 +75,7 @@ function buildCoreAgentSystemPrompt(
 - Only include final output files in zips; exclude intermediates.
 - ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.${gitlabConnected ? "\n- gitlab sub-commands: `gitlab api <path>` raw API request via OAuth (paths relative to /api/v4, e.g. `gitlab api '/projects?search=name'`); `gitlab ls <project> [path] [--ref <ref>]` list repo directory; `gitlab cat <project> <file> [--ref <ref>]` file contents; `gitlab tree <project> [path] [--ref <ref>]` recursive listing. Use `gitlab api` to search/list projects — `ls/cat/tree` require an exact project ID or `namespace/project`." : ""}
 - \`html-to-csv [file]\`: extract the first table from an HTML document as CSV. \`html-table-to-csv [file]\`: convert an HTML table fragment to CSV.
-- \`extension install <zip-file>\`: install or update a Vektor extension from a ZIP file in the virtual filesystem.
+- \`extension init <name>\`: scaffold a new extension (creates \`<name>/manifest.json\` and \`<name>/dist/main.js\`). \`extension install <zip-file>\`: install a built extension ZIP.
 - Prefer built-in shell utilities. On failure, inspect stderr and adapt — don't retry blindly.
 - Loop over file lines with \`while read -r line; do ...; done < file.txt\` (\`<<\` is a heredoc, not a file).
 - Don't use \`awk -F,\` for CSV column extraction — use \`grep -oE\` instead.

@@ -1,48 +1,25 @@
-import { inflateRawSync } from "node:zlib";
 import { eq } from "drizzle-orm";
 import { getLocalExtension, getLocalExtensionPackage } from "../jobs/localJobs.ts";
+import {
+  extractFile,
+  extractManifest,
+  type ExtensionManifest,
+  type ExtensionRoute,
+  type ExtensionRouteMenuItem,
+  type JobDefinition,
+  type JobIOField,
+} from "../utils/extensionManifest.ts";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
 
-export interface ExtensionRouteMenuItem {
-  title: string;
-  icon?: string;
-}
-
-export interface ExtensionRoute {
-  path: string;
-  title?: string;
-  description?: string;
-  menuItem?: ExtensionRouteMenuItem;
-  /** Where this view should be placed. Can include "page" (default) and/or home placements */
-  placements?: Array<"page" | "home-top">;
-}
-
-export interface JobIOField {
-  type: "string" | "number" | "boolean" | "object" | "file";
-  required?: boolean;
-}
-
-export interface JobDefinition {
-  id: string;
-  name: string;
-  entry: string;
-  inputs?: Record<string, JobIOField>;
-  outputs?: Record<string, JobIOField>;
-}
-
-export interface ExtensionManifest {
-  id: string;
-  name: string;
-  version: string;
-  description?: string;
-  entries: {
-    frontend?: string;
-    view?: string;
-  };
-  routes?: ExtensionRoute[];
-  jobs?: JobDefinition[];
-}
+export type {
+  ExtensionManifest,
+  ExtensionRoute,
+  ExtensionRouteMenuItem,
+  JobDefinition,
+  JobIOField,
+};
+export { extractFile, extractManifest };
 
 export interface Extension {
   id: string;
@@ -209,7 +186,7 @@ export async function updateExtension(
   };
 }
 
-function safeExtractManifest(
+export function safeExtractManifest(
   zipBuffer: Buffer,
   extensionIdForLog?: string,
 ): { manifest: ExtensionManifest | null; error?: string } {
@@ -257,192 +234,3 @@ export async function findExtensionForRoute(
   return null;
 }
 
-// Extract manifest.json from zip buffer
-// Uses a minimal zip parser to avoid external dependencies
-function extractManifest(zipBuffer: Buffer): ExtensionManifest {
-  const files = parseZip(zipBuffer);
-  const manifestFile = files.find(
-    (f) => f.name === "manifest.json" || f.name === "./manifest.json",
-  );
-
-  if (!manifestFile) {
-    throw new Error("Extension package missing manifest.json");
-  }
-
-  const manifestText = manifestFile.data.toString("utf-8");
-  const manifest = JSON.parse(manifestText) as ExtensionManifest;
-
-  if (!manifest.id || typeof manifest.id !== "string") {
-    throw new Error("Extension manifest missing required 'id' field");
-  }
-  if (!manifest.name || typeof manifest.name !== "string") {
-    throw new Error("Extension manifest missing required 'name' field");
-  }
-  if (!manifest.version || typeof manifest.version !== "string") {
-    throw new Error("Extension manifest missing required 'version' field");
-  }
-  if (!manifest.entries || typeof manifest.entries !== "object") {
-    throw new Error("Extension manifest missing required 'entries' field");
-  }
-
-  if (manifest.routes !== undefined) {
-    if (!Array.isArray(manifest.routes)) {
-      throw new Error("Extension manifest 'routes' must be an array");
-    }
-    for (const [index, route] of manifest.routes.entries()) {
-      if (!route || typeof route !== "object") {
-        throw new Error(`Extension manifest route at index ${index} is invalid`);
-      }
-      if (!route.path || typeof route.path !== "string") {
-        throw new Error(
-          `Extension manifest route at index ${index} is missing required 'path' field`,
-        );
-      }
-      if (route.menuItem?.icon && typeof route.menuItem.icon === "string") {
-        route.menuItem.icon = resolveMenuIcon(route.menuItem.icon, files);
-        if (!route.menuItem.icon) {
-          delete route.menuItem.icon;
-        }
-      }
-    }
-  }
-
-  if (manifest.jobs !== undefined) {
-    if (!Array.isArray(manifest.jobs)) {
-      throw new Error("Extension manifest 'jobs' must be an array");
-    }
-    for (const job of manifest.jobs) {
-      if (!job || typeof job !== "object") {
-        throw new Error("Extension manifest contains invalid job definition");
-      }
-      if (!job.id || typeof job.id !== "string") {
-        throw new Error("Extension manifest job is missing required 'id' field");
-      }
-      if (!job.entry || typeof job.entry !== "string") {
-        throw new Error(
-          `Extension manifest job '${job.id}' is missing required 'entry' field`,
-        );
-      }
-    }
-  }
-
-  return manifest;
-}
-
-function resolveMenuIcon(icon: string, files: ZipEntry[]): string {
-  try {
-    const trimmedIcon = icon.trim();
-
-    // Backward compatible: allow inline SVG in manifest.
-    if (trimmedIcon.startsWith("<svg")) {
-      return trimmedIcon;
-    }
-
-    const normalisedPath = normaliseZipPath(trimmedIcon);
-    if (!normalisedPath.toLowerCase().endsWith(".svg")) {
-      console.warn(
-        `Ignoring extension menu icon '${trimmedIcon}': icon must be inline SVG or a .svg asset path`,
-      );
-      return "";
-    }
-
-    const iconFile = findZipEntry(files, normalisedPath);
-    if (!iconFile) {
-      console.warn(
-        `Ignoring extension menu icon '${trimmedIcon}': referenced file was not found in package`,
-      );
-      return "";
-    }
-
-    const svgContent = iconFile.data.toString("utf-8").trim();
-    if (!svgContent.startsWith("<svg")) {
-      console.warn(
-        `Ignoring extension menu icon '${trimmedIcon}': file content is not SVG`,
-      );
-      return "";
-    }
-
-    return svgContent;
-  } catch (err) {
-    console.warn(`Ignoring extension menu icon '${icon}':`, err);
-    return "";
-  }
-}
-
-// Extract a specific file from zip buffer
-export function extractFile(zipBuffer: Buffer, filePath: string): Buffer | null {
-  const files = parseZip(zipBuffer);
-  const file = findZipEntry(files, filePath);
-
-  return file?.data ?? null;
-}
-
-interface ZipEntry {
-  name: string;
-  data: Buffer;
-}
-
-function normaliseZipPath(filePath: string): string {
-  const normalised = filePath.replace(/^\.?\//, "").trim();
-  if (!normalised || normalised.includes("..")) {
-    throw new Error(`Invalid extension asset path: '${filePath}'`);
-  }
-  return normalised;
-}
-
-function findZipEntry(files: ZipEntry[], filePath: string): ZipEntry | undefined {
-  const normalisedPath = normaliseZipPath(filePath);
-  return files.find((file) => normaliseZipPath(file.name) === normalisedPath);
-}
-
-// Minimal zip parser for reading uncompressed and deflate-compressed entries
-function parseZip(buffer: Buffer): ZipEntry[] {
-  const entries: ZipEntry[] = [];
-  let offset = 0;
-
-  while (offset < buffer.length - 4) {
-    const signature = buffer.readUInt32LE(offset);
-
-    // Local file header signature
-    if (signature !== 0x04034b50) {
-      break;
-    }
-
-    const compressionMethod = buffer.readUInt16LE(offset + 8);
-    const compressedSize = buffer.readUInt32LE(offset + 18);
-    // uncompressedSize at offset + 22 not needed for our extraction
-    const fileNameLength = buffer.readUInt16LE(offset + 26);
-    const extraFieldLength = buffer.readUInt16LE(offset + 28);
-
-    const fileName = buffer
-      .subarray(offset + 30, offset + 30 + fileNameLength)
-      .toString("utf-8");
-
-    const dataStart = offset + 30 + fileNameLength + extraFieldLength;
-    const compressedData = buffer.subarray(dataStart, dataStart + compressedSize);
-
-    let fileData: Buffer;
-
-    if (compressionMethod === 0) {
-      // Stored (no compression)
-      fileData = compressedData;
-    } else if (compressionMethod === 8) {
-      // Deflate compression
-      fileData = inflateRawSync(compressedData);
-    } else {
-      throw new Error(`Unsupported compression method: ${compressionMethod}`);
-    }
-
-    // Skip directories
-    if (!fileName.endsWith("/")) {
-      entries.push({
-        name: fileName,
-        data: fileData,
-      });
-    }
-
-    offset = dataStart + compressedSize;
-  }
-
-  return entries;
-}
