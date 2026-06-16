@@ -4,6 +4,7 @@
 		"@biomejs/biome": "^2.4.16"
 	},
 	"workspaces": [
-		"app"
+		"app",
+		"js-engine"
 	]
 }

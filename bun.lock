@@ -7,6 +7,10 @@
         "@biomejs/biome": "^2.4.16",
       },
     },
+    "js-engine": {
+      "name": "@wiki/js-engine",
+      "version": "0.1.0",
+    },
     "app": {
       "name": "@wiki/app",
       "version": "0.0.1",
@@ -16,8 +20,7 @@
         "@codemirror/commands": "^6.10.3",
         "@codemirror/lang-javascript": "^6.2.5",
         "@codemirror/view": "^6.43.1",
-        "@jitl/quickjs-wasmfile-release-asyncify": "^0.32.0",
-        "@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
+        "@wiki/js-engine": "workspace:*",
         "@opentelemetry/api": "^1.9.0",
         "@opentelemetry/api-logs": "0.205.0",
         "@opentelemetry/exporter-logs-otlp-http": "0.205.0",
@@ -71,7 +74,6 @@
         "just-bash": "^3.0.1",
         "lit-html": "^3.3.1",
         "marked": "^17.0.0",
-        "quickjs-emscripten": "^0.32.0",
         "tailwind-merge": "^3.3.1",
         "tailwindcss": "^4.1.16",
         "vue": "^3.5.25",
@@ -714,6 +716,7 @@
     "@vue/shared": ["@vue/shared@3.5.25", "", {}, "sha512-AbOPdQQnAnzs58H2FrrDxYj/TJfmeS2jdfEEhgiKINy+bnOANmVizIEgq1r+C5zsbs6l1CCQxtcj71rwNQ4jWg=="],
 
     "@wiki/app": ["@wiki/app@workspace:app"],
+    "@wiki/js-engine": ["@wiki/js-engine@workspace:js-engine"],
 
     "acorn": ["acorn@8.15.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg=="],
 

@@ -1,0 +1,22 @@
+[package]
+name = "vektor-js-engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "3", default-features = false, features = ["napi8", "serde-json"] }
+napi-derive = "3"
+boa_engine = "0.21"
+boa_gc = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = true

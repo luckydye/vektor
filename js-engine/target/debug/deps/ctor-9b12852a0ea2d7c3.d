@@ -1,0 +1,15 @@
+/home/user/vektor/js-engine/target/debug/deps/ctor-9b12852a0ea2d7c3.d: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/features.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/perform.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/parse.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/priority.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/statics.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/BUILD.md /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/PREAMBLE.md /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/GENERATED.md /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/LIFE_BEFORE_MAIN.md
+
+/home/user/vektor/js-engine/target/debug/deps/libctor-9b12852a0ea2d7c3.rmeta: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/features.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/perform.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/parse.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/priority.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/statics.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/BUILD.md /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/PREAMBLE.md /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/GENERATED.md /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/LIFE_BEFORE_MAIN.md
+
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/lib.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/mod.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/features.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/macros/perform.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/parse.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/priority.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/statics.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/BUILD.md:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/PREAMBLE.md:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/GENERATED.md:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctor-1.0.7/src/../docs/LIFE_BEFORE_MAIN.md:

@@ -1,18 +1,5 @@
-import RELEASE_SYNC from "@jitl/quickjs-wasmfile-release-sync";
-// @ts-expect-error -- Bun bundles .wasm imports as assets in --compile binaries
-import wasmPath from "@jitl/quickjs-wasmfile-release-sync/wasm";
 import { decodeBytesToUtf8, defineCommand } from "just-bash";
-import { newQuickJSWASMModuleFromVariant, newVariant } from "quickjs-emscripten";
-
-let quickJSModulePromise: ReturnType<typeof newQuickJSWASMModuleFromVariant> | null =
-  null;
-function getQuickJSModule() {
-  if (!quickJSModulePromise) {
-    const variant = newVariant(RELEASE_SYNC, { wasmLocation: wasmPath });
-    quickJSModulePromise = newQuickJSWASMModuleFromVariant(variant);
-  }
-  return quickJSModulePromise;
-}
+import { evalJsSync } from "@wiki/js-engine";
 
 export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
   const usage =
@@ -57,7 +44,7 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
       break;
     }
     if (arg === "--version" || arg === "-V") {
-      return { stdout: "QuickJS js-exec\n", stderr: "", exitCode: 0 };
+      return { stdout: "Boa js-exec\n", stderr: "", exitCode: 0 };
     }
     if (arg === "--help" || arg === "-h") {
       return { stdout: usage, stderr: "", exitCode: 0 };
@@ -150,111 +137,29 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
     }
   }
 
-  let stdout = "";
-  let stderr = "";
+  // Wrap in async IIFE for top-level await support
+  const wrappedCode = isModule ? `(async () => { ${code} })()` : code;
 
-  try {
-    const module = await getQuickJSModule();
-    const context = module.newContext();
+  const envEntries = [...ctx.env.entries()].map(([k, v]) => [k, v]);
 
-    // Interrupt handler for 10s timeout
-    const deadline = Date.now() + 10000;
-    context.runtime.setInterruptHandler(() => (Date.now() > deadline ? 1 : 0));
+  const result = evalJsSync(
+    wrappedCode,
+    {
+      argv: ["js-exec", scriptPath, ...scriptArgs],
+      cwd: ctx.cwd,
+      env: envEntries,
+      platform: process.platform,
+      version: process.version,
+    },
+    {
+      timeoutMs: 10_000,
+      filename: scriptPath,
+    },
+  );
 
-    // Helper to create a console method
-    const makeConsoleMethod = (sink: "stdout" | "stderr") => {
-      return context.newFunction(
-        `console.${sink === "stdout" ? "log" : "error"}`,
-        (...handles) => {
-          for (const h of handles) {
-            if (sink === "stdout") stdout += context.getString(h);
-            else stderr += context.getString(h);
-          }
-          if (sink === "stdout") stdout += "\n";
-          else stderr += "\n";
-          return context.undefined;
-        },
-      );
-    };
-
-    const consoleObj = context.newObject();
-    const consoleLog = makeConsoleMethod("stdout");
-    const consoleError = makeConsoleMethod("stderr");
-    const consoleWarn = makeConsoleMethod("stderr");
-    const consoleInfo = makeConsoleMethod("stdout");
-    const consoleDebug = makeConsoleMethod("stdout");
-    context.setProp(consoleObj, "log", consoleLog);
-    context.setProp(consoleObj, "error", consoleError);
-    context.setProp(consoleObj, "warn", consoleWarn);
-    context.setProp(consoleObj, "info", consoleInfo);
-    context.setProp(consoleObj, "debug", consoleDebug);
-    context.setProp(context.global, "console", consoleObj);
-
-    // process
-    const processObj = context.newObject();
-    const processArgv = context.newArray();
-    let idx = 0;
-    for (const arg of ["js-exec", scriptPath, ...scriptArgs]) {
-      const handle = context.newString(arg);
-      context.setProp(processArgv, idx++, handle);
-      handle.dispose();
-    }
-    context.setProp(processObj, "argv", processArgv);
-    const processCwd = context.newFunction("process.cwd", () =>
-      context.newString(ctx.cwd),
-    );
-    context.setProp(processObj, "cwd", processCwd);
-    const processEnv = context.newObject();
-    for (const [key, value] of ctx.env) {
-      const vh = context.newString(value);
-      context.setProp(processEnv, key, vh);
-      vh.dispose();
-    }
-    context.setProp(processObj, "env", processEnv);
-    const processPlatform = context.newString(process.platform);
-    context.setProp(processObj, "platform", processPlatform);
-    const processVersion = context.newString(process.version);
-    context.setProp(processObj, "version", processVersion);
-    context.setProp(context.global, "process", processObj);
-
-    // Wrap code in async IIFE for top-level await support
-    const wrappedCode = isModule ? `(async () => { ${code} })()` : code;
-
-    const result = context.evalCode(wrappedCode, scriptPath);
-
-    let exitCode = 0;
-    if (result.error) {
-      const errorNameHandle = context.getProp(result.error, "name");
-      const errorMessageHandle = context.getProp(result.error, "message");
-      const errorName = context.getString(errorNameHandle);
-      const errorMessage = context.getString(errorMessageHandle);
-      errorNameHandle.dispose();
-      errorMessageHandle.dispose();
-      stderr += `js-exec: ${errorName}: ${errorMessage}\n`;
-      exitCode = 1;
-      result.error.dispose();
-    } else {
-      result.value.dispose();
-    }
-
-    // Clean up handles
-    consoleLog.dispose();
-    consoleError.dispose();
-    consoleWarn.dispose();
-    consoleInfo.dispose();
-    consoleDebug.dispose();
-    consoleObj.dispose();
-    processArgv.dispose();
-    processCwd.dispose();
-    processEnv.dispose();
-    processPlatform.dispose();
-    processVersion.dispose();
-    processObj.dispose();
-    context.dispose();
-
-    return { stdout, stderr, exitCode };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return { stdout, stderr: `js-exec: ${message}\n`, exitCode: 1 };
-  }
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: result.exitCode,
+  };
 });
