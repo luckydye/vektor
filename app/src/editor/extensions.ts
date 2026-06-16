@@ -1,26 +1,27 @@
 import type { AnyExtension, Extensions } from "@tiptap/core";
-import BulletList from "@tiptap/extension-bullet-list";
-import CodeBlock from "@tiptap/extension-code-block";
-import Heading from "@tiptap/extension-heading";
-import Link from "@tiptap/extension-link";
-import { TaskItem, TaskList } from "@tiptap/extension-list";
-import ListItem from "@tiptap/extension-list-item";
-import OrderedList from "@tiptap/extension-ordered-list";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
-import TextAlign from "@tiptap/extension-text-align";
 import {
   BackgroundColor,
   Bold,
+  BulletList,
   Code,
+  CodeBlock,
   Color,
   Document,
   HardBreak,
+  Heading,
   Italic,
+  Link,
+  ListItem,
+  OrderedList,
   Paragraph,
   Strike,
   Subscript,
   Superscript,
+  TaskItem,
+  TaskList,
   Text,
+  TextAlign,
   TextStyle,
   Underline,
 } from "./extensions/baseExtensions.ts";

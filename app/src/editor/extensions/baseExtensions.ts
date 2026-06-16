@@ -1,4 +1,7 @@
-import { Extension, Mark, Node, getMarkAttributes, mergeAttributes } from "@tiptap/core";
+import { Extension, Mark, Node, getMarkAttributes, markPasteRule, mergeAttributes, textblockTypeInputRule, wrappingInputRule } from "@tiptap/core";
+import type { NodeType } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
+import { liftListItem as pmLiftListItem, sinkListItem as pmSinkListItem, splitListItem as pmSplitListItem, wrapInList as pmWrapInList } from "@tiptap/pm/schema-list";
 
 // ---- Nodes ----
 
@@ -407,6 +410,506 @@ export const BackgroundColor = Extension.create({
         () =>
         ({ chain }) =>
           chain().setMark("textStyle", { backgroundColor: null }).removeEmptyTextStyle().run(),
+    };
+  },
+});
+
+// ---- Heading ----
+
+export const Heading = Node.create({
+  name: "heading",
+  addOptions() {
+    return {
+      levels: [1, 2, 3, 4, 5, 6] as number[],
+      HTMLAttributes: {},
+    };
+  },
+  content: "inline*",
+  group: "block",
+  defining: true,
+  addAttributes() {
+    return {
+      level: { default: 1, rendered: false },
+    };
+  },
+  parseHTML() {
+    return this.options.levels.map((level: number) => ({ tag: `h${level}`, attrs: { level } }));
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    const level = this.options.levels.includes(node.attrs.level)
+      ? node.attrs.level
+      : this.options.levels[0];
+    return [`h${level}`, mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+  addCommands() {
+    return {
+      setHeading:
+        (attrs: { level: number }) =>
+        ({ commands }) => {
+          if (!this.options.levels.includes(attrs.level)) return false;
+          return commands.setNode(this.name, attrs);
+        },
+      toggleHeading:
+        (attrs: { level: number }) =>
+        ({ commands }) => {
+          if (!this.options.levels.includes(attrs.level)) return false;
+          return commands.toggleNode(this.name, "paragraph", attrs);
+        },
+      unsetHeading:
+        () =>
+        ({ commands }) =>
+          commands.setNode("paragraph"),
+    };
+  },
+  addInputRules() {
+    return this.options.levels.map((level: number) =>
+      textblockTypeInputRule({
+        find: new RegExp(`^(#{${level}})\\s$`),
+        type: this.type,
+        getAttributes: () => ({ level }),
+      }),
+    );
+  },
+});
+
+// ---- TextAlign ----
+
+export const TextAlign = Extension.create({
+  name: "textAlign",
+  addOptions() {
+    return {
+      types: [] as string[],
+      alignments: ["left", "center", "right", "justify"],
+      defaultAlignment: "",
+    };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          textAlign: {
+            default: this.options.defaultAlignment,
+            parseHTML: (element) => element.style.textAlign || this.options.defaultAlignment,
+            renderHTML: (attributes) => {
+              if (attributes.textAlign === this.options.defaultAlignment) return {};
+              return { style: `text-align: ${attributes.textAlign}` };
+            },
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setTextAlign:
+        (alignment: string) =>
+        ({ commands }) => {
+          if (!this.options.alignments.includes(alignment)) return false;
+          return this.options.types.every((type: string) =>
+            commands.updateAttributes(type, { textAlign: alignment }),
+          );
+        },
+      unsetTextAlign:
+        () =>
+        ({ commands }) =>
+          this.options.types.every((type: string) =>
+            commands.resetAttributes(type, "textAlign"),
+          ),
+    };
+  },
+});
+
+// ---- CodeBlock ----
+
+export const CodeBlock = Node.create({
+  name: "codeBlock",
+  addOptions() {
+    return {
+      languageClassPrefix: "language-",
+      HTMLAttributes: {},
+    };
+  },
+  content: "text*",
+  marks: "",
+  group: "block",
+  code: true,
+  defining: true,
+  addAttributes() {
+    return {
+      language: {
+        default: null,
+        parseHTML: (element) => {
+          const { languageClassPrefix } = this.options;
+          const classes = [...((element.firstElementChild as HTMLElement)?.classList ?? [])];
+          const lang = classes
+            .filter((c) => c.startsWith(languageClassPrefix))
+            .map((c) => c.slice(languageClassPrefix.length))[0];
+          return lang ?? null;
+        },
+        rendered: false,
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "pre", preserveWhitespace: "full" }];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      "pre",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      [
+        "code",
+        node.attrs.language
+          ? { class: `${this.options.languageClassPrefix}${node.attrs.language}` }
+          : {},
+        0,
+      ],
+    ];
+  },
+  addCommands() {
+    return {
+      setCodeBlock:
+        (attrs?: { language?: string }) =>
+        ({ commands }) =>
+          commands.setNode(this.name, attrs),
+      toggleCodeBlock:
+        (attrs?: { language?: string }) =>
+        ({ commands }) =>
+          commands.toggleNode(this.name, "paragraph", attrs),
+    };
+  },
+  addInputRules() {
+    return [
+      textblockTypeInputRule({
+        find: /^```([a-z]*)[\s\n]$/,
+        type: this.type,
+        getAttributes: (match) => ({ language: match[1] || null }),
+      }),
+    ];
+  },
+});
+
+// ---- Link ----
+
+const URL_RE =
+  /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)/gi;
+
+export const Link = Mark.create({
+  name: "link",
+  priority: 1000,
+  keepOnSplit: false,
+  addOptions() {
+    return {
+      HTMLAttributes: {
+        target: "_blank",
+        rel: "noopener noreferrer nofollow",
+      },
+    };
+  },
+  addAttributes() {
+    return {
+      href: { default: null },
+      target: { default: this.options.HTMLAttributes.target },
+      rel: { default: this.options.HTMLAttributes.rel },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'a[href]:not([href*="javascript:"])' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["a", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+  addCommands() {
+    return {
+      setLink:
+        (attrs: { href: string; target?: string; rel?: string }) =>
+        ({ chain }) =>
+          chain().setMark(this.name, attrs).setMeta("preventAutolink", true).run(),
+      toggleLink:
+        (attrs: { href: string; target?: string; rel?: string }) =>
+        ({ chain }) =>
+          chain()
+            .toggleMark(this.name, attrs, { extendEmptyMarkRange: true })
+            .setMeta("preventAutolink", true)
+            .run(),
+      unsetLink:
+        () =>
+        ({ chain }) =>
+          chain()
+            .unsetMark(this.name, { extendEmptyMarkRange: true })
+            .setMeta("preventAutolink", true)
+            .run(),
+    };
+  },
+  addPasteRules() {
+    return [
+      markPasteRule({
+        find: URL_RE,
+        type: this.type,
+        getAttributes: (match) => ({ href: match[0] }),
+      }),
+    ];
+  },
+});
+
+// ---- Lists ----
+
+function findParentOfType(type: NodeType, state: EditorState) {
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type === type) return { pos: $from.before(d), node: $from.node(d) };
+  }
+  return null;
+}
+
+export const BulletList = Node.create({
+  name: "bulletList",
+  addOptions() {
+    return { HTMLAttributes: {}, itemTypeName: "listItem" };
+  },
+  group: "block list",
+  content: "listItem+",
+  parseHTML() {
+    return [{ tag: "ul" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["ul", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+  addCommands() {
+    return {
+      toggleBulletList:
+        () =>
+        ({ state, dispatch, chain }) => {
+          const { schema } = state;
+          const inThis = findParentOfType(schema.nodes.bulletList, state);
+          if (inThis) return pmLiftListItem(schema.nodes.listItem)(state, dispatch);
+          const inOther = findParentOfType(schema.nodes.orderedList, state);
+          if (inOther) {
+            return chain()
+              .command(({ tr }) => {
+                tr.setNodeMarkup(inOther.pos, schema.nodes.bulletList);
+                return true;
+              })
+              .run();
+          }
+          return pmWrapInList(schema.nodes.bulletList)(state, dispatch);
+        },
+    };
+  },
+  addInputRules() {
+    return [
+      wrappingInputRule({
+        find: /^\s*([-+*])\s$/,
+        type: this.type,
+      }),
+    ];
+  },
+});
+
+export const OrderedList = Node.create({
+  name: "orderedList",
+  addOptions() {
+    return { HTMLAttributes: {}, itemTypeName: "listItem" };
+  },
+  group: "block list",
+  content: "listItem+",
+  addAttributes() {
+    return {
+      start: {
+        default: 1,
+        parseHTML: (element) => {
+          const start = element.getAttribute("start");
+          return start ? parseInt(start, 10) : 1;
+        },
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "ol" }];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    const { start } = node.attrs;
+    return [
+      "ol",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, start !== 1 ? { start } : {}),
+      0,
+    ];
+  },
+  addCommands() {
+    return {
+      toggleOrderedList:
+        () =>
+        ({ state, dispatch, chain }) => {
+          const { schema } = state;
+          const inThis = findParentOfType(schema.nodes.orderedList, state);
+          if (inThis) return pmLiftListItem(schema.nodes.listItem)(state, dispatch);
+          const inOther = findParentOfType(schema.nodes.bulletList, state);
+          if (inOther) {
+            return chain()
+              .command(({ tr }) => {
+                tr.setNodeMarkup(inOther.pos, schema.nodes.orderedList);
+                return true;
+              })
+              .run();
+          }
+          return pmWrapInList(schema.nodes.orderedList)(state, dispatch);
+        },
+    };
+  },
+  addInputRules() {
+    return [
+      wrappingInputRule({
+        find: /^(\d+)\.\s$/,
+        type: this.type,
+        getAttributes: (match) => ({ start: +match[1] }),
+        joinPredicate: (match, node) => node.childCount + node.attrs.start === +match[1],
+      }),
+    ];
+  },
+});
+
+export const ListItem = Node.create({
+  name: "listItem",
+  addOptions() {
+    return { HTMLAttributes: {}, bulletListTypeName: "bulletList", orderedListTypeName: "orderedList" };
+  },
+  content: "paragraph block*",
+  defining: true,
+  parseHTML() {
+    return [{ tag: "li" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["li", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+  addCommands() {
+    return {
+      liftListItem:
+        (typeOrName: string) =>
+        ({ state, dispatch }) => {
+          const type = state.schema.nodes[typeOrName];
+          if (!type) return false;
+          return pmLiftListItem(type)(state, dispatch);
+        },
+      sinkListItem:
+        (typeOrName: string) =>
+        ({ state, dispatch }) => {
+          const type = state.schema.nodes[typeOrName];
+          if (!type) return false;
+          return pmSinkListItem(type)(state, dispatch);
+        },
+      splitListItem:
+        (typeOrName: string) =>
+        ({ state, dispatch }) => {
+          const type = state.schema.nodes[typeOrName];
+          if (!type) return false;
+          return pmSplitListItem(type)(state, dispatch);
+        },
+    };
+  },
+});
+
+export const TaskList = Node.create({
+  name: "taskList",
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
+  group: "block list",
+  content: "taskItem+",
+  parseHTML() {
+    return [{ tag: 'ul[data-type="taskList"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["ul", mergeAttributes({ "data-type": "taskList" }, this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+  addCommands() {
+    return {
+      toggleTaskList:
+        () =>
+        ({ state, dispatch }) => {
+          const { schema } = state;
+          const inThis = findParentOfType(schema.nodes.taskList, state);
+          if (inThis) return pmLiftListItem(schema.nodes.taskItem)(state, dispatch);
+          return pmWrapInList(schema.nodes.taskList)(state, dispatch);
+        },
+    };
+  },
+});
+
+export const TaskItem = Node.create({
+  name: "taskItem",
+  addOptions() {
+    return {
+      nested: false,
+      HTMLAttributes: {},
+    };
+  },
+  content() {
+    return this.options.nested ? "paragraph (taskList | block)*" : "paragraph block*";
+  },
+  defining: true,
+  addAttributes() {
+    return {
+      checked: {
+        default: false,
+        keepOnSplit: false,
+        parseHTML: (element) => element.getAttribute("data-checked") === "true",
+        renderHTML: (attributes) => ({ "data-checked": String(attributes.checked) }),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'li[data-type="taskItem"]', priority: 51 }];
+  },
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      "li",
+      mergeAttributes({ "data-type": "taskItem" }, this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
+  },
+  addNodeView() {
+    return ({ node, getPos, editor }) => {
+      const li = document.createElement("li");
+      li.dataset.type = "taskItem";
+
+      const label = document.createElement("label");
+      label.contentEditable = "false";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = !!node.attrs.checked;
+
+      label.appendChild(checkbox);
+
+      const content = document.createElement("div");
+
+      checkbox.addEventListener("change", (event) => {
+        const { checked } = event.target as HTMLInputElement;
+        if (editor.isEditable && typeof getPos === "function") {
+          editor
+            .chain()
+            .command(({ tr }) => {
+              tr.setNodeMarkup(getPos() as number, undefined, { checked });
+              return true;
+            })
+            .run();
+        }
+      });
+
+      li.dataset.checked = String(node.attrs.checked);
+      li.append(label, content);
+
+      return {
+        dom: li,
+        contentDOM: content,
+        update(updatedNode) {
+          if (updatedNode.type.name !== "taskItem") return false;
+          li.dataset.checked = String(updatedNode.attrs.checked);
+          checkbox.checked = !!updatedNode.attrs.checked;
+          return true;
+        },
+      };
     };
   },
 });
