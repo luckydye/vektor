@@ -290,10 +290,21 @@ function readArray(
 // ---------------------------------------------------------------------------
 
 function extractBase64(html: string, start: string, end: string): string {
-  const si = html.indexOf(start);
-  const ei = html.indexOf(end);
-  if (si === -1 || ei === -1) return "";
-  return html.substring(si + start.length, ei);
+  // Try literal comment markers first; fall back to HTML-entity-encoded form
+  // (some clipboard implementations encode < and > inside attribute values as
+  // &lt; / &gt;, e.g. data-metadata="&lt;!--(figmeta)BASE64(/figmeta)--&gt;").
+  let si = html.indexOf(start);
+  let actualStart = start;
+  let actualEnd = end;
+  if (si === -1) {
+    actualStart = start.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    actualEnd = end.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    si = html.indexOf(actualStart);
+    if (si === -1) return "";
+  }
+  const ei = html.indexOf(actualEnd, si + actualStart.length);
+  if (ei === -1) return "";
+  return html.substring(si + actualStart.length, ei);
 }
 
 function b64ToBytes(b64: string): Uint8Array {
@@ -723,6 +734,8 @@ interface RenderContext {
   /** parent guid-key → children, in paint order. */
   childrenOf: Map<string, KiwiValue[]>;
   f: (n: number) => string;
+  /** guid-key → node, for resolving INSTANCE → SYMBOL lookups. */
+  nodeByKey: Map<string, KiwiValue>;
 }
 
 function buildRenderContext(decoded: {
@@ -749,8 +762,14 @@ function buildRenderContext(decoded: {
         (nodeOrder.get(nodeGuidKey(a)!) ?? 0) - (nodeOrder.get(nodeGuidKey(b)!) ?? 0),
     );
   }
+  const nodeByKey = new Map<string, KiwiValue>(
+    allChanges.flatMap((n) => {
+      const k = nodeGuidKey(n);
+      return k ? [[k, n]] : [];
+    }),
+  );
   const f = (n: number) => parseFloat(n.toFixed(3)).toString();
-  return { defs, blobs, childrenOf, f };
+  return { defs, blobs, childrenOf, nodeByKey, f };
 }
 
 function solidColorOf(
@@ -875,9 +894,34 @@ function renderNode(
     }
     case "FRAME":
     case "COMPONENT":
-    case "INSTANCE":
+    case "COMPONENT_SET": {
+      // Render the frame's own fill as a background rect, then children on top.
+      let bg = "";
+      if (fill) {
+        counter.n++;
+        bg = `<rect width="${f(w)}" height="${f(h)}" ${fillAttr}/>`;
+      }
+      const content = bg + childSVG;
+      return content ? `<g transform="${transform}"${opacityAttr}>${content}</g>` : "";
+    }
+    case "INSTANCE": {
+      // Instances have no children of their own in the clipboard — their visual
+      // content lives under the master SYMBOL node. Resolve it via symbolData.
+      let instKids = childSVG;
+      if (!instKids) {
+        const sd = n.symbolData as KiwiValue | undefined;
+        const symId = sd?.symbolID as KiwiValue | undefined;
+        if (symId) {
+          const symKey = `${symId.sessionID as number}:${symId.localID as number}`;
+          const symChildren = ctx.childrenOf.get(symKey) ?? [];
+          instKids = symChildren
+            .map((c) => renderNode(c, 0, 0, ctx, counter))
+            .join("");
+        }
+      }
+      return instKids ? `<g transform="${transform}"${opacityAttr}>${instKids}</g>` : "";
+    }
     case "GROUP":
-    case "COMPONENT_SET":
     case "SECTION":
       // Containers: transparent background, just wrap children
       return childSVG ? `<g transform="${transform}"${opacityAttr}>${childSVG}</g>` : "";

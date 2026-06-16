@@ -1,6 +1,6 @@
 <template>
   <page-target :data-document-id="doc.id"
-    class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50">
+    class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50 pl-1.5">
     <div class="flex items-center gap-1 px-1">
       <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
         :aria-label="isExpanded ? 'Collapse' : 'Expand'">
@@ -22,7 +22,7 @@
       </a>
     </div>
 
-    <div v-if="isExpanded && hasChildren" class="pl-2 mt-1 ml-2 border-l border-neutral-100 space-y-1">
+    <div v-if="isExpanded && hasChildren" class="mt-1 ml-3 border-l border-neutral-100 space-y-1">
       <DocumentTreeItem v-for="child in children" :key="child.id" :doc="child" :all-docs="allDocs"
         :active-doc-id="activeDocId" :expanded-items="expandedItems" @toggle="$emit('toggle', $event)" />
     </div>

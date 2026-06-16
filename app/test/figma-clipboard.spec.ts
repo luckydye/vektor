@@ -11,6 +11,10 @@ const svgHtml = readFileSync(
   join(import.meta.dir, "fixtures/figma-clipboard-svg.html"),
   "utf8",
 );
+const complexHtml = readFileSync(
+  join(import.meta.dir, "fixtures/figma-clipboard-complex.html"),
+  "utf8",
+);
 
 describe("figmaClipboardToSVG", () => {
   it("returns null for non-figma html", async () => {
@@ -45,6 +49,29 @@ describe("figmaClipboardToSVG", () => {
     expect(svg).toContain("178.761 13.588"); // Vector 20
     expect(svg).toContain("36.256 2.937"); // Vector 21
     expect(svg).toContain("2.113 8.063"); // Vector 22
+  });
+});
+
+describe("figmaClipboardToFrames (HTML-entity-encoded clipboard)", () => {
+  it("decodes when comment markers are HTML-entity-encoded in attribute values", async () => {
+    // complexHtml uses &lt;!--(figmeta) / &lt;!--(figma) inside data-* attributes
+    // instead of literal <!-- comment markers — as produced by some clipboard implementations.
+    const frames = await figmaClipboardToFrames(complexHtml);
+    expect(frames).not.toBeNull();
+    expect(frames!.length).toBe(1);
+    expect(frames![0].name).toBe("iPhone 16 Pro - 1");
+    expect(frames![0].width).toBe(402);
+    expect(frames![0].height).toBe(874);
+  });
+
+  it("renders INSTANCE nodes via their master SYMBOL children", async () => {
+    const frames = (await figmaClipboardToFrames(complexHtml))!;
+    const svg = frames[0].svg;
+    // The design is built from component instances; without symbol resolution
+    // no ink renders at all. With the fix, we get rects, paths, and text.
+    expect((svg.match(/<rect /g) ?? []).length).toBeGreaterThan(0);
+    expect((svg.match(/<path /g) ?? []).length).toBeGreaterThan(0);
+    expect((svg.match(/<text /g) ?? []).length).toBeGreaterThan(0);
   });
 });
 
