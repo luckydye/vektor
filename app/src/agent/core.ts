@@ -12,7 +12,7 @@ import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { gitlabCommand } from "./commands/gitlab.ts";
 import { jsExecCommand } from "./commands/jsExec.ts";
-import { pandocCommand } from "./commands/pandoc.ts";
+import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
 import { getRecipe, recipesCommand } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
@@ -74,7 +74,8 @@ function buildCoreAgentSystemPrompt(
 - upload <file> uploads from the virtual filesystem and returns JSON with a URL. Never share sandbox paths — always upload first.
 - Only include final output files in zips; exclude intermediates.
 - ai <prompt>: one-shot AI completion. curl: standard HTTP; pipe to \`html-to-markdown\` to convert HTML.${gitlabConnected ? "\n- gitlab sub-commands: `gitlab api <path>` raw API request via OAuth (paths relative to /api/v4, e.g. `gitlab api '/projects?search=name'`); `gitlab ls <project> [path] [--ref <ref>]` list repo directory; `gitlab cat <project> <file> [--ref <ref>]` file contents; `gitlab tree <project> [path] [--ref <ref>]` recursive listing. Use `gitlab api` to search/list projects — `ls/cat/tree` require an exact project ID or `namespace/project`." : ""}
-- pandoc conversions: \`html -> csv\` (first table) and \`html-table -> csv\`.
+- \`html-to-csv [file]\`: extract the first table from an HTML document as CSV. \`html-table-to-csv [file]\`: convert an HTML table fragment to CSV.
+- \`extension install <zip-file>\`: install or update a Vektor extension from a ZIP file in the virtual filesystem.
 - Prefer built-in shell utilities. On failure, inspect stderr and adapt — don't retry blindly.
 - Loop over file lines with \`while read -r line; do ...; done < file.txt\` (\`<<\` is a heredoc, not a file).
 - Don't use \`awk -F,\` for CSV column extraction — use \`grep -oE\` instead.
@@ -900,7 +901,8 @@ export function createAgentShell(
       unzipCommand,
       vektorCommand(mcpConfigRef),
       recipesCommand(),
-      pandocCommand,
+      htmlToCsvCommand,
+      htmlTableToCsvCommand,
       uploadCommand(mcpConfigRef),
       aiCommand(completion),
       ...(!mcpConfigRef.current.connectedProviders ||

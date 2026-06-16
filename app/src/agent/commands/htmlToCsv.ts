@@ -1,4 +1,3 @@
-import { posix } from "node:path";
 import * as html5parser from "html5parser";
 import { defineCommand } from "just-bash";
 
@@ -51,7 +50,7 @@ function findFirstTag(nodes: HtmlNode[], name: string): HtmlTagNode | null {
 
 function collectChildTags(node: HtmlTagNode, names: string[]): HtmlTagNode[] {
   const result: HtmlTagNode[] = [];
-  const allowed = new Set(names.map((name) => name.toLowerCase()));
+  const allowed = new Set(names.map((n) => n.toLowerCase()));
   for (const child of node.body ?? []) {
     if (isTag(child) && allowed.has(child.name.toLowerCase())) {
       result.push(child);
@@ -67,13 +66,7 @@ function escapeCsvCell(value: string): string {
   return value;
 }
 
-function convertHtmlTableToCsv(html: string): string {
-  const ast = html5parser.parse(html);
-  const table = findFirstTag(ast, "table");
-  if (!table) {
-    throw new Error("No <table> found in HTML input");
-  }
-
+function tableNodeToCsv(table: HtmlTagNode): string {
   const rows = (table.body ?? []).flatMap((child) => {
     if (isTag(child, "thead") || isTag(child, "tbody") || isTag(child, "tfoot")) {
       return collectChildTags(child, ["tr"]);
@@ -94,58 +87,69 @@ function convertHtmlTableToCsv(html: string): string {
     .join("\n");
 }
 
-export const pandocCommand = defineCommand("pandoc", async (args, ctx) => {
-  const usage =
-    "usage: pandoc -f <html|html-table> -t csv [input-file] [-o output-file]\n" +
-    "examples:\n" +
-    "  pandoc -f html -t csv table.html > table.csv\n" +
-    "  pandoc -f html-table -t csv table.html > table.csv\n";
-
-  let from: string | null = null;
-  let to: string | null = null;
+async function readInput(
+  args: string[],
+  ctx: Parameters<Parameters<typeof defineCommand>[1]>[1],
+): Promise<{ html: string; outputFile: string | null }> {
   let outputFile: string | null = null;
   const positional: string[] = [];
 
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index];
-    if (arg === "-f" || arg === "--from") {
-      from = args[++index] ?? null;
-      continue;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-o" || args[i] === "--output") {
+      outputFile = args[++i] ?? null;
+    } else {
+      positional.push(args[i]!);
     }
-    if (arg === "-t" || arg === "--to") {
-      to = args[++index] ?? null;
-      continue;
-    }
-    if (arg === "-o" || arg === "--output") {
-      outputFile = args[++index] ?? null;
-      continue;
-    }
-    positional.push(arg);
   }
-
-  if (!to) {
-    return { stdout: "", stderr: `${usage}`, exitCode: 2 };
-  }
-  if (!from && positional[0]) {
-    const ext = posix.extname(positional[0]).slice(1).toLowerCase();
-    from = ext || null;
-  }
-  from ??= "html";
 
   const inputPath = positional[0] ? ctx.fs.resolvePath(ctx.cwd, positional[0]) : null;
-  const inputBytes = inputPath
+  const bytes = inputPath
     ? await ctx.fs.readFileBuffer(inputPath)
     : new TextEncoder().encode(ctx.stdin);
 
-  if ((from === "html-table" || from === "html") && to === "csv") {
-    const csv = convertHtmlTableToCsv(Buffer.from(inputBytes).toString("utf-8"));
-    if (outputFile) {
-      const outputPath = ctx.fs.resolvePath(ctx.cwd, outputFile);
-      await ctx.fs.writeFile(outputPath, csv, "utf8");
-      return { stdout: "", stderr: "", exitCode: 0 };
-    }
-    return { stdout: `${csv}\n`, stderr: "", exitCode: 0 };
-  }
+  return { html: Buffer.from(bytes).toString("utf-8"), outputFile };
+}
 
-  throw new Error(`Unsupported conversion: ${from} -> ${to}`);
+async function writeOutput(
+  csv: string,
+  outputFile: string | null,
+  ctx: Parameters<Parameters<typeof defineCommand>[1]>[1],
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  if (outputFile) {
+    await ctx.fs.writeFile(ctx.fs.resolvePath(ctx.cwd, outputFile), csv, "utf8");
+    return { stdout: "", stderr: "", exitCode: 0 };
+  }
+  return { stdout: `${csv}\n`, stderr: "", exitCode: 0 };
+}
+
+/**
+ * html-to-csv [input-file] [-o output-file]
+ * Extracts the first <table> from an HTML document and converts it to CSV.
+ */
+export const htmlToCsvCommand = defineCommand("html-to-csv", async (args, ctx) => {
+  const { html, outputFile } = await readInput(args, ctx);
+  const ast = html5parser.parse(html);
+  const table = findFirstTag(ast, "table");
+  if (!table) {
+    return { stdout: "", stderr: "html-to-csv: no <table> found in input\n", exitCode: 1 };
+  }
+  return writeOutput(tableNodeToCsv(table), outputFile, ctx);
+});
+
+/**
+ * html-table-to-csv [input-file] [-o output-file]
+ * Converts an HTML fragment that is itself a <table> to CSV.
+ */
+export const htmlTableToCsvCommand = defineCommand("html-table-to-csv", async (args, ctx) => {
+  const { html, outputFile } = await readInput(args, ctx);
+  const ast = html5parser.parse(html);
+  const table = findFirstTag(ast, "table");
+  if (!table) {
+    return {
+      stdout: "",
+      stderr: "html-table-to-csv: no <table> found in input\n",
+      exitCode: 1,
+    };
+  }
+  return writeOutput(tableNodeToCsv(table), outputFile, ctx);
 });
