@@ -7,6 +7,7 @@ use boa_engine::{
     object::ObjectInitializer,
     property::Attribute,
     value::JsVariant,
+    vm::RuntimeLimits,
 };
 use boa_gc::{Gc, GcRefCell};
 use serde_json::Value as Json;
@@ -45,7 +46,7 @@ pub fn eval_sync(
     let (tx, rx) = mpsc::channel::<SyncResult>();
 
     std::thread::spawn(move || {
-        let result = run_boa(code, globals, inputs);
+        let result = run_boa(code, globals, inputs, timeout_ms);
         let _ = tx.send(result);
     });
 
@@ -59,12 +60,23 @@ pub fn eval_sync(
 
 /// Inner eval — all Boa/GC objects are created and dropped in this function,
 /// which runs on its own OS thread.
-fn run_boa(code: String, globals: SyncGlobals, inputs: Option<Json>) -> SyncResult {
+fn run_boa(code: String, globals: SyncGlobals, inputs: Option<Json>, timeout_ms: u64) -> SyncResult {
     // Gc<GcRefCell<String>> satisfies the Trace bound required by NativeFunction captures.
     let stdout: Gc<GcRefCell<String>> = Gc::new(GcRefCell::new(String::new()));
     let stderr: Gc<GcRefCell<String>> = Gc::new(GcRefCell::new(String::new()));
 
     let mut context = Context::default();
+
+    // ── runtime limits ────────────────────────────────────────────────────
+    // loop_iteration_limit terminates `while(true){}` and similar loops with
+    // a clean JS error rather than spinning the thread indefinitely.
+    // Budget: 100 000 iterations per ms of timeout — generous enough for
+    // legitimate code, tight enough to abort within the timeout window.
+    // The OS-thread recv_timeout above is a hard backstop for non-loop
+    // infinite work (heavy recursion, long-running arithmetic, etc.).
+    let mut limits = RuntimeLimits::default();
+    limits.set_loop_iteration_limit(timeout_ms.saturating_mul(100_000));
+    context.set_runtime_limits(limits);
 
     // ── console methods ───────────────────────────────────────────────────
     let make_logger = |sink: Gc<GcRefCell<String>>| {
