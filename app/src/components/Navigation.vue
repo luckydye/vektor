@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
-import { homeIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
+import { boltIcon, homeIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
+import { Actions } from "../utils/actions.ts";
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
 import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
@@ -180,12 +181,22 @@ Actions.mapShortcut("meta-shift-f", "find:open");
     </div>
 
     <div v-if="!isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
-        <MenuLink
-            :icon="homeIcon"
-            :text="t('Home')"
-            :href="`/${spaceSlug}/`"
-            :is-active="activeRoute === 'home'"
-        />
+        <div class="flex items-center gap-px">
+          <MenuLink
+              class="flex-1"
+              :icon="homeIcon"
+              :text="t('Home')"
+              :href="`/${spaceSlug}/`"
+              :is-active="activeRoute === 'home'"
+          />
+          <button
+              class="inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
+              :title="t('Command Palette')"
+              @click="Actions.run('ui:toggle:palatte')"
+          >
+              <span v-html="boltIcon" class="icon inline flex-none" />
+          </button>
+        </div>
         <MenuLink
             v-if="userCanAccessSettings"
             :icon="settingsIcon"
