@@ -51,8 +51,14 @@ onMounted(() => {
     </button>
 
     <a-popover class="group" placements="top-start" @exit="handlePopoverExit">
-      <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 max-w-[300px]">
-        <div class="bg-background border border-neutral-100 rounded-lg origin-bottom-left scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100 min-w-[280px]">
+      <div
+        class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100"
+        :class="isPreferencesOpen ? 'max-w-sm' : 'max-w-[300px]'"
+      >
+        <div
+          class="bg-background border border-neutral-100 rounded-lg origin-bottom-left scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100"
+          :class="isPreferencesOpen ? 'min-w-[340px]' : 'min-w-[280px]'"
+        >
           <template v-if="!isPreferencesOpen">
             <!-- User Info -->
             <div class="p-4 border-b border-neutral-100">
