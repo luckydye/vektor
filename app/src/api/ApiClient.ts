@@ -1223,28 +1223,6 @@ export class ApiClient {
     },
   };
 
-  import = {
-    /**
-     * Import data into a space
-     */
-    post: async (spaceId: string, file: File | Blob) => {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch(`/api/v1/spaces/${spaceId}/import`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Import failed: ${response.status} ${error}`);
-      }
-
-      return await response.json();
-    },
-  };
-
   accessTokens = {
     /**
      * List access tokens in a space

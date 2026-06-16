@@ -44,7 +44,6 @@ import * as extensionAsset from "./routes/v1/spaces/[spaceId]/extensions/[extens
 import * as extension from "./routes/v1/spaces/[spaceId]/extensions/[extensionId]/index.ts";
 import * as extensions from "./routes/v1/spaces/[spaceId]/extensions/index.ts";
 
-import * as spaceImport from "./routes/v1/spaces/[spaceId]/import.ts";
 import * as space from "./routes/v1/spaces/[spaceId]/index.ts";
 
 // Integrations
@@ -115,7 +114,6 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces", module: spaces },
   { pattern: "/api/v1/spaces/[spaceId]", module: space },
-  { pattern: "/api/v1/spaces/[spaceId]/import", module: spaceImport },
   { pattern: "/api/v1/spaces/[spaceId]/audit-logs", module: spaceAuditLogs },
   { pattern: "/api/v1/spaces/[spaceId]/members", module: members },
   { pattern: "/api/v1/spaces/[spaceId]/properties", module: properties },
