@@ -1,4 +1,5 @@
 ---
+import AIChatPanel from "~/src/components/AIChatPanel.vue";
 import SearchComponent from "../../components/Search.vue";
 import { verifySpaceAccess } from "../../db/api.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
@@ -22,6 +23,7 @@ await verifySpaceAccess(space.id, user.id);
 ---
 
 <SpaceLayout title={`Search - ${space.name} - Wiki`}>
+  <AIChatPanel client:only slot="outer" />
   <div data-inset class="pt-m pb-20 lg:pb-8 overflow-hidden h-full print:px-0 px-xs lg:px-xl lg:ml-(--inset-left) lg:mr-(--inset-right)">
     <div class="mb-8">
         <h1 class="text-size-display font-bold text-neutral-900">{t("Find Documents", lang)}</h1>
