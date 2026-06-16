@@ -1,9 +1,9 @@
 import { dirname, posix } from "node:path";
-import AdmZip from "adm-zip";
+import { unzipSync, zipSync, type Zippable } from "fflate";
 import { defineCommand } from "just-bash";
 
 async function addPathToZip(
-  zip: AdmZip,
+  files: Zippable,
   sourcePath: string,
   archivePath: string,
   fs: Parameters<typeof defineCommand>[1] extends (
@@ -18,10 +18,10 @@ async function addPathToZip(
     const normalizedArchivePath = archivePath.endsWith("/")
       ? archivePath
       : `${archivePath}/`;
-    zip.addFile(normalizedArchivePath, Buffer.alloc(0));
+    files[normalizedArchivePath] = new Uint8Array(0);
     for (const entry of await fs.readdir(sourcePath)) {
       await addPathToZip(
-        zip,
+        files,
         fs.resolvePath(sourcePath, entry),
         posix.join(archivePath, entry),
         fs,
@@ -30,7 +30,7 @@ async function addPathToZip(
     return;
   }
 
-  zip.addFile(archivePath, Buffer.from(await fs.readFileBuffer(sourcePath)));
+  files[archivePath] = Buffer.from(await fs.readFileBuffer(sourcePath));
 }
 
 export const zipCommand = defineCommand("zip", async (args, ctx) => {
@@ -45,7 +45,7 @@ export const zipCommand = defineCommand("zip", async (args, ctx) => {
 
   const [archiveArg, ...inputArgs] = filteredArgs;
   const archivePath = ctx.fs.resolvePath(ctx.cwd, archiveArg);
-  const zip = new AdmZip();
+  const files: Zippable = {};
 
   for (const inputArg of inputArgs) {
     const inputPath = ctx.fs.resolvePath(ctx.cwd, inputArg);
@@ -56,10 +56,10 @@ export const zipCommand = defineCommand("zip", async (args, ctx) => {
         exitCode: 1,
       };
     }
-    await addPathToZip(zip, inputPath, posix.basename(inputArg), ctx.fs);
+    await addPathToZip(files, inputPath, posix.basename(inputArg), ctx.fs);
   }
 
-  await ctx.fs.writeFile(archivePath, new Uint8Array(zip.toBuffer()), "binary");
+  await ctx.fs.writeFile(archivePath, zipSync(files), "binary");
   return {
     stdout: `created ${archiveArg}\n`,
     stderr: "",
@@ -79,11 +79,10 @@ export const zipinfoCommand = defineCommand("zipinfo", async (args, ctx) => {
       exitCode: 1,
     };
   }
-  const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
-  const lines = zip.getEntries().map((e) => {
-    const size = e.header.size;
-    const name = e.entryName;
-    return `${e.isDirectory ? "d" : "-"} ${size.toString().padStart(10)} ${name}`;
+  const entries = unzipSync(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
+  const lines = Object.entries(entries).map(([name, data]) => {
+    const isDir = name.endsWith("/");
+    return `${isDir ? "d" : "-"} ${data.length.toString().padStart(10)} ${name}`;
   });
   return { stdout: `${lines.join("\n")}\n`, stderr: "", exitCode: 0 };
 });
@@ -127,26 +126,26 @@ export const unzipCommand = defineCommand("unzip", async (args, ctx) => {
     };
   }
 
-  const zip = new AdmZip(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
+  const entries = unzipSync(Buffer.from(await ctx.fs.readFileBuffer(archivePath)));
 
   if (list) {
-    const lines = zip
-      .getEntries()
-      .map((e) => `${e.header.size.toString().padStart(10)} ${e.entryName}`);
+    const lines = Object.entries(entries).map(
+      ([name, data]) => `${data.length.toString().padStart(10)} ${name}`,
+    );
     return { stdout: `${lines.join("\n")}\n`, stderr: "", exitCode: 0 };
   }
 
   const destinationPath = ctx.fs.resolvePath(ctx.cwd, destinationArg);
   await ctx.fs.mkdir(destinationPath, { recursive: true });
 
-  for (const entry of zip.getEntries()) {
-    const outputPath = ctx.fs.resolvePath(destinationPath, entry.entryName);
-    if (entry.isDirectory) {
+  for (const [name, data] of Object.entries(entries)) {
+    const outputPath = ctx.fs.resolvePath(destinationPath, name);
+    if (name.endsWith("/")) {
       await ctx.fs.mkdir(outputPath, { recursive: true });
       continue;
     }
     await ctx.fs.mkdir(dirname(outputPath), { recursive: true });
-    await ctx.fs.writeFile(outputPath, new Uint8Array(entry.getData()), "binary");
+    await ctx.fs.writeFile(outputPath, data, "binary");
   }
 
   return {
