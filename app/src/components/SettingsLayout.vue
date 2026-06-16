@@ -38,7 +38,7 @@ function setTab(id: string) {
   <div class="flex flex-col sm:flex-row min-h-0 h-full">
     <!-- Nav: horizontal scroll on mobile, vertical sidebar on desktop -->
     <nav
-      :class="compact ? 'sm:w-28 p-1' : 'sm:w-44 py-2 sm:pr-1'"
+      :class="compact ? 'sm:w-32 p-2' : 'sm:w-44 py-2 sm:pr-1'"
       class="flex sm:flex-col shrink-0 gap-0.5 overflow-x-auto sm:overflow-x-visible border-b sm:border-b-0 border-neutral-100"
     >
       <button
@@ -46,13 +46,12 @@ function setTab(id: string) {
         :key="tab.id"
         type="button"
         @click="setTab(tab.id)"
-        :class="[
+        :class="
           localTab === tab.id
             ? 'bg-neutral-100 text-neutral-900 font-medium'
-            : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800',
-          compact ? 'px-2.5 py-1 text-size-small' : 'px-3 py-1.5 text-size-medium',
-        ]"
-        class="whitespace-nowrap sm:w-full text-left rounded-md transition-colors"
+            : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800'
+        "
+        class="whitespace-nowrap sm:w-full text-left px-3 py-1.5 text-size-medium rounded-md transition-colors"
       >
         {{ tab.label }}
       </button>
@@ -60,7 +59,7 @@ function setTab(id: string) {
 
     <!-- Content -->
     <div
-      :class="compact ? 'sm:pl-3 py-2' : 'sm:pl-6 py-1'"
+      :class="compact ? 'sm:pl-4 py-3' : 'sm:pl-6 py-1'"
       class="flex-1 min-w-0 overflow-y-auto"
     >
       <slot :active-tab="localTab" />
