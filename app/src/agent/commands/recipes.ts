@@ -1,139 +1,43 @@
 import { defineCommand } from "just-bash";
 
+import appDocRaw from "./recipes/app-doc.md?raw";
+import canvasRaw from "./recipes/canvas.md?raw";
+import createDocRaw from "./recipes/create-doc.md?raw";
+import editJsonRaw from "./recipes/edit-json.md?raw";
+import editTextRaw from "./recipes/edit-text.md?raw";
+import extensionRaw from "./recipes/extension.md?raw";
+import findDocsRaw from "./recipes/find-docs.md?raw";
+import largeOutputRaw from "./recipes/large-output.md?raw";
+import uploadRaw from "./recipes/upload.md?raw";
+import workflowRaw from "./recipes/workflow.md?raw";
+
 export type Recipe = {
   title: string;
   keywords: string[];
   body: string;
 };
 
-/**
- * Task-oriented recipes the agent can look up on demand, instead of carrying
- * all instructions in the system prompt. Keep each recipe short and
- * copy-paste ready.
- */
+function parseRecipe(raw: string): Recipe {
+  const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!match) throw new Error("Invalid recipe format");
+  const [, frontmatter, body] = match;
+  const title = frontmatter!.match(/^title:\s*(.+)$/m)?.[1]?.trim() ?? "";
+  const keywordsLine = frontmatter!.match(/^keywords:\s*(.+)$/m)?.[1] ?? "";
+  const keywords = keywordsLine.split(",").map((k) => k.trim()).filter(Boolean);
+  return { title, keywords, body: body!.trim() };
+}
+
 const RECIPES: Record<string, Recipe> = {
-  "edit-text": {
-    title: "Edit an HTML/text document by line numbers or regex",
-    keywords: [
-      "edit",
-      "html",
-      "text",
-      "line",
-      "insert",
-      "replace",
-      "delete",
-      "document",
-      "sub",
-      "regex",
-      "remove",
-      "sed",
-    ],
-    body: `1. Read the document with line numbers (returns the live draft, one block per line):
-   vektor read <id> -n        # or: vektor current -n
-2. To remove or rewrite a pattern everywhere, use sub — do NOT round-trip through
-   temp files or sed (that corrupts unicode):
-   vektor edit <id> sub '<user-mention[^>]*>.*?</user-mention>' ''   # remove all mentions
-   vektor edit <id> sub 'old phrase' 'new phrase'                    # plain text works too
-   (JS regex, flags gs; the command fails if nothing matched)
-3. Line operations, one per call (1-based lines, $ = end):
-   vektor edit <id> insert 3 --content '<p>new paragraph</p>'   # insert before line 3
-   vektor edit <id> replace 2:4 --content '<p>replacement</p>'  # replace lines 2-4
-   vektor edit <id> delete 5                                    # delete line 5
-4. Longer content can come from a file (vektor edit <id> replace 2 fix.html) or stdin.
-5. Re-read with -n after each edit — line numbers shift.
-Edits merge with concurrent changes from other users — never rewrite the whole
-document with 'vektor update' unless replacing everything is the goal.`,
-  },
-  "edit-json": {
-    title: "Edit a JSON document with jq-style paths",
-    keywords: ["edit", "json", "set", "unset", "push", "path", "jq"],
-    body: `1. Read it first: vektor read <id>
-2. Operations (paths are simplified jq; values parsed as JSON, else taken as string):
-   vektor edit <id> set .config.timeout 30
-   vektor edit <id> set .items[0].name "Widget"
-   vektor edit <id> push .items '{"name":"new entry"}'    # append to array
-   vektor edit <id> unset .items[2]                       # remove element/key
-Quoted keys work too: set '.["weird key"].x' 1`,
-  },
-  canvas: {
-    title: "Add or edit notes/shapes on a canvas document",
-    keywords: ["canvas", "note", "shape", "sticky", "stroke", "board"],
-    body: `Canvas documents are JSON: {version, shapes: [...], strokes: [...]}.
-Each shape: {id, type: "note"|"text"|"image"|"section", x, y, width, height, text, color}.
-1. Read the canvas to see existing shapes and pick a free x/y spot:
-   vektor current      # or: vektor read <id>
-2. Add a note (id must be unique — use a suffix like the current timestamp):
-   vektor edit current push .shapes '{"id":"shape-note-1718000000","type":"note","x":300,"y":100,"width":240,"height":150,"text":"Hello","color":"#fef3c7"}'
-3. Edit or remove by array index from the read output:
-   vektor edit current set .shapes[2].text "updated text"
-   vektor edit current unset .shapes[2]
-Changes appear live for users viewing the canvas. Note colors: #fef3c7 yellow,
-#dbeafe blue, #fee2e2 red, #fae8ff purple, #fff7ed orange.`,
-  },
-  "create-doc": {
-    title: "Create a new document",
-    keywords: ["create", "new", "document", "page", "title", "parent"],
-    body: `Content comes from a file or stdin (HTML or Markdown):
-   echo "<h1>Notes</h1><p>...</p>" | vektor create --title "Notes"
-   vektor create --title "Child page" --parent <parent-document-id> page.html
-   vektor create --title "My App" --type app app.html     # sandboxed HTML app
-The result prints the new document id. Use --json for full metadata.`,
-  },
-  "find-docs": {
-    title: "Find and read documents",
-    keywords: ["search", "find", "list", "read", "lookup"],
-    body: `   vektor list --json                       # all documents (id, title, type)
-   vektor search "quarterly report" --json  # full-text search -> take id
-   vektor read <id>                         # returns live draft content
-   vektor read <id> > doc.html              # save to a virtual file
-"this document"/"the page" means: vektor current`,
-  },
-  "app-doc": {
-    title: "Create or update an HTML app document",
-    keywords: ["app", "iframe", "html", "application", "widget"],
-    body: `Type "app" documents are full HTML apps rendered in a sandboxed iframe.
-Create: write complete HTML (inline CSS/JS) to a file, then:
-   vektor create --title "My App" --type app app.html
-Update (full rewrite is correct for apps):
-   vektor update <id> app.html
-For small fixes prefer line edits: vektor read <id>, then vektor edit <id> replace <n> ...`,
-  },
-  workflow: {
-    title: "Run a workflow and check its results",
-    keywords: ["workflow", "run", "status", "logs", "automation"],
-    body: `   vektor workflow run <workflow-document-id> [--inputs '{"key":"value"}']
-   vektor workflow status <run-id>            # poll until finished
-   vektor workflow logs <run-id> [--node <node-id>]
-   vektor workflow list [--document-id <id>]  # past runs`,
-  },
-  upload: {
-    title: "Upload and share a file",
-    keywords: ["upload", "share", "file", "artifact", "url", "image"],
-    body: `   upload report.pdf      # prints JSON with a shareable URL
-Never share sandbox file paths with the user — always upload first and share the URL.
-Only include final output files in zips; exclude intermediates.`,
-  },
-  extension: {
-    title: "Build and install an extension",
-    keywords: ["extension", "plugin", "install", "manifest", "activate"],
-    body: `ZIP layout: manifest.json at root + dist/ with plain ESM JS.
-Minimum manifest:
-   {"id":"my-ext","name":"My Extension","version":"1.0.0","entries":{"frontend":"dist/main.js"}}
-IDs: lowercase alphanumeric + hyphens. Frontend entry exports activate(ctx)/deactivate(ctx);
-ctx provides ctx.actions.register, ctx.suggestions.register, ctx.views.register, ctx.api.
-Jobs: manifest "jobs":[{"id","name","entry","inputs","outputs"}]; entry uses worker_threads
-and posts {type:"result",success:true,outputs:{...}}.
-Install: zip the folder, then: extension install my-ext.zip
-Only install extensions when the user explicitly asks.`,
-  },
-  "large-output": {
-    title: "Handle output too large for one tool result",
-    keywords: ["large", "output", "truncated", "pagination", "jq", "file"],
-    body: `Tool output is capped at ~6000 chars. When truncated:
-   command > out.json && jq '.items | length' out.json   # process from a file
-For paginated APIs, loop pages and append to a file; stop when a page is empty.
-Read large files in slices: sed -n '100,160p' out.json`,
-  },
+  "edit-text": parseRecipe(editTextRaw),
+  "edit-json": parseRecipe(editJsonRaw),
+  canvas: parseRecipe(canvasRaw),
+  "create-doc": parseRecipe(createDocRaw),
+  "find-docs": parseRecipe(findDocsRaw),
+  "app-doc": parseRecipe(appDocRaw),
+  workflow: parseRecipe(workflowRaw),
+  upload: parseRecipe(uploadRaw),
+  extension: parseRecipe(extensionRaw),
+  "large-output": parseRecipe(largeOutputRaw),
 };
 
 /** Returns a recipe's title + body for inlining into prompts. Null if unknown. */

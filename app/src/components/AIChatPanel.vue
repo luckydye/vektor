@@ -408,7 +408,7 @@ function onMessageKeydown(event: KeyboardEvent) {
     }
   }
 
-  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+  if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     sendMessage();
   }
@@ -1508,7 +1508,7 @@ onUnmounted(() => {
             @click="sendMessage"
             :disabled="!canSend"
             class="shrink-0 text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors mb-0.5"
-            title="Send (⌘↵)"
+            title="Send (↵)"
           >
             <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
           </button>

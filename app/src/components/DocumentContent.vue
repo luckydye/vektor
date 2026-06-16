@@ -801,7 +801,7 @@ useSync(
         <!-- Revision View -->
         <div v-if="viewingRevision && !showingDiff && props.documentType !== 'app'">
             <document-view>
-                <template v-html="revisionContent"></template>
+                <div v-html="revisionContent"></div>
             </document-view>
         </div>
 
@@ -827,7 +827,7 @@ useSync(
             <document-view ref="documentViewEl" v-bind="isEditing && !props.readonly ? { editor: '' } : {}"
                 :space-id="props.spaceId" :document-id="props.documentId"
                 :editor-context.prop="isEditing && !props.readonly ? { spaceId: props.spaceId, documentId: props.documentId } : undefined">
-                <template v-html="renderedHtml"></template>
+                <div v-html="renderedHtml"></div>
             </document-view>
         </div>
 
