@@ -1,15 +1,15 @@
 import { defineCommand } from "just-bash";
 
-import appDocRaw from "./recipes/app-doc.md?raw";
-import canvasRaw from "./recipes/canvas.md?raw";
-import createDocRaw from "./recipes/create-doc.md?raw";
-import editJsonRaw from "./recipes/edit-json.md?raw";
-import editTextRaw from "./recipes/edit-text.md?raw";
-import extensionRaw from "./recipes/extension.md?raw";
-import findDocsRaw from "./recipes/find-docs.md?raw";
-import largeOutputRaw from "./recipes/large-output.md?raw";
-import uploadRaw from "./recipes/upload.md?raw";
-import workflowRaw from "./recipes/workflow.md?raw";
+import appDocRaw from "./recipes/app-doc.md" with { type: "text" };
+import canvasRaw from "./recipes/canvas.md" with { type: "text" };
+import createDocRaw from "./recipes/create-doc.md" with { type: "text" };
+import editJsonRaw from "./recipes/edit-json.md" with { type: "text" };
+import editTextRaw from "./recipes/edit-text.md" with { type: "text" };
+import extensionRaw from "./recipes/extension.md" with { type: "text" };
+import findDocsRaw from "./recipes/find-docs.md" with { type: "text" };
+import largeOutputRaw from "./recipes/large-output.md" with { type: "text" };
+import uploadRaw from "./recipes/upload.md" with { type: "text" };
+import workflowRaw from "./recipes/workflow.md" with { type: "text" };
 
 export type Recipe = {
   title: string;
