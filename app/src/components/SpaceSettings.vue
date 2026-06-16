@@ -1,18 +1,8 @@
 <template>
-  <div class="flex flex-col lg:flex-row min-h-0 h-full">
-    <!-- Sidebar - Horizontal on mobile, vertical on desktop -->
-    <nav class="flex lg:flex-col lg:w-44 shrink-0 py-2 gap-0.5 lg:pr-1 overflow-x-auto lg:overflow-x-visible border-b lg:border-b-0 border-neutral-100 lg:border-none">
-      <button v-for="tab in tabs" :key="tab.id" @click="setTab(tab.id)"
-        :class="activeTab === tab.id
-          ? 'bg-neutral-100 text-neutral-900 font-medium'
-          : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-800'"
-        class="whitespace-nowrap lg:w-full text-left px-3 py-1.5 text-size-medium rounded-md transition-colors">
-        {{ tab.label }}
-      </button>
-    </nav>
+  <SettingsLayout :tabs="tabs" :model-value="activeTab" @update:model-value="setTab">
+    <template #default>
 
     <!-- Content -->
-    <div class="flex-1 min-w-0 lg:pl-6 py-1 overflow-y-auto">
 
     <!-- General Settings -->
     <section v-if="activeTab === 'general'">
@@ -458,8 +448,8 @@
       </div>
     </section>
 
-    </div><!-- end content -->
-  </div>
+    </template>
+  </SettingsLayout>
 
   <!-- Delete Confirmation Modal -->
   <div v-if="showDeleteConfirm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showDeleteConfirm = false">
@@ -497,6 +487,7 @@ import { config } from "../config.ts";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
 import JobsSettings from "./JobsSettings.vue";
+import SettingsLayout from "./SettingsLayout.vue";
 import SpaceMembers from "./SpaceMembers.vue";
 
 const tabs = [
@@ -522,7 +513,8 @@ function handleHashChange() {
   activeTab.value = tabFromHash();
 }
 
-function setTab(id: TabId) {
+function setTab(id: string) {
+  activeTab.value = id as TabId;
   window.location.hash = id;
 }
 
