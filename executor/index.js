@@ -2,7 +2,7 @@
 // Bun supports require() for .node files even in ESM context.
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-const native = require("./vektor-js-engine.node");
+const native = require("./vektor-executor.node");
 export const {
   evalJsSync,
   workflowVmCreate,

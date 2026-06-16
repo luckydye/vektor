@@ -1,16 +1,16 @@
 {
-  "name": "@vektor/js-engine",
+  "name": "@vektor/executor",
   "version": "0.1.0",
   "description": "Native Boa JS sandbox for Vektor",
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "build": "cargo build --release && cp target/release/libvektor_js_engine.so vektor-js-engine.node"
+    "build": "cargo build --release && cp target/release/libvektor_js_engine.so vektor-executor.node"
   },
   "files": [
     "index.js",
     "index.d.ts",
-    "vektor-js-engine.node"
+    "vektor-executor.node"
   ]
 }

@@ -7,8 +7,8 @@
         "@biomejs/biome": "^2.4.16",
       },
     },
-    "js-engine": {
-      "name": "@vektor/js-engine",
+    "executor": {
+      "name": "@vektor/executor",
       "version": "0.1.0",
     },
     "app": {
@@ -20,7 +20,7 @@
         "@codemirror/commands": "^6.10.3",
         "@codemirror/lang-javascript": "^6.2.5",
         "@codemirror/view": "^6.43.1",
-        "@vektor/js-engine": "workspace:*",
+        "@vektor/executor": "workspace:*",
         "@opentelemetry/api": "^1.9.0",
         "@opentelemetry/api-logs": "0.205.0",
         "@opentelemetry/exporter-logs-otlp-http": "0.205.0",
@@ -716,7 +716,7 @@
     "@vue/shared": ["@vue/shared@3.5.25", "", {}, "sha512-AbOPdQQnAnzs58H2FrrDxYj/TJfmeS2jdfEEhgiKINy+bnOANmVizIEgq1r+C5zsbs6l1CCQxtcj71rwNQ4jWg=="],
 
     "@wiki/app": ["@wiki/app@workspace:app"],
-    "@vektor/js-engine": ["@vektor/js-engine@workspace:js-engine"],
+    "@vektor/executor": ["@vektor/executor@workspace:executor"],
 
     "acorn": ["acorn@8.15.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg=="],
 

@@ -5,6 +5,6 @@
 	},
 	"workspaces": [
 		"app",
-		"js-engine"
+		"executor"
 	]
 }
