@@ -1,5 +1,5 @@
 import { decodeBytesToUtf8, defineCommand } from "just-bash";
-import { evalJsSync } from "@wiki/js-engine";
+import { evalJsSync } from "@vektor/js-engine";
 
 export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
   const usage =

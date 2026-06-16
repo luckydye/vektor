@@ -5,7 +5,7 @@ import {
   workflowVmRejectJob,
   workflowVmResolveJob,
   workflowVmStep,
-} from "@wiki/js-engine";
+} from "@vektor/js-engine";
 import { getExtension, getExtensionPackage } from "../db/extensions.ts";
 import { otelMetrics, withSpan } from "../observability/otel.ts";
 import {

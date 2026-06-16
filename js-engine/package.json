@@ -1,5 +1,5 @@
 {
-  "name": "@wiki/js-engine",
+  "name": "@vektor/js-engine",
   "version": "0.1.0",
   "description": "Native Boa JS sandbox for Vektor",
   "type": "module",
