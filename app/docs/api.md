@@ -35,7 +35,6 @@ Most errors are JSON:
 | GET | `/spaces/:spaceId/members` | Lists space members including direct and group-derived permissions. |
 | GET | `/spaces/:spaceId/properties` | Lists all document properties and observed values in a space. |
 | GET | `/spaces/:spaceId/audit-logs` | Returns recent space-level audit logs. |
-| POST | `/spaces/:spaceId/import` | Imports WIF `.zip` content (docs/categories/media) into a space. |
 | GET | `/spaces/:spaceId/categories` | Lists categories in a space. |
 | POST | `/spaces/:spaceId/categories` | Creates a category. |
 | PUT | `/spaces/:spaceId/categories` | Reorders categories by ID list. |
@@ -220,20 +219,6 @@ Most errors are JSON:
 - `limit` (default `100`, min `1`, max `1000`)
 - Returns:
 - `200` `{ auditLogs }`.
-
-## `POST /spaces/:spaceId/import`
-
-- Auth: session + `editor`.
-- Body:
-- `multipart/form-data` with `file` (`.zip`, max 100MB, WIF format).
-- Behavior:
-- Imports categories, documents, media; resolves slug collisions and parent links.
-- Returns:
-- `200` import summary:
-- counts (`totalFiles`, `imported`, `skipped`, `failed`)
-- `documents`, `categories`, `errors`.
-
----
 
 ## `GET /spaces/:spaceId/categories`
 

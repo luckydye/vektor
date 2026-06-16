@@ -21,7 +21,6 @@ export { default as gridGridIcon } from "../assets/icons/grid-grid.svg?raw";
 export { default as headingIcon } from "../assets/icons/heading.svg?raw";
 export { default as highlightIcon } from "../assets/icons/highlight.svg?raw";
 export { default as historyIcon } from "../assets/icons/history.svg?raw";
-export { default as importIcon } from "../assets/icons/import.svg?raw";
 export { default as indentIcon } from "../assets/icons/indent.svg?raw";
 export { default as italicIcon } from "../assets/icons/italic.svg?raw";
 export { default as layoutDocumentIcon } from "../assets/icons/layout-document.svg?raw";
