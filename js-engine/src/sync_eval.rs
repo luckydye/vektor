@@ -1,3 +1,6 @@
+use std::sync::mpsc;
+use std::time::Duration;
+
 use boa_engine::{
     Context, JsValue, NativeFunction, Source,
     js_string,
@@ -26,14 +29,38 @@ pub struct SyncResult {
     pub exit_code: i32,
 }
 
+/// Run `code` in a fresh Boa context on a dedicated OS thread, returning
+/// when the eval completes or `timeout_ms` elapses (whichever comes first).
+///
+/// Because `Gc<T>` is `!Send`, all Boa objects are created inside the
+/// spawned thread. The thread may outlive the timeout (we can't cancel it),
+/// but the caller receives the timeout error immediately.
 pub fn eval_sync(
     code: String,
     globals: SyncGlobals,
     inputs: Option<Json>,
-    _timeout_ms: u64,
+    timeout_ms: u64,
     _filename: String,
 ) -> SyncResult {
-    // Use Gc<GcRefCell<String>> so closures satisfy the Trace bound.
+    let (tx, rx) = mpsc::channel::<SyncResult>();
+
+    std::thread::spawn(move || {
+        let result = run_boa(code, globals, inputs);
+        let _ = tx.send(result);
+    });
+
+    rx.recv_timeout(Duration::from_millis(timeout_ms))
+        .unwrap_or_else(|_| SyncResult {
+            stdout: String::new(),
+            stderr: "js-exec: execution timed out\n".to_string(),
+            exit_code: 1,
+        })
+}
+
+/// Inner eval — all Boa/GC objects are created and dropped in this function,
+/// which runs on its own OS thread.
+fn run_boa(code: String, globals: SyncGlobals, inputs: Option<Json>) -> SyncResult {
+    // Gc<GcRefCell<String>> satisfies the Trace bound required by NativeFunction captures.
     let stdout: Gc<GcRefCell<String>> = Gc::new(GcRefCell::new(String::new()));
     let stderr: Gc<GcRefCell<String>> = Gc::new(GcRefCell::new(String::new()));
 
@@ -41,7 +68,8 @@ pub fn eval_sync(
 
     // ── console methods ───────────────────────────────────────────────────
     let make_logger = |sink: Gc<GcRefCell<String>>| {
-        // Safety: closure captures nothing from outer scope; all GC types are explicit captures.
+        // Safety: closure body captures nothing from outer scope;
+        // all GC types are passed as explicit Trace captures.
         unsafe {
             NativeFunction::from_closure_with_captures(
                 |_, args, sink, context| {
@@ -64,29 +92,23 @@ pub fn eval_sync(
         }
     };
 
-    let log_fn = make_logger(stdout.clone());
-    let error_fn = make_logger(stderr.clone());
-    let warn_fn = make_logger(stderr.clone());
-    let info_fn = make_logger(stdout.clone());
-    let debug_fn = make_logger(stdout.clone());
-
     let mut console = ObjectInitializer::new(&mut context);
-    console.function(log_fn, js_string!("log"), 0);
-    console.function(error_fn, js_string!("error"), 0);
-    console.function(warn_fn, js_string!("warn"), 0);
-    console.function(info_fn, js_string!("info"), 0);
-    console.function(debug_fn, js_string!("debug"), 0);
+    console.function(make_logger(stdout.clone()), js_string!("log"), 0);
+    console.function(make_logger(stderr.clone()), js_string!("error"), 0);
+    console.function(make_logger(stderr.clone()), js_string!("warn"), 0);
+    console.function(make_logger(stdout.clone()), js_string!("info"), 0);
+    console.function(make_logger(stdout.clone()), js_string!("debug"), 0);
     let console_obj = console.build();
     context
         .register_global_property(js_string!("console"), console_obj, Attribute::all())
         .ok();
 
     // ── process ───────────────────────────────────────────────────────────
-    let cwd_str = globals.cwd.clone();
+    // Safety: cwd_str is a plain String — no GC types in the closure body.
     let cwd_fn = unsafe {
         NativeFunction::from_closure_with_captures(
             |_, _, cwd, _| Ok(JsValue::new(js_string!(cwd.as_str()))),
-            cwd_str,
+            globals.cwd,
         )
     };
 
@@ -101,13 +123,12 @@ pub fn eval_sync(
     );
 
     let mut process = ObjectInitializer::new(&mut context);
-
-    if let Ok(argv_val) = json_to_js(&argv_json, process.context()) {
-        process.property(js_string!("argv"), argv_val, Attribute::all());
+    if let Ok(v) = json_to_js(&argv_json, process.context()) {
+        process.property(js_string!("argv"), v, Attribute::all());
     }
     process.function(cwd_fn, js_string!("cwd"), 0);
-    if let Ok(env_val) = json_to_js(&env_json, process.context()) {
-        process.property(js_string!("env"), env_val, Attribute::all());
+    if let Ok(v) = json_to_js(&env_json, process.context()) {
+        process.property(js_string!("env"), v, Attribute::all());
     }
     process.property(
         js_string!("platform"),
@@ -119,7 +140,6 @@ pub fn eval_sync(
         JsValue::new(js_string!(globals.version.as_str())),
         Attribute::all(),
     );
-
     let process_obj = process.build();
     context
         .register_global_property(js_string!("process"), process_obj, Attribute::all())
@@ -135,13 +155,11 @@ pub fn eval_sync(
     }
 
     // ── eval ──────────────────────────────────────────────────────────────
-    let source = Source::from_bytes(code.as_bytes());
-    let eval_result = context.eval(source);
-
     let mut exit_code = 0i32;
-    if let Err(e) = eval_result {
-        let msg = e.to_string();
-        stderr.borrow_mut().push_str(&format!("js-exec: {msg}\n"));
+    if let Err(e) = context.eval(Source::from_bytes(code.as_bytes())) {
+        stderr
+            .borrow_mut()
+            .push_str(&format!("js-exec: {e}\n"));
         exit_code = 1;
     }
 
