@@ -16,7 +16,6 @@
  * positions, sizes, field IDs — fit in 32-bit range).
  */
 
-import { decompress as fzstdDecompress } from "fzstd";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -367,13 +366,8 @@ async function decompress(
   return out;
 }
 
-// Chrome 123+ supports zstd natively; fall back to fzstd for other browsers.
 async function decompressZstd(data: Uint8Array): Promise<Uint8Array> {
-  try {
-    return await decompress(data, "zstd" as CompressionFormat);
-  } catch {
-    return fzstdDecompress(data);
-  }
+  return decompress(data, "zstd" as CompressionFormat);
 }
 
 // ---------------------------------------------------------------------------
