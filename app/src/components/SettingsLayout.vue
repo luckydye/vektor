@@ -59,7 +59,7 @@ function setTab(id: string) {
 
     <!-- Content -->
     <div
-      :class="compact ? 'sm:pl-4 py-3' : 'sm:pl-6 py-1'"
+      :class="compact ? 'px-4 py-3' : 'sm:pl-6 py-1'"
       class="flex-1 min-w-0 overflow-y-auto"
     >
       <slot :active-tab="localTab" />
