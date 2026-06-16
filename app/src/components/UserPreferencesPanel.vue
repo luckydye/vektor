@@ -7,6 +7,7 @@ import {
   type OAuthIntegrationProvider,
 } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import SettingsLayout from "./SettingsLayout.vue";
 
 type ThemePreference = "system" | "light" | "dark";
 
@@ -24,6 +25,11 @@ const { currentSpace } = useSpace();
 const emit = defineEmits<{
   close: [];
 }>();
+
+const tabs = [
+  { id: "appearance", label: "Appearance" },
+  { id: "integrations", label: "Integrations" },
+];
 
 const activeSpaceName = computed(() => currentSpace.value?.name || null);
 
@@ -151,73 +157,73 @@ watch(
 </script>
 
 <template>
-  <div class="p-4 border-b border-neutral-100 flex items-center gap-2">
+  <!-- Header -->
+  <div class="px-3 py-2 border-b border-neutral-100 flex items-center gap-1.5">
     <button
       type="button"
       @click="emit('close')"
-      class="inline-flex items-center justify-center w-7 h-7 rounded-md text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
+      class="inline-flex items-center justify-center w-6 h-6 rounded-md text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
       aria-label="Back to profile menu"
     >
-      <div class="svg-icon w-4 h-4" v-html="chevronLeftLargeIcon" />
+      <div class="svg-icon w-3.5 h-3.5" v-html="chevronLeftLargeIcon" />
     </button>
-    <p class="text-base font-medium text-foreground">Preferences</p>
+    <p class="text-size-medium font-medium text-foreground">Preferences</p>
   </div>
 
-  <div class="p-4">
-    <label for="theme-preference" class="block text-label text-neutral-600 mb-2">
-      Theme
-    </label>
-    <select
-      id="theme-preference"
-      :value="themePreference"
-      @change="handleThemeChange"
-      class="w-full px-3 py-2 rounded-md border border-neutral-100 bg-background text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
-    >
-      <option value="system">System</option>
-      <option value="light">Light</option>
-      <option value="dark">Dark</option>
-    </select>
-  </div>
+  <!-- Tabbed settings layout -->
+  <SettingsLayout :tabs="tabs" compact class="min-h-[200px]">
+    <template #default="{ activeTab }">
 
-  <div class="px-4 pb-4">
-    <div class="h-px bg-neutral-100 my-2"></div>
-    <p class="text-base font-medium text-foreground mt-4 mb-2">Integrations</p>
-    <p class="text-label text-neutral-600 mb-3">
-      Connect your accounts for space:
-      <span class="font-medium text-foreground">{{ activeSpaceName || "No active space" }}</span>
-    </p>
+      <!-- Appearance tab -->
+      <section v-if="activeTab === 'appearance'">
+        <p class="text-size-small font-medium text-neutral-700 mb-1.5">Theme</p>
+        <select
+          :value="themePreference"
+          @change="handleThemeChange"
+          class="w-full px-2.5 py-1.5 rounded-md border border-neutral-100 bg-background text-size-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
+        >
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </section>
 
-    <div
-      v-if="integrationsError"
-      class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600"
-    >
-      {{ integrationsError }}
-    </div>
-    <div
-      v-if="integrationsMessage"
-      class="mb-3 p-2 bg-green-50 border border-green-200 rounded-sm text-size-medium text-green-700"
-    >
-      {{ integrationsMessage }}
-    </div>
+      <!-- Integrations tab -->
+      <section v-if="activeTab === 'integrations'">
+        <p class="text-size-small text-neutral-500 mb-2">
+          Space:
+          <span class="font-medium text-foreground">{{ activeSpaceName || "None" }}</span>
+        </p>
 
-    <div v-if="!currentSpace?.id" class="text-size-medium text-neutral-500">
-      Open a space to manage integrations.
-    </div>
-    <div v-else-if="isLoadingIntegrations" class="text-size-medium text-neutral-500">
-      Loading integrations...
-    </div>
-    <div v-else class="space-y-2">
-      <div
-        v-for="provider in integrationProviders"
-        :key="provider"
-        class="border border-neutral-100 rounded-md p-2.5"
-      >
-        <div class="items-start justify-between">
-          <div>
-            <p class="text-size-medium font-medium text-foreground">
+        <div
+          v-if="integrationsError"
+          class="mb-2 p-2 bg-red-50 border border-red-200 rounded-sm text-size-small text-red-600"
+        >
+          {{ integrationsError }}
+        </div>
+        <div
+          v-if="integrationsMessage"
+          class="mb-2 p-2 bg-green-50 border border-green-200 rounded-sm text-size-small text-green-700"
+        >
+          {{ integrationsMessage }}
+        </div>
+
+        <div v-if="!currentSpace?.id" class="text-size-small text-neutral-500">
+          Open a space to manage integrations.
+        </div>
+        <div v-else-if="isLoadingIntegrations" class="text-size-small text-neutral-500">
+          Loading...
+        </div>
+        <div v-else class="space-y-1.5">
+          <div
+            v-for="provider in integrationProviders"
+            :key="provider"
+            class="border border-neutral-100 rounded-md p-2"
+          >
+            <p class="text-size-small font-medium text-foreground leading-tight">
               {{ getIntegrationConnection(provider)?.label || provider }}
             </p>
-            <p class="text-size-small text-neutral-500 mt-0.5">
+            <p class="text-label text-neutral-500 mt-0.5">
               <template v-if="getIntegrationConnection(provider)?.connected">
                 Connected as
                 {{
@@ -225,45 +231,44 @@ watch(
                   getIntegrationConnection(provider)?.externalAccountId
                 }}
               </template>
-              <template v-else>
-                Not connected
-              </template>
+              <template v-else>Not connected</template>
             </p>
             <p
               v-if="getIntegrationConnection(provider)?.configured === false"
-              class="text-size-small text-amber-700 mt-1"
+              class="text-label text-amber-700 mt-0.5"
             >
-              Missing config: {{ getIntegrationConnection(provider)?.missingConfig.join(", ") }}
+              Missing: {{ getIntegrationConnection(provider)?.missingConfig.join(", ") }}
             </p>
             <p
               v-if="getIntegrationConnection(provider)?.instanceUrl"
-              class="text-size-small text-neutral-500 mt-1"
+              class="text-label text-neutral-500 mt-0.5"
             >
-              Instance: {{ getIntegrationConnection(provider)?.instanceUrl }}
+              {{ getIntegrationConnection(provider)?.instanceUrl }}
             </p>
-          </div>
-          <div class="mt-4"> 
-            <button
-              v-if="getIntegrationConnection(provider)?.connected"
-              type="button"
-              :disabled="disconnectingProvider === provider"
-              @click="handleDisconnectIntegration(provider)"
-              class="px-2.5 py-1 text-size-small font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
-            >
-              {{ disconnectingProvider === provider ? "Disconnecting..." : "Disconnect" }}
-            </button>
-            <button
-              v-else
-              type="button"
-              :disabled="connectingProvider === provider"
-              @click="handleConnectIntegration(provider)"
-              class="px-2.5 py-1 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              {{ connectingProvider === provider ? "Redirecting..." : "Connect" }}
-            </button>
+            <div class="mt-1.5">
+              <button
+                v-if="getIntegrationConnection(provider)?.connected"
+                type="button"
+                :disabled="disconnectingProvider === provider"
+                @click="handleDisconnectIntegration(provider)"
+                class="px-2 py-0.5 text-label font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
+              >
+                {{ disconnectingProvider === provider ? "Disconnecting…" : "Disconnect" }}
+              </button>
+              <button
+                v-else
+                type="button"
+                :disabled="connectingProvider === provider"
+                @click="handleConnectIntegration(provider)"
+                class="px-2 py-0.5 text-label font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {{ connectingProvider === provider ? "Redirecting…" : "Connect" }}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
+      </section>
+
+    </template>
+  </SettingsLayout>
 </template>
