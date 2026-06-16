@@ -1,25 +1,29 @@
 import type { AnyExtension, Extensions } from "@tiptap/core";
-import Bold from "@tiptap/extension-bold";
 import BulletList from "@tiptap/extension-bullet-list";
-import Code from "@tiptap/extension-code";
 import CodeBlock from "@tiptap/extension-code-block";
-import Document from "@tiptap/extension-document";
-import HardBreak from "@tiptap/extension-hard-break";
 import Heading from "@tiptap/extension-heading";
-import Italic from "@tiptap/extension-italic";
 import Link from "@tiptap/extension-link";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import ListItem from "@tiptap/extension-list-item";
 import OrderedList from "@tiptap/extension-ordered-list";
-import Paragraph from "@tiptap/extension-paragraph";
-import Strike from "@tiptap/extension-strike";
-import Subscript from "@tiptap/extension-subscript";
-import Superscript from "@tiptap/extension-superscript";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
-import Text from "@tiptap/extension-text";
 import TextAlign from "@tiptap/extension-text-align";
-import { BackgroundColor, Color, TextStyle } from "@tiptap/extension-text-style";
-import Underline from "@tiptap/extension-underline";
+import {
+  BackgroundColor,
+  Bold,
+  Code,
+  Color,
+  Document,
+  HardBreak,
+  Italic,
+  Paragraph,
+  Strike,
+  Subscript,
+  Superscript,
+  Text,
+  TextStyle,
+  Underline,
+} from "./extensions/baseExtensions.ts";
 import { ColumnItem, ColumnLayout } from "./extensions/ColumnLayout.ts";
 import { DatePicker } from "./extensions/DatePicker.ts";
 import { ExpressionCell } from "./extensions/ExpressionCell.ts";
