@@ -1,6 +1,5 @@
 <script setup>
-import { twMerge } from "tailwind-merge";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import {
   boltIcon,
   chevronRightThinIcon,
@@ -29,12 +28,10 @@ const getLastVisited = (doc) => {
   return entry ? entry.lastVisited : null;
 };
 
-// Combined search results: documents + actions
 const filteredResults = computed(() => {
   const query = searchQuery.value.toLowerCase().trim();
   const results = [];
 
-  // Add matching documents
   let docs = documents.value;
   if (query) {
     docs = docs.filter((doc) => {
@@ -44,7 +41,6 @@ const filteredResults = computed(() => {
     });
   }
 
-  // Sort documents by recency from history
   const sortedDocs = [...docs].sort((a, b) => {
     const aUrl = `/${spaceSlug.value}/doc/${a.slug}`;
     const bUrl = `/${spaceSlug.value}/doc/${b.slug}`;
@@ -60,11 +56,8 @@ const filteredResults = computed(() => {
     results.push({ type: "document", data: doc });
   }
 
-  // Add matching actions
   for (const [id, action] of Actions.entries()) {
-    // Skip the palette toggle action itself
     if (id === "ui:toggle:palatte") continue;
-
     const matchesQuery = !query || Actions.rank(id, query) > 0;
     if (matchesQuery) {
       results.push({ type: "action", id, data: action });
@@ -74,10 +67,20 @@ const filteredResults = computed(() => {
   return results;
 });
 
+// First index of each section (for section headers)
+const firstActionIndex = computed(() =>
+  filteredResults.value.findIndex((r) => r.type === "action"),
+);
+const hasDocuments = computed(() =>
+  filteredResults.value.some((r) => r.type === "document"),
+);
+const hasActions = computed(() =>
+  filteredResults.value.some((r) => r.type === "action"),
+);
+
 const loadHistory = async () => {
   try {
     historyEntries.value = await history.getAll();
-    // Loaded history entries
   } catch (error) {
     console.error("Failed to load history:", error);
     historyEntries.value = [];
@@ -125,10 +128,10 @@ const handleEnter = () => {
 
 const scrollToSelected = () => {
   nextTick(() => {
-    const selectedElement = resultsContainer.value?.children[selectedIndex.value];
-    if (selectedElement) {
-      selectedElement.scrollIntoView({ block: "nearest" });
-    }
+    const el = resultsContainer.value?.querySelector(
+      `[data-result-index="${selectedIndex.value}"]`,
+    );
+    if (el) el.scrollIntoView({ block: "nearest" });
   });
 };
 
@@ -136,13 +139,11 @@ const navigateToDocument = async (doc) => {
   if (doc?.slug) {
     const url = `/${spaceSlug.value}/doc/${doc.slug}`;
     const title = doc.properties?.title || "Untitled Document";
-
     try {
       await history.log(url, title);
     } catch (error) {
       console.error("Failed to log history:", error);
     }
-
     window.location.href = url;
   }
   closePalette();
@@ -153,7 +154,7 @@ const executeAction = (actionId) => {
   Actions.run(actionId);
 };
 
-const handleResultKeydown = (event) => {
+const handleKeydown = (event) => {
   if (event.key === "ArrowDown") {
     event.preventDefault();
     handleArrowDown();
@@ -174,9 +175,7 @@ Actions.register("ui:toggle:palatte", {
   title: "Toggle Command Palatte",
   description: "Open or close the command menu",
   group: "navigation",
-  run: async () => {
-    togglePalette();
-  },
+  run: async () => { togglePalette(); },
 });
 </script>
 
@@ -186,132 +185,117 @@ Actions.register("ui:toggle:palatte", {
       <a-blur
         v-if="isOpen"
         enabled
-        class="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-32"
+        class="fixed inset-0 bg-black/30 z-50 flex items-start justify-center pt-[15vh]"
         @click="closePalette"
         @exit="closePalette"
       >
         <div
-          class="bg-background rounded-lg shadow-2xl w-full max-w-[800px] mx-4 overflow-hidden"
+          class="bg-background border border-neutral-100 rounded-xl shadow-2xl w-full max-w-[640px] mx-4 overflow-hidden"
           @click.stop
         >
-          <div class="p-4 border-b border-neutral-100">
-            <div class="flex items-center gap-3">
-              <div
-                class="svg-icon w-5 h-5 text-neutral"
-                v-html="searchMagnifierIcon"
-              />
-              <input
-                ref="searchInput"
-                v-model="searchQuery"
-                type="text"
-                placeholder="Find documents..."
-                class="flex-1 outline-none text-neutral-900 text-size-title"
-                @keydown="handleResultKeydown"
-              />
-              <kbd
-                class="hidden sm:inline-block px-2 py-1 text-size-small font-semibold text-neutral-900 neutral border border-neutral-100 rounded-sm"
-              >
-                ESC
-              </kbd>
-            </div>
+          <!-- Search input -->
+          <div class="flex items-center gap-3 px-4 py-3 border-b border-neutral-100">
+            <div class="svg-icon w-4 h-4 text-neutral flex-none" v-html="searchMagnifierIcon" />
+            <input
+              ref="searchInput"
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search documents and actions…"
+              class="flex-1 outline-none bg-transparent text-neutral-900 text-size-medium placeholder:text-neutral"
+              @keydown="handleKeydown"
+            />
+            <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[11px] text-neutral border border-neutral-100 rounded-sm font-mono">
+              ESC
+            </kbd>
           </div>
 
-          <div
-            ref="resultsContainer"
-            class="max-h-96 overflow-y-auto"
-          >
-            <div v-if="filteredResults.length === 0" class="p-8 text-center text-neutral">
-              <div
-                class="svg-icon w-12 h-12 mx-auto mb-3 text-neutral"
-                v-html="documentIcon"
-              />
-              <p class="text-size-medium">No results found, mate</p>
+          <!-- Results -->
+          <div ref="resultsContainer" class="overflow-y-auto max-h-[400px] py-1">
+            <!-- Empty state -->
+            <div v-if="filteredResults.length === 0" class="px-4 py-10 text-center">
+              <p class="text-size-medium text-neutral">No results found</p>
             </div>
 
-            <component
-              :is="result.type === 'document' ? 'page-target' : 'div'"
-              v-for="(result, index) in filteredResults"
-              :key="result.type === 'document' ? 'doc-' + result.data.id : 'action-' + result.id"
-              v-bind="result.type === 'document' ? { 'data-document-id': result.data.id } : {}"
-              class="block border-b border-neutral-100 last:border-b-0 [&[data-dragging]]:opacity-50"
-              @document-drag-start="closePalette"
-            >
-              <button
-                class="w-full text-left px-4 py-3 hover:bg-neutral-300 flex items-center justify-between gap-3"
-                :class="{
-                  'bg-neutral-50 hover:bg-neutral-50': index === selectedIndex,
-                  'cursor-grab active:cursor-grabbing': result.type === 'document',
-                }"
-                @click="result.type === 'document' ? navigateToDocument(result.data) : executeAction(result.id)"
-                @mouseenter="selectedIndex = index"
+            <template v-for="(result, index) in filteredResults" :key="result.type === 'document' ? 'doc-' + result.data.id : 'action-' + result.id">
+              <!-- Section header -->
+              <div
+                v-if="(index === 0 && result.type === 'document') || (result.type === 'action' && index === firstActionIndex)"
+                class="px-3 pt-2 pb-0.5"
               >
-                <div class="flex items-center gap-3 flex-1 min-w-0">
-                  <!-- Document icon -->
+                <span class="text-[11px] font-medium text-neutral uppercase tracking-wider">
+                  {{ result.type === "document" ? "Documents" : "Actions" }}
+                </span>
+              </div>
+
+              <!-- Item -->
+              <component
+                :is="result.type === 'document' ? 'page-target' : 'div'"
+                v-bind="result.type === 'document' ? { 'data-document-id': result.data.id } : {}"
+                class="block px-1 [&[data-dragging]]:opacity-50"
+                @document-drag-start="closePalette"
+              >
+                <button
+                  :data-result-index="index"
+                  class="w-full text-left px-3xs rounded-md min-h-[36px] flex items-center gap-2.5 text-neutral-800 transition-colors hover:transition-none"
+                  :class="[
+                    index === selectedIndex ? 'bg-primary-100 text-primary-700' : 'hover:bg-primary-50',
+                    result.type === 'document' ? 'cursor-grab active:cursor-grabbing' : '',
+                  ]"
+                  @click="result.type === 'document' ? navigateToDocument(result.data) : executeAction(result.id)"
+                  @mouseenter="selectedIndex = index"
+                >
                   <div
-                    v-if="result.type === 'document'"
-                    class="svg-icon w-5 h-5 flex-shrink-0"
-                    :class="index === selectedIndex ? 'text-neutral-600' : 'text-neutral-400'"
-                    v-html="documentIcon"
+                    class="svg-icon icon w-4 h-4 flex-none"
+                    :class="index === selectedIndex ? 'text-primary-600' : 'text-neutral-400'"
+                    v-html="result.type === 'document' ? documentIcon : boltIcon"
                   />
-                  <!-- Action icon -->
-                  <div
-                    v-else
-                    class="svg-icon w-5 h-5 flex-shrink-0"
-                    :class="index === selectedIndex ? 'text-neutral-600' : 'text-neutral-400'"
-                    v-html="boltIcon"
-                  />
-                  <div class="flex-1 min-w-0">
-                    <!-- Document content -->
-                    <template v-if="result.type === 'document'">
-                      <p class="font-medium truncate text-neutral-900">
-                        {{ result.data.properties?.title || "Untitled Document" }}
-                      </p>
-                      <p class="text-size-small text-neutral-900 truncate flex items-center gap-2">
-                        <span>/{{ result.data.slug }}</span>
-                        <span v-if="getLastVisited(result.data)" class="text-neutral">
-                          • {{ formatRelativeTime(getLastVisited(result.data)) }}
-                        </span>
-                      </p>
-                    </template>
-                    <!-- Action content -->
-                    <template v-else>
-                      <p class="font-medium truncate text-neutral-900">
-                        {{ result.data.title || result.id }}
-                      </p>
-                      <p class="text-size-small text-neutral truncate flex items-center gap-2">
-                        <span v-if="result.data.description">{{ result.data.description }}</span>
-                      </p>
-                    </template>
+                  <div class="flex-1 min-w-0 flex items-center gap-2">
+                    <span class="text-size-medium truncate font-normal">
+                      {{ result.type === "document"
+                        ? (result.data.properties?.title || "Untitled Document")
+                        : (result.data.title || result.id) }}
+                    </span>
+                    <span
+                      v-if="result.type === 'document' && getLastVisited(result.data)"
+                      class="text-size-small text-neutral flex-none"
+                    >
+                      {{ formatRelativeTime(getLastVisited(result.data)) }}
+                    </span>
+                    <span
+                      v-if="result.type === 'action' && result.data.description"
+                      class="text-size-small text-neutral truncate"
+                    >
+                      {{ result.data.description }}
+                    </span>
                   </div>
-
-                  <kbd
-                    v-for="shortcut in Actions.getShortcutsForAction(result.id)"
-                    :key="shortcut"
-                    class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded-sm font-mono text-[10px] capitalize"
-                  >
-                    {{ shortcut }}
-                  </kbd>
-                </div>
-                <div
-                  class="svg-icon"
-                  :class="twMerge(
-                    'w-4 h-4 text-neutral flex-none invisible',
-                    index === selectedIndex && 'visible'
-                  )"
-                  v-html="chevronRightThinIcon"
-                />
-              </button>
-            </component>
+                  <div class="flex items-center gap-1 flex-none">
+                    <kbd
+                      v-for="shortcut in Actions.getShortcutsForAction(result.id)"
+                      :key="shortcut"
+                      class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded-sm font-mono text-[10px] capitalize"
+                    >
+                      {{ shortcut }}
+                    </kbd>
+                  </div>
+                  <div
+                    class="svg-icon w-3.5 h-3.5 text-neutral flex-none transition-opacity"
+                    :class="index === selectedIndex ? 'opacity-100' : 'opacity-0'"
+                    v-html="chevronRightThinIcon"
+                  />
+                </button>
+              </component>
+            </template>
           </div>
 
-          <div class="px-4 py-3 bg-neutral-100 border-t border-neutral-100 flex items-center justify-between text-size-small text-neutral">
-            <div class="flex items-center gap-4">
+          <!-- Footer -->
+          <div class="px-4 py-2 bg-neutral-50 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral rounded-b-xl">
+            <div class="flex items-center gap-3">
               <span class="flex items-center gap-1">
                 <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">↑↓</kbd>
                 Navigate
               </span>
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">Enter</kbd>
+                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">↵</kbd>
                 Select
               </span>
             </div>
@@ -329,14 +313,12 @@ Actions.register("ui:toggle:palatte", {
 <style scoped>
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s ease;
 }
-
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
 }
-
 kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
