@@ -3,28 +3,87 @@ title: Build and install an extension
 keywords: extension, plugin, install, manifest, activate
 ---
 
-ZIP layout: manifest.json at root + dist/ with plain ESM JS.
-Minimum manifest:
-   {
-     "id": "timeline",
-     "name": "Timeline",
-     "version": "1.0.4",
-     "description": "Visualize documents on a Gantt-style timeline using date properties",
-     "entries": {
-       "frontend": "dist/main.js",
-       "view": "dist/view.js"
-     },
-     "routes": [
-       {
-         "path": "timeline",
-         "title": "Timeline",
-         "menuItem": { "title": "Timeline" }
-       }
-     ]
-   }
-IDs: lowercase alphanumeric + hyphens. Frontend entry exports activate(ctx)/deactivate(ctx);
-ctx provides ctx.actions.register, ctx.suggestions.register, ctx.views.register, ctx.api.
-Jobs: manifest "jobs":[{"id","name","entry","inputs","outputs"}]; entry uses worker_threads
-and posts {type:"result",success:true,outputs:{...}}.
-Install: zip the folder, then: extension install my-ext.zip
-Only install extensions when the user explicitly asks.
+## Rules — read first
+- `frontend` entry runs on every page: register actions/suggestions only, no rendering
+- `view` entry renders a full-page route: its `activate` MUST call `ctx.views.register(path, fn)` where `path` exactly matches the route path string in the manifest — any mismatch causes a runtime "no view registered" error
+- Never call `activate` or `deactivate` yourself — the framework calls them and passes `ctx`
+- Never use `ctx` outside of `activate`/`deactivate`
+- If manifest has `routes`, it MUST also have a `view` entry (otherwise the route can never render)
+- If manifest has a `view` entry, it MUST have `routes` (otherwise the view is never loaded)
+- IDs: lowercase alphanumeric + hyphens only
+
+## Manifest — actions/suggestions only (no page)
+```json
+{
+  "id": "my-ext",
+  "name": "My Extension",
+  "version": "1.0.0",
+  "description": "...",
+  "entries": { "frontend": "dist/main.js" }
+}
+```
+
+## Manifest — with a full-page route
+```json
+{
+  "id": "my-ext",
+  "name": "My Extension",
+  "version": "1.0.0",
+  "entries": {
+    "frontend": "dist/main.js",
+    "view": "dist/view.js"
+  },
+  "routes": [
+    { "path": "my-ext", "title": "My Extension", "menuItem": { "title": "My Extension" } }
+  ]
+}
+```
+
+## dist/main.js (frontend entry — always present)
+```js
+export function activate(ctx) {
+  ctx.actions.register('my-ext.hello', {
+    title: 'Say hello',
+    run: async () => { alert('hello'); },
+  });
+}
+export function deactivate(ctx) {
+  ctx.actions.unregister('my-ext.hello');
+}
+```
+
+## dist/view.js (view entry — only when manifest has "view" + "routes")
+The path passed to `ctx.views.register` MUST be the same string as `routes[n].path` in the manifest:
+```js
+export function activate(ctx) {
+  ctx.views.register('my-ext', (container) => {
+    container.innerHTML = '<h1>My Extension</h1>';
+    return () => { container.innerHTML = ''; }; // optional cleanup
+  });
+}
+export function deactivate(ctx) {
+  ctx.views.unregister('my-ext');
+}
+```
+
+## Jobs
+Add to manifest:
+```json
+"jobs": [{ "id": "my-job", "name": "My Job", "entry": "dist/job.js" }]
+```
+Job entry (dist/job.js) runs in worker_threads:
+```js
+const { parentPort } = require('worker_threads');
+parentPort.postMessage({ type: 'result', success: true, outputs: { result: 'done' } });
+```
+
+## Build and install
+Always zip from INSIDE the extension directory so manifest.json lands at the ZIP root:
+```bash
+cd my-ext
+zip ../my-ext.zip .
+extension install ../my-ext.zip
+```
+Do NOT run `zip my-ext.zip my-ext/` from outside — manifest.json would be nested under my-ext/ and the install will fail with "missing manifest.json".
+
+Only install when the user explicitly asks.

@@ -88,10 +88,17 @@ async function handleInit(
   };
 
   const mainJs = `export function activate(ctx) {
-  // ctx.actions.register, ctx.suggestions.register, ctx.views.register, ctx.api
+  ctx.actions.register('${nameArg}.hello', {
+    title: 'Hello from ${manifest.name}',
+    run: async () => {
+      alert('Hello from ${manifest.name}!');
+    },
+  });
 }
 
-export function deactivate(ctx) {}
+export function deactivate(ctx) {
+  ctx.actions.unregister('${nameArg}.hello');
+}
 `;
 
   await ctx.fs.mkdir(distDir, { recursive: true });
