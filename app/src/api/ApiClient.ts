@@ -1486,6 +1486,20 @@ export class ApiClient {
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}`,
       );
     },
+
+    /**
+     * Download the raw extension ZIP package
+     */
+    downloadPackage: async (spaceId: string, extensionId: string): Promise<Blob> => {
+      const response = await fetch(
+        `/api/v1/spaces/${spaceId}/extensions/${extensionId}/package`,
+      );
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Download failed" }));
+        throw new Error(error.error || `Download failed: ${response.status}`);
+      }
+      return await response.blob();
+    },
   };
 
   /**

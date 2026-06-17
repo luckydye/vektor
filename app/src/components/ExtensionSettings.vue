@@ -1,23 +1,9 @@
 <template>
   <div class="flex-1 flex flex-col">
     <div class="pt-6 space-y-4">
-      <!-- Error Display -->
+      <!-- Upload Error -->
       <div v-if="uploadError" class="p-3 bg-red-50 border border-red-200 rounded-md">
         <p class="text-size-medium text-red-600">{{ uploadError }}</p>
-      </div>
-
-      <div
-        v-if="extensionErrors.length > 0"
-        class="p-3 bg-amber-50 border border-amber-200 rounded-md"
-      >
-        <p class="text-size-medium text-amber-800 font-medium mb-1">
-          Some installed extensions could not be loaded:
-        </p>
-        <ul class="text-size-small text-amber-800 space-y-0.5">
-          <li v-for="item in extensionErrors" :key="`${item.id}:${item.error}`">
-            <span class="font-mono">{{ item.id }}</span>: {{ item.error }}
-          </li>
-        </ul>
       </div>
 
       <!-- Loading State -->
@@ -26,7 +12,7 @@
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="!extensions || extensions.length === 0" class="text-center py-8">
+      <div v-else-if="allExtensions.length === 0" class="text-center py-8">
         <p class="text-size-medium text-neutral-900 mb-2">No extensions installed</p>
         <p class="text-size-small text-neutral">Upload a .zip extension package to get started</p>
       </div>
@@ -44,6 +30,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-neutral-100">
+            <!-- Valid extensions -->
             <tr v-for="ext in extensions" :key="ext.id" class="hover:bg-neutral-50">
               <td class="px-4 py-2.5">
                 <div class="font-medium text-neutral-900">{{ ext.name }}</div>
@@ -54,18 +41,54 @@
               <td class="px-4 py-2.5">
                 <div class="flex flex-wrap gap-1">
                   <span v-if="ext.entries.frontend" class="px-1.5 py-0.5 text-size-small bg-blue-50 text-blue-700 rounded-sm whitespace-nowrap">frontend</span>
-                  <span v-if="!ext.entries.frontend" class="text-size-small text-neutral-400 italic">None</span>
+                  <span v-if="ext.entries.view" class="px-1.5 py-0.5 text-size-small bg-purple-50 text-purple-700 rounded-sm whitespace-nowrap">view</span>
+                  <span v-if="!ext.entries.frontend && !ext.entries.view" class="text-size-small text-neutral-400 italic">None</span>
                 </div>
               </td>
               <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(ext.updatedAt) }}</td>
               <td class="px-4 py-2.5 whitespace-nowrap text-right">
-                <button
-                  @click="handleDelete(ext.id)"
-                  :disabled="isDeleting"
-                  class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
-                >
-                  Delete
-                </button>
+                <span class="flex items-center justify-end gap-3">
+                  <button
+                    @click="downloadPackage(ext.id)"
+                    class="text-size-small text-neutral hover:text-neutral-900"
+                  >
+                    Download
+                  </button>
+                  <button
+                    @click="handleDelete(ext.id)"
+                    :disabled="isDeleting"
+                    class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                </span>
+              </td>
+            </tr>
+            <!-- Broken extensions -->
+            <tr v-for="item in extensionErrors" :key="item.id" class="bg-amber-50 hover:bg-amber-100">
+              <td class="px-4 py-2.5">
+                <div class="font-mono text-neutral-900">{{ item.id }}</div>
+                <div class="text-size-small text-amber-700 mt-0.5">{{ item.error }}</div>
+              </td>
+              <td class="px-4 py-2.5 text-neutral-400">—</td>
+              <td class="px-4 py-2.5 text-neutral-400">—</td>
+              <td class="px-4 py-2.5 text-neutral-400">—</td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-right">
+                <span class="flex items-center justify-end gap-3">
+                  <button
+                    @click="downloadPackage(item.id)"
+                    class="text-size-small text-neutral hover:text-neutral-900"
+                  >
+                    Download
+                  </button>
+                  <button
+                    @click="handleDelete(item.id)"
+                    :disabled="isDeleting"
+                    class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                </span>
               </td>
             </tr>
           </tbody>
@@ -94,6 +117,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useExtensions } from "../composeables/useExtensions.ts";
 
 const {
@@ -105,27 +129,21 @@ const {
   isDeleting,
   uploadExtension,
   deleteExtension,
+  downloadPackage,
 } = useExtensions();
+
+const allExtensions = computed(() => extensions.value.length + extensionErrors.value.length);
 
 async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
-
-  // Reset the input immediately so the same file can be selected again
   input.value = "";
-
-  if (!file) {
-    return;
-  }
-
+  if (!file) return;
   await uploadExtension(file);
 }
 
 async function handleDelete(extensionId: string) {
-  if (!confirm(`Are you sure you want to delete this extension?`)) {
-    return;
-  }
-
+  if (!confirm(`Are you sure you want to delete this extension?`)) return;
   await deleteExtension(extensionId);
 }
 
