@@ -108,8 +108,11 @@ Always zip from INSIDE the extension directory so manifest.json lands at the ZIP
 ```bash
 cd my-ext
 zip ../my-ext.zip .
+zipinfo ../my-ext.zip   # verify: manifest.json must appear at the root, NOT under my-ext/
 extension install ../my-ext.zip
 ```
 Do NOT run `zip my-ext.zip my-ext/` from outside — manifest.json would be nested under my-ext/ and the install will fail with "missing manifest.json".
+
+Run `zipinfo` after zipping and before installing. If manifest.json does not appear at the root of the listing, the zip is wrong — recreate it from inside the directory.
 
 Only install when the user explicitly asks.
