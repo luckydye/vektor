@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, Teleport, watch } from "vue";
-import { boltIcon, homeIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
+import { boltIcon, checkThinIcon, homeIcon, pencilIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
 import { Actions } from "../utils/actions.ts";
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
 import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
@@ -32,6 +32,7 @@ const {
 } = useSpace();
 
 const showCreateDialog = ref(false);
+const documentTree = ref<InstanceType<typeof DocumentTree> | null>(null);
 
 const activeRoute = computed(() => {
   let activeRoute = "";
@@ -229,13 +230,23 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 
     <!-- Document Tree -->
     <div class="@max-xs:invisible px-5xs py-m">
-      <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50 px-4xs mb-2">{{ t('Categories') }}</h3>
+      <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
+        <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">{{ t('Categories') }}</h3>
+        <button
+          v-if="documentTree"
+          @click="documentTree.toggleEditMode()"
+          class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
+          :title="documentTree.isEditMode ? 'Done editing' : 'Edit categories'"
+        >
+          <div v-if="!documentTree.isEditMode" class="svg-icon w-4 h-4" v-html="pencilIcon" />
+          <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
+        </button>
+      </div>
       <div v-if="isLoading && !hasEverLoaded" class="px-5xs space-y-1 hidden lg:flex flex-col">
         <!-- Category skeleton -->
         <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
           <!-- Category header -->
           <div class="flex items-center gap-2 p-2 rounded-md">
-            <div class="w-4 h-4 bg-neutral-200 rounded-sm animate-pulse flex-none" />
             <div class="w-6 h-6 bg-neutral-200 rounded-sm flex-none animate-pulse" />
             <div class="h-4 bg-neutral-200 rounded-sm w-24 animate-pulse" />
           </div>
@@ -249,7 +260,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         </div>
       </div>
 
-      <DocumentTree v-show="!isLoading" />
+      <DocumentTree ref="documentTree" v-show="!isLoading" />
     </div>
   </nav>
 </template>

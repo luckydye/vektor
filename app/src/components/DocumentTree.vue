@@ -322,21 +322,12 @@ onUnmounted(() => {
   window.removeEventListener("document-parent-change", handleDocumentParentChange);
   window.removeEventListener("document-category-change", handleDocumentCategoryChange);
 });
+
+defineExpose({ isEditMode, toggleEditMode });
 </script>
 
 <template>
   <div class="document-tree">
-    <!-- Edit Button -->
-    <div class="flex justify-end px-4xs mb-2 -mt-8">
-      <button
-        @click="toggleEditMode"
-        class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
-        :title="isEditMode ? 'Done editing' : 'Edit categories'"
-      >
-        <div v-if="!isEditMode" class="svg-icon w-4 h-4" v-html="pencilIcon" />
-        <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
-      </button>
-    </div>
 
     <div v-if="!isEditMode && categories.length === 0" class="px-3 py-4 text-center">
       <p class="text-size-medium text-neutral-500">No categories yet</p>
