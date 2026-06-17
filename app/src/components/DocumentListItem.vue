@@ -28,6 +28,19 @@ const title = computed(() => {
   return "Untitled";
 });
 
+const docType = computed(() => props.document.type || "document");
+
+const TYPE_STYLES: Record<string, string> = {
+  canvas:   "bg-violet-100 text-violet-600",
+  csv:      "bg-emerald-100 text-emerald-700",
+  file:     "bg-neutral-100 text-neutral-500",
+  document: "bg-neutral-100 text-neutral-500",
+};
+
+const typeStyle = computed(
+  () => TYPE_STYLES[docType.value] ?? "bg-neutral-100 text-neutral-500",
+);
+
 const visibleProperties = computed(() => {
   if (!("properties" in props.document) || !props.document.properties) return [];
   const excluded = ["title", "name"];
@@ -51,7 +64,7 @@ const isSearchResult = (
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
   >
     <div
-      class="grid grid-cols-[32px_1fr_200px_140px] border-b border-neutral-100 group transition-colors hover:transition-none"
+      class="grid grid-cols-[32px_1fr_80px_200px_140px] border-b border-neutral-100 group transition-colors hover:transition-none"
       :class="selected ? 'bg-primary-50' : 'hover:bg-neutral-50'"
     >
       <!-- Checkbox -->
@@ -68,10 +81,12 @@ const isSearchResult = (
         />
       </div>
 
-      <!-- Link: title only -->
+      <!-- Link spans remaining 4 columns -->
       <a
-        :href="`/${spaceSlug}/doc/${document.slug}`"
-        class="col-span-3 grid grid-cols-[1fr_200px_140px] items-start min-w-0"
+        :href="document.fileUrl ?? `/${spaceSlug}/doc/${document.slug}`"
+        :target="document.fileUrl ? '_blank' : undefined"
+        :rel="document.fileUrl ? 'noopener noreferrer' : undefined"
+        class="col-span-4 grid grid-cols-[1fr_80px_200px_140px] items-start min-w-0"
       >
         <!-- Title -->
         <div class="flex items-center gap-2.5 py-2.5 pr-3 min-w-0">
@@ -89,6 +104,16 @@ const isSearchResult = (
               v-html="document.snippet"
             />
           </div>
+        </div>
+
+        <!-- Type -->
+        <div class="flex items-center py-2.5 pr-3">
+          <span
+            class="px-1.5 py-0.5 rounded-sm text-[11px] font-medium capitalize"
+            :class="typeStyle"
+          >
+            {{ docType }}
+          </span>
         </div>
 
         <!-- Properties -->

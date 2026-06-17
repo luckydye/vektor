@@ -36,6 +36,21 @@ const { data: availableProperties } = useQuery({
   },
 });
 
+const typeValues = computed(
+  () => availableProperties.value?.find((p) => p.name === "type")?.values ?? [],
+);
+
+const nonTypeProperties = computed(
+  () => availableProperties.value?.filter((p) => p.name !== "type") ?? [],
+);
+
+const TYPE_STYLES: Record<string, string> = {
+  canvas:   "bg-violet-100 text-violet-600",
+  csv:      "bg-emerald-100 text-emerald-700",
+  file:     "bg-neutral-100 text-neutral-500",
+  document: "bg-neutral-100 text-neutral-500",
+};
+
 const activeDateFilter = computed(() =>
   props.modelValue.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
 );
@@ -157,13 +172,33 @@ const hasAnyFilters = computed(() => props.modelValue.length > 0);
       </button>
     </div>
 
+    <!-- Type -->
+    <template v-if="typeValues.length > 0">
+      <div class="px-3 pt-3 pb-1 border-t border-neutral-100">
+        <div class="text-[11px] font-medium text-neutral uppercase tracking-wider mb-1">Type</div>
+      </div>
+      <div class="px-3 pb-3 flex flex-wrap gap-1">
+        <button
+          v-for="tv in typeValues"
+          :key="tv"
+          @click="toggleFilter('type', tv)"
+          class="px-2 py-0.5 rounded-md text-[11px] font-medium capitalize border transition-colors hover:transition-none"
+          :class="hasActiveFilter('type', tv)
+            ? (TYPE_STYLES[tv] ?? 'bg-neutral-100 text-neutral-500') + ' border-transparent'
+            : 'bg-background text-neutral-600 border-neutral-200 hover:border-neutral-300'"
+        >
+          {{ tv }}
+        </button>
+      </div>
+    </template>
+
     <!-- Properties -->
-    <template v-if="availableProperties && availableProperties.length > 0">
+    <template v-if="nonTypeProperties.length > 0">
       <div class="px-3 pt-2 pb-1 border-t border-neutral-100">
         <div class="text-[11px] font-medium text-neutral uppercase tracking-wider">Properties</div>
       </div>
       <div class="px-1 pb-2">
-        <div v-for="prop in availableProperties" :key="prop.name" class="mb-0.5">
+        <div v-for="prop in nonTypeProperties" :key="prop.name" class="mb-0.5">
           <button
             @click="toggleProperty(prop.name)"
             class="w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 text-size-small transition-colors hover:transition-none text-neutral-700 hover:bg-primary-50"

@@ -31,9 +31,7 @@ function extractDocxText(buffer: Buffer): string {
     if (!xmlBytes) return "";
     const xml = new TextDecoder().decode(xmlBytes);
     // Preserve paragraph breaks, then strip tags
-    const withBreaks = xml
-      .replace(/<w:p[ >]/g, "\n<w:p ")
-      .replace(/<w:p\/>/g, "\n");
+    const withBreaks = xml.replace(/<w:p[ >]/g, "\n<w:p ").replace(/<w:p\/>/g, "\n");
     return stripXmlTags(withBreaks);
   } catch {
     return "";
@@ -69,7 +67,42 @@ function extractPptxText(buffer: Buffer): string {
 }
 
 /**
- * Extract searchable text from an uploaded file.
+ * Extract searchable text from a file buffer.
+ * Returns null for file types where extraction is not supported (images, video, etc.).
+ */
+export function extractFileTextFromBuffer(
+  buffer: Buffer,
+  originalName: string,
+  mimeType: string | undefined,
+): string | null {
+  const ext = extension(originalName);
+
+  if (TEXT_MIME_TYPES.has(mimeType ?? "") || TEXT_EXTENSIONS.has(ext)) {
+    return new TextDecoder().decode(buffer).slice(0, 512_000);
+  }
+
+  const isDocx =
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    ext === "docx";
+  if (isDocx) return extractDocxText(buffer).slice(0, 512_000);
+
+  const isXlsx =
+    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    ext === "xlsx";
+  if (isXlsx) return extractXlsxText(buffer).slice(0, 512_000);
+
+  const isPptx =
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    ext === "pptx";
+  if (isPptx) return extractPptxText(buffer).slice(0, 512_000);
+
+  return null;
+}
+
+/**
+ * Extract searchable text from a file on disk.
  * Returns null for file types where extraction is not supported (images, video, etc.).
  */
 export async function extractFileText(
@@ -77,37 +110,7 @@ export async function extractFileText(
   originalName: string,
   mimeType: string | undefined,
 ): Promise<string | null> {
-  const ext = extension(originalName);
-
-  if (TEXT_MIME_TYPES.has(mimeType ?? "") || TEXT_EXTENSIONS.has(ext)) {
-    const text = await readFile(filePath, "utf-8");
-    // Cap at 500 KB of text to keep embeddings reasonable
-    return text.slice(0, 512_000);
-  }
-
-  const isDocx =
-    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    ext === "docx";
-  if (isDocx) {
-    const buf = await readFile(filePath);
-    return extractDocxText(buf).slice(0, 512_000);
-  }
-
-  const isXlsx =
-    mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    ext === "xlsx";
-  if (isXlsx) {
-    const buf = await readFile(filePath);
-    return extractXlsxText(buf).slice(0, 512_000);
-  }
-
-  const isPptx =
-    mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-    ext === "pptx";
-  if (isPptx) {
-    const buf = await readFile(filePath);
-    return extractPptxText(buf).slice(0, 512_000);
-  }
-
-  return null;
+  const buf = await readFile(filePath).catch(() => null);
+  if (!buf) return null;
+  return extractFileTextFromBuffer(buf, originalName, mimeType);
 }

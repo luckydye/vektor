@@ -35,7 +35,7 @@ import CommentManager from "./CommentManager.vue";
 import DiffView from "./DiffView.vue";
 import WorkflowView from "./WorkflowView.vue";
 import "../editor/elements/toolbar.ts";
-import "../elements/document-statusbar.ts";
+import "../components/document-statusbar.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,

@@ -300,12 +300,18 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
 
 /** Ephemeral full-text index of uploaded files. Fully rebuildable by scanning the uploads directory. */
 export const file = sqliteTable("file", {
-  /** Relative path under uploads/{spaceId}/, e.g. "{documentId}/{filename}" */
+  /** Content-addressable storage key under uploads/{spaceId}/, e.g. "{hash[0:2]}/{hash}.{ext}" */
   path: text("path").primaryKey(),
-  /** Document this file belongs to, if scoped to one */
+  /** Document this file belongs to, if scoped to one. Null = standalone upload. */
   documentId: text("document_id").references((): AnySQLiteColumn => document.id, {
     onDelete: "cascade",
   }),
+  /** Original filename as uploaded (not the randomised on-disk name) */
+  originalName: text("original_name"),
+  mimeType: text("mime_type"),
+  /** Relative URL to access the file, e.g. /api/v1/spaces/{spaceId}/uploads/{key} */
+  url: text("url"),
+  updatedAt: integer("updated_at", { mode: "timestamp" }),
   /** Text extracted from the file for search */
   extractedText: text("extracted_text"),
 });

@@ -399,7 +399,7 @@ const batchArchive = async () => {
 
           <!-- Shared table header / batch toolbar -->
           <div
-            class="grid grid-cols-[32px_1fr_200px_140px] border-b border-neutral-100 sticky top-0 z-10 transition-colors"
+            class="grid grid-cols-[32px_1fr_80px_200px_140px] border-b border-neutral-100 sticky top-0 z-10 transition-colors"
             :class="selectedIds.size > 0 ? 'bg-primary-50' : 'bg-background'"
           >
             <div class="flex items-center justify-center py-2">
@@ -427,11 +427,12 @@ const batchArchive = async () => {
                   </span>
                 </template>
               </div>
+              <div class="py-2 text-[11px] font-medium text-neutral uppercase tracking-wider">Type</div>
               <div class="py-2 text-[11px] font-medium text-neutral uppercase tracking-wider">Properties</div>
               <div class="py-2 pr-4 text-right text-[11px] font-medium text-neutral uppercase tracking-wider">Modified</div>
             </template>
             <!-- Batch toolbar -->
-            <div v-else class="col-span-3 flex items-center gap-2 py-2 pr-4">
+            <div v-else class="col-span-4 flex items-center gap-2 py-2 pr-4">
               <span class="text-size-small font-medium text-primary-700">{{ selectedIds.size }} selected</span>
               <button @click="deselectAll" class="p-0.5 text-neutral hover:text-neutral-800 hover:bg-neutral-200 rounded-sm transition-colors">
                 <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />

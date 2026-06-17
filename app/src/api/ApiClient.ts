@@ -58,6 +58,7 @@ export interface Document {
   updatedAt: Date | string;
   createdBy: string;
   updatedBy: string;
+  fileUrl?: string;
 }
 
 export interface DocumentWithProperties extends Document {
