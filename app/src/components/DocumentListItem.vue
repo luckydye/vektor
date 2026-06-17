@@ -89,9 +89,9 @@ const isSearchResult = (
         class="col-span-4 grid grid-cols-[1fr_80px_200px_140px] items-start min-w-0"
       >
         <!-- Title -->
-        <div class="flex items-center gap-2.5 py-2.5 pr-3 min-w-0">
+        <div class="flex items-start gap-2.5 py-2.5 pr-3 min-w-0">
           <div
-            class="svg-icon w-4 h-4 shrink-0 text-neutral-300 group-hover:text-neutral-400 transition-colors"
+            class="svg-icon w-4 h-4 shrink-0 text-neutral-300 group-hover:text-neutral-400 transition-colors mt-0.5"
             v-html="documentIcon"
           />
           <div class="flex-1 min-w-0">
