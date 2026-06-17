@@ -65,13 +65,10 @@ const addFilter = (key: string, value: string | null) => {
 };
 
 const removeFilter = (index: number) => {
-  const removed = props.modelValue[index];
   const newFilters = [...props.modelValue];
   newFilters.splice(index, 1);
   emit("update:modelValue", newFilters);
-  if (removed.key !== DATE_FILTER_KEY) {
-    emit("search");
-  }
+  emit("search");
 };
 
 const removeFilterByKeyValue = (key: string, value: string | null) => {

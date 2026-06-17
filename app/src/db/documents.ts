@@ -4,7 +4,7 @@ import { extractFileTextFromBuffer } from "../files/extractText.ts";
 import { getFileStorage } from "../files/storage.ts";
 import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
-import { slugify } from "../utils/utils.ts";
+import { normalizeTimestamp, slugify } from "../utils/utils.ts";
 import {
   filterReadableResources,
   grantPermission,
@@ -1482,7 +1482,7 @@ export async function searchDocuments(
     const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     accessibleResults = accessibleResults.filter((r) => {
-      const ua = new Date(r.updatedAt);
+      const ua = normalizeTimestamp(r.updatedAt as string | number | Date);
       for (const df of dateFilters) {
         switch (df.value) {
           case "today":

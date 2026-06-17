@@ -239,15 +239,22 @@ const handleSearch = () => {
 
 const clear = () => {
   searchQuery.value = "";
-  hasSearched.value = false;
   committedQuery.value = "";
-  committedFilters.value = [];
+  if (activeFilters.value.length > 0) {
+    committedFilters.value = [...activeFilters.value];
+    hasSearched.value = true;
+  } else {
+    hasSearched.value = false;
+    committedFilters.value = [];
+  }
   updateUrlParams();
 };
 
 const clearAll = () => {
   clear();
   activeFilters.value = [];
+  committedFilters.value = [];
+  hasSearched.value = false;
   updateUrlParams();
 };
 
