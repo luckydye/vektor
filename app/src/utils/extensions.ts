@@ -602,4 +602,6 @@ export class ExtensionViewElement extends HTMLElement {
   }
 }
 
-customElements.define("extension-view", ExtensionViewElement);
+if (typeof customElements !== "undefined") {
+  customElements.define("extension-view", ExtensionViewElement);
+}
