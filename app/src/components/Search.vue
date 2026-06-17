@@ -461,15 +461,6 @@ const batchArchive = async (ids: string[]) => {
             </span>
             <span v-else>No documents match your filters</span>
           </p>
-          <div class="max-w-sm mx-auto p-5 bg-neutral-50 border border-neutral-100 rounded-lg text-left">
-            <p class="font-semibold text-neutral-700 mb-3 text-size-small">Search tips</p>
-            <ul class="list-disc pl-5 space-y-1.5 text-size-small text-neutral-600">
-              <li>Use natural language: <code class="px-1 py-0.5 bg-neutral-200 rounded-sm text-[11px] font-mono">database design basics</code></li>
-              <li>Exact phrases: <code class="px-1 py-0.5 bg-neutral-200 rounded-sm text-[11px] font-mono">"programming language"</code></li>
-              <li>Try removing some filters</li>
-              <li>Check you have access to the documents</li>
-            </ul>
-          </div>
         </div>
 
         <!-- Loading documents -->

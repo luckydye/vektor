@@ -264,6 +264,17 @@ async function handleResolve(reference: string | null) {
   clickedAnchorRef.value = null;
 }
 
+function handleCloseThread() {
+  if (
+    activeReference.value &&
+    isInlineAnchorReference(activeReference.value) &&
+    commentsForThread.value.length === 0
+  ) {
+    removeCommentAnchorMark(activeReference.value);
+  }
+  activeReference.value = null;
+}
+
 function handleMouseLeave() {
   showAddBubble.value = false;
   fadeAddBubble.value = false;
@@ -328,7 +339,7 @@ onUnmounted(() => {
         @submit="handleSubmit"
         @delete="handleDeleteComment"
         @resolve="handleResolve(activeReference)"
-        @close="activeReference = null"
+        @close="handleCloseThread"
       />
     </div>
 
