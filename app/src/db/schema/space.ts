@@ -297,3 +297,15 @@ export const aiChatSession = sqliteTable("ai_chat_session", {
   conversationHistory: text("conversation_history").notNull(),
   shellSnapshot: text("shell_snapshot"),
 });
+
+/** Ephemeral full-text index of uploaded files. Fully rebuildable by scanning the uploads directory. */
+export const file = sqliteTable("file", {
+  /** Relative path under uploads/{spaceId}/, e.g. "{documentId}/{filename}" */
+  path: text("path").primaryKey(),
+  /** Document this file belongs to, if scoped to one */
+  documentId: text("document_id").references((): AnySQLiteColumn => document.id, {
+    onDelete: "cascade",
+  }),
+  /** Text extracted from the file for search */
+  extractedText: text("extracted_text"),
+});

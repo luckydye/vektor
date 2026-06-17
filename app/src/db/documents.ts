@@ -1,3 +1,5 @@
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
@@ -15,7 +17,8 @@ import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import { extractMentionsFromHtml } from "./mentions.ts";
 import { createRevision, decompressHtml } from "./revisions.ts";
-import { document, property, revision } from "./schema/space.ts";
+import { document, file as fileTable, property, revision } from "./schema/space.ts";
+import { extractFileText } from "../utils/extractFileText.ts";
 import {
   buildDocumentSearchText,
   buildSearchSnippet,
@@ -121,8 +124,34 @@ async function updateDocumentEmbedding(
     .where(eq(property.documentId, documentId))
     .all();
 
+  // Rebuild the file index for this document from the filesystem
+  const uploadsDir = join(process.cwd(), "data", "uploads", spaceId, documentId);
+  const fileTexts: string[] = [];
+  try {
+    const entries = await readdir(uploadsDir);
+    // Clear stale entries and re-index current files
+    await db.delete(fileTable).where(eq(fileTable.documentId, documentId));
+    for (const entry of entries) {
+      const filePath = join(uploadsDir, entry);
+      const extracted = await extractFileText(filePath, entry, undefined);
+      if (extracted) {
+        fileTexts.push(`[${entry}]\n${extracted}`);
+        await db
+          .insert(fileTable)
+          .values({ path: `${documentId}/${entry}`, documentId, extractedText: extracted })
+          .onConflictDoUpdate({
+            target: fileTable.path,
+            set: { extractedText: extracted },
+          });
+      }
+    }
+  } catch {
+    // No uploads directory for this document — nothing to index
+  }
+
   const properties = Object.fromEntries(props.map((item) => [item.key, item.value]));
-  const searchText = buildDocumentSearchText(doc.content, properties);
+  const fileText = fileTexts.join("\n\n");
+  const searchText = buildDocumentSearchText(doc.content, properties, fileText || undefined);
   const searchEmbedding = serializeEmbedding(await embedText(searchText));
 
   await db

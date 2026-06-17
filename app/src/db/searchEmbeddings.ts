@@ -91,13 +91,14 @@ async function remoteEmbedding(text: string): Promise<number[]> {
 export function buildDocumentSearchText(
   content: string,
   properties: Record<string, string>,
+  fileText?: string,
 ): string {
   const title = properties.title?.trim() ?? "";
   const propertyText = Object.entries(properties)
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
 
-  return [title, title, propertyText, content].filter(Boolean).join("\n\n");
+  return [title, title, propertyText, content, fileText].filter(Boolean).join("\n\n");
 }
 
 export async function embedText(text: string): Promise<number[]> {
