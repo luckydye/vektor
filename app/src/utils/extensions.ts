@@ -490,10 +490,67 @@ export class Extensions {
   }
 
   /**
+   * Render an extension view into a container without tracking cleanup globally.
+   * Returns a cleanup function, or null if the view could not be rendered.
+   * Suitable for rendering multiple independent inline instances.
+   */
+  async renderInlineView(
+    extensionId: string,
+    routePath: string,
+    container: HTMLElement,
+  ): Promise<(() => void) | null> {
+    const loaded = this.loaded.get(extensionId);
+    if (!loaded) {
+      console.error(`Extension '${extensionId}' not loaded`);
+      return null;
+    }
+
+    // Load view module if not loaded yet
+    if (!loaded.viewModule && loaded.info.entries.view && this.spaceId) {
+      const assetUrl = getExtensionAssetUrl(
+        this.spaceId,
+        extensionId,
+        loaded.info.entries.view,
+        loaded.info.updatedAt,
+      );
+      try {
+        const module = (await import(/* @vite-ignore */ assetUrl)) as ExtensionModule;
+        loaded.viewModule = module;
+        const ctx = this.createContext(extensionId, loaded);
+        if (module.activate) {
+          await module.activate(ctx);
+        }
+      } catch (err) {
+        console.error(`Failed to load view module for '${extensionId}':`, err);
+        return null;
+      }
+    }
+
+    const renderFn = loaded.registeredViews.get(routePath);
+    if (!renderFn) {
+      console.error(
+        `Extension '${extensionId}' has no view registered for route '${routePath}'`,
+      );
+      return null;
+    }
+
+    try {
+      const cleanup = renderFn(container);
+      return typeof cleanup === "function" ? cleanup : () => {};
+    } catch (err) {
+      console.error(
+        `Error rendering inline view for '${extensionId}' route '${routePath}':`,
+        err,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Get all routes with specific placement
    */
   getRoutesWithPlacement(
-    placement: "page" | "home-top",
+    placement: "page" | "home-top" | "document",
   ): Array<{ extensionId: string; route: ExtensionRoute }> {
     const routes: Array<{ extensionId: string; route: ExtensionRoute }> = [];
     for (const loaded of this.loaded.values()) {

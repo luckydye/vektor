@@ -10,7 +10,7 @@ export interface ExtensionRoute {
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  placements?: Array<"page" | "home-top">;
+  placements?: Array<"page" | "home-top" | "document">;
 }
 
 export interface JobIOField {

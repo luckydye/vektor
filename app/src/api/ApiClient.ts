@@ -203,8 +203,8 @@ export interface ExtensionRoute {
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  /** Where this view should be placed. Can include "page" (default) and/or home placements */
-  placements?: Array<"page" | "home-top">;
+  /** Where this view should be placed. Can include "page" (default), home placements, or "document" for inline document embedding */
+  placements?: Array<"page" | "home-top" | "document">;
 }
 
 export interface ExtensionJobField {

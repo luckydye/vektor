@@ -2,7 +2,9 @@ import { type Editor, Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
-import { addIcon } from "~/src/assets/icons.ts";
+import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
+import { addIcon, puzzleIcon } from "~/src/assets/icons.ts";
+import { extensions } from "~/src/utils/extensions.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 
 export interface TrailingNodePlusOptions {
@@ -18,7 +20,7 @@ interface ContentItem {
 }
 
 function createContentItems(spaceId: string, documentId?: string): ContentItem[] {
-  return [
+  const items: ContentItem[] = [
     {
       title: "Table",
       description: "Insert a table",
@@ -80,6 +82,23 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       },
     },
   ];
+
+  for (const { extensionId, route } of extensions.getRoutesWithPlacement("document")) {
+    items.push({
+      title: route.menuItem?.title || route.title || extensionId,
+      description: route.description || "Extension view",
+      icon: route.menuItem?.icon || puzzleIcon,
+      command: (editor) => {
+        editor
+          .chain()
+          .focus()
+          .insertExtensionView({ extensionId, routePath: route.path })
+          .run();
+      },
+    });
+  }
+
+  return items;
 }
 
 export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
@@ -196,7 +215,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                     <div
                       class="w-10 h-10 flex items-center justify-center bg-neutral-300 rounded-sm font-bold text-neutral-900 text-size-medium shrink-0"
                     >
-                      ${item.icon}
+                      ${unsafeHTML(item.icon)}
                     </div>
                     <div class="flex-1 min-w-0">
                       <div class="font-medium text-neutral-900 text-size-medium">${item.title}</div>

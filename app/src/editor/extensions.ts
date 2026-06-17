@@ -28,6 +28,7 @@ import {
 import { ColumnItem, ColumnLayout } from "./extensions/ColumnLayout.ts";
 import { DatePicker } from "./extensions/DatePicker.ts";
 import { ExpressionCell } from "./extensions/ExpressionCell.ts";
+import { ExtensionView } from "./extensions/ExtensionView.ts";
 import { FigmaEmbed } from "./extensions/FigmaEmbed.ts";
 import { FileAttachment } from "./extensions/FileAttachment.ts";
 import { HtmlBlock } from "./extensions/HtmlBlock.ts";
@@ -157,6 +158,7 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
 
     // custom extensions
     CommentAnchor,
+    ExtensionView,
     MarkdownPaste,
     TicketLink,
     ExpressionCell,
