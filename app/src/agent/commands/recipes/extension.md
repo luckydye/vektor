@@ -65,6 +65,32 @@ Add `"document"` to a route's `placements` array to make it appear in the docume
 - Use `["page", "document"]` to appear in both places
 - The view entry and `ctx.views.register` work exactly the same as for page routes — the framework handles embedding the rendered container as a document block
 
+## ctx.api — wiki API client
+Available inside `activate`/`deactivate` via `ctx.api` and `ctx.spaceId`:
+```js
+// List documents
+const { documents } = await ctx.api.documents.get(ctx.spaceId, { limit: 100 });
+
+// Get one document (returns DocumentWithProperties)
+const doc = await ctx.api.document.get(ctx.spaceId, documentId);
+
+// Create a document
+const doc = await ctx.api.documents.post(ctx.spaceId, {
+  title: 'My Doc', content: '<p>Hello</p>', type: 'document',
+});
+
+// Update document content (HTML)
+await ctx.api.document.put(ctx.spaceId, documentId, '<p>Updated</p>');
+
+// Patch metadata / properties
+await ctx.api.document.patch(ctx.spaceId, documentId, {
+  properties: { status: 'published' },
+});
+
+// Search
+const { results } = await ctx.api.search.get(ctx.spaceId, { q: 'hello' });
+```
+
 ## dist/main.js (frontend entry — always present)
 ```js
 export function activate(ctx) {
