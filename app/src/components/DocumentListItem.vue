@@ -81,12 +81,12 @@ const isSearchResult = (
         />
       </div>
 
-      <!-- Link spans remaining 4 columns -->
+      <!-- Link spans cols 2–4: title + type + properties -->
       <a
         :href="document.fileUrl ?? `/${spaceSlug}/doc/${document.slug}`"
         :target="document.fileUrl ? '_blank' : undefined"
         :rel="document.fileUrl ? 'noopener noreferrer' : undefined"
-        class="col-span-4 grid grid-cols-[1fr_80px_200px_140px] items-start min-w-0"
+        class="col-span-3 grid grid-cols-[1fr_80px_200px] items-start min-w-0"
       >
         <!-- Title -->
         <div class="flex items-start gap-2.5 py-2.5 pr-3 min-w-0">
@@ -128,14 +128,23 @@ const isSearchResult = (
             <span class="truncate">{{ value }}</span>
           </span>
         </div>
-
-        <!-- Modified date -->
-        <div class="py-2.5 pr-4 text-right">
-          <span class="text-size-small text-neutral-400 tabular-nums">
-            {{ formatDate(document.updatedAt) }}
-          </span>
-        </div>
       </a>
+
+      <!-- Date / actions col — outside the link so interactive elements work -->
+      <div class="py-2.5 pr-4 relative flex items-center justify-end" @click.stop>
+        <span
+          class="text-size-small text-neutral-400 tabular-nums transition-opacity"
+          :class="$slots.actions ? 'group-hover:opacity-0' : ''"
+        >
+          {{ formatDate(document.updatedAt) }}
+        </span>
+        <div
+          v-if="$slots.actions"
+          class="absolute inset-0 flex items-center justify-end pr-4 opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <slot name="actions" />
+        </div>
+      </div>
     </div>
   </page-target>
 </template>
