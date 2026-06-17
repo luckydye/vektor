@@ -39,6 +39,32 @@ keywords: extension, plugin, install, manifest, activate
 }
 ```
 
+## Manifest — inline document view (Add Content menu)
+Add `"document"` to a route's `placements` array to make it appear in the document Add Content menu. Users can then insert it as a block directly inside a document:
+```json
+{
+  "id": "my-ext",
+  "name": "My Extension",
+  "version": "1.0.0",
+  "entries": {
+    "frontend": "dist/main.js",
+    "view": "dist/view.js"
+  },
+  "routes": [
+    {
+      "path": "my-ext",
+      "title": "My Extension",
+      "description": "Show my extension inline",
+      "menuItem": { "title": "My Extension" },
+      "placements": ["document"]
+    }
+  ]
+}
+```
+- `placements` defaults to `["page"]` (full-page sidebar only) when omitted
+- Use `["page", "document"]` to appear in both places
+- The view entry and `ctx.views.register` work exactly the same as for page routes — the framework handles embedding the rendered container as a document block
+
 ## dist/main.js (frontend entry — always present)
 ```js
 export function activate(ctx) {
