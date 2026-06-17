@@ -215,7 +215,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                     <div
                       class="w-10 h-10 flex items-center justify-center bg-neutral-300 rounded-sm font-bold text-neutral-900 text-size-medium shrink-0"
                     >
-                      ${unsafeHTML(item.icon)}
+                      ${item.icon.startsWith("<svg") ? unsafeHTML(item.icon) : item.icon}
                     </div>
                     <div class="flex-1 min-w-0">
                       <div class="font-medium text-neutral-900 text-size-medium">${item.title}</div>
