@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { checkThinIcon, closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
 import { useMembers } from "../composeables/useMembers.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import Avatar from "./Avatar.vue";
 import ButtonGhost from "./ButtonGhost.vue";
-import ButtonPrimary from "./ButtonPrimary.vue";
-import Icon from "./Icon.vue";
+import MessageInput from "./MessageInput.vue";
 
 export interface Comment {
   id: string;
@@ -39,7 +38,6 @@ const currentUser = useUserProfile();
 
 const newCommentContent = ref("");
 const commentListRef = ref<HTMLElement | null>(null);
-const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 const getUserName = (userId: string): string => {
   const member = members.value.find((m) => m.userId === userId);
@@ -88,11 +86,6 @@ watch(
   },
 );
 
-onMounted(() => {
-  if (textareaRef.value) {
-    textareaRef.value.focus();
-  }
-});
 </script>
 
 <template>
@@ -158,28 +151,17 @@ onMounted(() => {
 
     <!-- Input Area -->
     <div class="p-5xs">
-      <div class="relative">
-        <textarea
-          ref="textareaRef"
+      <div class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-lg">
+        <MessageInput
           v-model="newCommentContent"
-          rows="2"
-          class="block w-full p-2 pr-20 text-size-medium bg-neutral-50 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none transition-shadow placeholder:text-neutral-400"
           placeholder="Reply..."
-          @keydown.enter.ctrl.prevent="handleSubmit"
-        ></textarea>
-
-        <div class="absolute right-2 top-2">
-          <ButtonPrimary
-            @click="handleSubmit"
-            :disabled="isSubmitting || !newCommentContent.trim()"
-            class="text-size-small font-medium"
-            title="Send"
-          >
-            <span v-if="isSubmitting">...</span>
-            <Icon v-else name="send" />
-            <span class="sr-only">Send</span>
-          </ButtonPrimary>
-        </div>
+          :rows="2"
+          autofocus
+          submit-key="ctrl+enter"
+          :disabled="isSubmitting || !newCommentContent.trim()"
+          :loading="isSubmitting"
+          @submit="handleSubmit"
+        />
       </div>
     </div>
   </div>
