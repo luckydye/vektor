@@ -190,7 +190,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
               :is-active="activeRoute === 'home'"
           />
           <button
-              class="inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
+              class="@max-sm:hidden inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
               :title="t('Command Palette')"
               @click="Actions.run('ui:toggle:palatte')"
           >
