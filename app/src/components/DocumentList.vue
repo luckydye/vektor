@@ -52,7 +52,7 @@ const deselectAll = () => {
     <!-- Sticky header -->
     <div
       class="grid grid-cols-[32px_1fr_80px_200px_140px] items-center h-9 border-b border-neutral-100 sticky top-0 z-10 transition-colors"
-      :class="selectedIds.size > 0 ? 'bg-primary-50' : 'bg-background'"
+      :class="selectedIds.size > 0 ? 'bg-primary-50' : 'bg-neutral-50'"
     >
       <div class="flex items-center justify-center">
         <input
@@ -65,12 +65,12 @@ const deselectAll = () => {
       </div>
       <!-- Column labels -->
       <template v-if="selectedIds.size === 0">
-        <div class="text-[11px] font-medium text-neutral uppercase tracking-wider">
+        <div class="text-size-small font-medium text-neutral-500 uppercase tracking-wide">
           <slot name="header-label" />
         </div>
-        <div class="text-[11px] font-medium text-neutral uppercase tracking-wider">Type</div>
-        <div class="text-[11px] font-medium text-neutral uppercase tracking-wider">Properties</div>
-        <div class="pr-4 text-right text-[11px] font-medium text-neutral uppercase tracking-wider">Modified</div>
+        <div class="text-size-small font-medium text-neutral-500 uppercase tracking-wide">Type</div>
+        <div class="text-size-small font-medium text-neutral-500 uppercase tracking-wide">Properties</div>
+        <div class="pr-4 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Modified</div>
       </template>
       <!-- Batch toolbar -->
       <div v-else class="col-span-4 flex items-center gap-2 pr-4">
