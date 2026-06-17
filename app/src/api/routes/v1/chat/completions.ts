@@ -372,13 +372,23 @@ async function proxyToOllama(
   body: Record<string, unknown>,
   signal: AbortSignal,
 ): Promise<Response> {
-  const ollamaBody = {
+  return proxyToOllamaWithThink(baseUrl, model, body, signal, true);
+}
+
+async function proxyToOllamaWithThink(
+  baseUrl: string,
+  model: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+  think: boolean,
+): Promise<Response> {
+  const ollamaBody: Record<string, unknown> = {
     model,
     messages: body.messages,
     tools: body.tools,
     stream: body.stream ?? false,
-    think: true,
   };
+  if (think) ollamaBody.think = true;
 
   const response = await fetch(`${baseUrl}/api/chat`, {
     method: "POST",
@@ -390,6 +400,16 @@ async function proxyToOllama(
   });
 
   if (!response.ok) {
+    if (think && response.status === 400) {
+      const text = await response.text();
+      if (text.includes("does not support thinking")) {
+        return proxyToOllamaWithThink(baseUrl, model, body, signal, false);
+      }
+      return new Response(text, {
+        status: response.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response(response.body, {
       status: response.status,
       headers: { "Content-Type": "application/json" },

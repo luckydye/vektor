@@ -469,20 +469,35 @@ export async function callModel(options: {
   }
 
   if (options.provider.provider === "ollama") {
-    const response = await fetch(`${options.provider.baseUrl}/api/chat`, {
+    const ollamaRequestBody: Record<string, unknown> = {
+      model: options.provider.model,
+      messages: toOllamaMessages(options.messages),
+      tools: options.tools,
+      stream: true,
+      think: true,
+    };
+
+    let response = await fetch(`${options.provider.baseUrl}/api/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: options.provider.model,
-        messages: toOllamaMessages(options.messages),
-        tools: options.tools,
-        stream: true,
-        think: true,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ollamaRequestBody),
       signal: options.signal,
     });
+
+    if (!response.ok && response.status === 400) {
+      const text = await response.text();
+      if (text.includes("does not support thinking")) {
+        delete ollamaRequestBody.think;
+        response = await fetch(`${options.provider.baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ollamaRequestBody),
+          signal: options.signal,
+        });
+      } else {
+        throw new Error(`Ollama ${response.status}: ${text}`);
+      }
+    }
 
     if (!response.ok || !response.body) {
       throw new Error(`Ollama ${response.status}: ${await response.text()}`);

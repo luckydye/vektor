@@ -605,3 +605,42 @@ export class ExtensionViewElement extends HTMLElement {
 if (typeof customElements !== "undefined") {
   customElements.define("extension-view", ExtensionViewElement);
 }
+
+class ExtensionViewBlockElement extends HTMLElement {
+  private cleanup: (() => void) | null = null;
+
+  connectedCallback() {
+    this.tryRender();
+    window.addEventListener("extensions:loaded", this.tryRender);
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("extensions:loaded", this.tryRender);
+    if (this.cleanup) {
+      this.cleanup();
+      this.cleanup = null;
+    }
+  }
+
+  private tryRender = () => {
+    if (this.cleanup) return;
+    const extensionId = this.getAttribute("data-extension-id");
+    const routePath = this.getAttribute("data-route-path");
+    if (!extensionId || !routePath) return;
+
+    extensions.renderInlineView(extensionId, routePath, this).then((fn) => {
+      if (!this.isConnected) {
+        fn?.();
+        return;
+      }
+      if (fn) {
+        window.removeEventListener("extensions:loaded", this.tryRender);
+        this.cleanup = fn;
+      }
+    });
+  };
+}
+
+if (typeof customElements !== "undefined") {
+  customElements.define("extension-view-block", ExtensionViewBlockElement);
+}
