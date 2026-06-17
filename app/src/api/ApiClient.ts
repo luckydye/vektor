@@ -1577,6 +1577,17 @@ export class ApiClient {
     },
 
     /**
+     * Resolve (archive) a thread — all comments sharing the same reference
+     */
+    resolve: async (spaceId: string, documentId: string, commentIds: string[]) => {
+      await this.apiPatch<{ success: boolean }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`,
+        { commentIds, archived: true },
+      );
+    },
+
+    /**
      * Delete a comment
      */
     delete: async (spaceId: string, documentId: string, commentId: string) => {

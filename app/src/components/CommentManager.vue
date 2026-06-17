@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { plusSmallIcon } from "~/src/assets/icons.ts";
 import type { Comment as ApiComment } from "../api/ApiClient.ts";
 import { useComments } from "../composeables/useComments.ts";
+import { isInlineAnchorReference, resolveReferenceSelector } from "../utils/commentReference.ts";
 import type { Comment as CommentOverlaysType } from "./CommentOverlays.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import type { Comment as CommentThreadType } from "./CommentThread.vue";
@@ -20,10 +21,12 @@ const {
   threadPosition,
   isSubmitting,
   isDeletingComment,
+  isResolvingThread,
   activeComments,
   submitComment,
   deleteComment,
   moveThread,
+  resolveThread,
   setupListeners,
   cleanupListeners,
 } = useComments({
@@ -37,6 +40,44 @@ const bubbleY = ref(0);
 const addingCommentY = ref<number | null>(null);
 const addingCommentRef = ref<string | null>(null);
 const fadeAddBubble = ref(false);
+
+// Inline anchor click tooltip
+const clickedAnchorRef = ref<string | null>(null);
+const tooltipPos = ref({ top: 0, left: 0 });
+const tooltipEl = ref<HTMLElement | null>(null);
+
+function anchorFromPath(e: MouseEvent): { el: HTMLElement; commentId: string } | null {
+  for (const node of e.composedPath()) {
+    if (node instanceof HTMLElement && node.dataset.commentId) {
+      return { el: node, commentId: node.dataset.commentId };
+    }
+  }
+  return null;
+}
+
+function handleDocumentClick(e: MouseEvent) {
+  const hit = anchorFromPath(e);
+  if (!hit) {
+    // Click outside tooltip closes it
+    if (tooltipEl.value && !tooltipEl.value.contains(e.target as Node)) {
+      clickedAnchorRef.value = null;
+    }
+    return;
+  }
+  const ref = `[data-comment-id="${hit.commentId}"]`;
+  // Toggle off if clicking the same anchor again
+  if (clickedAnchorRef.value === ref) {
+    clickedAnchorRef.value = null;
+    return;
+  }
+  clickedAnchorRef.value = ref;
+  const rect = hit.el.getBoundingClientRect();
+  const tooltipWidth = 320;
+  tooltipPos.value = {
+    top: rect.bottom + 6,
+    left: Math.min(rect.left, window.innerWidth - tooltipWidth - 8),
+  };
+}
 
 const EDGE_THRESHOLD_PX = 60;
 const COMMENT_BUBBLE_PROXIMITY_PX = 20;
@@ -91,6 +132,28 @@ const commentsForOverlays = computed(() =>
       }) as CommentOverlaysType,
   ),
 );
+
+const clickedAnchorComments = computed(() => {
+  if (!clickedAnchorRef.value) return [];
+  return comments.value
+    .filter(
+      (c: ApiComment) =>
+        c.reference &&
+        resolveReferenceSelector(c.reference) === clickedAnchorRef.value,
+    )
+    .map(
+      (c: ApiComment) =>
+        ({
+          id: c.id,
+          content: c.content,
+          createdAt:
+            typeof c.createdAt === "string" ? c.createdAt : c.createdAt.toISOString(),
+          createdBy: c.createdBy,
+          reference: c.reference ?? undefined,
+          parentId: c.parentId ?? undefined,
+        }) as CommentThreadType,
+    );
+});
 
 const commentsForThread = computed(() =>
   activeComments.value.map(
@@ -170,6 +233,37 @@ async function handleDeleteComment(commentId: string) {
   await deleteComment(commentId);
 }
 
+function removeCommentAnchorMark(reference: string) {
+  const editor = (window as { __editor?: { isDestroyed: boolean; state: any; view: any } }).__editor;
+  if (!editor || editor.isDestroyed) return;
+  const match = reference.match(/\[data-comment-id="([^"]+)"\]/);
+  if (!match) return;
+  const commentId = match[1];
+  const { state, view } = editor;
+  const tr = state.tr;
+  let modified = false;
+  state.doc.descendants((node: any, pos: number) => {
+    if (!node.isText) return;
+    const mark = node.marks.find(
+      (m: any) => m.type.name === "commentAnchor" && m.attrs.commentId === commentId,
+    );
+    if (mark) {
+      tr.removeMark(pos, pos + node.nodeSize, mark.type);
+      modified = true;
+    }
+  });
+  if (modified) view.dispatch(tr);
+}
+
+async function handleResolve(reference: string | null) {
+  if (!reference) return;
+  await resolveThread(reference);
+  if (isInlineAnchorReference(reference)) {
+    removeCommentAnchorMark(reference);
+  }
+  clickedAnchorRef.value = null;
+}
+
 function handleMouseLeave() {
   showAddBubble.value = false;
   fadeAddBubble.value = false;
@@ -183,6 +277,8 @@ onMounted(() => {
   window.addEventListener("scroll", handleThreadReposition, true);
   window.addEventListener("resize", handleThreadReposition);
   window.addEventListener("editor-update", handleThreadReposition);
+  // Inline anchor click detection — composedPath pierces the shadow DOM.
+  document.addEventListener("click", handleDocumentClick);
 });
 
 onUnmounted(() => {
@@ -192,6 +288,7 @@ onUnmounted(() => {
   window.removeEventListener("scroll", handleThreadReposition, true);
   window.removeEventListener("resize", handleThreadReposition);
   window.removeEventListener("editor-update", handleThreadReposition);
+  document.removeEventListener("click", handleDocumentClick);
 });
 </script>
 
@@ -230,6 +327,7 @@ onUnmounted(() => {
         :isDeletingComment="isDeletingComment"
         @submit="handleSubmit"
         @delete="handleDeleteComment"
+        @resolve="handleResolve(activeReference)"
         @close="activeReference = null"
       />
     </div>
@@ -248,6 +346,25 @@ onUnmounted(() => {
         @submit="handleSubmitNew"
         @delete="handleDeleteComment"
         @close="addingCommentY = null; addingCommentRef = null"
+      />
+    </div>
+
+    <!-- Inline anchor click tooltip -->
+    <div
+      v-if="clickedAnchorRef && !activeReference"
+      ref="tooltipEl"
+      class="fixed z-40"
+      :style="{ top: `${tooltipPos.top}px`, left: `${tooltipPos.left}px` }"
+    >
+      <CommentThread
+        :comments="clickedAnchorComments"
+        :activeReference="clickedAnchorRef"
+        :isSubmitting="isSubmitting"
+        :isDeletingComment="isDeletingComment"
+        @submit="handleSubmit"
+        @delete="handleDeleteComment"
+        @resolve="handleResolve(clickedAnchorRef)"
+        @close="clickedAnchorRef = null"
       />
     </div>
   </div>

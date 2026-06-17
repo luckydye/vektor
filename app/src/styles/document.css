@@ -31,6 +31,11 @@ img {
   display: block;
 }
 
+.comment-anchor {
+  background-color: rgba(255, 213, 0, 0.3);
+  border-radius: 2px;
+}
+
 img[data-display="full"] {
   width: 100% !important;
   max-width: 100%;

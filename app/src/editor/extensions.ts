@@ -32,6 +32,7 @@ import { FigmaEmbed } from "./extensions/FigmaEmbed.ts";
 import { FileAttachment } from "./extensions/FileAttachment.ts";
 import { HtmlBlock } from "./extensions/HtmlBlock.ts";
 import { ImageUpload } from "./extensions/ImageUpload.ts";
+import { CommentAnchor } from "./extensions/CommentAnchor.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";
@@ -155,6 +156,7 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
     withoutDefaultKeyboardShortcuts(CodeBlock),
 
     // custom extensions
+    CommentAnchor,
     MarkdownPaste,
     TicketLink,
     ExpressionCell,

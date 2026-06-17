@@ -21,3 +21,8 @@ export function resolveReferenceSelector(reference: string): string {
 export function isPositionReference(reference: string): boolean {
   return /^-?\d+(\.\d+)?$/.test(reference);
 }
+
+/** True if the reference targets an inline comment-anchor mark in the editor. */
+export function isInlineAnchorReference(reference: string): boolean {
+  return reference.startsWith("[data-comment-id=");
+}

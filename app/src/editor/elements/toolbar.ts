@@ -14,6 +14,7 @@ import {
   columns2Icon,
   columns3Icon,
   columns4Icon,
+  commentIcon,
   expressionCellIcon,
   highlightIcon,
   imageFullWidthIcon,
@@ -577,6 +578,22 @@ if (
         this.update();
       }
 
+      private addInlineComment() {
+        const editor = getEditor();
+        if (!editorReady(editor)) return;
+
+        const id = crypto.randomUUID().slice(0, 8);
+        (editor.chain().focus() as any).setCommentAnchor(id).run();
+
+        window.dispatchEvent(
+          new CustomEvent("comment:create", {
+            detail: { reference: `[data-comment-id="${id}"]` },
+          }),
+        );
+
+        this.dismiss();
+      }
+
       private setColumnCount(count: number) {
         const editor = getEditor();
         if (!editorReady(editor)) return;
@@ -1018,8 +1035,25 @@ if (
                   },
                 )}
               </div>
-              <div class="menu-divider"></div>
 
+              ${
+                !this.imageActive &&
+                !this.inColumnLayout &&
+                this.hasAttribute("data-comments-enabled")
+                  ? html`
+                    <div class="menu-divider"></div>
+                    <div class="menu-group">
+                      ${this.button(
+                        this.icon(commentIcon),
+                        "Add comment",
+                        () => this.addInlineComment(),
+                      )}
+                    </div>
+                  `
+                  : null
+              }
+
+              <div class="menu-divider"></div>
               <div class="menu-group">
                 ${this.button(
                   this.icon(moreIcon),

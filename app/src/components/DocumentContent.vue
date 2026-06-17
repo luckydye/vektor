@@ -841,7 +841,7 @@ useSync(
         <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
     </main>
 
-    <document-toolbar></document-toolbar>
+    <document-toolbar :data-comments-enabled="supportsComments(props.documentType) ? '' : undefined"></document-toolbar>
 
     <CommentManager v-if="props.documentId && supportsComments(props.documentType)" :spaceId="props.spaceId"
         :documentId="props.documentId" :currentRev="documentData?.currentRev" />

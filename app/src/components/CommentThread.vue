@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from "vue";
-import { closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
+import { checkThinIcon, closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
 import { useMembers } from "../composeables/useMembers.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
 import Avatar from "./Avatar.vue";
@@ -30,6 +30,7 @@ const emit = defineEmits<{
   (e: "clear-reference"): void;
   (e: "submit", payload: { content: string; reference: string | null }): void;
   (e: "delete", commentId: string): void;
+  (e: "resolve"): void;
   (e: "close"): void;
 }>();
 
@@ -104,9 +105,19 @@ onMounted(() => {
           {{ comments.length }}
         </span>
       </div>
-      <ButtonGhost @click="emit('close')" class="p-1 -mr-1 text-neutral-400 hover:text-neutral-700 w-6 h-6">
-        <div class="svg-icon w-4 h-4" v-html="closeXIcon" />
-      </ButtonGhost>
+      <div class="flex items-center gap-1">
+        <ButtonGhost
+          v-if="comments.length > 0"
+          @click="emit('resolve')"
+          class="p-1 text-neutral-400 hover:text-green-600 w-6 h-6"
+          title="Resolve thread"
+        >
+          <div class="svg-icon w-4 h-4" v-html="checkThinIcon" />
+        </ButtonGhost>
+        <ButtonGhost @click="emit('close')" class="p-1 -mr-1 text-neutral-400 hover:text-neutral-700 w-6 h-6">
+          <div class="svg-icon w-4 h-4" v-html="closeXIcon" />
+        </ButtonGhost>
+      </div>
     </div>
 
     <!-- Comments List -->

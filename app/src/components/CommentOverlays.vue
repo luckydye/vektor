@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import {
+  isInlineAnchorReference,
   isPositionReference,
   resolveReferenceSelector,
 } from "../utils/commentReference.ts";
@@ -68,6 +69,9 @@ function updateOverlays() {
   const newOverlays: typeof overlays.value = [];
 
   counts.forEach((count, reference) => {
+    // Inline anchor comments are shown as hover tooltips, not right-edge bubbles.
+    if (isInlineAnchorReference(reference)) return;
+
     if (isPositionReference(reference)) {
       // Position references are y offsets relative to the document content
       newOverlays.push({ top: docTop + Number(reference), count, reference });
@@ -136,6 +140,9 @@ function endDrag(overlay: { reference: string; top: number }) {
   drag.value = null;
   if (!d || d.reference !== overlay.reference || !d.moved) return;
 
+  // Inline anchor references are bound to document text — don't convert to a y-offset.
+  if (isInlineAnchorReference(d.reference)) return;
+
   suppressClick = true;
   const y = Math.max(0, Math.round(overlay.top - documentViewTop()));
   emit("move", { reference: d.reference, y });
@@ -195,9 +202,9 @@ onUnmounted(() => {
                transition-colors duration-200 z-20"
         :class="drag?.reference === overlay.reference && drag?.moved
           ? 'cursor-grabbing shadow-lg'
-          : 'cursor-pointer'"
+          : isInlineAnchorReference(overlay.reference) ? 'cursor-pointer' : 'cursor-grab'"
         :style="{ top: `${overlay.top}px` }"
-        title="View comments — drag to reposition"
+        :title="isInlineAnchorReference(overlay.reference) ? 'View comments' : 'View comments — drag to reposition'"
       >
         <span class="text-base font-semibold text-neutral-600">{{ overlay.count }}</span>
       </button>

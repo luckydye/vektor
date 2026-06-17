@@ -15,6 +15,7 @@ import {
 } from "#db/api.ts";
 import {
   archiveComment,
+  archiveComments,
   createComment,
   getComment,
   listComments,
@@ -132,7 +133,7 @@ export const PATCH: APIRoute = (context) =>
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
 
     const body = await parseJsonBody(context.request);
-    const { commentIds, reference } = body;
+    const { commentIds, reference, archived } = body;
 
     if (
       !Array.isArray(commentIds) ||
@@ -142,11 +143,7 @@ export const PATCH: APIRoute = (context) =>
       throw badRequestResponse("Comment IDs are required");
     }
 
-    if (!reference || typeof reference !== "string" || !reference.trim()) {
-      throw badRequestResponse("Reference is required");
-    }
-
-    // Only re-reference comments that belong to this document
+    // Only operate on comments that belong to this document
     const comments = await listComments(spaceId, ResourceType.DOCUMENT, documentId);
     const documentCommentIds = new Set(comments.map((c) => c.id));
     const validIds = commentIds.filter((id) => documentCommentIds.has(id));
@@ -154,17 +151,25 @@ export const PATCH: APIRoute = (context) =>
       throw notFoundResponse("Comment");
     }
 
-    await updateCommentReferences(spaceId, validIds, reference);
+    if (archived === true) {
+      await archiveComments(spaceId, validIds);
 
-    sendSyncEvent(spaceId, {
-      topic: realtimeTopics.document(documentId),
-      data: {
-        kind: "comment_updated",
-        commentIds: validIds,
-        documentId,
-        reference,
-      },
-    });
+      sendSyncEvent(spaceId, {
+        topic: realtimeTopics.document(documentId),
+        data: { kind: "comment_deleted", commentIds: validIds, documentId },
+      });
+    } else {
+      if (!reference || typeof reference !== "string" || !reference.trim()) {
+        throw badRequestResponse("Reference is required");
+      }
+
+      await updateCommentReferences(spaceId, validIds, reference);
+
+      sendSyncEvent(spaceId, {
+        topic: realtimeTopics.document(documentId),
+        data: { kind: "comment_updated", commentIds: validIds, documentId, reference },
+      });
+    }
 
     return jsonResponse({ success: true });
   }, "Failed to update comments");
