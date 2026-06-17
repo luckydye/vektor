@@ -1,41 +1,48 @@
 <script setup lang="ts">
-import { clockIcon } from "~/src/assets/icons.ts";
+import { computed } from "vue";
+import { documentIcon } from "~/src/assets/icons.ts";
 import type { DocumentWithProperties, SearchResult } from "../api/client.ts";
 import { formatDate } from "../utils/utils.ts";
 
 const props = defineProps<{
   document: SearchResult | DocumentWithProperties;
   spaceSlug: string;
-  showRank?: boolean;
   showSnippet?: boolean;
   searchQuery?: string;
+  selected?: boolean;
+  selectable?: boolean;
 }>();
 
-const getDocumentTitle = (doc: SearchResult | DocumentWithProperties): string => {
-  if ("properties" in doc && doc.properties) {
-    return doc.properties.title || doc.properties.name || "Untitled";
+const emit = defineEmits<{
+  "toggle-select": [id: string];
+}>();
+
+const title = computed(() => {
+  if ("properties" in props.document && props.document.properties) {
+    return (
+      props.document.properties.title ||
+      props.document.properties.name ||
+      "Untitled"
+    );
   }
   return "Untitled";
-};
+});
 
-const getVisibleProperties = (doc: SearchResult | DocumentWithProperties) => {
-  if (!("properties" in doc) || !doc.properties) return [];
-
-  const excludedKeys = ["title", "name"];
-  return Object.entries(doc.properties).filter(
+const visibleProperties = computed(() => {
+  if (!("properties" in props.document) || !props.document.properties) return [];
+  const excluded = ["title", "name"];
+  return Object.entries(props.document.properties).filter(
     ([key, value]) =>
-      !excludedKeys.includes(key) &&
+      !excluded.includes(key) &&
       value !== null &&
       value !== undefined &&
       value !== "",
   );
-};
+});
 
 const isSearchResult = (
   doc: SearchResult | DocumentWithProperties,
-): doc is SearchResult => {
-  return "rank" in doc && "snippet" in doc;
-};
+): doc is SearchResult => "rank" in doc && "snippet" in doc;
 </script>
 
 <template>
@@ -43,41 +50,67 @@ const isSearchResult = (
     :data-document-id="document.id"
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50"
   >
-    <a 
-      :href="`/${spaceSlug}/doc/${document.slug}`" 
-      class="group block py-4 transition-all"
+    <div
+      class="grid grid-cols-[32px_1fr_200px_140px] border-b border-neutral-100 group transition-colors hover:transition-none"
+      :class="selected ? 'bg-primary-50' : 'hover:bg-neutral-50'"
     >
-        
-        <div class="flex items-center gap-4 flex-wrap text-size-small text-neutral-500 mb-3">
-          <span class="flex items-center gap-1.5">
-            <div class="svg-icon w-4 h-4" v-html="clockIcon" />
-            Updated {{ formatDate(document.updatedAt) }}
-          </span>
-          <span
-            v-for="[key, value] in getVisibleProperties(document)"
-            :key="key"
-            class="inline-flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded-sm font-medium"
-            :title="`${key}: ${value}`"
-          >
-            <span class="text-neutral-400 text-size-small capitalize">{{ key }}:</span>
-            <span class="text-neutral-700">{{ value }}</span>
-          </span>
-        </div>
-        
-      <div class="flex justify-between items-start gap-4 mb-2">
-        <h3 class="text-size-title font-semibold group-hover:text-neutral-900 text-neutral-500 leading-tight">
-          {{ getDocumentTitle(document) }}
-        </h3>
+      <!-- Checkbox -->
+      <div
+        class="flex items-start py-3.5 justify-center self-stretch transition-opacity"
+        :class="selectable || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+        @click.stop
+      >
+        <input
+          type="checkbox"
+          :checked="selected"
+          @change="emit('toggle-select', document.id)"
+          class="w-3.5 h-3.5 accent-primary-500 cursor-pointer"
+        />
       </div>
 
-      <div 
-        v-if="showSnippet && isSearchResult(document)" 
-        class="mb-3 leading-relaxed text-neutral-600 text-size-medium [&_mark]:bg-amber-100 [&_mark]:px-0.5 [&_mark]:rounded-sm [&_mark]:font-medium [&_mark]:text-amber-800" 
+      <!-- Link: title only -->
+      <a
+        :href="`/${spaceSlug}/doc/${document.slug}`"
+        class="col-span-3 grid grid-cols-[1fr_200px_140px] items-start min-w-0"
       >
-        <document-view>
-            <template v-html="document.snippet"></template>
-        </document-view>
-      </div>
-    </a>
+        <!-- Title -->
+        <div class="flex items-center gap-2.5 py-2.5 pr-3 min-w-0">
+          <div
+            class="svg-icon w-4 h-4 shrink-0 text-neutral-300 group-hover:text-neutral-400 transition-colors"
+            v-html="documentIcon"
+          />
+          <div class="flex-1 min-w-0">
+            <span class="text-size-medium font-medium text-neutral-800 truncate block">
+              {{ title }}
+            </span>
+            <div
+              v-if="showSnippet && isSearchResult(document) && document.snippet"
+              class="text-size-small text-neutral-400 truncate mt-0.5 [&_mark]:bg-transparent [&_mark]:text-neutral-600 [&_mark]:font-medium"
+              v-html="document.snippet"
+            />
+          </div>
+        </div>
+
+        <!-- Properties -->
+        <div class="flex items-center gap-1 flex-wrap pr-3 py-2.5 min-w-0">
+          <span
+            v-for="[key, value] in visibleProperties"
+            :key="key"
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-neutral-100 rounded-sm text-[11px] text-neutral-500 min-w-0 max-w-[160px]"
+            :title="`${key}: ${value}`"
+          >
+            <span class="text-neutral-400 shrink-0 truncate max-w-[60px]">{{ key }}</span>
+            <span class="truncate">{{ value }}</span>
+          </span>
+        </div>
+
+        <!-- Modified date -->
+        <div class="py-2.5 pr-4 text-right">
+          <span class="text-size-small text-neutral-400 tabular-nums">
+            {{ formatDate(document.updatedAt) }}
+          </span>
+        </div>
+      </a>
+    </div>
   </page-target>
 </template>

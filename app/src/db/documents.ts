@@ -1175,9 +1175,10 @@ export async function searchDocuments(
     }
   }
 
-  // Separate "type" filters from property filters
+  // Separate special filters from property filters
   const typeFilters = filters.filter((f) => f.key === "type");
-  const propertyFilters = filters.filter((f) => f.key !== "type");
+  const dateFilters = filters.filter((f) => f.key === "_date");
+  const propertyFilters = filters.filter((f) => f.key !== "type" && f.key !== "_date");
 
   // Helper to check if a document matches property filters
   const matchesFilters = (
@@ -1330,8 +1331,38 @@ export async function searchDocuments(
   let accessibleResults =
     docIds === null ? allRawResults : allRawResults.filter((r) => docIds.includes(r.id));
 
-  // If we have filters, apply them by loading properties for each document
-  if (hasFilters && accessibleResults.length > 0) {
+  // Apply date range filter
+  if (dateFilters.length > 0 && accessibleResults.length > 0) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    accessibleResults = accessibleResults.filter((r) => {
+      const ua = new Date(r.updatedAt);
+      for (const df of dateFilters) {
+        switch (df.value) {
+          case "today":
+            if (ua < todayStart) return false;
+            break;
+          case "week":
+            if (ua < weekStart || ua >= todayStart) return false;
+            break;
+          case "month":
+            if (ua < monthStart || ua >= weekStart) return false;
+            break;
+          case "older":
+            if (ua >= monthStart) return false;
+            break;
+        }
+      }
+      return true;
+    });
+  }
+
+  // If we have property/type filters, apply them by loading properties for each document
+  const hasPropertyOrTypeFilters = typeFilters.length > 0 || propertyFilters.length > 0;
+  if (hasPropertyOrTypeFilters && accessibleResults.length > 0) {
     const filteredResults: typeof accessibleResults = [];
 
     for (const row of accessibleResults) {

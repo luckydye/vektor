@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import {
+  archiveIcon,
   chevronLeftLargeIcon,
   chevronRightThinIcon,
   closeCircleFilledIcon,
@@ -16,17 +17,20 @@ import {
   type SearchResult,
 } from "../api/client.ts";
 import { useInfiniteQuery } from "../composeables/query.ts";
+import { canEdit } from "../composeables/usePermissions.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import DocumentListItem from "./DocumentListItem.vue";
 import SearchFilters from "./SearchFilters.vue";
 
-const DATE_FILTER_KEY = "_date";
-
 const props = defineProps<{
   spaceId: string;
   spaceSlug: string;
 }>();
+
+const { currentSpace } = useSpace();
+const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
 
 const searchQuery = ref("");
 const activeFilters = ref<PropertyFilter[]>([]);
@@ -63,10 +67,8 @@ const {
       offset,
     };
     if (committedQuery.value.trim()) queryParams.q = committedQuery.value;
-    // Exclude client-side-only date filter from the API call
-    const apiFilters = committedFilters.value.filter((f) => f.key !== DATE_FILTER_KEY);
-    if (apiFilters.length > 0) {
-      queryParams.filters = JSON.stringify(apiFilters);
+    if (committedFilters.value.length > 0) {
+      queryParams.filters = JSON.stringify(committedFilters.value);
     }
     return api.search.get(props.spaceId, queryParams).then((r) => ({
       items: r.results,
@@ -78,36 +80,6 @@ const {
 });
 
 const sortedResults = computed(() => [...results.value].sort((a, b) => a.rank - b.rank));
-
-// Apply committed date filter client-side on top of search results
-const committedDateFilter = computed(() =>
-  committedFilters.value.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
-);
-
-const applyDateFilter = <T extends { updatedAt: string | Date }>(
-  items: T[],
-  dateFilter: string | null,
-): T[] => {
-  if (!dateFilter) return items;
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  return items.filter((item) => {
-    const ua = normalizeTimestamp(item.updatedAt);
-    switch (dateFilter) {
-      case "today": return ua >= todayStart;
-      case "week": return ua >= weekStart && ua < todayStart;
-      case "month": return ua >= monthStart && ua < weekStart;
-      case "older": return ua < monthStart;
-      default: return true;
-    }
-  });
-};
-
-const dateFilteredResults = computed(() =>
-  applyDateFilter(sortedResults.value, committedDateFilter.value),
-);
 
 const updateUrlParams = () => {
   const url = new URL(window.location.href);
@@ -155,15 +127,11 @@ const allDocuments = computed(() => {
   return documentsData.value.pages.flatMap((page) => page.documents);
 });
 
-// Active date filter from activeFilters (for client-side browse filtering)
-const activeDateFilter = computed(() =>
-  activeFilters.value.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
-);
-
-// Date-filtered documents for the browse (non-search) view
-const filteredAllDocuments = computed(() =>
-  applyDateFilter(allDocuments.value, activeDateFilter.value),
-);
+// Items to group: search results when filter-only, otherwise browse docs
+const itemsToGroup = computed<Array<SearchResult | DocumentWithProperties>>(() => {
+  if (hasSearched.value && !committedQuery.value.trim()) return sortedResults.value;
+  return allDocuments.value;
+});
 
 // Group documents by update time
 const groupedDocuments = computed(() => {
@@ -173,13 +141,13 @@ const groupedDocuments = computed(() => {
   const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   const groups = {
-    today: [] as DocumentWithProperties[],
-    thisWeek: [] as DocumentWithProperties[],
-    thisMonth: [] as DocumentWithProperties[],
-    older: [] as DocumentWithProperties[],
+    today: [] as (SearchResult | DocumentWithProperties)[],
+    thisWeek: [] as (SearchResult | DocumentWithProperties)[],
+    thisMonth: [] as (SearchResult | DocumentWithProperties)[],
+    older: [] as (SearchResult | DocumentWithProperties)[],
   };
 
-  for (const doc of filteredAllDocuments.value) {
+  for (const doc of itemsToGroup.value) {
     const updatedAt = normalizeTimestamp(doc.updatedAt);
     if (updatedAt >= todayStart) {
       groups.today.push(doc);
@@ -243,11 +211,7 @@ onMounted(() => {
   if (queryParam || filtersParam) {
     committedQuery.value = queryParam ?? "";
     committedFilters.value = [...activeFilters.value];
-    // Only enter search mode if there's a query or non-date filters
-    const hasNonDateFilters = activeFilters.value.some((f) => f.key !== DATE_FILTER_KEY);
-    if (queryParam || hasNonDateFilters) {
-      hasSearched.value = true;
-    }
+    hasSearched.value = true;
   }
 });
 
@@ -257,10 +221,9 @@ onUnmounted(() => {
 
 const handleSearch = () => {
   const hasQuery = searchQuery.value.trim().length > 0;
-  const hasNonDateFilters = activeFilters.value.some((f) => f.key !== DATE_FILTER_KEY);
+  const hasFilters = activeFilters.value.length > 0;
 
-  if (!hasQuery && !hasNonDateFilters) {
-    // Only date filter or nothing — stay in browse mode, apply filter client-side
+  if (!hasQuery && !hasFilters) {
     hasSearched.value = false;
     committedQuery.value = "";
     committedFilters.value = [];
@@ -295,11 +258,69 @@ const handleKeydown = (event: KeyboardEvent) => {
 };
 
 const canSearch = computed(() => {
-  return (
-    searchQuery.value.trim().length > 0 ||
-    activeFilters.value.some((f) => f.key !== DATE_FILTER_KEY)
-  );
+  return searchQuery.value.trim().length > 0 || activeFilters.value.length > 0;
 });
+
+// Selection state
+const selectedIds = ref<Set<string>>(new Set());
+const headerCheckboxRef = ref<HTMLInputElement | null>(null);
+
+const currentItems = computed<Array<{ id: string }>>(
+  () => (hasSearched.value ? sortedResults.value : allDocuments.value),
+);
+
+const allSelected = computed(
+  () => currentItems.value.length > 0 && currentItems.value.every((item) => selectedIds.value.has(item.id)),
+);
+const someSelected = computed(
+  () => selectedIds.value.size > 0 && !allSelected.value,
+);
+
+watchEffect(() => {
+  if (headerCheckboxRef.value) {
+    headerCheckboxRef.value.indeterminate = someSelected.value;
+  }
+});
+
+const toggleSelect = (id: string) => {
+  const next = new Set(selectedIds.value);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+  selectedIds.value = next;
+};
+
+const toggleSelectAll = () => {
+  if (allSelected.value) {
+    selectedIds.value = new Set();
+  } else {
+    selectedIds.value = new Set(currentItems.value.map((item) => item.id));
+  }
+};
+
+const deselectAll = () => {
+  selectedIds.value = new Set();
+};
+
+// Batch operations
+const isBatchArchiving = ref(false);
+
+const batchArchive = async () => {
+  const count = selectedIds.value.size;
+  if (!confirm(`Archive ${count} document${count !== 1 ? "s" : ""}?`)) return;
+
+  isBatchArchiving.value = true;
+  try {
+    for (const id of selectedIds.value) {
+      await api.documents.archive(props.spaceId, id);
+    }
+    window.location.reload();
+  } catch {
+    isBatchArchiving.value = false;
+  }
+};
 </script>
 
 <template>
@@ -373,57 +394,133 @@ const canSearch = computed(() => {
           {{ searchError.message ?? "Search failed" }}
         </div>
 
-        <!-- Search Results -->
-        <div v-if="dateFilteredResults.length > 0">
-          <div class="mb-5 pb-4 border-b border-neutral-100">
-            <p class="text-size-medium text-neutral-700">
-              <span class="font-semibold">{{ dateFilteredResults.length }}</span>
-              <span v-if="committedDateFilter"> matching</span>
-              result{{ dateFilteredResults.length !== 1 ? "s" : "" }}
-              <span v-if="activeFilters.filter(f => f.key !== DATE_FILTER_KEY).length > 0" class="text-neutral-500">
-                with {{ activeFilters.filter(f => f.key !== DATE_FILTER_KEY).length }} filter{{ activeFilters.filter(f => f.key !== DATE_FILTER_KEY).length !== 1 ? "s" : "" }}
-              </span>
-            </p>
+        <!-- Document table (shared by both search results and browse mode) -->
+        <div v-if="currentItems.length > 0">
+
+          <!-- Shared table header / batch toolbar -->
+          <div
+            class="grid grid-cols-[32px_1fr_200px_140px] border-b border-neutral-100 sticky top-0 z-10 transition-colors"
+            :class="selectedIds.size > 0 ? 'bg-primary-50' : 'bg-background'"
+          >
+            <div class="flex items-center justify-center py-2">
+              <input
+                ref="headerCheckboxRef"
+                type="checkbox"
+                :checked="allSelected"
+                @change="toggleSelectAll"
+                class="w-3.5 h-3.5 accent-primary-500 cursor-pointer"
+              />
+            </div>
+            <!-- Column labels -->
+            <template v-if="selectedIds.size === 0">
+              <div class="py-2 text-[11px] font-medium text-neutral uppercase tracking-wider">
+                <template v-if="hasSearched">
+                  {{ total }} result{{ total !== 1 ? "s" : "" }}
+                  <span v-if="activeFilters.length > 0" class="normal-case tracking-normal opacity-70">
+                    · {{ activeFilters.length }} filter{{ activeFilters.length !== 1 ? "s" : "" }}
+                  </span>
+                </template>
+                <template v-else>
+                  {{ allDocuments.length }} document{{ allDocuments.length !== 1 ? "s" : "" }}
+                  <span v-if="documentsData?.pages[0]" class="normal-case tracking-normal opacity-70">
+                    · {{ documentsData.pages[0].total }} total
+                  </span>
+                </template>
+              </div>
+              <div class="py-2 text-[11px] font-medium text-neutral uppercase tracking-wider">Properties</div>
+              <div class="py-2 pr-4 text-right text-[11px] font-medium text-neutral uppercase tracking-wider">Modified</div>
+            </template>
+            <!-- Batch toolbar -->
+            <div v-else class="col-span-3 flex items-center gap-2 py-2 pr-4">
+              <span class="text-size-small font-medium text-primary-700">{{ selectedIds.size }} selected</span>
+              <button @click="deselectAll" class="p-0.5 text-neutral hover:text-neutral-800 hover:bg-neutral-200 rounded-sm transition-colors">
+                <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
+              </button>
+              <div class="flex-1" />
+              <button
+                v-if="userCanEdit"
+                @click="batchArchive"
+                :disabled="isBatchArchiving"
+                class="flex items-center gap-1.5 px-3 py-1 bg-background border border-neutral-100 rounded-md text-size-small text-neutral-700 hover:border-neutral-300 hover:text-neutral-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <div class="svg-icon w-3.5 h-3.5" v-html="archiveIcon" />
+                {{ isBatchArchiving ? "Archiving…" : "Archive" }}
+              </button>
+            </div>
           </div>
 
-          <div class="flex flex-col gap-4">
+          <!-- Search results: flat ranked list (only when text query present) -->
+          <template v-if="hasSearched && committedQuery.trim()">
             <DocumentListItem
-              v-for="result in dateFilteredResults"
+              v-for="result in sortedResults"
               :key="result.id"
               :document="result"
               :space-slug="props.spaceSlug"
-              :show-rank="true"
               :show-snippet="true"
               :search-query="searchQuery"
+              :selected="selectedIds.has(result.id)"
+              :selectable="selectedIds.size > 0"
+              @toggle-select="toggleSelect"
             />
-          </div>
 
-          <!-- Pagination -->
-          <div v-if="totalPages > 1" class="flex justify-between items-center mt-10 pt-6 border-t border-neutral-100">
-            <button
-              @click="handlePrevPage"
-              :disabled="!hasPrevPage || isFetchingSearch"
-              class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <div class="svg-icon w-5 h-5" v-html="chevronLeftLargeIcon" />
-              Previous
-            </button>
-            <span class="text-size-medium text-neutral-500">
-              Page <span class="font-semibold">{{ page }}</span> of
-              <span class="font-semibold">{{ totalPages }}</span>
-            </span>
-            <button
-              @click="handleNextPage"
-              :disabled="!hasNextPage || isFetchingSearch"
-              class="flex items-center gap-2 px-4 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Next
-              <div class="svg-icon w-5 h-5" v-html="chevronRightThinIcon" />
-            </button>
-          </div>
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="flex justify-between items-center mt-8 pt-5 border-t border-neutral-100">
+              <button
+                @click="handlePrevPage"
+                :disabled="!hasPrevPage || isFetchingSearch"
+                class="flex items-center gap-2 px-4 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <div class="svg-icon w-4 h-4" v-html="chevronLeftLargeIcon" />
+                Previous
+              </button>
+              <span class="text-size-medium text-neutral-500">
+                Page <span class="font-semibold">{{ page }}</span> of
+                <span class="font-semibold">{{ totalPages }}</span>
+              </span>
+              <button
+                @click="handleNextPage"
+                :disabled="!hasNextPage || isFetchingSearch"
+                class="flex items-center gap-2 px-4 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+                <div class="svg-icon w-4 h-4" v-html="chevronRightThinIcon" />
+              </button>
+            </div>
+          </template>
+
+          <!-- Browse mode: grouped list -->
+          <template v-else>
+            <template v-for="(docs, groupKey) in groupedDocuments" :key="groupKey">
+              <div v-if="docs.length > 0" class="mb-8">
+                <div class="px-8 py-1.5 text-[11px] font-medium text-neutral uppercase tracking-wider bg-neutral-50 border-b border-neutral-100">
+                  {{ groupKey === "thisWeek" ? "This Week" : groupKey === "thisMonth" ? "This Month" : groupKey }}
+                </div>
+                <DocumentListItem
+                  v-for="doc in docs"
+                  :key="doc.id"
+                  :document="doc"
+                  :space-slug="props.spaceSlug"
+                  :selected="selectedIds.has(doc.id)"
+                  :selectable="selectedIds.size > 0"
+                  @toggle-select="toggleSelect"
+                />
+              </div>
+            </template>
+
+            <div v-if="hasMoreDocuments" class="flex justify-center mt-6 pt-6 border-t border-neutral-100">
+              <button
+                @click="() => fetchNextPage()"
+                :disabled="isFetchingNextPage"
+                class="flex items-center gap-2 px-5 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <div v-if="isFetchingNextPage" class="svg-icon w-4 h-4 animate-spin" v-html="spinnerIcon" />
+                {{ isFetchingNextPage ? "Loading…" : "Load more" }}
+              </button>
+            </div>
+          </template>
         </div>
 
-        <!-- No Search Results -->
+        <!-- No search results -->
         <div v-else-if="hasSearched && !isSearching && !searchError" class="text-center py-12">
           <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="searchMagnifierIcon" />
           <h3 class="text-size-large font-semibold text-neutral-800 mb-2">No results found</h3>
@@ -444,62 +541,14 @@ const canSearch = computed(() => {
           </div>
         </div>
 
-        <!-- All Documents (browse mode) -->
-        <div v-else-if="!hasSearched && !isLoadingDocuments && filteredAllDocuments.length > 0">
-          <div class="mb-5 pb-4 border-b border-neutral-100">
-            <p class="text-size-medium text-neutral-700">
-              <span class="font-semibold">{{ filteredAllDocuments.length }}</span>
-              document{{ filteredAllDocuments.length !== 1 ? "s" : "" }}
-              <span v-if="documentsData && documentsData.pages[0] && !activeDateFilter" class="text-neutral-500">
-                · {{ documentsData.pages[0].total }} total
-              </span>
-            </p>
-          </div>
-
-          <template v-for="(docs, groupKey) in groupedDocuments" :key="groupKey">
-            <div v-if="docs.length > 0" class="mb-10">
-              <h3 class="text-size-small font-medium text-neutral-500 mb-3 pb-2 border-b border-neutral-100 capitalize">
-                {{ groupKey === "thisWeek" ? "This Week" : groupKey === "thisMonth" ? "This Month" : groupKey }}
-              </h3>
-              <div class="flex flex-col gap-1">
-                <DocumentListItem
-                  v-for="doc in docs"
-                  :key="doc.id"
-                  :document="doc"
-                  :space-slug="props.spaceSlug"
-                />
-              </div>
-            </div>
-          </template>
-
-          <div v-if="hasMoreDocuments" class="flex justify-center mt-6 pt-6 border-t border-neutral-100">
-            <button
-              @click="() => fetchNextPage()"
-              :disabled="isFetchingNextPage"
-              class="flex items-center gap-2 px-5 py-2.5 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <div v-if="!isFetchingNextPage" class="svg-icon w-4 h-4" v-html="searchMagnifierIcon" />
-              <div v-else class="svg-icon w-4 h-4 animate-spin" v-html="spinnerIcon" />
-              {{ isFetchingNextPage ? "Loading…" : "Load more" }}
-            </button>
-          </div>
-        </div>
-
-        <!-- No documents (after date filter, empty state) -->
-        <div v-else-if="!hasSearched && !isLoadingDocuments && filteredAllDocuments.length === 0 && activeDateFilter" class="text-center py-12">
-          <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="documentIcon" />
-          <h3 class="text-size-large font-semibold text-neutral-700 mb-2">No documents in this period</h3>
-          <p class="text-neutral-500 text-size-medium">Try a different time range in the filters</p>
-        </div>
-
-        <!-- Loading Documents -->
+        <!-- Loading documents -->
         <div v-else-if="!hasSearched && isLoadingDocuments" class="text-center py-12">
           <div class="svg-icon w-10 h-10 mx-auto mb-4 text-neutral-300 animate-spin" v-html="spinnerIcon" />
           <p class="text-size-medium text-neutral-500">Loading documents…</p>
         </div>
 
-        <!-- No Documents at all -->
-        <div v-else-if="!hasSearched && !isLoadingDocuments && allDocuments.length === 0" class="text-center py-12">
+        <!-- No documents yet -->
+        <div v-else-if="!hasSearched && !isLoadingDocuments" class="text-center py-12">
           <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="documentIcon" />
           <h3 class="text-size-large font-semibold text-neutral-700 mb-2">No documents yet</h3>
           <p class="text-neutral-500 text-size-medium">There are no documents in this space yet</p>

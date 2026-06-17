@@ -82,7 +82,7 @@ const setDateFilter = (value: string) => {
   } else {
     emit("update:modelValue", [...withoutDate, { key: DATE_FILTER_KEY, value }]);
   }
-  // Date filters are applied client-side; no search emit needed
+  emit("search");
 };
 
 const toggleProperty = (name: string) => {
