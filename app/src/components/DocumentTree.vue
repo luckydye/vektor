@@ -49,7 +49,8 @@ function saveExpandedItems(items) {
   localStorage.setItem(`wiki-expanded-items`, JSON.stringify(Array.from(items)));
 }
 
-const expandedItems = ref(loadExpandedItems());
+const isMounted = ref(false);
+const expandedItems = ref(new Set());
 
 // Get slugs of expanded categories
 const expandedCategorySlugs = computed(() => {
@@ -314,6 +315,11 @@ async function handleDocumentCategoryChange(event) {
 }
 
 onMounted(() => {
+  // Defer reading client-only state (localStorage, cached query data) until after
+  // hydration so server and client render the same initial markup.
+  isMounted.value = true;
+  expandedItems.value = loadExpandedItems();
+
   window.addEventListener("document-parent-change", handleDocumentParentChange);
   window.addEventListener("document-category-change", handleDocumentCategoryChange);
 });
@@ -328,7 +334,7 @@ defineExpose({ isEditMode, toggleEditMode });
 
 <template>
   <div class="document-tree">
-
+    <template v-if="isMounted">
     <div v-if="!isEditMode && categories.length === 0" class="px-3 py-4 text-center">
       <p class="text-size-medium text-neutral-500">No categories yet</p>
     </div>
@@ -512,5 +518,6 @@ defineExpose({ isEditMode, toggleEditMode });
         </div>
       </div>
     </Teleport>
+    </template>
   </div>
 </template>
