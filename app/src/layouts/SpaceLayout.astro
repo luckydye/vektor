@@ -218,8 +218,6 @@ const publicEnvVars = () => Astro.locals.publicEnv;
       <Sidebar client:load transition:name="navigation" />
     </div>
 
-    <CommandPalatte client:only />
-
     <CalDAVSetupDialog client:only />
 
     <!-- <LinkPreview client:only /> -->
@@ -227,5 +225,7 @@ const publicEnvVars = () => Astro.locals.publicEnv;
     <DocumentOverlay client:only="vue" />
 
     <slot name="outer"></slot>
+    
+    <CommandPalatte client:only />
   </body>
 </html>

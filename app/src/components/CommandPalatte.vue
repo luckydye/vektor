@@ -236,7 +236,7 @@ Actions.register("ui:toggle:palatte", {
               >
                 <button
                   :data-result-index="index"
-                  class="w-full text-left px-3xs rounded-md min-h-[36px] flex items-center gap-2.5 text-neutral-800 transition-colors hover:transition-none"
+                  class="w-full text-left px-3xs rounded-md min-h-[36px] flex items-center gap-2.5 text-neutral-800"
                   :class="[
                     index === selectedIndex ? 'bg-primary-100 text-primary-700' : 'hover:bg-primary-50',
                     result.type === 'document' ? 'cursor-grab active:cursor-grabbing' : '',
