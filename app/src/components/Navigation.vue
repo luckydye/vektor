@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
+import { computed, onMounted, onUnmounted, ref, Teleport, watch } from "vue";
 import { boltIcon, homeIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
 import { Actions } from "../utils/actions.ts";
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
@@ -64,6 +64,11 @@ function updateExtensionMenuLinks() {
 const isLoading = computed(() => {
   return !pathname.value || spaceIsLoading.value;
 });
+
+const hasEverLoaded = ref(false);
+watch(isLoading, (loading) => {
+  if (!loading) hasEverLoaded.value = true;
+}, { immediate: true });
 
 onMounted(() => {
   // Update menu links when extensions finish loading
@@ -176,11 +181,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
       />
     </div>
 
-    <div v-if="isLoading" class="px-4xs flex-none hidden lg:flex flex-col gap-0.5">
-      <div v-for="i in 3" :key="`nav-skeleton-${i}`" class="h-9 bg-neutral-100 rounded-md animate-pulse" />
-    </div>
-
-    <div v-if="!isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
+    <div class="px-4xs flex-none flex flex-col gap-0.5">
         <div class="flex items-center gap-px">
           <MenuLink
               class="flex-1"
@@ -228,7 +229,8 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 
     <!-- Document Tree -->
     <div class="@max-xs:invisible px-5xs py-m">
-      <div v-if="isLoading" class="px-5xs space-y-1 hidden lg:flex flex-col">
+      <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50 px-4xs mb-2">{{ t('Categories') }}</h3>
+      <div v-if="isLoading && !hasEverLoaded" class="px-5xs space-y-1 hidden lg:flex flex-col">
         <!-- Category skeleton -->
         <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
           <!-- Category header -->
@@ -247,7 +249,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         </div>
       </div>
 
-      <DocumentTree v-if="!isLoading" />
+      <DocumentTree v-show="!isLoading" />
     </div>
   </nav>
 </template>

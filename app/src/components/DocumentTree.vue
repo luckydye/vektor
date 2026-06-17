@@ -326,11 +326,8 @@ onUnmounted(() => {
 
 <template>
   <div class="document-tree">
-    <!-- Categories Header with Edit Button -->
-    <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
-      <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">
-        Categories
-      </h3>
+    <!-- Edit Button -->
+    <div class="flex justify-end px-4xs mb-2 -mt-8">
       <button
         @click="toggleEditMode"
         class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
@@ -410,7 +407,7 @@ onUnmounted(() => {
           </div>
         </category-target>
 
-        <div v-if="expandedItems.has(category.id) && !isEditMode" class="space-y-1">
+        <div v-show="expandedItems.has(category.id) && !isEditMode" class="space-y-1">
           <DocumentTreeItem v-for="doc in category.rootDocs" :key="doc.id" :doc="doc" :all-docs="category.docs"
             :active-doc-id="getActiveDocSlug()" :expanded-items="expandedItems" @toggle="toggleItem" />
         </div>

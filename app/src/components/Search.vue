@@ -422,7 +422,7 @@ const batchArchive = async (ids: string[]) => {
             <template v-else>
               <template v-for="(docs, groupKey) in groupedDocuments" :key="groupKey">
                 <div v-if="docs.length > 0" class="mb-8">
-                  <div class="px-8 py-1.5 text-[11px] font-medium text-neutral uppercase tracking-wider bg-neutral-50 border-b border-neutral-100">
+                  <div class="px-8 py-1.5 text-[11px] font-medium text-neutral uppercase tracking-wider bg-neutral-50 border-b border-neutral-100 sticky top-9 z-1">
                     {{ groupKey === "thisWeek" ? "This Week" : groupKey === "thisMonth" ? "This Month" : groupKey }}
                   </div>
                   <DocumentListItem
