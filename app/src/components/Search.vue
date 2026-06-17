@@ -364,7 +364,7 @@ const batchArchive = async () => {
     <div class="flex gap-6 items-start">
 
       <!-- Filter Sidebar -->
-      <div class="hidden lg:block w-56 shrink-0 sticky top-6">
+      <div class="hidden lg:block w-56 shrink-0 sticky top-2">
         <div class="bg-background border border-neutral-100 rounded-lg overflow-hidden">
           <SearchFilters
             :spaceId="props.spaceId"
