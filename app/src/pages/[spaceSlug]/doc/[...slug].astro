@@ -2,6 +2,7 @@
 import { twMerge } from "tailwind-merge";
 import Breadcrumbs from "~/src/components/Breadcrumbs.vue";
 import AIChatPanel from "../../../components/AIChatPanel.vue";
+import AppView from "../../../components/AppView.vue";
 import DocumentActions from "../../../components/DocumentActions.vue";
 import DocumentContent from "../../../components/DocumentContent.vue";
 import DocumentProperties from "../../../components/DocumentProperties.vue";
@@ -294,14 +295,17 @@ if (diffMins >= 1 && diffMins < 60) {
           documentType={documentType}
           spaceId={space.id}
         />
-        <DocumentContent
-          client:load
-          spaceId={space.id}
-          documentId={document.id}
-          initialHtml={htmlContent}
-          documentType={documentType}
-          readonly={isReadonly}
-        />
+        {isApp
+          ? <AppView client:only html={htmlContent} />
+          : <DocumentContent
+              client:load
+              spaceId={space.id}
+              documentId={document.id}
+              initialHtml={htmlContent}
+              documentType={documentType}
+              readonly={isReadonly}
+            />
+        }
       </div>
     </div>
   </div>

@@ -65,7 +65,6 @@ const documentReadonly = computed(() => props.readonly);
 const isEditing = ref(props.initialEditMode);
 const isEditingReady = ref(false);
 const shouldMountEditor = ref(false);
-const viewingRevision = ref(false);
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
@@ -120,8 +119,6 @@ const suggestionPatches = ref<Record<number, string>>({});
 const editorRoom = useYjsDocumentRoom(props.spaceId, documentId.value);
 const editorYdoc = editorRoom.ydoc;
 
-const AppView = defineAsyncComponent(() => import("./AppView.vue"));
-
 function getDocumentToolbar() {
   return document.querySelector<DocumentToolbarElement>("document-toolbar");
 }
@@ -165,7 +162,7 @@ function unregisterEditorActions() {
 }
 
 function handleEditModeStart() {
-  if (!viewingRevision.value && !documentReadonly.value) {
+  if (!documentReadonly.value) {
     isEditing.value = true;
   }
 }
@@ -488,7 +485,7 @@ watch(isEditing, (editing) => {
     editorRoom.leave();
   }
 
-  if (editing && !viewingRevision.value) {
+  if (editing) {
     requestAnimationFrame(setupEditorBridge);
   }
 });
@@ -524,16 +521,6 @@ watch(
   },
   { deep: true },
 );
-
-function handleRevisionOpen() {
-  viewingRevision.value = true;
-  isEditing.value = false;
-  isEditingReady.value = false;
-}
-
-function handleRevisionClose() {
-  viewingRevision.value = false;
-}
 
 onMounted(() => {
   isMounted.value = true;
@@ -574,9 +561,6 @@ onMounted(() => {
     handleInlineSuggestionAccept as EventListener,
   );
 
-  window.addEventListener("revision:view", handleRevisionOpen);
-  window.addEventListener("revision:close", handleRevisionClose);
-  window.addEventListener("revision:diff", handleRevisionOpen);
   window.addEventListener("document-published", reloadIfReady);
 
   if (typeof window !== "undefined") {
@@ -602,9 +586,6 @@ onUnmounted(() => {
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
   );
-  window.removeEventListener("revision:view", handleRevisionOpen);
-  window.removeEventListener("revision:close", handleRevisionClose);
-  window.removeEventListener("revision:diff", handleRevisionOpen);
   window.removeEventListener("document-published", reloadIfReady);
   if (typeof window !== "undefined") {
     window.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -613,7 +594,7 @@ onUnmounted(() => {
 });
 
 function reloadIfReady() {
-  if (isEditing.value || viewingRevision.value) return;
+  if (isEditing.value) return;
   if (!documentId.value) return;
   refreshDocument();
 }
@@ -665,7 +646,7 @@ function renderTableView() {
   tableViewEl.value.setContent(renderedHtml.value);
 }
 
-watch([renderedHtml, isEditing, viewingRevision, documentViewEl], () => {
+watch([renderedHtml, isEditing, documentViewEl], () => {
   renderTableView();
 });
 
@@ -723,16 +704,11 @@ useSync(
 <template>
     <main class="relative">
         <!-- CSV Spreadsheet View -->
-        <table-view v-if="!isEditing && !viewingRevision && documentType === 'csv'" ref="tableViewEl"
+        <table-view v-if="!isEditing && documentType === 'csv'" ref="tableViewEl"
             class="block flex-1 min-h-0"></table-view>
             
-        <!-- App View -->
-        <div v-if="documentType === 'app' && !viewingRevision" class="h-full">
-            <AppView :html="renderedHtml" />
-        </div>
-
         <!-- Document View (read + edit, single persistent instance) -->
-        <div v-if="!viewingRevision && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv' && documentType !== 'workflow'"
+        <div v-if="documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv' && documentType !== 'workflow'"
             :class="isEditing ? 'h-full' : ''">
             <document-view
                 ref="documentViewEl"
@@ -760,6 +736,6 @@ useSync(
         :documentId="documentId" :currentRev="documentData?.currentRev" />
 
     <document-statusbar
-        v-if="isEditing && !viewingRevision && !documentReadonly && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
+        v-if="isEditing && !documentReadonly && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
         class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
 </template>
