@@ -1,16 +1,15 @@
-import type { Editor } from "@tiptap/core";
 import { applyPatch, parsePatch } from "diff";
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
+import { getEditor } from "./useEditor.ts";
 import { useRevisions } from "./useRevisions.ts";
 
 export function useInlineSuggestions(options: {
   spaceId: Ref<string | null | undefined>;
   documentId: Ref<string | undefined>;
   isEditing: Ref<boolean>;
-  getEditor: () => Editor | undefined;
 }) {
-  const { spaceId, documentId, isEditing, getEditor } = options;
+  const { spaceId, documentId, isEditing } = options;
 
   const { revisions, saveRevision, fetchHistory } = useRevisions(documentId.value);
 

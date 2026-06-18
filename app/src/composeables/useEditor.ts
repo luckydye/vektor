@@ -1,13 +1,16 @@
 import type { Editor } from "@tiptap/core";
-import { onUnmounted, type Ref, ref, watch } from "vue";
+import { computed, onUnmounted, type Ref, ref, type ShallowRef, watch } from "vue";
+import type * as Y from "yjs";
 import type { DocumentPresenceProfile } from "../editor/collaboration.ts";
 import { Actions } from "../utils/actions.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
 } from "../utils/formattingActions.ts";
-import type { SaveStatus } from "./useDocument.ts";
+import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useEditorPresence } from "./useEditorPresence.ts";
+import { useRevisions } from "./useRevisions.ts";
+import { useYjsDocumentRoom } from "./useYjsDocumentRoom.ts";
 
 export type SaveMode = "revision" | "suggestion";
 
@@ -32,6 +35,10 @@ export function resetEditingState() {
   saveError.value = null;
 }
 
+export function getEditor(): Editor | undefined {
+  return (globalThis as typeof globalThis & { __editor?: Editor }).__editor;
+}
+
 type DocumentViewElement = {
   setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
 };
@@ -43,6 +50,7 @@ type DocumentToolbarElement = {
 };
 
 type EditorRoom = {
+  ydoc: ShallowRef<Y.Doc>;
   joinUntilReady: () => Promise<void>;
   leave: () => void;
 };
@@ -50,23 +58,33 @@ type EditorRoom = {
 type UseEditorOptions = {
   spaceId: string;
   documentId: Ref<string | undefined>;
-  canMountEditor: Ref<boolean>;
-  documentViewEl: Ref<DocumentViewElement | null>;
-  documentToolbar: Ref<DocumentToolbarElement | null>;
-  editorRoom: EditorRoom;
-  getEditor: () => Editor | undefined;
-  documentSaveStatus: Ref<SaveStatus>;
-  documentSaveError: Ref<string | null>;
-  saveDocument: (content: string) => Promise<boolean>;
-  saveRevision: (
-    html: string,
-    message?: string,
-    mode?: SaveMode,
-  ) => Promise<unknown | null>;
-  refreshDocument: () => Promise<unknown> | unknown;
+  documentType: Ref<string>;
+  readonly: Ref<boolean>;
 };
 
-export function useEditor(options?: UseEditorOptions) {
+type EditorState = {
+  editing: typeof editing;
+  saveStatus: typeof saveStatus;
+  saveError: typeof saveError;
+  cancelCount: typeof cancelCount;
+  resetEditingState: typeof resetEditingState;
+  shouldMountEditor: Ref<boolean>;
+};
+
+type DocumentEditor = EditorState & {
+  documentViewEl: Ref<DocumentViewElement | null>;
+  documentToolbar: Ref<DocumentToolbarElement | null>;
+  canMountEditor: Ref<boolean>;
+  editorYdoc: ShallowRef<Y.Doc>;
+  suggestionSavedCount: Ref<number>;
+  finishEditing: (mode?: SaveMode) => Promise<void>;
+  startEditorSession: () => Promise<void>;
+  stopEditorSession: () => void;
+};
+
+export function useEditor(): EditorState;
+export function useEditor(options: UseEditorOptions): DocumentEditor;
+export function useEditor(options?: UseEditorOptions): EditorState | DocumentEditor {
   const shouldMountEditor = ref(false);
 
   if (!options) {
@@ -80,28 +98,34 @@ export function useEditor(options?: UseEditorOptions) {
     };
   }
 
-  const {
-    spaceId,
-    documentId,
-    canMountEditor,
-    documentViewEl,
-    documentToolbar,
-    editorRoom,
-    getEditor,
-    documentSaveStatus,
-    documentSaveError,
-    saveDocument,
-    saveRevision,
-    refreshDocument,
-  } = options;
+  const { spaceId, documentId, documentType, readonly } = options;
 
-  const { setupEditorPresence, clearEditorPresence } = useEditorPresence({
-    spaceId,
-    documentId,
-    documentViewEl,
-    getEditor,
-    isActive: editing,
-  });
+  const documentViewEl = ref<DocumentViewElement | null>(null);
+  const documentToolbar = ref<DocumentToolbarElement | null>(null);
+  const suggestionSavedCount = ref(0);
+  const canMountEditor = computed(
+    () =>
+      !readonly.value &&
+      documentType.value !== "canvas" &&
+      documentType.value !== "app" &&
+      documentType.value !== "csv",
+  );
+  const editorRoom: EditorRoom = useYjsDocumentRoom(spaceId, documentId.value);
+  const editorYdoc = editorRoom.ydoc;
+  const {
+    saveStatus: documentSaveStatus,
+    saveError: documentSaveError,
+    saveDocument,
+  } = useDocument(documentId.value, documentType.value);
+  const { saveRevision } = useRevisions(documentId.value);
+
+  const { setupEditorPresence, clearEditorPresence, presenceProfiles } =
+    useEditorPresence({
+      spaceId,
+      documentId,
+      getEditor,
+      isActive: editing,
+    });
 
   let editorActionsRegistered = false;
   let leaveEditorActionSubscriptions: Array<() => void> = [];
@@ -188,9 +212,7 @@ export function useEditor(options?: UseEditorOptions) {
       }
     }, 2000);
 
-    if (mode === "suggestion") {
-      await refreshDocument();
-    }
+    if (mode === "suggestion") suggestionSavedCount.value++;
   }
 
   function registerSaveActions() {
@@ -240,6 +262,10 @@ export function useEditor(options?: UseEditorOptions) {
     saveError.value = documentSaveError.value ? new Error(documentSaveError.value) : null;
   });
 
+  watch(presenceProfiles, (profiles) => {
+    documentViewEl.value?.setPresenceProfiles?.(profiles);
+  });
+
   watch(editing, (isEditing) => {
     if (isEditing) {
       void startEditorSession();
@@ -264,6 +290,11 @@ export function useEditor(options?: UseEditorOptions) {
     cancelCount,
     resetEditingState,
     shouldMountEditor,
+    documentViewEl,
+    documentToolbar,
+    canMountEditor,
+    editorYdoc,
+    suggestionSavedCount,
     finishEditing,
     startEditorSession,
     stopEditorSession,

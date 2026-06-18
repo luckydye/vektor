@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import { type Ref, watch } from "vue";
+import { type Ref, ref, watch } from "vue";
 import { absolutePositionToRelativePosition } from "y-prosemirror";
 import * as Y from "yjs";
 import {
@@ -13,19 +13,15 @@ import { useUserProfile } from "./useUserProfile.ts";
 
 type DocumentPresenceState = NonNullable<DocumentPresenceProfile["state"]>;
 
-type PresenceViewElement = {
-  setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
-};
-
 export function useEditorPresence(options: {
   spaceId: string;
   documentId: Ref<string | undefined>;
-  documentViewEl: Ref<PresenceViewElement | null>;
   getEditor: () => Editor | undefined;
   isActive: Ref<boolean>;
 }) {
-  const { spaceId, documentId, documentViewEl, getEditor, isActive } = options;
+  const { spaceId, documentId, getEditor, isActive } = options;
   const user = useUserProfile();
+  const presenceProfiles = ref<DocumentPresenceProfile[]>([]);
 
   // Retry presence setup when the user profile loads after the editor started
   watch(user, () => {
@@ -48,8 +44,7 @@ export function useEditorPresence(options: {
 
   function currentState(): DocumentPresenceState {
     const editor = getEditor();
-    const view = documentViewEl.value;
-    if (!editor || !view) {
+    if (!editor) {
       return { kind: "editor", focused: false, selection: null };
     }
 
@@ -83,14 +78,12 @@ export function useEditorPresence(options: {
     }
   }
 
-  function render() {
-    documentViewEl.value?.setPresenceProfiles?.(
-      [...remotePresences.values()].map((p) => ({
-        clientId: p.clientId,
-        user: p.user,
-        state: p.state,
-      })),
-    );
+  function syncProfiles() {
+    presenceProfiles.value = [...remotePresences.values()].map((p) => ({
+      clientId: p.clientId,
+      user: p.user,
+      state: p.state,
+    }));
   }
 
   function update() {
@@ -111,7 +104,7 @@ export function useEditorPresence(options: {
     presenceHandle = null;
     lastPresenceState = "";
     remotePresences.clear();
-    render();
+    syncProfiles();
   }
 
   async function setup() {
@@ -142,7 +135,7 @@ export function useEditorPresence(options: {
         } else {
           remotePresences.delete(event.clientId);
         }
-        render();
+        syncProfiles();
       },
       currentState(),
     );
@@ -154,5 +147,6 @@ export function useEditorPresence(options: {
     setupEditorPresence: setup,
     clearEditorPresence: clear,
     updateEditorPresence: update,
+    presenceProfiles,
   };
 }

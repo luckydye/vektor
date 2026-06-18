@@ -1,21 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type * as Y from "yjs";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
-import { useDocument } from "../composeables/useDocument.ts";
 import { useEditor } from "../composeables/useEditor.ts";
 import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
-import { useRevisions } from "../composeables/useRevisions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
-import { useYjsDocumentRoom } from "../composeables/useYjsDocumentRoom.ts";
-import type { DocumentPresenceProfile } from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
-import type CommentBubble from "./CommentBubble.vue";
+import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "../editor/elements/table-view.ts";
 import "../editor/elements/toolbar.ts";
@@ -42,32 +37,11 @@ const documentId = computed(() => props.documentId);
 const documentType = computed(() => props.documentType || "document");
 const documentReadonly = computed(() => props.readonly);
 
-const canMountEditor = computed(
-  () =>
-    !documentReadonly.value &&
-    documentType.value !== "canvas" &&
-    documentType.value !== "app" &&
-    documentType.value !== "csv",
-);
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
-type DocumentViewElement = HTMLElement & {
-  collaborationDocument?: Y.Doc;
-  destroyEditor?: () => void;
-  renderReadHtml?: (html: string) => void;
-  setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
-};
-const documentViewEl = ref<DocumentViewElement | null>(null);
 const isMounted = ref(false);
 const commentBubble = ref<InstanceType<typeof CommentBubble> | null>(null);
-const getEditor = () => globalThis.__editor;
-type DocumentToolbarElement = HTMLElement & {
-  dismiss?: () => void;
-  openTextColorPicker?: () => void;
-  openBackgroundColorPicker?: () => void;
-};
-const documentToolbar = ref<DocumentToolbarElement | null>(null);
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
@@ -75,33 +49,26 @@ const handleVisibilityChange = () => {
   }
 };
 
-const editorRoom = useYjsDocumentRoom(props.spaceId, documentId.value);
-const editorYdoc = editorRoom.ydoc;
 const {
-  saveStatus: docSaveStatus,
-  saveError: docSaveError,
-  saveDocument,
-} = useDocument(documentId.value, documentType.value);
-const { saveRevision } = useRevisions(documentId.value);
-const { editing, cancelCount, resetEditingState, shouldMountEditor } = useEditor({
-  spaceId: props.spaceId,
-  documentId,
-  canMountEditor,
+  editing,
+  cancelCount,
+  resetEditingState,
+  shouldMountEditor,
   documentViewEl,
   documentToolbar,
-  editorRoom,
-  getEditor,
-  documentSaveStatus: docSaveStatus,
-  documentSaveError: docSaveError,
-  saveDocument,
-  saveRevision,
-  refreshDocument: () => refreshDocument(),
+  canMountEditor,
+  editorYdoc,
+  suggestionSavedCount,
+} = useEditor({
+  spaceId: props.spaceId,
+  documentId,
+  documentType,
+  readonly: documentReadonly,
 });
 const { handleInlineSuggestionAccept } = useInlineSuggestions({
   spaceId: currentSpaceId,
   documentId,
   isEditing: editing,
-  getEditor,
 });
 
 watch(cancelCount, () => {
@@ -109,6 +76,10 @@ watch(cancelCount, () => {
     renderedHtml.value = documentData.value.content;
   }
   reloadIfReady();
+});
+
+watch(suggestionSavedCount, () => {
+  refreshDocument();
 });
 
 onMounted(() => {
