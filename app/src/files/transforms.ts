@@ -2,7 +2,21 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable } from "node:stream";
-import type sharp from "sharp";
+// Sharp is loaded lazily so the compiled binary stays portable.
+// When libvips dylibs are not available (e.g. no node_modules), transforms
+// are silently disabled and the original image is passed through unchanged.
+let _sharp: typeof import("sharp").default | null | undefined;
+async function getSharp() {
+  if (_sharp === undefined) {
+    try {
+      _sharp = (await import("sharp")).default;
+    } catch {
+      console.warn("[transforms] sharp unavailable — image transforms disabled (libvips not found)");
+      _sharp = null;
+    }
+  }
+  return _sharp;
+}
 import type { FileStorageAdapter } from "./storage.ts";
 import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";
 import { SERVED_FILE_CSP, contentDisposition } from "#utils/servedFiles.ts";
@@ -138,7 +152,9 @@ export async function applyTransform(
   input: Buffer,
   params: TransformParams,
 ): Promise<Buffer> {
-  const { default: sharpFn } = await import("sharp");
+  const sharpFn = await getSharp();
+  if (!sharpFn) return input; // sharp unavailable — pass through unchanged
+
   let pipeline = sharpFn(input);
 
   if (params.w || params.h) {

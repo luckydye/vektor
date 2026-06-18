@@ -63,3 +63,29 @@ export async function generateClientAssetsModule() {
 }
 
 await generateClientAssetsModule();
+
+/**
+ * Compile vektor.ts into a portable single-file executable.
+ *
+ * Note on sharp/image transforms: sharp's native addon dynamically links
+ * against libvips dylibs (@img/sharp-libvips-*). Those dylibs cannot be
+ * embedded by bun, so image transforms are gracefully disabled at runtime
+ * when libvips is not found (see src/files/transforms.ts).
+ */
+const result = await Bun.build({
+  entrypoints: ["./vektor.ts"],
+  // @ts-ignore — Bun.build compile option
+  compile: true,
+  outfile: "./vektor",
+  // lightningcss bundles a Rust-compiled native binary (../pkg) that bun
+  // cannot resolve. It's pulled in transitively by Astro's SSR output but
+  // is not actually used at runtime — marking it external skips bundling it.
+  external: ["lightningcss"],
+});
+
+if (!result.success) {
+  for (const log of result.logs) console.error(log);
+  process.exit(1);
+}
+
+console.log(`[compile] ${result.outputs[0]?.path}`);

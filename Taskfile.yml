@@ -51,7 +51,6 @@ tasks:
     cmds:
       - bunx --bun astro build
       - bun run ./build.ts
-      - bun build --compile ./vektor.ts --external lightningcss --outfile ./vektor
 
   start:
     dir: ./app
