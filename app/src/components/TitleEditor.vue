@@ -14,10 +14,11 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { editing } from "../store/documentEditor.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
 
@@ -105,40 +106,12 @@ async function updateTitle() {
   isEditing.value = false;
 }
 
-function handleEditModeStart() {
-  void startEditing();
-}
-
-function handleEditModeCancel() {
-  localTitle.value = props.title;
-  isEditing.value = false;
-}
-
-onMounted(() => {
-  window.addEventListener("edit-mode-start", handleEditModeStart);
-  window.addEventListener("edit-mode-cancel", handleEditModeCancel);
-});
-
-onUnmounted(() => {
-  window.removeEventListener("edit-mode-start", handleEditModeStart);
-  window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
-});
-
-const status = ref("idle");
-const error = ref<unknown>(null);
-
-function handleSaveStatusChange(event: Event) {
-  const detail = (event as CustomEvent<{ status: string; error: unknown }>).detail;
-  status.value = detail.status;
-  error.value = detail.error;
-}
-
-onMounted(() => {
-  window.addEventListener("save-status-changed", handleSaveStatusChange);
-});
-
-onUnmounted(() => {
-  window.removeEventListener("save-status-changed", handleSaveStatusChange);
+watch(editing, (nowEditing) => {
+  if (nowEditing) void startEditing();
+  else {
+    localTitle.value = props.title;
+    isEditing.value = false;
+  }
 });
 </script>
 

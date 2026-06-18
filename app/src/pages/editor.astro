@@ -92,7 +92,6 @@ import "../styles/index.css";
         const editorEl = document.getElementById("editor-sandbox");
         if (!editorEl) return;
 
-        window.dispatchEvent(new CustomEvent("document:edit"));
         registerEditorSandboxActions();
       }
 

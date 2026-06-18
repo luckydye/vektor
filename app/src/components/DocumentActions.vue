@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
 import {
   ButtonSecondary,
   ContextMenu,
@@ -11,6 +11,7 @@ import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useHeaderImage } from "../composeables/useHeaderImage.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { cancelCount, editing, saveStatus } from "../store/documentEditor.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
 import { t } from "../utils/lang.ts";
 import Contributors from "./Contributors.vue";
@@ -33,15 +34,10 @@ const userCanEdit = computed(() => {
   return canEdit(currentSpace.value?.userRole);
 });
 
-const isEditing = ref(!props.documentId);
-const isSaving = ref(false);
 const isCreatingToken = ref(false);
-const saveMode = ref<"revision" | "suggestion">("revision");
 const showSaveMenu = ref(false);
 const actionMenuRef = ref<HTMLElement | null>(null);
-const editorSaveFunction = ref<
-  ((mode: "revision" | "suggestion") => Promise<void>) | null
->(null);
+const isSaving = computed(() => saveStatus.value === "saving");
 
 function registerEditAction() {
   Actions.register("document:edit", {
@@ -52,25 +48,24 @@ function registerEditAction() {
   });
 }
 
+function syncEditActions(isEditing = editing.value) {
+  if (isEditing) {
+    Actions.unregister("document:edit");
+  } else {
+    registerEditAction();
+  }
+}
+
 function startEditing() {
   if (props.readonly || !userCanEdit.value) {
     return;
   }
 
-  isEditing.value = true;
-  window.dispatchEvent(new CustomEvent("edit-mode-start"));
-
-  Actions.register("document:save", {
-    title: t("Publish Document"),
-    description: t("Publish current document and exit edit mode"),
-    group: "edit",
-    run: async () => stopEditing("revision"),
-  });
-
-  Actions.unregister("document:edit");
+  editing.value = true;
+  syncEditActions(true);
 }
 
-registerEditAction();
+watch(editing, syncEditActions, { immediate: true });
 
 Actions.register("document:print", {
   title: t("Print"),
@@ -146,54 +141,23 @@ Actions.register("document:accesstoken", {
 const actions = ref<[string, ActionOptions][]>([]);
 const actionsDanger = ref<[string, ActionOptions][]>([]);
 
-async function stopEditing(mode: "revision" | "suggestion" = "revision") {
-  if (!isEditing.value) return;
+function stopEditing() {
+  if (!editing.value) return;
+  if (!Actions.get("document:save")) return;
 
-  saveMode.value = mode;
   showSaveMenu.value = false;
-
-  if (!editorSaveFunction.value) return;
-
-  isSaving.value = true;
-  try {
-    await editorSaveFunction.value(mode);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  } catch (error) {
-    console.error("Failed to save:", error);
-  } finally {
-    isSaving.value = false;
-    saveMode.value = "revision";
-  }
-
-  isEditing.value = false;
-
-  Actions.unregister("document:save");
-  registerEditAction();
-
-  if (props.documentId && mode === "revision") {
-    window.dispatchEvent(new CustomEvent("document-published"));
-  }
+  Actions.run("document:save");
 }
 
 function cancelEditing() {
-  isEditing.value = false;
+  editing.value = false;
+  cancelCount.value++;
   showSaveMenu.value = false;
   if (props.documentId) {
-    window.dispatchEvent(new CustomEvent("edit-mode-cancel"));
-    Actions.unregister("document:save");
-    registerEditAction();
+    syncEditActions(false);
   } else {
     window.history.back();
   }
-}
-
-function handleEditorReady(
-  event: CustomEvent<{
-    saveFunction: (mode: "revision" | "suggestion") => Promise<void>;
-  }>,
-) {
-  editorSaveFunction.value = event.detail.saveFunction;
-  isEditing.value = true;
 }
 
 function toggleSaveMenu(event: MouseEvent) {
@@ -202,7 +166,10 @@ function toggleSaveMenu(event: MouseEvent) {
 }
 
 function saveAsSuggestion() {
-  void stopEditing("suggestion");
+  if (!Actions.get("document:save:suggestion")) return;
+
+  showSaveMenu.value = false;
+  Actions.run("document:save:suggestion");
 }
 
 function handleClickOutside(event: MouseEvent) {
@@ -212,9 +179,7 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 onMounted(async () => {
-  window.addEventListener("editor-ready", handleEditorReady as EventListener);
   document.addEventListener("click", handleClickOutside);
-  window.dispatchEvent(new CustomEvent("request-editor-ready"));
 
   Actions.subscribe("actions:register", () => {
     actions.value = Actions.group("document");
@@ -230,7 +195,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener("editor-ready", handleEditorReady as EventListener);
   document.removeEventListener("click", handleClickOutside);
 });
 
@@ -254,7 +218,10 @@ watchEffect(() => {
         description: t("Remove this document from the space home page"),
         group: "document",
         run: async () => {
-          await api.space.patch(currentSpace.value!.id, {
+          const spaceId = currentSpace.value?.id;
+          if (!spaceId) return;
+
+          await api.space.patch(spaceId, {
             preferences: { pinnedDocumentId: "" },
           });
           window.location.reload();
@@ -267,8 +234,12 @@ watchEffect(() => {
         description: t("Showcase this document on the space home page"),
         group: "document",
         run: async () => {
-          await api.space.patch(currentSpace.value!.id, {
-            preferences: { pinnedDocumentId: props.documentId! },
+          const spaceId = currentSpace.value?.id;
+          const documentId = props.documentId;
+          if (!spaceId || !documentId) return;
+
+          await api.space.patch(spaceId, {
+            preferences: { pinnedDocumentId: documentId },
           });
           window.location.reload();
         },
@@ -373,7 +344,7 @@ watchEffect(() => {
     </button>
 
     <button
-      v-if="!isEditing && !readonly && userCanEdit"
+      v-if="!editing && !readonly && userCanEdit"
       type="button"
       class="button-primary px-3"
       @click="startEditing"
@@ -388,23 +359,17 @@ watchEffect(() => {
       :spaceId="currentSpaceId"
     />
 
-    <div v-if="isEditing" class="flex items-center gap-2">
+    <div v-if="editing" class="flex items-center gap-2">
       <div ref="actionMenuRef" class="relative">
         <div class="button-primary-base button-with-icon overflow-hidden">
           <button
             type="button"
             class="inline-flex justify-center items-center px-3xs button-primary-pointer"
             :disabled="isSaving"
-            @click="stopEditing('revision')"
+            @click="stopEditing"
           >
             <Icon name="check" />
-            <span>{{
-              isSaving
-                ? saveMode === "suggestion"
-                  ? "Saving suggestion..."
-                  : "Publishing..."
-                : "Publish"
-            }}</span>
+            <span>{{ isSaving ? "Publishing..." : "Publish" }}</span>
           </button>
           <button
             v-if="documentId"

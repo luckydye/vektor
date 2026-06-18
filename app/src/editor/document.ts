@@ -1,3 +1,4 @@
+import { editing } from "../store/documentEditor.ts";
 import docStyles from "../styles/document.css?inline";
 import "./elements/textarea.ts";
 import "./elements/expression.ts";
@@ -765,7 +766,7 @@ export class DocumentView extends HTMLElement {
       (_e) => {
         if (this.tiptapEditor) return; // we ignore checkbox changes in read mode only
 
-        window.dispatchEvent(new CustomEvent("edit-mode-start"));
+        editing.value = true;
       },
       { capture: true },
     );

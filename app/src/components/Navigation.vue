@@ -17,7 +17,7 @@ import { Actions } from "../utils/actions.ts";
 import { extensions } from "../utils/extensions.ts";
 import { t } from "../utils/lang.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
-import DocumentTree from "./DocumentTree.vue";
+import type DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
 
 // UI-specific Space interface for the selector component

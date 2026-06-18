@@ -1,3 +1,4 @@
+import type { Editor } from "@tiptap/core";
 import { applyPatch, parsePatch } from "diff";
 import { computed, type Ref, ref, watch } from "vue";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
@@ -7,10 +8,9 @@ export function useInlineSuggestions(options: {
   spaceId: Ref<string | null | undefined>;
   documentId: Ref<string | undefined>;
   isEditing: Ref<boolean>;
-  isEditingReady: Ref<boolean>;
-  getEditor: () => any;
+  getEditor: () => Editor | undefined;
 }) {
-  const { spaceId, documentId, isEditing, isEditingReady, getEditor } = options;
+  const { spaceId, documentId, isEditing, getEditor } = options;
 
   const { revisions, saveRevision, fetchHistory } = useRevisions(documentId.value);
 
@@ -121,9 +121,9 @@ export function useInlineSuggestions(options: {
   );
 
   watch(
-    [suggestionPatches, isEditingReady],
+    suggestionPatches,
     () => {
-      if (!isEditingReady.value) return;
+      if (!isEditing.value) return;
       syncInlineSuggestions();
     },
     { deep: true },
@@ -132,5 +132,6 @@ export function useInlineSuggestions(options: {
   return {
     saveRevision,
     handleInlineSuggestionAccept,
+    handleEditorReady: syncInlineSuggestions,
   };
 }

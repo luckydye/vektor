@@ -1,27 +1,30 @@
 <script setup lang="ts">
-import {
-  computed,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch,
-} from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type * as Y from "yjs";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useEditorPresence } from "../composeables/useEditorPresence.ts";
 import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
+import { useRevisions } from "../composeables/useRevisions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { useYjsDocumentRoom } from "../composeables/useYjsDocumentRoom.ts";
 import type { DocumentPresenceProfile } from "../editor/collaboration.ts";
+import {
+  cancelCount,
+  editing,
+  resetEditingState,
+  type SaveMode,
+  saveError as storeSaveError,
+  saveStatus as storeSaveStatus,
+} from "../store/documentEditor.ts";
 import docStyles from "../styles/document.css?inline";
 import { Actions } from "../utils/actions.ts";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
-import CommentBubble from "./CommentBubble.vue";
+import type CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "../editor/elements/table-view.ts";
 import "../editor/elements/toolbar.ts";
@@ -52,9 +55,14 @@ const documentId = computed(() => props.documentId);
 const documentType = computed(() => props.documentType || "document");
 const documentReadonly = computed(() => props.readonly);
 
-const isEditing = ref(props.initialEditMode);
-const isEditingReady = ref(false);
 const shouldMountEditor = ref(false);
+const canMountEditor = computed(
+  () =>
+    !documentReadonly.value &&
+    documentType.value !== "canvas" &&
+    documentType.value !== "app" &&
+    documentType.value !== "csv",
+);
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
@@ -65,7 +73,6 @@ type DocumentViewElement = HTMLElement & {
   setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
 };
 const documentViewEl = ref<DocumentViewElement | null>(null);
-const elementReady = ref(false);
 const isMounted = ref(false);
 const commentBubble = ref<InstanceType<typeof CommentBubble> | null>(null);
 const getEditor = () => globalThis.__editor;
@@ -76,6 +83,8 @@ type DocumentToolbarElement = HTMLElement & {
 };
 let editorActionsRegistered = false;
 let leaveEditorActionSubscriptions: Array<() => void> = [];
+let editorSession = 0;
+let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
@@ -83,24 +92,28 @@ const handleVisibilityChange = () => {
   }
 };
 
-const { saveStatus, saveError, saveDocument, cancelDebounce } = useDocument(
-  documentId.value,
-  documentType.value,
-);
 const editorRoom = useYjsDocumentRoom(props.spaceId, documentId.value);
 const editorYdoc = editorRoom.ydoc;
+const {
+  saveStatus: docSaveStatus,
+  saveError: docSaveError,
+  saveDocument,
+} = useDocument(documentId.value, documentType.value);
+const { saveRevision } = useRevisions(documentId.value);
 const { setupEditorPresence, clearEditorPresence } = useEditorPresence({
   spaceId: props.spaceId,
   documentId,
   documentViewEl,
   getEditor,
-  isActive: isEditingReady,
+  isActive: editing,
 });
-const { saveRevision, handleInlineSuggestionAccept } = useInlineSuggestions({
+const {
+  handleInlineSuggestionAccept,
+  handleEditorReady: handleInlineSuggestionsEditorReady,
+} = useInlineSuggestions({
   spaceId: currentSpaceId,
   documentId,
-  isEditing,
-  isEditingReady,
+  isEditing: editing,
   getEditor,
 });
 
@@ -146,140 +159,153 @@ function unregisterEditorActions() {
   editorActionsRegistered = false;
 }
 
-function handleEditModeStart() {
-  if (!documentReadonly.value) {
-    isEditing.value = true;
+async function saveEditor(mode: SaveMode = "revision") {
+  const editor = getEditor();
+  if (!editor) return false;
+
+  const content = editor.getHTML();
+  if (mode === "suggestion") {
+    return !!(await saveRevision(content, "Suggested changes", "suggestion"));
+  }
+
+  await saveRevision(content, "Manual save");
+  return await saveDocument(content);
+}
+
+async function finishEditing(mode: SaveMode = "revision") {
+  if (saveStatusTimer) {
+    clearTimeout(saveStatusTimer);
+    saveStatusTimer = null;
+  }
+  storeSaveStatus.value = "saving";
+  storeSaveError.value = null;
+
+  let saved = false;
+  try {
+    saved = await saveEditor(mode);
+  } catch (error) {
+    storeSaveStatus.value = "error";
+    storeSaveError.value = error instanceof Error ? error : new Error(String(error));
+    return;
+  }
+
+  if (!saved) {
+    storeSaveStatus.value = "idle";
+    return;
+  }
+
+  editing.value = false;
+  storeSaveStatus.value = "saved";
+  saveStatusTimer = setTimeout(() => {
+    if (storeSaveStatus.value === "saved") {
+      storeSaveStatus.value = "idle";
+    }
+  }, 2000);
+
+  if (mode === "suggestion") {
+    await refreshDocument();
   }
 }
 
-async function handleEditModeCancel() {
-  cancelDebounce();
-  unregisterEditorActions();
-  isEditingReady.value = false;
-  isEditing.value = false;
+function registerSaveActions() {
+  Actions.register("document:save", {
+    title: "Publish Document",
+    description: "Publish current document and exit edit mode",
+    group: "edit",
+    run: async () => finishEditing("revision"),
+  });
 
+  Actions.register("document:save:suggestion", {
+    title: "Save as suggestion",
+    description: "Create an open suggestion instead of publishing",
+    group: "edit",
+    run: async () => finishEditing("suggestion"),
+  });
+}
+
+function unregisterSaveActions() {
+  Actions.unregister("document:save");
+  Actions.unregister("document:save:suggestion");
+}
+
+watch([docSaveStatus, docSaveError], () => {
+  storeSaveStatus.value = docSaveStatus.value;
+  storeSaveError.value = docSaveError.value ? new Error(docSaveError.value) : null;
+});
+
+watch(cancelCount, () => {
   if (typeof documentData.value?.content === "string") {
     renderedHtml.value = documentData.value.content;
   }
-
   reloadIfReady();
-}
-
-async function manualSave(mode: "revision" | "suggestion" = "revision") {
-  const editor = getEditor();
-  if (editor) {
-    const content = editor.getHTML();
-    if (mode === "suggestion") {
-      await saveRevision(content, "Suggested changes", "suggestion");
-      isEditingReady.value = false;
-      isEditing.value = false;
-      await refreshDocument();
-      return;
-    }
-    await saveRevisionSnapshot();
-    await saveDocument(content);
-  }
-}
-
-async function saveRevisionSnapshot() {
-  const editor = getEditor();
-  if (editor) {
-    const html = editor.getHTML();
-    await saveRevision(html, "Manual save");
-  }
-}
-
-watch([saveStatus, saveError], () => {
-  window.dispatchEvent(
-    new CustomEvent("save-status-changed", {
-      detail: { status: saveStatus.value, error: saveError.value },
-    }),
-  );
-  if (saveStatus.value === "saved" && documentType.value !== "canvas") {
-    isEditing.value = false;
-  }
 });
 
-async function setupEditorBridge() {
+async function startEditorSession() {
+  const session = ++editorSession;
+  if (!canMountEditor.value) return;
+  registerSaveActions();
   await editorRoom.joinUntilReady();
+  if (!editing.value || session !== editorSession) return;
+
   shouldMountEditor.value = true;
-  // editor-created on <document-view> fires onEditorCreated when Tiptap is ready
 }
 
-async function onEditorCreated() {
-  if (!isEditing.value) return;
+function stopEditorSession() {
+  editorSession++;
+  unregisterSaveActions();
+  unregisterEditorActions();
+  clearEditorPresence();
+  shouldMountEditor.value = false;
+  editorRoom.leave();
+}
+
+async function onEditorReady() {
+  if (!editing.value) return;
   await setupEditorPresence();
   registerEditorActions();
-  window.dispatchEvent(
-    new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }),
-  );
-  isEditingReady.value = true;
-  window.dispatchEvent(new CustomEvent("document:edit"));
+  handleInlineSuggestionsEditorReady();
 }
 
-watch(isEditing, (editing) => {
-  if (!editing) {
-    unregisterEditorActions();
-    clearEditorPresence();
-    shouldMountEditor.value = false;
-    editorRoom.leave();
+watch(editing, (isEditing) => {
+  if (isEditing) {
+    void startEditorSession();
+    return;
   }
 
-  if (editing) {
-    requestAnimationFrame(setupEditorBridge);
-  }
+  stopEditorSession();
 });
 
 onMounted(() => {
+  resetEditingState();
   isMounted.value = true;
 
-  if (
-    !documentReadonly.value &&
-    documentType.value !== "canvas" &&
-    documentType.value !== "app" &&
-    documentType.value !== "csv"
-  ) {
-    window.addEventListener("edit-mode-start", handleEditModeStart);
-  }
-  window.addEventListener("edit-mode-cancel", handleEditModeCancel);
-  window.addEventListener("request-editor-ready", () => {
-    if (isEditingReady.value) {
-      window.dispatchEvent(
-        new CustomEvent("editor-ready", { detail: { saveFunction: manualSave } }),
-      );
-    }
-  });
   window.addEventListener(
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
   );
 
-  window.addEventListener("document-published", reloadIfReady);
-
   window.addEventListener("visibilitychange", handleVisibilityChange);
 
-  if (props.initialEditMode) {
-    requestAnimationFrame(setupEditorBridge);
+  if (props.initialEditMode && canMountEditor.value) {
+    editing.value = true;
   }
 });
 
 onUnmounted(() => {
+  unregisterSaveActions();
   unregisterEditorActions();
   editorRoom.leave();
   clearEditorPresence();
-  window.removeEventListener("edit-mode-start", handleEditModeStart);
-  window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
   window.removeEventListener(
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
   );
-  window.removeEventListener("document-published", reloadIfReady);
   window.removeEventListener("visibilitychange", handleVisibilityChange);
-  cancelDebounce();
+  if (saveStatusTimer) clearTimeout(saveStatusTimer);
 });
 
 function reloadIfReady() {
-  if (isEditing.value) return;
+  if (editing.value) return;
   if (!documentId.value) return;
   refreshDocument();
 }
@@ -328,19 +354,6 @@ const ssrDeclarativeShadowDom = computed(() => {
   ].join("");
 });
 
-// Set elementReady when the document-view element first mounts into the DOM
-watch(documentViewEl, async (el) => {
-  if (!el) return;
-  await customElements.whenDefined("document-view");
-  elementReady.value = true;
-}, { flush: "post" });
-
-watch([editorYdoc, documentViewEl], () => {
-  if (documentViewEl.value) {
-    documentViewEl.value.collaborationDocument = editorYdoc.value;
-  }
-});
-
 useSync(
   currentSpaceId,
   () => (documentId.value ? [realtimeTopics.document(documentId.value)] : []),
@@ -360,16 +373,17 @@ useSync(
 <template>
     <main class="relative">
         <!-- CSV Spreadsheet View -->
-        <table-view v-if="!isEditing && documentType === 'csv'"
+        <table-view v-if="!editing && documentType === 'csv'"
             :html="renderedHtml" class="block flex-1 min-h-0"></table-view>
 
         <!-- Document View (read + edit, single persistent instance) -->
         <div v-if="documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
-            :class="isEditing ? 'h-full' : ''">
+            :class="editing ? 'h-full' : ''">
             <document-view ref="documentViewEl"
-                :editor="shouldMountEditor && !documentReadonly && elementReady ? '' : undefined"
+                :editor="shouldMountEditor && !documentReadonly ? '' : undefined"
+                :collaborationDocument="editorYdoc"
                 :html="renderedHtml"
-                :space-id="props.spaceId" :document-id="documentId" @editor-created="onEditorCreated"
+                :space-id="props.spaceId" :document-id="documentId" @editor-created="onEditorReady"
                 v-html="ssrDeclarativeShadowDom" />
         </div>
 
@@ -388,7 +402,7 @@ useSync(
     </template>
 
     <document-statusbar
-        v-if="isEditing && !documentReadonly && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
+        v-if="editing && !documentReadonly && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
         class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
         
     <document-toolbar :data-comments-enabled="supportsComments(documentType) ? '' : undefined"></document-toolbar>

@@ -24,6 +24,8 @@ import Pager from "./Pager.vue";
 import "@sv/elements/popover";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useMembers } from "../composeables/useMembers.ts";
+import { useSync } from "../composeables/useSync.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 const props = defineProps({
   documentId: {
@@ -238,21 +240,11 @@ onMounted(() => {
   }
 
   window.addEventListener("revision:close", onRevisionClose);
-  window.addEventListener("document-published", onDocumentPublished);
 });
 
 onUnmounted(() => {
   window.removeEventListener("revision:close", onRevisionClose);
-  window.removeEventListener("document-published", onDocumentPublished);
 });
-
-function onDocumentPublished() {
-  if (isOpen.value) {
-    refresh();
-  } else {
-    fetchPublishedRev();
-  }
-}
 
 function onRevisionClose() {
   selectedRevisionNumber.value = null;
@@ -279,6 +271,20 @@ watch(
     }
   },
   { immediate: true },
+);
+
+useSync(
+  currentSpaceId,
+  () => [realtimeTopics.document(props.documentId)],
+  (scopes) => {
+    if (!scopes.includes(realtimeTopics.document(props.documentId))) return;
+
+    if (isOpen.value) {
+      refresh();
+    } else {
+      fetchPublishedRev();
+    }
+  },
 );
 </script>
 

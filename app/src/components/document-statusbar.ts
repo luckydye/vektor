@@ -18,7 +18,6 @@ if (
       }
 
       connectedCallback() {
-        window.addEventListener("document:edit", this.onEditorEvent);
         window.addEventListener("document:save", this.onEditorEvent);
         this.unsubscribeActionsRegister = Actions.subscribe(
           "actions:register",
@@ -32,14 +31,13 @@ if (
       }
 
       disconnectedCallback() {
-        window.removeEventListener("document:edit", this.onEditorEvent);
         window.removeEventListener("document:save", this.onEditorEvent);
         this.unsubscribeActionsRegister?.();
         this.unsubscribeActionsUnregister?.();
       }
 
       private onEditorEvent = (event: Event) => {
-        if (event.type === "document:edit") {
+        if (event.type === "document:save") {
           this.paint();
         }
       };

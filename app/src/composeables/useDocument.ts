@@ -7,10 +7,7 @@ import { useSync } from "./useSync.ts";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
-export function useDocument(
-  documentId: string | undefined,
-  documentType: "document" | "canvas" = "document",
-) {
+export function useDocument(documentId: string | undefined, documentType = "document") {
   const { currentSpaceId, currentSpace } = useSpace();
   const queryClient = useQueryClient();
   const saveStatus: Ref<SaveStatus> = ref("idle");

@@ -64,8 +64,6 @@ export function useRevisions(documentId: string | undefined) {
     try {
       await api.document.patch(currentSpaceId.value, documentId, { publishedRev: rev });
 
-      window.dispatchEvent(new CustomEvent("document-published"));
-
       return true;
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Unknown error";

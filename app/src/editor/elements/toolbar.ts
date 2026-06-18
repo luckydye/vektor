@@ -1,4 +1,4 @@
-import type { Editor } from "@tiptap/core";
+import type { ChainedCommands, Editor } from "@tiptap/core";
 import "@sv/elements/popover";
 import { html, render } from "lit-html";
 import {
@@ -192,6 +192,11 @@ function getEditor() {
   return window.__editor;
 }
 
+type ToolbarChain = ChainedCommands & {
+  setCommentAnchor: (id: string) => ToolbarChain;
+  setColumnLayout: (attrs: { columns: number }) => ToolbarChain;
+};
+
 function editorReady(editor: Editor | undefined): editor is Editor {
   return !!editor && !editor.isDestroyed;
 }
@@ -228,10 +233,7 @@ if (
       }
 
       connectedCallback() {
-        window.addEventListener("document:edit", this.handleEditorAvailable);
-        window.addEventListener("editor-ready", this.handleEditorAvailable);
-        window.addEventListener("edit-mode-start", this.handleEditorAvailable);
-        window.addEventListener("edit-mode-cancel", this.handleEditModeEnd);
+        window.addEventListener("editor-created", this.handleEditorAvailable);
         window.addEventListener("editor-destroyed", this.handleEditModeEnd);
         window.addEventListener("editor-update", this.update);
         window.addEventListener("resize", this.updatePosition, { passive: true });
@@ -246,10 +248,7 @@ if (
       }
 
       disconnectedCallback() {
-        window.removeEventListener("document:edit", this.handleEditorAvailable);
-        window.removeEventListener("editor-ready", this.handleEditorAvailable);
-        window.removeEventListener("edit-mode-start", this.handleEditorAvailable);
-        window.removeEventListener("edit-mode-cancel", this.handleEditModeEnd);
+        window.removeEventListener("editor-created", this.handleEditorAvailable);
         window.removeEventListener("editor-destroyed", this.handleEditModeEnd);
         window.removeEventListener("editor-update", this.update);
         window.removeEventListener("resize", this.updatePosition);
@@ -390,7 +389,6 @@ if (
         if (!editorReady(editor)) return;
 
         if (this.shouldShow) {
-          const { state, view } = editor;
           const left = this.leftAlignedToolbarPosition(
             editor,
             this.menu?.offsetWidth ?? 600,
@@ -500,7 +498,7 @@ if (
       private chain() {
         const editor = getEditor();
         if (!editorReady(editor)) return null;
-        return editor.chain().focus() as any;
+        return editor.chain().focus() as ToolbarChain;
       }
 
       private isActive(
@@ -583,7 +581,7 @@ if (
         if (!editorReady(editor)) return;
 
         const id = crypto.randomUUID().slice(0, 8);
-        (editor.chain().focus() as any).setCommentAnchor(id).run();
+        (editor.chain().focus() as ToolbarChain).setCommentAnchor(id).run();
 
         window.dispatchEvent(
           new CustomEvent("comment:create", {
@@ -599,7 +597,9 @@ if (
         if (!editorReady(editor)) return;
 
         if (!editor.isActive("columnLayout")) {
-          (editor.chain().focus() as any).setColumnLayout({ columns: count }).run();
+          (editor.chain().focus() as ToolbarChain)
+            .setColumnLayout({ columns: count })
+            .run();
           this.update();
           return;
         }

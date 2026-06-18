@@ -1,4 +1,5 @@
-import { watch, type Ref } from "vue";
+import type { Editor } from "@tiptap/core";
+import { type Ref, watch } from "vue";
 import { absolutePositionToRelativePosition } from "y-prosemirror";
 import * as Y from "yjs";
 import {
@@ -20,7 +21,7 @@ export function useEditorPresence(options: {
   spaceId: string;
   documentId: Ref<string | undefined>;
   documentViewEl: Ref<PresenceViewElement | null>;
-  getEditor: () => any;
+  getEditor: () => Editor | undefined;
   isActive: Ref<boolean>;
 }) {
   const { spaceId, documentId, documentViewEl, getEditor, isActive } = options;
@@ -114,7 +115,7 @@ export function useEditorPresence(options: {
   }
 
   async function setup() {
-    if (!documentId.value || !user.value || presenceHandle) return;
+    if (!documentId.value || !user.value || presenceHandle || !getEditor()) return;
 
     presenceHandle = joinPresenceRoom<DocumentPresenceState>(
       spaceId,
