@@ -8,10 +8,10 @@ import {
 } from "~/src/components/index.ts";
 import { api } from "../api/client.ts";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
+import { useEditor } from "../composeables/useEditor.ts";
 import { useHeaderImage } from "../composeables/useHeaderImage.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
-import { cancelCount, editing, saveStatus } from "../store/documentEditor.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
 import { t } from "../utils/lang.ts";
 import Contributors from "./Contributors.vue";
@@ -29,6 +29,7 @@ const props = defineProps<{
 const { currentSpaceId, currentSpace } = useSpace();
 const { toggle: toggleDockedWindow } = useDockedWindows();
 const { supportsHeaderImage, changeHeaderImage, removeHeaderImage } = useHeaderImage();
+const { cancelCount, editing, saveStatus } = useEditor();
 
 const userCanEdit = computed(() => {
   return canEdit(currentSpace.value?.userRole);

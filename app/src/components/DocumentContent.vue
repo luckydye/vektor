@@ -4,23 +4,14 @@ import type * as Y from "yjs";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
 import { useDocument } from "../composeables/useDocument.ts";
-import { useEditorPresence } from "../composeables/useEditorPresence.ts";
+import { useEditor } from "../composeables/useEditor.ts";
 import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { useYjsDocumentRoom } from "../composeables/useYjsDocumentRoom.ts";
 import type { DocumentPresenceProfile } from "../editor/collaboration.ts";
-import {
-  cancelCount,
-  editing,
-  resetEditingState,
-  type SaveMode,
-  saveError as storeSaveError,
-  saveStatus as storeSaveStatus,
-} from "../store/documentEditor.ts";
 import docStyles from "../styles/document.css?inline";
-import { Actions } from "../utils/actions.ts";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
@@ -29,10 +20,6 @@ import CommentOverlays from "./CommentOverlays.vue";
 import "../editor/elements/table-view.ts";
 import "../editor/elements/toolbar.ts";
 import "../components/document-statusbar.ts";
-import {
-  registerFormattingActions,
-  unregisterFormattingActions,
-} from "../utils/formattingActions.ts";
 
 const props = withDefaults(
   defineProps<{
@@ -55,7 +42,6 @@ const documentId = computed(() => props.documentId);
 const documentType = computed(() => props.documentType || "document");
 const documentReadonly = computed(() => props.readonly);
 
-const shouldMountEditor = ref(false);
 const canMountEditor = computed(
   () =>
     !documentReadonly.value &&
@@ -82,10 +68,6 @@ type DocumentToolbarElement = HTMLElement & {
   openBackgroundColorPicker?: () => void;
 };
 const documentToolbar = ref<DocumentToolbarElement | null>(null);
-let editorActionsRegistered = false;
-let leaveEditorActionSubscriptions: Array<() => void> = [];
-let editorSession = 0;
-let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
@@ -101,12 +83,19 @@ const {
   saveDocument,
 } = useDocument(documentId.value, documentType.value);
 const { saveRevision } = useRevisions(documentId.value);
-const { setupEditorPresence, clearEditorPresence } = useEditorPresence({
+const { editing, cancelCount, resetEditingState, shouldMountEditor } = useEditor({
   spaceId: props.spaceId,
   documentId,
+  canMountEditor,
   documentViewEl,
+  documentToolbar,
+  editorRoom,
   getEditor,
-  isActive: editing,
+  documentSaveStatus: docSaveStatus,
+  documentSaveError: docSaveError,
+  saveDocument,
+  saveRevision,
+  refreshDocument: () => refreshDocument(),
 });
 const { handleInlineSuggestionAccept } = useInlineSuggestions({
   spaceId: currentSpaceId,
@@ -115,153 +104,11 @@ const { handleInlineSuggestionAccept } = useInlineSuggestions({
   getEditor,
 });
 
-function registerEditorActions() {
-  if (editorActionsRegistered) return;
-
-  registerFormattingActions();
-  Actions.register("toolbar:dismiss", {
-    title: "Dismiss toolbar",
-    description: "Hide the editor toolbar",
-    group: "formatting",
-    run: async () => {
-      documentToolbar.value?.dismiss?.();
-    },
-  });
-  Actions.mapShortcut("escape", "toolbar:dismiss");
-
-  leaveEditorActionSubscriptions = [
-    Actions.subscribe("format:color:text:open", () => {
-      documentToolbar.value?.openTextColorPicker?.();
-    }),
-    Actions.subscribe("format:color:background:open", () => {
-      documentToolbar.value?.openBackgroundColorPicker?.();
-    }),
-  ];
-  editorActionsRegistered = true;
-}
-
-function unregisterEditorActions() {
-  if (!editorActionsRegistered) return;
-
-  unregisterFormattingActions();
-  Actions.unmapShortcut("escape", "toolbar:dismiss");
-  Actions.unregister("toolbar:dismiss");
-  for (const leave of leaveEditorActionSubscriptions) {
-    leave();
-  }
-  leaveEditorActionSubscriptions = [];
-  editorActionsRegistered = false;
-}
-
-async function saveEditor(mode: SaveMode = "revision") {
-  const editor = getEditor();
-  if (!editor) return false;
-
-  const content = editor.getHTML();
-  if (mode === "suggestion") {
-    return !!(await saveRevision(content, "Suggested changes", "suggestion"));
-  }
-
-  await saveRevision(content, "Manual save");
-  return await saveDocument(content);
-}
-
-async function finishEditing(mode: SaveMode = "revision") {
-  if (saveStatusTimer) {
-    clearTimeout(saveStatusTimer);
-    saveStatusTimer = null;
-  }
-  storeSaveStatus.value = "saving";
-  storeSaveError.value = null;
-
-  let saved = false;
-  try {
-    saved = await saveEditor(mode);
-  } catch (error) {
-    storeSaveStatus.value = "error";
-    storeSaveError.value = error instanceof Error ? error : new Error(String(error));
-    return;
-  }
-
-  if (!saved) {
-    storeSaveStatus.value = "idle";
-    return;
-  }
-
-  editing.value = false;
-  storeSaveStatus.value = "saved";
-  saveStatusTimer = setTimeout(() => {
-    if (storeSaveStatus.value === "saved") {
-      storeSaveStatus.value = "idle";
-    }
-  }, 2000);
-
-  if (mode === "suggestion") {
-    await refreshDocument();
-  }
-}
-
-function registerSaveActions() {
-  Actions.register("document:save", {
-    title: "Publish Document",
-    description: "Publish current document and exit edit mode",
-    group: "edit",
-    run: async () => finishEditing("revision"),
-  });
-
-  Actions.register("document:save:suggestion", {
-    title: "Save as suggestion",
-    description: "Create an open suggestion instead of publishing",
-    group: "edit",
-    run: async () => finishEditing("suggestion"),
-  });
-}
-
-function unregisterSaveActions() {
-  Actions.unregister("document:save");
-  Actions.unregister("document:save:suggestion");
-}
-
-watch([docSaveStatus, docSaveError], () => {
-  storeSaveStatus.value = docSaveStatus.value;
-  storeSaveError.value = docSaveError.value ? new Error(docSaveError.value) : null;
-});
-
 watch(cancelCount, () => {
   if (typeof documentData.value?.content === "string") {
     renderedHtml.value = documentData.value.content;
   }
   reloadIfReady();
-});
-
-async function startEditorSession() {
-  const session = ++editorSession;
-  if (!canMountEditor.value) return;
-  registerSaveActions();
-  registerEditorActions();
-  void setupEditorPresence();
-  await editorRoom.joinUntilReady();
-  if (!editing.value || session !== editorSession) return;
-
-  shouldMountEditor.value = true;
-}
-
-function stopEditorSession() {
-  editorSession++;
-  unregisterSaveActions();
-  unregisterEditorActions();
-  clearEditorPresence();
-  shouldMountEditor.value = false;
-  editorRoom.leave();
-}
-
-watch(editing, (isEditing) => {
-  if (isEditing) {
-    void startEditorSession();
-    return;
-  }
-
-  stopEditorSession();
 });
 
 onMounted(() => {
@@ -281,16 +128,11 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  unregisterSaveActions();
-  unregisterEditorActions();
-  editorRoom.leave();
-  clearEditorPresence();
   window.removeEventListener(
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
   );
   window.removeEventListener("visibilitychange", handleVisibilityChange);
-  if (saveStatusTimer) clearTimeout(saveStatusTimer);
 });
 
 function reloadIfReady() {

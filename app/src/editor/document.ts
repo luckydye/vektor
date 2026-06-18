@@ -1,4 +1,4 @@
-import { editing } from "../store/documentEditor.ts";
+import { editing } from "../composeables/useEditor.ts";
 import docStyles from "../styles/document.css?inline";
 import "./elements/textarea.ts";
 import "./elements/expression.ts";

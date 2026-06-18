@@ -17,10 +17,11 @@
 import { nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
+import { useEditor } from "../composeables/useEditor.ts";
 import { useSpace } from "../composeables/useSpace.ts";
-import { editing } from "../store/documentEditor.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
+const { editing } = useEditor();
 
 const props = withDefaults(
   defineProps<{
