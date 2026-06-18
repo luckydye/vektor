@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { api, type ExtensionRoute } from "../api/client.ts";
+import { getActiveEditor } from "../editor/activeEditor.ts";
 import {
   registerSuggestionProvider,
   type SuggestionItem,
@@ -364,7 +365,7 @@ export class Extensions {
         },
         list: async () => [],
       },
-      getActiveEditor: () => window.__editor ?? null,
+      getActiveEditor,
     };
   }
 

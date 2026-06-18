@@ -1,10 +1,6 @@
-import type { Editor } from "@tiptap/core";
 import { type Ref, ref, watch } from "vue";
-import { absolutePositionToRelativePosition } from "y-prosemirror";
-import * as Y from "yjs";
 import {
   type DocumentPresenceProfile,
-  findYSyncState,
   getPresenceColor,
 } from "../editor/collaboration.ts";
 import type { PresenceEnvelope } from "../utils/realtime.ts";
@@ -16,10 +12,10 @@ type DocumentPresenceState = NonNullable<DocumentPresenceProfile["state"]>;
 export function useEditorPresence(options: {
   spaceId: string;
   documentId: Ref<string | undefined>;
-  getEditor: () => Editor | undefined;
+  currentState: () => DocumentPresenceState;
   isActive: Ref<boolean>;
 }) {
-  const { spaceId, documentId, getEditor, isActive } = options;
+  const { spaceId, documentId, currentState, isActive } = options;
   const user = useUserProfile();
   const presenceProfiles = ref<DocumentPresenceProfile[]>([]);
 
@@ -41,42 +37,6 @@ export function useEditorPresence(options: {
   } | null = null;
   let presenceTimer: ReturnType<typeof setInterval> | null = null;
   let lastPresenceState = "";
-
-  function currentState(): DocumentPresenceState {
-    const editor = getEditor();
-    if (!editor) {
-      return { kind: "editor", focused: false, selection: null };
-    }
-
-    const focused = editor.isFocused || editor.view.hasFocus();
-    if (!focused) {
-      return { kind: "editor", focused: false, selection: null };
-    }
-
-    const syncState = findYSyncState(editor);
-    const mapping = syncState?.binding?.mapping;
-    if (!mapping) {
-      return { kind: "editor", focused: false, selection: null };
-    }
-
-    try {
-      const { anchor, head } = editor.state.selection;
-      return {
-        kind: "editor",
-        focused,
-        selection: {
-          anchor: Y.relativePositionToJSON(
-            absolutePositionToRelativePosition(anchor, syncState.type, mapping),
-          ),
-          head: Y.relativePositionToJSON(
-            absolutePositionToRelativePosition(head, syncState.type, mapping),
-          ),
-        },
-      };
-    } catch {
-      return { kind: "editor", focused: false, selection: null };
-    }
-  }
 
   function syncProfiles() {
     presenceProfiles.value = [...remotePresences.values()].map((p) => ({

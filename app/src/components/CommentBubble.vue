@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Editor } from "@tiptap/core";
+import type { Mark, Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { plusSmallIcon } from "~/src/assets/icons.ts";
 import type { Comment as ApiComment } from "../api/ApiClient.ts";
@@ -14,6 +16,7 @@ const props = defineProps<{
   spaceId: string;
   documentId: string;
   currentRev?: number;
+  editor?: Editor;
 }>();
 
 const {
@@ -230,9 +233,7 @@ async function handleDeleteComment(commentId: string) {
 }
 
 function removeCommentAnchorMark(reference: string) {
-  const editor = (
-    window as { __editor?: { isDestroyed: boolean; state: any; view: any } }
-  ).__editor;
+  const editor = props.editor;
   if (!editor || editor.isDestroyed) return;
   const match = reference.match(/\[data-comment-id="([^"]+)"\]/);
   if (!match) return;
@@ -240,10 +241,10 @@ function removeCommentAnchorMark(reference: string) {
   const { state, view } = editor;
   const tr = state.tr;
   let modified = false;
-  state.doc.descendants((node: any, pos: number) => {
+  state.doc.descendants((node: ProseMirrorNode, pos: number) => {
     if (!node.isText) return;
     const mark = node.marks.find(
-      (m: any) => m.type.name === "commentAnchor" && m.attrs.commentId === commentId,
+      (m: Mark) => m.type.name === "commentAnchor" && m.attrs.commentId === commentId,
     );
     if (mark) {
       tr.removeMark(pos, pos + node.nodeSize, mark.type);

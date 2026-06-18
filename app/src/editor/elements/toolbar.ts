@@ -67,7 +67,7 @@ function getSelectedImageNode(editor: Editor) {
  *
  * @example
  * // Use in a toolbar button
- * <button onclick={() => toggleImageFullWidth(globalThis.__editor)}>
+ * <button onclick={() => toggleImageFullWidth(editor)}>
  *   Toggle Full Width
  * </button>
  *
@@ -182,16 +182,6 @@ export function getImageAttributes(editor: Editor) {
   return getSelectedImageNode(editor)?.attrs ?? null;
 }
 
-declare global {
-  interface Window {
-    __editor?: Editor;
-  }
-}
-
-function getEditor() {
-  return window.__editor;
-}
-
 type ToolbarChain = ChainedCommands & {
   setCommentAnchor: (id: string) => ToolbarChain;
   setColumnLayout: (attrs: { columns: number }) => ToolbarChain;
@@ -226,6 +216,7 @@ if (
       private floatingStyle = "";
       private tableStyle = "";
       private dismissedSelectionKey: string | null = null;
+      editor?: Editor;
 
       constructor() {
         super();
@@ -274,6 +265,10 @@ if (
         return this.root.querySelector<HTMLInputElement>("[data-cell-bg-color]");
       }
 
+      private getEditor() {
+        return this.editor;
+      }
+
       private handleEditModeEnd = () => {
         this.shouldShow = false;
         this.tableActive = false;
@@ -285,7 +280,7 @@ if (
       };
 
       dismiss() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (editorReady(editor)) {
           this.dismissedSelectionKey = this.toolbarSelectionKey(editor);
         }
@@ -317,7 +312,7 @@ if (
       };
 
       private update = () => {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) {
           this.shouldShow = false;
           this.secondaryOpen = false;
@@ -379,7 +374,7 @@ if (
       }
 
       private updatePosition = () => {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         if (this.shouldShow) {
@@ -490,7 +485,7 @@ if (
       }
 
       private chain() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return null;
         return editor.chain().focus() as ToolbarChain;
       }
@@ -499,14 +494,14 @@ if (
         nameOrAttrs: string | Record<string, unknown>,
         attrs?: Record<string, unknown>,
       ) {
-        const editor = getEditor();
+        const editor = this.getEditor();
         return editorReady(editor)
           ? editor.isActive(nameOrAttrs as never, attrs as never)
           : false;
       }
 
       private canIndent() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return false;
         return (
           editor.can().sinkListItem("listItem") || editor.can().sinkListItem("taskItem")
@@ -514,7 +509,7 @@ if (
       }
 
       private canOutdent() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return false;
         return (
           editor.can().liftListItem("listItem") || editor.can().liftListItem("taskItem")
@@ -534,7 +529,7 @@ if (
       }
 
       private setLink() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const previousUrl = editor.getAttributes("link").href;
@@ -549,7 +544,7 @@ if (
       }
 
       private indentListItem() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
         if (editor.isActive("taskItem") && editor.can().sinkListItem("taskItem")) {
           editor.chain().focus().sinkListItem("taskItem").run();
@@ -560,7 +555,7 @@ if (
       }
 
       private outdentListItem() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
         if (editor.isActive("taskItem") && editor.can().liftListItem("taskItem")) {
           editor.chain().focus().liftListItem("taskItem").run();
@@ -571,7 +566,7 @@ if (
       }
 
       private addInlineComment() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const id = crypto.randomUUID().slice(0, 8);
@@ -587,7 +582,7 @@ if (
       }
 
       private setColumnCount(count: number) {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         if (!editor.isActive("columnLayout")) {
@@ -636,7 +631,7 @@ if (
       }
 
       private deleteColumnLayout() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const { state } = editor;
@@ -655,7 +650,7 @@ if (
       }
 
       private cutRow() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const { $from } = editor.state.selection;
@@ -671,7 +666,7 @@ if (
       }
 
       private pasteRow() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor) || !this.copiedRow) return;
 
         const { state, view } = editor;
@@ -937,7 +932,7 @@ if (
       }
 
       private renderFormattingToolbar() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return null;
 
         return html`

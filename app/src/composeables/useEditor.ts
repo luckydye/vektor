@@ -1,14 +1,7 @@
-import type { Editor } from "@tiptap/core";
 import { computed, onUnmounted, type Ref, ref, type ShallowRef, watch } from "vue";
 import type * as Y from "yjs";
-import type { DocumentPresenceProfile } from "../editor/collaboration.ts";
 import { Actions } from "../utils/actions.ts";
-import {
-  registerFormattingActions,
-  unregisterFormattingActions,
-} from "../utils/formattingActions.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
-import { useEditorPresence } from "./useEditorPresence.ts";
 import { useRevisions } from "./useRevisions.ts";
 import { useYjsDocumentRoom } from "./useYjsDocumentRoom.ts";
 
@@ -35,20 +28,6 @@ export function resetEditingState() {
   saveError.value = null;
 }
 
-export function getEditor(): Editor | undefined {
-  return (globalThis as typeof globalThis & { __editor?: Editor }).__editor;
-}
-
-type DocumentViewElement = {
-  setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
-};
-
-type DocumentToolbarElement = {
-  dismiss?: () => void;
-  openTextColorPicker?: () => void;
-  openBackgroundColorPicker?: () => void;
-};
-
 type EditorRoom = {
   ydoc: ShallowRef<Y.Doc>;
   joinUntilReady: () => Promise<void>;
@@ -60,6 +39,7 @@ type UseEditorOptions = {
   documentId: Ref<string | undefined>;
   documentType: Ref<string>;
   readonly: Ref<boolean>;
+  getEditorHtml: () => string | null;
 };
 
 type EditorState = {
@@ -72,8 +52,6 @@ type EditorState = {
 };
 
 type DocumentEditor = EditorState & {
-  documentViewEl: Ref<DocumentViewElement | null>;
-  documentToolbar: Ref<DocumentToolbarElement | null>;
   canMountEditor: Ref<boolean>;
   editorYdoc: ShallowRef<Y.Doc>;
   suggestionSavedCount: Ref<number>;
@@ -98,10 +76,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     };
   }
 
-  const { spaceId, documentId, documentType, readonly } = options;
+  const { spaceId, documentId, documentType, readonly, getEditorHtml } = options;
 
-  const documentViewEl = ref<DocumentViewElement | null>(null);
-  const documentToolbar = ref<DocumentToolbarElement | null>(null);
   const suggestionSavedCount = ref(0);
   const canMountEditor = computed(
     () =>
@@ -119,16 +95,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   } = useDocument(documentId.value, documentType.value);
   const { saveRevision } = useRevisions(documentId.value);
 
-  const { setupEditorPresence, clearEditorPresence, presenceProfiles } =
-    useEditorPresence({
-      spaceId,
-      documentId,
-      getEditor,
-      isActive: editing,
-    });
-
-  let editorActionsRegistered = false;
-  let leaveEditorActionSubscriptions: Array<() => void> = [];
   let editorSession = 0;
   let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -138,44 +104,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveStatusTimer = null;
   }
 
-  function registerEditorActions() {
-    if (editorActionsRegistered) return;
-
-    registerFormattingActions();
-    Actions.register("toolbar:dismiss", {
-      title: "Dismiss toolbar",
-      description: "Hide the editor toolbar",
-      group: "formatting",
-      run: async () => {
-        documentToolbar.value?.dismiss?.();
-      },
-    });
-    Actions.mapShortcut("escape", "toolbar:dismiss");
-
-    leaveEditorActionSubscriptions = [
-      Actions.subscribe("format:color:text:open", () => {
-        documentToolbar.value?.openTextColorPicker?.();
-      }),
-      Actions.subscribe("format:color:background:open", () => {
-        documentToolbar.value?.openBackgroundColorPicker?.();
-      }),
-    ];
-    editorActionsRegistered = true;
-  }
-
-  function unregisterEditorActions() {
-    if (!editorActionsRegistered) return;
-
-    unregisterFormattingActions();
-    Actions.unmapShortcut("escape", "toolbar:dismiss");
-    Actions.unregister("toolbar:dismiss");
-    for (const leave of leaveEditorActionSubscriptions) {
-      leave();
-    }
-    leaveEditorActionSubscriptions = [];
-    editorActionsRegistered = false;
-  }
-
   async function finishEditing(mode: SaveMode = "revision") {
     clearSaveStatusTimer();
     saveStatus.value = "saving";
@@ -183,9 +111,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
     let saved = false;
     try {
-      const editor = getEditor();
-      if (editor) {
-        const content = editor.getHTML();
+      const content = getEditorHtml();
+      if (content) {
         if (mode === "suggestion") {
           saved = !!(await saveRevision(content, "Suggested changes", "suggestion"));
         } else {
@@ -240,8 +167,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     const session = ++editorSession;
     if (!canMountEditor.value) return;
     registerSaveActions();
-    registerEditorActions();
-    void setupEditorPresence();
     await editorRoom.joinUntilReady();
     if (!editing.value || session !== editorSession) return;
 
@@ -251,8 +176,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   function stopEditorSession() {
     editorSession++;
     unregisterSaveActions();
-    unregisterEditorActions();
-    clearEditorPresence();
     shouldMountEditor.value = false;
     editorRoom.leave();
   }
@@ -260,10 +183,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   watch([documentSaveStatus, documentSaveError], () => {
     saveStatus.value = documentSaveStatus.value;
     saveError.value = documentSaveError.value ? new Error(documentSaveError.value) : null;
-  });
-
-  watch(presenceProfiles, (profiles) => {
-    documentViewEl.value?.setPresenceProfiles?.(profiles);
   });
 
   watch(editing, (isEditing) => {
@@ -277,9 +196,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
   onUnmounted(() => {
     unregisterSaveActions();
-    unregisterEditorActions();
     editorRoom.leave();
-    clearEditorPresence();
     clearSaveStatusTimer();
   });
 
@@ -290,8 +207,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     cancelCount,
     resetEditingState,
     shouldMountEditor,
-    documentViewEl,
-    documentToolbar,
     canMountEditor,
     editorYdoc,
     suggestionSavedCount,

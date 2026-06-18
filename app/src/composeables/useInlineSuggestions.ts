@@ -1,15 +1,16 @@
+import type { Editor } from "@tiptap/core";
 import { applyPatch, parsePatch } from "diff";
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
-import { getEditor } from "./useEditor.ts";
 import { useRevisions } from "./useRevisions.ts";
 
 export function useInlineSuggestions(options: {
   spaceId: Ref<string | null | undefined>;
   documentId: Ref<string | undefined>;
   isEditing: Ref<boolean>;
+  editor: Ref<Editor | undefined>;
 }) {
-  const { spaceId, documentId, isEditing } = options;
+  const { spaceId, documentId, isEditing, editor } = options;
 
   const { revisions, saveRevision, fetchHistory } = useRevisions(documentId.value);
 
@@ -63,9 +64,8 @@ export function useInlineSuggestions(options: {
   }
 
   function setEditorHtml(html: string) {
-    const editor = getEditor();
-    if (!editor) throw new Error("Editor is not ready");
-    editor.commands.setContent(html);
+    if (!editor.value) throw new Error("Editor is not ready");
+    editor.value.commands.setContent(html);
   }
 
   function clearQueuedInlineSuggestionsSync() {
@@ -75,10 +75,9 @@ export function useInlineSuggestions(options: {
   }
 
   function syncInlineSuggestions() {
-    const editor = getEditor();
-    if (!editor?.commands) return;
+    if (!editor.value?.commands) return;
 
-    editor.commands.setInlineSuggestions(
+    editor.value.commands.setInlineSuggestions(
       openSuggestions.value
         .filter((s) => suggestionPatches.value[s.rev])
         .map((s) => ({
@@ -96,8 +95,7 @@ export function useInlineSuggestions(options: {
       inlineSuggestionSyncTimer = null;
       if (!isEditing.value) return;
 
-      const editor = getEditor();
-      if (!editor?.commands) {
+      if (!editor.value?.commands) {
         queueInlineSuggestionsSync(50);
         return;
       }
@@ -110,10 +108,9 @@ export function useInlineSuggestions(options: {
     const patch = suggestionPatches.value[revisionRev];
     if (!patch) throw new Error(`Suggestion patch ${revisionRev} not loaded`);
 
-    const editor = getEditor();
-    if (!editor) throw new Error("Editor is not ready");
+    if (!editor.value) throw new Error("Editor is not ready");
 
-    const currentHtml = prettyPrintHtml(editor.getHTML());
+    const currentHtml = prettyPrintHtml(editor.value.getHTML());
     const nextHtml = applyPatch(currentHtml, buildSingleHunkPatch(patch, hunkIndex));
     if (nextHtml === false) {
       throw new Error(
@@ -136,7 +133,7 @@ export function useInlineSuggestions(options: {
       if (!editing || !documentId.value) {
         clearQueuedInlineSuggestionsSync();
         suggestionPatches.value = {};
-        getEditor()?.commands.clearInlineSuggestions();
+        editor.value?.commands.clearInlineSuggestions();
         return;
       }
       await loadSuggestionPatches();

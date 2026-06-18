@@ -1,13 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import type { Editor } from "@tiptap/core";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { absolutePositionToRelativePosition } from "y-prosemirror";
+import type * as Y from "yjs";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
 import { useEditor } from "../composeables/useEditor.ts";
+import { useEditorPresence } from "../composeables/useEditorPresence.ts";
 import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
+import { setActiveEditor } from "../editor/activeEditor.ts";
+import { type DocumentPresenceProfile, findYSyncState } from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
+import { Actions } from "../utils/actions.ts";
 import { supportsComments } from "../utils/documentTypes.ts";
+import {
+  registerFormattingActions,
+  unregisterFormattingActions,
+} from "../utils/formattingActions.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
 import CommentBubble from "./CommentBubble.vue";
@@ -42,6 +53,23 @@ const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
 const isMounted = ref(false);
 const commentBubble = ref<InstanceType<typeof CommentBubble> | null>(null);
+type DocumentViewElement = HTMLElement & {
+  editorInstance?: Editor;
+  collaborationDocument?: Y.Doc;
+  destroyEditor?: () => void;
+  renderReadHtml?: (html: string) => void;
+  setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
+};
+type DocumentToolbarElement = HTMLElement & {
+  editor?: Editor;
+  dismiss?: () => void;
+  openTextColorPicker?: () => void;
+  openBackgroundColorPicker?: () => void;
+};
+const documentViewEl = shallowRef<DocumentViewElement | null>(null);
+const documentToolbar = shallowRef<DocumentToolbarElement | null>(null);
+const editor = shallowRef<Editor>();
+type DocumentPresenceState = NonNullable<DocumentPresenceProfile["state"]>;
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
@@ -54,8 +82,6 @@ const {
   cancelCount,
   resetEditingState,
   shouldMountEditor,
-  documentViewEl,
-  documentToolbar,
   canMountEditor,
   editorYdoc,
   suggestionSavedCount,
@@ -64,12 +90,56 @@ const {
   documentId,
   documentType,
   readonly: documentReadonly,
+  getEditorHtml: () => editor.value?.getHTML() ?? null,
+});
+const { setupEditorPresence, clearEditorPresence, presenceProfiles } = useEditorPresence({
+  spaceId: props.spaceId,
+  documentId,
+  currentState: currentPresenceState,
+  isActive: editing,
 });
 const { handleInlineSuggestionAccept } = useInlineSuggestions({
   spaceId: currentSpaceId,
   documentId,
   isEditing: editing,
+  editor,
 });
+
+function currentPresenceState(): DocumentPresenceState {
+  const currentEditor = editor.value;
+  if (!currentEditor) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  const focused = currentEditor.isFocused || currentEditor.view.hasFocus();
+  if (!focused) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  const syncState = findYSyncState(currentEditor);
+  const mapping = syncState?.binding?.mapping;
+  if (!mapping) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  try {
+    const { anchor, head } = currentEditor.state.selection;
+    return {
+      kind: "editor",
+      focused,
+      selection: {
+        anchor: Y.relativePositionToJSON(
+          absolutePositionToRelativePosition(anchor, syncState.type, mapping),
+        ),
+        head: Y.relativePositionToJSON(
+          absolutePositionToRelativePosition(head, syncState.type, mapping),
+        ),
+      },
+    };
+  } catch {
+    return { kind: "editor", focused: false, selection: null };
+  }
+}
 
 watch(cancelCount, () => {
   if (typeof documentData.value?.content === "string") {
@@ -80,6 +150,114 @@ watch(cancelCount, () => {
 
 watch(suggestionSavedCount, () => {
   refreshDocument();
+});
+
+watch(presenceProfiles, (profiles) => {
+  documentViewEl.value?.setPresenceProfiles?.(profiles);
+});
+
+watch(editor, (currentEditor) => {
+  if (documentToolbar.value) {
+    documentToolbar.value.editor = currentEditor;
+  }
+  setActiveEditor(currentEditor ?? null);
+});
+
+watch(documentToolbar, (toolbar) => {
+  if (toolbar) {
+    toolbar.editor = editor.value;
+  }
+});
+
+watch(
+  documentViewEl,
+  (view, _previousView, onCleanup) => {
+    editor.value = view?.editorInstance;
+    if (!view) return;
+
+    const handleEditorReady = (event: Event) => {
+      editor.value = (event as CustomEvent<{ editor: Editor }>).detail.editor;
+    };
+    const handleEditorDestroyed = (event: Event) => {
+      const destroyedEditor = (event as CustomEvent<{ editor: Editor }>).detail.editor;
+      if (editor.value === destroyedEditor) {
+        editor.value = undefined;
+      }
+    };
+
+    view.addEventListener("editor-ready", handleEditorReady);
+    view.addEventListener("editor-destroyed", handleEditorDestroyed);
+    onCleanup(() => {
+      view.removeEventListener("editor-ready", handleEditorReady);
+      view.removeEventListener("editor-destroyed", handleEditorDestroyed);
+    });
+  },
+  { immediate: true },
+);
+
+let toolbarActionsRegistered = false;
+let leaveToolbarActionSubscriptions: Array<() => void> = [];
+let formattingActionsRegistered = false;
+
+function registerEditorActions() {
+  if (formattingActionsRegistered) return;
+
+  registerFormattingActions(() => editor.value as Editor);
+  formattingActionsRegistered = true;
+}
+
+function unregisterEditorActions() {
+  if (!formattingActionsRegistered) return;
+
+  unregisterFormattingActions();
+  formattingActionsRegistered = false;
+}
+
+function registerToolbarActions() {
+  if (toolbarActionsRegistered) return;
+
+  Actions.register("toolbar:dismiss", {
+    title: "Dismiss toolbar",
+    description: "Hide the editor toolbar",
+    group: "formatting",
+    run: async () => {
+      documentToolbar.value?.dismiss?.();
+    },
+  });
+  Actions.mapShortcut("escape", "toolbar:dismiss");
+  leaveToolbarActionSubscriptions = [
+    Actions.subscribe("format:color:text:open", () => {
+      documentToolbar.value?.openTextColorPicker?.();
+    }),
+    Actions.subscribe("format:color:background:open", () => {
+      documentToolbar.value?.openBackgroundColorPicker?.();
+    }),
+  ];
+  toolbarActionsRegistered = true;
+}
+
+function unregisterToolbarActions() {
+  if (!toolbarActionsRegistered) return;
+
+  Actions.unmapShortcut("escape", "toolbar:dismiss");
+  Actions.unregister("toolbar:dismiss");
+  for (const leave of leaveToolbarActionSubscriptions) {
+    leave();
+  }
+  leaveToolbarActionSubscriptions = [];
+  toolbarActionsRegistered = false;
+}
+
+watch(editing, (isEditing) => {
+  if (isEditing) {
+    void setupEditorPresence();
+    registerEditorActions();
+    registerToolbarActions();
+  } else {
+    clearEditorPresence();
+    unregisterEditorActions();
+    unregisterToolbarActions();
+  }
 });
 
 onMounted(() => {
@@ -99,6 +277,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  clearEditorPresence();
+  unregisterEditorActions();
+  unregisterToolbarActions();
+  setActiveEditor(null);
   window.removeEventListener(
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
@@ -198,7 +380,7 @@ useSync(
 
     <template v-if="documentId && supportsComments(documentType)">
         <CommentBubble ref="commentBubble" :spaceId="props.spaceId" :documentId="documentId"
-            :currentRev="documentData?.currentRev" />
+            :currentRev="documentData?.currentRev" :editor="editor" />
         <CommentOverlays :comments="commentBubble?.commentsForOverlays ?? []"
             @move="commentBubble?.handleMoveThread($event)" />
     </template>

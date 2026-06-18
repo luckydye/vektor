@@ -27,12 +27,6 @@ import { MentionSuggestons } from "./extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
 import { contentExtensions, type EditorContext } from "./extensions.ts";
 
-declare global {
-  interface Window {
-    __editor?: Editor;
-  }
-}
-
 const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
   "document-presence",
 );
@@ -494,6 +488,10 @@ export class DocumentView extends HTMLElement {
     return this.shadowRoot;
   }
 
+  get editorInstance() {
+    return this.tiptapEditor;
+  }
+
   get collaborationDocument() {
     if (!this.ydoc) {
       this.ydoc = new Y.Doc();
@@ -693,7 +691,11 @@ export class DocumentView extends HTMLElement {
     this.tiptapEditor.on("selectionUpdate", handleUpdate);
     this.tiptapEditor.on("update", handleUpdate);
 
-    window.__editor = this.tiptapEditor;
+    this.dispatchEvent(
+      new CustomEvent("editor-ready", {
+        detail: { editor: this.tiptapEditor },
+      }),
+    );
 
     return this.tiptapEditor;
   }
@@ -705,9 +707,11 @@ export class DocumentView extends HTMLElement {
     const editor = this.tiptapEditor;
     this.tiptapEditor = undefined;
     editor.destroy();
-    if (window.__editor === editor) {
-      window.__editor = undefined;
-    }
+    this.dispatchEvent(
+      new CustomEvent("editor-destroyed", {
+        detail: { editor },
+      }),
+    );
     window.dispatchEvent(new Event("editor-destroyed"));
     this.renderReadHtml(this._html);
   }

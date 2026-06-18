@@ -3,24 +3,14 @@ import { Actions } from "./actions.ts";
 import { t } from "./lang.ts";
 
 /**
- * Get the global editor instance
- */
-const getEditor = (): Editor => {
-  return (globalThis as { __editor?: Editor }).__editor as Editor;
-};
-
-/**
- * Check if editor is available and focused
- */
-const isEditorAvailable = () => {
-  const editor = getEditor();
-  return editor && !editor.isDestroyed;
-};
-
-/**
  * Register all formatting actions
  */
-export function registerFormattingActions() {
+export function registerFormattingActions(getEditor: () => Editor) {
+  const isEditorAvailable = () => {
+    const editor = getEditor();
+    return editor && !editor.isDestroyed;
+  };
+
   // Text formatting
   Actions.register("format:bold", {
     title: t("Bold"),
