@@ -20,9 +20,7 @@ const emit = defineEmits<{
 const title = computed(() => {
   if ("properties" in props.document && props.document.properties) {
     return (
-      props.document.properties.title ||
-      props.document.properties.name ||
-      "Untitled"
+      props.document.properties.title || props.document.properties.name || "Untitled"
     );
   }
   return "Untitled";
@@ -31,9 +29,9 @@ const title = computed(() => {
 const docType = computed(() => props.document.type || "document");
 
 const TYPE_STYLES: Record<string, string> = {
-  canvas:   "bg-violet-100 text-violet-600",
-  csv:      "bg-emerald-100 text-emerald-700",
-  file:     "bg-neutral-100 text-neutral-500",
+  canvas: "bg-violet-100 text-violet-600",
+  csv: "bg-emerald-100 text-emerald-700",
+  file: "bg-neutral-100 text-neutral-500",
   document: "bg-neutral-100 text-neutral-500",
 };
 
@@ -46,10 +44,7 @@ const visibleProperties = computed(() => {
   const excluded = ["title", "name"];
   return Object.entries(props.document.properties).filter(
     ([key, value]) =>
-      !excluded.includes(key) &&
-      value !== null &&
-      value !== undefined &&
-      value !== "",
+      !excluded.includes(key) && value !== null && value !== undefined && value !== "",
   );
 });
 

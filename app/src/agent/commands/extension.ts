@@ -1,8 +1,8 @@
 import { posix } from "node:path";
 import { defineCommand } from "just-bash";
+import { extractManifest } from "../../utils/extensionManifest.ts";
 import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
 import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
-import { extractManifest } from "../../utils/extensionManifest.ts";
 
 const USAGE = "usage: extension install <zip-file> | extension init <name>\n";
 
@@ -102,7 +102,11 @@ export function deactivate(ctx) {
 `;
 
   await ctx.fs.mkdir(distDir, { recursive: true });
-  await ctx.fs.writeFile(posix.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+  await ctx.fs.writeFile(
+    posix.join(dir, "manifest.json"),
+    JSON.stringify(manifest, null, 2),
+    "utf8",
+  );
   await ctx.fs.writeFile(posix.join(distDir, "main.js"), mainJs, "utf8");
 
   return {

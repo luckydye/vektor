@@ -1043,10 +1043,8 @@ if (
                   ? html`
                     <div class="menu-divider"></div>
                     <div class="menu-group">
-                      ${this.button(
-                        this.icon(commentIcon),
-                        "Add comment",
-                        () => this.addInlineComment(),
+                      ${this.button(this.icon(commentIcon), "Add comment", () =>
+                        this.addInlineComment(),
                       )}
                     </div>
                   `

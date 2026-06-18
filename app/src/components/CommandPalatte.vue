@@ -74,9 +74,7 @@ const firstActionIndex = computed(() =>
 const hasDocuments = computed(() =>
   filteredResults.value.some((r) => r.type === "document"),
 );
-const hasActions = computed(() =>
-  filteredResults.value.some((r) => r.type === "action"),
-);
+const hasActions = computed(() => filteredResults.value.some((r) => r.type === "action"));
 
 const loadHistory = async () => {
   try {
@@ -175,7 +173,9 @@ Actions.register("ui:toggle:palatte", {
   title: "Toggle Command Palatte",
   description: "Open or close the command menu",
   group: "navigation",
-  run: async () => { togglePalette(); },
+  run: async () => {
+    togglePalette();
+  },
 });
 </script>
 

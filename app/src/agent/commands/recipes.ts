@@ -23,7 +23,10 @@ function parseRecipe(raw: string): Recipe {
   const [, frontmatter, body] = match;
   const title = frontmatter!.match(/^title:\s*(.+)$/m)?.[1]?.trim() ?? "";
   const keywordsLine = frontmatter!.match(/^keywords:\s*(.+)$/m)?.[1] ?? "";
-  const keywords = keywordsLine.split(",").map((k) => k.trim()).filter(Boolean);
+  const keywords = keywordsLine
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
   return { title, keywords, body: body!.trim() };
 }
 

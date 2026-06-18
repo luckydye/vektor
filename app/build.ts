@@ -64,6 +64,7 @@ export async function generateClientAssetsModule() {
 
 await generateClientAssetsModule();
 
+import { existsSync, readFileSync } from "node:fs";
 /**
  * Compile vektor.ts into a portable single-file executable.
  *
@@ -76,7 +77,6 @@ await generateClientAssetsModule();
  *     emscripten runtime reads it from the embedded $bunfs path.
  */
 import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
 import { dirname as pathDirname } from "node:path";
 
 const _require = createRequire(import.meta.url);
@@ -125,7 +125,7 @@ ${readFileSync(wasmJsPath, "utf-8")}
 
 const result = await Bun.build({
   entrypoints: ["./vektor.ts"],
-  // @ts-ignore — Bun.build compile option
+  // @ts-expect-error — Bun.build compile option
   compile: true,
   outfile: "./vektor",
   plugins: [sharpWasmPlugin],

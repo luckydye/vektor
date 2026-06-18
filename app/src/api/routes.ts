@@ -1,7 +1,11 @@
 import * as wellKnownCaldav from "./extra/wellKnownCaldav.ts";
 import * as authAll from "./routes/auth/[...all].ts";
-import * as authCli from "./routes/v1/auth/cli.ts";
+import * as caldavEvent from "./routes/caldav/calendars/[userId]/[spaceId]/[eventId].ts";
+import * as caldavCalendar from "./routes/caldav/calendars/[userId]/[spaceId]/index.ts";
+import * as caldavCalendars from "./routes/caldav/calendars/[userId]/index.ts";
+import * as caldavPrincipal from "./routes/caldav/principals/[userId].ts";
 import * as authCliToken from "./routes/v1/auth/cli/token.ts";
+import * as authCli from "./routes/v1/auth/cli.ts";
 import * as chatAcp from "./routes/v1/chat/acp.ts";
 import * as chatCompletions from "./routes/v1/chat/completions.ts";
 import * as accessTokenResource from "./routes/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId].ts";
@@ -10,10 +14,6 @@ import * as accessTokens from "./routes/v1/spaces/[spaceId]/access-tokens/index.
 import * as aiChatSession from "./routes/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId].ts";
 import * as aiChatSessions from "./routes/v1/spaces/[spaceId]/ai-chat/sessions/index.ts";
 import * as spaceAuditLogs from "./routes/v1/spaces/[spaceId]/audit-logs.ts";
-import * as caldavEvent from "./routes/caldav/calendars/[userId]/[spaceId]/[eventId].ts";
-import * as caldavCalendar from "./routes/caldav/calendars/[userId]/[spaceId]/index.ts";
-import * as caldavCalendars from "./routes/caldav/calendars/[userId]/index.ts";
-import * as caldavPrincipal from "./routes/caldav/principals/[userId].ts";
 import * as category from "./routes/v1/spaces/[spaceId]/categories/[id].ts";
 import * as categories from "./routes/v1/spaces/[spaceId]/categories/index.ts";
 import * as documentAuditLogs from "./routes/v1/spaces/[spaceId]/documents/[documentId]/audit-logs.ts";
@@ -94,10 +94,17 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens", module: accessTokens },
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]", module: accessToken },
-  { pattern: "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId]", module: accessTokenResource },
+  {
+    pattern:
+      "/api/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId]",
+    module: accessTokenResource,
+  },
 
   { pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions", module: aiChatSessions },
-  { pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]", module: aiChatSession },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/ai-chat/sessions/[sessionId]",
+    module: aiChatSession,
+  },
 
   { pattern: "/api/v1/spaces/[spaceId]/categories", module: categories },
   { pattern: "/api/v1/spaces/[spaceId]/categories/[id]", module: category },
@@ -105,29 +112,68 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/documents", module: documents },
   { pattern: "/api/v1/spaces/[spaceId]/documents/archived", module: documentsArchived },
   { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]", module: document },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/audit-logs", module: documentAuditLogs },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/children", module: documentChildren },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/comments", module: documentComments },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/contributors", module: documentContributors },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/diff", module: documentDiff },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit", module: documentEdit },
-  { pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/revisions", module: documentRevisions },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/audit-logs",
+    module: documentAuditLogs,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/children",
+    module: documentChildren,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/comments",
+    module: documentComments,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/contributors",
+    module: documentContributors,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/diff",
+    module: documentDiff,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit",
+    module: documentEdit,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/revisions",
+    module: documentRevisions,
+  },
 
   { pattern: "/api/v1/spaces/[spaceId]/extensions", module: extensions },
   { pattern: "/api/v1/spaces/[spaceId]/extensions/[extensionId]", module: extension },
-  { pattern: "/api/v1/spaces/[spaceId]/extensions/[extensionId]/package", module: extensionPackage },
-  { pattern: "/api/v1/spaces/[spaceId]/extensions/[extensionId]/assets/[...path]", module: extensionAsset },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/extensions/[extensionId]/package",
+    module: extensionPackage,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/extensions/[extensionId]/assets/[...path]",
+    module: extensionAsset,
+  },
 
   { pattern: "/api/v1/spaces/[spaceId]/integrations", module: integrations },
   { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]", module: integration },
-  { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/connect", module: integrationConnect },
-  { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/callback", module: integrationCallback },
-  { pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/proxy", module: integrationProxy },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/connect",
+    module: integrationConnect,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/callback",
+    module: integrationCallback,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/integrations/[provider]/proxy",
+    module: integrationProxy,
+  },
 
   { pattern: "/api/v1/spaces/[spaceId]/jobs/run", module: jobsRun },
   { pattern: "/api/v1/spaces/[spaceId]/jobs/runs", module: jobRuns },
   { pattern: "/api/v1/spaces/[spaceId]/jobs/schedules", module: jobSchedules },
-  { pattern: "/api/v1/spaces/[spaceId]/jobs/schedules/[scheduleId]", module: jobSchedule },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/jobs/schedules/[scheduleId]",
+    module: jobSchedule,
+  },
 
   { pattern: "/api/v1/spaces/[spaceId]/permissions", module: permissions },
   { pattern: "/api/v1/spaces/[spaceId]/permissions/me", module: permissionsMe },

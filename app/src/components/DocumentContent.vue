@@ -11,7 +11,7 @@ import {
 } from "vue";
 import { absolutePositionToRelativePosition } from "y-prosemirror";
 import * as Y from "yjs";
-import { clockIcon } from "~/src/assets/icons.ts";
+
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
 import { useDocument } from "../composeables/useDocument.ts";
@@ -19,6 +19,7 @@ import { useRevisions } from "../composeables/useRevisions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
+import { useYjsDocumentRoom } from "../composeables/useYjsDocumentRoom.ts";
 import {
   type DocumentPresenceProfile,
   findYSyncState,
@@ -29,10 +30,9 @@ import { Actions } from "../utils/actions.ts";
 import { supportsComments } from "../utils/documentTypes.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { type PresenceEnvelope, realtimeTopics } from "../utils/realtime.ts";
-import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
+import { joinPresenceRoom } from "../utils/sync.ts";
 import Canvas from "./Canvas.vue";
 import CommentManager from "./CommentManager.vue";
-import DiffView from "./DiffView.vue";
 import WorkflowView from "./WorkflowView.vue";
 import "../editor/elements/toolbar.ts";
 import "../components/document-statusbar.ts";
@@ -41,58 +41,42 @@ import {
   unregisterFormattingActions,
 } from "../utils/formattingActions.ts";
 
-const props = defineProps({
-  documentId: {
-    type: String,
+const props = withDefaults(
+  defineProps<{
+    documentId?: string;
+    initialHtml?: string;
+    documentType?: string;
+    readonly?: boolean;
+    spaceId: string;
+    initialEditMode?: boolean;
+  }>(),
+  {
+    initialHtml: "",
+    documentType: "document",
+    readonly: false,
+    initialEditMode: false,
   },
-  initialHtml: {
-    type: String,
-    default: "",
-  },
-  initialLayout: {
-    type: String,
-    default: "document",
-  },
-  spaceId: {
-    type: String,
-    required: true,
-  },
-  spaceSlug: {
-    type: String,
-    default: "",
-  },
-  documentType: {
-    type: String,
-    default: "document",
-  },
-  readonly: {
-    type: Boolean,
-    default: false,
-  },
-  initialEditMode: {
-    type: Boolean,
-    default: false,
-  },
-});
+);
+
+const documentId = computed(() => props.documentId);
+const documentType = computed(() => props.documentType || "document");
+const documentReadonly = computed(() => props.readonly);
 
 const isEditing = ref(props.initialEditMode);
 const isEditingReady = ref(false);
+const shouldMountEditor = ref(false);
 const viewingRevision = ref(false);
-const revisionNumber = ref<number | null>(null);
-const revisionContent = ref("");
-const viewingSuggestion = ref(false);
-const sidebarOpen = ref(false);
-const showingDiff = ref(false);
-const diffPatch = ref("");
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
 const renderedHtml = ref(props.initialHtml || "");
 type DocumentViewElement = HTMLElement & {
   collaborationDocument?: Y.Doc;
   destroyEditor?: () => void;
+  renderReadHtml?: (html: string) => void;
   setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
 };
 const documentViewEl = ref<DocumentViewElement | null>(null);
+const elementReady = ref(false);
 const tableViewEl = ref(null);
 const isMounted = ref(false);
 const getEditor = () => globalThis.__editor;
@@ -101,7 +85,6 @@ type DocumentToolbarElement = HTMLElement & {
   openTextColorPicker?: () => void;
   openBackgroundColorPicker?: () => void;
 };
-let leaveEditorCollaboration: (() => void) | null = null;
 let leaveEditorPresence: (() => void) | null = null;
 let editorPresenceTimer: ReturnType<typeof setInterval> | null = null;
 let editorActionsRegistered = false;
@@ -110,6 +93,8 @@ let editorPresenceHandle: {
   update: (state: DocumentPresenceState) => void;
   leave: () => void;
 } | null = null;
+let pendingEditorCreatedResolve: ((ready: boolean) => void) | null = null;
+let pendingEditorCreatedTimer: ReturnType<typeof setTimeout> | null = null;
 let lastEditorPresenceState = "";
 const editorPresenceClientId =
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -127,11 +112,13 @@ type DocumentPresenceState = NonNullable<DocumentPresenceProfile["state"]>;
 
 const user = useUserProfile();
 const { saveStatus, saveError, saveDocument, cancelDebounce } = useDocument(
-  props.documentId,
-  props.documentType,
+  documentId.value,
+  documentType.value,
 );
-const { revisions, saveRevision, fetchHistory } = useRevisions(props.documentId);
+const { revisions, saveRevision, fetchHistory } = useRevisions(documentId.value);
 const suggestionPatches = ref<Record<number, string>>({});
+const editorRoom = useYjsDocumentRoom(props.spaceId, documentId.value);
+const editorYdoc = editorRoom.ydoc;
 
 const AppView = defineAsyncComponent(() => import("./AppView.vue"));
 
@@ -178,7 +165,7 @@ function unregisterEditorActions() {
 }
 
 function handleEditModeStart() {
-  if (!viewingRevision.value && !props.readonly) {
+  if (!viewingRevision.value && !documentReadonly.value) {
     isEditing.value = true;
   }
 }
@@ -194,7 +181,6 @@ async function handleEditModeCancel() {
   }
 
   await nextTick();
-  renderReadView();
   await reloadIfReady();
 }
 
@@ -232,13 +218,16 @@ watch([saveStatus, saveError], () => {
       detail: { status: saveStatus.value, error: saveError.value },
     }),
   );
-  if (saveStatus.value === "saved" && props.documentType !== "canvas") {
+  if (saveStatus.value === "saved" && documentType.value !== "canvas") {
     isEditing.value = false;
   }
 });
 
 async function setupEditorBridge() {
-  if (!(await setupEditorCollaboration())) return;
+  await editorRoom.joinUntilReady();
+  shouldMountEditor.value = true;
+  await nextTick();
+  if (!(await waitForEditorMounted())) return;
   await setupEditorPresence();
   registerEditorActions();
   window.dispatchEvent(
@@ -248,19 +237,29 @@ async function setupEditorBridge() {
   window.dispatchEvent(new CustomEvent("document:edit"));
 }
 
-async function setupEditorCollaboration(): Promise<boolean> {
-  if (!props.documentId || leaveEditorCollaboration) return true;
+function waitForEditorMounted(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (getEditor()) {
+      resolve(true);
+      return;
+    }
 
-  await customElements.whenDefined("document-view");
-  await nextTick();
+    pendingEditorCreatedResolve = resolve;
+    pendingEditorCreatedTimer = setTimeout(() => {
+      pendingEditorCreatedResolve = null;
+      pendingEditorCreatedTimer = null;
+      resolve(false);
+    }, 1000);
+  });
+}
 
-  const ydoc = documentViewEl.value?.collaborationDocument;
-  if (!(ydoc instanceof Y.Doc)) {
-    return false;
+function handleEditorCreated() {
+  if (pendingEditorCreatedTimer) {
+    clearTimeout(pendingEditorCreatedTimer);
+    pendingEditorCreatedTimer = null;
   }
-
-  leaveEditorCollaboration = joinYjsRoom(props.spaceId, props.documentId, ydoc);
-  return true;
+  pendingEditorCreatedResolve?.(true);
+  pendingEditorCreatedResolve = null;
 }
 
 function editorPresenceState(): DocumentPresenceState {
@@ -335,13 +334,11 @@ function clearEditorPresence() {
 }
 
 async function setupEditorPresence() {
-  if (!props.documentId || !user.value || editorPresenceHandle) return;
-
-  if (!props.documentId || !user.value || editorPresenceHandle) return;
+  if (!documentId.value || !user.value || editorPresenceHandle) return;
 
   editorPresenceHandle = joinPresenceRoom<DocumentPresenceState>(
     props.spaceId,
-    props.documentId,
+    documentId.value,
     editorPresenceClientId,
     {
       id: user.value.id,
@@ -396,7 +393,7 @@ const openSuggestions = computed(() => {
 });
 
 async function loadSuggestionPatches() {
-  if (!currentSpaceId.value || !props.documentId) {
+  if (!currentSpaceId.value || !documentId.value) {
     return;
   }
 
@@ -405,7 +402,7 @@ async function loadSuggestionPatches() {
   const patches = await Promise.all(
     openSuggestions.value.map(async (suggestion) => {
       const response = await fetch(
-        `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}/diff?rev=${suggestion.rev}`,
+        `/api/v1/spaces/${currentSpaceId.value}/documents/${documentId.value}/diff?rev=${suggestion.rev}`,
       );
 
       if (!response.ok) {
@@ -435,7 +432,7 @@ function buildSingleHunkPatch(patch: string, hunkIndex: number): string {
   const newHeader = file.newHeader ? `\t${file.newHeader}` : "";
 
   return [
-    `Index: ${file.index || props.documentId || "document"}`,
+    `Index: ${file.index || documentId.value || "document"}`,
     "===================================================================",
     `--- ${file.oldFileName}${oldHeader}`,
     `+++ ${file.newFileName}${newHeader}`,
@@ -486,8 +483,9 @@ watch(isEditing, (editing) => {
   if (!editing) {
     unregisterEditorActions();
     clearEditorPresence();
+    shouldMountEditor.value = false;
     documentViewEl.value?.destroyEditor();
-    nextTick(renderReadView);
+    editorRoom.leave();
   }
 
   if (editing && !viewingRevision.value) {
@@ -504,7 +502,7 @@ watch(user, () => {
 watch(
   isEditing,
   async (editing) => {
-    if (!editing || !props.documentId) {
+    if (!editing || !documentId.value) {
       suggestionPatches.value = {};
       getEditor()?.commands.clearInlineSuggestions();
       return;
@@ -527,72 +525,39 @@ watch(
   { deep: true },
 );
 
-function handleRevisionView(event) {
+function handleRevisionOpen() {
   viewingRevision.value = true;
-  document.body.dataset.revision = true;
-  revisionNumber.value = event.detail.revision;
-  revisionContent.value = event.detail.content;
-  viewingSuggestion.value = Boolean(event.detail.isSuggestion);
   isEditing.value = false;
   isEditingReady.value = false;
 }
 
 function handleRevisionClose() {
   viewingRevision.value = false;
-  document.body.removeAttribute("data-revision");
-  revisionNumber.value = null;
-  revisionContent.value = "";
-  viewingSuggestion.value = false;
-
-  const params = new URLSearchParams(location.search);
-  params.delete("revision");
-
-  history.replaceState(
-    null,
-    "",
-    `${location.origin}${location.pathname}${params.toString()}`,
-  );
-}
-
-function closeRevisionView() {
-  showingDiff.value = false;
-  handleRevisionClose();
-}
-
-function handleSidebarToggle(event) {
-  sidebarOpen.value = event.detail.isOpen;
-}
-
-async function handleRevisionDiff(event) {
-  if (!currentSpaceId.value) return;
-
-  try {
-    const response = await fetch(
-      `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}/diff?rev=${event.detail.revision}`,
-    );
-    if (!response.ok) throw new Error("Failed to fetch diff");
-
-    diffPatch.value = await response.text();
-    showingDiff.value = true;
-    viewingRevision.value = true;
-    document.body.dataset.revision = true;
-    revisionNumber.value = event.detail.revision;
-    viewingSuggestion.value = Boolean(event.detail.isSuggestion);
-    isEditing.value = false;
-    isEditingReady.value = false;
-  } catch (error) {
-    console.error("Failed to load diff:", error);
-  }
 }
 
 onMounted(() => {
   isMounted.value = true;
 
   if (
-    !props.readonly &&
-    props.documentType !== "canvas" &&
-    props.documentType !== "app" &&
-    props.documentType !== "csv"
+    documentType.value !== "canvas" &&
+    documentType.value !== "app" &&
+    documentType.value !== "csv" &&
+    documentType.value !== "workflow"
+  ) {
+    void customElements.whenDefined("document-view").then(async () => {
+      await nextTick();
+      assignYdoc();
+      elementReady.value = true;
+      await nextTick();
+      renderDocumentViewHtml();
+    });
+  }
+
+  if (
+    !documentReadonly.value &&
+    documentType.value !== "canvas" &&
+    documentType.value !== "app" &&
+    documentType.value !== "csv"
   ) {
     window.addEventListener("edit-mode-start", handleEditModeStart);
   }
@@ -609,26 +574,18 @@ onMounted(() => {
     handleInlineSuggestionAccept as EventListener,
   );
 
-  window.addEventListener("revision:view", handleRevisionView);
+  window.addEventListener("revision:view", handleRevisionOpen);
   window.addEventListener("revision:close", handleRevisionClose);
-  window.addEventListener("revisions:toggled", handleSidebarToggle);
-  window.addEventListener("revision:diff", handleRevisionDiff);
+  window.addEventListener("revision:diff", handleRevisionOpen);
   window.addEventListener("document-published", reloadIfReady);
 
   if (typeof window !== "undefined") {
     window.addEventListener("visibilitychange", handleVisibilityChange);
   }
 
-  applyLayout(props.initialLayout);
-  renderReadView();
-
-  if (props.documentType === "csv") {
+  if (documentType.value === "csv") {
     import("../editor/elements/table-view.ts").then(renderTableView);
   }
-
-  // Pre-warm the ydoc so it's populated before the editor starts on first edit.
-  // Keeping the room open in read mode is fine — it stays current with remote changes.
-  void setupEditorCollaboration();
 
   if (props.initialEditMode) {
     requestAnimationFrame(setupEditorBridge);
@@ -637,7 +594,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   unregisterEditorActions();
-  leaveEditorCollaboration?.();
+  editorRoom.leave();
   clearEditorPresence();
   window.removeEventListener("edit-mode-start", handleEditModeStart);
   window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
@@ -645,10 +602,9 @@ onUnmounted(() => {
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
   );
-  window.removeEventListener("revision:view", handleRevisionView);
+  window.removeEventListener("revision:view", handleRevisionOpen);
   window.removeEventListener("revision:close", handleRevisionClose);
-  window.removeEventListener("revisions:toggled", handleSidebarToggle);
-  window.removeEventListener("revision:diff", handleRevisionDiff);
+  window.removeEventListener("revision:diff", handleRevisionOpen);
   window.removeEventListener("document-published", reloadIfReady);
   if (typeof window !== "undefined") {
     window.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -658,22 +614,22 @@ onUnmounted(() => {
 
 function reloadIfReady() {
   if (isEditing.value || viewingRevision.value) return;
-  if (!props.documentId) return;
+  if (!documentId.value) return;
   refreshDocument();
 }
 
 const { data: documentData, refetch: refreshDocument } = useQuery({
-  queryKey: computed(() => ["wiki_document", currentSpaceId.value, props.documentId]),
+  queryKey: computed(() => ["wiki_document", currentSpaceId.value, documentId.value]),
   queryFn: async () => {
     if (!currentSpaceId.value) {
       throw new Error("No space ID");
     }
-    if (!props.documentId) {
+    if (!documentId.value) {
       return null;
     }
-    return await api.document.get(currentSpaceId.value, props.documentId);
+    return await api.document.get(currentSpaceId.value, documentId.value);
   },
-  enabled: computed(() => !!currentSpaceId.value && !!props.documentId),
+  enabled: computed(() => !!currentSpaceId.value && !!documentId.value),
 });
 
 function applyLayout(layoutMode: string) {
@@ -696,9 +652,9 @@ watch(documentData, (doc) => {
   }
   applyLayout(
     doc.properties?.layout ||
-      (props.documentType === "csv" ||
-      props.documentType === "canvas" ||
-      props.documentType === "workflow"
+      (documentType.value === "csv" ||
+      documentType.value === "canvas" ||
+      documentType.value === "workflow"
         ? "full"
         : "document"),
   );
@@ -709,51 +665,51 @@ function renderTableView() {
   tableViewEl.value.setContent(renderedHtml.value);
 }
 
-function renderReadView() {
-  if (!documentViewEl.value) return;
-  if (isEditing.value || viewingRevision.value) return;
-  if (
-    props.documentType === "canvas" ||
-    props.documentType === "app" ||
-    props.documentType === "workflow"
-  )
-    return;
+watch([renderedHtml, isEditing, viewingRevision, documentViewEl], () => {
+  renderTableView();
+});
 
-  const container = documentViewEl.value;
-  const root = container.shadowRoot;
-
-  if (!root) {
-    requestAnimationFrame(renderReadView);
-    return;
-  }
-
-  root.innerHTML = "";
-
-  const style = document.createElement("style");
-  style.textContent = docStyles;
-
-  const content = document.createElement("div");
-  content.setAttribute("part", "content");
-
-  const inner = document.createElement("div");
-  inner.innerHTML = renderedHtml.value;
-
-  content.appendChild(inner);
-  root.appendChild(style);
-  root.appendChild(content);
+function escapeRawTextElement(value: string) {
+  return value.replace(/<\/(script|style)/gi, "<\\/$1");
 }
 
-watch([renderedHtml, isEditing, viewingRevision, documentViewEl], () => {
-  renderReadView();
-  renderTableView();
+const ssrDeclarativeShadowDom = computed(() => {
+  if (!import.meta.env.SSR) return "";
+  return [
+    '<template shadowrootmode="open">',
+    `<style data-document-styles>${escapeRawTextElement(docStyles)}</style>`,
+    '<div part="content"><div>',
+    renderedHtml.value,
+    "</div></div>",
+    "</template>",
+  ].join("");
+});
+
+function assignYdoc() {
+  if (documentViewEl.value) {
+    documentViewEl.value.collaborationDocument = editorYdoc.value;
+  }
+}
+
+function renderDocumentViewHtml() {
+  if (shouldMountEditor.value || !elementReady.value) return;
+  documentViewEl.value?.renderReadHtml?.(renderedHtml.value);
+}
+
+watch([renderedHtml, shouldMountEditor, elementReady], () => {
+  void nextTick(renderDocumentViewHtml);
+});
+
+watch(editorYdoc, () => {
+  if (elementReady.value) assignYdoc();
 });
 
 useSync(
   currentSpaceId,
-  () => (props.documentId ? [realtimeTopics.document(props.documentId)] : []),
+  () => (documentId.value ? [realtimeTopics.document(documentId.value)] : []),
   (scopes) => {
-    if (!props.documentId) return;
-    if (!scopes.includes(realtimeTopics.document(props.documentId))) return;
+    if (!documentId.value) return;
+    if (!scopes.includes(realtimeTopics.document(documentId.value))) return;
 
     if (document.visibilityState === "visible") {
       reloadIfReady();
@@ -765,88 +721,45 @@ useSync(
 </script>
 
 <template>
-    <div>
-        <!-- Revision Disclaimer Banner -->
-        <div v-if="viewingRevision"
-            class="sticky top-0 z-60 bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center justify-between duration-300 mb-10"
-            :style="{ marginRight: sidebarOpen ? '432px' : '0' }">
-            <div class="flex items-center gap-3">
-                <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
-                <div>
-                    <p class="text-size-medium font-semibold text-amber-900">
-                        Viewing {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
-                    </p>
-                    <p class="my-0! text-size-small text-amber-700">
-                        {{
-                            viewingSuggestion
-                                ? "This suggestion is read-only until it is applied."
-                                : "This is a historical version of the document. Changes cannot be made."
-                        }}
-                    </p>
-                </div>
-            </div>
-            <button @click="closeRevisionView"
-                class="px-4 py-2 text-size-medium font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors">
-                Show published version
-            </button>
-        </div>
-
-        <!-- Revision View with Diff -->
-        <div v-if="viewingRevision && showingDiff">
-            <div>
-                <DiffView :patch="diffPatch" />
-            </div>
-        </div>
-
-        <!-- Revision View -->
-        <div v-if="viewingRevision && !showingDiff && props.documentType !== 'app'">
-            <document-view>
-                <div v-html="revisionContent"></div>
-            </document-view>
-        </div>
-
-    </div>
-
     <main class="relative">
         <!-- CSV Spreadsheet View -->
-        <table-view v-if="!isEditing && !viewingRevision && props.documentType === 'csv'" ref="tableViewEl"
+        <table-view v-if="!isEditing && !viewingRevision && documentType === 'csv'" ref="tableViewEl"
             class="block flex-1 min-h-0"></table-view>
+            
         <!-- App View -->
-        <div v-if="props.documentType === 'app' && !viewingRevision" class="h-full">
+        <div v-if="documentType === 'app' && !viewingRevision" class="h-full">
             <AppView :html="renderedHtml" />
         </div>
 
-        <!-- App Revision View -->
-        <div v-if="props.documentType === 'app' && viewingRevision && !showingDiff" class="h-full">
-            <AppView :html="revisionContent" />
-        </div>
-
         <!-- Document View (read + edit, single persistent instance) -->
-        <div v-if="!viewingRevision && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv' && props.documentType !== 'workflow'"
+        <div v-if="!viewingRevision && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv' && documentType !== 'workflow'"
             :class="isEditing ? 'h-full' : ''">
-            <document-view ref="documentViewEl" v-bind="isEditing && !props.readonly ? { editor: '' } : {}"
-                :space-id="props.spaceId" :document-id="props.documentId"
-                :editor-context.prop="isEditing && !props.readonly ? { spaceId: props.spaceId, documentId: props.documentId } : undefined">
-                <div v-html="renderedHtml"></div>
-            </document-view>
+            <document-view
+                ref="documentViewEl"
+                :editor="shouldMountEditor && !documentReadonly && elementReady ? '' : undefined"
+                :space-id="props.spaceId"
+                :document-id="documentId"
+                @editor-created="handleEditorCreated"
+                v-html="ssrDeclarativeShadowDom"
+            />
         </div>
 
-        <div v-if="isMounted && props.documentType === 'canvas'" class="h-screen">
-            <Canvas :documentId="props.documentId" :spaceId="props.spaceId" />
+        <div v-if="isMounted && documentType === 'canvas'" class="h-screen">
+            <Canvas :documentId="documentId" :spaceId="props.spaceId" />
         </div>
 
-        <WorkflowView v-else-if="isMounted && props.documentType === 'workflow' && props.documentId"
-            :documentId="props.documentId" :spaceId="props.spaceId" :spaceSlug="props.spaceSlug" />
+        <WorkflowView v-else-if="isMounted && documentType === 'workflow' && documentId"
+            :documentId="documentId" :spaceId="props.spaceId" />
 
         <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
     </main>
 
-    <document-toolbar :data-comments-enabled="supportsComments(props.documentType) ? '' : undefined"></document-toolbar>
+    <document-toolbar :data-comments-enabled="supportsComments(documentType) ? '' : undefined"></document-toolbar>
 
-    <CommentManager v-if="props.documentId && supportsComments(props.documentType)" :spaceId="props.spaceId"
-        :documentId="props.documentId" :currentRev="documentData?.currentRev" />
+    <CommentManager v-if="documentId && supportsComments(documentType)" :spaceId="props.spaceId"
+        :documentId="documentId" :currentRev="documentData?.currentRev" />
 
     <document-statusbar
-        v-if="isEditing && !viewingRevision && !props.readonly && props.documentType !== 'canvas' && props.documentType !== 'app' && props.documentType !== 'csv'"
+        v-if="isEditing && !viewingRevision && !documentReadonly && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
         class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
 </template>

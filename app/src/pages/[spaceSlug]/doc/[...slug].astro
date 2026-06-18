@@ -7,6 +7,7 @@ import DocumentContent from "../../../components/DocumentContent.vue";
 import DocumentProperties from "../../../components/DocumentProperties.vue";
 import RestoreButton from "../../../components/RestoreButton.vue";
 import RevisionsSidebar from "../../../components/RevisionsSidebar.vue";
+import RevisionView from "../../../components/RevisionView.vue";
 import TitleEditor from "../../../components/TitleEditor.vue";
 import { getUserGroups, hasPermission, ResourceType } from "../../../db/acl.ts";
 import { getCategoryBySlug } from "../../../db/categories.ts";
@@ -17,9 +18,9 @@ import {
 } from "../../../db/documents.ts";
 import { getPublishedContent } from "../../../db/revisions.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
+import { withTransformParams } from "../../../files/transforms.ts";
 import SpaceLayout from "../../../layouts/SpaceLayout.astro";
 import { readOnlyDocumentTypes } from "../../../utils/documentTypes.ts";
-import { withTransformParams } from "../../../files/transforms.ts";
 
 const { spaceSlug, slug } = Astro.params;
 
@@ -84,30 +85,36 @@ if (!hasAccess) {
 }
 
 const title = document.properties.title || "Untitled Document";
+const documentType = document.type ?? "document";
+const isCanvas = documentType === "canvas";
+const isApp = documentType === "app";
+const isCsv = documentType === "csv";
+const isWorkflow = documentType === "workflow";
+const isPaddedDocument = !isCanvas && !isApp && !isCsv && !isWorkflow;
 
 // Optional header image (stored as a document property; empty string = none)
 // Request a width-capped webp transform so the browser doesn't download a
 // multi-megapixel original for a 240px-tall banner strip.
 const headerImage = document.properties.headerImage
-  ? withTransformParams(document.properties.headerImage, { w: 1600, format: "webp", q: 85 })
+  ? withTransformParams(document.properties.headerImage, {
+      w: 1600,
+      format: "webp",
+      q: 85,
+    })
   : null;
-const showHeaderImage =
-  !!headerImage &&
-  document.type !== "canvas" &&
-  document.type !== "app" &&
-  document.type !== "workflow";
+const showHeaderImage = !!headerImage && !isCanvas && !isApp && !isWorkflow;
 
 // Archived documents should be treated as readonly
 const isReadonly =
   document.readonly ||
   document.archived ||
-  document.type === "canvas" ||
-  document.type === "app" ||
-  document.type === "workflow" ||
-  readOnlyDocumentTypes.includes(document.type ?? "");
+  isCanvas ||
+  isApp ||
+  isWorkflow ||
+  readOnlyDocumentTypes.includes(documentType);
 
 let htmlContent = document.content;
-if (document.type !== "canvas" && document.publishedRev !== null) {
+if (!isCanvas && document.publishedRev !== null) {
   const publishedContent = await getPublishedContent(space.id, document.id);
   if (publishedContent) {
     htmlContent = publishedContent;
@@ -126,9 +133,41 @@ if (categorySlug) {
   category = await getCategoryBySlug(space.id, categorySlug);
 }
 
-const defaultLayout =
-  document.type === "document" || !document.type ? "document" : "full";
+const defaultLayout = documentType === "document" ? "document" : "full";
 const effectiveLayout = document.properties.layout || defaultLayout;
+
+const pageInsetClass = twMerge(
+  "min-h-0 flex-1",
+  !isCanvas && "lg:mr-(--inset-right) lg:ml-(--inset-left)",
+);
+const documentShellClass = twMerge(
+  "relative mx-auto flex h-full w-full flex-col space-y-6",
+  isCsv || effectiveLayout === "full" ? "max-w-full" : "max-w-(--document-width)",
+);
+const documentHeaderClass = twMerge(
+  isApp
+    ? "hidden"
+    : isCanvas
+      ? "pointer-events-none absolute top-xs right-0 left-0 z-20 lg:right-(--inset-right) lg:left-(--inset-left)"
+      : "mb-xl pt-xs",
+);
+const headerRowClass = twMerge(
+  "flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0",
+  isCanvas && "pointer-events-auto",
+);
+const titleRowClass = twMerge(
+  "mt-xs flex flex-row justify-between gap-6 px-xs lg:gap-4 lg:px-xl print:px-0",
+  isCanvas && "pointer-events-auto",
+);
+const propertiesRowClass = twMerge(
+  "mt-xs px-xs lg:px-xl print:px-0",
+  isCanvas && "pointer-events-auto",
+);
+const contentClass = twMerge(
+  "max-w-none overflow-auto text-neutral-700",
+  isCsv ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "h-full",
+  isPaddedDocument && "px-xs lg:px-xl print:px-0",
+);
 
 const now = new Date();
 
@@ -148,24 +187,23 @@ if (diffMins >= 1 && diffMins < 60) {
 }
 ---
 
-<SpaceLayout title={`${title} - ${space.name} - Wiki`} meta={{
-  title: `${title}`,
-  description: document.properties.description || '',
-}}>
-
-    <!-- Inset content past the fixed sidebar — except canvas docs, which render
-         full-bleed behind the nav and inset only their (absolute) header below. -->
-    <div data-inset class={twMerge('flex-1 min-h-0', document.type !== 'canvas' && 'lg:ml-(--inset-left) lg:mr-(--inset-right)')}>
+<SpaceLayout
+  title={`${title} - ${space.name} - Wiki`}
+  meta={{
+    title,
+    description: document.properties.description || "",
+  }}
+>
+  <!-- Inset content past the fixed sidebar — except canvas docs, which render
+       full-bleed behind the nav and inset only their absolute header below. -->
+  <div data-inset class={pageInsetClass}>
     <div
-      data-type={document.type}
+      data-type={documentType}
       data-updated-at={document.updatedAt}
       data-created-at={document.createdAt}
       data-layout={effectiveLayout}
-      class={twMerge(
-        "space-y-6 mx-auto h-full flex flex-col relative w-full",
-        (document.type === 'csv' || effectiveLayout === 'full') ? 'max-w-full' : 'max-w-(--document-width)'
-      )}
-     >
+      class={documentShellClass}
+    >
       <!-- Archived Document Disclaimer -->
       {document.archived && (
         <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 lg:mx-10">
@@ -195,83 +233,81 @@ if (diffMins >= 1 && diffMins < 60) {
       )}
 
       <!-- Document Header -->
-      <div data-inset class={twMerge(
-        document.type === 'app'
-          ? 'hidden'
-          : document.type === 'canvas'
-            ? 'absolute top-xs right-0 left-0 lg:left-(--inset-left) lg:right-(--inset-right) z-20 pointer-events-none'
-            : 'pt-xs mb-xl'
-      )}>
-        <div class={twMerge(
-          "print:px-0 px-xs lg:px-xl min-h-7",
-          document.type === 'canvas' && 'pointer-events-auto',
-          'flex justify-between items-center'
-        )}>
-            <div>
-                {document.type === "workflow" ? (
-                    <div id="workflow-breadcrumb-slot" />
-                ) : (
-                    <Breadcrumbs
-                        spaceSlug={spaceSlug!}
-                        category={category}
-                        parents={parentBreadcrumbs}
-                        currentTitle={title}
-                    />
-                )}
-            </div>
+      <div data-inset class={documentHeaderClass}>
+        <div class={headerRowClass}>
+          <div>
+            {isWorkflow ? (
+              <div id="workflow-breadcrumb-slot" />
+            ) : (
+              <Breadcrumbs
+                spaceSlug={spaceSlug}
+                category={category}
+                parents={parentBreadcrumbs}
+                currentTitle={title}
+              />
+            )}
+          </div>
 
-            {document.updatedAt ? (
-                <div class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500">
-                    {updatedAtStr && <span>Updated {updatedAtStr}</span>}
-                </div>
-            ) : null}
+          {document.updatedAt ? (
+            <div class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500">
+              {updatedAtStr && <span>Updated {updatedAtStr}</span>}
+            </div>
+          ) : null}
         </div>
 
-        <div class={twMerge(
-          "flex gap-6 lg:gap-4 justify-between flex-row print:px-0 px-xs lg:px-xl mt-xs",
-          document.type === 'canvas' && 'pointer-events-auto'
-        )}>
-            <div class="flex items-start justify-between">
-              <TitleEditor client:load initialEditMode={false} title={title} documentId={document.id} />
-            </div>
+        <div class={titleRowClass}>
+          <div class="flex items-start justify-between">
+            <TitleEditor
+              client:load
+              initialEditMode={false}
+              title={title}
+              documentId={document.id}
+            />
+          </div>
 
-          <DocumentActions client:only documentId={document.id} title={title} readonly={isReadonly} documentType={document.type ?? undefined} headerImage={headerImage ?? undefined} />
+          <DocumentActions
+            client:only
+            documentId={document.id}
+            title={title}
+            readonly={isReadonly}
+            documentType={documentType}
+            headerImage={headerImage ?? undefined}
+          />
         </div>
 
-        <div class={twMerge(
-          "print:px-0 px-xs lg:px-xl mt-xs",
-          document.type === 'canvas' && 'pointer-events-auto'
-        )}>
-          <DocumentProperties client:load documentId={document.id} documentType={document.type ?? undefined} initialProperties={{ ...document.properties, parentId: document.parentId }} initialCategory={category} />
+        <div class={propertiesRowClass}>
+          <DocumentProperties
+            client:load
+            documentId={document.id}
+            documentType={documentType}
+            initialProperties={{ ...document.properties, parentId: document.parentId }}
+            initialCategory={category}
+          />
         </div>
       </div>
 
       <!-- Main Content -->
-      <div
-        class={twMerge(
-          'max-w-none text-neutral-700 overflow-auto',
-          document.type === 'csv' ? 'flex-1 min-h-0 overflow-hidden flex flex-col' : 'h-full',
-          document.type !== 'canvas' && document.type !== 'app' && document.type !== 'csv' && document.type !== 'workflow' && "print:px-0 px-xs lg:px-xl"
-        )}
-      >
+      <div class={contentClass}>
+        <RevisionView
+          client:only
+          documentId={document.id}
+          documentType={documentType}
+          spaceId={space.id}
+        />
         <DocumentContent
           client:load
+          spaceId={space.id}
           documentId={document.id}
           initialHtml={htmlContent}
-          initialLayout={effectiveLayout}
-          spaceId={space.id}
-          spaceSlug={spaceSlug}
-          documentType={document.type ?? "document"}
+          documentType={documentType}
           readonly={isReadonly}
-          initialEditMode={false}
         />
       </div>
     </div>
-    </div>
+  </div>
 
-   	<!-- Revisions Sidebar -->
-    <div slot="outer">
-          <RevisionsSidebar client:only documentId={document.id} />
-        <AIChatPanel client:only documentId={document.id} />
-    </div>
+  <div slot="outer">
+    <RevisionsSidebar client:only documentId={document.id} />
+    <AIChatPanel client:only documentId={document.id} />
+  </div>
 </SpaceLayout>

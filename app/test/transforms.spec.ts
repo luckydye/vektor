@@ -11,7 +11,11 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import sharp from "sharp";
-import { parseTransformParams, transformCachePath, withTransformParams } from "../src/files/transforms.ts";
+import {
+  parseTransformParams,
+  transformCachePath,
+  withTransformParams,
+} from "../src/files/transforms.ts";
 
 // ---------------------------------------------------------------------------
 // Unit — withTransformParams
@@ -229,7 +233,12 @@ async function uploadFile(
 beforeAll(async () => {
   // Generate test image: 100 wide × 200 tall, solid red
   testPngBuffer = await sharp({
-    create: { width: 100, height: 200, channels: 3, background: { r: 200, g: 50, b: 50 } },
+    create: {
+      width: 100,
+      height: 200,
+      channels: 3,
+      background: { r: 200, g: 50, b: 50 },
+    },
   })
     .png()
     .toBuffer();
@@ -352,9 +361,7 @@ describe("image transforms — integration", () => {
       .toBuffer();
     const gifKey = await uploadFile(spaceId, "tiny.gif", gifBuffer, "image/gif");
 
-    const res = await fetch(
-      `${BASE_URL}/api/v1/spaces/${spaceId}/uploads/${gifKey}?w=1`,
-    );
+    const res = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads/${gifKey}?w=1`);
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("image/gif");
   });

@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, Teleport, watch } from "vue";
-import { boltIcon, checkThinIcon, homeIcon, pencilIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
-import { Actions } from "../utils/actions.ts";
+import {
+  boltIcon,
+  checkThinIcon,
+  homeIcon,
+  pencilIcon,
+  puzzleIcon,
+  searchIcon,
+  settingsIcon,
+} from "~/src/assets/icons.ts";
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
 import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "../composeables/useSpace.ts";
+import { Actions } from "../utils/actions.ts";
 import { extensions } from "../utils/extensions.ts";
 import { t } from "../utils/lang.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
-import DocumentTree from "./DocumentTree.vue";
+import type DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
 
 // UI-specific Space interface for the selector component
@@ -67,9 +75,13 @@ const isLoading = computed(() => {
 });
 
 const hasEverLoaded = ref(false);
-watch(isLoading, (loading) => {
-  if (!loading) hasEverLoaded.value = true;
-}, { immediate: true });
+watch(
+  isLoading,
+  (loading) => {
+    if (!loading) hasEverLoaded.value = true;
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   // Update menu links when extensions finish loading

@@ -16,7 +16,8 @@ const headerCheckboxRef = ref<HTMLInputElement | null>(null);
 const selectedIds = ref<Set<string>>(new Set());
 
 const allSelected = computed(
-  () => props.items.length > 0 && props.items.every((item) => selectedIds.value.has(item.id)),
+  () =>
+    props.items.length > 0 && props.items.every((item) => selectedIds.value.has(item.id)),
 );
 const someSelected = computed(() => selectedIds.value.size > 0 && !allSelected.value);
 const selectable = computed(() => selectedIds.value.size > 0);

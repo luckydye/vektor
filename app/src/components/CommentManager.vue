@@ -3,7 +3,10 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { plusSmallIcon } from "~/src/assets/icons.ts";
 import type { Comment as ApiComment } from "../api/ApiClient.ts";
 import { useComments } from "../composeables/useComments.ts";
-import { isInlineAnchorReference, resolveReferenceSelector } from "../utils/commentReference.ts";
+import {
+  isInlineAnchorReference,
+  resolveReferenceSelector,
+} from "../utils/commentReference.ts";
 import type { Comment as CommentOverlaysType } from "./CommentOverlays.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import type { Comment as CommentThreadType } from "./CommentThread.vue";
@@ -138,8 +141,7 @@ const clickedAnchorComments = computed(() => {
   return comments.value
     .filter(
       (c: ApiComment) =>
-        c.reference &&
-        resolveReferenceSelector(c.reference) === clickedAnchorRef.value,
+        c.reference && resolveReferenceSelector(c.reference) === clickedAnchorRef.value,
     )
     .map(
       (c: ApiComment) =>
@@ -234,7 +236,9 @@ async function handleDeleteComment(commentId: string) {
 }
 
 function removeCommentAnchorMark(reference: string) {
-  const editor = (window as { __editor?: { isDestroyed: boolean; state: any; view: any } }).__editor;
+  const editor = (
+    window as { __editor?: { isDestroyed: boolean; state: any; view: any } }
+  ).__editor;
   if (!editor || editor.isDestroyed) return;
   const match = reference.match(/\[data-comment-id="([^"]+)"\]/);
   if (!match) return;

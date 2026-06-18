@@ -132,7 +132,9 @@ const {
   downloadPackage,
 } = useExtensions();
 
-const allExtensions = computed(() => extensions.value.length + extensionErrors.value.length);
+const allExtensions = computed(
+  () => extensions.value.length + extensionErrors.value.length,
+);
 
 async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement;

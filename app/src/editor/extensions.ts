@@ -26,6 +26,7 @@ import {
   Underline,
 } from "./extensions/baseExtensions.ts";
 import { ColumnItem, ColumnLayout } from "./extensions/ColumnLayout.ts";
+import { CommentAnchor } from "./extensions/CommentAnchor.ts";
 import { DatePicker } from "./extensions/DatePicker.ts";
 import { ExpressionCell } from "./extensions/ExpressionCell.ts";
 import { ExtensionView } from "./extensions/ExtensionView.ts";
@@ -33,7 +34,6 @@ import { FigmaEmbed } from "./extensions/FigmaEmbed.ts";
 import { FileAttachment } from "./extensions/FileAttachment.ts";
 import { HtmlBlock } from "./extensions/HtmlBlock.ts";
 import { ImageUpload } from "./extensions/ImageUpload.ts";
-import { CommentAnchor } from "./extensions/CommentAnchor.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";

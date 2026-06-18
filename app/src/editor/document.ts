@@ -475,11 +475,12 @@ class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   private tiptapEditor?: Editor;
   private ydoc?: Y.Doc;
-  private _editorContext: EditorContext = {};
   private startEditorQueued = false;
+  private editorStartVersion = 0;
+  private startingEditor = false;
 
   static get observedAttributes() {
-    return ["editor", "editor-context", "space-id", "document-id"];
+    return ["editor"];
   }
 
   get root() {
@@ -494,6 +495,12 @@ class DocumentView extends HTMLElement {
     return this.ydoc;
   }
 
+  set collaborationDocument(ydoc: Y.Doc) {
+    if (ydoc instanceof Y.Doc) {
+      this.ydoc = ydoc;
+    }
+  }
+
   setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
     if (!this.tiptapEditor) return;
 
@@ -502,40 +509,26 @@ class DocumentView extends HTMLElement {
     );
   }
 
-  get editorContext() {
-    return this._editorContext;
-  }
+  renderReadHtml(html: string) {
+    if (this.tiptapEditor) return;
 
-  set editorContext(context: EditorContext) {
-    this._editorContext = context || {};
-    this.queueMaybeStartEditor();
-  }
+    const shadow = this.ensureShadowRoot();
+    this.ensureDocumentStyles(shadow);
 
-  private parsedEditorContextAttribute(): EditorContext {
-    const raw = this.getAttribute("editor-context");
-    if (!raw) return {};
+    const content = document.createElement("div");
+    content.setAttribute("part", "content");
 
-    try {
-      const parsed = JSON.parse(raw) as EditorContext;
-      return parsed && typeof parsed === "object" ? parsed : {};
-    } catch {
-      return {};
-    }
+    const inner = document.createElement("div");
+    inner.innerHTML = html;
+    content.appendChild(inner);
+
+    shadow.querySelector('[part="content"]')?.replaceWith(content) ??
+      shadow.appendChild(content);
   }
 
   private resolvedEditorContext(): EditorContext {
-    const attributeContext = this.parsedEditorContextAttribute();
-    const spaceId =
-      this._editorContext.spaceId ||
-      attributeContext.spaceId ||
-      this.getAttribute("space-id") ||
-      document.body.dataset.spaceId ||
-      "";
-    const documentId =
-      this._editorContext.documentId ||
-      attributeContext.documentId ||
-      this.getAttribute("document-id") ||
-      undefined;
+    const spaceId = this.getAttribute("space-id") || document.body.dataset.spaceId || "";
+    const documentId = this.getAttribute("document-id") || undefined;
 
     return { spaceId, documentId };
   }
@@ -593,10 +586,22 @@ class DocumentView extends HTMLElement {
     }
   };
 
-  connectedCallback() {
-    if (!this.root) {
+  private ensureDocumentStyles(shadow: ShadowRoot) {
+    let style = shadow.querySelector<HTMLStyleElement>("style[data-document-styles]");
+    if (!style) {
+      style = document.createElement("style");
+      style.dataset.documentStyles = "";
+      style.textContent = docStyles;
+      shadow.prepend(style);
+    }
+    return style;
+  }
+
+  private ensureShadowRoot() {
+    let shadow = this.root;
+    if (!shadow) {
       // no template for declarative shadow DOM
-      const shadow = this.attachShadow({ mode: "open" });
+      shadow = this.attachShadow({ mode: "open" });
       Object.assign(shadow, {
         createRange: document.createRange.bind(document),
       });
@@ -606,20 +611,15 @@ class DocumentView extends HTMLElement {
       const template = this.querySelector("template");
       if (template) {
         const clone = template.content.cloneNode(true);
-        shadow.innerHTML = `
-          <style>${docStyles}</style>
-        `;
-        shadow.append(clone);
+        shadow.replaceChildren(clone);
       }
     }
+    return shadow;
+  }
 
-    let attached = false;
-    this.addEventListener("pointerover", () => {
-      if (!attached) {
-        this.attachListeners();
-      }
-      attached = true;
-    });
+  connectedCallback() {
+    const shadow = this.ensureShadowRoot();
+    this.ensureDocumentStyles(shadow);
 
     this.attachListeners();
     this.queueMaybeStartEditor();
@@ -640,11 +640,31 @@ class DocumentView extends HTMLElement {
 
   private maybeStartEditor() {
     const shadow = this.root;
-    if (!this.isConnected || !shadow || this.tiptapEditor || !this.hasEditorConfig()) {
+    if (
+      !this.isConnected ||
+      !shadow ||
+      this.tiptapEditor ||
+      this.startingEditor ||
+      !this.hasEditorConfig()
+    ) {
       return;
     }
 
-    shadow.innerHTML = `<style>${docStyles}</style>`;
+    this.startingEditor = true;
+    const startVersion = ++this.editorStartVersion;
+    const initialHtml = this.initialHtml();
+    this.startingEditor = false;
+    if (
+      startVersion !== this.editorStartVersion ||
+      !this.isConnected ||
+      !this.hasEditorConfig() ||
+      this.tiptapEditor
+    ) {
+      return;
+    }
+
+    shadow.replaceChildren();
+    this.ensureDocumentStyles(shadow);
     shadow.append(this.element);
 
     this.element.className = "tiptap";
@@ -652,7 +672,7 @@ class DocumentView extends HTMLElement {
       this.element,
       this.collaborationDocument,
       this.resolvedEditorContext(),
-      this.initialHtml(),
+      initialHtml,
     );
 
     const handleUpdate = () => {
@@ -663,11 +683,14 @@ class DocumentView extends HTMLElement {
     this.tiptapEditor.on("update", handleUpdate);
 
     window.__editor = this.tiptapEditor;
+    this.dispatchEvent(new CustomEvent("editor-created", { bubbles: true }));
 
     return this.tiptapEditor;
   }
 
   destroyEditor() {
+    this.editorStartVersion++;
+    this.startingEditor = false;
     if (!this.tiptapEditor) return;
     const editor = this.tiptapEditor;
     this.tiptapEditor = undefined;
@@ -678,8 +701,13 @@ class DocumentView extends HTMLElement {
     window.dispatchEvent(new Event("editor-destroyed"));
     const shadow = this.root;
     if (shadow) {
-      shadow.innerHTML = `<style>${docStyles}</style>`;
+      shadow.replaceChildren();
+      this.ensureDocumentStyles(shadow);
     }
+  }
+
+  disconnectedCallback() {
+    this.destroyEditor();
   }
 
   private hasEditorConfig() {
@@ -689,7 +717,19 @@ class DocumentView extends HTMLElement {
   private initialHtml() {
     const template = this.querySelector("template");
     if (template) {
-      return Array.from(template.content.childNodes)
+      const content = template.content.querySelector('[part="content"]');
+      const nodes = content ? content.childNodes : template.content.childNodes;
+      return Array.from(nodes)
+        .map((node) => {
+          if (node instanceof Element) return node.outerHTML;
+          return node.textContent || "";
+        })
+        .join("");
+    }
+
+    const shadowContent = this.root?.querySelector('[part="content"]');
+    if (shadowContent) {
+      return Array.from(shadowContent.childNodes)
         .map((node) => {
           if (node instanceof Element) return node.outerHTML;
           return node.textContent || "";

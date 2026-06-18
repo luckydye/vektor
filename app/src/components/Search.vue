@@ -267,8 +267,8 @@ const canSearch = computed(() => {
   return searchQuery.value.trim().length > 0 || activeFilters.value.length > 0;
 });
 
-const currentItems = computed<Array<{ id: string }>>(
-  () => (hasSearched.value ? sortedResults.value : allDocuments.value),
+const currentItems = computed<Array<{ id: string }>>(() =>
+  hasSearched.value ? sortedResults.value : allDocuments.value,
 );
 
 // Batch operations

@@ -45,14 +45,14 @@ const nonTypeProperties = computed(
 );
 
 const TYPE_STYLES: Record<string, string> = {
-  canvas:   "bg-violet-100 text-violet-600",
-  csv:      "bg-emerald-100 text-emerald-700",
-  file:     "bg-neutral-100 text-neutral-500",
+  canvas: "bg-violet-100 text-violet-600",
+  csv: "bg-emerald-100 text-emerald-700",
+  file: "bg-neutral-100 text-neutral-500",
   document: "bg-neutral-100 text-neutral-500",
 };
 
-const activeDateFilter = computed(() =>
-  props.modelValue.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
+const activeDateFilter = computed(
+  () => props.modelValue.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
 );
 
 const hasActiveFilter = (key: string, value: string | null) =>

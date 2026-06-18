@@ -44,7 +44,12 @@ const handleRestore = async (documentId: string) => {
 };
 
 const handleDelete = async (documentId: string) => {
-  if (!confirm("Are you sure you want to permanently delete this document? This action cannot be undone.")) return;
+  if (
+    !confirm(
+      "Are you sure you want to permanently delete this document? This action cannot be undone.",
+    )
+  )
+    return;
   try {
     await api.document.delete(props.spaceId, documentId);
     refresh();
@@ -69,7 +74,12 @@ const handleBatchRestore = async (ids: Set<string>, deselectAll: () => void) => 
 
 const handleBatchDelete = async (ids: Set<string>, deselectAll: () => void) => {
   const count = ids.size;
-  if (!confirm(`Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+  if (
+    !confirm(
+      `Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`,
+    )
+  )
+    return;
   try {
     for (const id of ids) {
       await api.document.delete(props.spaceId, id);

@@ -13,7 +13,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
@@ -21,28 +21,24 @@ import { useSpace } from "../composeables/useSpace.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
 
-const props = defineProps({
-  title: {
-    type: String,
-    required: true,
+const props = withDefaults(
+  defineProps<{
+    title: string;
+    documentId?: string;
+    starred?: boolean;
+    initialEditMode?: boolean;
+  }>(),
+  {
+    starred: false,
+    initialEditMode: false,
   },
-  documentId: {
-    type: String,
-    required: true,
-  },
-  starred: {
-    type: Boolean,
-    default: false,
-  },
-  initialEditMode: {
-    type: Boolean,
-    default: false,
-  },
-});
+);
 
-const emit = defineEmits(["title-updated"]);
+const emit = defineEmits<{
+  "title-updated": [title: string];
+}>();
 
-const inputEl = ref(null);
+const inputEl = ref<HTMLInputElement | null>(null);
 const localTitle = ref(props.title);
 const isEditing = ref(props.initialEditMode);
 
@@ -110,7 +106,7 @@ async function updateTitle() {
 }
 
 function handleEditModeStart() {
-  startEditing();
+  void startEditing();
 }
 
 function handleEditModeCancel() {
@@ -129,11 +125,12 @@ onUnmounted(() => {
 });
 
 const status = ref("idle");
-const error = ref(null);
+const error = ref<unknown>(null);
 
-function handleSaveStatusChange(event) {
-  status.value = event.detail.status;
-  error.value = event.detail.error;
+function handleSaveStatusChange(event: Event) {
+  const detail = (event as CustomEvent<{ status: string; error: unknown }>).detail;
+  status.value = detail.status;
+  error.value = detail.error;
 }
 
 onMounted(() => {

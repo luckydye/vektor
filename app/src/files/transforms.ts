@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable } from "node:stream";
+
 // Use the WebAssembly build of sharp — no native libvips dependency, so the
 // compiled binary is fully self-contained.
 let _sharp: typeof import("sharp").default | null | undefined;
@@ -11,15 +12,19 @@ async function getSharp() {
       // @vite-ignore: no "." export; bun resolves this at compile time.
       _sharp = (await import(/* @vite-ignore */ "@img/sharp-wasm32/sharp.node")).default;
     } catch (e) {
-      console.warn("[transforms] sharp-wasm32 unavailable — image transforms disabled", e);
+      console.warn(
+        "[transforms] sharp-wasm32 unavailable — image transforms disabled",
+        e,
+      );
       _sharp = null;
     }
   }
   return _sharp;
 }
+
+import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
 import type { FileStorageAdapter } from "./storage.ts";
 import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";
-import { SERVED_FILE_CSP, contentDisposition } from "#utils/servedFiles.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,13 +48,7 @@ const OUTPUT_MIME: Record<string, string> = {
 };
 
 // Extensions eligible for transformation
-export const TRANSFORMABLE_EXTENSIONS = new Set([
-  "jpg",
-  "jpeg",
-  "png",
-  "webp",
-  "gif",
-]);
+export const TRANSFORMABLE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 
 // ---------------------------------------------------------------------------
 // URL helpers
@@ -102,17 +101,17 @@ export function parseTransformParams(
 
   const w = wRaw ? Math.max(0, Math.floor(Number(wRaw))) : 0;
   const h = hRaw ? Math.max(0, Math.floor(Number(hRaw))) : 0;
-  const format = formatRaw && OUTPUT_FORMATS.has(formatRaw)
-    ? (formatRaw as TransformParams["format"])
-    : null;
-  const quality = qRaw
-    ? Math.min(100, Math.max(1, Math.floor(Number(qRaw))))
-    : 80;
+  const format =
+    formatRaw && OUTPUT_FORMATS.has(formatRaw)
+      ? (formatRaw as TransformParams["format"])
+      : null;
+  const quality = qRaw ? Math.min(100, Math.max(1, Math.floor(Number(qRaw)))) : 80;
 
   // Only proceed if at least one meaningful param was provided
   if (!w && !h && !format && !qRaw) return null;
   // Ignore NaN inputs
-  if ((wRaw && Number.isNaN(Number(wRaw))) || (hRaw && Number.isNaN(Number(hRaw)))) return null;
+  if ((wRaw && Number.isNaN(Number(wRaw))) || (hRaw && Number.isNaN(Number(hRaw))))
+    return null;
 
   return { w, h, format, quality };
 }
@@ -130,10 +129,12 @@ export function transformCachePath(
   originalPath: string, // e.g. "ab/abc123.jpg"
   params: TransformParams,
 ): string {
-  const outputExt = params.format === "jpeg" ? "jpg"
-    : params.format
-    ? params.format
-    : originalPath.split(".").pop()!.toLowerCase();
+  const outputExt =
+    params.format === "jpeg"
+      ? "jpg"
+      : params.format
+        ? params.format
+        : originalPath.split(".").pop()!.toLowerCase();
 
   const suffix = `_${params.w}x${params.h}_${params.format ?? "orig"}_q${params.quality}.${outputExt}`;
   const cacheFilename = originalPath + suffix;
@@ -219,9 +220,7 @@ export async function serveTransformed(
   try {
     const cachedStat = await stat(cachePath);
     if (cachedStat.isFile()) {
-      const stream = Readable.toWeb(
-        createReadStream(cachePath),
-      ) as ReadableStream;
+      const stream = Readable.toWeb(createReadStream(cachePath)) as ReadableStream;
       return new Response(stream, {
         status: 200,
         headers: responseHeaders(cachedStat.size),
