@@ -2,16 +2,16 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable } from "node:stream";
-// Sharp is loaded lazily so the compiled binary stays portable.
-// When libvips dylibs are not available (e.g. no node_modules), transforms
-// are silently disabled and the original image is passed through unchanged.
+// Use the WebAssembly build of sharp — no native libvips dependency, so the
+// compiled binary is fully self-contained.
 let _sharp: typeof import("sharp").default | null | undefined;
 async function getSharp() {
   if (_sharp === undefined) {
     try {
-      _sharp = (await import("sharp")).default;
-    } catch {
-      console.warn("[transforms] sharp unavailable — image transforms disabled (libvips not found)");
+      // @vite-ignore: no "." export; bun resolves this at compile time.
+      _sharp = (await import(/* @vite-ignore */ "@img/sharp-wasm32/sharp.node")).default;
+    } catch (e) {
+      console.warn("[transforms] sharp-wasm32 unavailable — image transforms disabled", e);
       _sharp = null;
     }
   }

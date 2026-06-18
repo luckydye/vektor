@@ -67,16 +67,68 @@ await generateClientAssetsModule();
 /**
  * Compile vektor.ts into a portable single-file executable.
  *
- * Note on sharp/image transforms: sharp's native addon dynamically links
- * against libvips dylibs (@img/sharp-libvips-*). Those dylibs cannot be
- * embedded by bun, so image transforms are gracefully disabled at runtime
- * when libvips is not found (see src/files/transforms.ts).
+ * @img/sharp-wasm32 loads its WASM binary via fs.readFileSync(__dirname +
+ * "/sharp-wasm32-*.wasm"). Bun doesn't auto-embed files referenced that way,
+ * so we use a plugin that:
+ *  1. Intercepts the @img/sharp-wasm32/sharp.node import.
+ *  2. Generates a wrapper that imports the .wasm file with { type: "file" }
+ *     (causing bun to embed it) and patches Module.locateFile so the
+ *     emscripten runtime reads it from the embedded $bunfs path.
  */
+import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname as pathDirname } from "node:path";
+
+const _require = createRequire(import.meta.url);
+const wasmPkgJsonPath = _require.resolve("@img/sharp-wasm32/package.json");
+const wasmPkgDir = pathDirname(wasmPkgJsonPath);
+const wasmPkgVersion = (_require(wasmPkgJsonPath) as { version: string }).version;
+const wasmJsPath = `${wasmPkgDir}/lib/sharp-wasm32-${wasmPkgVersion}.node.js`;
+const wasmBinPath = `${wasmPkgDir}/lib/sharp-wasm32-${wasmPkgVersion}.node.wasm`;
+
+if (!existsSync(wasmJsPath) || !existsSync(wasmBinPath)) {
+  throw new Error(`[sharp-wasm32] could not find wasm files at ${wasmPkgDir}/lib/`);
+}
+
+console.log(`[sharp-wasm32] embedding ${wasmBinPath}`);
+
+const sharpWasmPlugin: import("bun").BunPlugin = {
+  name: "sharp-wasm32-embed",
+  setup(build) {
+    // Intercept @img/sharp-wasm32/sharp.node (the exports-map entry point)
+    build.onResolve({ filter: /@img\/sharp-wasm32/ }, () => ({
+      path: wasmJsPath,
+      namespace: "sharp-wasm32",
+    }));
+
+    build.onLoad({ filter: /.*/, namespace: "sharp-wasm32" }, () => ({
+      // Wrap the emscripten JS so that:
+      //  - The .wasm file is imported with { type: "file" } → bun embeds it.
+      //  - Module.locateFile is patched to return the embedded $bunfs path
+      //    instead of the __dirname-relative path that no longer exists.
+      contents: `
+import wasmPath from ${JSON.stringify(wasmBinPath)} with { type: "file" };
+// var (not const/let) so the emscripten "typeof Module !== 'undefined'" check
+// below sees this object and inherits our locateFile patch.
+var Module = {
+  locateFile(name, dir) {
+    if (name.endsWith(".wasm")) return wasmPath;
+    return dir + name;
+  },
+};
+${readFileSync(wasmJsPath, "utf-8")}
+`,
+      loader: "js",
+    }));
+  },
+};
+
 const result = await Bun.build({
   entrypoints: ["./vektor.ts"],
   // @ts-ignore — Bun.build compile option
   compile: true,
   outfile: "./vektor",
+  plugins: [sharpWasmPlugin],
   // lightningcss bundles a Rust-compiled native binary (../pkg) that bun
   // cannot resolve. It's pulled in transitively by Astro's SSR output but
   // is not actually used at runtime — marking it external skips bundling it.
