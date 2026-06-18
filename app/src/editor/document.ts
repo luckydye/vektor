@@ -471,10 +471,16 @@ function createEditor(
   return editor;
 }
 
-class DocumentView extends HTMLElement {
+export class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   private tiptapEditor?: Editor;
   private ydoc?: Y.Doc;
+  private _html = "";
+
+  set html(value: string) {
+    this._html = value;
+    this.renderReadHtml(value);
+  }
   private startEditorQueued = false;
   private editorStartVersion = 0;
   private startingEditor = false;
@@ -626,7 +632,11 @@ class DocumentView extends HTMLElement {
   }
 
   attributeChangedCallback() {
-    this.queueMaybeStartEditor();
+    if (!this.hasEditorConfig()) {
+      this.destroyEditor();
+    } else {
+      this.queueMaybeStartEditor();
+    }
   }
 
   private queueMaybeStartEditor() {
@@ -699,11 +709,7 @@ class DocumentView extends HTMLElement {
       window.__editor = undefined;
     }
     window.dispatchEvent(new Event("editor-destroyed"));
-    const shadow = this.root;
-    if (shadow) {
-      shadow.replaceChildren();
-      this.ensureDocumentStyles(shadow);
-    }
+    this.renderReadHtml(this._html);
   }
 
   disconnectedCallback() {

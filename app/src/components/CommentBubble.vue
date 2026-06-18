@@ -7,8 +7,6 @@ import {
   isInlineAnchorReference,
   resolveReferenceSelector,
 } from "../utils/commentReference.ts";
-import type { Comment as CommentOverlaysType } from "./CommentOverlays.vue";
-import CommentOverlays from "./CommentOverlays.vue";
 import type { Comment as CommentThreadType } from "./CommentThread.vue";
 import CommentThread from "./CommentThread.vue";
 
@@ -24,7 +22,6 @@ const {
   threadPosition,
   isSubmitting,
   isDeletingComment,
-  isResolvingThread,
   activeComments,
   submitComment,
   deleteComment,
@@ -127,13 +124,10 @@ watch(activeReference, () => {
 });
 
 const commentsForOverlays = computed(() =>
-  comments.value.map(
-    (c: ApiComment) =>
-      ({
-        id: c.id,
-        reference: c.reference ?? undefined,
-      }) as CommentOverlaysType,
-  ),
+  comments.value.map((c: ApiComment) => ({
+    id: c.id,
+    reference: c.reference ?? undefined,
+  })),
 );
 
 const clickedAnchorComments = computed(() => {
@@ -305,12 +299,12 @@ onUnmounted(() => {
   window.removeEventListener("editor-update", handleThreadReposition);
   document.removeEventListener("click", handleDocumentClick);
 });
+
+defineExpose({ commentsForOverlays, handleMoveThread });
 </script>
 
 <template>
   <div class="contents">
-    <CommentOverlays :comments="commentsForOverlays" @move="handleMoveThread" />
-
     <!-- Add comment bubble — appears near right viewport edge -->
     <div
       v-if="showAddBubble"

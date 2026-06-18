@@ -214,6 +214,10 @@ export class TableViewElement extends HTMLElement {
   private colDragCleanup: (() => void) | null = null;
   private rowDragCleanup: (() => void) | null = null;
 
+  set html(value: string) {
+    this.setContent(value);
+  }
+
   connectedCallback() {
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
