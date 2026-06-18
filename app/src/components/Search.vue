@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
-  chevronLeftLargeIcon,
-  chevronRightThinIcon,
   closeCircleFilledIcon,
   closeXIcon,
   documentIcon,
@@ -16,12 +14,13 @@ import {
   type SearchResult,
 } from "../api/client.ts";
 import { useInfiniteQuery } from "../composeables/query.ts";
+import { usePagedList } from "../composeables/usePagedList.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
-import { usePagedList } from "../composeables/usePagedList.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import DocumentList from "./DocumentList.vue";
 import DocumentListItem from "./DocumentListItem.vue";
+import Pager from "./Pager.vue";
 import SearchFilters from "./SearchFilters.vue";
 
 const props = defineProps<{
@@ -401,28 +400,16 @@ const batchArchive = async (ids: string[]) => {
               />
 
               <!-- Pagination -->
-              <div v-if="totalPages > 1" class="flex justify-between items-center mt-8 pt-5 border-t border-neutral-100">
-                <button
-                  @click="handlePrevPage"
-                  :disabled="!hasPrevPage || isFetchingSearch"
-                  class="flex items-center gap-2 px-4 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <div class="svg-icon w-4 h-4" v-html="chevronLeftLargeIcon" />
-                  Previous
-                </button>
-                <span class="text-size-medium text-neutral-500">
-                  Page <span class="font-semibold">{{ page }}</span> of
-                  <span class="font-semibold">{{ totalPages }}</span>
-                </span>
-                <button
-                  @click="handleNextPage"
-                  :disabled="!hasNextPage || isFetchingSearch"
-                  class="flex items-center gap-2 px-4 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next
-                  <div class="svg-icon w-4 h-4" v-html="chevronRightThinIcon" />
-                </button>
-              </div>
+              <Pager
+                class="mt-8 pt-5"
+                :page="page"
+                :total-pages="totalPages"
+                :has-prev-page="hasPrevPage"
+                :has-next-page="hasNextPage"
+                :disabled="isFetchingSearch"
+                @previous="handlePrevPage"
+                @next="handleNextPage"
+              />
             </template>
 
             <!-- Browse mode: grouped list -->

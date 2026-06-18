@@ -136,23 +136,16 @@
           </tbody>
         </table>
       </div>
-      <div class="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
-        <button
-          @click="runsPrevPage"
-          :disabled="!runsHasPrevPage || isFetchingRuns"
-          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Previous
-        </button>
-        <span class="text-size-small text-neutral-500">Page {{ runsPage }} of {{ runsTotalPages }}</span>
-        <button
-          @click="runsNextPage"
-          :disabled="!runsHasNextPage || isFetchingRuns"
-          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Next
-        </button>
-      </div>
+      <Pager
+        class="mt-3 pt-3"
+        :page="runsPage"
+        :total-pages="runsTotalPages"
+        :has-prev-page="runsHasPrevPage"
+        :has-next-page="runsHasNextPage"
+        :disabled="isFetchingRuns"
+        @previous="runsPrevPage"
+        @next="runsNextPage"
+      />
     </div>
   </div>
 </template>
@@ -162,6 +155,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { api, type JobRun, type JobSchedule } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import Pager from "./Pager.vue";
 
 const { currentSpace } = useSpace();
 

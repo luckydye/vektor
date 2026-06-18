@@ -15,6 +15,7 @@ import { usePagedList } from "../composeables/usePagedList.ts";
 import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import DataTable from "./DataTable.vue";
+import Pager from "./Pager.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -416,7 +417,7 @@ const statusBadgeClass: Record<string, string> = {
 
     <div class="flex justify-between gap-4">
         <!-- Title -->
-        <h2 class="text-size-title font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle || "Untitled" }}</h2>
+        <h2 class="text-size-title font-semibold text-neutral-800">{{ selectedRunTitle || "Untitled" }}</h2>
     
         <!-- Header -->
         <div class="flex items-center justify-between gap-12">
@@ -443,10 +444,28 @@ const statusBadgeClass: Record<string, string> = {
     <!-- Input fields -->
     <details v-if="selectedRunInputs" class="text-size-small">
       <summary class="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">Input fields</summary>
-      <div class="mt-2 space-y-2">
-        <div v-for="(val, key) in selectedRunInputs" :key="key" class="rounded-lg border border-neutral-200 overflow-hidden">
-          <div class="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 font-mono font-semibold text-neutral-500 border-b border-neutral-200">{{ key }}</div>
-          <pre class="px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-300">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+      <div class="mt-2">
+        <div
+          class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50"
+        >
+          <div class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+            Field
+          </div>
+          <div class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+            Value
+          </div>
+        </div>
+        <div>
+          <div
+            v-for="(val, key) in selectedRunInputs"
+            :key="key"
+            class="grid grid-cols-[180px_1fr] border-b border-neutral-100 transition-colors hover:bg-neutral-50"
+          >
+            <div class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate">
+              {{ key }}
+            </div>
+            <pre class="px-0 py-2.5 pr-4 overflow-x-auto whitespace-pre-wrap break-all text-size-small text-neutral-700">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+          </div>
         </div>
       </div>
     </details>
@@ -531,34 +550,64 @@ const statusBadgeClass: Record<string, string> = {
 
     <!-- Run history -->
     <div v-if="runList.length > 0 || runTotalPages > 1">
-      <div class="text-size-small font-semibold text-neutral-400 uppercase tracking-wide mb-6">Run history</div>
-      <div class="space-y-1">
+      <div
+        class="grid grid-cols-[1fr_120px_140px] items-center h-9 border-b border-neutral-100 bg-neutral-50 sticky top-0 z-10 transition-colors"
+      >
+        <div class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+          Run history
+        </div>
+        <div class="text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+          Status
+        </div>
+        <div class="pr-4 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+          Results
+        </div>
+      </div>
+      <div>
         <div
           v-for="run in runList"
           :key="run.runId"
-          class="rounded-md border border-transparent transition-colors"
-          :class="expandedHistoryRuns.has(run.runId) ? 'border-neutral-200 bg-neutral-50' : ''"
+          class="border-b border-neutral-100 group transition-colors hover:transition-none"
+          :class="selectedRunId === run.runId ? 'bg-primary-50' : 'hover:bg-neutral-50'"
         >
-          <div class="flex items-center justify-between py-2 text-size-medium">
-            <button class="flex items-center gap-2 text-left" @click="selectRun(run.runId)">
-              <span class="text-neutral-500 text-size-small">{{ formatDate(run.createdAt) }}</span>
+          <div class="grid grid-cols-[1fr_120px_140px] items-center text-size-medium">
+            <button
+              class="flex items-center gap-2 min-w-0 py-2.5 px-4 text-left"
+              @click="selectRun(run.runId)"
+            >
+              <span class="text-size-medium font-medium text-neutral-800 truncate">
+                {{ historyRunTitle(run) || "Untitled" }}
+              </span>
+              <span class="text-neutral-400 text-size-small tabular-nums shrink-0">
+                {{ formatDate(run.createdAt) }}
+              </span>
+            </button>
+
+            <div class="flex items-center py-2.5 pr-3">
               <span
-                class="px-2 py-0.5 rounded-full text-size-small font-medium capitalize"
+                class="px-1.5 py-0.5 rounded-sm text-[11px] font-medium capitalize"
                 :class="statusBadgeClass[run.status] ?? 'bg-neutral-100 text-neutral-500'"
               >{{ run.status }}</span>
-            </button>
-            <button
-              v-if="run.status === 'completed'"
-              class="flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors ml-2"
-              @click="toggleHistoryRun(run.runId)"
-            >
-              <div class="svg-icon w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
-              Results
-            </button>
+            </div>
+
+            <div class="flex items-center justify-end py-2.5 pr-4">
+              <button
+                v-if="run.status === 'completed'"
+                class="inline-flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
+                @click="toggleHistoryRun(run.runId)"
+              >
+                <div class="svg-icon w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
+                Results
+              </button>
+              <span v-else class="text-size-small text-neutral-300">-</span>
+            </div>
           </div>
 
           <!-- Expanded output -->
-          <div v-if="expandedHistoryRuns.has(run.runId)" class="px-3 pb-3 space-y-3">
+          <div
+            v-if="expandedHistoryRuns.has(run.runId)"
+            class="px-4 pb-4 space-y-3 bg-neutral-50"
+          >
             <template v-if="historyRunDetails.has(run.runId)">
               <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
                 <div v-html="historyOutputHtml(run.runId)" class="p-4" />
@@ -588,23 +637,15 @@ const statusBadgeClass: Record<string, string> = {
       </div>
 
       <!-- Run history pagination -->
-      <div v-if="runTotalPages > 1" class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-100 mb-12">
-        <button
-          @click="runPrevPage"
-          :disabled="!runHasPrevPage"
-          class="px-2.5 py-1 text-size-small font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Previous
-        </button>
-        <span class="text-size-small text-neutral-400">{{ runPage }} / {{ runTotalPages }}</span>
-        <button
-          @click="runNextPage"
-          :disabled="!runHasNextPage"
-          class="px-2.5 py-1 text-size-small font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Next
-        </button>
-      </div>
+      <Pager
+        class="mt-4 pt-3 mb-12"
+        :page="runPage"
+        :total-pages="runTotalPages"
+        :has-prev-page="runHasPrevPage"
+        :has-next-page="runHasNextPage"
+        @previous="runPrevPage"
+        @next="runNextPage"
+      />
     </div>
 
   </div>

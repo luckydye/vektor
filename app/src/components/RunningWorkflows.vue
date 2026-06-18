@@ -5,6 +5,7 @@ import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
+import Pager from "./Pager.vue";
 
 type WorkflowRun = {
   runId: string;
@@ -240,22 +241,14 @@ const groupedRuns = computed(() => {
         </div>
       </div>
     </div>
-    <div v-if="totalPages > 1" class="flex justify-between items-center mt-4 pt-4 border-t border-neutral-200">
-      <button
-        @click="prevPage"
-        :disabled="!hasPrevPage"
-        class="px-3 py-1.5 text-size-medium font-medium border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Previous
-      </button>
-      <span class="text-size-small text-neutral-400">Page {{ page }} of {{ totalPages }}</span>
-      <button
-        @click="nextPage"
-        :disabled="!hasNextPage"
-        class="px-3 py-1.5 text-size-medium font-medium border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Next
-      </button>
-    </div>
+    <Pager
+      class="mt-4 pt-4"
+      :page="page"
+      :total-pages="totalPages"
+      :has-prev-page="hasPrevPage"
+      :has-next-page="hasNextPage"
+      @previous="prevPage"
+      @next="nextPage"
+    />
   </div>
 </template>

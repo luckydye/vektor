@@ -149,21 +149,36 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="space-y-2">
-    <input
-      v-model="filter"
-      type="text"
-      placeholder="Filter…"
-      class="w-full rounded-md border border-neutral-200 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-3 py-1.5 text-size-medium focus:outline-none focus:ring-2 focus:ring-neutral-400"
-    />
-    <div class="overflow-x-auto rounded-lg border border-neutral-200">
+  <div>
+    <div
+      class="flex items-center gap-3 h-9 border-b border-neutral-100 bg-neutral-50 px-4"
+    >
+      <input
+        v-model="filter"
+        type="text"
+        placeholder="Filter…"
+        class="min-w-0 flex-1 bg-transparent text-size-medium text-neutral-800 placeholder:text-neutral-400 focus:outline-none"
+      />
+      <div class="flex items-center gap-2 text-size-small text-neutral-400 shrink-0">
+        <span>{{ filtered.length }} / {{ data.length }} rows</span>
+        <button
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm border border-neutral-200 bg-background hover:bg-neutral-50 hover:border-neutral-300 text-neutral-600 transition-colors"
+          title="Download as Excel"
+          @click="downloadExcel"
+        >
+          <div class="svg-icon w-3.5 h-3.5" v-html="arrowDownTrayIcon" />
+          Excel
+        </button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
       <table class="text-size-medium" style="table-layout: fixed; width: max-content; min-width: 100%;">
         <thead>
-          <tr class="bg-neutral-50 dark:bg-neutral-800 text-left">
+          <tr class="bg-neutral-50 text-left">
             <th
               v-for="col in columns"
               :key="col"
-              class="relative px-3 py-2 text-size-small font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide whitespace-nowrap border-b border-neutral-200 cursor-pointer select-none hover:text-neutral-700 dark:hover:text-neutral-200 overflow-hidden"
+              class="relative px-4 py-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide whitespace-nowrap border-b border-neutral-100 cursor-pointer select-none hover:text-neutral-700 overflow-hidden"
               :style="{ width: colWidth(col) }"
               @click="toggleSort(col)"
             >
@@ -176,7 +191,7 @@ onUnmounted(() => {
               </span>
               <!-- Resize handle -->
               <div
-                class="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-neutral-300 dark:hover:bg-neutral-600 active:bg-neutral-400"
+                class="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-neutral-300 active:bg-neutral-400"
                 @mousedown.stop="onResizeMouseDown(col, $event)"
               />
             </th>
@@ -187,8 +202,8 @@ onUnmounted(() => {
             v-for="(row, i) in paginated"
             :key="i"
             tabindex="0"
-            class="border-b border-neutral-100 dark:border-neutral-800 last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors outline-none cursor-pointer"
-            :class="focusedRow === i ? 'bg-sky-50 dark:bg-sky-900/20 ring-1 ring-inset ring-sky-300 dark:ring-sky-700' : ''"
+            class="border-b border-neutral-100 hover:bg-neutral-50 transition-colors outline-none cursor-pointer"
+            :class="focusedRow === i ? 'bg-primary-50' : ''"
             @focus="focusedRow = i"
             @blur="focusedRow = null"
             @click="focusedRow = i"
@@ -196,7 +211,7 @@ onUnmounted(() => {
             <td
               v-for="col in columns"
               :key="col"
-              class="px-3 py-2 text-neutral-700 dark:text-neutral-300 align-top"
+              class="px-4 py-2.5 text-neutral-700 align-top"
               :style="{ width: colWidth(col), maxWidth: colWidth(col) }"
             >
               <div class="max-h-24 overflow-y-auto whitespace-pre-wrap break-words" :title="cellText(row[col])">
@@ -212,36 +227,26 @@ onUnmounted(() => {
             </td>
           </tr>
           <tr v-if="filtered.length === 0">
-            <td :colspan="columns.length" class="px-3 py-4 text-center text-size-small text-neutral-400">No results</td>
+            <td :colspan="columns.length" class="px-4 py-4 text-center text-size-small text-neutral-400">No results</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div class="flex items-center justify-between text-size-small text-neutral-400">
-      <div class="flex items-center gap-2">
-        <span>{{ filtered.length }} / {{ data.length }} rows</span>
-        <button
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 transition-colors"
-          title="Download as Excel"
-          @click="downloadExcel"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="arrowDownTrayIcon" />
-          Excel
-        </button>
-      </div>
-      <div v-if="pageCount > 1" class="flex items-center gap-1">
-        <button
-          class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          :disabled="page === 0"
-          @click="page--"
-        >←</button>
-        <span>{{ page + 1 }} / {{ pageCount }}</span>
-        <button
-          class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          :disabled="page >= pageCount - 1"
-          @click="page++"
-        >→</button>
-      </div>
+    <div
+      v-if="pageCount > 1"
+      class="flex items-center justify-end gap-1 px-4 pt-3 text-size-small text-neutral-400"
+    >
+      <button
+        class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        :disabled="page === 0"
+        @click="page--"
+      >←</button>
+      <span>{{ page + 1 }} / {{ pageCount }}</span>
+      <button
+        class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        :disabled="page >= pageCount - 1"
+        @click="page++"
+      >→</button>
     </div>
   </div>
 </template>

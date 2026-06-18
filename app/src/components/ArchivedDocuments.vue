@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { chevronLeftLargeIcon, chevronRightThinIcon, spinnerIcon } from "~/src/assets/icons.ts";
+import { spinnerIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import DocumentList from "./DocumentList.vue";
 import DocumentListItem from "./DocumentListItem.vue";
+import Pager from "./Pager.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -147,25 +148,16 @@ const handleBatchDelete = async (ids: Set<string>, deselectAll: () => void) => {
         </template>
       </DocumentList>
 
-      <div v-if="totalPages > 1" class="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
-        <button
-          @click="prevPage"
-          :disabled="!hasPrevPage || isFetching"
-          class="flex items-center gap-2 px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          <div class="svg-icon w-4 h-4" v-html="chevronLeftLargeIcon" />
-          Previous
-        </button>
-        <span class="text-size-small text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
-        <button
-          @click="nextPage"
-          :disabled="!hasNextPage || isFetching"
-          class="flex items-center gap-2 px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          Next
-          <div class="svg-icon w-4 h-4" v-html="chevronRightThinIcon" />
-        </button>
-      </div>
+      <Pager
+        class="mt-3 pt-3"
+        :page="page"
+        :total-pages="totalPages"
+        :has-prev-page="hasPrevPage"
+        :has-next-page="hasNextPage"
+        :disabled="isFetching"
+        @previous="prevPage"
+        @next="nextPage"
+      />
     </div>
   </div>
 </template>
