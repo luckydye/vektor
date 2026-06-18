@@ -694,7 +694,6 @@ export class DocumentView extends HTMLElement {
     this.tiptapEditor.on("update", handleUpdate);
 
     window.__editor = this.tiptapEditor;
-    this.dispatchEvent(new CustomEvent("editor-created", { bubbles: true }));
 
     return this.tiptapEditor;
   }

@@ -81,6 +81,7 @@ type DocumentToolbarElement = HTMLElement & {
   openTextColorPicker?: () => void;
   openBackgroundColorPicker?: () => void;
 };
+const documentToolbar = ref<DocumentToolbarElement | null>(null);
 let editorActionsRegistered = false;
 let leaveEditorActionSubscriptions: Array<() => void> = [];
 let editorSession = 0;
@@ -107,19 +108,12 @@ const { setupEditorPresence, clearEditorPresence } = useEditorPresence({
   getEditor,
   isActive: editing,
 });
-const {
-  handleInlineSuggestionAccept,
-  handleEditorReady: handleInlineSuggestionsEditorReady,
-} = useInlineSuggestions({
+const { handleInlineSuggestionAccept } = useInlineSuggestions({
   spaceId: currentSpaceId,
   documentId,
   isEditing: editing,
   getEditor,
 });
-
-function getDocumentToolbar() {
-  return document.querySelector<DocumentToolbarElement>("document-toolbar");
-}
 
 function registerEditorActions() {
   if (editorActionsRegistered) return;
@@ -130,17 +124,17 @@ function registerEditorActions() {
     description: "Hide the editor toolbar",
     group: "formatting",
     run: async () => {
-      getDocumentToolbar()?.dismiss?.();
+      documentToolbar.value?.dismiss?.();
     },
   });
   Actions.mapShortcut("escape", "toolbar:dismiss");
 
   leaveEditorActionSubscriptions = [
     Actions.subscribe("format:color:text:open", () => {
-      getDocumentToolbar()?.openTextColorPicker?.();
+      documentToolbar.value?.openTextColorPicker?.();
     }),
     Actions.subscribe("format:color:background:open", () => {
-      getDocumentToolbar()?.openBackgroundColorPicker?.();
+      documentToolbar.value?.openBackgroundColorPicker?.();
     }),
   ];
   editorActionsRegistered = true;
@@ -244,6 +238,8 @@ async function startEditorSession() {
   const session = ++editorSession;
   if (!canMountEditor.value) return;
   registerSaveActions();
+  registerEditorActions();
+  void setupEditorPresence();
   await editorRoom.joinUntilReady();
   if (!editing.value || session !== editorSession) return;
 
@@ -257,13 +253,6 @@ function stopEditorSession() {
   clearEditorPresence();
   shouldMountEditor.value = false;
   editorRoom.leave();
-}
-
-async function onEditorReady() {
-  if (!editing.value) return;
-  await setupEditorPresence();
-  registerEditorActions();
-  handleInlineSuggestionsEditorReady();
 }
 
 watch(editing, (isEditing) => {
@@ -383,7 +372,7 @@ useSync(
                 :editor="shouldMountEditor && !documentReadonly ? '' : undefined"
                 :collaborationDocument="editorYdoc"
                 :html="renderedHtml"
-                :space-id="props.spaceId" :document-id="documentId" @editor-created="onEditorReady"
+                :space-id="props.spaceId" :document-id="documentId"
                 v-html="ssrDeclarativeShadowDom" />
         </div>
 
@@ -405,5 +394,6 @@ useSync(
         v-if="editing && !documentReadonly && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
         class="block sticky left-0 bottom-0 pb-6 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none"></document-statusbar>
         
-    <document-toolbar :data-comments-enabled="supportsComments(documentType) ? '' : undefined"></document-toolbar>
+    <document-toolbar ref="documentToolbar"
+        :data-comments-enabled="supportsComments(documentType) ? '' : undefined"></document-toolbar>
 </template>

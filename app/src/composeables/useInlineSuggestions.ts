@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { applyPatch, parsePatch } from "diff";
-import { computed, type Ref, ref, watch } from "vue";
+import { computed, onUnmounted, type Ref, ref, watch } from "vue";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { useRevisions } from "./useRevisions.ts";
 
@@ -19,6 +19,7 @@ export function useInlineSuggestions(options: {
   const openSuggestions = computed(() =>
     revisions.value.filter((r) => r.status === "open"),
   );
+  let inlineSuggestionSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function loadSuggestionPatches() {
     if (!spaceId.value || !documentId.value) return;
@@ -68,6 +69,12 @@ export function useInlineSuggestions(options: {
     editor.commands.setContent(html);
   }
 
+  function clearQueuedInlineSuggestionsSync() {
+    if (!inlineSuggestionSyncTimer) return;
+    clearTimeout(inlineSuggestionSyncTimer);
+    inlineSuggestionSyncTimer = null;
+  }
+
   function syncInlineSuggestions() {
     const editor = getEditor();
     if (!editor?.commands) return;
@@ -81,6 +88,23 @@ export function useInlineSuggestions(options: {
           patch: suggestionPatches.value[s.rev],
         })),
     );
+  }
+
+  function queueInlineSuggestionsSync(delay = 0) {
+    if (!isEditing.value || inlineSuggestionSyncTimer) return;
+
+    inlineSuggestionSyncTimer = setTimeout(() => {
+      inlineSuggestionSyncTimer = null;
+      if (!isEditing.value) return;
+
+      const editor = getEditor();
+      if (!editor?.commands) {
+        queueInlineSuggestionsSync(50);
+        return;
+      }
+
+      syncInlineSuggestions();
+    }, delay);
   }
 
   function acceptSuggestionHunk(revisionRev: number, hunkIndex: number) {
@@ -111,6 +135,7 @@ export function useInlineSuggestions(options: {
     isEditing,
     async (editing) => {
       if (!editing || !documentId.value) {
+        clearQueuedInlineSuggestionsSync();
         suggestionPatches.value = {};
         getEditor()?.commands.clearInlineSuggestions();
         return;
@@ -124,14 +149,15 @@ export function useInlineSuggestions(options: {
     suggestionPatches,
     () => {
       if (!isEditing.value) return;
-      syncInlineSuggestions();
+      queueInlineSuggestionsSync();
     },
     { deep: true },
   );
 
+  onUnmounted(clearQueuedInlineSuggestionsSync);
+
   return {
     saveRevision,
     handleInlineSuggestionAccept,
-    handleEditorReady: syncInlineSuggestions,
   };
 }

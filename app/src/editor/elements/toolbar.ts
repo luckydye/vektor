@@ -233,7 +233,6 @@ if (
       }
 
       connectedCallback() {
-        window.addEventListener("editor-created", this.handleEditorAvailable);
         window.addEventListener("editor-destroyed", this.handleEditModeEnd);
         window.addEventListener("editor-update", this.update);
         window.addEventListener("resize", this.updatePosition, { passive: true });
@@ -243,12 +242,11 @@ if (
           capture: true,
         });
 
-        this.handleEditorAvailable();
+        this.update();
         this.paint();
       }
 
       disconnectedCallback() {
-        window.removeEventListener("editor-created", this.handleEditorAvailable);
         window.removeEventListener("editor-destroyed", this.handleEditModeEnd);
         window.removeEventListener("editor-update", this.update);
         window.removeEventListener("resize", this.updatePosition);
@@ -275,10 +273,6 @@ if (
       private get cellBgColorInput() {
         return this.root.querySelector<HTMLInputElement>("[data-cell-bg-color]");
       }
-
-      private handleEditorAvailable = () => {
-        this.update();
-      };
 
       private handleEditModeEnd = () => {
         this.shouldShow = false;

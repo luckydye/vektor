@@ -115,7 +115,7 @@ export function useEditorPresence(options: {
   }
 
   async function setup() {
-    if (!documentId.value || !user.value || presenceHandle || !getEditor()) return;
+    if (!documentId.value || !user.value || presenceHandle) return;
 
     presenceHandle = joinPresenceRoom<DocumentPresenceState>(
       spaceId,
