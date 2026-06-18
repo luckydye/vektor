@@ -110,6 +110,7 @@ const uiSpaces = computed<UiSpace[]>(() => {
 
 // Check if current user can access settings
 const userCanAccessSettings = computed(() => {
+  if (isLoading.value) return false;
   return canAccessSettings(currentSpace.value?.userRole);
 });
 

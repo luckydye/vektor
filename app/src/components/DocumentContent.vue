@@ -33,7 +33,6 @@ import { type PresenceEnvelope, realtimeTopics } from "../utils/realtime.ts";
 import { joinPresenceRoom } from "../utils/sync.ts";
 import Canvas from "./Canvas.vue";
 import CommentManager from "./CommentManager.vue";
-import WorkflowView from "./WorkflowView.vue";
 import "../editor/elements/toolbar.ts";
 import "../components/document-statusbar.ts";
 import {
@@ -528,8 +527,7 @@ onMounted(() => {
   if (
     documentType.value !== "canvas" &&
     documentType.value !== "app" &&
-    documentType.value !== "csv" &&
-    documentType.value !== "workflow"
+    documentType.value !== "csv"
   ) {
     void customElements.whenDefined("document-view").then(async () => {
       await nextTick();
@@ -634,8 +632,7 @@ watch(documentData, (doc) => {
   applyLayout(
     doc.properties?.layout ||
       (documentType.value === "csv" ||
-      documentType.value === "canvas" ||
-      documentType.value === "workflow"
+      documentType.value === "canvas"
         ? "full"
         : "document"),
   );
@@ -708,7 +705,7 @@ useSync(
             class="block flex-1 min-h-0"></table-view>
             
         <!-- Document View (read + edit, single persistent instance) -->
-        <div v-if="documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv' && documentType !== 'workflow'"
+        <div v-if="documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
             :class="isEditing ? 'h-full' : ''">
             <document-view
                 ref="documentViewEl"
@@ -723,9 +720,6 @@ useSync(
         <div v-if="isMounted && documentType === 'canvas'" class="h-screen">
             <Canvas :documentId="documentId" :spaceId="props.spaceId" />
         </div>
-
-        <WorkflowView v-else-if="isMounted && documentType === 'workflow' && documentId"
-            :documentId="documentId" :spaceId="props.spaceId" />
 
         <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
     </main>

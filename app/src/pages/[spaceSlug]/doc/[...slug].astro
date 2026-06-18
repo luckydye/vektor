@@ -10,6 +10,7 @@ import RestoreButton from "../../../components/RestoreButton.vue";
 import RevisionsSidebar from "../../../components/RevisionsSidebar.vue";
 import RevisionView from "../../../components/RevisionView.vue";
 import TitleEditor from "../../../components/TitleEditor.vue";
+import WorkflowView from "../../../components/WorkflowView.vue";
 import { getUserGroups, hasPermission, ResourceType } from "../../../db/acl.ts";
 import { getCategoryBySlug } from "../../../db/categories.ts";
 import {
@@ -297,14 +298,16 @@ if (diffMins >= 1 && diffMins < 60) {
         />
         {isApp
           ? <AppView client:only html={htmlContent} />
-          : <DocumentContent
-              client:load
-              spaceId={space.id}
-              documentId={document.id}
-              initialHtml={htmlContent}
-              documentType={documentType}
-              readonly={isReadonly}
-            />
+          : isWorkflow
+            ? <WorkflowView client:only documentId={document.id} spaceId={space.id} />
+            : <DocumentContent
+                client:load
+                spaceId={space.id}
+                documentId={document.id}
+                initialHtml={htmlContent}
+                documentType={documentType}
+                readonly={isReadonly}
+              />
         }
       </div>
     </div>
