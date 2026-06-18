@@ -9,6 +9,7 @@ import { getSpaceDb } from "#db/db.ts";
 import { file as fileTable } from "#db/schema/space.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
+import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
 
@@ -65,8 +66,20 @@ export const GET: APIRoute = (context) =>
 
       const mimeType = MIME_TYPES[extension] || "application/octet-stream";
 
-      // Object storage adapters can redirect to their own CDN URL
       const storage = getFileStorage();
+
+      // If transform params are present, serve via the transform+cache path.
+      // This bypasses redirectUrl so the server can read, transform, and cache
+      // the result locally regardless of the storage backend.
+      const transformParams = parseTransformParams(
+        context.url.searchParams,
+        extension,
+      );
+      if (transformParams) {
+        return serveTransformed(spaceId, path, transformParams, storage);
+      }
+
+      // Object storage adapters can redirect to their own CDN URL
       const redirect = await storage.redirectUrl?.(spaceId, path);
       if (redirect) {
         return Response.redirect(redirect, 302);

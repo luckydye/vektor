@@ -26,3 +26,13 @@ export function isWithinUploadsRoot(spaceId: string, targetPath: string): boolea
   const resolved = resolve(targetPath);
   return resolved === uploadsRoot || resolved.startsWith(`${uploadsRoot}/`);
 }
+
+export function getTransformCacheRoot(spaceId: string): string {
+  return resolve(process.cwd(), "data", "transforms", spaceId);
+}
+
+export function isWithinTransformCache(spaceId: string, targetPath: string): boolean {
+  const cacheRoot = getTransformCacheRoot(spaceId);
+  const resolved = resolve(targetPath);
+  return resolved === cacheRoot || resolved.startsWith(`${cacheRoot}/`);
+}

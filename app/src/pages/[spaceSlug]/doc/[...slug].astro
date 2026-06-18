@@ -19,6 +19,7 @@ import { getPublishedContent } from "../../../db/revisions.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
 import SpaceLayout from "../../../layouts/SpaceLayout.astro";
 import { readOnlyDocumentTypes } from "../../../utils/documentTypes.ts";
+import { withTransformParams } from "../../../files/transforms.ts";
 
 const { spaceSlug, slug } = Astro.params;
 
@@ -85,7 +86,11 @@ if (!hasAccess) {
 const title = document.properties.title || "Untitled Document";
 
 // Optional header image (stored as a document property; empty string = none)
-const headerImage = document.properties.headerImage || null;
+// Request a width-capped webp transform so the browser doesn't download a
+// multi-megapixel original for a 240px-tall banner strip.
+const headerImage = document.properties.headerImage
+  ? withTransformParams(document.properties.headerImage, { w: 1600, format: "webp", q: 85 })
+  : null;
 const showHeaderImage =
   !!headerImage &&
   document.type !== "canvas" &&
