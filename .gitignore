@@ -20,3 +20,5 @@ dist
 .opencode-runtime
 
 **/data/**/*
+
+graphify-out

@@ -63,5 +63,9 @@
   },
   "devDependencies": {
     "@types/sharp": "^0.32.0"
+  },
+  "optionalDependencies": {
+    "@img/sharp-darwin-arm64": "^0.35.1",
+    "@img/sharp-linux-x64": "^0.35.1"
   }
 }

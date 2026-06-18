@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable } from "node:stream";
-import sharp from "sharp";
+import type sharp from "sharp";
 import type { FileStorageAdapter } from "./storage.ts";
 import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";
 import { SERVED_FILE_CSP, contentDisposition } from "#utils/servedFiles.ts";
@@ -138,7 +138,8 @@ export async function applyTransform(
   input: Buffer,
   params: TransformParams,
 ): Promise<Buffer> {
-  let pipeline = sharp(input);
+  const { default: sharpFn } = await import("sharp");
+  let pipeline = sharpFn(input);
 
   if (params.w || params.h) {
     pipeline = pipeline.resize({
