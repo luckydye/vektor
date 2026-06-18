@@ -37,7 +37,7 @@ const homeTopViews = extensions.flatMap((ext) =>
 
 		{space.preferences.pinnedDocumentId && (
 			<PinnedDocument
-				client:load
+				client:only
 				spaceId={space.id}
 				spaceSlug={space.slug}
 				pinnedDocumentId={space.preferences.pinnedDocumentId}
