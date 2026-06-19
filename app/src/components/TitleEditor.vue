@@ -1,11 +1,11 @@
 <template>
-  <div class="flex items-center gap-3 flex-1">
+  <div class="flex items-center gap-3 flex-1 px-1 -mx-1">
     <input ref="inputEl" v-if="isEditing" v-model="localTitle" type="text" placeholder="Untitled Document"
-      class="text-size-display font-bold text-neutral-900 bg-transparent focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors"
+      class="text-size-display font-bold text-neutral-900 bg-neutral-50 focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors"
       @blur="updateTitle" @keydown.enter="updateTitle" />
 
     <div v-else :data-document-id="documentId">
-        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow" @dblclick="startEditing">
+        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow hover:bg-neutral-50" @dblclick="startEditing">
             {{ localTitle || 'Untitled Document' }}
             <div v-if="starred" class="svg-icon w-6 h-6 text-yellow-500" v-html="starFilledIcon" />
         </h1>
@@ -17,11 +17,9 @@
 import { nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
-import { useEditor } from "../composeables/useEditor.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
-const { editing } = useEditor();
 
 const props = withDefaults(
   defineProps<{
@@ -47,7 +45,7 @@ const isEditing = ref(props.initialEditMode);
 async function startEditing() {
   isEditing.value = true;
   await nextTick();
-  inputEl.value?.focus();
+  inputEl.value?.focus({ preventScroll: true });
 }
 
 watch(
@@ -106,14 +104,6 @@ async function updateTitle() {
   }
   isEditing.value = false;
 }
-
-watch(editing, (nowEditing) => {
-  if (nowEditing) void startEditing();
-  else {
-    localTitle.value = props.title;
-    isEditing.value = false;
-  }
-});
 </script>
 
 <style scoped>

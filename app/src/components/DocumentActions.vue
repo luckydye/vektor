@@ -68,6 +68,15 @@ function startEditing() {
 
 watch(editing, syncEditActions, { immediate: true });
 
+function markdownDownloadName() {
+  const name = (props.title || "document")
+    .trim()
+    .replace(/[<>:"/\\|?*]/g, "-")
+    .replace(/[. ]+$/g, "");
+
+  return `${name || "document"}.md`;
+}
+
 Actions.register("document:print", {
   title: t("Print"),
   icon: () => "print",
@@ -84,7 +93,19 @@ Actions.register("document:export", {
   description: t("Export current document to markdown"),
   group: "document",
   run: async () => {
-    window.open(`${location.href}.md`, "_blank");
+    const response = await fetch(location.href, {
+      headers: { Accept: "text/markdown" },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to export document (${response.status})`);
+    }
+
+    const downloadUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = markdownDownloadName();
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(downloadUrl));
   },
 });
 

@@ -53,6 +53,7 @@ if (
           <style>
             .container {
               pointer-events: auto;
+              white-space: nowrap;
             }
             a-shortcut {
               --background-color: transparent;

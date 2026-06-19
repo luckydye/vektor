@@ -190,7 +190,7 @@ onUnmounted(() => {
         ]" @click="handleSidebarClick">
             <!-- Toggle Button - Floating on Right Border -->
             <button @click.stop="toggleCollapse" type="button"
-                class="hidden lg:block absolute bottom-6 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
+                class="hidden lg:block absolute bottom-7.5 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
                 :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'">
                 <Icon name="collapse" :class="twMerge(
                     'w-4 h-4 transition-transform',

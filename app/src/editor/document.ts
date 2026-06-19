@@ -389,7 +389,7 @@ function createEditor(
       disableCollaboration();
     },
     onCreate: async ({ editor: currentEditor }) => {
-      currentEditor.commands.focus();
+      currentEditor.commands.focus(undefined, { scrollIntoView: false });
     },
     onUpdate: () => {},
     onDestroy: () => {
@@ -663,6 +663,45 @@ export class DocumentView extends HTMLElement {
     });
   }
 
+  private preserveScrollPositionDuringLayoutChange() {
+    const scrollPositions: Array<{
+      element: HTMLElement;
+      left: number;
+      top: number;
+    }> = [];
+    for (
+      let element: HTMLElement | null = this;
+      element;
+      element = element.parentElement
+    ) {
+      if (element.scrollLeft || element.scrollTop) {
+        scrollPositions.push({
+          element,
+          left: element.scrollLeft,
+          top: element.scrollTop,
+        });
+      }
+    }
+
+    const previousMinHeight = this.style.minHeight;
+    this.style.minHeight = `${this.getBoundingClientRect().height}px`;
+
+    return () => {
+      const restoreScrollPosition = () => {
+        for (const { element, left, top } of scrollPositions) {
+          element.scrollTo({ left, top, behavior: "instant" });
+        }
+      };
+
+      restoreScrollPosition();
+      requestAnimationFrame(() => {
+        restoreScrollPosition();
+        this.style.minHeight = previousMinHeight;
+        requestAnimationFrame(restoreScrollPosition);
+      });
+    };
+  }
+
   private maybeStartEditor() {
     const shadow = this.root;
     if (
@@ -690,6 +729,8 @@ export class DocumentView extends HTMLElement {
     const collaborationDocument = this.collaborationDocument;
     if (!collaborationDocument) return;
 
+    const finishLayoutChange = this.preserveScrollPositionDuringLayoutChange();
+
     shadow.replaceChildren();
     this.ensureDocumentStyles(shadow);
     shadow.append(this.element);
@@ -708,6 +749,7 @@ export class DocumentView extends HTMLElement {
     this.tiptapEditor.on("selectionUpdate", handleUpdate);
     this.tiptapEditor.on("update", handleUpdate);
     this.setPresenceProfiles(this.presenceProfiles);
+    finishLayoutChange();
 
     this.dispatchEvent(
       new CustomEvent("editor-ready", {
@@ -722,6 +764,7 @@ export class DocumentView extends HTMLElement {
     this.editorStartVersion++;
     this.startingEditor = false;
     if (!this.tiptapEditor) return;
+    const finishLayoutChange = this.preserveScrollPositionDuringLayoutChange();
     const editor = this.tiptapEditor;
     this.tiptapEditor = undefined;
     editor.destroy();
@@ -732,6 +775,7 @@ export class DocumentView extends HTMLElement {
     );
     window.dispatchEvent(new Event("editor-destroyed"));
     this.renderReadHtml(this._html);
+    finishLayoutChange();
   }
 
   disconnectedCallback() {

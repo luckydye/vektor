@@ -17,14 +17,22 @@ import {
   getDocument,
   getDocumentBreadcrumbs,
   getDocumentBySlug,
+  getDocumentChildren,
 } from "../../../db/documents.ts";
 import { getPublishedContent } from "../../../db/revisions.ts";
 import { getSpaceBySlug } from "../../../db/spaces.ts";
 import { withTransformParams } from "../../../files/transforms.ts";
 import SpaceLayout from "../../../layouts/SpaceLayout.astro";
+import { documentToMarkdown } from "../../../utils/documentMarkdown.ts";
 import { readOnlyDocumentTypes } from "../../../utils/documentTypes.ts";
 
 const { spaceSlug, slug } = Astro.params;
+const acceptsMarkdown = Astro.request.headers
+  .get("Accept")
+  ?.split(",")
+  .some((value) => value.split(";", 1)[0].trim().toLowerCase() === "text/markdown");
+
+Astro.response.headers.append("Vary", "Accept");
 
 function redirectPreservingSearch(pathname: string) {
   return Astro.redirect(`${pathname}${Astro.url.search}`);
@@ -84,6 +92,26 @@ if (!hasAccess) {
     status: 403,
     statusText: "Forbidden",
   });
+}
+
+if (acceptsMarkdown) {
+  const children = await getDocumentChildren(space.id, document.id, {
+    userId: userId || "",
+    userGroups,
+  });
+
+  return new Response(
+    documentToMarkdown(
+      document,
+      children.map((child) => child.slug),
+    ),
+    {
+      headers: {
+        "Content-Type": "text/markdown; charset=utf-8",
+        Vary: "Accept",
+      },
+    },
+  );
 }
 
 const title = document.properties.title || "Untitled Document";
@@ -244,11 +272,11 @@ if (diffMins >= 1 && diffMins < 60) {
         class={twMerge(
           "flex flex-row justify-between gap-6 py-xs px-xs lg:gap-4 lg:px-xl print:px-0",
           isCanvas && "pointer-events-auto",
-          "sticky top-0 bg-white z-99"
+          "sticky top-0 bg-white z-10"
         )}
         data-inset
       >
-        <div class="flex items-start justify-between">
+        <div class="flex items-start justify-between w-full">
           <TitleEditor
             client:load
             initialEditMode={false}
@@ -286,7 +314,7 @@ if (diffMins >= 1 && diffMins < 60) {
       <!-- Main Content -->
       <div
         class={twMerge(
-          "max-w-none overflow-auto text-neutral-700",
+          "max-w-none overflow-x-auto text-neutral-700 mb-30",
           isCsv ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "h-full",
           isPaddedDocument && "px-xs lg:px-xl print:px-0",
         )}

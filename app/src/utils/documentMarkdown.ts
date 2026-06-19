@@ -1,22 +1,5 @@
-import type { APIRoute } from "astro";
 import * as html5parser from "html5parser";
-import { ResourceType } from "~/src/db/acl.ts";
-import { getTokenUserId } from "../../../db/accessTokens.ts";
-import { getUserGroups } from "../../../db/acl.ts";
-import {
-  authenticateRequest,
-  requireParam,
-  requireUser,
-  verifyDocumentRole,
-  verifyTokenPermission,
-} from "../../../db/api.ts";
-import {
-  type AclViewer,
-  type DocumentWithProperties,
-  getDocumentBySlug,
-  getDocumentChildren,
-} from "../../../db/documents.ts";
-import { getSpaceBySlug } from "../../../db/spaces.ts";
+import type { DocumentWithProperties } from "../db/documents.ts";
 
 type TagNode = html5parser.ITag;
 type TextNode = html5parser.IText;
@@ -237,13 +220,11 @@ function htmlToMarkdown(html: string): string {
     .replace(/\n{3,}/g, "\n\n");
 }
 
-async function documentToMarkdown(
-  spaceId: string,
+export function documentToMarkdown(
   document: DocumentWithProperties,
-  viewer: AclViewer,
-): Promise<string> {
-  const children = await getDocumentChildren(spaceId, document.id, viewer);
-  const childrenSlugs = children.map((child) => child.slug).join(", ");
+  childSlugs: string[],
+): string {
+  const children = childSlugs.join(", ");
   const markdownContent = htmlToMarkdown(document.content || "");
 
   return `---
@@ -255,68 +236,9 @@ status: ${document.properties.status}
 archived: ${document.archived}
 tags: [${document.properties.tags}]
 category: ${document.properties.category}
-children: [${childrenSlugs}]
+children: [${children}]
 ---
 
 ${markdownContent}
 `;
 }
-
-export const GET: APIRoute = async (context) => {
-  try {
-    requireUser(context);
-    const spaceSlug = requireParam(context.params, "spaceSlug");
-    const docSlug = requireParam(context.params, "slug");
-
-    const space = await getSpaceBySlug(spaceSlug);
-    if (!space) {
-      return new Response(null, {
-        status: 404,
-        headers: { "Content-Type": "text/markdown; charset=utf-8" },
-        statusText: "Space not found",
-      });
-    }
-
-    const document = await getDocumentBySlug(space.id, docSlug);
-    if (!document) {
-      return new Response(null, {
-        status: 404,
-        headers: { "Content-Type": "text/markdown; charset=utf-8" },
-        statusText: "Document not found",
-      });
-    }
-
-    // Authenticate with either user session or access token
-    const auth = await authenticateRequest(context, space.id);
-
-    // Handle token-based authentication
-    let viewerId: string;
-    if (auth.type === "token") {
-      await verifyTokenPermission(
-        auth.token,
-        space.id,
-        ResourceType.DOCUMENT,
-        document.id,
-        "viewer",
-      );
-      viewerId = getTokenUserId(auth.token.tokenId);
-    } else {
-      // Handle user-based authentication
-      await verifyDocumentRole(space.id, document.id, auth.user.id, "viewer");
-      viewerId = auth.user.id;
-    }
-
-    const viewer: AclViewer = {
-      userId: viewerId,
-      userGroups: await getUserGroups(viewerId),
-    };
-
-    return new Response(await documentToMarkdown(space.id, document, viewer), {
-      status: 200,
-      headers: { "Content-Type": "text/markdown; charset=utf-8" },
-    });
-  } catch (error) {
-    if (error instanceof Response) return error;
-    throw new Error("Unknown error", { cause: error });
-  }
-};
