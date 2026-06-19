@@ -405,7 +405,7 @@ useSync(
 </script>
 
 <template>
-    <main class="relative">
+    <main class="relative mb-30">
         <!-- CSV Spreadsheet View -->
         <table-view v-if="!editing && documentType === 'csv'"
             :html="renderedHtml" class="block flex-1 min-h-0"></table-view>
