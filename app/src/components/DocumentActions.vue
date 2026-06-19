@@ -345,11 +345,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <HeaderImageDialog
-    v-model:show="dialogOpen"
-    @select="(file) => props.documentId && uploadHeaderImage(props.documentId, file)"
-  />
-  <div id="document-actions" class="flex gap-4 items-start flex-none">
+  <div id="document-actions" class="flex gap-4xs items-start flex-none">
     <div class="flex-1 mr-3">
       <Contributors v-if="documentId" :documentId="documentId" />
     </div>
@@ -437,7 +433,12 @@ watchEffect(() => {
       </ButtonSecondary>
     </div>
 
-    <ContextMenu>
+    <div class="relative flex-none">
+      <HeaderImageDialog
+        v-model:show="dialogOpen"
+        @select="(file) => props.documentId && uploadHeaderImage(props.documentId, file)"
+      />
+      <ContextMenu>
       <ContextMenuItem v-for="[name, options] of actions" :onClick="(event) => runContextMenuAction(event, name)">
         <Icon :name="(options.icon?.() as any) || 'placeholder'" />
         <span class="block w-full text-left mr-2" :data-action="name">{{options.title}}</span>
@@ -451,5 +452,6 @@ watchEffect(() => {
         <span>{{options.title}}</span>
       </ContextMenuItem>
     </ContextMenu>
+    </div>
   </div>
 </template>

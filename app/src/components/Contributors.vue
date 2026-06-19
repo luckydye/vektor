@@ -52,7 +52,7 @@ const remainingCount = computed(() => {
         </a-popover-arrow>
         <div class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]">
           <div class="text-size-small font-medium text-neutral-600 px-4xs">Authors</div>
-          <div class="overflow-y-auto max-h-[240px] flex flex-col gap-1">
+          <div class="overflow-y-auto max-h-[240px] flex flex-col">
           <div v-for="contributor in contributors" :key="contributor.id" class="flex items-center gap-3xs px-4xs py-4xs rounded-md">
             <Avatar size="small" :user="contributor" />
             <span class="text-interactive text-neutral-950 truncate">{{ contributor.name }}</span>
