@@ -19,7 +19,7 @@ await verifySpaceRole(space.id, user.id, "editor");
 ---
 
 <SpaceLayout title={`Archive - ${space.name} - Wiki`}>
-  <div data-inset class="pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl lg:ml-(--inset-left) lg:mr-(--inset-right)">
+  <div data-inset class="pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl md:ml-(--inset-left) md:mr-(--inset-right)">
     <h1 class="text-size-display font-bold mb-6">Archived Documents</h1>
     <ArchivedDocuments client:load spaceId={space.id} spaceSlug={space.slug} />
   </div>

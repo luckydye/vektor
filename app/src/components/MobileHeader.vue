@@ -1,5 +1,5 @@
 <template>
-  <header class="lg:hidden sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-neutral-100 px-2">
+  <header class="md:hidden sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-neutral-100 px-2">
     <div class="flex items-center justify-between h-12">
       <button
         @click="handleMenuClick"

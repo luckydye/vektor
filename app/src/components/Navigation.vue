@@ -255,7 +255,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
           <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
         </button>
       </div>
-      <div v-if="isLoading && !hasEverLoaded" class="px-5xs space-y-1 hidden lg:flex flex-col">
+      <div v-if="isLoading && !hasEverLoaded" class="px-5xs space-y-1 hidden md:flex flex-col">
         <!-- Category skeleton -->
         <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
           <!-- Category header -->

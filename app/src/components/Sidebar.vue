@@ -175,7 +175,7 @@ onUnmounted(() => {
     <div>
         <!-- Backdrop Overlay for Mobile -->
         <div v-if="isMobileOpen" @click="closeMobile"
-            class="fixed inset-0 bg-black/50 z-30 lg:hidden transition-opacity"></div>
+            class="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity"></div>
 
         <!-- Sidebar -->
         <div ref="sidebarRef" :style="{
@@ -184,13 +184,13 @@ onUnmounted(() => {
         }" :class="[
             '@container sidebar p-1.5 flex',
             'fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
-            'z-40 lg:z-10',
-            'lg:translate-x-0',
+            'z-40 md:z-10',
+            'md:translate-x-0',
             isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         ]" @click="handleSidebarClick">
             <!-- Toggle Button - Floating on Right Border -->
             <button @click.stop="toggleCollapse" type="button"
-                class="hidden lg:block absolute bottom-7.5 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
+                class="hidden md:block absolute bottom-7.5 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
                 :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'">
                 <Icon name="collapse" :class="twMerge(
                     'w-4 h-4 transition-transform',
@@ -213,7 +213,7 @@ onUnmounted(() => {
             
             <!-- Desktop Resize Handle -->
             <div :class="[
-                'hidden lg:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
+                'hidden md:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
                 isResizing && 'bg-primary-200/50 active:bg-primary-200' || ''
             ]" @mousedown="startResize">
                 <div class="absolute inset-y-0 -right-1 w-3"></div>

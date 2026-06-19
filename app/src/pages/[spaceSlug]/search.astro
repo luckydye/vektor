@@ -24,7 +24,7 @@ await verifySpaceAccess(space.id, user.id);
 
 <SpaceLayout title={`Search - ${space.name} - Wiki`}>
   <AIChatPanel client:only slot="outer" />
-  <div data-inset class="pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl lg:ml-(--inset-left) lg:mr-(--inset-right)">
+  <div data-inset class="pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl md:ml-(--inset-left) md:mr-(--inset-right)">
     <SearchComponent client:only="vue" spaceId={space.id} spaceSlug={space.slug} />
   </div>
 </SpaceLayout>

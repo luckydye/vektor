@@ -2028,8 +2028,8 @@ function handlePaste(event: ClipboardEvent) {
 // frame content within the *visible* region instead of the full viewport.
 function reservedSidebarWidth(): number {
   if (typeof window === "undefined") return 0;
-  // Below the lg breakpoint the sidebar is an overlay drawer and reserves no space.
-  if (!window.matchMedia("(min-width: 1024px)").matches) return 0;
+  // Below the md breakpoint the sidebar is an overlay drawer and reserves no space.
+  if (!window.matchMedia("(min-width: 768px)").matches) return 0;
   const rect = document.querySelector(".sidebar")?.getBoundingClientRect();
   return Math.max(0, rect?.right ?? 0);
 }

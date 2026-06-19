@@ -32,7 +32,7 @@ const spaceSlug = Astro.params.spaceSlug as string;
 <SpaceLayout title={`${title} - ${space.name} - Wiki`}>
     <!-- Inset content past the fixed sidebar — except canvas docs, which render
          full-bleed behind the nav and inset only their (absolute) header below. -->
-    <div data-inset class={twMerge('flex-1 min-h-0', type !== 'canvas' && 'lg:ml-(--inset-left) lg:mr-(--inset-right)')}>
+    <div data-inset class={twMerge('flex-1 min-h-0', type !== 'canvas' && 'md:ml-(--inset-left) md:mr-(--inset-right)')}>
     <div
       class={twMerge(
         "space-y-6 mx-auto h-full flex flex-col relative w-full",
@@ -41,7 +41,7 @@ const spaceSlug = Astro.params.spaceSlug as string;
      >
       <!-- Document Header -->
       <div data-inset class={twMerge(
-        type === 'canvas' ? 'absolute top-xs right-0 left-0 lg:left-(--inset-left) lg:right-(--inset-right) z-10' : 'pt-s mb-xl'
+        type === 'canvas' ? 'absolute top-xs right-0 left-0 md:left-(--inset-left) md:right-(--inset-right) z-10' : 'pt-s mb-xl'
       )}>
         <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xs">
           <div>
