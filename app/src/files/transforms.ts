@@ -7,7 +7,9 @@ import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
 import { getNativeImage } from "./native.ts";
 import type { FileStorageAdapter } from "./storage.ts";
 import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";
-export { TRANSFORMABLE_EXTENSIONS, withTransformParams } from "./transformUrl.ts";
+export { withTransformParams } from "./transformUrl.ts";
+import { TRANSFORMABLE_EXTENSIONS } from "./transformUrl.ts";
+export { TRANSFORMABLE_EXTENSIONS };
 
 // ---------------------------------------------------------------------------
 // Types
