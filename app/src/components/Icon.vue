@@ -46,6 +46,7 @@ import {
   trashIcon,
   underlineIcon,
   undoIcon,
+  uploadIcon,
   webhookIcon,
 } from "../assets/icons.ts";
 
@@ -94,6 +95,7 @@ const icons = {
   highlight: highlightIcon,
   heading: headingIcon,
   undo: undoIcon,
+  upload: uploadIcon,
   redo: redoIcon,
   indent: indentIcon,
   outdent: outdentIcon,

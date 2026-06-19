@@ -1,18 +1,16 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import { uploadIcon } from "~/src/assets/icons.ts";
 import { Icon } from "~/src/components/index.ts";
 
 const props = withDefaults(
   defineProps<{
     accept?: string;
+    /** Small text shown below the main call-to-action (e.g. accepted formats). */
     hint?: string;
-    /** Listen for paste events on the window. */
+    /** Listen for window paste events. */
     listenPaste?: boolean;
   }>(),
-  {
-    listenPaste: true,
-  },
+  { listenPaste: true },
 );
 
 const emit = defineEmits<{
@@ -79,29 +77,45 @@ onUnmounted(() => {
   window.removeEventListener("paste", onPaste);
 });
 
-defineExpose({ isDragging });
+defineExpose({ isDragging, openPicker });
 </script>
 
 <template>
   <div
     ref="dropZone"
-    role="button"
-    tabindex="0"
-    class="flex flex-col items-center justify-center gap-3xs rounded-md border-2 border-dashed p-l cursor-pointer transition-colors select-none outline-none"
+    class="relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors"
     :class="
       isDragging
-        ? 'border-accent bg-accent/10'
-        : 'border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50/5 focus-visible:border-accent'
+        ? 'border-primary-400 bg-primary-50'
+        : 'border-primary-200 bg-primary-10'
     "
-    @click="openPicker"
-    @keydown.enter.space.prevent="openPicker"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <slot :is-dragging="isDragging">
-      <Icon :icon="uploadIcon" class="text-foreground-secondary w-8 h-8" />
-      <p v-if="hint" class="text-small text-foreground-secondary text-center">{{ hint }}</p>
+    <slot :is-dragging="isDragging" :open-picker="openPicker">
+      <!-- Default content -->
+      <div
+        class="flex items-center justify-center w-14 h-14 rounded-full transition-colors"
+        :class="isDragging ? 'bg-primary-100' : 'bg-primary-50'"
+      >
+        <Icon name="upload" class="w-7 h-7 text-primary-500" />
+      </div>
+
+      <p class="text-size-normal text-neutral-700 text-center">
+        Drag &amp; drop here or
+        <button
+          type="button"
+          class="text-primary-500 hover:text-primary-600 font-medium underline-offset-2 hover:underline cursor-pointer"
+          @click.stop="openPicker"
+        >
+          choose file
+        </button>
+      </p>
+
+      <p v-if="hint" class="text-small text-neutral-400 text-center -mt-1">
+        {{ hint }}
+      </p>
     </slot>
   </div>
 </template>
