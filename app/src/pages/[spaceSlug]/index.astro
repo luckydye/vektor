@@ -1,6 +1,7 @@
 ---
 import AIChatPanel from "~/src/components/AIChatPanel.vue";
 import PinnedDocument from "~/src/components/PinnedDocument.vue";
+import RecentDocuments from "~/src/components/RecentDocuments.vue";
 import ExtensionView from "../../components/ExtensionView.vue";
 import SpaceActivity from "../../components/SpaceActivity.vue";
 import { getDocument } from "../../db/documents.ts";
@@ -32,17 +33,20 @@ const homeTopViews = extensions.flatMap((ext) =>
 ---
 
 <SpaceLayout title={`${space.name} - Wiki`}>
-	<AIChatPanel client:only slot="outer" />
-	<div data-inset class="space-y-6 pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl md:ml-(--inset-left) md:mr-(--inset-right)">
+	<div data-inset class="space-y-12 pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl md:ml-(--inset-left) md:mr-(--inset-right)">
 
-		{space.preferences.pinnedDocumentId && (
-			<PinnedDocument
+  		{space.preferences.pinnedDocumentId && (
+ 			<PinnedDocument
 				client:only
 				spaceId={space.id}
 				spaceSlug={space.slug}
 				pinnedDocumentId={space.preferences.pinnedDocumentId}
-			/>
-		)}
+ 			/>
+  		)}
+
+		<div>
+		    <RecentDocuments client:load spaceId={space.id} spaceSlug={space.slug} limit={10} />
+		</div>
 
 		{homeTopViews.length > 0 && (
 			<div class="space-y-4 mb-20">
@@ -50,7 +54,7 @@ const homeTopViews = extensions.flatMap((ext) =>
 					<div>
 						{(route.title || route.description) && (
 							<div class="mb-3">
-								{route.title && <h3 class="text-size-title font-semibold">{route.title}</h3>}
+								{route.title && <h3 class="text-size-title">{route.title}</h3>}
 								{route.description && <p class="text-size-medium text-neutral-600 mt-1">{route.description}</p>}
 							</div>
 						)}
@@ -61,9 +65,9 @@ const homeTopViews = extensions.flatMap((ext) =>
 		)}
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-3xl mb-20">
-			<div>
-				<SpaceActivity client:load spaceId={space.id} limit={15} />
-			</div>
+			<SpaceActivity client:load spaceId={space.id} limit={15} />
 		</div>
 	</div>
+	
+	<AIChatPanel client:only slot="outer" />
 </SpaceLayout>

@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useContributors } from "../composeables/useContributors.ts";
 import Avatar from "./Avatar.vue";
+import "@sv/elements/popover";
 
 interface Props {
   documentId?: string;
@@ -24,30 +25,61 @@ const remainingCount = computed(() => {
 </script>
 
 <template>
-  <div v-if="!isLoading && !error && contributors.length > 0" class="flex items-center gap-2" data-tooltip="Authors">
-      <div class="flex items-center">
-        <div v-for="(contributor, index) in displayContributors" :key="contributor.id" class="relative" :style="{
-          marginLeft: index > 0 ? `-18px` : '0',
-          zIndex: displayContributors.length - index
-        }" :title="contributor.name">
-          <Avatar size="small" :user="contributor" />
-        </div>
-        <div v-if="remainingCount > 0"
-          class="relative flex items-center justify-center rounded-full bg-primary-100 text-label text-primary-400 font-medium border-2 border-background"
-          :style="{
-            width: `32px`,
-            height: `32px`,
-            marginLeft: `-18px`,
-            zIndex: 0
-          }">
-          +{{ remainingCount }}
+  <a-popover-trigger v-if="!isLoading && !error && contributors.length > 0" showdelay="200" hidedelay="100" class="group relative z-10">
+    <button slot="trigger" type="button" class="flex items-center" data-tooltip="Authors">
+      <div v-for="(contributor, index) in displayContributors" :key="contributor.id" class="relative" :style="{
+        marginLeft: index > 0 ? `-18px` : '0',
+        zIndex: displayContributors.length - index
+      }" :title="contributor.name">
+        <Avatar size="small" :user="contributor" />
+      </div>
+      <div v-if="remainingCount > 0"
+        class="relative flex items-center justify-center rounded-full bg-primary-100 text-label text-primary-400 font-medium border-2 border-background"
+        :style="{
+          width: `32px`,
+          height: `32px`,
+          marginLeft: `-18px`,
+          zIndex: 0
+        }">
+        +{{ remainingCount }}
+      </div>
+    </button>
+
+    <a-popover class="group" placements="bottom-center">
+      <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs">
+        <a-popover-arrow>
+          <div class="contributors-arrow" />
+        </a-popover-arrow>
+        <div class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]">
+          <div class="text-size-small font-medium text-neutral-600 px-4xs">Authors</div>
+          <div class="overflow-y-auto max-h-[240px] flex flex-col gap-1">
+          <div v-for="contributor in contributors" :key="contributor.id" class="flex items-center gap-3xs px-4xs py-4xs rounded-md">
+            <Avatar size="small" :user="contributor" />
+            <span class="text-interactive text-neutral-950 truncate">{{ contributor.name }}</span>
+          </div>
+          </div>
         </div>
       </div>
-  </div>
+    </a-popover>
+  </a-popover-trigger>
 </template>
 
-<style scoped>
-[title] {
-  cursor: help;
+<style>
+a-popover-arrow {
+  z-index: 1;
+}
+
+.contributors-arrow {
+  margin: -4px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-neutral-10);
+  border-left: 1px solid var(--color-neutral-100);
+  border-top: 1px solid var(--color-neutral-100);
+  transform: rotate(45deg);
+}
+
+[data-placement="top"] .contributors-arrow {
+  transform: rotate(225deg);
 }
 </style>
