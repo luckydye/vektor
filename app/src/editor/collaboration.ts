@@ -1,7 +1,8 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
-import type { ProsemirrorMapping } from "y-prosemirror";
 import * as Y from "yjs";
+
+type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;
 
 export type DocumentPresenceState = {
   kind: "editor";
@@ -9,6 +10,8 @@ export type DocumentPresenceState = {
   selection?: {
     anchor?: unknown;
     head?: unknown;
+    absoluteAnchor?: number;
+    absoluteHead?: number;
   } | null;
 };
 

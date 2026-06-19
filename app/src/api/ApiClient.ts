@@ -1,4 +1,4 @@
-import { applyUpdate, Doc as YDoc } from "yjs";
+import { applyUpdate, encodeStateAsUpdate, Doc as YDoc } from "yjs";
 import {
   type PresenceJoinPayload,
   type PresenceLeaveMessage,
@@ -379,6 +379,11 @@ interface RealtimeSubscription {
   callback: (event: RealtimeEventMessage) => void;
 }
 
+interface YjsRoomEntry {
+  ydoc: YDoc;
+  onSynced?: () => void;
+}
+
 interface RealtimeConnection {
   spaceId: string;
   socket: WebSocket;
@@ -386,11 +391,10 @@ interface RealtimeConnection {
   ready: Promise<void>;
   topicRefCounts: Map<RealtimeTopic, number>;
   subscriptions: Set<RealtimeSubscription>;
-  presenceRoomRefCounts: Map<string, number>;
   presenceSubscriptions: Set<PresenceSubscription<unknown>>;
   /** Active Yjs rooms keyed by documentId so they can be re-joined after a reconnect. */
-  yjsRooms: Map<string, Set<YDoc>>;
-  /** Latest presence join payload per room, replayed on reconnect (state kept current via updates). */
+  yjsRooms: Map<string, Set<YjsRoomEntry>>;
+  /** Latest presence join payload per room/client, replayed on reconnect (state kept current via updates). */
   presenceJoinPayloads: Map<string, PresenceJoinPayload<unknown>>;
   /** True once the connection has been intentionally torn down; suppresses reconnects. */
   closed: boolean;
@@ -1819,7 +1823,6 @@ export class ApiClient {
       ready: Promise.resolve(),
       topicRefCounts: new Map(),
       subscriptions: new Set(),
-      presenceRoomRefCounts: new Map(),
       presenceSubscriptions: new Set(),
       yjsRooms: new Map(),
       presenceJoinPayloads: new Map(),
@@ -1892,8 +1895,11 @@ export class ApiClient {
       const { documentId, update } = wsDecodeYjsUpdate(payload);
       const ydocs = connection.yjsRooms.get(documentId);
       if (ydocs) {
-        for (const ydoc of ydocs) {
-          applyUpdate(ydoc, update, "remote");
+        for (const entry of ydocs) {
+          applyUpdate(entry.ydoc, update, "remote");
+          const onSynced = entry.onSynced;
+          entry.onSynced = undefined;
+          onSynced?.();
         }
       }
       return;
@@ -2125,7 +2131,12 @@ export class ApiClient {
     return this.subscribeToTopics(spaceId, [realtimeTopics.workflowRuns], callback);
   }
 
-  joinYjsRoom(spaceId: string, documentId: string, ydoc: YDoc): () => void {
+  joinYjsRoom(
+    spaceId: string,
+    documentId: string,
+    ydoc: YDoc,
+    onSynced?: () => void,
+  ): () => void {
     if (!(ydoc instanceof YDoc)) {
       console.warn("Ignoring Yjs room join without a Y.Doc", { documentId, spaceId });
       return () => {};
@@ -2134,16 +2145,34 @@ export class ApiClient {
     const connection = this.getRealtimeConnection(spaceId);
 
     let ydocs = connection.yjsRooms.get(documentId);
+    const entry: YjsRoomEntry = { ydoc, onSynced };
     if (!ydocs) {
       ydocs = new Set();
       connection.yjsRooms.set(documentId, ydocs);
       // First doc for this room — announce the join (replayed on reconnect).
       this.sendRealtimeState(connection, wsEncode(WsMsgType.YjsJoin, { documentId }));
+    } else {
+      const source = ydocs.values().next().value;
+      if (source) {
+        applyUpdate(ydoc, encodeStateAsUpdate(source.ydoc), "remote");
+        queueMicrotask(() => {
+          entry.onSynced = undefined;
+          onSynced?.();
+        });
+      }
     }
-    ydocs.add(ydoc);
+    ydocs.add(entry);
 
     const handleUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === "remote") return;
+      const rooms = connection.yjsRooms.get(documentId);
+      if (rooms) {
+        for (const peer of rooms) {
+          if (peer !== entry) {
+            applyUpdate(peer.ydoc, update, "remote");
+          }
+        }
+      }
       this.sendRealtimeEphemeral(connection, wsEncodeYjsUpdate(documentId, update));
     };
 
@@ -2153,7 +2182,7 @@ export class ApiClient {
       ydoc.off("update", handleUpdate);
       const rooms = connection.yjsRooms.get(documentId);
       if (rooms) {
-        rooms.delete(ydoc);
+        rooms.delete(entry);
         if (rooms.size === 0) {
           connection.yjsRooms.delete(documentId);
         }
@@ -2177,27 +2206,23 @@ export class ApiClient {
     };
     connection.presenceSubscriptions.add(subscription);
 
-    const roomRefCount = (connection.presenceRoomRefCounts.get(room) ?? 0) + 1;
-    connection.presenceRoomRefCounts.set(room, roomRefCount);
-
-    if (roomRefCount === 1) {
-      const joinPayload: PresenceJoinPayload<TState> = {
-        room,
-        clientId,
-        user,
-        state: initialState,
-      };
-      // Remember the join so it can be replayed after a reconnect; its `state`
-      // is kept current by `update` below.
-      connection.presenceJoinPayloads.set(
-        room,
-        joinPayload as PresenceJoinPayload<unknown>,
-      );
-      this.sendRealtimeState(connection, wsEncode(WsMsgType.PresenceJoin, joinPayload));
-    }
+    const presenceKey = `${room}:${clientId}`;
+    const joinPayload: PresenceJoinPayload<TState> = {
+      room,
+      clientId,
+      user,
+      state: initialState,
+    };
+    // Remember the join so it can be replayed after a reconnect; its `state`
+    // is kept current by `update` below.
+    connection.presenceJoinPayloads.set(
+      presenceKey,
+      joinPayload as PresenceJoinPayload<unknown>,
+    );
+    this.sendRealtimeState(connection, wsEncode(WsMsgType.PresenceJoin, joinPayload));
 
     const update = (state: TState) => {
-      const stored = connection.presenceJoinPayloads.get(room);
+      const stored = connection.presenceJoinPayloads.get(presenceKey);
       if (stored) {
         stored.state = state;
       }
@@ -2214,18 +2239,11 @@ export class ApiClient {
 
     const leave = () => {
       connection.presenceSubscriptions.delete(subscription);
-
-      const currentCount = connection.presenceRoomRefCounts.get(room) ?? 0;
-      if (currentCount <= 1) {
-        connection.presenceRoomRefCounts.delete(room);
-        connection.presenceJoinPayloads.delete(room);
-        this.sendRealtimeState(
-          connection,
-          wsEncode(WsMsgType.PresenceLeave, { room, clientId }),
-        );
-      } else {
-        connection.presenceRoomRefCounts.set(room, currentCount - 1);
-      }
+      connection.presenceJoinPayloads.delete(presenceKey);
+      this.sendRealtimeState(
+        connection,
+        wsEncode(WsMsgType.PresenceLeave, { room, clientId }),
+      );
 
       this.maybeCloseRealtimeConnection(connection);
     };

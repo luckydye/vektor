@@ -1,9 +1,8 @@
-import { computed, onUnmounted, type Ref, ref, type ShallowRef, watch } from "vue";
-import type * as Y from "yjs";
+import { computed, onUnmounted, type Ref, ref, watch } from "vue";
 import { Actions } from "../utils/actions.ts";
+import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useRevisions } from "./useRevisions.ts";
-import { useYjsDocumentRoom } from "./useYjsDocumentRoom.ts";
 
 export type SaveMode = "revision" | "suggestion";
 
@@ -28,18 +27,13 @@ export function resetEditingState() {
   saveError.value = null;
 }
 
-type EditorRoom = {
-  ydoc: ShallowRef<Y.Doc>;
-  joinUntilReady: () => Promise<void>;
-  leave: () => void;
-};
-
 type UseEditorOptions = {
   spaceId: string;
   documentId: Ref<string | undefined>;
   documentType: Ref<string>;
   readonly: Ref<boolean>;
   getEditorHtml: () => string | null;
+  collaboration: CollaborationSession;
 };
 
 type EditorState = {
@@ -53,7 +47,6 @@ type EditorState = {
 
 type DocumentEditor = EditorState & {
   canMountEditor: Ref<boolean>;
-  editorYdoc: ShallowRef<Y.Doc>;
   suggestionSavedCount: Ref<number>;
   finishEditing: (mode?: SaveMode) => Promise<void>;
   startEditorSession: () => Promise<void>;
@@ -76,7 +69,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     };
   }
 
-  const { spaceId, documentId, documentType, readonly, getEditorHtml } = options;
+  const { documentId, documentType, readonly, getEditorHtml, collaboration } = options;
 
   const suggestionSavedCount = ref(0);
   const canMountEditor = computed(
@@ -86,8 +79,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       documentType.value !== "app" &&
       documentType.value !== "csv",
   );
-  const editorRoom: EditorRoom = useYjsDocumentRoom(spaceId, documentId.value);
-  const editorYdoc = editorRoom.ydoc;
   const {
     saveStatus: documentSaveStatus,
     saveError: documentSaveError,
@@ -167,7 +158,16 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     const session = ++editorSession;
     if (!canMountEditor.value) return;
     registerSaveActions();
-    await editorRoom.joinUntilReady();
+    try {
+      await collaboration.joinUntilReady();
+    } catch (error) {
+      if (session === editorSession) {
+        saveStatus.value = "error";
+        saveError.value = error instanceof Error ? error : new Error(String(error));
+        editing.value = false;
+      }
+      return;
+    }
     if (!editing.value || session !== editorSession) return;
 
     shouldMountEditor.value = true;
@@ -177,7 +177,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     editorSession++;
     unregisterSaveActions();
     shouldMountEditor.value = false;
-    editorRoom.leave();
+    collaboration.leave();
   }
 
   watch([documentSaveStatus, documentSaveError], () => {
@@ -194,9 +194,18 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     stopEditorSession();
   });
 
+  watch(documentId, (currentDocumentId, previousDocumentId) => {
+    if (currentDocumentId === previousDocumentId) return;
+
+    stopEditorSession();
+    if (editing.value) {
+      void startEditorSession();
+    }
+  });
+
   onUnmounted(() => {
     unregisterSaveActions();
-    editorRoom.leave();
+    collaboration.leave();
     clearSaveStatusTimer();
   });
 
@@ -208,7 +217,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     resetEditingState,
     shouldMountEditor,
     canMountEditor,
-    editorYdoc,
     suggestionSavedCount,
     finishEditing,
     startEditorSession,

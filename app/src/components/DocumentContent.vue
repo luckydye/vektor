@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { Editor } from "@tiptap/core";
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import { absolutePositionToRelativePosition } from "y-prosemirror";
-import type * as Y from "yjs";
+import { getRelativeSelection } from "y-prosemirror";
+import * as Y from "yjs";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
+import {
+  provideCollaboration,
+  useCollaboration,
+} from "../composeables/useCollaboration.ts";
 import { useEditor } from "../composeables/useEditor.ts";
-import { useEditorPresence } from "../composeables/useEditorPresence.ts";
 import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
@@ -77,13 +80,19 @@ const handleVisibilityChange = () => {
   }
 };
 
+const collaboration = useCollaboration({
+  spaceId: props.spaceId,
+  documentId,
+  currentPresenceState,
+});
+provideCollaboration(collaboration);
+
 const {
   editing,
   cancelCount,
   resetEditingState,
   shouldMountEditor,
   canMountEditor,
-  editorYdoc,
   suggestionSavedCount,
 } = useEditor({
   spaceId: props.spaceId,
@@ -91,12 +100,7 @@ const {
   documentType,
   readonly: documentReadonly,
   getEditorHtml: () => editor.value?.getHTML() ?? null,
-});
-const { setupEditorPresence, clearEditorPresence, presenceProfiles } = useEditorPresence({
-  spaceId: props.spaceId,
-  documentId,
-  currentState: currentPresenceState,
-  isActive: editing,
+  collaboration,
 });
 const { handleInlineSuggestionAccept } = useInlineSuggestions({
   spaceId: currentSpaceId,
@@ -111,29 +115,23 @@ function currentPresenceState(): DocumentPresenceState {
     return { kind: "editor", focused: false, selection: null };
   }
 
-  const focused = currentEditor.isFocused || currentEditor.view.hasFocus();
-  if (!focused) {
-    return { kind: "editor", focused: false, selection: null };
-  }
-
   const syncState = findYSyncState(currentEditor);
-  const mapping = syncState?.binding?.mapping;
-  if (!mapping) {
+  if (!syncState?.binding) {
     return { kind: "editor", focused: false, selection: null };
   }
 
   try {
-    const { anchor, head } = currentEditor.state.selection;
+    const focused = currentEditor.isFocused || currentEditor.view.hasFocus();
+    const selection = currentEditor.state.selection;
+    const { anchor, head } = getRelativeSelection(syncState.binding, currentEditor.state);
     return {
       kind: "editor",
       focused,
       selection: {
-        anchor: Y.relativePositionToJSON(
-          absolutePositionToRelativePosition(anchor, syncState.type, mapping),
-        ),
-        head: Y.relativePositionToJSON(
-          absolutePositionToRelativePosition(head, syncState.type, mapping),
-        ),
+        anchor: Y.relativePositionToJSON(anchor),
+        head: Y.relativePositionToJSON(head),
+        absoluteAnchor: selection.anchor,
+        absoluteHead: selection.head,
       },
     };
   } catch {
@@ -152,9 +150,13 @@ watch(suggestionSavedCount, () => {
   refreshDocument();
 });
 
-watch(presenceProfiles, (profiles) => {
-  documentViewEl.value?.setPresenceProfiles?.(profiles);
-});
+watch(
+  [collaboration.presenceProfiles, editor],
+  ([profiles]) => {
+    documentViewEl.value?.setPresenceProfiles?.(profiles);
+  },
+  { immediate: true },
+);
 
 watch(editor, (currentEditor) => {
   if (documentToolbar.value) {
@@ -163,11 +165,44 @@ watch(editor, (currentEditor) => {
   setActiveEditor(currentEditor ?? null);
 });
 
+watch(
+  editor,
+  (currentEditor, _previousEditor, onCleanup) => {
+    if (!currentEditor) return;
+
+    const updatePresence = () => {
+      collaboration.updatePresence();
+    };
+
+    currentEditor.on("selectionUpdate", updatePresence);
+    currentEditor.on("focus", updatePresence);
+    currentEditor.on("blur", updatePresence);
+    currentEditor.on("transaction", updatePresence);
+    onCleanup(() => {
+      currentEditor.off("selectionUpdate", updatePresence);
+      currentEditor.off("focus", updatePresence);
+      currentEditor.off("blur", updatePresence);
+      currentEditor.off("transaction", updatePresence);
+    });
+  },
+  { flush: "post" },
+);
+
 watch(documentToolbar, (toolbar) => {
   if (toolbar) {
     toolbar.editor = editor.value;
   }
 });
+
+watch(
+  [documentViewEl, collaboration.ydoc],
+  ([view, ydoc]) => {
+    if (view) {
+      view.collaborationDocument = ydoc;
+    }
+  },
+  { immediate: true },
+);
 
 watch(
   documentViewEl,
@@ -193,6 +228,19 @@ watch(
     });
   },
   { immediate: true },
+);
+
+watch(
+  [editing, editor],
+  ([isEditing, currentEditor]) => {
+    if (isEditing && currentEditor) {
+      void collaboration.setupPresence();
+      return;
+    }
+
+    collaboration.clearPresence();
+  },
+  { flush: "post" },
 );
 
 let toolbarActionsRegistered = false;
@@ -250,11 +298,9 @@ function unregisterToolbarActions() {
 
 watch(editing, (isEditing) => {
   if (isEditing) {
-    void setupEditorPresence();
     registerEditorActions();
     registerToolbarActions();
   } else {
-    clearEditorPresence();
     unregisterEditorActions();
     unregisterToolbarActions();
   }
@@ -277,7 +323,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  clearEditorPresence();
+  collaboration.clearPresence();
   unregisterEditorActions();
   unregisterToolbarActions();
   setActiveEditor(null);
@@ -365,7 +411,6 @@ useSync(
             :class="editing ? 'h-full' : ''">
             <document-view ref="documentViewEl"
                 :editor="shouldMountEditor && !documentReadonly ? '' : undefined"
-                :collaborationDocument="editorYdoc"
                 :html="renderedHtml"
                 :space-id="props.spaceId" :document-id="documentId"
                 v-html="ssrDeclarativeShadowDom" />

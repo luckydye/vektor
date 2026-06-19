@@ -30,6 +30,7 @@ import { contentExtensions, type EditorContext } from "./extensions.ts";
 const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
   "document-presence",
 );
+type ProsemirrorMapping = Parameters<typeof relativePositionToAbsolutePosition>[3];
 
 function dragHasFiles(transfer: DataTransfer | null) {
   if (!transfer) return false;
@@ -54,11 +55,17 @@ function relativePresencePositionToAbsolute(
       ydoc,
       syncState.type,
       relativePosition,
-      mapping,
+      mapping as ProsemirrorMapping,
     );
   } catch {
     return null;
   }
+}
+
+function absolutePresencePosition(state: EditorState, position: unknown) {
+  if (typeof position !== "number" || !Number.isFinite(position)) return null;
+  const maxPos = Math.max(state.doc.content.size - 1, 0);
+  return Math.max(0, Math.min(position, maxPos));
 }
 
 function createPresenceWidget(profile: DocumentPresenceProfile, color: string) {
@@ -100,16 +107,13 @@ function createDocumentPresenceExtension(ydoc: Y.Doc) {
                   continue;
                 }
 
-                const anchor = relativePresencePositionToAbsolute(
-                  state,
-                  ydoc,
-                  profile.state.selection.anchor,
-                );
-                const head = relativePresencePositionToAbsolute(
-                  state,
-                  ydoc,
-                  profile.state.selection.head,
-                );
+                const selection = profile.state.selection;
+                const anchor =
+                  relativePresencePositionToAbsolute(state, ydoc, selection.anchor) ??
+                  absolutePresencePosition(state, selection.absoluteAnchor);
+                const head =
+                  relativePresencePositionToAbsolute(state, ydoc, selection.head) ??
+                  absolutePresencePosition(state, selection.absoluteHead);
                 if (anchor === null || head === null) continue;
 
                 const maxPos = Math.max(state.doc.content.size - 1, 0);
@@ -153,7 +157,6 @@ function createEditor(
   editorElement: HTMLElement,
   ydoc: Y.Doc,
   context: EditorContext = {},
-  html?: string,
 ) {
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
   let lastPointerX = 0;
@@ -381,7 +384,6 @@ function createEditor(
   editor = new Editor({
     element: editorElement,
     enableCoreExtensions: true,
-    content: html,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
       disableCollaboration();
@@ -471,6 +473,7 @@ export class DocumentView extends HTMLElement {
   private tiptapEditor?: Editor;
   private ydoc?: Y.Doc;
   private _html = "";
+  private presenceProfiles: DocumentPresenceProfile[] = [];
 
   set html(value: string) {
     this._html = value;
@@ -492,21 +495,24 @@ export class DocumentView extends HTMLElement {
     return this.tiptapEditor;
   }
 
-  get collaborationDocument() {
-    if (!this.ydoc) {
-      this.ydoc = new Y.Doc();
-    }
-
+  get collaborationDocument(): Y.Doc | undefined {
     return this.ydoc;
   }
 
-  set collaborationDocument(ydoc: Y.Doc) {
+  set collaborationDocument(ydoc: Y.Doc | undefined) {
     if (ydoc instanceof Y.Doc) {
+      if (this.ydoc === ydoc) return;
+      const hadEditor = !!this.tiptapEditor;
+      if (hadEditor) {
+        this.destroyEditor();
+      }
       this.ydoc = ydoc;
+      this.queueMaybeStartEditor();
     }
   }
 
   setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
+    this.presenceProfiles = profiles;
     if (!this.tiptapEditor) return;
 
     this.tiptapEditor.view.dispatch(
@@ -602,14 +608,22 @@ export class DocumentView extends HTMLElement {
     return style;
   }
 
+  private ensureShadowRootCompatibility(shadow: ShadowRoot) {
+    if (
+      typeof (shadow as ShadowRoot & { createRange?: unknown }).createRange !== "function"
+    ) {
+      Object.defineProperty(shadow, "createRange", {
+        configurable: true,
+        value: document.createRange.bind(document),
+      });
+    }
+  }
+
   private ensureShadowRoot() {
     let shadow = this.root;
     if (!shadow) {
       // no template for declarative shadow DOM
       shadow = this.attachShadow({ mode: "open" });
-      Object.assign(shadow, {
-        createRange: document.createRange.bind(document),
-      });
 
       // on client navigation, declarative shadow DOM does not work
       //  if its a server navigation, template is null here.
@@ -619,6 +633,7 @@ export class DocumentView extends HTMLElement {
         shadow.replaceChildren(clone);
       }
     }
+    this.ensureShadowRootCompatibility(shadow);
     return shadow;
   }
 
@@ -661,7 +676,6 @@ export class DocumentView extends HTMLElement {
 
     this.startingEditor = true;
     const startVersion = ++this.editorStartVersion;
-    const initialHtml = this.initialHtml();
     this.startingEditor = false;
     if (
       startVersion !== this.editorStartVersion ||
@@ -672,6 +686,9 @@ export class DocumentView extends HTMLElement {
       return;
     }
 
+    const collaborationDocument = this.collaborationDocument;
+    if (!collaborationDocument) return;
+
     shadow.replaceChildren();
     this.ensureDocumentStyles(shadow);
     shadow.append(this.element);
@@ -679,9 +696,8 @@ export class DocumentView extends HTMLElement {
     this.element.className = "tiptap";
     this.tiptapEditor = createEditor(
       this.element,
-      this.collaborationDocument,
+      collaborationDocument,
       this.resolvedEditorContext(),
-      initialHtml,
     );
 
     const handleUpdate = () => {
@@ -690,6 +706,7 @@ export class DocumentView extends HTMLElement {
 
     this.tiptapEditor.on("selectionUpdate", handleUpdate);
     this.tiptapEditor.on("update", handleUpdate);
+    this.setPresenceProfiles(this.presenceProfiles);
 
     this.dispatchEvent(
       new CustomEvent("editor-ready", {
@@ -722,32 +739,6 @@ export class DocumentView extends HTMLElement {
 
   private hasEditorConfig() {
     return this.hasAttribute("editor");
-  }
-
-  private initialHtml() {
-    const template = this.querySelector("template");
-    if (template) {
-      const content = template.content.querySelector('[part="content"]');
-      const nodes = content ? content.childNodes : template.content.childNodes;
-      return Array.from(nodes)
-        .map((node) => {
-          if (node instanceof Element) return node.outerHTML;
-          return node.textContent || "";
-        })
-        .join("");
-    }
-
-    const shadowContent = this.root?.querySelector('[part="content"]');
-    if (shadowContent) {
-      return Array.from(shadowContent.childNodes)
-        .map((node) => {
-          if (node instanceof Element) return node.outerHTML;
-          return node.textContent || "";
-        })
-        .join("");
-    }
-
-    return this.innerHTML;
   }
 
   attachListeners() {
