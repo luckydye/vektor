@@ -558,6 +558,9 @@ const server = createServer(async (req, res) => {
 
     if (shouldRunAstroFallback(response, req, res)) {
       await runAstroHandler(astroHandler as AstroMiddleware, req, res);
+      if (!res.writableEnded) {
+        await sendWebResponse(res, new Response(null, { status: 404 }));
+      }
       return;
     }
 

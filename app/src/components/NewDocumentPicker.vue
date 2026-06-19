@@ -43,7 +43,7 @@ onUnmounted(() => {
   <Transition name="picker-fade">
     <div
       v-if="visible"
-      class="flex items-center justify-center z-10 pointer-events-none"
+      class="flex items-center justify-center z-10 pointer-events-none absolute top-1/2 left-0 right-0"
       aria-label="Select document type"
     >
       <div class="flex gap-3 pointer-events-auto">
