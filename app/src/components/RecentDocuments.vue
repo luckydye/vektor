@@ -3,15 +3,11 @@ import "@sv/elements/track";
 import { onMounted, ref } from "vue";
 import type { DocumentWithProperties } from "../api/client.ts";
 import { api } from "../api/client.ts";
+import { withTransformParams } from "../files/transformUrl.ts";
 import { formatDate } from "../utils/utils.ts";
 
-const TRANSFORMABLE = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
-
 function teaserImageUrl(url: string): string {
-  if (!url.startsWith("/api/v1/spaces/")) return url;
-  const ext = url.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
-  if (!TRANSFORMABLE.has(ext)) return url;
-  return `${url}?w=400&format=webp`;
+  return withTransformParams(url, { w: 400, format: "webp" });
 }
 
 const props = defineProps<{

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import { withTransformParams } from "../files/transforms.ts";
+import { withTransformParams } from "../files/transformUrl.ts";
 
-const props = defineProps<{ initialSrc?: string; documentType?: string }>();
+const props = defineProps<{ initialSrc?: string }>();
 
 const src = ref(props.initialSrc ?? null);
 
