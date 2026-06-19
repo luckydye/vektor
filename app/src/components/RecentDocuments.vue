@@ -5,6 +5,15 @@ import type { DocumentWithProperties } from "../api/client.ts";
 import { api } from "../api/client.ts";
 import { formatDate } from "../utils/utils.ts";
 
+const TRANSFORMABLE = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+
+function teaserImageUrl(url: string): string {
+  if (!url.startsWith("/api/v1/spaces/")) return url;
+  const ext = url.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  if (!TRANSFORMABLE.has(ext)) return url;
+  return `${url}?w=400&format=webp`;
+}
+
 const props = defineProps<{
   spaceId: string;
   spaceSlug: string;
@@ -41,7 +50,7 @@ onMounted(async () => {
 
     <!-- Skeleton -->
     <div v-if="loading" class="flex gap-4 overflow-hidden">
-      <div v-for="i in count" :key="i" class="flex-none w-56">
+      <div v-for="i in count" :key="i" class="flex-none w-60 pr-4">
         <div class="aspect-video bg-neutral-100 animate-pulse rounded-xl" />
         <div class="mt-3 space-y-2">
           <div class="h-3 w-20 bg-neutral-100 animate-pulse rounded" />
@@ -57,20 +66,19 @@ onMounted(async () => {
 
     <!-- Slider -->
     <a-track v-else snap class="flex w-full overflow-visible">
-      <div class="flex gap-4">
       <a
         v-for="doc in docs"
         :key="doc.id"
         :href="doc.fileUrl ?? `/${spaceSlug}/doc/${doc.slug}`"
         :target="doc.fileUrl ? '_blank' : undefined"
         :rel="doc.fileUrl ? 'noopener noreferrer' : undefined"
-        class="group flex-none w-56 block"
+        class="group flex-none w-60 block pr-4"
       >
         <!-- Thumbnail -->
         <div class="relative aspect-video rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center">
           <img
             v-if="doc.properties?.headerImage"
-            :src="doc.properties.headerImage"
+            :src="teaserImageUrl(doc.properties.headerImage)"
             class="absolute inset-0 w-full h-full object-cover"
             alt=""
           />
@@ -108,19 +116,18 @@ onMounted(async () => {
         </div>
       </a>
 
-        <!-- Trailing "view all" card -->
-        <a
-          :href="`/${spaceSlug}/search`"
-          class="group flex-none w-56 block"
-        >
-          <div class="aspect-video rounded-xl border-2 border-dashed border-neutral-200 flex items-center justify-center group-hover:border-neutral-300 transition-colors">
-            <span class="text-neutral-400 group-hover:text-neutral-500 transition-colors text-sm font-medium">View all →</span>
-          </div>
-          <div class="mt-3">
-            <h4 class="text-size-medium font-bold italic leading-snug" style="color: var(--color-primary-700)">Browse all documents</h4>
-          </div>
-        </a>
-      </div>
+      <!-- Trailing "view all" card -->
+      <a
+        :href="`/${spaceSlug}/search`"
+        class="group flex-none w-60 block pr-4"
+      >
+        <div class="aspect-video rounded-xl border-2 border-dashed border-neutral-200 flex items-center justify-center group-hover:border-neutral-300 transition-colors">
+          <span class="text-neutral-400 group-hover:text-neutral-500 transition-colors text-sm font-medium">View all →</span>
+        </div>
+        <div class="mt-3">
+          <h4 class="text-size-medium font-bold italic leading-snug" style="color: var(--color-primary-700)">Browse all documents</h4>
+        </div>
+      </a>
     </a-track>
   </div>
 </template>

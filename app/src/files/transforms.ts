@@ -10,7 +10,10 @@ async function getSharp() {
   if (_sharp === undefined) {
     try {
       // @vite-ignore: no "." export; bun resolves this at compile time.
-      _sharp = (await import(/* @vite-ignore */ "@img/sharp-wasm32/sharp.node")).default;
+      const mod = await import(/* @vite-ignore */ "@img/sharp-wasm32/sharp.node");
+      // CJS .node addons may nest the callable under .default.default
+      const fn = mod.default?.default ?? mod.default ?? mod;
+      _sharp = typeof fn === "function" ? fn : null;
     } catch (e) {
       console.warn(
         "[transforms] sharp-wasm32 unavailable — image transforms disabled",
