@@ -64,71 +64,43 @@ export async function generateClientAssetsModule() {
 
 await generateClientAssetsModule();
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+
 /**
  * Compile vektor.ts into a portable single-file executable.
  *
- * @img/sharp-wasm32 loads its WASM binary via fs.readFileSync(__dirname +
- * "/sharp-wasm32-*.wasm"). Bun doesn't auto-embed files referenced that way,
- * so we use a plugin that:
- *  1. Intercepts the @img/sharp-wasm32/sharp.node import.
- *  2. Generates a wrapper that imports the .wasm file with { type: "file" }
- *     (causing bun to embed it) and patches Module.locateFile so the
- *     emscripten runtime reads it from the embedded $bunfs path.
+ * Image transforms are provided by the native Rust N-API addon in
+ * native/image/ (built into src/files/native/image-<platform>-<arch>.node).
+ * Bun auto-embeds .node addons referenced by a static `require`, so we only
+ * need to inject the host addon's path via `--define VEKTOR_NATIVE_ADDON` —
+ * src/files/native.ts then resolves it to a literal Bun can embed.
+ *
+ * Cross-target release builds compile per native runner; see
+ * .github/workflows/release.yml.
  */
-import { createRequire } from "node:module";
-import { dirname as pathDirname } from "node:path";
-
-const _require = createRequire(import.meta.url);
-const wasmPkgJsonPath = _require.resolve("@img/sharp-wasm32/package.json");
-const wasmPkgDir = pathDirname(wasmPkgJsonPath);
-const wasmPkgVersion = (_require(wasmPkgJsonPath) as { version: string }).version;
-const wasmJsPath = `${wasmPkgDir}/lib/sharp-wasm32-${wasmPkgVersion}.node.js`;
-const wasmBinPath = `${wasmPkgDir}/lib/sharp-wasm32-${wasmPkgVersion}.node.wasm`;
-
-if (!existsSync(wasmJsPath) || !existsSync(wasmBinPath)) {
-  throw new Error(`[sharp-wasm32] could not find wasm files at ${wasmPkgDir}/lib/`);
+const addonFilename = `image-${process.platform}-${process.arch}.node`;
+const addonPath = `${import.meta.dir}/src/files/native/${addonFilename}`;
+if (!existsSync(addonPath)) {
+  throw new Error(
+    `[native-image] addon not found at ${addonPath}\n` +
+      `Build it first:  cd native/image && bun run build`,
+  );
 }
 
-console.log(`[sharp-wasm32] embedding ${wasmBinPath}`);
-
-const sharpWasmPlugin: import("bun").BunPlugin = {
-  name: "sharp-wasm32-embed",
-  setup(build) {
-    // Intercept @img/sharp-wasm32/sharp.node (the exports-map entry point)
-    build.onResolve({ filter: /@img\/sharp-wasm32/ }, () => ({
-      path: wasmJsPath,
-      namespace: "sharp-wasm32",
-    }));
-
-    build.onLoad({ filter: /.*/, namespace: "sharp-wasm32" }, () => ({
-      // Wrap the emscripten JS so that:
-      //  - The .wasm file is imported with { type: "file" } → bun embeds it.
-      //  - Module.locateFile is patched to return the embedded $bunfs path
-      //    instead of the __dirname-relative path that no longer exists.
-      contents: `
-import wasmPath from ${JSON.stringify(wasmBinPath)} with { type: "file" };
-// var (not const/let) so the emscripten "typeof Module !== 'undefined'" check
-// below sees this object and inherits our locateFile patch.
-var Module = {
-  locateFile(name, dir) {
-    if (name.endsWith(".wasm")) return wasmPath;
-    return dir + name;
-  },
-};
-${readFileSync(wasmJsPath, "utf-8")}
-`,
-      loader: "js",
-    }));
-  },
-};
+const shimPath = `${import.meta.dir}/src/files/native/addon.ts`;
+if (!existsSync(shimPath)) {
+  throw new Error(
+    `[native-image] shim not found at ${shimPath}\n` +
+      `Build it first:  cd native/image && bun run build`,
+  );
+}
+console.log(`[native-image] embedding ${addonFilename}`);
 
 const result = await Bun.build({
   entrypoints: ["./vektor.ts"],
   // @ts-expect-error — Bun.build compile option
   compile: true,
   outfile: "./vektor",
-  plugins: [sharpWasmPlugin],
   // lightningcss bundles a Rust-compiled native binary (../pkg) that bun
   // cannot resolve. It's pulled in transitively by Astro's SSR output but
   // is not actually used at runtime — marking it external skips bundling it.

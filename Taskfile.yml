@@ -7,6 +7,21 @@ tasks:
     cmds:
       - bun i
       - cd app && bun i
+      - task: native:image
+
+  native:image:
+    desc: Build the native image addon (Rust → .node) for the host platform.
+    dir: ./app/native/image
+    sources:
+      - Cargo.toml
+      - Cargo.lock
+      - build.rs
+      - src/**/*.rs
+    generates:
+      - ../../src/files/native/image-*.node
+    cmds:
+      - bun i
+      - bun run build
 
   dev:
     deps: [setup]
@@ -46,6 +61,7 @@ tasks:
   compile:
     dir: ./app
     desc: Compile full app with server into a single executable using bun.
+    deps: [native:image]
     dotenv:
       - ../.env
     cmds:

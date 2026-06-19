@@ -10,12 +10,24 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import sharp from "sharp";
+import { getNativeImage } from "../src/files/native.ts";
 import {
   parseTransformParams,
   transformCachePath,
   withTransformParams,
 } from "../src/files/transforms.ts";
+
+const native = getNativeImage();
+if (!native) {
+  throw new Error(
+    "native image addon unavailable — run: cd native/image && bun run build",
+  );
+}
+
+/** Read width/height/format from encoded image bytes. */
+function meta(buf: Buffer) {
+  return native.metadata(buf);
+}
 
 // ---------------------------------------------------------------------------
 // Unit — withTransformParams
@@ -232,16 +244,7 @@ async function uploadFile(
 
 beforeAll(async () => {
   // Generate test image: 100 wide × 200 tall, solid red
-  testPngBuffer = await sharp({
-    create: {
-      width: 100,
-      height: 200,
-      channels: 3,
-      background: { r: 200, g: 50, b: 50 },
-    },
-  })
-    .png()
-    .toBuffer();
+  testPngBuffer = Buffer.from(native.encodeSolid(100, 200, 200, 50, 50, "png", 80));
 
   serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
     env: {
@@ -284,9 +287,9 @@ describe("image transforms — integration", () => {
     expect(res.headers.get("Content-Type")).toContain("image/png");
 
     const buf = Buffer.from(await res.arrayBuffer());
-    const meta = await sharp(buf).metadata();
-    expect(meta.width).toBe(100);
-    expect(meta.height).toBe(200);
+    const m = meta(buf);
+    expect(m.width).toBe(100);
+    expect(m.height).toBe(200);
   });
 
   it("resizes the image with ?w=50 (preserves aspect ratio)", async () => {
@@ -297,9 +300,9 @@ describe("image transforms — integration", () => {
     expect(res.headers.get("Content-Type")).toContain("image/png");
 
     const buf = Buffer.from(await res.arrayBuffer());
-    const meta = await sharp(buf).metadata();
-    expect(meta.width).toBe(50);
-    expect(meta.height).toBe(100);
+    const m = meta(buf);
+    expect(m.width).toBe(50);
+    expect(m.height).toBe(100);
   });
 
   it("resizes with ?h=50 (preserves aspect ratio)", async () => {
@@ -309,9 +312,9 @@ describe("image transforms — integration", () => {
     expect(res.status).toBe(200);
 
     const buf = Buffer.from(await res.arrayBuffer());
-    const meta = await sharp(buf).metadata();
-    expect(meta.height).toBe(50);
-    expect(meta.width).toBe(25);
+    const m = meta(buf);
+    expect(m.height).toBe(50);
+    expect(m.width).toBe(25);
   });
 
   it("converts to webp with ?format=webp", async () => {
@@ -322,8 +325,8 @@ describe("image transforms — integration", () => {
     expect(res.headers.get("Content-Type")).toBe("image/webp");
 
     const buf = Buffer.from(await res.arrayBuffer());
-    const meta = await sharp(buf).metadata();
-    expect(meta.format).toBe("webp");
+    const m = meta(buf);
+    expect(m.format).toBe("webp");
   });
 
   it("does not enlarge the image when ?w exceeds the original width", async () => {
@@ -333,10 +336,10 @@ describe("image transforms — integration", () => {
     expect(res.status).toBe(200);
 
     const buf = Buffer.from(await res.arrayBuffer());
-    const meta = await sharp(buf).metadata();
+    const m = meta(buf);
     // Must not exceed original 100 × 200
-    expect(meta.width).toBeLessThanOrEqual(100);
-    expect(meta.height).toBeLessThanOrEqual(200);
+    expect(m.width).toBeLessThanOrEqual(100);
+    expect(m.height).toBeLessThanOrEqual(200);
   });
 
   it("returns the cached transform on a repeated request (same bytes)", async () => {
@@ -354,11 +357,7 @@ describe("image transforms — integration", () => {
 
   it("serves a gif with correct Content-Type when no format conversion is requested", async () => {
     // Generate a minimal 1x1 GIF
-    const gifBuffer = await sharp({
-      create: { width: 1, height: 1, channels: 3, background: { r: 0, g: 128, b: 0 } },
-    })
-      .gif()
-      .toBuffer();
+    const gifBuffer = Buffer.from(native.encodeSolid(1, 1, 0, 128, 0, "gif", 80));
     const gifKey = await uploadFile(spaceId, "tiny.gif", gifBuffer, "image/gif");
 
     const res = await fetch(`${BASE_URL}/api/v1/spaces/${spaceId}/uploads/${gifKey}?w=1`);

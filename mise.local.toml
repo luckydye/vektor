@@ -1,5 +1,5 @@
 [tools]
 bun = "1.3.14"
 node = "24.10.0"
-rust = "latest"
+rust = "1.92.0"
 task = "3.45.4"

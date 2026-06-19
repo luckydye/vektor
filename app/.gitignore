@@ -4,6 +4,11 @@ src/generated/
 # generated types
 .astro/
 
+# native image addon (Rust) build artifacts — built per platform in CI / setup
+native/image/target/
+src/files/native/*.node
+src/files/native/addon.ts
+
 # dependencies
 node_modules/
 

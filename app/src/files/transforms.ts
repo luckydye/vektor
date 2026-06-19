@@ -3,29 +3,8 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable } from "node:stream";
 
-// Use the WebAssembly build of sharp — no native libvips dependency, so the
-// compiled binary is fully self-contained.
-let _sharp: typeof import("sharp").default | null | undefined;
-async function getSharp() {
-  if (_sharp === undefined) {
-    try {
-      // @vite-ignore: no "." export; bun resolves this at compile time.
-      const mod = await import(/* @vite-ignore */ "@img/sharp-wasm32/sharp.node");
-      // CJS .node addons may nest the callable under .default.default
-      const fn = mod.default?.default ?? mod.default ?? mod;
-      _sharp = typeof fn === "function" ? fn : null;
-    } catch (e) {
-      console.warn(
-        "[transforms] sharp-wasm32 unavailable — image transforms disabled",
-        e,
-      );
-      _sharp = null;
-    }
-  }
-  return _sharp;
-}
-
 import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
+import { getNativeImage } from "./native.ts";
 import type { FileStorageAdapter } from "./storage.ts";
 import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";
 
@@ -149,37 +128,34 @@ export function transformCachePath(
 // ---------------------------------------------------------------------------
 
 /**
- * Apply a transform to an image buffer using sharp.
- * Images are never enlarged (withoutEnlargement).
+ * Apply a transform to an image buffer using the native image addon.
+ * Images are never enlarged (fit-inside, no upscale).
+ *
+ * Returns null when the transform could not be applied (addon unavailable or
+ * decode/encode failure). Callers must NOT cache a null result — serving the
+ * unchanged original is a graceful fallback, but persisting it would poison the
+ * cache for the (correct) params key.
  */
 export async function applyTransform(
   input: Buffer,
   params: TransformParams,
-): Promise<Buffer> {
-  const sharpFn = await getSharp();
-  if (!sharpFn) return input; // sharp unavailable — pass through unchanged
+): Promise<Buffer | null> {
+  const native = getNativeImage();
+  if (!native) return null; // addon unavailable — caller serves original uncached
 
-  let pipeline = sharpFn(input);
-
-  if (params.w || params.h) {
-    pipeline = pipeline.resize({
-      width: params.w || undefined,
-      height: params.h || undefined,
-      fit: "inside",
-      withoutEnlargement: true,
+  try {
+    const out = native.transform(input, {
+      w: params.w,
+      h: params.h,
+      // null format preserves the input format; the addon expects "".
+      format: params.format ?? "",
+      quality: params.quality,
     });
+    return Buffer.from(out);
+  } catch (e) {
+    console.error("[transforms] native transform failed — serving original", e);
+    return null;
   }
-
-  if (params.format === "webp") {
-    pipeline = pipeline.webp({ quality: params.quality });
-  } else if (params.format === "jpeg") {
-    pipeline = pipeline.jpeg({ quality: params.quality });
-  } else if (params.format === "png") {
-    pipeline = pipeline.png({ quality: params.quality });
-  }
-  // null format: sharp preserves the input format
-
-  return pipeline.toBuffer();
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +216,26 @@ export async function serveTransformed(
   }
 
   const buffer = await applyTransform(original, params);
+
+  // Transform unavailable/failed: serve the original bytes with their own
+  // content type and DO NOT cache — caching here would poison the params key
+  // with untransformed bytes that get served forever once the addon recovers.
+  if (!buffer) {
+    const origExt = originalPath.split(".").pop()?.toLowerCase() ?? "";
+    return new Response(new Uint8Array(original), {
+      status: 200,
+      headers: {
+        "Content-Type": OUTPUT_MIME[origExt] ?? "application/octet-stream",
+        "Content-Length": String(original.byteLength),
+        // Deliberately not "immutable": this is a degraded fallback that
+        // should be re-fetched (and transformed) once the addon is available.
+        "Cache-Control": "no-store",
+        "Content-Disposition": contentDisposition(origExt),
+        "Content-Security-Policy": SERVED_FILE_CSP,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
 
   // Write cache file (best-effort — don't fail the request if the write fails)
   try {

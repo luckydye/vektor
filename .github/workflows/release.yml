@@ -6,10 +6,16 @@ on:
       - "v*"
 
 jobs:
-  build-and-release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            artifact: vektor-linux-x64
+          - runner: macos-latest
+            artifact: vektor-darwin-arm64
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -18,36 +24,49 @@ jobs:
         with:
           bun-version: latest
 
+      # Builds the native image addon (Rust N-API → .node). Each runner builds
+      # for its own platform, so the addon arch matches the compiled binary —
+      # no cross-compilation.
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: |
           bun i
           cd app && bun i
 
-      - name: Build Astro assets
+      - name: Build native image addon
+        working-directory: app/native/image
+        run: |
+          bun i
+          bun run build
+
+      - name: Build Astro assets + compile binary
         working-directory: app
         run: |
           bunx --bun astro build
           bun run ./build.ts
+          mv ./vektor ./${{ matrix.artifact }}
 
-      - name: Compile linux-x64
-        working-directory: app
-        run: >
-          bun build --compile --target=bun-linux-x64
-          ./vektor.ts
-          --external lightningcss
-          --outfile ./vektor-linux-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: app/${{ matrix.artifact }}
+          if-no-files-found: error
 
-      - name: Compile darwin-arm64
-        working-directory: app
-        run: >
-          bun build --compile --target=bun-darwin-arm64
-          ./vektor.ts
-          --external lightningcss
-          --outfile ./vektor-darwin-arm64
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/vektor-linux-x64
-            app/vektor-darwin-arm64
+            artifacts/vektor-linux-x64
+            artifacts/vektor-darwin-arm64

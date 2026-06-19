@@ -22,3 +22,5 @@ dist
 **/data/**/*
 
 graphify-out
+
+.task
