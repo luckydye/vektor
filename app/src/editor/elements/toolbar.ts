@@ -9,6 +9,7 @@ import {
   boldIcon,
   cellMergeIcon,
   chevronDownIcon,
+  closeSmallIcon,
   closeThickIcon,
   columnDeleteIcon,
   columns2Icon,
@@ -209,9 +210,12 @@ if (
       private imageActive = false;
       private imageDisplay: string | null = null;
       private textColor = "#000000";
+      private textColorActive = false;
       private bgColor = "transparent";
+      private bgColorActive = false;
       private tableActive = false;
       private cellBackgroundColor = "transparent";
+      private cellBackgroundActive = false;
       private copiedRow: unknown = null;
       private floatingStyle = "";
       private tableStyle = "";
@@ -463,6 +467,8 @@ if (
 
       private updateColors(editor: Editor) {
         const attrs = editor.getAttributes("textStyle");
+        this.textColorActive = attrs.color != null;
+        this.bgColorActive = attrs.backgroundColor != null;
         this.textColor = attrs.color || "#000000";
         this.bgColor = attrs.backgroundColor || "transparent";
       }
@@ -480,8 +486,9 @@ if (
 
       private updateCellBackground(editor: Editor) {
         if (!this.tableActive) return;
-        this.cellBackgroundColor =
-          editor.getAttributes("tableCell").backgroundColor || "transparent";
+        const backgroundColor = editor.getAttributes("tableCell").backgroundColor;
+        this.cellBackgroundActive = backgroundColor != null;
+        this.cellBackgroundColor = backgroundColor || "transparent";
       }
 
       private chain() {
@@ -563,6 +570,11 @@ if (
           editor.chain().focus().liftListItem("listItem").run();
         }
         this.update();
+      }
+
+      private toggleSecondaryToolbar() {
+        this.secondaryOpen = !this.secondaryOpen;
+        this.paint();
       }
 
       private addInlineComment() {
@@ -698,6 +710,53 @@ if (
         const value = (event.target as HTMLInputElement).value;
         this.chain()?.setCellAttribute("backgroundColor", value).run();
         this.update();
+      }
+
+      private colorControl(options: {
+        icon: string;
+        label: string;
+        value: string;
+        active: boolean;
+        input: unknown;
+        onOpen: () => void;
+        onClear: () => void;
+      }) {
+        const clearTitle = `Clear ${options.label}`;
+        return html`
+          <div class=${`color-control${options.active ? " active" : ""}`}>
+            <button
+              class="color-main"
+              title=${options.label}
+              type="button"
+              @mousedown=${(event: MouseEvent) => {
+                event.preventDefault();
+              }}
+              @click=${() => {
+                options.onOpen();
+                this.update();
+              }}
+            >
+              ${this.icon(options.icon)}
+              <span class="color-swatch" style=${`background:${options.value}`}></span>
+            </button>
+            <button
+              class="color-clear"
+              title=${clearTitle}
+              type="button"
+              ?disabled=${!options.active}
+              @mousedown=${(event: MouseEvent) => {
+                event.preventDefault();
+              }}
+              @click=${() => {
+                options.onClear();
+                this.update();
+              }}
+            >
+              ${this.icon(closeSmallIcon)}
+            </button>
+            ${options.input}
+          </div>
+        `;
       }
 
       private button(
@@ -882,25 +941,83 @@ if (
               color: var(--color-red-600, #dc2626);
             }
 
-            .color-picker-wrapper {
+            .color-picker-wrapper,
+            .color-control {
               position: relative;
               display: flex;
               align-items: center;
-              gap: 2px;
             }
 
-            .color-trigger {
-              flex-direction: column;
-              gap: 0.125rem;
-              padding-top: 0.375rem;
-              padding-bottom: 0.25rem;
+            .color-control {
+              height: 36px;
+              border: 1px solid transparent;
+              border-radius: 8px;
+              overflow: hidden;
+              transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
             }
 
-            .color-bar {
-              width: 100%;
-              height: 2px;
+            .color-control:hover {
+              background: var(--tb-hover-bg);
+            }
+
+            .color-control.active {
+              border-color: var(--tb-active-border);
+              background: var(--tb-active-bg);
+              color: var(--tb-active-text);
+            }
+
+            .color-main,
+            .color-clear {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              height: 100%;
+              border: 0;
+              color: inherit;
+              background: transparent;
+              font: inherit;
+              cursor: pointer;
+            }
+
+            .color-main {
+              position: relative;
+              width: 38px;
+              padding: 0;
+            }
+
+            .color-main .svg-icon {
+              width: 1.45rem;
+              height: 1.45rem;
+            }
+
+            .color-swatch {
+              position: absolute;
+              right: 7px;
+              bottom: 5px;
+              left: 7px;
+              height: 3px;
               border-radius: 999px;
-              background: currentColor;
+              box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.14);
+            }
+
+            .color-clear {
+              width: 22px;
+              border-left: 1px solid var(--tb-divider);
+              opacity: 0.8;
+            }
+
+            .color-clear:hover:not(:disabled) {
+              background: rgba(0, 0, 0, 0.06);
+            }
+
+            .color-clear:disabled {
+              cursor: default;
+              opacity: 0.24;
+            }
+
+            .color-clear .svg-icon {
+              width: 1rem;
+              height: 1rem;
             }
 
             input[type="color"] {
@@ -1045,9 +1162,7 @@ if (
                 ${this.button(
                   this.icon(moreIcon),
                   "More Formatting",
-                  () => {
-                    this.secondaryOpen = !this.secondaryOpen;
-                  },
+                  () => this.toggleSecondaryToolbar(),
                   { active: this.secondaryOpen },
                 )}
               </div>
@@ -1155,43 +1270,43 @@ if (
 
                     <div class="menu-group">
                       <div class="color-picker-wrapper">
-                        ${this.button(
-                          html`${this.icon(textColorIcon)}
-                            <span class="color-bar" style=${`background:${this.textColor}`}></span>`,
-                          "Text Color",
-                          () => this.textColorInput?.click(),
-                          { active: this.textColor !== "#000000" },
-                        )}
-                        <input
-                          data-text-color
-                          type="color"
-                          .value=${this.textColor}
-                          @input=${(event: Event) => this.onTextColor(event)}
-                        />
+                        ${this.colorControl({
+                          icon: textColorIcon,
+                          label: "Text Color",
+                          value: this.textColor,
+                          active: this.textColorActive,
+                          onOpen: () => this.textColorInput?.click(),
+                          onClear: () => this.chain()?.unsetColor().run(),
+                          input: html`
+                            <input
+                              data-text-color
+                              type="color"
+                              .value=${this.textColor}
+                              @input=${(event: Event) => this.onTextColor(event)}
+                            />
+                          `,
+                        })}
                       </div>
                       <div class="color-picker-wrapper">
-                        ${this.button(
-                          html`${this.icon(highlightIcon)}
-                            <span class="color-bar" style=${`background:${this.bgColor}`}></span>`,
-                          "Background Color",
-                          () => this.bgColorInput?.click(),
-                          { active: this.bgColor !== "transparent" },
-                        )}
-                        <input
-                          data-bg-color
-                          type="color"
-                          .value=${this.bgColor === "transparent" ? "#ffff00" : this.bgColor}
-                          @input=${(event: Event) => this.onBgColor(event)}
-                        />
-                        ${
-                          this.bgColor !== "transparent"
-                            ? this.button(
-                                this.icon(closeThickIcon),
-                                "Clear Background Color",
-                                () => this.chain()?.unsetBackgroundColor().run(),
-                              )
-                            : null
-                        }
+                        ${this.colorControl({
+                          icon: highlightIcon,
+                          label: "Background Color",
+                          value:
+                            this.bgColor === "transparent" ? "#ffff00" : this.bgColor,
+                          active: this.bgColorActive,
+                          onOpen: () => this.bgColorInput?.click(),
+                          onClear: () => this.chain()?.unsetBackgroundColor().run(),
+                          input: html`
+                            <input
+                              data-bg-color
+                              type="color"
+                              .value=${
+                                this.bgColor === "transparent" ? "#ffff00" : this.bgColor
+                              }
+                              @input=${(event: Event) => this.onBgColor(event)}
+                            />
+                          `,
+                        })}
                       </div>
                     </div>
 
@@ -1340,33 +1455,30 @@ if (
 
             <div class="menu-group">
               <div class="color-picker-wrapper">
-                ${this.button(
-                  html`${this.icon(highlightIcon)}
-                    <span class="color-bar" style=${`background:${this.cellBackgroundColor}`}></span>`,
-                  "Cell Background Color",
-                  () => this.cellBgColorInput?.click(),
-                  { active: this.cellBackgroundColor !== "transparent" },
-                )}
-                <input
-                  data-cell-bg-color
-                  type="color"
-                  .value=${
+                ${this.colorControl({
+                  icon: highlightIcon,
+                  label: "Cell Background",
+                  value:
                     this.cellBackgroundColor === "transparent"
                       ? "#ffffff"
-                      : this.cellBackgroundColor
-                  }
-                  @input=${(event: Event) => this.onCellBgColor(event)}
-                />
-                ${
-                  this.cellBackgroundColor !== "transparent"
-                    ? this.button(
-                        this.icon(closeThickIcon),
-                        "Clear Cell Background",
-                        () =>
-                          this.chain()?.setCellAttribute("backgroundColor", null).run(),
-                      )
-                    : null
-                }
+                      : this.cellBackgroundColor,
+                  active: this.cellBackgroundActive,
+                  onOpen: () => this.cellBgColorInput?.click(),
+                  onClear: () =>
+                    this.chain()?.setCellAttribute("backgroundColor", null).run(),
+                  input: html`
+                    <input
+                      data-cell-bg-color
+                      type="color"
+                      .value=${
+                        this.cellBackgroundColor === "transparent"
+                          ? "#ffffff"
+                          : this.cellBackgroundColor
+                      }
+                      @input=${(event: Event) => this.onCellBgColor(event)}
+                    />
+                  `,
+                })}
               </div>
             </div>
             <div class="menu-divider"></div>
