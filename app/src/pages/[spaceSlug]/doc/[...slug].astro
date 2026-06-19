@@ -138,39 +138,6 @@ if (categorySlug) {
 const defaultLayout = documentType === "document" ? "document" : "full";
 const effectiveLayout = document.properties.layout || defaultLayout;
 
-const pageInsetClass = twMerge(
-  "min-h-0 flex-1",
-  !isCanvas && "lg:mr-(--inset-right) lg:ml-(--inset-left)",
-);
-const documentShellClass = twMerge(
-  "relative mx-auto flex h-full w-full flex-col space-y-6",
-  isCsv || effectiveLayout === "full" ? "max-w-full" : "max-w-(--document-width)",
-);
-const documentHeaderClass = twMerge(
-  isApp
-    ? "hidden"
-    : isCanvas
-      ? "pointer-events-none absolute top-xs right-0 left-0 z-20 lg:right-(--inset-right) lg:left-(--inset-left)"
-      : "mb-xl pt-xs",
-);
-const headerRowClass = twMerge(
-  "flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0",
-  isCanvas && "pointer-events-auto",
-);
-const titleRowClass = twMerge(
-  "mt-xs flex flex-row justify-between gap-6 px-xs lg:gap-4 lg:px-xl print:px-0",
-  isCanvas && "pointer-events-auto",
-);
-const propertiesRowClass = twMerge(
-  "mt-xs px-xs lg:px-xl print:px-0",
-  isCanvas && "pointer-events-auto",
-);
-const contentClass = twMerge(
-  "max-w-none overflow-auto text-neutral-700",
-  isCsv ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "h-full",
-  isPaddedDocument && "px-xs lg:px-xl print:px-0",
-);
-
 const now = new Date();
 
 let updatedAtStr = "just now";
@@ -198,13 +165,24 @@ if (diffMins >= 1 && diffMins < 60) {
 >
   <!-- Inset content past the fixed sidebar — except canvas docs, which render
        full-bleed behind the nav and inset only their absolute header below. -->
-  <div data-inset class={pageInsetClass}>
+  <div
+    data-inset
+    class={twMerge(
+      "min-h-0 flex-1",
+      !isCanvas && "lg:mr-(--inset-right) lg:ml-(--inset-left)",
+    )}
+  >
     <div
       data-type={documentType}
       data-updated-at={document.updatedAt}
       data-created-at={document.createdAt}
       data-layout={effectiveLayout}
-      class={documentShellClass}
+      class={twMerge(
+        "relative mx-auto flex h-full w-full flex-col",
+        isCsv || effectiveLayout === "full"
+          ? "max-w-full"
+          : "max-w-(--document-width)",
+      )}
     >
       <!-- Archived Document Disclaimer -->
       {document.archived && (
@@ -235,61 +213,84 @@ if (diffMins >= 1 && diffMins < 60) {
       )}
 
       <!-- Document Header -->
-      <div data-inset class={documentHeaderClass}>
-        <div class={headerRowClass}>
-          <div>
-            {isWorkflow ? (
-              <div id="workflow-breadcrumb-slot" />
-            ) : (
-              <Breadcrumbs
-                spaceSlug={spaceSlug}
-                category={category}
-                parents={parentBreadcrumbs}
-                currentTitle={title}
-              />
-            )}
-          </div>
-
-          {document.updatedAt ? (
-            <div class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500">
-              {updatedAtStr && <span>Updated {updatedAtStr}</span>}
-            </div>
-          ) : null}
-        </div>
-
-        <div class={titleRowClass}>
-          <div class="flex items-start justify-between">
-            <TitleEditor
-              client:load
-              initialEditMode={false}
-              title={title}
-              documentId={document.id}
+      <div
+        class={twMerge(
+          "flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0 mt-2xs mb-4xs",
+          isCanvas && "pointer-events-auto",
+        )}
+        data-inset
+      >
+        <div>
+          {isWorkflow ? (
+            <div id="workflow-breadcrumb-slot" />
+          ) : (
+            <Breadcrumbs
+              spaceSlug={spaceSlug}
+              category={category}
+              parents={parentBreadcrumbs}
+              currentTitle={title}
             />
+          )}
+        </div>
+
+        {document.updatedAt ? (
+          <div class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500">
+            {updatedAtStr && <span>Updated {updatedAtStr}</span>}
           </div>
+        ) : null}
+      </div>
 
-          <DocumentActions
-            client:only
-            documentId={document.id}
-            title={title}
-            readonly={isReadonly}
-            documentType={documentType}
-            headerImage={headerImage ?? undefined}
-          />
-        </div>
-
-        <div class={propertiesRowClass}>
-          <DocumentProperties
+      <div
+        class={twMerge(
+          "flex flex-row justify-between gap-6 py-xs px-xs lg:gap-4 lg:px-xl print:px-0",
+          isCanvas && "pointer-events-auto",
+          "sticky top-0 bg-white z-99"
+        )}
+        data-inset
+      >
+        <div class="flex items-start justify-between">
+          <TitleEditor
             client:load
+            initialEditMode={false}
+            title={title}
             documentId={document.id}
-            documentType={documentType}
-            initialProperties={{ ...document.properties, parentId: document.parentId }}
-            initialCategory={category}
           />
         </div>
+
+        <DocumentActions
+          client:only
+          documentId={document.id}
+          title={title}
+          readonly={isReadonly}
+          documentType={documentType}
+          headerImage={headerImage ?? undefined}
+        />
+      </div>
+      
+      <div
+        class={twMerge(
+          "px-xs lg:px-xl print:px-0 mb-l",
+          isCanvas && "pointer-events-auto",
+        )}
+        data-inset
+      >
+        <DocumentProperties
+          client:load
+          documentId={document.id}
+          documentType={documentType}
+          initialProperties={{ ...document.properties, parentId: document.parentId }}
+          initialCategory={category}
+        />
       </div>
 
       <!-- Main Content -->
-      <div class={contentClass}>
+      <div
+        class={twMerge(
+          "max-w-none overflow-auto text-neutral-700",
+          isCsv ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "h-full",
+          isPaddedDocument && "px-xs lg:px-xl print:px-0",
+        )}
+      >
         <RevisionView
           client:only
           documentId={document.id}
@@ -297,7 +298,7 @@ if (diffMins >= 1 && diffMins < 60) {
           spaceId={space.id}
         />
         {isApp
-          ? <AppView client:only html={htmlContent} />
+          ? <AppView client:only html={htmlContent || ''} />
           : isWorkflow
             ? <WorkflowView client:only documentId={document.id} spaceId={space.id} />
             : <DocumentContent
