@@ -7,6 +7,8 @@ stages:
 
 build:
   stage: build
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq build-essential
   script:
     - task setup
     - task compile
