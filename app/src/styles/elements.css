@@ -32,6 +32,61 @@ a-popover:not(:defined) {
   background: var(--color-neutral-100, #f5f5f5);
 }
 
+/* Color menus are portaled to <body> by a-popover, outside the toolbar shadow DOM. */
+.color-preset-menu {
+  width: 176px;
+  padding: 10px;
+  border: 1px solid var(--color-neutral-200, #d1d5db);
+  border-radius: 10px;
+  background: var(--color-background, #ffffff);
+  color: var(--color-neutral-700, #374151);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.color-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 24px);
+  gap: 8px;
+}
+
+.color-preset {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-background, #ffffff);
+  border-radius: 6px;
+  background: var(--preset-color);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+}
+
+.color-preset:hover,
+.color-preset:focus-visible {
+  outline: 2px solid var(--color-blue-600, #2563eb);
+  outline-offset: 1px;
+}
+
+.color-preset.active {
+  box-shadow: 0 0 0 2px var(--color-blue-600, #2563eb);
+}
+
+.color-custom-option {
+  width: 100%;
+  margin-top: 10px;
+  border: 0;
+  border-top: 1px solid var(--color-neutral-200, #e5e7eb);
+  padding: 9px 4px 1px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.color-custom-option:hover {
+  color: var(--color-blue-600, #2563eb);
+}
+
 .main-content:has([data-type="csv"]) {
   height: 100dvh;
   overflow: hidden;

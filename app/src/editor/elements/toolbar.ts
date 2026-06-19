@@ -44,6 +44,34 @@ import {
   underlineIcon,
 } from "../../assets/icons.ts";
 
+const TEXT_COLOR_PRESETS = [
+  { label: "Charcoal", value: "#111827" },
+  { label: "Gray", value: "#4b5563" },
+  { label: "Red", value: "#b91c1c" },
+  { label: "Orange", value: "#c2410c" },
+  { label: "Amber", value: "#a16207" },
+  { label: "Green", value: "#15803d" },
+  { label: "Sky", value: "#0369a1" },
+  { label: "Blue", value: "#1d4ed8" },
+  { label: "Violet", value: "#6d28d9" },
+  { label: "Pink", value: "#be185d" },
+] as const;
+
+const BACKGROUND_COLOR_PRESETS = [
+  { label: "Gray", value: "#f3f4f6" },
+  { label: "Red", value: "#fee2e2" },
+  { label: "Orange", value: "#ffedd5" },
+  { label: "Amber", value: "#fef3c7" },
+  { label: "Yellow", value: "#fef9c3" },
+  { label: "Green", value: "#dcfce7" },
+  { label: "Cyan", value: "#cffafe" },
+  { label: "Blue", value: "#dbeafe" },
+  { label: "Violet", value: "#ede9fe" },
+  { label: "Pink", value: "#fce7f3" },
+] as const;
+
+type ColorPreset = { label: string; value: string };
+
 /**
  * Resolve the currently selected image node, or null if no image is selected
  */
@@ -720,25 +748,46 @@ if (
         input: unknown;
         onOpen: () => void;
         onClear: () => void;
+        presets?: readonly ColorPreset[];
+        onSelect?: (value: string) => void;
       }) {
         const clearTitle = `Clear ${options.label}`;
+        const mainButton = html`
+          <button
+            class="color-main"
+            title=${options.label}
+            type="button"
+            @mousedown=${(event: MouseEvent) => {
+              event.preventDefault();
+            }}
+            @click=${
+              options.presets
+                ? undefined
+                : () => {
+                    options.onOpen();
+                    this.update();
+                  }
+            }
+          >
+            ${this.icon(options.icon)}
+            <span class="color-swatch" style=${`background:${options.value}`}></span>
+          </button>
+        `;
+
         return html`
           <div class=${`color-control${options.active ? " active" : ""}`}>
-            <button
-              class="color-main"
-              title=${options.label}
-              type="button"
-              @mousedown=${(event: MouseEvent) => {
-                event.preventDefault();
-              }}
-              @click=${() => {
-                options.onOpen();
-                this.update();
-              }}
-            >
-              ${this.icon(options.icon)}
-              <span class="color-swatch" style=${`background:${options.value}`}></span>
-            </button>
+            ${
+              options.presets
+                ? html`
+                  <a-popover-trigger showdelay="0" hidedelay="100">
+                    <span slot="trigger" class="color-trigger">${mainButton}</span>
+                    <a-popover placements="bottom-start">
+                      ${this.renderColorPresets(options)}
+                    </a-popover>
+                  </a-popover-trigger>
+                `
+                : mainButton
+            }
             <button
               class="color-clear"
               title=${clearTitle}
@@ -755,6 +804,57 @@ if (
               ${this.icon(closeSmallIcon)}
             </button>
             ${options.input}
+          </div>
+        `;
+      }
+
+      private renderColorPresets(options: {
+        label: string;
+        value: string;
+        presets?: readonly ColorPreset[];
+        onOpen: () => void;
+        onSelect?: (value: string) => void;
+      }) {
+        return html`
+          <div class="color-preset-menu" aria-label=${`${options.label} presets`}>
+            <div class="color-preset-grid">
+              ${options.presets?.map(
+                (preset) => html`
+                  <button
+                    class=${`color-preset${options.value.toLowerCase() === preset.value ? " active" : ""}`}
+                    style=${`--preset-color:${preset.value}`}
+                    title=${preset.label}
+                    aria-label=${`${preset.label} (${preset.value})`}
+                    type="button"
+                    @mousedown=${(event: MouseEvent) => {
+                      event.preventDefault();
+                    }}
+                    @click=${(event: Event) => {
+                      options.onSelect?.(preset.value);
+                      this.update();
+                      event.target?.dispatchEvent(
+                        new CustomEvent("exit", { bubbles: true, composed: true }),
+                      );
+                    }}
+                  ></button>
+                `,
+              )}
+            </div>
+            <button
+              class="color-custom-option"
+              type="button"
+              @mousedown=${(event: MouseEvent) => {
+                event.preventDefault();
+              }}
+              @click=${(event: Event) => {
+                options.onOpen();
+                event.target?.dispatchEvent(
+                  new CustomEvent("exit", { bubbles: true, composed: true }),
+                );
+              }}
+            >
+              Custom…
+            </button>
           </div>
         `;
       }
@@ -990,10 +1090,15 @@ if (
               height: 1.45rem;
             }
 
+            .color-trigger {
+              display: inline-flex;
+              height: 100%;
+            }
+
             .color-swatch {
               position: absolute;
               right: 7px;
-              bottom: 5px;
+              bottom: 0px;
               left: 7px;
               height: 3px;
               border-radius: 999px;
@@ -1277,6 +1382,8 @@ if (
                           active: this.textColorActive,
                           onOpen: () => this.textColorInput?.click(),
                           onClear: () => this.chain()?.unsetColor().run(),
+                          presets: TEXT_COLOR_PRESETS,
+                          onSelect: (value) => this.chain()?.setColor(value).run(),
                           input: html`
                             <input
                               data-text-color
@@ -1296,6 +1403,9 @@ if (
                           active: this.bgColorActive,
                           onOpen: () => this.bgColorInput?.click(),
                           onClear: () => this.chain()?.unsetBackgroundColor().run(),
+                          presets: BACKGROUND_COLOR_PRESETS,
+                          onSelect: (value) =>
+                            this.chain()?.setBackgroundColor(value).run(),
                           input: html`
                             <input
                               data-bg-color
