@@ -4,55 +4,69 @@ import {
   onUnmounted,
   provide,
   type Ref,
-  ref,
   shallowRef,
   watch,
 } from "vue";
 import * as Y from "yjs";
-import {
-  type DocumentPresenceProfile,
-  getPresenceColor,
-} from "../editor/collaboration.ts";
-import type { PresenceEnvelope } from "../utils/realtime.ts";
+import type { PresenceEnvelope, PresenceUser } from "../utils/realtime.ts";
 import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import { useUserProfile } from "./useUserProfile.ts";
 
-type DocumentPresenceState = NonNullable<DocumentPresenceProfile["state"]>;
+export type CollaborationPresenceProfile<TState> = {
+  clientId: string;
+  user: PresenceUser;
+  state: TState | null;
+};
 
-export type CollaborationSession = ReturnType<typeof useCollaboration>;
+function getPresenceColor(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
+}
+
+export type CollaborationSession<TPresenceState = unknown> = ReturnType<
+  typeof useCollaboration<TPresenceState>
+>;
 export const CollaborationKey: InjectionKey<CollaborationSession> =
   Symbol("Collaboration");
 
-export function provideCollaboration(collaboration: CollaborationSession) {
-  provide(CollaborationKey, collaboration);
+export function provideCollaboration<TPresenceState>(
+  collaboration: CollaborationSession<TPresenceState>,
+) {
+  provide(CollaborationKey, collaboration as CollaborationSession);
 }
 
 export function injectCollaboration() {
   return inject(CollaborationKey);
 }
 
-export function useCollaboration(options: {
+export function useCollaboration<TPresenceState>(options: {
   spaceId: string;
   documentId: Ref<string | undefined>;
-  currentPresenceState?: () => DocumentPresenceState;
+  presenceRoomId?: Ref<string | undefined>;
+  currentPresenceState?: () => TPresenceState;
 }) {
   const { spaceId, documentId, currentPresenceState } = options;
+  const presenceRoomId = options.presenceRoomId ?? documentId;
   const user = useUserProfile();
   const ydoc = shallowRef(new Y.Doc());
-  const presenceProfiles = ref<DocumentPresenceProfile[]>([]);
+  const presenceProfiles = shallowRef<CollaborationPresenceProfile<TPresenceState>[]>([]);
 
   const clientId =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `collaboration:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
-  const remotePresences = new Map<string, PresenceEnvelope<DocumentPresenceState>>();
+  const remotePresences = new Map<string, PresenceEnvelope<TPresenceState>>();
 
   let leaveYjsRoom: (() => void) | null = null;
   let yjsReady: Promise<void> | null = null;
   let joinedDocumentId: string | null = null;
   let presenceHandle: {
-    update: (state: DocumentPresenceState) => void;
+    update: (state: TPresenceState) => void;
     leave: () => void;
   } | null = null;
   let lastPresenceState = "";
@@ -114,13 +128,14 @@ export function useCollaboration(options: {
 
   async function setupPresence() {
     presenceRequested = true;
-    if (!documentId.value || !user.value || !currentPresenceState || presenceHandle) {
+    const roomId = presenceRoomId.value;
+    if (!roomId || !user.value || !currentPresenceState || presenceHandle) {
       return;
     }
 
-    presenceHandle = joinPresenceRoom<DocumentPresenceState>(
+    presenceHandle = joinPresenceRoom<TPresenceState>(
       spaceId,
-      documentId.value,
+      roomId,
       clientId,
       {
         id: user.value.id,

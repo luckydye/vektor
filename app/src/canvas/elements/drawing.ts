@@ -293,6 +293,7 @@ export function renderCanvasInk(params: {
   strokes: CanvasStroke[];
   activeStroke: FreehandStroke | null;
   selectedStrokeIds: Set<string>;
+  remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
   snapGuides: SnapGuide[];
   defaultInkColor: string;
 }) {
@@ -304,6 +305,7 @@ export function renderCanvasInk(params: {
     strokes,
     activeStroke,
     selectedStrokeIds,
+    remoteSelectedStrokeIds = [],
     snapGuides,
     defaultInkColor,
   } = params;
@@ -324,6 +326,20 @@ export function renderCanvasInk(params: {
     context.lineWidth = 1.5;
     context.setLineDash([]);
     for (const id of selectedStrokeIds) {
+      const stroke = strokes.find((s) => s.id === id);
+      if (!stroke || stroke.points.length === 0) continue;
+      drawFreehandOutline(context, stroke, transform, 4);
+    }
+    context.restore();
+  }
+
+  for (const selection of remoteSelectedStrokeIds) {
+    if (selection.ids.size === 0) continue;
+    context.save();
+    context.strokeStyle = selection.color;
+    context.lineWidth = 1.5;
+    context.setLineDash([]);
+    for (const id of selection.ids) {
       const stroke = strokes.find((s) => s.id === id);
       if (!stroke || stroke.points.length === 0) continue;
       drawFreehandOutline(context, stroke, transform, 4);
