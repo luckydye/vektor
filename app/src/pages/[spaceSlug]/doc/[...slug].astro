@@ -10,6 +10,7 @@ import RestoreButton from "../../../components/RestoreButton.vue";
 import RevisionsSidebar from "../../../components/RevisionsSidebar.vue";
 import RevisionView from "../../../components/RevisionView.vue";
 import TitleEditor from "../../../components/TitleEditor.vue";
+import HeaderImage from "../../../components/HeaderImage.vue";
 import WorkflowView from "../../../components/WorkflowView.vue";
 import { getUserGroups, hasPermission, ResourceType } from "../../../db/acl.ts";
 import { getCategoryBySlug } from "../../../db/categories.ts";
@@ -132,7 +133,6 @@ const headerImage = document.properties.headerImage
       q: 85,
     })
   : null;
-const showHeaderImage = !!headerImage && !isCanvas && !isApp && !isWorkflow;
 
 // Archived documents should be treated as readonly
 const isReadonly =
@@ -230,14 +230,11 @@ if (diffMins >= 1 && diffMins < 60) {
       )}
 
       <!-- Header Image -->
-      {showHeaderImage && (
-        <div class="print:px-0 px-xs lg:px-xl mt-4">
-          <img
-            src={headerImage}
-            alt=""
-            class="w-full h-[240px] object-cover rounded-lg"
-          />
-        </div>
+      {!isCanvas && !isApp && !isWorkflow && (
+        <HeaderImage
+          client:load
+          initialSrc={headerImage ?? undefined}
+        />
       )}
 
       <!-- Document Header -->

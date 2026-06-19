@@ -29,6 +29,7 @@ import CommentOverlays from "./CommentOverlays.vue";
 import "../editor/elements/table-view.ts";
 import "../editor/elements/toolbar.ts";
 import "../components/document-statusbar.ts";
+import { twMerge } from "tailwind-merge";
 
 const props = withDefaults(
   defineProps<{
@@ -405,7 +406,7 @@ useSync(
 </script>
 
 <template>
-    <main class="relative mb-30">
+    <main :class="twMerge('relative', documentType !== 'canvas' && 'mb-30')">
         <!-- CSV Spreadsheet View -->
         <table-view v-if="!editing && documentType === 'csv'"
             :html="renderedHtml" class="block flex-1 min-h-0"></table-view>

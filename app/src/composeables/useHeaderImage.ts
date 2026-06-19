@@ -27,7 +27,6 @@ export function useHeaderImage() {
 
   async function saveHeaderImage(documentId: string, url: string) {
     await updateProperty(documentId, HEADER_IMAGE_PROPERTY, url);
-    window.location.reload();
   }
 
   /** Open the image picker dialog. */

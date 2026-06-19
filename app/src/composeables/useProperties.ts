@@ -105,7 +105,7 @@ export function useProperties() {
     const lowerName = name.toLowerCase();
     if (
       typeof window !== "undefined" &&
-      (lowerName === "layout" || lowerName === "gridtype")
+      (lowerName === "layout" || lowerName === "gridtype" || lowerName === "headerimage")
     ) {
       window.dispatchEvent(
         new CustomEvent("document:property", {
