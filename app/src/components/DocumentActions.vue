@@ -344,8 +344,8 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div id="document-actions" class="flex gap-4 items-start">
-    <div class="flex-1 mr-4">
+  <div id="document-actions" class="flex gap-4 items-start flex-none">
+    <div class="flex-1 mr-3">
       <Contributors v-if="documentId" :documentId="documentId" />
     </div>
 

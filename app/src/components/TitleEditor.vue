@@ -1,11 +1,11 @@
 <template>
-  <div class="flex items-center gap-3 flex-1 px-1 -mx-1">
+  <div class="flex items-center gap-3 flex-1 -ml-1">
     <input ref="inputEl" v-if="isEditing" v-model="localTitle" type="text" placeholder="Untitled Document"
-      class="text-size-display font-bold text-neutral-900 bg-neutral-50 focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors"
+      class="text-size-display font-bold text-neutral-900 bg-neutral-50 focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors px-1"
       @blur="updateTitle" @keydown.enter="updateTitle" />
 
     <div v-else :data-document-id="documentId">
-        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow hover:bg-neutral-50" @dblclick="startEditing">
+        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow hover:bg-neutral-50 px-1" @dblclick="startEditing">
             {{ localTitle || 'Untitled Document' }}
             <div v-if="starred" class="svg-icon w-6 h-6 text-yellow-500" v-html="starFilledIcon" />
         </h1>
