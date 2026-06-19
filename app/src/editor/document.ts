@@ -521,6 +521,7 @@ export class DocumentView extends HTMLElement {
   }
 
   renderReadHtml(html: string) {
+    this._html = html;
     if (this.tiptapEditor) return;
 
     const shadow = this.ensureShadowRoot();

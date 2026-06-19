@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Editor } from "@tiptap/core";
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import { getRelativeSelection } from "y-prosemirror";
 import * as Y from "yjs";
 import { api } from "../api/client.ts";
@@ -139,10 +139,12 @@ function currentPresenceState(): DocumentPresenceState {
   }
 }
 
-watch(cancelCount, () => {
+watch(cancelCount, async () => {
   if (typeof documentData.value?.content === "string") {
     renderedHtml.value = documentData.value.content;
   }
+  await nextTick();
+  documentViewEl.value?.renderReadHtml?.(renderedHtml.value);
   reloadIfReady();
 });
 
@@ -195,10 +197,12 @@ watch(documentToolbar, (toolbar) => {
 });
 
 watch(
-  [documentViewEl, collaboration.ydoc],
-  ([view, ydoc]) => {
+  [documentViewEl, collaboration.ydoc, shouldMountEditor],
+  ([view, ydoc, isMountingEditor]) => {
     if (view) {
-      view.collaborationDocument = ydoc;
+      if (isMountingEditor) {
+        view.collaborationDocument = ydoc;
+      }
     }
   },
   { immediate: true },
