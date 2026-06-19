@@ -15,6 +15,7 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
 import { t } from "../utils/lang.ts";
 import Contributors from "./Contributors.vue";
+import HeaderImageDialog from "./HeaderImageDialog.vue";
 import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
 import WorkflowRunButton from "./WorkflowRunButton.vue";
 
@@ -28,7 +29,7 @@ const props = defineProps<{
 
 const { currentSpaceId, currentSpace } = useSpace();
 const { toggle: toggleDockedWindow } = useDockedWindows();
-const { supportsHeaderImage, changeHeaderImage, removeHeaderImage } = useHeaderImage();
+const { supportsHeaderImage, changeHeaderImage, uploadHeaderImage, removeHeaderImage, dialogOpen } = useHeaderImage();
 const { cancelCount, editing, saveStatus } = useEditor();
 
 const userCanEdit = computed(() => {
@@ -344,6 +345,10 @@ watchEffect(() => {
 </script>
 
 <template>
+  <HeaderImageDialog
+    v-model:show="dialogOpen"
+    @select="(file) => props.documentId && uploadHeaderImage(props.documentId, file)"
+  />
   <div id="document-actions" class="flex gap-4 items-start flex-none">
     <div class="flex-1 mr-3">
       <Contributors v-if="documentId" :documentId="documentId" />

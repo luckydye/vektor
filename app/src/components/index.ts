@@ -1,4 +1,5 @@
 export { default as ButtonIconSmall } from "./ButtonIconSmall.vue";
+export { default as FileDrop } from "./FileDrop.vue";
 export { default as ButtonPrimary } from "./ButtonPrimary.vue";
 export { default as ButtonSecondary } from "./ButtonSecondary.vue";
 export { default as ContextMenu } from "./ContextMenu.vue";

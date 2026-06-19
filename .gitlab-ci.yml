@@ -7,9 +7,8 @@ stages:
 
 build:
   stage: build
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq build-essential
   script:
+    - apt-get update -qq && apt-get install -y -qq build-essential
     - task setup
     - task compile
   artifacts:
