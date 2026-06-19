@@ -241,74 +241,82 @@ if (diffMins >= 1 && diffMins < 60) {
       )}
 
       <!-- Document Header -->
-      <div
-        class={twMerge(
-          "flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0 mt-2xs mb-4xs",
-          isCanvas && "pointer-events-auto",
-        )}
-        data-inset
-      >
-        <div>
-          {isWorkflow ? (
-            <div id="workflow-breadcrumb-slot" />
-          ) : (
-            <Breadcrumbs
-              spaceSlug={spaceSlug}
-              category={category}
-              parents={parentBreadcrumbs}
-              currentTitle={title}
-            />
-          )}
-        </div>
-
-        {document.updatedAt ? (
-          <div class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500">
-            {updatedAtStr && <span>Updated {updatedAtStr}</span>}
+      <div class={twMerge(
+        isApp
+          ? "hidden"
+          : isCanvas
+            ? "block pointer-events-none absolute top-xs right-0 left-0 z-20 lg:right-(--inset-right) lg:left-(--inset-left)"
+            : "mb-xl pt-xs contents",
+      )}>
+          <div
+            class={twMerge(
+              "flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0 mt-2xs mb-4xs",
+              isCanvas && "pointer-events-auto",
+            )}
+            data-inset
+          >
+            <div>
+              {isWorkflow ? (
+                <div id="workflow-breadcrumb-slot" />
+              ) : (
+                <Breadcrumbs
+                  spaceSlug={spaceSlug}
+                  category={category}
+                  parents={parentBreadcrumbs}
+                  currentTitle={title}
+                />
+              )}
+            </div>
+    
+            {document.updatedAt ? (
+              <div class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500">
+                {updatedAtStr && <span>Updated {updatedAtStr}</span>}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-
-      <div
-        class={twMerge(
-          "flex flex-row justify-between gap-6 py-3xs px-xs lg:gap-4 lg:px-xl print:px-0",
-          isCanvas && "pointer-events-auto",
-          "sticky top-0 bg-neutral-10 z-10"
-        )}
-        data-inset
-      >
-        <div class="flex items-start justify-between w-full">
-          <TitleEditor
-            client:load
-            initialEditMode={false}
-            title={title}
-            documentId={document.id}
-          />
-        </div>
-
-        <DocumentActions
-          client:only
-          documentId={document.id}
-          title={title}
-          readonly={isReadonly}
-          documentType={documentType}
-          headerImage={headerImage ?? undefined}
-        />
-      </div>
-      
-      <div
-        class={twMerge(
-          "px-xs lg:px-xl print:px-0 mb-l",
-          isCanvas && "pointer-events-auto",
-        )}
-        data-inset
-      >
-        <DocumentProperties
-          client:load
-          documentId={document.id}
-          documentType={documentType}
-          initialProperties={{ ...document.properties, parentId: document.parentId }}
-          initialCategory={category}
-        />
+    
+          <div
+            class={twMerge(
+              "flex flex-row justify-between gap-6 py-3xs px-xs lg:gap-4 lg:px-xl print:px-0",
+              isCanvas ? "pointer-events-auto" : "bg-neutral-10",
+              "sticky top-0 z-10"
+            )}
+            data-inset
+          >
+            <div class="flex items-start justify-between w-full">
+              <TitleEditor
+                client:load
+                initialEditMode={false}
+                title={title}
+                documentId={document.id}
+              />
+            </div>
+    
+            <DocumentActions
+              client:only
+              documentId={document.id}
+              title={title}
+              readonly={isReadonly}
+              documentType={documentType}
+              headerImage={headerImage ?? undefined}
+            />
+          </div>
+          
+          <div
+            class={twMerge(
+              "px-xs lg:px-xl print:px-0 mb-l",
+              isCanvas && "pointer-events-auto",
+            )}
+            data-inset
+          >
+            <DocumentProperties
+              client:load
+              documentId={document.id}
+              documentType={documentType}
+              initialProperties={{ ...document.properties, parentId: document.parentId }}
+              initialCategory={category}
+            />
+          </div>
       </div>
 
       <!-- Main Content -->
