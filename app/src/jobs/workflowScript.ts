@@ -1,13 +1,6 @@
-import RELEASE_ASYNC from "@jitl/quickjs-wasmfile-release-asyncify";
-// @ts-expect-error -- Bun bundles .wasm imports as assets in --compile binaries
-import wasmPath from "@jitl/quickjs-wasmfile-release-asyncify/wasm";
-import {
-  newQuickJSAsyncWASMModuleFromVariant,
-  newVariant,
-  type QuickJSAsyncContext,
-  type QuickJSHandle,
-} from "quickjs-emscripten";
+import type { WorkflowVmEvent } from "../../native/exec/index.d.ts";
 import { getExtension, getExtensionPackage } from "../db/extensions.ts";
+import { getNativeExec } from "../exec/native.ts";
 import { otelMetrics, withSpan } from "../observability/otel.ts";
 import {
   addNode,
@@ -21,36 +14,6 @@ import {
 import { resolveJobSandbox } from "./sandbox.ts";
 import { runJob } from "./scheduler.ts";
 
-/** Marshal a plain JS value into a QuickJS handle without using evalCode. */
-function marshalToVM(vm: QuickJSAsyncContext, value: unknown): QuickJSHandle {
-  if (value === null || value === undefined) return vm.newObject(); // return {} for null/undefined
-  if (typeof value === "boolean") {
-    // newNumber(0/1) avoids static-lifetime handle ownership issues with vm.true/vm.false
-    return vm.newNumber(value ? 1 : 0);
-  }
-  if (typeof value === "number") return vm.newNumber(value);
-  if (typeof value === "string") return vm.newString(value);
-  if (Array.isArray(value)) {
-    const arr = vm.newArray();
-    value.forEach((item, i) => {
-      const h = marshalToVM(vm, item);
-      vm.setProp(arr, i, h);
-      h.dispose();
-    });
-    return arr;
-  }
-  if (typeof value === "object") {
-    const obj = vm.newObject();
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const h = marshalToVM(vm, v);
-      vm.setProp(obj, k, h);
-      h.dispose();
-    }
-    return obj;
-  }
-  return vm.newString(String(value));
-}
-
 const meter = otelMetrics.getMeter("wiki.workflows");
 const workflowRunsCounter = meter.createCounter("wiki_workflow_runs_total");
 const workflowRunDurationMs = meter.createHistogram("wiki_workflow_run_duration_ms", {
@@ -58,7 +21,7 @@ const workflowRunDurationMs = meter.createHistogram("wiki_workflow_run_duration_
 });
 
 /**
- * Execute a JavaScript workflow script in a QuickJS sandbox.
+ * Execute a JavaScript workflow script in a Boa (native Rust) sandbox.
  *
  * The script has access to:
  *   - runJob(extensionId, jobId, inputs?) → Promise<outputs>
@@ -99,9 +62,7 @@ export async function executeWorkflowScript(
       setRunAbort(runId, () => controller.abort());
 
       const sandbox = await resolveJobSandbox();
-      let stepCounter = 0;
 
-      // The _script node tracks top-level logs and the final return value.
       addNode(runId, "_script");
       setNodeStatus(runId, "_script", {
         status: "running",
@@ -109,92 +70,106 @@ export async function executeWorkflowScript(
         startedAt: new Date(),
       });
 
+      let vmId: number | null = null;
+      const {
+        workflowVmCreate,
+        workflowVmDestroy,
+        workflowVmRejectJob,
+        workflowVmResolveJob,
+        workflowVmStep,
+      } = getNativeExec();
+
       try {
-        const variant = newVariant(RELEASE_ASYNC, { wasmLocation: wasmPath });
-        const QuickJS = await newQuickJSAsyncWASMModuleFromVariant(variant);
-        const vm = QuickJS.newContext();
+        vmId = workflowVmCreate(code, options?.runtimeInputs ?? {});
 
-        try {
-          // Expose log(message)
-          const logFn = vm.newFunction("log", (msgHandle: QuickJSHandle) => {
-            const msg = String(vm.dump(msgHandle) ?? "");
-            appendNodeLog(runId, "_script", msg);
-          });
-          vm.setProp(vm.global, "log", logFn);
+        // Step-driven event loop: advance the VM until it's done, handling
+        // log messages and runJob calls as they appear.
+        for (;;) {
+          if (controller.signal.aborted) {
+            throw new Error("Workflow cancelled");
+          }
 
-          // Expose console.log
-          const consoleObj = vm.newObject();
-          vm.setProp(consoleObj, "log", logFn);
-          vm.setProp(vm.global, "console", consoleObj);
-          consoleObj.dispose();
-          logFn.dispose();
+          const event: WorkflowVmEvent = workflowVmStep(vmId);
 
-          // Expose input object — use handle APIs, never vm.evalCode on async context
-          const inputHandle = marshalToVM(vm, options?.runtimeInputs ?? {});
-          vm.setProp(vm.global, "input", inputHandle);
-          inputHandle.dispose();
-
-          // Expose runJob(extensionId, jobId, inputs?)
-          // Uses a deferred promise so QuickJS's await resolves naturally through
-          // the microtask queue (executePendingJobs) instead of asyncify suspension.
-          const runJobFn = vm.newFunction("runJob", (...handles: QuickJSHandle[]) => {
-            if (handles.length < 2) {
-              throw new Error(
-                "runJob(extensionId, jobId, inputs?) requires at least 2 arguments",
-              );
-            }
-
-            const stepId = `step_${stepCounter++}`;
-            const extensionId = String(vm.dump(handles[0]) ?? "");
-            const jobId = String(vm.dump(handles[1]) ?? "");
-            const inputsRaw = handles[2] ? vm.dump(handles[2]) : {};
-            const inputs =
-              inputsRaw && typeof inputsRaw === "object" && !Array.isArray(inputsRaw)
-                ? (inputsRaw as Record<string, unknown>)
+          if (event.type === "done") {
+            const output =
+              event.output &&
+              typeof event.output === "object" &&
+              !Array.isArray(event.output)
+                ? (event.output as Record<string, unknown>)
                 : {};
+            setNodeStatus(runId, "_script", {
+              status: "completed",
+              outputs: output,
+              completedAt: new Date(),
+            });
+            break;
+          }
 
-            const promise = vm.newPromise();
+          if (event.type === "error") {
+            throw new Error(event.message ?? "Script error");
+          }
 
-            // Run the actual job asynchronously; never await inside this callback.
+          if (event.type === "log") {
+            appendNodeLog(runId, "_script", event.message ?? "");
+            continue;
+          }
+
+          if (event.type === "pending_job") {
+            const { jobId, extensionId, workflowJobId, inputs } = event;
+            if (!jobId || !extensionId || !workflowJobId) continue;
+
+            const stepId = jobId;
             const stepStart = Date.now();
+
+            // Run the job asynchronously and resolve/reject the VM promise.
+            // We do NOT await here — let the loop continue stepping while the job runs.
+            // However, since this is a sequential script (each runJob is awaited by the JS),
+            // we must await the result before the VM can proceed past the pending promise.
             (async () => {
               try {
                 const ext = await getExtension(spaceId, extensionId);
                 if (!ext) throw new Error(`Extension not found: ${extensionId}`);
 
-                const jobDef = ext.manifest.jobs?.find((j) => j.id === jobId);
-                if (!jobDef) {
+                const jobDef = ext.manifest.jobs?.find((j) => j.id === workflowJobId);
+                if (!jobDef)
                   throw new Error(
-                    `Job "${jobId}" not found in extension "${extensionId}"`,
+                    `Job "${workflowJobId}" not found in extension "${extensionId}"`,
                   );
-                }
 
                 const zipBuffer = await getExtensionPackage(spaceId, extensionId);
                 if (!zipBuffer)
                   throw new Error(`Extension package not found: ${extensionId}`);
 
+                const jobInputs =
+                  inputs && typeof inputs === "object" && !Array.isArray(inputs)
+                    ? (inputs as Record<string, unknown>)
+                    : {};
+
                 addNode(runId, stepId);
                 setNodeStatus(runId, stepId, {
                   status: "running",
-                  inputs: { _extensionId: extensionId, _jobId: jobId, ...inputs },
+                  inputs: {
+                    _extensionId: extensionId,
+                    _jobId: workflowJobId,
+                    ...jobInputs,
+                  },
                   startedAt: new Date(),
                 });
 
-                if (controller.signal.aborted) {
-                  throw new Error("Workflow cancelled");
-                }
+                if (controller.signal.aborted) throw new Error("Workflow cancelled");
 
                 const outputs = await runJob(
                   zipBuffer,
                   jobDef.entry,
-                  inputs,
+                  jobInputs,
                   spaceId,
                   (msg) => appendNodeLog(runId, stepId, msg),
                   {
                     signal: controller.signal,
                     initiatedByUserId: run.initiatedByUserId,
                     jobType: "workflow_node",
-                    jobId,
+                    jobId: workflowJobId,
                     trigger: "workflow",
                     sandbox,
                   },
@@ -206,8 +181,7 @@ export async function executeWorkflowScript(
                   completedAt: new Date(),
                 });
 
-                // Strip JobOutputValue typed wrappers before marshaling to QuickJS,
-                // matching the same unwrapping logic in workflow.ts:168-173.
+                // Unwrap JobOutputValue typed wrappers before passing back to the VM.
                 const unwrapped: Record<string, unknown> = {};
                 for (const [k, v] of Object.entries(outputs ?? {})) {
                   const t = v as { type?: string; url?: string; value?: unknown };
@@ -216,7 +190,7 @@ export async function executeWorkflowScript(
                   else unwrapped[k] = v;
                 }
 
-                promise.resolve(marshalToVM(vm, unwrapped));
+                if (vmId !== null) workflowVmResolveJob(vmId, jobId, unwrapped);
               } catch (err) {
                 const error = err instanceof Error ? err.message : String(err);
                 setNodeStatus(runId, stepId, {
@@ -227,92 +201,20 @@ export async function executeWorkflowScript(
                 workflowRunDurationMs.record(Date.now() - stepStart, {
                   status: "failed",
                 });
-                promise.reject(vm.newError(error));
+                if (vmId !== null) workflowVmRejectJob(vmId, jobId, error);
               }
             })();
 
-            return promise.handle;
-          });
-          vm.setProp(vm.global, "runJob", runJobFn);
-          runJobFn.dispose();
-
-          // Run the user script inside an async IIFE.
-          // evalCodeAsync may return a still-pending Promise handle when the
-          // IIFE returns Promise.resolve(...), because the async thenable
-          // unwrap needs an extra microtask pump.
-          // We pump microtasks via executePendingJobs until it settles.
-          const wrapped = `(async () => {\n${code}\n})()`;
-          const evalResult = await vm.evalCodeAsync(wrapped);
-
-          if (evalResult.error) {
-            const errDump = vm.dump(evalResult.error) as Record<string, unknown>;
-            evalResult.error.dispose();
-            const name = String(errDump?.name ?? "Error");
-            const message = String(errDump?.message ?? JSON.stringify(errDump));
-            const location = String(errDump?.stack ?? "");
-            throw new Error(`${name}: ${message}${location ? `\n${location}` : ""}`);
+            // Yield to the event loop so the async job above can make progress,
+            // then keep stepping the VM.
+            await new Promise<void>((r) => setTimeout(r, 10));
+            continue;
           }
 
-          const handle = evalResult.value;
-
-          // ── resolve pending Promise ──────────────────────────────────────
-          let resolvedValue: QuickJSHandle;
-          {
-            let ps = vm.getPromiseState(handle);
-            if (ps.type === "pending") {
-              // evalCodeAsync returned a still-pending Promise.
-              // Pump the microtask queue via executePendingJobs until the
-              // promise settles. With deferred-promise runJob, the host side
-              // must also get event-loop turns to resolve deferred promises,
-              // so we interleave executePendingJobs with host yields.
-              // The loop is indefinite; the caller's timeout / controller
-              // signal provides the upper bound.
-              for (;;) {
-                vm.runtime.executePendingJobs();
-                ps = vm.getPromiseState(handle);
-                if (ps.type !== "pending") break;
-                if (controller.signal.aborted) {
-                  handle.dispose();
-                  throw new Error("Workflow cancelled");
-                }
-                await new Promise((r) => setTimeout(r, 10));
-              }
-            }
-            if (ps.type === "rejected") {
-              const errDump = vm.dump(ps.error) as Record<string, unknown>;
-              ps.error.dispose();
-              handle.dispose();
-              const name = String(errDump?.name ?? "Error");
-              const message = String(errDump?.message ?? JSON.stringify(errDump));
-              const location = String(errDump?.stack ?? "");
-              throw new Error(`${name}: ${message}${location ? `\n${location}` : ""}`);
-            }
-            resolvedValue = handle;
+          if (event.type === "pending") {
+            // Promise is still settling — yield and retry.
+            await new Promise<void>((r) => setTimeout(r, 10));
           }
-
-          // ── extract script output ────────────────────────────────────────
-          // dump() disposes the handle when it encounters a fulfilled Promise,
-          // so we unwrap via getPromiseState first to avoid double-dispose.
-          const resultState = vm.getPromiseState(resolvedValue);
-          const outputRaw =
-            resultState.type === "fulfilled" && !resultState.notAPromise
-              ? resultState.value.consume((inner) => vm.dump(inner))
-              : vm.dump(resolvedValue);
-          if (resolvedValue.alive) resolvedValue.dispose();
-
-          const output =
-            outputRaw && typeof outputRaw === "object" && !Array.isArray(outputRaw)
-              ? (outputRaw as Record<string, unknown>)
-              : {};
-
-          setNodeStatus(runId, "_script", {
-            status: "completed",
-            outputs: output,
-            completedAt: new Date(),
-          });
-        } finally {
-          vm.dispose();
-          await sandbox?.destroy();
         }
 
         finalizeRun(runId);
@@ -329,6 +231,13 @@ export async function executeWorkflowScript(
         finalizeRun(runId);
         workflowRunsCounter.add(1, { status: "failed" });
         workflowRunDurationMs.record(Date.now() - workflowStart, { status: "failed" });
+      } finally {
+        if (vmId !== null) {
+          const id = vmId;
+          vmId = null;
+          workflowVmDestroy(id);
+        }
+        await sandbox?.destroy();
       }
     },
   );

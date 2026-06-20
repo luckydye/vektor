@@ -69,11 +69,10 @@ import { existsSync } from "node:fs";
 /**
  * Compile vektor.ts into a portable single-file executable.
  *
- * Image transforms are provided by the native Rust N-API addon in
- * native/image/ (built into src/files/native/image-<platform>-<arch>.node).
- * Bun auto-embeds .node addons referenced by a static `require`, so we only
- * need to inject the host addon's path via `--define VEKTOR_NATIVE_ADDON` —
- * src/files/native.ts then resolves it to a literal Bun can embed.
+ * Image transforms and JavaScript execution are provided by native Rust N-API
+ * addons under native/image and native/exec.
+ * Bun auto-embeds .node addons referenced by a static `require`; each native
+ * build generates a platform-specific loader that the application imports.
  *
  * Cross-target release builds compile per native runner; see
  * .github/workflows/release.yml.
@@ -95,6 +94,23 @@ if (!existsSync(shimPath)) {
   );
 }
 console.log(`[native-image] embedding ${addonFilename}`);
+
+const execAddonFilename = `exec-${process.platform}-${process.arch}.node`;
+const execAddonPath = `${import.meta.dir}/src/exec/native/${execAddonFilename}`;
+if (!existsSync(execAddonPath)) {
+  throw new Error(
+    `[native-exec] addon not found at ${execAddonPath}\n` +
+      `Build it first:  cd native/exec && bun run build`,
+  );
+}
+const execShimPath = `${import.meta.dir}/src/exec/native/addon.ts`;
+if (!existsSync(execShimPath)) {
+  throw new Error(
+    `[native-exec] shim not found at ${execShimPath}\n` +
+      `Build it first:  cd native/exec && bun run build`,
+  );
+}
+console.log(`[native-exec] embedding ${execAddonFilename}`);
 
 const result = await Bun.build({
   entrypoints: ["./vektor.ts"],

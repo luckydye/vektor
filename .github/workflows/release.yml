@@ -24,9 +24,8 @@ jobs:
         with:
           bun-version: latest
 
-      # Builds the native image addon (Rust N-API → .node). Each runner builds
-      # for its own platform, so the addon arch matches the compiled binary —
-      # no cross-compilation.
+      # Build native N-API addons on each target platform so their architecture
+      # matches the compiled Bun binary.
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
@@ -36,6 +35,12 @@ jobs:
 
       - name: Build native image addon
         working-directory: app/native/image
+        run: |
+          bun i
+          bun run build
+
+      - name: Build native JavaScript runtime
+        working-directory: app/native/exec
         run: |
           bun i
           bun run build

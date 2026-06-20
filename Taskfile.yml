@@ -8,6 +8,7 @@ tasks:
       - bun i
       - cd app && bun i
       - task: native:image
+      - task: native:exec
 
   native:image:
     desc: Build the native image addon (Rust → .node) for the host platform.
@@ -19,6 +20,20 @@ tasks:
       - src/**/*.rs
     generates:
       - ../../src/files/native/image-*.node
+    cmds:
+      - bun i
+      - bun run build
+
+  native:exec:
+    desc: Build the native JavaScript runtime (Rust → .node) for the host platform.
+    dir: ./app/native/exec
+    sources:
+      - Cargo.toml
+      - Cargo.lock
+      - build.rs
+      - src/**/*.rs
+    generates:
+      - ../../src/exec/native/exec-*.node
     cmds:
       - bun i
       - bun run build
@@ -61,7 +76,7 @@ tasks:
   compile:
     dir: ./app
     desc: Compile full app with server into a single executable using bun.
-    deps: [native:image]
+    deps: [native:image, native:exec]
     dotenv:
       - ../.env
     cmds:

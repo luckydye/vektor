@@ -8,6 +8,9 @@ src/generated/
 native/image/target/
 src/files/native/*.node
 src/files/native/addon.ts
+native/exec/target/
+src/exec/native/*.node
+src/exec/native/addon.ts
 
 # dependencies
 node_modules/

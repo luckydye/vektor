@@ -40,13 +40,16 @@ const pageTitle = match.route.title || match.extension.manifest.name;
 ---
 
 <SpaceLayout title={`${pageTitle} - ${space.name} - Wiki`}>
-  <div data-inset class="overflow-hidden h-full relative flex-1 md:ml-(--inset-left) my-1.5 md:mr-(--inset-right)">
-    <ExtensionView
-      client:only
-      extensionId={match.extension.id}
-      routePath={path}
-      spaceId={space.id}
-    />
-  </div>
-  <AIChatPanel client:only slot="outer" />
+    <div class="min-h-screen h-full flex flex-col relative overflow-x-hidden">
+        <div data-inset class="overflow-hidden h-full relative flex-1 md:ml-(--inset-left) my-1.5 md:mr-(--inset-right)">
+            <ExtensionView
+            client:only
+            extensionId={match.extension.id}
+            routePath={path}
+            spaceId={space.id}
+            />
+        </div>
+    </div>
+    
+    <AIChatPanel client:only slot="outer" />
 </SpaceLayout>

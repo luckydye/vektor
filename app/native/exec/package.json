@@ -1,0 +1,15 @@
+{
+  "name": "@vektor/native-exec",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "bun run ./build.ts",
+    "build:debug": "bun run ./build.ts --debug"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2"
+  },
+  "napi": {
+    "binaryName": "exec"
+  }
+}
