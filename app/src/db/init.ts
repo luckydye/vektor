@@ -90,6 +90,19 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
   await spaceDb.run(
     sql.raw("DROP INDEX IF EXISTS property_document_id_key_idx"),
   );
+  // Deduplicate before creating the unique index — the old code had a SELECT+INSERT
+  // race that could produce duplicate (document_id, key) rows in existing DBs.
+  // Keep the most-recently updated row for each pair; delete the rest.
+  await spaceDb.run(
+    sql.raw(`
+      DELETE FROM property WHERE id NOT IN (
+        SELECT id FROM (
+          SELECT id, row_number() OVER (PARTITION BY document_id, key ORDER BY updated_at DESC, id DESC) AS rn
+          FROM property
+        ) ranked WHERE rn = 1
+      )
+    `),
+  );
   await spaceDb.run(
     sql.raw(
       "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",

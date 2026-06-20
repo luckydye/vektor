@@ -602,9 +602,14 @@ async function measureN(
     }
   });
   await pool(tasks, concurrency);
+  const errorRate = errors / n;
   if (times.length === 0) {
     console.log(`  ${label.padEnd(32)} ALL ${n} REQUESTS FAILED`);
-    return { count: 0, avg: 0, min: 0, max: 0, p50: 0, p95: 0, p99: 0 };
+    throw new Error(`${label}: all ${n} requests failed`);
+  }
+  if (errorRate > 0.05) {
+    console.log(`  ${label.padEnd(32)} HIGH ERROR RATE: ${errors}/${n} failed (${(errorRate * 100).toFixed(1)}%)`);
+    throw new Error(`${label}: error rate ${(errorRate * 100).toFixed(1)}% exceeds 5% threshold`);
   }
   const s = stats(times);
   const errNote = errors > 0 ? `  errors=${errors}` : "";
