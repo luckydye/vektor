@@ -96,7 +96,13 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
     ),
     withoutDefaultKeyboardShortcuts(BulletList),
     withoutDefaultKeyboardShortcuts(OrderedList),
-    withoutDefaultKeyboardShortcuts(ListItem),
+    ListItem.extend({
+      addKeyboardShortcuts() {
+        return {
+          Enter: () => this.editor.commands.splitListItem(this.name),
+        };
+      },
+    }),
     withoutDefaultKeyboardShortcuts(
       ImageUpload.configure({
         spaceId: spaceId,
@@ -147,11 +153,13 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
         },
       }),
     ),
-    withoutDefaultKeyboardShortcuts(
-      TaskItem.configure({
-        nested: true,
-      }),
-    ),
+    TaskItem.configure({ nested: true }).extend({
+      addKeyboardShortcuts() {
+        return {
+          Enter: () => this.editor.commands.splitListItem(this.name),
+        };
+      },
+    }),
     withoutDefaultKeyboardShortcuts(TaskList),
     withoutDefaultKeyboardShortcuts(Code),
     withoutDefaultKeyboardShortcuts(CodeBlock),

@@ -910,7 +910,12 @@ export const TaskItem = Node.create({
         this.options.HTMLAttributes,
         HTMLAttributes,
       ),
-      0,
+      [
+        "label",
+        { contenteditable: "false" },
+        ["input", { type: "checkbox", ...(node.attrs.checked ? { checked: "" } : {}) }],
+      ],
+      ["div", 0],
     ];
   },
   addNodeView() {
