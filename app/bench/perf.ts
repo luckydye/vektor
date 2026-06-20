@@ -735,9 +735,26 @@ async function bench(state: SeedState): Promise<BenchResult> {
     await apiJson(`/api/v1/spaces/${spaceId}/documents?limit=500`);
   });
 
-  const documentListPaginated = await measureN("GET documents (page N, 50)", 200, async () => {
-    const offset = randomInt(0, Math.max(0, documentIds.length - 50));
-    await apiJson(`/api/v1/spaces/${spaceId}/documents?limit=50&offset=${offset}`);
+  // Pre-walk to a deep cursor position (page 100 = offset ~5000) so the benchmark
+  // measures keyset seeks at depth, where offset pagination would scan ~5000 rows.
+  let deepCursor = "";
+  {
+    let cur = "";
+    for (let i = 0; i < 100; i++) {
+      const url = cur
+        ? `/api/v1/spaces/${spaceId}/documents?limit=50&cursor=${encodeURIComponent(cur)}`
+        : `/api/v1/spaces/${spaceId}/documents?limit=50`;
+      const data = await apiJson<{ nextCursor?: string | null }>(url);
+      if (!data.nextCursor) break;
+      cur = data.nextCursor;
+    }
+    deepCursor = cur;
+  }
+  const documentListPaginated = await measureN("GET documents (cursor, 50)", 50, async () => {
+    const url = deepCursor
+      ? `/api/v1/spaces/${spaceId}/documents?limit=50&cursor=${encodeURIComponent(deepCursor)}`
+      : `/api/v1/spaces/${spaceId}/documents?limit=50`;
+    await apiJson(url);
   });
 
   const revisionHistory = await measureN("GET revisions", 300, async () => {
@@ -921,7 +938,7 @@ function report(current: BenchResult, baseline: Baseline | null) {
   const metrics: Array<{ key: LatencyKey; label: string }> = [
     { key: "documentFetch",          label: "GET document" },
     { key: "documentList",           label: "GET documents (page 1, 500)" },
-    { key: "documentListPaginated",  label: "GET documents (page N, 50)" },
+    { key: "documentListPaginated",  label: "GET documents (cursor, 50)" },
     { key: "revisionHistory",        label: "GET revisions" },
     { key: "commentList",            label: "GET comments" },
     { key: "auditLogList",           label: "GET doc audit-logs" },

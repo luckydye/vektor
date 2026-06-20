@@ -63,6 +63,7 @@ export const GET: APIRoute = (context) =>
       : null;
 
     const { limit, offset } = parsePaginationParams(context.url.searchParams);
+    const cursor = context.url.searchParams.get("cursor") || undefined;
     const typeParam = context.url.searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = context.url.searchParams.get("categorySlugs");
     const grouped = context.url.searchParams.get("grouped") === "true";
@@ -119,14 +120,15 @@ export const GET: APIRoute = (context) =>
     }
 
     // Always return documents without content (content fetched separately when viewing)
-    const { documents, total } = await listDocuments(
+    const { documents, total, nextCursor } = await listDocuments(
       spaceId,
       limit,
       offset,
       typeParam,
       viewer,
+      cursor,
     );
-    return jsonResponse({ documents, total, limit, offset });
+    return jsonResponse({ documents, total, limit, offset, nextCursor });
   }, "Failed to list documents");
 
 export const POST: APIRoute = (context) =>

@@ -861,6 +861,7 @@ export class ApiClient {
         total: number;
         limit: number;
         offset: number;
+        nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, query);
       return response;
     },

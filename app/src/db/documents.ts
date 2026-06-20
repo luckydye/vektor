@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { extractFileTextFromBuffer } from "../files/extractText.ts";
 import { getFileStorage } from "../files/storage.ts";
@@ -535,84 +535,112 @@ async function syncFileIndex(
   }
 }
 
+// Cursor encodes the (updatedAt, id) position of the last returned document.
+export function encodeListCursor(updatedAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify({ t: updatedAt.getTime(), id })).toString("base64url");
+}
+
+export function decodeListCursor(cursor: string): { updatedAt: Date; id: string } | null {
+  try {
+    const { t, id } = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (typeof t !== "number" || typeof id !== "string") return null;
+    return { updatedAt: new Date(t), id };
+  } catch {
+    return null;
+  }
+}
+
 export async function listDocuments(
   spaceId: string,
   limit?: number,
   offset?: number,
   type?: string,
   viewer?: AclViewer | null,
-): Promise<{ documents: DocumentWithProperties[]; total: number }> {
+  cursor?: string,
+): Promise<{ documents: DocumentWithProperties[]; total: number; nextCursor: string | null }> {
   const db = await getSpaceDb(spaceId);
-  const whereCondition = type
+  const baseCondition = type
     ? and(nonArchivedDocumentCondition, eq(document.type, type))
     : nonArchivedDocumentCondition;
 
-  // Get total count first
-  const countResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(document)
-    .where(whereCondition)
-    .get();
+  const selectFields = {
+    id: document.id,
+    createdAt: document.createdAt,
+    updatedAt: document.updatedAt,
+    parentId: document.parentId,
+    publishedRev: document.publishedRev,
+    slug: document.slug,
+    type: document.type,
+    currentRev: document.currentRev,
+    createdBy: document.createdBy,
+    readonly: document.readonly,
+    archived: document.archived,
+  };
 
-  let total = countResult?.count || 0;
+  type DocRow = typeof selectFields extends Record<string, infer _> ? {
+    id: string; createdAt: Date; updatedAt: Date; parentId: string | null;
+    publishedRev: number | null; slug: string; type: string | null;
+    currentRev: number; createdBy: string; readonly: boolean; archived: boolean;
+  } : never;
 
-  // Build query
-  const baseQuery = db
-    .select({
-      id: document.id,
-      createdAt: document.createdAt,
-      updatedAt: document.updatedAt,
-      parentId: document.parentId,
-      publishedRev: document.publishedRev,
-      slug: document.slug,
-      type: document.type,
-      currentRev: document.currentRev,
-      createdBy: document.createdBy,
-      readonly: document.readonly,
-      archived: document.archived,
-    })
-    .from(document)
-    .where(whereCondition)
-    .orderBy(desc(document.updatedAt));
+  let docs: DocRow[];
+  let total = 0;
+  let nextCursor: string | null = null;
 
-  // Apply pagination if provided
-  let docs: Array<{
-    id: string;
-    createdAt: Date;
-    updatedAt: Date;
-    parentId: string | null;
-    publishedRev: number | null;
-    slug: string;
-    type: string | null;
-    currentRev: number;
-    createdBy: string;
-    readonly: boolean;
-    archived: boolean;
-  }>;
   if (viewer) {
-    // Per-document ACL filtering must happen before pagination, so fetch the
-    // full (content-free) list and paginate in memory.
-    const allDocs = await baseQuery.all();
+    // ACL filtering requires fetching all docs before paginating — offset path only.
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(document).where(baseCondition).get();
+    total = countResult?.count ?? 0;
+
+    const allDocs = await db.select(selectFields).from(document).where(baseCondition).orderBy(desc(document.updatedAt), desc(document.id)).all();
     const readable = await filterReadableResources(
-      spaceId,
-      ResourceType.DOCUMENT,
-      allDocs.map((doc) => doc.id),
-      viewer.userId,
-      viewer.userGroups,
+      spaceId, ResourceType.DOCUMENT,
+      allDocs.map((d) => d.id), viewer.userId, viewer.userGroups,
     );
-    const visible = allDocs.filter((doc) => readable.has(doc.id));
+    const visible = allDocs.filter((d) => readable.has(d.id));
     total = visible.length;
     const start = offset ?? 0;
-    docs =
-      limit !== undefined ? visible.slice(start, start + limit) : visible.slice(start);
-  } else if (limit !== undefined && offset !== undefined) {
-    docs = await baseQuery.limit(limit).offset(offset).all();
-  } else if (limit !== undefined) {
-    docs = await baseQuery.limit(limit).all();
-  } else if (offset !== undefined) {
-    docs = await baseQuery.offset(offset).all();
+    docs = (limit !== undefined ? visible.slice(start, start + limit) : visible.slice(start)) as DocRow[];
+  } else if (cursor) {
+    // Keyset pagination: seek past the cursor position using the compound index.
+    const pos = decodeListCursor(cursor);
+    const seekCondition = pos
+      ? and(
+          baseCondition,
+          or(
+            lt(document.updatedAt, pos.updatedAt),
+            and(sql`${document.updatedAt} = ${pos.updatedAt}`, lt(document.id, pos.id)),
+          ),
+        )
+      : baseCondition;
+
+    // Fetch limit+1 to determine whether another page exists.
+    const fetchLimit = (limit ?? 50) + 1;
+    const rows = await db.select(selectFields).from(document).where(seekCondition).orderBy(desc(document.updatedAt), desc(document.id)).limit(fetchLimit).all() as DocRow[];
+
+    if (rows.length === fetchLimit) {
+      docs = rows.slice(0, -1);
+      const last = docs[docs.length - 1];
+      nextCursor = last ? encodeListCursor(last.updatedAt, last.id) : null;
+    } else {
+      docs = rows;
+    }
+
+    // Total is expensive on cursor path — return 0 (callers should use hasMore/nextCursor).
+    total = 0;
   } else {
-    docs = await baseQuery.all();
+    // Offset pagination (backward-compat).
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(document).where(baseCondition).get();
+    total = countResult?.count ?? 0;
+
+    const q = db.select(selectFields).from(document).where(baseCondition).orderBy(desc(document.updatedAt), desc(document.id));
+    docs = (limit !== undefined && offset !== undefined
+      ? await q.limit(limit).offset(offset).all()
+      : limit !== undefined
+        ? await q.limit(limit).all()
+        : offset !== undefined
+          ? await q.offset(offset).all()
+          : await q.all()) as DocRow[];
   }
 
   // Fetch properties only for the documents on this page
@@ -661,14 +689,14 @@ export async function listDocuments(
     const fileResults = standaloneFiles.map(fileRowToDocument);
 
     if (type === "file") {
-      return { documents: fileResults, total: fileResults.length };
+      return { documents: fileResults, total: fileResults.length, nextCursor: null };
     }
 
     results.push(...fileResults);
     total += fileResults.length;
   }
 
-  return { documents: results, total };
+  return { documents: results, total, nextCursor };
 }
 
 export async function listArchivedDocuments(
