@@ -85,13 +85,13 @@ onMounted(async () => {
             <span
               v-for="(tag, i) in docTags(doc).slice(0, 1)"
               :key="i"
-              class="px-2.5 py-1 rounded-full bg-white text-neutral-700 text-[11px] font-medium shadow-sm"
+              class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm"
             >
               {{ tag }}
             </span>
             <span
               v-if="docTags(doc).length > 1"
-              class="px-2.5 py-1 rounded-full bg-white text-neutral-700 text-[11px] font-medium shadow-sm"
+              class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm"
             >
               +{{ docTags(doc).length - 1 }}
             </span>

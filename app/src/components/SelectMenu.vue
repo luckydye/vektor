@@ -28,7 +28,7 @@ const handleItemClick = (item: SelectMenuItem) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-[4px] py-[4px] w-full min-w-[180px]">
+  <div class="flex flex-col gap-[4px] py-[4px] w-full min-w-[180px] max-h-[400px] overflow-y-auto">
     <SelectItem v-for="item in items" :key="item.id" :icon="item.icon" :label="item.label"
       :selected="item.id === modelValue" @click="handleItemClick(item)" />
   </div>
