@@ -1,0 +1,8 @@
+# Seeded DB and auth data — large, machine-specific, always regenerated
+data/auth.db
+data/spaces/
+# Seed state references a specific spaceId — not portable across runs
+data/seed-state.json
+
+# Baseline is intentionally tracked — negate the root data/**/* rule
+!data/baseline.json
