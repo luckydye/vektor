@@ -230,7 +230,7 @@ if (diffMins >= 1 && diffMins < 60) {
       )}
 
       <!-- Header Image -->
-      {!isCanvas && !isApp && !isWorkflow && (
+      {!isCanvas && !isApp && !isWorkflow && !!document.properties?.headerImage && (
         <HeaderImage
           client:load
           documentId={document.id}
