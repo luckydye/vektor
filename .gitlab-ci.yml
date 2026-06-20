@@ -32,6 +32,7 @@ build-runtime:
 
 deploy:
   stage: deploy
+  when: manual
   needs: [build]
   script: task -t ./Deploy.yml deploy
 
