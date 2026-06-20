@@ -63,3 +63,53 @@ export async function generateClientAssetsModule() {
 }
 
 await generateClientAssetsModule();
+
+import { existsSync } from "node:fs";
+
+/**
+ * Compile vektor.ts into a portable single-file executable.
+ *
+ * Image transforms are provided by the native Rust N-API addon in
+ * native/image/ (built into src/files/native/image-<platform>-<arch>.node).
+ * Bun auto-embeds .node addons referenced by a static `require`, so we only
+ * need to inject the host addon's path via `--define VEKTOR_NATIVE_ADDON` —
+ * src/files/native.ts then resolves it to a literal Bun can embed.
+ *
+ * Cross-target release builds compile per native runner; see
+ * .github/workflows/release.yml.
+ */
+const addonFilename = `image-${process.platform}-${process.arch}.node`;
+const addonPath = `${import.meta.dir}/src/files/native/${addonFilename}`;
+if (!existsSync(addonPath)) {
+  throw new Error(
+    `[native-image] addon not found at ${addonPath}\n` +
+      `Build it first:  cd native/image && bun run build`,
+  );
+}
+
+const shimPath = `${import.meta.dir}/src/files/native/addon.ts`;
+if (!existsSync(shimPath)) {
+  throw new Error(
+    `[native-image] shim not found at ${shimPath}\n` +
+      `Build it first:  cd native/image && bun run build`,
+  );
+}
+console.log(`[native-image] embedding ${addonFilename}`);
+
+const result = await Bun.build({
+  entrypoints: ["./vektor.ts"],
+  // @ts-expect-error — Bun.build compile option
+  compile: true,
+  outfile: "./vektor",
+  // lightningcss bundles a Rust-compiled native binary (../pkg) that bun
+  // cannot resolve. It's pulled in transitively by Astro's SSR output but
+  // is not actually used at runtime — marking it external skips bundling it.
+  external: ["lightningcss"],
+});
+
+if (!result.success) {
+  for (const log of result.logs) console.error(log);
+  process.exit(1);
+}
+
+console.log(`[compile] ${result.outputs[0]?.path}`);

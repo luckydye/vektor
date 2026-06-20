@@ -4,7 +4,6 @@ import { useProperties } from "./useProperties.ts";
 import { useSpace } from "./useSpace.ts";
 
 const HEADER_IMAGE_PROPERTY = "headerImage";
-const HEADER_IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
 
 // Document types that don't render a header image.
 const UNSUPPORTED_TYPES = ["canvas", "app", "workflow"];
@@ -24,38 +23,20 @@ export function useHeaderImage() {
   const { updateProperty } = useProperties();
 
   const isUploading = ref(false);
+  const dialogOpen = ref(false);
 
   async function saveHeaderImage(documentId: string, url: string) {
     await updateProperty(documentId, HEADER_IMAGE_PROPERTY, url);
-    window.location.reload();
   }
 
-  function pickImageFile(): Promise<File | null> {
-    return new Promise((resolve) => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = HEADER_IMAGE_ACCEPT;
-      input.style.display = "none";
-
-      input.addEventListener("change", () => {
-        const file = input.files?.[0] ?? null;
-        input.remove();
-        resolve(file);
-      });
-      // If the dialog is dismissed, the change event never fires; the input is
-      // simply left detached and garbage-collected.
-      document.body.appendChild(input);
-      input.click();
-    });
+  /** Open the image picker dialog. */
+  function changeHeaderImage(_documentId: string) {
+    dialogOpen.value = true;
   }
 
-  /** Prompt for an image, upload it, and set it as the document header. */
-  async function changeHeaderImage(documentId: string) {
+  /** Upload the chosen file and set it as the document header. */
+  async function uploadHeaderImage(documentId: string, file: File) {
     if (!currentSpaceId.value || isUploading.value) return;
-
-    const file = await pickImageFile();
-    if (!file) return;
-
     try {
       isUploading.value = true;
       const result = await api.uploads.post(
@@ -84,8 +65,10 @@ export function useHeaderImage() {
 
   return {
     isUploading,
+    dialogOpen,
     supportsHeaderImage,
     changeHeaderImage,
+    uploadHeaderImage,
     removeHeaderImage,
   };
 }

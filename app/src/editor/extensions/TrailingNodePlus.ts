@@ -2,7 +2,9 @@ import { type Editor, Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
-import { addIcon } from "~/src/assets/icons.ts";
+import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
+import { addIcon, puzzleIcon } from "~/src/assets/icons.ts";
+import { extensions } from "~/src/utils/extensions.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 
 export interface TrailingNodePlusOptions {
@@ -18,7 +20,7 @@ interface ContentItem {
 }
 
 function createContentItems(spaceId: string, documentId?: string): ContentItem[] {
-  return [
+  const items: ContentItem[] = [
     {
       title: "Table",
       description: "Insert a table",
@@ -80,6 +82,23 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       },
     },
   ];
+
+  for (const { extensionId, route } of extensions.getRoutesWithPlacement("document")) {
+    items.push({
+      title: route.menuItem?.title || route.title || extensionId,
+      description: route.description || "Extension view",
+      icon: route.menuItem?.icon || puzzleIcon,
+      command: (editor) => {
+        editor
+          .chain()
+          .focus()
+          .insertExtensionView({ extensionId, routePath: route.path })
+          .run();
+      },
+    });
+  }
+
+  return items;
 }
 
 export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
@@ -102,6 +121,14 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
     let items: ContentItem[] = [];
     const popupPadding = 8;
     const popupGap = 8;
+
+    // Slash command state
+    let slashPopup: HTMLDivElement | null = null;
+    let slashSelectedIndex = 0;
+    let slashItems: ContentItem[] = [];
+    let allSlashItems: ContentItem[] = [];
+    let slashRange: { from: number; to: number } | null = null;
+    let slashQuery = "";
 
     function closePopup() {
       if (popup) {
@@ -131,12 +158,12 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
         case "ArrowDown":
           e.preventDefault();
           selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-          renderPopup();
+          renderPopup(true);
           break;
         case "ArrowUp":
           e.preventDefault();
           selectedIndex = Math.max(selectedIndex - 1, 0);
-          renderPopup();
+          renderPopup(true);
           break;
         case "Enter":
           e.preventDefault();
@@ -167,7 +194,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       closePopup();
     }
 
-    function renderPopup() {
+    function renderPopup(scroll = false) {
       if (!popup) return;
 
       render(
@@ -181,7 +208,7 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
               ${items.map(
                 (item, index) => html`
                   <li
-                    class="flex items-start gap-3 px-4 py-2.5 cursor-pointer transition-colors ${index === selectedIndex ? "bg-neutral-100" : "hover:bg-neutral-50"}"
+                    class="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer ${index === selectedIndex ? "bg-neutral-100" : "hover:bg-neutral-50"}"
                     role="option"
                     aria-selected=${index === selectedIndex}
                     @click=${(e: MouseEvent) => {
@@ -194,13 +221,13 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                     }}
                   >
                     <div
-                      class="w-10 h-10 flex items-center justify-center bg-neutral-300 rounded-sm font-bold text-neutral-900 text-size-medium shrink-0"
+                      class="w-5 h-5 flex items-center justify-center text-neutral-600 shrink-0"
                     >
-                      ${item.icon}
+                      ${item.icon.startsWith("<svg") ? unsafeHTML(item.icon) : item.icon}
                     </div>
                     <div class="flex-1 min-w-0">
                       <div class="font-medium text-neutral-900 text-size-medium">${item.title}</div>
-                      <div class="text-size-small text-neutral-900 mt-0.5">${item.description}</div>
+                      <div class="text-size-small text-neutral-400">${item.description}</div>
                     </div>
                   </li>
                 `,
@@ -210,6 +237,11 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
         `,
         popup,
       );
+
+      if (scroll) {
+        const activeEl = popup.querySelector(`[role="option"][aria-selected="true"]`) as HTMLElement | null;
+        activeEl?.scrollIntoView({ block: "nearest" });
+      }
     }
 
     function placePopup(buttonRect: DOMRect) {
@@ -268,6 +300,163 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       }, 0);
     }
 
+    function filterSlashItems(query: string) {
+      const q = query.toLowerCase().trim();
+      if (q === slashQuery) return;
+      slashQuery = q;
+      slashItems = q
+        ? allSlashItems.filter(
+            (item) =>
+              item.title.toLowerCase().includes(q) ||
+              item.description.toLowerCase().includes(q),
+          )
+        : allSlashItems;
+      slashSelectedIndex = 0;
+    }
+
+    function closeSlashPopup() {
+      if (slashPopup) {
+        render(html``, slashPopup);
+        slashPopup.remove();
+        slashPopup = null;
+        slashSelectedIndex = 0;
+        slashRange = null;
+        slashQuery = "";
+      }
+      document.removeEventListener("click", handleSlashOutsideClick);
+    }
+
+    function handleSlashOutsideClick(e: MouseEvent) {
+      if (slashPopup && !slashPopup.contains(e.target as Node)) {
+        closeSlashPopup();
+      }
+    }
+
+    function selectSlashItem(index: number) {
+      const item = slashItems[index];
+      if (!item || !slashRange) return;
+
+      const editor = extension.editor;
+      if (editor) {
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: slashRange.from, to: slashRange.to })
+          .run();
+        item.command(editor);
+      }
+
+      closeSlashPopup();
+    }
+
+    function renderSlashPopup(scroll = false) {
+      if (!slashPopup) return;
+
+      render(
+        html`
+          <div
+            class="w-80 bg-background border border-neutral-100 rounded-lg shadow-xl overflow-hidden text-size-medium"
+            role="listbox"
+            @mousedown=${(e: Event) => e.preventDefault()}
+          >
+            <ul class="max-h-60 overflow-auto py-2">
+              ${
+                slashItems.length === 0
+                  ? html`<li class="px-4 py-2.5 text-neutral-400 text-size-small">No results</li>`
+                  : slashItems.map(
+                      (item, index) => html`
+                        <li
+                          class="flex items-start gap-3 px-4 py-2.5 cursor-pointer ${index === slashSelectedIndex ? "bg-neutral-100" : "hover:bg-neutral-50"}"
+                          role="option"
+                          aria-selected=${index === slashSelectedIndex}
+                          @click=${(e: MouseEvent) => {
+                            e.stopPropagation();
+                            selectSlashItem(index);
+                          }}
+                          @mouseenter=${() => {
+                            slashSelectedIndex = index;
+                            renderSlashPopup();
+                          }}
+                        >
+                          <div
+                            class="w-5 h-5 flex items-center justify-center text-neutral-600 shrink-0"
+                          >
+                            ${item.icon.startsWith("<svg") ? unsafeHTML(item.icon) : item.icon}
+                          </div>
+                          <div class="flex-1 min-w-0">
+                            <div class="font-medium text-neutral-900 text-size-medium">${item.title}</div>
+                            <div class="text-size-small text-neutral-400">${item.description}</div>
+                          </div>
+                        </li>
+                      `,
+                    )
+              }
+            </ul>
+          </div>
+        `,
+        slashPopup,
+      );
+
+      if (scroll) {
+        const activeEl = slashPopup.querySelector(`[role="option"][aria-selected="true"]`) as HTMLElement | null;
+        activeEl?.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function placeSlashPopupAtCursor(view: { coordsAtPos: (pos: number) => { left: number; bottom: number; top: number } }, pos: number) {
+      if (!slashPopup) return;
+
+      const coords = view.coordsAtPos(pos);
+      const popupRect = slashPopup.getBoundingClientRect();
+      const popupWidth = popupRect.width || 320;
+      const popupHeight = popupRect.height || 260;
+      const belowTop = coords.bottom + popupGap;
+      const aboveTop = coords.top - popupHeight - popupGap;
+      const top =
+        belowTop + popupHeight + popupPadding <= window.innerHeight
+          ? belowTop
+          : aboveTop >= popupPadding
+            ? aboveTop
+            : belowTop;
+      const left = Math.min(
+        Math.max(coords.left, popupPadding),
+        window.innerWidth - popupWidth - popupPadding,
+      );
+
+      slashPopup.style.left = `${left}px`;
+      slashPopup.style.top = `${top}px`;
+    }
+
+    function openSlashPopup(view: { coordsAtPos: (pos: number) => { left: number; bottom: number; top: number } }) {
+      if (slashPopup) closeSlashPopup();
+
+      allSlashItems = createContentItems(spaceId, documentId);
+      slashItems = allSlashItems;
+      slashSelectedIndex = 0;
+
+      slashPopup = document.createElement("div");
+      slashPopup.style.position = "fixed";
+      slashPopup.style.zIndex = "50";
+      slashPopup.style.left = `${popupPadding}px`;
+      slashPopup.style.top = `${popupPadding}px`;
+      slashPopup.style.maxWidth = `calc(100vw - ${popupPadding * 2}px)`;
+      slashPopup.style.maxHeight = `calc(100vh - ${popupPadding * 2}px)`;
+      slashPopup.style.pointerEvents = "auto";
+
+      slashPopup.addEventListener("mousedown", (e) => e.preventDefault());
+
+      document.body.appendChild(slashPopup);
+      renderSlashPopup();
+
+      if (slashRange) {
+        placeSlashPopupAtCursor(view, slashRange.from);
+      }
+
+      setTimeout(() => {
+        document.addEventListener("click", handleSlashOutsideClick);
+      }, 0);
+    }
+
     return [
       new Plugin({
         key: new PluginKey("trailingNodePlus"),
@@ -321,6 +510,79 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
 
             return DecorationSet.create(doc, decorations);
           },
+        },
+      }),
+      new Plugin({
+        key: new PluginKey("slashCommands"),
+        props: {
+          handleKeyDown(_view, event) {
+            if (!slashPopup) return false;
+
+            switch (event.key) {
+              case "Escape":
+                event.preventDefault();
+                closeSlashPopup();
+                return true;
+              case "ArrowDown":
+                event.preventDefault();
+                slashSelectedIndex = Math.min(slashSelectedIndex + 1, slashItems.length - 1);
+                renderSlashPopup(true);
+                return true;
+              case "ArrowUp":
+                event.preventDefault();
+                slashSelectedIndex = Math.max(slashSelectedIndex - 1, 0);
+                renderSlashPopup(true);
+                return true;
+              case "Enter":
+                event.preventDefault();
+                selectSlashItem(slashSelectedIndex);
+                return true;
+            }
+
+            return false;
+          },
+
+          handleTextInput(view, from, _to, text) {
+            if (text !== "/") return false;
+
+            const $from = view.state.doc.resolve(from);
+            const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+            const isValidPosition = textBefore.length === 0 || /\s$/.test(textBefore);
+
+            if (isValidPosition) {
+              setTimeout(() => {
+                slashRange = { from, to: from + 1 };
+                openSlashPopup(view);
+              }, 0);
+            }
+
+            return false;
+          },
+        },
+
+        view() {
+          return {
+            update(view) {
+              if (!slashPopup || !slashRange) return;
+
+              const { from } = view.state.selection;
+
+              if (from <= slashRange.from) {
+                closeSlashPopup();
+                return;
+              }
+
+              const query = view.state.doc.textBetween(slashRange.from + 1, from, "");
+              slashRange = { from: slashRange.from, to: from };
+              filterSlashItems(query);
+              renderSlashPopup();
+              placeSlashPopupAtCursor(view, slashRange.from);
+            },
+
+            destroy() {
+              closeSlashPopup();
+            },
+          };
         },
       }),
     ];

@@ -209,153 +209,159 @@ function render(html: string): string {
   </div>`;
 }
 
-export class TableViewElement extends HTMLElement {
-  private wheelHandler: ((e: WheelEvent) => void) | null = null;
-  private colDragCleanup: (() => void) | null = null;
-  private rowDragCleanup: (() => void) | null = null;
+if (typeof HTMLElement !== "undefined") {
+  class TableViewElement extends HTMLElement {
+    private wheelHandler: ((e: WheelEvent) => void) | null = null;
+    private colDragCleanup: (() => void) | null = null;
+    private rowDragCleanup: (() => void) | null = null;
 
-  connectedCallback() {
-    if (!this.shadowRoot) {
-      this.attachShadow({ mode: "open" });
+    set html(value: string) {
+      this.setContent(value);
+    }
+
+    connectedCallback() {
+      if (!this.shadowRoot) {
+        this.attachShadow({ mode: "open" });
+      }
+    }
+
+    setContent(html: string) {
+      const root = this.shadowRoot ?? this.attachShadow({ mode: "open" });
+
+      this.colDragCleanup?.();
+      this.rowDragCleanup?.();
+
+      root.innerHTML = `<style>${STYLES}</style>${render(html)}`;
+
+      const scroll = root.querySelector<HTMLElement>(".scroll");
+      const table = root.querySelector<HTMLTableElement>("table");
+      if (!scroll || !table) return;
+
+      if (this.wheelHandler) {
+        this.removeEventListener("wheel", this.wheelHandler);
+      }
+      this.wheelHandler = (e: WheelEvent) => {
+        e.preventDefault();
+        scroll.scrollLeft += e.deltaX;
+        scroll.scrollTop += e.deltaY;
+      };
+      this.addEventListener("wheel", this.wheelHandler, { passive: false });
+
+      // Column resizing
+      {
+        let activeHandle: HTMLElement | null = null;
+        let startX = 0;
+        let startWidth = 0;
+        let colEl: HTMLElement | null = null;
+
+        const onMouseMove = (e: MouseEvent) => {
+          if (!colEl) return;
+          const newWidth = Math.max(MIN_COL_WIDTH, startWidth + e.clientX - startX);
+          colEl.style.width = `${newWidth}px`;
+        };
+
+        const onMouseUp = () => {
+          activeHandle?.classList.remove("resizing");
+          activeHandle = null;
+          colEl = null;
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        };
+
+        const onMouseDown = (e: MouseEvent) => {
+          const handle = (e.target as HTMLElement).closest<HTMLElement>(
+            ".col-resize-handle",
+          );
+          if (!handle) return;
+          const th = handle.parentElement as HTMLElement;
+          const colIndex = parseInt(th.dataset.colIndex ?? "0", 10);
+          // index 0 in querySelectorAll("col") is the row-num col; data cols start at 1
+          colEl = table.querySelectorAll<HTMLElement>("col")[colIndex + 1] ?? null;
+          if (!colEl) return;
+          activeHandle = handle;
+          startX = e.clientX;
+          startWidth = colEl.offsetWidth;
+          activeHandle.classList.add("resizing");
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+          document.addEventListener("mousemove", onMouseMove);
+          document.addEventListener("mouseup", onMouseUp);
+          e.preventDefault();
+        };
+
+        table.addEventListener("mousedown", onMouseDown);
+        this.colDragCleanup = () => {
+          table.removeEventListener("mousedown", onMouseDown);
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+        };
+      }
+
+      // Row resizing
+      {
+        let activeHandle: HTMLElement | null = null;
+        let startY = 0;
+        let startHeight = 0;
+        let rowEl: HTMLElement | null = null;
+
+        const onMouseMove = (e: MouseEvent) => {
+          if (!rowEl) return;
+          const newHeight = Math.max(MIN_ROW_HEIGHT, startHeight + e.clientY - startY);
+          for (const td of rowEl.querySelectorAll<HTMLElement>("td")) {
+            td.style.height = `${newHeight}px`;
+          }
+        };
+
+        const onMouseUp = () => {
+          activeHandle?.classList.remove("resizing");
+          activeHandle = null;
+          rowEl = null;
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        };
+
+        const onMouseDown = (e: MouseEvent) => {
+          const handle = (e.target as HTMLElement).closest<HTMLElement>(
+            ".row-resize-handle",
+          );
+          if (!handle) return;
+          const td = handle.parentElement as HTMLElement;
+          rowEl = td.parentElement as HTMLElement;
+          activeHandle = handle;
+          startY = e.clientY;
+          startHeight = td.offsetHeight;
+          activeHandle.classList.add("resizing");
+          document.body.style.cursor = "row-resize";
+          document.body.style.userSelect = "none";
+          document.addEventListener("mousemove", onMouseMove);
+          document.addEventListener("mouseup", onMouseUp);
+          e.preventDefault();
+        };
+
+        table.addEventListener("mousedown", onMouseDown);
+        this.rowDragCleanup = () => {
+          table.removeEventListener("mousedown", onMouseDown);
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+        };
+      }
+    }
+
+    disconnectedCallback() {
+      if (this.wheelHandler) {
+        this.removeEventListener("wheel", this.wheelHandler);
+        this.wheelHandler = null;
+      }
+      this.colDragCleanup?.();
+      this.rowDragCleanup?.();
     }
   }
 
-  setContent(html: string) {
-    if (!this.shadowRoot) {
-      this.attachShadow({ mode: "open" });
-    }
-
-    this.colDragCleanup?.();
-    this.rowDragCleanup?.();
-
-    this.shadowRoot!.innerHTML = `<style>${STYLES}</style>${render(html)}`;
-
-    const root = this.shadowRoot!;
-    const scroll = root.querySelector<HTMLElement>(".scroll")!;
-    const table = root.querySelector<HTMLTableElement>("table")!;
-
-    if (this.wheelHandler) {
-      this.removeEventListener("wheel", this.wheelHandler);
-    }
-    this.wheelHandler = (e: WheelEvent) => {
-      e.preventDefault();
-      scroll.scrollLeft += e.deltaX;
-      scroll.scrollTop += e.deltaY;
-    };
-    this.addEventListener("wheel", this.wheelHandler, { passive: false });
-
-    // Column resizing
-    {
-      let activeHandle: HTMLElement | null = null;
-      let startX = 0;
-      let startWidth = 0;
-      let colEl: HTMLElement | null = null;
-
-      const onMouseMove = (e: MouseEvent) => {
-        if (!colEl) return;
-        const newWidth = Math.max(MIN_COL_WIDTH, startWidth + e.clientX - startX);
-        colEl.style.width = `${newWidth}px`;
-      };
-
-      const onMouseUp = () => {
-        activeHandle?.classList.remove("resizing");
-        activeHandle = null;
-        colEl = null;
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-
-      const onMouseDown = (e: MouseEvent) => {
-        const handle = (e.target as HTMLElement).closest<HTMLElement>(
-          ".col-resize-handle",
-        );
-        if (!handle) return;
-        const th = handle.parentElement as HTMLElement;
-        const colIndex = parseInt(th.dataset.colIndex ?? "0", 10);
-        // index 0 in querySelectorAll("col") is the row-num col; data cols start at 1
-        colEl = table.querySelectorAll<HTMLElement>("col")[colIndex + 1] ?? null;
-        if (!colEl) return;
-        activeHandle = handle;
-        startX = e.clientX;
-        startWidth = colEl.offsetWidth;
-        activeHandle.classList.add("resizing");
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-        e.preventDefault();
-      };
-
-      table.addEventListener("mousedown", onMouseDown);
-      this.colDragCleanup = () => {
-        table.removeEventListener("mousedown", onMouseDown);
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-      };
-    }
-
-    // Row resizing
-    {
-      let activeHandle: HTMLElement | null = null;
-      let startY = 0;
-      let startHeight = 0;
-      let rowEl: HTMLElement | null = null;
-
-      const onMouseMove = (e: MouseEvent) => {
-        if (!rowEl) return;
-        const newHeight = Math.max(MIN_ROW_HEIGHT, startHeight + e.clientY - startY);
-        for (const td of rowEl.querySelectorAll<HTMLElement>("td")) {
-          td.style.height = `${newHeight}px`;
-        }
-      };
-
-      const onMouseUp = () => {
-        activeHandle?.classList.remove("resizing");
-        activeHandle = null;
-        rowEl = null;
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-
-      const onMouseDown = (e: MouseEvent) => {
-        const handle = (e.target as HTMLElement).closest<HTMLElement>(
-          ".row-resize-handle",
-        );
-        if (!handle) return;
-        const td = handle.parentElement as HTMLElement;
-        rowEl = td.parentElement as HTMLElement;
-        activeHandle = handle;
-        startY = e.clientY;
-        startHeight = td.offsetHeight;
-        activeHandle.classList.add("resizing");
-        document.body.style.cursor = "row-resize";
-        document.body.style.userSelect = "none";
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-        e.preventDefault();
-      };
-
-      table.addEventListener("mousedown", onMouseDown);
-      this.rowDragCleanup = () => {
-        table.removeEventListener("mousedown", onMouseDown);
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-      };
-    }
-  }
-
-  disconnectedCallback() {
-    if (this.wheelHandler) {
-      this.removeEventListener("wheel", this.wheelHandler);
-      this.wheelHandler = null;
-    }
-    this.colDragCleanup?.();
-    this.rowDragCleanup?.();
+  if (!customElements.get("table-view")) {
+    customElements.define("table-view", TableViewElement);
   }
 }
-
-customElements.define("table-view", TableViewElement);

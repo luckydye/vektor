@@ -103,7 +103,7 @@ const publicEnvVars = () => Astro.locals.publicEnv;
       import "../editor/elements/category-target.ts";
       import "../editor/elements/drawer.ts";
       import "../editor/elements/shortcut.ts";
-      import "../elements/document-statusbar.ts";
+      import "../components/document-statusbar.ts";
       import "../editor/elements/table-view.ts";
       import "../editor/elements/cake.ts";
 
@@ -199,7 +199,7 @@ const publicEnvVars = () => Astro.locals.publicEnv;
       <!-- Main content spans the full width (behind the fixed sidebar). Each
            content view opts into the sidebar inset itself, so full-bleed views
            (e.g. canvas documents) can render behind the navigation. -->
-      <div class="main-content min-h-screen h-full transition-all lg:transition-none relative">
+      <div class="main-content min-h-screen h-full transition-all md:transition-none relative">
         <!-- Mobile Header Navigation -->
         <MobileHeader
             client:load
@@ -208,17 +208,15 @@ const publicEnvVars = () => Astro.locals.publicEnv;
             spaceName={currentSpace?.name ?? ""}
             pathname={pathname}
         />
+        
         <DockedWindowLayout client:only="vue" />
-        <div class="min-h-screen h-full flex flex-col relative">
-          <slot />
-        </div>
+        
+        <slot />
       </div>
 
       <!-- Fixed Sidebar -->
       <Sidebar client:load transition:name="navigation" />
     </div>
-
-    <CommandPalatte client:only />
 
     <CalDAVSetupDialog client:only />
 
@@ -227,5 +225,7 @@ const publicEnvVars = () => Astro.locals.publicEnv;
     <DocumentOverlay client:only="vue" />
 
     <slot name="outer"></slot>
+    
+    <CommandPalatte client:only />
   </body>
 </html>

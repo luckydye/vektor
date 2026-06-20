@@ -1,4 +1,4 @@
-import { authClient } from "~/src/composeables/auth-client.ts";
+import { getSession } from "~/src/composeables/auth-client.ts";
 
 // Custom element for user mentions in the editor.
 // Renders @mentions with click handling and tooltip support.
@@ -21,7 +21,7 @@ if (typeof customElements !== "undefined" && !customElements.get("user-mention")
         if (!mentionEmail) return;
 
         try {
-          const { data: session } = await authClient.getSession();
+          const { data: session } = await getSession();
           if (session?.user?.email === mentionEmail) {
             this.setAttribute("data-self-mention", "true");
           }

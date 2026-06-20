@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from "vue";
 import * as Y from "yjs";
 import {
   canvasFitViewIcon,
@@ -67,12 +67,10 @@ import type {
   CanvasStrokeSnapshot,
   CanvasTool,
 } from "../canvas/elements/types.ts";
+import { useCollaboration } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
-import { useUserProfile } from "../composeables/useUserProfile.ts";
 import { type TranslationKey, t } from "../utils/lang.ts";
-import type { PresenceEnvelope } from "../utils/realtime.ts";
-import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
 import {
   buildTransform,
   computeSnapGuides,
@@ -222,19 +220,27 @@ const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
 const saveError = ref<string | null>(null);
 const isDarkMode = ref(false);
 const localPointer = ref<{ x: number; y: number } | null>(null);
-const remotePresences = ref(new Map<string, PresenceEnvelope<CanvasPresenceState>>());
 
 const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
-const user = useUserProfile();
 const { document: documentData, saveDocument } = useDocument(props.documentId, "canvas");
 // Used to resolve a dropped/inserted document id to best-effort local title/type
 // metadata. The persisted canvas reference remains id-only.
 const { documents } = useDocuments();
 
-const roomId = props.documentId || crypto.randomUUID();
-const presenceClientId = crypto.randomUUID();
-const ydoc = new Y.Doc();
+const canvasDocumentId = toRef(props, "documentId");
+const fallbackPresenceRoomId =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `canvas:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+const presenceRoomId = computed(() => props.documentId ?? fallbackPresenceRoomId);
+const collaboration = useCollaboration<CanvasPresenceState>({
+  spaceId: props.spaceId,
+  documentId: canvasDocumentId,
+  presenceRoomId,
+  currentPresenceState: presenceState,
+});
+const ydoc = collaboration.ydoc.value;
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
 const documentLinks = createDocumentLinkController({
@@ -252,15 +258,8 @@ const documentLinks = createDocumentLinkController({
 // reverts this user's own changes.
 const undoManager = new Y.UndoManager([yShapes, yStrokes]);
 
-let leaveYjsRoom = () => {};
-let leavePresenceRoom = () => {};
-let presenceHandle: {
-  update: (state: CanvasPresenceState) => void;
-  leave: () => void;
-} | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saveStateTimer: ReturnType<typeof setTimeout> | null = null;
-let presenceTimer: ReturnType<typeof setInterval> | null = null;
 let dragState: DragState | null = null;
 // True once a shape drag has actually moved the selection. Document-link cards
 // read this to tell a click (open the document) from a drag (just reposition).
@@ -273,7 +272,6 @@ const contextMenuPos = ref<{ x: number; y: number } | null>(null);
 let contextMenuInsertWorld: { x: number; y: number } | null = null;
 let isReady = false;
 let savePrunedInvalidShapesWhenReady = false;
-let hasJoinedYjsRoom = false;
 let viewportControls: ViewportControls | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let themeObserver: MutationObserver | null = null;
@@ -281,15 +279,64 @@ let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 
 const remoteCanvasPresences = computed(() =>
-  [...remotePresences.value.values()].filter(
+  collaboration.presenceProfiles.value.filter(
+    (presence) => presence.state?.kind === "canvas",
+  ),
+);
+
+const remoteCanvasPointerPresences = computed(() =>
+  collaboration.presenceProfiles.value.filter(
     (presence) => presence.state?.kind === "canvas" && presence.state.pointer,
   ),
 );
 
-// Remote pointers arrive in discrete ~120ms presence updates; a CSS
-// transition on the cursor smooths the jumps. While the local camera moves,
-// the transition is suspended so cursors stay locked to the canvas instead
-// of lagging behind the pan/zoom.
+const remoteCanvasSelections = computed(() =>
+  remoteCanvasPresences.value.flatMap((presence) => {
+    const state = presence.state;
+    if (!state?.selectionIds.length) return [];
+
+    return state.selectionIds.flatMap((itemId) => {
+      const shape = shapesById.value.get(itemId);
+      if (!shape) return [];
+      return [
+        {
+          clientId: presence.clientId,
+          user: presence.user,
+          itemId,
+          bounds: shape,
+        },
+      ];
+    });
+  }),
+);
+
+const remoteCanvasDomSelections = computed(() =>
+  remoteCanvasSelections.value.filter(
+    (selection) =>
+      selection.bounds.type !== "image" || isGifSrc(selection.bounds.src ?? ""),
+  ),
+);
+
+const remoteCanvasImageSelections = computed(() =>
+  remoteCanvasSelections.value.filter(
+    (selection) =>
+      selection.bounds.type === "image" && !isGifSrc(selection.bounds.src ?? ""),
+  ),
+);
+
+const remoteCanvasStrokeSelections = computed(() =>
+  remoteCanvasPresences.value.map((presence) => ({
+    ids: new Set(
+      presence.state?.selectionIds.filter((id) => strokesById.value.has(id)) ?? [],
+    ),
+    color: presence.user.color || getPresenceColor(presence.user.id),
+  })),
+);
+
+// Remote pointers arrive as discrete presence updates; a CSS transition on the
+// cursor smooths the jumps. While the local camera moves, the transition is
+// suspended so cursors stay locked to the canvas instead of lagging behind the
+// pan/zoom.
 const isCameraMoving = ref(false);
 let cameraMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -627,12 +674,6 @@ function createShapeMap(shape: CanvasShape) {
   return map;
 }
 
-function joinYjsRoomOnce() {
-  if (hasJoinedYjsRoom || !props.documentId) return;
-  hasJoinedYjsRoom = true;
-  leaveYjsRoom = joinYjsRoom(props.spaceId, props.documentId, ydoc);
-}
-
 function serializeSnapshot(): string {
   const snapshot: CanvasSnapshot = {
     version: 1,
@@ -864,6 +905,13 @@ function renderImages() {
       ctx.drawImage(cached, sx, sy, sw, sh);
     }
 
+    for (const selection of remoteCanvasImageSelections.value) {
+      if (selection.bounds.id !== shape.id) continue;
+      ctx.strokeStyle = selection.user.color || getPresenceColor(selection.user.id);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx - 2, sy - 2, sw + 4, sh + 4);
+    }
+
     if (selectedShapeIds.value.has(shape.id)) {
       ctx.strokeStyle = "#2563eb";
       ctx.lineWidth = 2;
@@ -885,6 +933,7 @@ function renderInk() {
     strokes: strokes.value,
     activeStroke: activeFreehandStroke.value,
     selectedStrokeIds: selectedStrokeIds.value,
+    remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
     snapGuides: activeSnapGuides.value,
     defaultInkColor: defaultInkColor(),
   });
@@ -932,49 +981,18 @@ function presenceState(): CanvasPresenceState {
       y: camera.value.centerY,
       scale: camera.value.zoom,
     },
-    selectionIds: [...selectedShapeIds.value],
+    selectionIds: [...selectedShapeIds.value, ...selectedStrokeIds.value],
     focusedNodeId: selectedShape.value?.id ?? null,
     activeTool: activeTool.value,
   };
 }
 
 function updatePresence() {
-  presenceHandle?.update(presenceState());
+  collaboration.updatePresence();
 }
 
 function setupPresence() {
-  if (!user.value || presenceHandle) return;
-  presenceHandle = joinPresenceRoom<CanvasPresenceState>(
-    props.spaceId,
-    roomId,
-    presenceClientId,
-    {
-      id: user.value.id,
-      name: user.value.name,
-      image: user.value.image,
-      color: getPresenceColor(user.value.id),
-    },
-    (event) => {
-      const next = new Map(remotePresences.value);
-      if (event.type === "presence-snapshot") {
-        next.clear();
-        for (const presence of event.presences) {
-          if (presence.clientId !== presenceClientId)
-            next.set(presence.clientId, presence);
-        }
-      } else if (event.type === "presence-update") {
-        if (event.presence.clientId !== presenceClientId) {
-          next.set(event.presence.clientId, event.presence);
-        }
-      } else {
-        next.delete(event.clientId);
-      }
-      remotePresences.value = next;
-    },
-    presenceState(),
-  );
-  leavePresenceRoom = presenceHandle.leave;
-  presenceTimer = setInterval(updatePresence, 120);
+  void collaboration.setupPresence();
 }
 
 function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
@@ -2010,8 +2028,8 @@ function handlePaste(event: ClipboardEvent) {
 // frame content within the *visible* region instead of the full viewport.
 function reservedSidebarWidth(): number {
   if (typeof window === "undefined") return 0;
-  // Below the lg breakpoint the sidebar is an overlay drawer and reserves no space.
-  if (!window.matchMedia("(min-width: 1024px)").matches) return 0;
+  // Below the md breakpoint the sidebar is an overlay drawer and reserves no space.
+  if (!window.matchMedia("(min-width: 768px)").matches) return 0;
   const rect = document.querySelector(".sidebar")?.getBoundingClientRect();
   return Math.max(0, rect?.right ?? 0);
 }
@@ -2131,7 +2149,9 @@ function handleKeydown(event: KeyboardEvent) {
 // only join; content arrives via the room and renders through the observers.
 watch(
   () => props.documentId,
-  () => joinYjsRoomOnce(),
+  () => {
+    void collaboration.joinUntilReady();
+  },
   { immediate: true },
 );
 
@@ -2145,6 +2165,19 @@ watch(
 );
 
 watch(selectedShapeIds, () => {
+  renderImages();
+  updatePresence();
+});
+
+watch(selectedStrokeIds, () => {
+  updatePresence();
+});
+
+watch(remoteCanvasStrokeSelections, () => {
+  renderInk();
+});
+
+watch(remoteCanvasImageSelections, () => {
   renderImages();
 });
 
@@ -2173,7 +2206,6 @@ watch(
   { deep: true, immediate: true },
 );
 
-watch(user, setupPresence);
 watch(
   [camera, screen],
   () => {
@@ -2244,8 +2276,6 @@ onMounted(() => {
   colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   colorSchemeMedia.addEventListener("change", updateThemeMode);
 
-  joinYjsRoomOnce();
-
   setupPresence();
   isReady = true;
   if (savePrunedInvalidShapesWhenReady) {
@@ -2273,8 +2303,7 @@ onUnmounted(() => {
   observedTextShapes.clear();
   themeObserver?.disconnect();
   colorSchemeMedia?.removeEventListener("change", updateThemeMode);
-  leavePresenceRoom();
-  leaveYjsRoom();
+  collaboration.leave();
   undoManager.destroy();
   ydoc.destroy();
   window.removeEventListener("keydown", handleKeydown);
@@ -2288,7 +2317,6 @@ onUnmounted(() => {
   imageCache.clear();
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
-  if (presenceTimer) clearInterval(presenceTimer);
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
 });
 </script>
@@ -2440,6 +2468,19 @@ onUnmounted(() => {
           transform: `translate(${transform.dx}px, ${transform.dy}px) scale(${transform.scale})`,
         }"
       >
+        <div
+          v-for="selection in remoteCanvasDomSelections"
+          :key="`${selection.clientId}:${selection.itemId}`"
+          class="canvas-remote-selection"
+          :style="{
+            left: `${selection.bounds.x}px`,
+            top: `${selection.bounds.y}px`,
+            width: `${selection.bounds.width}px`,
+            height: `${selection.bounds.height}px`,
+            '--presence-color': selection.user.color || getPresenceColor(selection.user.id),
+          }"
+        >
+        </div>
         <article
           v-for="shape in domShapes"
           :key="shape.id"
@@ -2584,7 +2625,7 @@ onUnmounted(() => {
       ></button>
 
       <div
-        v-for="presence in remoteCanvasPresences"
+        v-for="presence in remoteCanvasPointerPresences"
         :key="presence.clientId"
         class="canvas-presence"
         :class="{ 'is-instant': isCameraMoving }"
@@ -2934,6 +2975,16 @@ onUnmounted(() => {
   backdrop-filter: blur(8px);
   pointer-events: auto;
   will-change: transform;
+}
+
+.canvas-remote-selection {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  border-radius: 8px;
+  outline: 2px solid var(--presence-color);
+  outline-offset: 2px;
+  pointer-events: none;
 }
 
 .canvas-context-menu {

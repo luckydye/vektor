@@ -1,6 +1,4 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
 import type { APIRoute } from "astro";
 import {
   badRequestResponse,
@@ -11,8 +9,13 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { getSpaceDb } from "#db/db.ts";
+import { updateDocumentEmbedding } from "#db/documents.ts";
+import { file as fileTable } from "#db/schema/space.ts";
+import { extractFileTextFromBuffer } from "#files/extractText.ts";
+import { getFileStorage } from "#files/storage.ts";
+import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import { isSafeUploadIdPart, isWithinUploadsRoot } from "#utils/uploads.ts";
 
 const ALLOWED_TYPES = [
   // Images
@@ -83,32 +86,13 @@ export const GET: APIRoute = (context) =>
       const user = requireUser(context);
       await verifySpaceRole(spaceId, user.id, "viewer");
 
-      const uploadsDir = join(process.cwd(), "data", "uploads", spaceId);
+      const storage = getFileStorage();
+      const files = await storage.list(spaceId);
 
-      let entries: Awaited<ReturnType<typeof readdir>>;
-      try {
-        entries = await readdir(uploadsDir, { recursive: true });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return jsonResponse({ files: [] }, 200);
-        }
-        throw error;
-      }
-
-      const files = (
-        await Promise.all(
-          entries.map(async (entry) => {
-            const fullPath = join(uploadsDir, entry);
-            const fileStat = await stat(fullPath);
-            if (!fileStat.isFile()) return null;
-            const key = (entry as string).replace(/\\/g, "/");
-            const url = `/api/v1/spaces/${spaceId}/uploads/${key}`;
-            return { key, url, size: fileStat.size, updatedAt: fileStat.mtime };
-          }),
-        )
-      ).filter(Boolean);
-
-      return jsonResponse({ files }, 200);
+      return jsonResponse(
+        { files: files.map((f) => ({ ...f, url: storage.url(spaceId, f.key) })) },
+        200,
+      );
     },
     {
       fallbackMessage: "Failed to list uploads",
@@ -164,36 +148,57 @@ export const POST: APIRoute = (context) =>
         );
       }
 
-      // Generate unique filename
-      const fileExtension = originalName.split(".").pop()?.toLowerCase() || "bin";
-      const randomName = randomBytes(16).toString("hex");
-      const filename = `${randomName}.${fileExtension}`;
-
-      // Build the storage key - includes documentId if provided
-      // This structure is S3-compatible: {spaceId}/{documentId}/{filename} or {spaceId}/{filename}
-      const key = documentId ? `${documentId}/${filename}` : filename;
-
-      // Create uploads directory (with document subdirectory if applicable)
-      const uploadsDir = documentId
-        ? join(process.cwd(), "data", "uploads", spaceId, documentId)
-        : join(process.cwd(), "data", "uploads", spaceId);
-      if (!isWithinUploadsRoot(spaceId, uploadsDir)) {
-        throw badRequestResponse("Invalid upload path");
-      }
-      await mkdir(uploadsDir, { recursive: true });
-
-      // Save file
-      const filePath = join(uploadsDir, filename);
-      if (!isWithinUploadsRoot(spaceId, filePath)) {
-        throw badRequestResponse("Invalid upload path");
-      }
       const buffer = Buffer.from(await file.arrayBuffer());
-      await writeFile(filePath, buffer);
 
-      // Return a relative path — consumers prepend their own base URL.
+      // Content-addressable key: SHA-256 hash with 2-char prefix directory
+      const hash = createHash("sha256").update(buffer).digest("hex");
+      const fileExtension = originalName.split(".").pop()?.toLowerCase() ?? "bin";
+      const key = `${hash.slice(0, 2)}/${hash}.${fileExtension}`;
+
+      const storage = getFileStorage();
+      const url = await storage.put(spaceId, key, buffer, file.type || undefined);
+
+      // Extract text synchronously (buffer is in memory already)
+      const extractedText = extractFileTextFromBuffer(
+        buffer,
+        originalName,
+        file.type || undefined,
+      );
+
+      // Insert full metadata to file table for all uploads
+      const db = await getSpaceDb(spaceId);
+      await db
+        .insert(fileTable)
+        .values({
+          path: key,
+          documentId: documentId ?? null,
+          originalName,
+          mimeType: file.type || null,
+          url,
+          updatedAt: new Date(),
+          extractedText,
+        })
+        .onConflictDoUpdate({
+          target: fileTable.path,
+          set: {
+            documentId: documentId ?? null,
+            originalName,
+            mimeType: file.type || null,
+            url,
+            updatedAt: new Date(),
+            extractedText,
+          },
+        });
+
+      if (documentId) {
+        // Re-index the parent document (reads from file table, no FS scan)
+        updateDocumentEmbedding(spaceId, documentId).catch((err) => {
+          console.warn("Failed to re-index document after upload:", err);
+        });
+      }
+
+      // Return a relative URL — consumers prepend their own base URL.
       // This avoids jobs fetching via the public domain (which may 403).
-      const url = `/api/v1/spaces/${spaceId}/uploads/${key}`;
-
       return jsonResponse({ url, key }, 200);
     },
     {

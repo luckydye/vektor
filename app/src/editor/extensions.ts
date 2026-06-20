@@ -26,8 +26,10 @@ import {
   Underline,
 } from "./extensions/baseExtensions.ts";
 import { ColumnItem, ColumnLayout } from "./extensions/ColumnLayout.ts";
+import { CommentAnchor } from "./extensions/CommentAnchor.ts";
 import { DatePicker } from "./extensions/DatePicker.ts";
 import { ExpressionCell } from "./extensions/ExpressionCell.ts";
+import { ExtensionView } from "./extensions/ExtensionView.ts";
 import { FigmaEmbed } from "./extensions/FigmaEmbed.ts";
 import { FileAttachment } from "./extensions/FileAttachment.ts";
 import { HtmlBlock } from "./extensions/HtmlBlock.ts";
@@ -94,7 +96,13 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
     ),
     withoutDefaultKeyboardShortcuts(BulletList),
     withoutDefaultKeyboardShortcuts(OrderedList),
-    withoutDefaultKeyboardShortcuts(ListItem),
+    ListItem.extend({
+      addKeyboardShortcuts() {
+        return {
+          Enter: () => this.editor.commands.splitListItem(this.name),
+        };
+      },
+    }),
     withoutDefaultKeyboardShortcuts(
       ImageUpload.configure({
         spaceId: spaceId,
@@ -145,16 +153,20 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
         },
       }),
     ),
-    withoutDefaultKeyboardShortcuts(
-      TaskItem.configure({
-        nested: true,
-      }),
-    ),
+    TaskItem.configure({ nested: true }).extend({
+      addKeyboardShortcuts() {
+        return {
+          Enter: () => this.editor.commands.splitListItem(this.name),
+        };
+      },
+    }),
     withoutDefaultKeyboardShortcuts(TaskList),
     withoutDefaultKeyboardShortcuts(Code),
     withoutDefaultKeyboardShortcuts(CodeBlock),
 
     // custom extensions
+    CommentAnchor,
+    ExtensionView,
     MarkdownPaste,
     TicketLink,
     ExpressionCell,

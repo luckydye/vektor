@@ -10,7 +10,7 @@ function handleSubmit(e: CustomEvent<{ detail: { selected: HTMLElement } }>) {
 </script>
 
 <template>
-  <a-popover-trigger class="group relative z-10">
+  <a-popover-trigger class="group relative z-10 flex-none">
     <ButtonSecondary slot="trigger" aria-label="Document actions">
         <Icon name="more" />
     </ButtonSecondary>

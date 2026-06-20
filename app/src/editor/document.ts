@@ -1,3 +1,4 @@
+import { editing } from "../composeables/useEditor.ts";
 import docStyles from "../styles/document.css?inline";
 import "./elements/textarea.ts";
 import "./elements/expression.ts";
@@ -26,15 +27,10 @@ import { MentionSuggestons } from "./extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
 import { contentExtensions, type EditorContext } from "./extensions.ts";
 
-declare global {
-  interface Window {
-    __editor?: Editor;
-  }
-}
-
 const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
   "document-presence",
 );
+type ProsemirrorMapping = Parameters<typeof relativePositionToAbsolutePosition>[3];
 
 function dragHasFiles(transfer: DataTransfer | null) {
   if (!transfer) return false;
@@ -59,11 +55,17 @@ function relativePresencePositionToAbsolute(
       ydoc,
       syncState.type,
       relativePosition,
-      mapping,
+      mapping as ProsemirrorMapping,
     );
   } catch {
     return null;
   }
+}
+
+function absolutePresencePosition(state: EditorState, position: unknown) {
+  if (typeof position !== "number" || !Number.isFinite(position)) return null;
+  const maxPos = Math.max(state.doc.content.size - 1, 0);
+  return Math.max(0, Math.min(position, maxPos));
 }
 
 function createPresenceWidget(profile: DocumentPresenceProfile, color: string) {
@@ -105,16 +107,13 @@ function createDocumentPresenceExtension(ydoc: Y.Doc) {
                   continue;
                 }
 
-                const anchor = relativePresencePositionToAbsolute(
-                  state,
-                  ydoc,
-                  profile.state.selection.anchor,
-                );
-                const head = relativePresencePositionToAbsolute(
-                  state,
-                  ydoc,
-                  profile.state.selection.head,
-                );
+                const selection = profile.state.selection;
+                const anchor =
+                  relativePresencePositionToAbsolute(state, ydoc, selection.anchor) ??
+                  absolutePresencePosition(state, selection.absoluteAnchor);
+                const head =
+                  relativePresencePositionToAbsolute(state, ydoc, selection.head) ??
+                  absolutePresencePosition(state, selection.absoluteHead);
                 if (anchor === null || head === null) continue;
 
                 const maxPos = Math.max(state.doc.content.size - 1, 0);
@@ -158,7 +157,6 @@ function createEditor(
   editorElement: HTMLElement,
   ydoc: Y.Doc,
   context: EditorContext = {},
-  html?: string,
 ) {
   // const _persitance = new IndexeddbPersistence(roomName, ydoc);
   let lastPointerX = 0;
@@ -386,13 +384,12 @@ function createEditor(
   editor = new Editor({
     element: editorElement,
     enableCoreExtensions: true,
-    content: html,
     onContentError: ({ error, disableCollaboration }) => {
       console.error(error);
       disableCollaboration();
     },
     onCreate: async ({ editor: currentEditor }) => {
-      currentEditor.commands.focus();
+      currentEditor.commands.focus(undefined, { scrollIntoView: false });
     },
     onUpdate: () => {},
     onDestroy: () => {
@@ -471,30 +468,51 @@ function createEditor(
   return editor;
 }
 
-class DocumentView extends HTMLElement {
+export class DocumentView extends HTMLElement {
   element: HTMLElement = document.createElement("div");
   private tiptapEditor?: Editor;
   private ydoc?: Y.Doc;
-  private _editorContext: EditorContext = {};
+  private _html = "";
+  private presenceProfiles: DocumentPresenceProfile[] = [];
+
+  set html(value: string) {
+    this._html = value;
+    this.renderReadHtml(value);
+  }
   private startEditorQueued = false;
+  private editorStartVersion = 0;
+  private startingEditor = false;
 
   static get observedAttributes() {
-    return ["editor", "editor-context", "space-id", "document-id"];
+    return ["editor"];
   }
 
   get root() {
     return this.shadowRoot;
   }
 
-  get collaborationDocument() {
-    if (!this.ydoc) {
-      this.ydoc = new Y.Doc();
-    }
+  get editorInstance() {
+    return this.tiptapEditor;
+  }
 
+  get collaborationDocument(): Y.Doc | undefined {
     return this.ydoc;
   }
 
+  set collaborationDocument(ydoc: Y.Doc | undefined) {
+    if (ydoc instanceof Y.Doc) {
+      if (this.ydoc === ydoc) return;
+      const hadEditor = !!this.tiptapEditor;
+      if (hadEditor) {
+        this.destroyEditor();
+      }
+      this.ydoc = ydoc;
+      this.queueMaybeStartEditor();
+    }
+  }
+
   setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
+    this.presenceProfiles = profiles;
     if (!this.tiptapEditor) return;
 
     this.tiptapEditor.view.dispatch(
@@ -502,40 +520,27 @@ class DocumentView extends HTMLElement {
     );
   }
 
-  get editorContext() {
-    return this._editorContext;
-  }
+  renderReadHtml(html: string) {
+    this._html = html;
+    if (this.tiptapEditor) return;
 
-  set editorContext(context: EditorContext) {
-    this._editorContext = context || {};
-    this.queueMaybeStartEditor();
-  }
+    const shadow = this.ensureShadowRoot();
+    this.ensureDocumentStyles(shadow);
 
-  private parsedEditorContextAttribute(): EditorContext {
-    const raw = this.getAttribute("editor-context");
-    if (!raw) return {};
+    const content = document.createElement("div");
+    content.setAttribute("part", "content");
 
-    try {
-      const parsed = JSON.parse(raw) as EditorContext;
-      return parsed && typeof parsed === "object" ? parsed : {};
-    } catch {
-      return {};
-    }
+    const inner = document.createElement("div");
+    inner.innerHTML = html;
+    content.appendChild(inner);
+
+    shadow.querySelector('[part="content"]')?.replaceWith(content) ??
+      shadow.appendChild(content);
   }
 
   private resolvedEditorContext(): EditorContext {
-    const attributeContext = this.parsedEditorContextAttribute();
-    const spaceId =
-      this._editorContext.spaceId ||
-      attributeContext.spaceId ||
-      this.getAttribute("space-id") ||
-      document.body.dataset.spaceId ||
-      "";
-    const documentId =
-      this._editorContext.documentId ||
-      attributeContext.documentId ||
-      this.getAttribute("document-id") ||
-      undefined;
+    const spaceId = this.getAttribute("space-id") || document.body.dataset.spaceId || "";
+    const documentId = this.getAttribute("document-id") || undefined;
 
     return { spaceId, documentId };
   }
@@ -593,40 +598,60 @@ class DocumentView extends HTMLElement {
     }
   };
 
-  connectedCallback() {
-    if (!this.root) {
-      // no template for declarative shadow DOM
-      const shadow = this.attachShadow({ mode: "open" });
-      Object.assign(shadow, {
-        createRange: document.createRange.bind(document),
+  private ensureDocumentStyles(shadow: ShadowRoot) {
+    let style = shadow.querySelector<HTMLStyleElement>("style[data-document-styles]");
+    if (!style) {
+      style = document.createElement("style");
+      style.dataset.documentStyles = "";
+      style.textContent = docStyles;
+      shadow.prepend(style);
+    }
+    return style;
+  }
+
+  private ensureShadowRootCompatibility(shadow: ShadowRoot) {
+    if (
+      typeof (shadow as ShadowRoot & { createRange?: unknown }).createRange !== "function"
+    ) {
+      Object.defineProperty(shadow, "createRange", {
+        configurable: true,
+        value: document.createRange.bind(document),
       });
+    }
+  }
+
+  private ensureShadowRoot() {
+    let shadow = this.root;
+    if (!shadow) {
+      // no template for declarative shadow DOM
+      shadow = this.attachShadow({ mode: "open" });
 
       // on client navigation, declarative shadow DOM does not work
       //  if its a server navigation, template is null here.
       const template = this.querySelector("template");
       if (template) {
         const clone = template.content.cloneNode(true);
-        shadow.innerHTML = `
-          <style>${docStyles}</style>
-        `;
-        shadow.append(clone);
+        shadow.replaceChildren(clone);
       }
     }
+    this.ensureShadowRootCompatibility(shadow);
+    return shadow;
+  }
 
-    let attached = false;
-    this.addEventListener("pointerover", () => {
-      if (!attached) {
-        this.attachListeners();
-      }
-      attached = true;
-    });
+  connectedCallback() {
+    const shadow = this.ensureShadowRoot();
+    this.ensureDocumentStyles(shadow);
 
     this.attachListeners();
     this.queueMaybeStartEditor();
   }
 
   attributeChangedCallback() {
-    this.queueMaybeStartEditor();
+    if (!this.hasEditorConfig()) {
+      this.destroyEditor();
+    } else {
+      this.queueMaybeStartEditor();
+    }
   }
 
   private queueMaybeStartEditor() {
@@ -638,21 +663,83 @@ class DocumentView extends HTMLElement {
     });
   }
 
+  private preserveScrollPositionDuringLayoutChange() {
+    const scrollPositions: Array<{
+      element: HTMLElement;
+      left: number;
+      top: number;
+    }> = [];
+    for (
+      let element: HTMLElement | null = this;
+      element;
+      element = element.parentElement
+    ) {
+      if (element.scrollLeft || element.scrollTop) {
+        scrollPositions.push({
+          element,
+          left: element.scrollLeft,
+          top: element.scrollTop,
+        });
+      }
+    }
+
+    const previousMinHeight = this.style.minHeight;
+    this.style.minHeight = `${this.getBoundingClientRect().height}px`;
+
+    return () => {
+      const restoreScrollPosition = () => {
+        for (const { element, left, top } of scrollPositions) {
+          element.scrollTo({ left, top, behavior: "instant" });
+        }
+      };
+
+      restoreScrollPosition();
+      requestAnimationFrame(() => {
+        restoreScrollPosition();
+        this.style.minHeight = previousMinHeight;
+        requestAnimationFrame(restoreScrollPosition);
+      });
+    };
+  }
+
   private maybeStartEditor() {
     const shadow = this.root;
-    if (!this.isConnected || !shadow || this.tiptapEditor || !this.hasEditorConfig()) {
+    if (
+      !this.isConnected ||
+      !shadow ||
+      this.tiptapEditor ||
+      this.startingEditor ||
+      !this.hasEditorConfig()
+    ) {
       return;
     }
 
-    shadow.innerHTML = `<style>${docStyles}</style>`;
+    this.startingEditor = true;
+    const startVersion = ++this.editorStartVersion;
+    this.startingEditor = false;
+    if (
+      startVersion !== this.editorStartVersion ||
+      !this.isConnected ||
+      !this.hasEditorConfig() ||
+      this.tiptapEditor
+    ) {
+      return;
+    }
+
+    const collaborationDocument = this.collaborationDocument;
+    if (!collaborationDocument) return;
+
+    const finishLayoutChange = this.preserveScrollPositionDuringLayoutChange();
+
+    shadow.replaceChildren();
+    this.ensureDocumentStyles(shadow);
     shadow.append(this.element);
 
     this.element.className = "tiptap";
     this.tiptapEditor = createEditor(
       this.element,
-      this.collaborationDocument,
+      collaborationDocument,
       this.resolvedEditorContext(),
-      this.initialHtml(),
     );
 
     const handleUpdate = () => {
@@ -661,43 +748,42 @@ class DocumentView extends HTMLElement {
 
     this.tiptapEditor.on("selectionUpdate", handleUpdate);
     this.tiptapEditor.on("update", handleUpdate);
+    this.setPresenceProfiles(this.presenceProfiles);
+    finishLayoutChange();
 
-    window.__editor = this.tiptapEditor;
+    this.dispatchEvent(
+      new CustomEvent("editor-ready", {
+        detail: { editor: this.tiptapEditor },
+      }),
+    );
 
     return this.tiptapEditor;
   }
 
   destroyEditor() {
+    this.editorStartVersion++;
+    this.startingEditor = false;
     if (!this.tiptapEditor) return;
+    const finishLayoutChange = this.preserveScrollPositionDuringLayoutChange();
     const editor = this.tiptapEditor;
     this.tiptapEditor = undefined;
     editor.destroy();
-    if (window.__editor === editor) {
-      window.__editor = undefined;
-    }
+    this.dispatchEvent(
+      new CustomEvent("editor-destroyed", {
+        detail: { editor },
+      }),
+    );
     window.dispatchEvent(new Event("editor-destroyed"));
-    const shadow = this.root;
-    if (shadow) {
-      shadow.innerHTML = `<style>${docStyles}</style>`;
-    }
+    this.renderReadHtml(this._html);
+    finishLayoutChange();
+  }
+
+  disconnectedCallback() {
+    this.destroyEditor();
   }
 
   private hasEditorConfig() {
     return this.hasAttribute("editor");
-  }
-
-  private initialHtml() {
-    const template = this.querySelector("template");
-    if (template) {
-      return Array.from(template.content.childNodes)
-        .map((node) => {
-          if (node instanceof Element) return node.outerHTML;
-          return node.textContent || "";
-        })
-        .join("");
-    }
-
-    return this.innerHTML;
   }
 
   attachListeners() {
@@ -719,7 +805,7 @@ class DocumentView extends HTMLElement {
       (_e) => {
         if (this.tiptapEditor) return; // we ignore checkbox changes in read mode only
 
-        window.dispatchEvent(new CustomEvent("edit-mode-start"));
+        editing.value = true;
       },
       { capture: true },
     );

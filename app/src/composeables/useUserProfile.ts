@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { authClient } from "../composeables/auth-client.ts";
+import { getSession } from "../composeables/auth-client.ts";
 import { config } from "../config.ts";
 import { LOCAL_USER } from "../noAuth.ts";
 
@@ -21,7 +21,7 @@ async function loadUserSession() {
   }
 
   try {
-    const { data: session } = await authClient.getSession();
+    const { data: session } = await getSession();
     user.value = session?.user;
   } catch (error) {
     console.error("Failed to load user session:", error);

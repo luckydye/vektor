@@ -1,7 +1,21 @@
-import { Extension, Mark, Node, getMarkAttributes, markPasteRule, mergeAttributes, textblockTypeInputRule, wrappingInputRule } from "@tiptap/core";
+import {
+  Extension,
+  getMarkAttributes,
+  Mark,
+  markPasteRule,
+  mergeAttributes,
+  Node,
+  textblockTypeInputRule,
+  wrappingInputRule,
+} from "@tiptap/core";
 import type { NodeType } from "@tiptap/pm/model";
+import {
+  liftListItem as pmLiftListItem,
+  sinkListItem as pmSinkListItem,
+  splitListItem as pmSplitListItem,
+  wrapInList as pmWrapInList,
+} from "@tiptap/pm/schema-list";
 import type { EditorState } from "@tiptap/pm/state";
-import { liftListItem as pmLiftListItem, sinkListItem as pmSinkListItem, splitListItem as pmSplitListItem, wrapInList as pmWrapInList } from "@tiptap/pm/schema-list";
 
 // ---- Nodes ----
 
@@ -67,7 +81,8 @@ export const HardBreak = Node.create({
               if (dispatch) {
                 const { selection, storedMarks } = tr;
                 const { $from } = selection;
-                const currentMarks = storedMarks ?? ($from.parentOffset ? $from.marks() : []);
+                const currentMarks =
+                  storedMarks ?? ($from.parentOffset ? $from.marks() : []);
                 tr.replaceSelectionWith(this.type.create(null, null, currentMarks));
                 tr.scrollIntoView();
                 dispatch(tr);
@@ -390,7 +405,8 @@ export const BackgroundColor = Extension.create({
         attributes: {
           backgroundColor: {
             default: null,
-            parseHTML: (element) => element.style.backgroundColor?.replace(/['"]+/g, "") || null,
+            parseHTML: (element) =>
+              element.style.backgroundColor?.replace(/['"]+/g, "") || null,
             renderHTML: (attributes) => {
               if (!attributes.backgroundColor) return {};
               return { style: `background-color: ${attributes.backgroundColor}` };
@@ -409,7 +425,10 @@ export const BackgroundColor = Extension.create({
       unsetBackgroundColor:
         () =>
         ({ chain }) =>
-          chain().setMark("textStyle", { backgroundColor: null }).removeEmptyTextStyle().run(),
+          chain()
+            .setMark("textStyle", { backgroundColor: null })
+            .removeEmptyTextStyle()
+            .run(),
     };
   },
 });
@@ -433,7 +452,10 @@ export const Heading = Node.create({
     };
   },
   parseHTML() {
-    return this.options.levels.map((level: number) => ({ tag: `h${level}`, attrs: { level } }));
+    return this.options.levels.map((level: number) => ({
+      tag: `h${level}`,
+      attrs: { level },
+    }));
   },
   renderHTML({ node, HTMLAttributes }) {
     const level = this.options.levels.includes(node.attrs.level)
@@ -490,7 +512,8 @@ export const TextAlign = Extension.create({
         attributes: {
           textAlign: {
             default: this.options.defaultAlignment,
-            parseHTML: (element) => element.style.textAlign || this.options.defaultAlignment,
+            parseHTML: (element) =>
+              element.style.textAlign || this.options.defaultAlignment,
             renderHTML: (attributes) => {
               if (attributes.textAlign === this.options.defaultAlignment) return {};
               return { style: `text-align: ${attributes.textAlign}` };
@@ -541,7 +564,9 @@ export const CodeBlock = Node.create({
         default: null,
         parseHTML: (element) => {
           const { languageClassPrefix } = this.options;
-          const classes = [...((element.firstElementChild as HTMLElement)?.classList ?? [])];
+          const classes = [
+            ...((element.firstElementChild as HTMLElement)?.classList ?? []),
+          ];
           const lang = classes
             .filter((c) => c.startsWith(languageClassPrefix))
             .map((c) => c.slice(languageClassPrefix.length))[0];
@@ -732,7 +757,11 @@ export const OrderedList = Node.create({
     const { start } = node.attrs;
     return [
       "ol",
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, start !== 1 ? { start } : {}),
+      mergeAttributes(
+        this.options.HTMLAttributes,
+        HTMLAttributes,
+        start !== 1 ? { start } : {},
+      ),
       0,
     ];
   },
@@ -772,7 +801,11 @@ export const OrderedList = Node.create({
 export const ListItem = Node.create({
   name: "listItem",
   addOptions() {
-    return { HTMLAttributes: {}, bulletListTypeName: "bulletList", orderedListTypeName: "orderedList" };
+    return {
+      HTMLAttributes: {},
+      bulletListTypeName: "bulletList",
+      orderedListTypeName: "orderedList",
+    };
   },
   content: "paragraph block*",
   defining: true,
@@ -820,7 +853,15 @@ export const TaskList = Node.create({
     return [{ tag: 'ul[data-type="taskList"]' }];
   },
   renderHTML({ HTMLAttributes }) {
-    return ["ul", mergeAttributes({ "data-type": "taskList" }, this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "ul",
+      mergeAttributes(
+        { "data-type": "taskList" },
+        this.options.HTMLAttributes,
+        HTMLAttributes,
+      ),
+      0,
+    ];
   },
   addCommands() {
     return {
@@ -864,8 +905,17 @@ export const TaskItem = Node.create({
   renderHTML({ node, HTMLAttributes }) {
     return [
       "li",
-      mergeAttributes({ "data-type": "taskItem" }, this.options.HTMLAttributes, HTMLAttributes),
-      0,
+      mergeAttributes(
+        { "data-type": "taskItem" },
+        this.options.HTMLAttributes,
+        HTMLAttributes,
+      ),
+      [
+        "label",
+        { contenteditable: "false" },
+        ["input", { type: "checkbox", ...(node.attrs.checked ? { checked: "" } : {}) }],
+      ],
+      ["div", 0],
     ];
   },
   addNodeView() {

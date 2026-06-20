@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { spinnerIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
-import { formatDate } from "../utils/utils.ts";
+import DocumentList from "./DocumentList.vue";
+import DocumentListItem from "./DocumentListItem.vue";
+import Pager from "./Pager.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -45,10 +48,8 @@ const handleDelete = async (documentId: string) => {
     !confirm(
       "Are you sure you want to permanently delete this document? This action cannot be undone.",
     )
-  ) {
+  )
     return;
-  }
-
   try {
     await api.document.delete(props.spaceId, documentId);
     refresh();
@@ -56,66 +57,117 @@ const handleDelete = async (documentId: string) => {
     alert(err instanceof Error ? err.message : "Failed to delete document");
   }
 };
+
+const handleBatchRestore = async (ids: Set<string>, deselectAll: () => void) => {
+  const count = ids.size;
+  if (!confirm(`Restore ${count} document${count !== 1 ? "s" : ""}?`)) return;
+  try {
+    for (const id of ids) {
+      await api.document.restore(props.spaceId, id);
+    }
+    deselectAll();
+    refresh();
+  } catch (err) {
+    alert(err instanceof Error ? err.message : "Failed to restore documents");
+  }
+};
+
+const handleBatchDelete = async (ids: Set<string>, deselectAll: () => void) => {
+  const count = ids.size;
+  if (
+    !confirm(
+      `Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`,
+    )
+  )
+    return;
+  try {
+    for (const id of ids) {
+      await api.document.delete(props.spaceId, id);
+    }
+    deselectAll();
+    refresh();
+  } catch (err) {
+    alert(err instanceof Error ? err.message : "Failed to delete documents");
+  }
+};
 </script>
 
 <template>
   <div>
     <div v-if="isLoading" class="text-center py-8">
-      <div class="text-neutral">Loading archived documents...</div>
+      <div class="svg-icon w-8 h-8 mx-auto mb-3 text-neutral-300 animate-spin" v-html="spinnerIcon" />
+      <p class="text-size-medium text-neutral-500">Loading archived documents…</p>
     </div>
 
     <div v-else-if="error" class="text-center py-8">
-      <div class="text-red-600">{{ error?.message ?? 'Failed to load archived documents' }}</div>
+      <p class="text-red-600">{{ error?.message ?? "Failed to load archived documents" }}</p>
     </div>
 
     <div v-else-if="documents.length === 0" class="text-center py-8">
-      <div class="text-neutral">No archived documents</div>
+      <p class="text-neutral">No archived documents</p>
     </div>
 
     <div v-else>
-      <div class="overflow-x-auto border border-neutral-100 rounded-md">
-        <table class="min-w-full text-size-medium">
-          <thead class="bg-neutral-50">
-            <tr>
-              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Title</th>
-              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Archived</th>
-              <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-neutral-100">
-            <tr v-for="doc in documents" :key="doc.id" class="hover:bg-neutral-50">
-              <td class="px-4 py-2.5">
-                <a :href="`/${spaceSlug}/doc/${doc.slug}`" class="font-medium text-neutral-900 hover:text-blue-600">
-                  {{ doc.properties.title || "Untitled" }}
-                </a>
-              </td>
-              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(doc.updatedAt) }}</td>
-              <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
-                <button @click="handleRestore(doc.id)" class="text-size-small text-green-600 hover:text-green-800">Restore</button>
-                <button @click="handleDelete(doc.id)" class="text-size-small text-red-600 hover:text-red-800">Delete Permanently</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <DocumentList :items="documents">
+        <template #header-label>
+          {{ documents.length }} document{{ documents.length !== 1 ? "s" : "" }}
+        </template>
 
-      <div class="flex justify-between items-center mt-3 pt-3 border-t border-neutral-100">
-        <button
-          @click="prevPage"
-          :disabled="!hasPrevPage || isFetching"
-          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Previous
-        </button>
-        <span class="text-size-small text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
-        <button
-          @click="nextPage"
-          :disabled="!hasNextPage || isFetching"
-          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Next
-        </button>
-      </div>
+        <template #batch-actions="{ selectedIds, deselectAll }">
+          <button
+            @click="handleBatchRestore(selectedIds, deselectAll)"
+            class="flex items-center gap-1.5 px-3 py-1 bg-background border border-neutral-100 rounded-md text-size-small text-green-700 hover:border-green-300 hover:text-green-900 transition-colors"
+          >
+            Restore
+          </button>
+          <button
+            @click="handleBatchDelete(selectedIds, deselectAll)"
+            class="flex items-center gap-1.5 px-3 py-1 bg-background border border-neutral-100 rounded-md text-size-small text-red-700 hover:border-red-300 hover:text-red-900 transition-colors"
+          >
+            Delete Permanently
+          </button>
+        </template>
+
+        <template #default="{ selectedIds, toggleSelect, selectable }">
+          <DocumentListItem
+            v-for="doc in documents"
+            :key="doc.id"
+            :document="doc"
+            :space-slug="spaceSlug"
+            :selected="selectedIds.has(doc.id)"
+            :selectable="selectable"
+            @toggle-select="toggleSelect"
+          >
+            <template #actions>
+              <div class="flex items-center gap-2">
+                <button
+                  @click.stop="handleRestore(doc.id)"
+                  class="text-size-small text-green-600 hover:text-green-800 font-medium"
+                >
+                  Restore
+                </button>
+                <button
+                  @click.stop="handleDelete(doc.id)"
+                  class="text-size-small text-red-600 hover:text-red-800 font-medium"
+                >
+                  Delete
+                </button>
+              </div>
+            </template>
+          </DocumentListItem>
+        </template>
+      </DocumentList>
+
+      <Pager
+        class="mt-3 pt-3"
+        :page="page"
+        :total-pages="totalPages"
+        :has-prev-page="hasPrevPage"
+        :has-next-page="hasNextPage"
+        :disabled="isFetching"
+        @previous="prevPage"
+        @next="nextPage"
+      />
     </div>
   </div>
 </template>

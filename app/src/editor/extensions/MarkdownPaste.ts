@@ -1,6 +1,6 @@
 import { Extension } from "@tiptap/core";
-import { Marked } from "marked";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Marked } from "marked";
 
 function wrapInParagraph(content: string): string {
   if (/^<(p|ul|ol|h[1-6]|blockquote|pre|div)\b/.test(content)) return content;
@@ -47,14 +47,14 @@ md.use({
 
 // Patterns that indicate pasted text is intentional markdown (not plain prose).
 const MARKDOWN_PATTERNS = [
-  /^#{1,6}\s+\S/m,         // headings
-  /\*\*[^*\n]+\*\*/,       // bold **text**
-  /^[-*+]\s+\S/m,          // unordered list item
-  /^\d+\.\s+\S/m,          // ordered list item
-  /^>\s+\S/m,              // blockquote
-  /^```/m,                 // fenced code block
-  /\[[^\]]+\]\([^)]+\)/,  // link [text](url)
-  /^---+\s*$/m,            // horizontal rule
+  /^#{1,6}\s+\S/m, // headings
+  /\*\*[^*\n]+\*\*/, // bold **text**
+  /^[-*+]\s+\S/m, // unordered list item
+  /^\d+\.\s+\S/m, // ordered list item
+  /^>\s+\S/m, // blockquote
+  /^```/m, // fenced code block
+  /\[[^\]]+\]\([^)]+\)/, // link [text](url)
+  /^---+\s*$/m, // horizontal rule
 ] as const;
 
 function looksLikeMarkdown(text: string): boolean {
@@ -86,7 +86,11 @@ export const MarkdownPaste = Extension.create({
               return false;
             }
 
-            const html = md.parse(text, { async: false, breaks: false, gfm: true }) as string;
+            const html = md.parse(text, {
+              async: false,
+              breaks: false,
+              gfm: true,
+            }) as string;
             event.preventDefault();
             editor.commands.insertContent(html);
             return true;

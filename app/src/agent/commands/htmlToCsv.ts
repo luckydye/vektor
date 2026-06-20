@@ -131,7 +131,11 @@ export const htmlToCsvCommand = defineCommand("html-to-csv", async (args, ctx) =
   const ast = html5parser.parse(html);
   const table = findFirstTag(ast, "table");
   if (!table) {
-    return { stdout: "", stderr: "html-to-csv: no <table> found in input\n", exitCode: 1 };
+    return {
+      stdout: "",
+      stderr: "html-to-csv: no <table> found in input\n",
+      exitCode: 1,
+    };
   }
   return writeOutput(tableNodeToCsv(table), outputFile, ctx);
 });
@@ -140,16 +144,19 @@ export const htmlToCsvCommand = defineCommand("html-to-csv", async (args, ctx) =
  * html-table-to-csv [input-file] [-o output-file]
  * Converts an HTML fragment that is itself a <table> to CSV.
  */
-export const htmlTableToCsvCommand = defineCommand("html-table-to-csv", async (args, ctx) => {
-  const { html, outputFile } = await readInput(args, ctx);
-  const ast = html5parser.parse(html);
-  const table = findFirstTag(ast, "table");
-  if (!table) {
-    return {
-      stdout: "",
-      stderr: "html-table-to-csv: no <table> found in input\n",
-      exitCode: 1,
-    };
-  }
-  return writeOutput(tableNodeToCsv(table), outputFile, ctx);
-});
+export const htmlTableToCsvCommand = defineCommand(
+  "html-table-to-csv",
+  async (args, ctx) => {
+    const { html, outputFile } = await readInput(args, ctx);
+    const ast = html5parser.parse(html);
+    const table = findFirstTag(ast, "table");
+    if (!table) {
+      return {
+        stdout: "",
+        stderr: "html-table-to-csv: no <table> found in input\n",
+        exitCode: 1,
+      };
+    }
+    return writeOutput(tableNodeToCsv(table), outputFile, ctx);
+  },
+);

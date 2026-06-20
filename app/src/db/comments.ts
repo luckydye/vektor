@@ -93,3 +93,15 @@ export async function archiveComment(spaceId: string, commentId: string): Promis
     .set({ archived: true, updatedAt: new Date() })
     .where(eq(comment.id, commentId));
 }
+
+export async function archiveComments(
+  spaceId: string,
+  commentIds: string[],
+): Promise<void> {
+  if (commentIds.length === 0) return;
+  const db = await getSpaceDb(spaceId);
+  await db
+    .update(comment)
+    .set({ archived: true, updatedAt: new Date() })
+    .where(inArray(comment.id, commentIds));
+}

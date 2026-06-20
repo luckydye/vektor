@@ -1604,7 +1604,7 @@ describe("ACL API Tests - Permission Level Access", () => {
   });
 });
 
-describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
+describe("ACL API Tests - Markdown content negotiation", () => {
   let mdTestSpaceId: string;
   let mdTestSpaceSlug: string;
   let mdOwnerToken: string;
@@ -1668,8 +1668,9 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   });
 
   it("should allow space owner to access document as markdown", async () => {
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
       headers: {
+        Accept: "text/markdown",
         Cookie: `vektor.session_token=${mdOwnerToken}`,
       },
     });
@@ -1679,6 +1680,17 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
     const content = await response.text();
     expect(content).toContain("Test Markdown Export");
     expect(content).toContain(`slug: ${testDocSlug}`);
+  });
+
+  it("should not expose the former .md route", async () => {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+      headers: {
+        Accept: "text/markdown",
+        Cookie: `vektor.session_token=${mdOwnerToken}`,
+      },
+    });
+
+    expect(response.status).toBe(404);
   });
 
   it("should allow space member with viewer role to access document as markdown", async () => {
@@ -1693,8 +1705,9 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       }),
     });
 
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
       headers: {
+        Accept: "text/markdown",
         Cookie: `vektor.session_token=${mdViewerToken}`,
       },
     });
@@ -1704,8 +1717,9 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   });
 
   it("should deny non-member access to document as markdown", async () => {
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
       headers: {
+        Accept: "text/markdown",
         Cookie: `vektor.session_token=${mdNonMemberToken}`,
       },
     });
@@ -1725,8 +1739,9 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       }),
     });
 
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
       headers: {
+        Accept: "text/markdown",
         Cookie: `vektor.session_token=${mdViewerToken}`,
       },
     });
@@ -1768,8 +1783,9 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
     });
 
     // Non-member should be able to access markdown export with document-level permission
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}.md`, {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}`, {
       headers: {
+        Accept: "text/markdown",
         Cookie: `vektor.session_token=${mdNonMemberToken}`,
       },
     });
@@ -1778,17 +1794,22 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
     expect(response.headers.get("Content-Type")).toContain("text/markdown");
   });
 
-  it("should deny unauthenticated access to markdown export", async () => {
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`);
+  it("should apply the route's normal unauthenticated redirect", async () => {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
+      headers: { Accept: "text/markdown" },
+      redirect: "manual",
+    });
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/login");
   });
 
   it("should return 404 for non-existent document slug", async () => {
     const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/non-existent-slug-12345.md`,
+      `${BASE_URL}/${mdTestSpaceSlug}/doc/non-existent-slug-12345`,
       {
         headers: {
+          Accept: "text/markdown",
           Cookie: `vektor.session_token=${mdOwnerToken}`,
         },
       },
@@ -1798,8 +1819,9 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   });
 
   it("should return 404 for non-existent space slug", async () => {
-    const response = await fetch(`${BASE_URL}/non-existent-space/doc/${testDocSlug}.md`, {
+    const response = await fetch(`${BASE_URL}/non-existent-space/doc/${testDocSlug}`, {
       headers: {
+        Accept: "text/markdown",
         Cookie: `vektor.session_token=${mdOwnerToken}`,
       },
     });
@@ -2799,7 +2821,7 @@ describe("ACL API Tests - Non-existent Space 404s", () => {
   });
 });
 
-describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
+describe("ACL API Tests - Markdown content negotiation", () => {
   let mdTestSpaceId: string;
   let mdTestSpaceSlug: string;
   let mdOwnerToken: string;
@@ -2857,8 +2879,11 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   });
 
   it("should allow space owner to access document as markdown", async () => {
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
-      headers: { Cookie: `vektor.session_token=${mdOwnerToken}` },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
+      headers: {
+        Accept: "text/markdown",
+        Cookie: `vektor.session_token=${mdOwnerToken}`,
+      },
     });
 
     expect(response.status).toBe(200);
@@ -2879,8 +2904,11 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       }),
     });
 
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
-      headers: { Cookie: `vektor.session_token=${mdViewerToken}` },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
+      headers: {
+        Accept: "text/markdown",
+        Cookie: `vektor.session_token=${mdViewerToken}`,
+      },
     });
 
     expect(response.status).toBe(200);
@@ -2888,8 +2916,11 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
   });
 
   it("should deny non-member access to document as markdown", async () => {
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
-      headers: { Cookie: `vektor.session_token=${mdNonMemberToken}` },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
+      headers: {
+        Accept: "text/markdown",
+        Cookie: `vektor.session_token=${mdNonMemberToken}`,
+      },
     });
 
     expect(response.status).toBe(403);
@@ -2906,8 +2937,11 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       }),
     });
 
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`, {
-      headers: { Cookie: `vektor.session_token=${mdViewerToken}` },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
+      headers: {
+        Accept: "text/markdown",
+        Cookie: `vektor.session_token=${mdViewerToken}`,
+      },
     });
 
     expect(response.status).toBe(403);
@@ -2941,30 +2975,45 @@ describe("ACL API Tests - Markdown Export Endpoint (.md)", () => {
       }),
     });
 
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}.md`, {
-      headers: { Cookie: `vektor.session_token=${mdNonMemberToken}` },
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${docSlug}`, {
+      headers: {
+        Accept: "text/markdown",
+        Cookie: `vektor.session_token=${mdNonMemberToken}`,
+      },
     });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("text/markdown");
   });
 
-  it("should deny unauthenticated access to markdown export", async () => {
-    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}.md`);
-    expect(response.status).toBe(401);
+  it("should apply the route's normal unauthenticated redirect", async () => {
+    const response = await fetch(`${BASE_URL}/${mdTestSpaceSlug}/doc/${testDocSlug}`, {
+      headers: { Accept: "text/markdown" },
+      redirect: "manual",
+    });
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/login");
   });
 
   it("should return 404 for non-existent document slug", async () => {
     const response = await fetch(
-      `${BASE_URL}/${mdTestSpaceSlug}/doc/non-existent-slug-12345.md`,
-      { headers: { Cookie: `vektor.session_token=${mdOwnerToken}` } },
+      `${BASE_URL}/${mdTestSpaceSlug}/doc/non-existent-slug-12345`,
+      {
+        headers: {
+          Accept: "text/markdown",
+          Cookie: `vektor.session_token=${mdOwnerToken}`,
+        },
+      },
     );
     expect(response.status).toBe(404);
   });
 
   it("should return 404 for non-existent space slug", async () => {
-    const response = await fetch(`${BASE_URL}/non-existent-space/doc/${testDocSlug}.md`, {
-      headers: { Cookie: `vektor.session_token=${mdOwnerToken}` },
+    const response = await fetch(`${BASE_URL}/non-existent-space/doc/${testDocSlug}`, {
+      headers: {
+        Accept: "text/markdown",
+        Cookie: `vektor.session_token=${mdOwnerToken}`,
+      },
     });
     expect(response.status).toBe(404);
   });

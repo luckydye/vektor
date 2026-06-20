@@ -49,7 +49,8 @@ function saveExpandedItems(items) {
   localStorage.setItem(`wiki-expanded-items`, JSON.stringify(Array.from(items)));
 }
 
-const expandedItems = ref(loadExpandedItems());
+const isMounted = ref(false);
+const expandedItems = ref(new Set());
 
 // Get slugs of expanded categories
 const expandedCategorySlugs = computed(() => {
@@ -314,6 +315,11 @@ async function handleDocumentCategoryChange(event) {
 }
 
 onMounted(() => {
+  // Defer reading client-only state (localStorage, cached query data) until after
+  // hydration so server and client render the same initial markup.
+  isMounted.value = true;
+  expandedItems.value = loadExpandedItems();
+
   window.addEventListener("document-parent-change", handleDocumentParentChange);
   window.addEventListener("document-category-change", handleDocumentCategoryChange);
 });
@@ -322,25 +328,13 @@ onUnmounted(() => {
   window.removeEventListener("document-parent-change", handleDocumentParentChange);
   window.removeEventListener("document-category-change", handleDocumentCategoryChange);
 });
+
+defineExpose({ isEditMode, toggleEditMode });
 </script>
 
 <template>
   <div class="document-tree">
-    <!-- Categories Header with Edit Button -->
-    <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
-      <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">
-        Categories
-      </h3>
-      <button
-        @click="toggleEditMode"
-        class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
-        :title="isEditMode ? 'Done editing' : 'Edit categories'"
-      >
-        <div v-if="!isEditMode" class="svg-icon w-4 h-4" v-html="pencilIcon" />
-        <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
-      </button>
-    </div>
-
+    <template v-if="isMounted">
     <div v-if="!isEditMode && categories.length === 0" class="px-3 py-4 text-center">
       <p class="text-size-medium text-neutral-500">No categories yet</p>
     </div>
@@ -410,7 +404,7 @@ onUnmounted(() => {
           </div>
         </category-target>
 
-        <div v-if="expandedItems.has(category.id) && !isEditMode" class="space-y-1">
+        <div v-show="expandedItems.has(category.id) && !isEditMode" class="space-y-1">
           <DocumentTreeItem v-for="doc in category.rootDocs" :key="doc.id" :doc="doc" :all-docs="category.docs"
             :active-doc-id="getActiveDocSlug()" :expanded-items="expandedItems" @toggle="toggleItem" />
         </div>
@@ -524,5 +518,6 @@ onUnmounted(() => {
         </div>
       </div>
     </Teleport>
+    </template>
   </div>
 </template>

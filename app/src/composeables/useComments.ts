@@ -139,6 +139,42 @@ export function useComments(options: {
     );
   });
 
+  const resolveThreadMutation = useMutation({
+    mutationFn: async ({ reference }: { reference: string }) => {
+      if (!options.spaceId.value || !options.documentId.value) {
+        throw new Error("Space ID and Document ID are required");
+      }
+      const commentIds = comments.value
+        .filter(
+          (c: Comment) =>
+            c.reference && resolveReferenceSelector(c.reference) === reference,
+        )
+        .map((c: Comment) => c.id);
+      if (commentIds.length === 0) return null;
+
+      await api.documentComments.resolve(
+        options.spaceId.value,
+        options.documentId.value,
+        commentIds,
+      );
+      return { reference, commentIds };
+    },
+    onSuccess: (result) => {
+      if (!result) return;
+      queryClient.setQueryData(
+        ["wiki_comments", options.spaceId.value, options.documentId.value],
+        (old: Comment[] | undefined) =>
+          old?.filter((c: Comment) => !result.commentIds.includes(c.id)),
+      );
+      if (activeReference.value === result.reference) {
+        activeReference.value = null;
+      }
+    },
+    onError: (error) => {
+      console.error("Error resolving comment thread:", error);
+    },
+  });
+
   const moveThreadMutation = useMutation({
     mutationFn: async ({ reference, y }: { reference: string; y: number }) => {
       if (!options.spaceId.value || !options.documentId.value) {
@@ -237,6 +273,10 @@ export function useComments(options: {
     return await moveThreadMutation.mutateAsync({ reference, y });
   }
 
+  async function resolveThread(reference: string) {
+    return await resolveThreadMutation.mutateAsync({ reference });
+  }
+
   return {
     comments,
     activeReference,
@@ -247,9 +287,11 @@ export function useComments(options: {
     isDeletingComment: deleteCommentMutation.isPending,
     activeComments,
     refetch,
+    isResolvingThread: resolveThreadMutation.isPending,
     submitComment,
     deleteComment,
     moveThread,
+    resolveThread,
     handleOpenComment,
     setupListeners,
     cleanupListeners,

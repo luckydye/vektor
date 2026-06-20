@@ -134,6 +134,13 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
   await ensureColumnExists(spaceDb, "document", "search_updated_at", "INTEGER");
   await ensureColumnExists(spaceDb, "revision", "status", "TEXT");
 
+  const fileSQL = generateCreateTableSQL(spaceSchema.file);
+  await spaceDb.run(sql.raw(fileSQL));
+  await ensureColumnExists(spaceDb, "file", "original_name", "TEXT");
+  await ensureColumnExists(spaceDb, "file", "mime_type", "TEXT");
+  await ensureColumnExists(spaceDb, "file", "url", "TEXT");
+  await ensureColumnExists(spaceDb, "file", "updated_at", "INTEGER");
+
   await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ai"));
   await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_ad"));
   await spaceDb.run(sql.raw("DROP TRIGGER IF EXISTS document_au"));

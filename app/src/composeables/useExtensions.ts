@@ -89,6 +89,17 @@ export function useExtensions() {
     return await deleteMutation.mutateAsync(extensionId);
   };
 
+  const downloadPackage = async (extensionId: string) => {
+    if (!currentSpaceId.value) return;
+    const blob = await api.extensions.downloadPackage(currentSpaceId.value, extensionId);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${extensionId}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return {
     extensions: computed<ExtensionInfo[]>(() => extensionList.value?.extensions ?? []),
     extensionErrors: computed<ExtensionManifestError[]>(
@@ -101,6 +112,7 @@ export function useExtensions() {
     isDeleting: deleteMutation.isPending,
     uploadExtension,
     deleteExtension,
+    downloadPackage,
     refresh,
   };
 }

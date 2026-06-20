@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
-import { boltIcon, homeIcon, puzzleIcon, searchIcon, settingsIcon } from "~/src/assets/icons.ts";
-import { Actions } from "../utils/actions.ts";
+import { computed, onMounted, onUnmounted, ref, Teleport, watch } from "vue";
+import {
+  boltIcon,
+  checkThinIcon,
+  homeIcon,
+  pencilIcon,
+  puzzleIcon,
+  searchIcon,
+  settingsIcon,
+} from "~/src/assets/icons.ts";
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
 import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { type Space as ApiSpace, useSpace } from "../composeables/useSpace.ts";
+import { Actions } from "../utils/actions.ts";
 import { extensions } from "../utils/extensions.ts";
 import { t } from "../utils/lang.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
@@ -32,6 +40,7 @@ const {
 } = useSpace();
 
 const showCreateDialog = ref(false);
+const documentTree = ref<InstanceType<typeof DocumentTree> | null>(null);
 
 const activeRoute = computed(() => {
   let activeRoute = "";
@@ -65,6 +74,15 @@ const isLoading = computed(() => {
   return !pathname.value || spaceIsLoading.value;
 });
 
+const hasEverLoaded = ref(false);
+watch(
+  isLoading,
+  (loading) => {
+    if (!loading) hasEverLoaded.value = true;
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   // Update menu links when extensions finish loading
   updateExtensionMenuLinks();
@@ -92,6 +110,7 @@ const uiSpaces = computed<UiSpace[]>(() => {
 
 // Check if current user can access settings
 const userCanAccessSettings = computed(() => {
+  if (isLoading.value) return false;
   return canAccessSettings(currentSpace.value?.userRole);
 });
 
@@ -176,11 +195,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
       />
     </div>
 
-    <div v-if="isLoading" class="px-4xs flex-none hidden lg:flex flex-col gap-0.5">
-      <div v-for="i in 3" :key="`nav-skeleton-${i}`" class="h-9 bg-neutral-100 rounded-md animate-pulse" />
-    </div>
-
-    <div v-if="!isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
+    <div class="px-4xs flex-none flex flex-col gap-0.5">
         <div class="flex items-center gap-px">
           <MenuLink
               class="flex-1"
@@ -190,7 +205,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
               :is-active="activeRoute === 'home'"
           />
           <button
-              class="inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
+              class="@max-sm:hidden inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
               :title="t('Command Palette')"
               @click="Actions.run('ui:toggle:palatte')"
           >
@@ -228,12 +243,23 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 
     <!-- Document Tree -->
     <div class="@max-xs:invisible px-5xs py-m">
-      <div v-if="isLoading" class="px-5xs space-y-1 hidden lg:flex flex-col">
+      <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
+        <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">{{ t('Categories') }}</h3>
+        <button
+          v-if="documentTree"
+          @click="documentTree.toggleEditMode()"
+          class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
+          :title="documentTree.isEditMode ? 'Done editing' : 'Edit categories'"
+        >
+          <div v-if="!documentTree.isEditMode" class="svg-icon w-4 h-4" v-html="pencilIcon" />
+          <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
+        </button>
+      </div>
+      <div v-if="isLoading && !hasEverLoaded" class="px-5xs space-y-1 hidden md:flex flex-col">
         <!-- Category skeleton -->
         <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
           <!-- Category header -->
           <div class="flex items-center gap-2 p-2 rounded-md">
-            <div class="w-4 h-4 bg-neutral-200 rounded-sm animate-pulse flex-none" />
             <div class="w-6 h-6 bg-neutral-200 rounded-sm flex-none animate-pulse" />
             <div class="h-4 bg-neutral-200 rounded-sm w-24 animate-pulse" />
           </div>
@@ -247,7 +273,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         </div>
       </div>
 
-      <DocumentTree v-if="!isLoading" />
+      <DocumentTree ref="documentTree" v-show="!isLoading" />
     </div>
   </nav>
 </template>

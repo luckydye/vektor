@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import { getLocalExtension, getLocalExtensionPackage } from "../jobs/localJobs.ts";
 import {
-  extractFile,
-  extractManifest,
   type ExtensionManifest,
   type ExtensionRoute,
   type ExtensionRouteMenuItem,
+  extractFile,
+  extractManifest,
   type JobDefinition,
   type JobIOField,
 } from "../utils/extensionManifest.ts";
@@ -233,4 +233,3 @@ export async function findExtensionForRoute(
 
   return null;
 }
-

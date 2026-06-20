@@ -6,7 +6,7 @@
 
     <!-- General Settings -->
     <section v-if="activeTab === 'general'">
-      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">General Settings</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">General Settings</h2>
       <form @submit.prevent="handleSave">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -74,7 +74,7 @@
 
       <div class="pt-12">
         <div class="flex items-center justify-between mb-4">
-            <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Members</h2>
+            <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Members</h2>
         </div>
         
         <SpaceMembers />
@@ -84,7 +84,7 @@
     <!-- Access Tokens -->
     <section v-if="activeTab === 'api'">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Access Tokens</h2>
+        <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Access Tokens</h2>
         <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-size-small text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
       </div>
       <div>
@@ -234,7 +234,7 @@
     <!-- Secrets -->
     <section v-if="activeTab === 'secrets'">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Secrets</h2>
+        <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Secrets</h2>
         <button
           v-if="!isCreatingSecret"
           @click="isCreatingSecret = true"
@@ -414,20 +414,20 @@
 
     <!-- Extensions -->
     <section v-if="activeTab === 'extensions'">
-      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Extensions</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Extensions</h2>
       <p class="text-size-medium text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
       <ExtensionSettings />
     </section>
 
     <!-- Jobs -->
     <section v-if="activeTab === 'jobs'">
-      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Jobs</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Jobs</h2>
       <JobsSettings />
     </section>
 
     <!-- Archive -->
     <section v-if="activeTab === 'archive'">
-      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Archived Documents</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Archived Documents</h2>
       <ArchivedDocuments v-if="currentSpace" :space-id="currentSpace.id" :space-slug="currentSpace.slug" />
     </section>
 

@@ -73,7 +73,7 @@ const handleCreateDoc = (event: Event) => {
 <template>
   <div class="w-full flex gap-4">
     <div v-if="loading" class="flex items-start gap-3xs w-full px-4xs py-4xs">
-      <div class="flex-none w-9 h-9 bg-neutral-200 rounded-md animate-pulse" />
+      <div class="flex-none w-[2.375rem] aspect-square bg-neutral-200 rounded-md animate-pulse" />
       <div class="flex-1 flex flex-col gap-1">
         <div class="h-4 bg-neutral-200 rounded-sm animate-pulse w-25" />
         <div class="h-3 bg-neutral-100 rounded-sm animate-pulse w-16" />
@@ -85,7 +85,7 @@ const handleCreateDoc = (event: Event) => {
         <div class="flex items-center gap-3xs px-4xs py-4xs rounded-md transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50">
           <div class="flex w-full gap-3xs cursor-pointer">
             <!-- Space Icon -->
-            <div class="flex-none w-[2.375rem] rounded-md flex items-center justify-center bg-primary-500 overflow-hidden" :style="{ background: currentSpace?.color }">
+            <div class="flex-none w-[2.375rem] aspect-square rounded-md flex items-center justify-center bg-primary-500 overflow-hidden" :style="{ background: currentSpace?.color }">
               <div v-if="currentSpace?.logoSvg && currentSpace.logoSvg.startsWith('<')" v-html="currentSpace.logoSvg" class="text-white" />
               <img v-else-if="currentSpace?.logoSvg" :src="currentSpace.logoSvg" class="w-full h-full object-contain" />
               <div v-else v-html="homeIcon" class="text-white" />

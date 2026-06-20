@@ -1,4 +1,4 @@
-import type { Editor } from "@tiptap/core";
+import type { ChainedCommands, Editor } from "@tiptap/core";
 import "@sv/elements/popover";
 import { html, render } from "lit-html";
 import {
@@ -7,15 +7,13 @@ import {
   alignLeftIcon,
   alignRightIcon,
   boldIcon,
-  cellMergeIcon,
   chevronDownIcon,
+  closeSmallIcon,
   closeThickIcon,
-  columnDeleteIcon,
   columns2Icon,
   columns3Icon,
   columns4Icon,
-  expressionCellIcon,
-  highlightIcon,
+  commentIcon,
   imageFullWidthIcon,
   indentIcon,
   italicIcon,
@@ -25,22 +23,54 @@ import {
   listUnorderedIcon,
   moreIcon,
   outdentIcon,
-  pasteIcon,
+  arrowsMergeIcon,
+  arrowsSplitIcon,
+  clipboardIcon,
+  columnMinusIcon,
+  columnPlusLeftIcon,
+  columnPlusRightIcon,
+  functionIcon,
+  paintBucketIcon,
+  rowMinusIcon,
+  rowPlusBottomIcon,
+  rowPlusTopIcon,
+  scissorsIcon,
+  tableIcon,
+  trashIcon,
   plusOverlayIcon,
   restoreArrowIcon,
-  rowDeleteIcon,
-  scissorsIcon,
   strikethroughIcon,
-  tableColumnAddAfterIcon,
-  tableColumnAddBeforeIcon,
-  tableDeleteIcon,
-  tableHeaderCellIcon,
-  tableRowAddAfterIcon,
-  tableRowIcon,
-  tableSplitCellIcon,
   textColorIcon,
   underlineIcon,
 } from "../../assets/icons.ts";
+
+const TEXT_COLOR_PRESETS = [
+  { label: "Charcoal", value: "#111827" },
+  { label: "Gray", value: "#4b5563" },
+  { label: "Red", value: "#b91c1c" },
+  { label: "Orange", value: "#c2410c" },
+  { label: "Amber", value: "#a16207" },
+  { label: "Green", value: "#15803d" },
+  { label: "Sky", value: "#0369a1" },
+  { label: "Blue", value: "#1d4ed8" },
+  { label: "Violet", value: "#6d28d9" },
+  { label: "Pink", value: "#be185d" },
+] as const;
+
+const BACKGROUND_COLOR_PRESETS = [
+  { label: "Gray", value: "#f3f4f6" },
+  { label: "Red", value: "#fee2e2" },
+  { label: "Orange", value: "#ffedd5" },
+  { label: "Amber", value: "#fef3c7" },
+  { label: "Yellow", value: "#fef9c3" },
+  { label: "Green", value: "#dcfce7" },
+  { label: "Cyan", value: "#cffafe" },
+  { label: "Blue", value: "#dbeafe" },
+  { label: "Violet", value: "#ede9fe" },
+  { label: "Pink", value: "#fce7f3" },
+] as const;
+
+type ColorPreset = { label: string; value: string };
 
 /**
  * Resolve the currently selected image node, or null if no image is selected
@@ -66,7 +96,7 @@ function getSelectedImageNode(editor: Editor) {
  *
  * @example
  * // Use in a toolbar button
- * <button onclick={() => toggleImageFullWidth(globalThis.__editor)}>
+ * <button onclick={() => toggleImageFullWidth(editor)}>
  *   Toggle Full Width
  * </button>
  *
@@ -181,15 +211,10 @@ export function getImageAttributes(editor: Editor) {
   return getSelectedImageNode(editor)?.attrs ?? null;
 }
 
-declare global {
-  interface Window {
-    __editor?: Editor;
-  }
-}
-
-function getEditor() {
-  return window.__editor;
-}
+type ToolbarChain = ChainedCommands & {
+  setCommentAnchor: (id: string) => ToolbarChain;
+  setColumnLayout: (attrs: { columns: number }) => ToolbarChain;
+};
 
 function editorReady(editor: Editor | undefined): editor is Editor {
   return !!editor && !editor.isDestroyed;
@@ -213,13 +238,17 @@ if (
       private imageActive = false;
       private imageDisplay: string | null = null;
       private textColor = "#000000";
+      private textColorActive = false;
       private bgColor = "transparent";
+      private bgColorActive = false;
       private tableActive = false;
       private cellBackgroundColor = "transparent";
+      private cellBackgroundActive = false;
       private copiedRow: unknown = null;
       private floatingStyle = "";
       private tableStyle = "";
       private dismissedSelectionKey: string | null = null;
+      editor?: Editor;
 
       constructor() {
         super();
@@ -227,10 +256,6 @@ if (
       }
 
       connectedCallback() {
-        window.addEventListener("document:edit", this.handleEditorAvailable);
-        window.addEventListener("editor-ready", this.handleEditorAvailable);
-        window.addEventListener("edit-mode-start", this.handleEditorAvailable);
-        window.addEventListener("edit-mode-cancel", this.handleEditModeEnd);
         window.addEventListener("editor-destroyed", this.handleEditModeEnd);
         window.addEventListener("editor-update", this.update);
         window.addEventListener("resize", this.updatePosition, { passive: true });
@@ -240,15 +265,11 @@ if (
           capture: true,
         });
 
-        this.handleEditorAvailable();
+        this.update();
         this.paint();
       }
 
       disconnectedCallback() {
-        window.removeEventListener("document:edit", this.handleEditorAvailable);
-        window.removeEventListener("editor-ready", this.handleEditorAvailable);
-        window.removeEventListener("edit-mode-start", this.handleEditorAvailable);
-        window.removeEventListener("edit-mode-cancel", this.handleEditModeEnd);
         window.removeEventListener("editor-destroyed", this.handleEditModeEnd);
         window.removeEventListener("editor-update", this.update);
         window.removeEventListener("resize", this.updatePosition);
@@ -276,9 +297,9 @@ if (
         return this.root.querySelector<HTMLInputElement>("[data-cell-bg-color]");
       }
 
-      private handleEditorAvailable = () => {
-        this.update();
-      };
+      private getEditor() {
+        return this.editor;
+      }
 
       private handleEditModeEnd = () => {
         this.shouldShow = false;
@@ -291,7 +312,7 @@ if (
       };
 
       dismiss() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (editorReady(editor)) {
           this.dismissedSelectionKey = this.toolbarSelectionKey(editor);
         }
@@ -323,7 +344,7 @@ if (
       };
 
       private update = () => {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) {
           this.shouldShow = false;
           this.secondaryOpen = false;
@@ -385,21 +406,8 @@ if (
       }
 
       private updatePosition = () => {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
-
-        if (this.shouldShow) {
-          const { state, view } = editor;
-          const left = this.leftAlignedToolbarPosition(
-            editor,
-            this.menu?.offsetWidth ?? 600,
-          );
-          const top = this.verticalToolbarPosition(
-            editor,
-            Math.max(this.menu?.offsetHeight ?? 48, 48),
-          );
-          this.floatingStyle = `left:${left}px;top:${top}px;`;
-        }
 
         if (this.tableActive) {
           this.tableStyle = this.getTableStyle(editor);
@@ -407,40 +415,18 @@ if (
           this.tableStyle = "";
         }
 
+        if (this.shouldShow) {
+          const menuWidth = this.menu?.offsetWidth ?? 600;
+          const menuHeight = Math.max(this.menu?.offsetHeight ?? 48, 48);
+          const left = this.leftAlignedToolbarPosition(editor, menuWidth);
+          const top = this.computeFloatingTop(editor, menuHeight);
+          this.floatingStyle = `left:${left}px;top:${top}px;`;
+        }
+
         this.paint();
       };
 
-      private getTableStyle(editor: Editor) {
-        const { state, view } = editor;
-        const { from } = state.selection;
-        const $from = state.doc.resolve(from);
-        let tableDepth: number | null = null;
-
-        for (let depth = $from.depth; depth > 0; depth--) {
-          if ($from.node(depth).type.name === "table") {
-            tableDepth = depth;
-            break;
-          }
-        }
-
-        if (tableDepth === null) return "";
-
-        const coords = view.coordsAtPos($from.before(tableDepth));
-        const left = this.leftAlignedToolbarPosition(
-          editor,
-          this.tableMenu?.offsetWidth ?? 400,
-        );
-        return `left:${left}px;top:${coords.top}px;`;
-      }
-
-      private leftAlignedToolbarPosition(editor: Editor, toolbarWidth: number) {
-        const padding = 8;
-        const editorLeft = editor.view.dom.getBoundingClientRect().left;
-        const maxLeft = window.innerWidth - toolbarWidth - padding;
-        return Math.min(Math.max(editorLeft, padding), Math.max(padding, maxLeft));
-      }
-
-      private verticalToolbarPosition(editor: Editor, toolbarHeight: number) {
+      private computeFloatingTop(editor: Editor, menuHeight: number): number {
         const padding = 8;
         const gap = 10;
         const { from, to } = editor.state.selection;
@@ -448,19 +434,73 @@ if (
         const end = editor.view.coordsAtPos(to);
         const selectionTop = Math.min(start.top, end.top);
         const selectionBottom = Math.max(start.bottom, end.bottom);
-        const topCandidate = selectionTop - toolbarHeight - gap;
-        const bottomCandidate = selectionBottom + gap;
-        const maxTop = window.innerHeight - toolbarHeight - padding;
+        const maxTop = window.innerHeight - menuHeight - padding;
 
-        if (topCandidate >= padding) {
-          return topCandidate;
+        // Build list of rects the floating toolbar must not enter.
+        // Selection itself is a forbidden zone.
+        const forbidden: Array<{ top: number; bottom: number }> = [
+          { top: selectionTop, bottom: selectionBottom },
+        ];
+
+        // Table toolbar occupies a rect we can read from the previous paint.
+        if (this.tableActive) {
+          const tableTop = this.getTableTop(editor);
+          if (tableTop !== null) {
+            const tableHeight = Math.max(
+              this.tableMenu?.getBoundingClientRect().height ?? 0,
+              48,
+            );
+            forbidden.push({ top: tableTop, bottom: tableTop + tableHeight });
+          }
         }
 
-        if (bottomCandidate <= maxTop) {
-          return bottomCandidate;
+        const overlaps = (t: number) =>
+          forbidden.some(f => t < f.bottom + gap && t + menuHeight > f.top - gap);
+
+        // Prefer above selection
+        const aboveTop = selectionTop - menuHeight - gap;
+        if (aboveTop >= padding && !overlaps(aboveTop)) return aboveTop;
+
+        // Try below selection
+        const belowTop = selectionBottom + gap;
+        if (belowTop <= maxTop && !overlaps(belowTop)) return belowTop;
+
+        // Try below each forbidden zone (e.g. table toolbar)
+        for (const f of forbidden) {
+          const candidate = f.bottom + gap;
+          if (candidate <= maxTop && !overlaps(candidate)) return candidate;
         }
 
-        return Math.min(Math.max(topCandidate, padding), Math.max(padding, maxTop));
+        // Fallback: clamp to screen, preferring below over overlapping
+        return Math.max(padding, Math.min(belowTop, maxTop));
+      }
+
+      private getTableTop(editor: Editor): number | null {
+        const { state, view } = editor;
+        const $from = state.doc.resolve(state.selection.from);
+        for (let depth = $from.depth; depth > 0; depth--) {
+          if ($from.node(depth).type.name === "table") {
+            return view.coordsAtPos($from.before(depth)).top;
+          }
+        }
+        return null;
+      }
+
+      private getTableStyle(editor: Editor) {
+        const top = this.getTableTop(editor);
+        if (top === null) return "";
+        const left = this.leftAlignedToolbarPosition(
+          editor,
+          this.tableMenu?.offsetWidth ?? 400,
+        );
+        return `left:${left}px;top:${top}px;`;
+      }
+
+      private leftAlignedToolbarPosition(editor: Editor, toolbarWidth: number) {
+        const padding = 8;
+        const editorLeft = editor.view.dom.getBoundingClientRect().left;
+        const maxLeft = window.innerWidth - toolbarWidth - padding;
+        return Math.min(Math.max(editorLeft, padding), Math.max(padding, maxLeft));
       }
 
       private updateHeadingLevel(editor: Editor) {
@@ -475,6 +515,8 @@ if (
 
       private updateColors(editor: Editor) {
         const attrs = editor.getAttributes("textStyle");
+        this.textColorActive = attrs.color != null;
+        this.bgColorActive = attrs.backgroundColor != null;
         this.textColor = attrs.color || "#000000";
         this.bgColor = attrs.backgroundColor || "transparent";
       }
@@ -492,28 +534,29 @@ if (
 
       private updateCellBackground(editor: Editor) {
         if (!this.tableActive) return;
-        this.cellBackgroundColor =
-          editor.getAttributes("tableCell").backgroundColor || "transparent";
+        const backgroundColor = editor.getAttributes("tableCell").backgroundColor;
+        this.cellBackgroundActive = backgroundColor != null;
+        this.cellBackgroundColor = backgroundColor || "transparent";
       }
 
       private chain() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return null;
-        return editor.chain().focus() as any;
+        return editor.chain().focus() as ToolbarChain;
       }
 
       private isActive(
         nameOrAttrs: string | Record<string, unknown>,
         attrs?: Record<string, unknown>,
       ) {
-        const editor = getEditor();
+        const editor = this.getEditor();
         return editorReady(editor)
           ? editor.isActive(nameOrAttrs as never, attrs as never)
           : false;
       }
 
       private canIndent() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return false;
         return (
           editor.can().sinkListItem("listItem") || editor.can().sinkListItem("taskItem")
@@ -521,7 +564,7 @@ if (
       }
 
       private canOutdent() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return false;
         return (
           editor.can().liftListItem("listItem") || editor.can().liftListItem("taskItem")
@@ -541,7 +584,7 @@ if (
       }
 
       private setLink() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const previousUrl = editor.getAttributes("link").href;
@@ -556,7 +599,7 @@ if (
       }
 
       private indentListItem() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
         if (editor.isActive("taskItem") && editor.can().sinkListItem("taskItem")) {
           editor.chain().focus().sinkListItem("taskItem").run();
@@ -567,7 +610,7 @@ if (
       }
 
       private outdentListItem() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
         if (editor.isActive("taskItem") && editor.can().liftListItem("taskItem")) {
           editor.chain().focus().liftListItem("taskItem").run();
@@ -577,12 +620,35 @@ if (
         this.update();
       }
 
+      private toggleSecondaryToolbar() {
+        this.secondaryOpen = !this.secondaryOpen;
+        this.paint();
+      }
+
+      private addInlineComment() {
+        const editor = this.getEditor();
+        if (!editorReady(editor)) return;
+
+        const id = crypto.randomUUID().slice(0, 8);
+        (editor.chain().focus() as ToolbarChain).setCommentAnchor(id).run();
+
+        window.dispatchEvent(
+          new CustomEvent("comment:create", {
+            detail: { reference: `[data-comment-id="${id}"]` },
+          }),
+        );
+
+        this.dismiss();
+      }
+
       private setColumnCount(count: number) {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         if (!editor.isActive("columnLayout")) {
-          (editor.chain().focus() as any).setColumnLayout({ columns: count }).run();
+          (editor.chain().focus() as ToolbarChain)
+            .setColumnLayout({ columns: count })
+            .run();
           this.update();
           return;
         }
@@ -625,7 +691,7 @@ if (
       }
 
       private deleteColumnLayout() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const { state } = editor;
@@ -644,7 +710,7 @@ if (
       }
 
       private cutRow() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
         const { $from } = editor.state.selection;
@@ -660,7 +726,7 @@ if (
       }
 
       private pasteRow() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor) || !this.copiedRow) return;
 
         const { state, view } = editor;
@@ -692,6 +758,125 @@ if (
         const value = (event.target as HTMLInputElement).value;
         this.chain()?.setCellAttribute("backgroundColor", value).run();
         this.update();
+      }
+
+      private colorControl(options: {
+        icon: string;
+        label: string;
+        value: string;
+        active: boolean;
+        input: unknown;
+        onOpen: () => void;
+        onClear: () => void;
+        presets?: readonly ColorPreset[];
+        onSelect?: (value: string) => void;
+      }) {
+        const clearTitle = `Clear ${options.label}`;
+        const mainButton = html`
+          <button
+            class="color-main"
+            title=${options.label}
+            type="button"
+            @mousedown=${(event: MouseEvent) => {
+              event.preventDefault();
+            }}
+            @click=${
+              options.presets
+                ? undefined
+                : () => {
+                    options.onOpen();
+                    this.update();
+                  }
+            }
+          >
+            ${this.icon(options.icon)}
+            <span class="color-swatch" style=${`background:${options.value}`}></span>
+          </button>
+        `;
+
+        return html`
+          <div class=${`color-control${options.active ? " active" : ""}`}>
+            ${
+              options.presets
+                ? html`
+                  <a-popover-trigger showdelay="0" hidedelay="100">
+                    <span slot="trigger" class="color-trigger">${mainButton}</span>
+                    <a-popover placements="bottom-start">
+                      ${this.renderColorPresets(options)}
+                    </a-popover>
+                  </a-popover-trigger>
+                `
+                : mainButton
+            }
+            <button
+              class="color-clear"
+              title=${clearTitle}
+              type="button"
+              ?disabled=${!options.active}
+              @mousedown=${(event: MouseEvent) => {
+                event.preventDefault();
+              }}
+              @click=${() => {
+                options.onClear();
+                this.update();
+              }}
+            >
+              ${this.icon(closeSmallIcon)}
+            </button>
+            ${options.input}
+          </div>
+        `;
+      }
+
+      private renderColorPresets(options: {
+        label: string;
+        value: string;
+        presets?: readonly ColorPreset[];
+        onOpen: () => void;
+        onSelect?: (value: string) => void;
+      }) {
+        return html`
+          <div class="color-preset-menu" aria-label=${`${options.label} presets`}>
+            <div class="color-preset-grid">
+              ${options.presets?.map(
+                (preset) => html`
+                  <button
+                    class=${`color-preset${options.value.toLowerCase() === preset.value ? " active" : ""}`}
+                    style=${`--preset-color:${preset.value}`}
+                    title=${preset.label}
+                    aria-label=${`${preset.label} (${preset.value})`}
+                    type="button"
+                    @mousedown=${(event: MouseEvent) => {
+                      event.preventDefault();
+                    }}
+                    @click=${(event: Event) => {
+                      options.onSelect?.(preset.value);
+                      this.update();
+                      event.target?.dispatchEvent(
+                        new CustomEvent("exit", { bubbles: true, composed: true }),
+                      );
+                    }}
+                  ></button>
+                `,
+              )}
+            </div>
+            <button
+              class="color-custom-option"
+              type="button"
+              @mousedown=${(event: MouseEvent) => {
+                event.preventDefault();
+              }}
+              @click=${(event: Event) => {
+                options.onOpen();
+                event.target?.dispatchEvent(
+                  new CustomEvent("exit", { bubbles: true, composed: true }),
+                );
+              }}
+            >
+              Custom…
+            </button>
+          </div>
+        `;
       }
 
       private button(
@@ -876,25 +1061,88 @@ if (
               color: var(--color-red-600, #dc2626);
             }
 
-            .color-picker-wrapper {
+            .color-picker-wrapper,
+            .color-control {
               position: relative;
               display: flex;
               align-items: center;
-              gap: 2px;
+            }
+
+            .color-control {
+              height: 36px;
+              border: 1px solid transparent;
+              border-radius: 8px;
+              overflow: hidden;
+              transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+            }
+
+            .color-control:hover {
+              background: var(--tb-hover-bg);
+            }
+
+            .color-control.active {
+              border-color: var(--tb-active-border);
+              background: var(--tb-active-bg);
+              color: var(--tb-active-text);
+            }
+
+            .color-main,
+            .color-clear {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              height: 100%;
+              border: 0;
+              color: inherit;
+              background: transparent;
+              font: inherit;
+              cursor: pointer;
+            }
+
+            .color-main {
+              position: relative;
+              width: 38px;
+              padding: 0;
+            }
+
+            .color-main .svg-icon {
+              width: 1.45rem;
+              height: 1.45rem;
             }
 
             .color-trigger {
-              flex-direction: column;
-              gap: 0.125rem;
-              padding-top: 0.375rem;
-              padding-bottom: 0.25rem;
+              display: inline-flex;
+              height: 100%;
             }
 
-            .color-bar {
-              width: 100%;
-              height: 2px;
+            .color-swatch {
+              position: absolute;
+              right: 7px;
+              bottom: 0px;
+              left: 7px;
+              height: 3px;
               border-radius: 999px;
-              background: currentColor;
+              box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.14);
+            }
+
+            .color-clear {
+              width: 22px;
+              border-left: 1px solid var(--tb-divider);
+              opacity: 0.8;
+            }
+
+            .color-clear:hover:not(:disabled) {
+              background: rgba(0, 0, 0, 0.06);
+            }
+
+            .color-clear:disabled {
+              cursor: default;
+              opacity: 0.24;
+            }
+
+            .color-clear .svg-icon {
+              width: 1rem;
+              height: 1rem;
             }
 
             input[type="color"] {
@@ -926,7 +1174,7 @@ if (
       }
 
       private renderFormattingToolbar() {
-        const editor = getEditor();
+        const editor = this.getEditor();
         if (!editorReady(editor)) return null;
 
         return html`
@@ -1018,15 +1266,28 @@ if (
                   },
                 )}
               </div>
-              <div class="menu-divider"></div>
 
+              ${
+                !this.imageActive &&
+                !this.inColumnLayout &&
+                this.hasAttribute("data-comments-enabled")
+                  ? html`
+                    <div class="menu-divider"></div>
+                    <div class="menu-group">
+                      ${this.button(this.icon(commentIcon), "Add comment", () =>
+                        this.addInlineComment(),
+                      )}
+                    </div>
+                  `
+                  : null
+              }
+
+              <div class="menu-divider"></div>
               <div class="menu-group">
                 ${this.button(
                   this.icon(moreIcon),
                   "More Formatting",
-                  () => {
-                    this.secondaryOpen = !this.secondaryOpen;
-                  },
+                  () => this.toggleSecondaryToolbar(),
                   { active: this.secondaryOpen },
                 )}
               </div>
@@ -1134,43 +1395,48 @@ if (
 
                     <div class="menu-group">
                       <div class="color-picker-wrapper">
-                        ${this.button(
-                          html`${this.icon(textColorIcon)}
-                            <span class="color-bar" style=${`background:${this.textColor}`}></span>`,
-                          "Text Color",
-                          () => this.textColorInput?.click(),
-                          { active: this.textColor !== "#000000" },
-                        )}
-                        <input
-                          data-text-color
-                          type="color"
-                          .value=${this.textColor}
-                          @input=${(event: Event) => this.onTextColor(event)}
-                        />
+                        ${this.colorControl({
+                          icon: textColorIcon,
+                          label: "Text Color",
+                          value: this.textColor,
+                          active: this.textColorActive,
+                          onOpen: () => this.textColorInput?.click(),
+                          onClear: () => this.chain()?.unsetColor().run(),
+                          presets: TEXT_COLOR_PRESETS,
+                          onSelect: (value) => this.chain()?.setColor(value).run(),
+                          input: html`
+                            <input
+                              data-text-color
+                              type="color"
+                              .value=${this.textColor}
+                              @input=${(event: Event) => this.onTextColor(event)}
+                            />
+                          `,
+                        })}
                       </div>
                       <div class="color-picker-wrapper">
-                        ${this.button(
-                          html`${this.icon(highlightIcon)}
-                            <span class="color-bar" style=${`background:${this.bgColor}`}></span>`,
-                          "Background Color",
-                          () => this.bgColorInput?.click(),
-                          { active: this.bgColor !== "transparent" },
-                        )}
-                        <input
-                          data-bg-color
-                          type="color"
-                          .value=${this.bgColor === "transparent" ? "#ffff00" : this.bgColor}
-                          @input=${(event: Event) => this.onBgColor(event)}
-                        />
-                        ${
-                          this.bgColor !== "transparent"
-                            ? this.button(
-                                this.icon(closeThickIcon),
-                                "Clear Background Color",
-                                () => this.chain()?.unsetBackgroundColor().run(),
-                              )
-                            : null
-                        }
+                        ${this.colorControl({
+                          icon: paintBucketIcon,
+                          label: "Background Color",
+                          value:
+                            this.bgColor === "transparent" ? "#ffff00" : this.bgColor,
+                          active: this.bgColorActive,
+                          onOpen: () => this.bgColorInput?.click(),
+                          onClear: () => this.chain()?.unsetBackgroundColor().run(),
+                          presets: BACKGROUND_COLOR_PRESETS,
+                          onSelect: (value) =>
+                            this.chain()?.setBackgroundColor(value).run(),
+                          input: html`
+                            <input
+                              data-bg-color
+                              type="color"
+                              .value=${
+                                this.bgColor === "transparent" ? "#ffff00" : this.bgColor
+                              }
+                              @input=${(event: Event) => this.onBgColor(event)}
+                            />
+                          `,
+                        })}
                       </div>
                     </div>
 
@@ -1237,20 +1503,17 @@ if (
           <div class="table-toolbar" style=${this.tableStyle}>
             <div class="menu-group">
               ${this.button(
-                html`${this.icon(tableColumnAddBeforeIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(columnPlusLeftIcon),
                 "Add Column Before",
                 () => this.chain()?.addColumnBefore().run(),
               )}
               ${this.button(
-                html`${this.icon(tableColumnAddAfterIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(columnPlusRightIcon),
                 "Add Column After",
                 () => this.chain()?.addColumnAfter().run(),
               )}
               ${this.button(
-                html`${this.icon(columnDeleteIcon)}
-                  <span class="svg-icon icon-overlay-danger" .innerHTML=${closeThickIcon}></span>`,
+                this.icon(columnMinusIcon),
                 "Delete Column",
                 () => this.chain()?.deleteColumn().run(),
                 { danger: true },
@@ -1260,33 +1523,28 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                html`${this.icon(tableRowIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(rowPlusTopIcon),
                 "Add Row Before",
                 () => this.chain()?.addRowBefore().run(),
               )}
               ${this.button(
-                html`${this.icon(tableRowAddAfterIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(rowPlusBottomIcon),
                 "Add Row After",
                 () => this.chain()?.addRowAfter().run(),
               )}
               ${this.button(
-                html`${this.icon(rowDeleteIcon)}
-                  <span class="svg-icon icon-overlay-danger" .innerHTML=${closeThickIcon}></span>`,
+                this.icon(rowMinusIcon),
                 "Delete Row",
                 () => this.chain()?.deleteRow().run(),
                 { danger: true },
               )}
               ${this.button(
-                html`${this.icon(rowDeleteIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${scissorsIcon}></span>`,
+                this.icon(scissorsIcon),
                 "Cut Row",
                 () => this.cutRow(),
               )}
               ${this.button(
-                html`${this.icon(rowDeleteIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${pasteIcon}></span>`,
+                this.icon(clipboardIcon),
                 "Paste Row",
                 () => this.pasteRow(),
                 { disabled: !this.copiedRow },
@@ -1296,22 +1554,22 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                this.icon(tableHeaderCellIcon),
+                this.icon(tableIcon),
                 "Toggle Header Cell",
                 () => this.chain()?.toggleHeaderCell().run(),
                 { active: this.isActive("tableHeader") },
               )}
-              ${this.button(this.icon(cellMergeIcon), "Merge Cells", () =>
+              ${this.button(this.icon(arrowsMergeIcon), "Merge Cells", () =>
                 this.chain()?.mergeCells().run(),
               )}
-              ${this.button(this.icon(tableSplitCellIcon), "Split Cell", () =>
+              ${this.button(this.icon(arrowsSplitIcon), "Split Cell", () =>
                 this.chain()?.splitCell().run(),
               )}
             </div>
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(this.icon(expressionCellIcon), "Insert Expression Cell", () =>
+              ${this.button(this.icon(functionIcon), "Insert Expression Cell", () =>
                 this.chain()?.insertExpressionCell({ formula: "=" }).run(),
               )}
             </div>
@@ -1319,40 +1577,40 @@ if (
 
             <div class="menu-group">
               <div class="color-picker-wrapper">
-                ${this.button(
-                  html`${this.icon(highlightIcon)}
-                    <span class="color-bar" style=${`background:${this.cellBackgroundColor}`}></span>`,
-                  "Cell Background Color",
-                  () => this.cellBgColorInput?.click(),
-                  { active: this.cellBackgroundColor !== "transparent" },
-                )}
-                <input
-                  data-cell-bg-color
-                  type="color"
-                  .value=${
+                ${this.colorControl({
+                  icon: paintBucketIcon,
+                  label: "Cell Background",
+                  value:
                     this.cellBackgroundColor === "transparent"
                       ? "#ffffff"
-                      : this.cellBackgroundColor
-                  }
-                  @input=${(event: Event) => this.onCellBgColor(event)}
-                />
-                ${
-                  this.cellBackgroundColor !== "transparent"
-                    ? this.button(
-                        this.icon(closeThickIcon),
-                        "Clear Cell Background",
-                        () =>
-                          this.chain()?.setCellAttribute("backgroundColor", null).run(),
-                      )
-                    : null
-                }
+                      : this.cellBackgroundColor,
+                  active: this.cellBackgroundActive,
+                  onOpen: () => this.cellBgColorInput?.click(),
+                  onClear: () =>
+                    this.chain()?.setCellAttribute("backgroundColor", null).run(),
+                  presets: BACKGROUND_COLOR_PRESETS,
+                  onSelect: (value) =>
+                    this.chain()?.setCellAttribute("backgroundColor", value).run(),
+                  input: html`
+                    <input
+                      data-cell-bg-color
+                      type="color"
+                      .value=${
+                        this.cellBackgroundColor === "transparent"
+                          ? "#ffffff"
+                          : this.cellBackgroundColor
+                      }
+                      @input=${(event: Event) => this.onCellBgColor(event)}
+                    />
+                  `,
+                })}
               </div>
             </div>
             <div class="menu-divider"></div>
 
             <div class="menu-group">
               ${this.button(
-                this.icon(tableDeleteIcon),
+                this.icon(trashIcon),
                 "Delete Table",
                 () => this.chain()?.deleteTable().run(),
                 { danger: true },

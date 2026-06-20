@@ -10,7 +10,7 @@ export interface ExtensionRoute {
   title?: string;
   description?: string;
   menuItem?: ExtensionRouteMenuItem;
-  placements?: Array<"page" | "home-top">;
+  placements?: Array<"page" | "home-top" | "document">;
 }
 
 export interface JobIOField {
@@ -210,6 +210,29 @@ export function extractManifest(zipBuffer: Buffer): ExtensionManifest {
         );
       }
     }
+  }
+
+  // Validate that declared entry files are present in the ZIP.
+  for (const [key, entryPath] of Object.entries(manifest.entries)) {
+    if (entryPath && !findZipEntry(files, entryPath)) {
+      throw new Error(
+        `Extension manifest entries.${key} references '${entryPath}' which is not in the package`,
+      );
+    }
+  }
+
+  // Routes require a view entry to render; a view entry without routes is never loaded.
+  const hasRoutes = manifest.routes && manifest.routes.length > 0;
+  const hasViewEntry = Boolean(manifest.entries.view);
+  if (hasRoutes && !hasViewEntry) {
+    throw new Error(
+      "Extension manifest has routes but no entries.view — add a view entry or remove the routes",
+    );
+  }
+  if (hasViewEntry && !hasRoutes) {
+    throw new Error(
+      "Extension manifest has entries.view but no routes — add routes or remove the view entry",
+    );
   }
 
   return manifest;

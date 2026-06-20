@@ -16,7 +16,6 @@
  * positions, sizes, field IDs — fit in 32-bit range).
  */
 
-
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -908,9 +907,7 @@ function renderNode(
         if (symId) {
           const symKey = `${symId.sessionID as number}:${symId.localID as number}`;
           const symChildren = ctx.childrenOf.get(symKey) ?? [];
-          instKids = symChildren
-            .map((c) => renderNode(c, 0, 0, ctx, counter))
-            .join("");
+          instKids = symChildren.map((c) => renderNode(c, 0, 0, ctx, counter)).join("");
         }
       }
       return instKids ? `<g transform="${transform}"${opacityAttr}>${instKids}</g>` : "";

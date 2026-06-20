@@ -1,12 +1,17 @@
 import { createReadStream } from "node:fs";
-import { stat, unlink } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
 import type { APIRoute } from "astro";
+import { eq } from "drizzle-orm";
 import { requireParam, withApiErrorHandling } from "#db/api.ts";
+import { getSpaceDb } from "#db/db.ts";
+import { file as fileTable } from "#db/schema/space.ts";
+import { getFileStorage } from "#files/storage.ts";
+import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
+import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
-import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#utils/uploads.ts";
 
 const MIME_TYPES: Record<string, string> = {
   // Images
@@ -61,8 +66,23 @@ export const GET: APIRoute = (context) =>
 
       const mimeType = MIME_TYPES[extension] || "application/octet-stream";
 
+      const storage = getFileStorage();
+
+      // If transform params are present, serve via the transform+cache path.
+      // This bypasses redirectUrl so the server can read, transform, and cache
+      // the result locally regardless of the storage backend.
+      const transformParams = parseTransformParams(context.url.searchParams, extension);
+      if (transformParams) {
+        return serveTransformed(spaceId, path, transformParams, storage);
+      }
+
+      // Object storage adapters can redirect to their own CDN URL
+      const redirect = await storage.redirectUrl?.(spaceId, path);
+      if (redirect) {
+        return Response.redirect(redirect, 302);
+      }
+
       // Read file from data/uploads/{spaceId}/{path}
-      // Path can be "{filename}" or "{documentId}/{filename}"
       const uploadsRoot = getUploadsRoot(spaceId);
       const filePath = resolve(uploadsRoot, path);
       if (!isWithinUploadsRoot(spaceId, filePath)) {
@@ -159,20 +179,10 @@ export const DELETE: APIRoute = (context) =>
         return new Response("Invalid path", { status: 400 });
       }
 
-      const uploadsRoot = getUploadsRoot(spaceId);
-      const filePath = resolve(uploadsRoot, path);
-      if (!isWithinUploadsRoot(spaceId, filePath)) {
-        return new Response("Invalid path", { status: 400 });
-      }
-
-      try {
-        await unlink(filePath);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return new Response("File not found", { status: 404 });
-        }
-        throw error;
-      }
+      // Remove from storage (idempotent) and drop the ephemeral index row
+      await getFileStorage().delete(spaceId, path);
+      const db = await getSpaceDb(spaceId);
+      await db.delete(fileTable).where(eq(fileTable.path, path));
 
       return new Response(null, { status: 204 });
     },

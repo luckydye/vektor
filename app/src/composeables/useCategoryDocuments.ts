@@ -35,6 +35,7 @@ export function useCategoryDocuments(categorySlugs: Ref<string[]>) {
     },
     enabled: computed(() => !!currentSpaceId.value && categorySlugs.value.length > 0),
     staleTime: 1000 * 60 * 5, // 5 minutes
+    placeholderData: (prev) => prev,
   });
 
   // Ensure all expanded slugs exist in the returned map, even when empty.

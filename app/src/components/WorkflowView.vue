@@ -12,14 +12,16 @@ import {
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
+import { useRoute } from "../composeables/useRoute.ts";
 import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
+import "@sv/elements/tabs";
 import DataTable from "./DataTable.vue";
+import Pager from "./Pager.vue";
 
 const props = defineProps<{
   documentId: string;
   spaceId: string;
-  spaceSlug: string;
 }>();
 
 type RunSummary = {
@@ -37,6 +39,14 @@ const selectedRunError = ref<string | null>(null);
 const logsExpanded = ref(false);
 let unsubscribeRuns: (() => void) | null = null;
 let unsubscribeRun: (() => void) | null = null;
+const { spaceSlug } = useRoute();
+const currentSpaceSlug = computed(
+  () =>
+    spaceSlug.value ||
+    (typeof window !== "undefined"
+      ? window.location.pathname.split("/").filter(Boolean)[0]
+      : ""),
+);
 
 const {
   items: runList,
@@ -53,7 +63,7 @@ const {
     api.workflows
       .listRuns(props.spaceId, { filterDocumentId: props.documentId, limit, offset })
       .then((r) => ({ items: r.runs, total: r.total })),
-  pageSize: 5,
+  pageSize: 20,
 });
 
 function runIdFromUrl(): string | null {
@@ -204,7 +214,7 @@ watch(
     if (selectedRunSourceExtensionId.value !== sourceExtId) return;
     const firstRoute = ext.routes?.[0];
     sourceExtensionHref.value = firstRoute
-      ? `/${props.spaceSlug}/x/${firstRoute.path}`
+      ? `/${currentSpaceSlug.value}/x/${firstRoute.path}`
       : null;
   },
   { immediate: true },
@@ -306,7 +316,7 @@ watch(outputDocumentId, async (id) => {
     return;
   }
   const doc = await api.document.get(props.spaceId, id);
-  outputDocumentHref.value = `/${props.spaceSlug}/doc/${doc.slug}`;
+  outputDocumentHref.value = `/${currentSpaceSlug.value}/doc/${doc.slug}`;
   outputDocumentTitle.value =
     (doc as { properties?: { title?: string } }).properties?.title || doc.slug;
 });
@@ -333,7 +343,7 @@ async function toggleHistoryRun(runId: string) {
     const doc = await api.document.get(props.spaceId, docId);
     historyRunDocHrefs.value = new Map([
       ...historyRunDocHrefs.value,
-      [runId, `/${props.spaceSlug}/doc/${doc.slug}`],
+      [runId, `/${currentSpaceSlug.value}/doc/${doc.slug}`],
     ]);
     historyRunDocTitles.value = new Map([
       ...historyRunDocTitles.value,
@@ -412,11 +422,11 @@ const statusBadgeClass: Record<string, string> = {
     </a>
   </Teleport>
 
-  <div class="px-xs lg:px-xl space-y-8 mx-auto">
+  <div class="px-xs lg:px-xl space-y-8 mx-auto mb-12">
 
     <div class="flex justify-between gap-4">
         <!-- Title -->
-        <h2 class="text-size-title font-semibold text-neutral-800 dark:text-neutral-200">{{ selectedRunTitle || "Untitled" }}</h2>
+        <h2 class="text-size-title font-semibold text-neutral-800">{{ selectedRunTitle || "Untitled" }}</h2>
     
         <!-- Header -->
         <div class="flex items-center justify-between gap-12">
@@ -438,174 +448,226 @@ const statusBadgeClass: Record<string, string> = {
         </div>
     </div>
 
-    <!-- Pipeline progress -->
-    
-    <!-- Input fields -->
-    <details v-if="selectedRunInputs" class="text-size-small">
-      <summary class="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">Input fields</summary>
-      <div class="mt-2 space-y-2">
-        <div v-for="(val, key) in selectedRunInputs" :key="key" class="rounded-lg border border-neutral-200 overflow-hidden">
-          <div class="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 font-mono font-semibold text-neutral-500 border-b border-neutral-200">{{ key }}</div>
-          <pre class="px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-300">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
-        </div>
-      </div>
-    </details>
-    
-    <!-- No runs yet -->
-    <div v-if="!selectedRunDetail" class="text-size-medium text-neutral-400 py-8 text-center">
-      {{ selectedRunError ?? 'No runs yet. Click "Run Workflow" to execute.' }}
-    </div>
+    <!-- Tabs: Results / Run Details / History -->
+    <a-tabs>
+      <a-tabs-list class="border-b border-neutral-100">
+        <a-tabs-tab class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">Results</a-tabs-tab>
+        <a-tabs-tab class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">Run Details</a-tabs-tab>
+        <a-tabs-tab class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">History</a-tabs-tab>
+      </a-tabs-list>
 
-    <!-- Results -->
-    <div v-if="selectedRunDetail?.status === 'completed'" class="space-y-4">
-        
-      <h3>Results</h3>
-
-      <!-- HTML output -->
-      <div v-if="outputHtml" class="rounded-xl border border-neutral-200 overflow-hidden">
-        <div v-html="outputHtml" class="p-2" />
-      </div>
-
-      <!-- Data table -->
-      <DataTable
-        v-if="outputData"
-        :data="outputData"
-        :space-slug="props.spaceSlug"
-        :document-id="props.documentId"
-        :export-file-name="selectedRunTitle ?? 'data'"
-      />
-      
-      <h3>Documents</h3>
-
-      <!-- Document link -->
-      <div v-if="outputDocumentId && outputDocumentHref" class="inline-flex items-center gap-2">
-        <a
-          :href="outputDocumentHref"
-          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
-        >
-          <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
-          {{ outputDocumentTitle ?? "Open document" }}
-        </a>
-      </div>
-
-      <!-- File input -->
-      <div v-if="selectedRunFileUrl && selectedRunFileName" class="inline-flex items-center gap-2 ml-4">
-        <a
-          :href="selectedRunFileUrl"
-          target="_blank"
-          rel="noreferrer"
-          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
-        >
-          <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
-          {{ selectedRunFileName }}
-        </a>
-        <button
-          class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
-          title="Download"
-          @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
-        >
-          <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
-        </button>
-      </div>
-
-    </div>
-    
-    <!-- Logs (expandable) -->
-    <div v-if="selectedRunDetail && allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
-        <button
-            class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
-            @click="logsExpanded = !logsExpanded"
-        >
-        <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
-            Logs
-        </button>
-        <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[400px]">
-            <div class="font-mono text-[11px] space-y-0.5">
-                <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
-                <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
-                <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
-                </div>
+      <!-- Results panel -->
+      <a-tabs-panel>
+        <div class="space-y-4 pt-4">
+          <template v-if="selectedRunDetail.status === 'completed'">
+            <!-- HTML output -->
+            <div v-if="outputHtml" class="rounded-xl border border-neutral-200 overflow-hidden">
+              <div v-html="outputHtml" class="p-2" />
             </div>
-        </div>
-    </div>
 
-    <!-- Run history -->
-    <div v-if="runList.length > 0 || runTotalPages > 1">
-      <div class="text-size-small font-semibold text-neutral-400 uppercase tracking-wide mb-6">Run history</div>
-      <div class="space-y-1">
-        <div
-          v-for="run in runList"
-          :key="run.runId"
-          class="rounded-md border border-transparent transition-colors"
-          :class="expandedHistoryRuns.has(run.runId) ? 'border-neutral-200 bg-neutral-50' : ''"
-        >
-          <div class="flex items-center justify-between py-2 text-size-medium">
-            <button class="flex items-center gap-2 text-left" @click="selectRun(run.runId)">
-              <span class="text-neutral-500 text-size-small">{{ formatDate(run.createdAt) }}</span>
-              <span
-                class="px-2 py-0.5 rounded-full text-size-small font-medium capitalize"
-                :class="statusBadgeClass[run.status] ?? 'bg-neutral-100 text-neutral-500'"
-              >{{ run.status }}</span>
-            </button>
-            <button
-              v-if="run.status === 'completed'"
-              class="flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors ml-2"
-              @click="toggleHistoryRun(run.runId)"
-            >
-              <div class="svg-icon w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
-              Results
-            </button>
-          </div>
+            <!-- Data table -->
+            <DataTable
+              v-if="outputData"
+              :data="outputData"
+              :space-slug="currentSpaceSlug"
+              :document-id="props.documentId"
+              :export-file-name="selectedRunTitle ?? 'data'"
+            />
 
-          <!-- Expanded output -->
-          <div v-if="expandedHistoryRuns.has(run.runId)" class="px-3 pb-3 space-y-3">
-            <template v-if="historyRunDetails.has(run.runId)">
-              <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
-                <div v-html="historyOutputHtml(run.runId)" class="p-4" />
-              </div>
-              <DataTable
-                v-if="historyOutputData(run.runId)"
-                :data="historyOutputData(run.runId)!"
-                :space-slug="props.spaceSlug"
-                :document-id="props.documentId"
-                :export-file-name="historyRunTitle(run) ?? 'data'"
-              />
+            <div class="flex flex-wrap items-center gap-2">
+              <!-- Document link -->
+              <a
+                v-if="outputDocumentId && outputDocumentHref"
+                :href="outputDocumentHref"
+                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
+              >
+                <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
+                {{ outputDocumentTitle ?? "Open document" }}
+              </a>
 
-              <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
+              <!-- File download -->
+              <template v-if="selectedRunFileUrl && selectedRunFileName">
                 <a
-                  :href="historyOutputDocumentHref(run.runId)!"
-                  class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
+                  :href="selectedRunFileUrl"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
                 >
                   <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
-                  {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
+                  {{ selectedRunFileName }}
                 </a>
-              </div>
-              <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-size-small text-neutral-400">No output</p>
-            </template>
-            <div v-else class="text-size-small text-neutral-400">Loading…</div>
-          </div>
-        </div>
-      </div>
+                <button
+                  class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
+                  title="Download"
+                  @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
+                >
+                  <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
+                </button>
+              </template>
+            </div>
 
-      <!-- Run history pagination -->
-      <div v-if="runTotalPages > 1" class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-100 mb-12">
-        <button
-          @click="runPrevPage"
-          :disabled="!runHasPrevPage"
-          class="px-2.5 py-1 text-size-small font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Previous
-        </button>
-        <span class="text-size-small text-neutral-400">{{ runPage }} / {{ runTotalPages }}</span>
-        <button
-          @click="runNextPage"
-          :disabled="!runHasNextPage"
-          class="px-2.5 py-1 text-size-small font-medium border border-neutral-200 rounded-md hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Next
-        </button>
-      </div>
-    </div>
+            <p
+              v-if="!outputHtml && !outputData && !outputDocumentId && !selectedRunFileUrl"
+              class="text-size-medium text-neutral-400"
+            >No output</p>
+          </template>
+
+          <p v-else class="text-size-medium text-neutral-400">
+            {{ !selectedRunDetail ? (selectedRunError ?? 'Select a run from History to see results.') : selectedRunDetail.status === 'failed' ? 'Run failed.' : 'Run did not complete.' }}
+          </p>
+        </div>
+      </a-tabs-panel>
+
+      <!-- Run Details panel -->
+      <a-tabs-panel>
+        <div class="space-y-6 pt-4">
+          <!-- Input fields -->
+          <div v-if="selectedRunInputs">
+            <div class="mb-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide">Input fields</div>
+            <div class="rounded-lg border border-neutral-100 overflow-hidden">
+              <div class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50">
+                <div class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">Field</div>
+                <div class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">Value</div>
+              </div>
+              <div>
+                <div
+                  v-for="(val, key) in selectedRunInputs"
+                  :key="key"
+                  class="grid grid-cols-[180px_1fr] border-b border-neutral-100 last:border-b-0 transition-colors hover:bg-neutral-50"
+                >
+                  <div class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate">{{ key }}</div>
+                  <pre class="px-0 py-2.5 pr-4 overflow-x-auto whitespace-pre-wrap break-all text-size-small text-neutral-700">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Logs -->
+          <div v-if="allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
+            <button
+              class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
+              @click="logsExpanded = !logsExpanded"
+            >
+              <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
+              Logs
+            </button>
+            <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[400px]">
+              <div class="font-mono text-[11px] space-y-0.5">
+                <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
+                  <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
+                  <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p v-if="!selectedRunInputs && allLogs.length === 0" class="text-size-medium text-neutral-400">No details available.</p>
+        </div>
+      </a-tabs-panel>
+
+      <!-- History panel -->
+      <a-tabs-panel>
+        <div class="pt-2">
+          <div v-if="runList.length > 0 || runTotalPages > 1">
+            <div
+              class="grid grid-cols-[1fr_120px_140px] items-center h-9 border-b border-neutral-100 bg-neutral-50 sticky top-0 z-10 transition-colors"
+            >
+              <div class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+                Run
+              </div>
+              <div class="text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+                Status
+              </div>
+              <div class="pr-4 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+                Results
+              </div>
+            </div>
+            <div>
+              <div
+                v-for="run in runList"
+                :key="run.runId"
+                class="border-b border-neutral-100 group transition-colors hover:transition-none"
+                :class="selectedRunId === run.runId ? 'bg-primary-50' : 'hover:bg-neutral-50'"
+              >
+                <div class="grid grid-cols-[1fr_120px_140px] items-center text-size-medium">
+                  <button
+                    class="flex items-center gap-2 min-w-0 py-2.5 px-4 text-left"
+                    @click="selectRun(run.runId)"
+                  >
+                    <span class="text-size-medium font-medium text-neutral-800 truncate">
+                      {{ historyRunTitle(run) || "Untitled" }}
+                    </span>
+                    <span class="text-neutral-400 text-size-small tabular-nums shrink-0">
+                      {{ formatDate(run.createdAt) }}
+                    </span>
+                  </button>
+
+                  <div class="flex items-center py-2.5 pr-3">
+                    <span
+                      class="px-1.5 py-0.5 rounded-sm text-[11px] font-medium capitalize"
+                      :class="statusBadgeClass[run.status] ?? 'bg-neutral-100 text-neutral-500'"
+                    >{{ run.status }}</span>
+                  </div>
+
+                  <div class="flex items-center justify-end py-2.5 pr-4">
+                    <button
+                      v-if="run.status === 'completed'"
+                      class="inline-flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
+                      @click="toggleHistoryRun(run.runId)"
+                    >
+                      <div class="svg-icon w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
+                      Results
+                    </button>
+                    <span v-else class="text-size-small text-neutral-300">-</span>
+                  </div>
+                </div>
+
+                <!-- Expanded output -->
+                <div
+                  v-if="expandedHistoryRuns.has(run.runId)"
+                  class="px-4 pb-4 space-y-3 bg-neutral-50"
+                >
+                  <template v-if="historyRunDetails.has(run.runId)">
+                    <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
+                      <div v-html="historyOutputHtml(run.runId)" class="p-4" />
+                    </div>
+                    <DataTable
+                      v-if="historyOutputData(run.runId)"
+                      :data="historyOutputData(run.runId)!"
+                      :space-slug="currentSpaceSlug"
+                      :document-id="props.documentId"
+                      :export-file-name="historyRunTitle(run) ?? 'data'"
+                    />
+                    <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
+                      <a
+                        :href="historyOutputDocumentHref(run.runId)!"
+                        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
+                      >
+                        <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
+                        {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
+                      </a>
+                    </div>
+                    <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-size-small text-neutral-400">No output</p>
+                  </template>
+                  <div v-else class="text-size-small text-neutral-400">Loading…</div>
+                </div>
+              </div>
+            </div>
+
+            <Pager
+              class="mt-4 pt-3 mb-12"
+              :page="runPage"
+              :total-pages="runTotalPages"
+              :has-prev-page="runHasPrevPage"
+              :has-next-page="runHasNextPage"
+              @previous="runPrevPage"
+              @next="runNextPage"
+            />
+          </div>
+          <p v-else class="text-size-medium text-neutral-400 py-8 text-center">No runs yet.</p>
+        </div>
+      </a-tabs-panel>
+    </a-tabs>
 
   </div>
 </template>

@@ -1,8 +1,8 @@
 import { posix } from "node:path";
 import { defineCommand } from "just-bash";
+import { extractManifest } from "../../utils/extensionManifest.ts";
 import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
 import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
-import { extractManifest } from "../../utils/extensionManifest.ts";
 
 const USAGE = "usage: extension install <zip-file> | extension init <name>\n";
 
@@ -88,14 +88,25 @@ async function handleInit(
   };
 
   const mainJs = `export function activate(ctx) {
-  // ctx.actions.register, ctx.suggestions.register, ctx.views.register, ctx.api
+  ctx.actions.register('${nameArg}.hello', {
+    title: 'Hello from ${manifest.name}',
+    run: async () => {
+      alert('Hello from ${manifest.name}!');
+    },
+  });
 }
 
-export function deactivate(ctx) {}
+export function deactivate(ctx) {
+  ctx.actions.unregister('${nameArg}.hello');
+}
 `;
 
   await ctx.fs.mkdir(distDir, { recursive: true });
-  await ctx.fs.writeFile(posix.join(dir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+  await ctx.fs.writeFile(
+    posix.join(dir, "manifest.json"),
+    JSON.stringify(manifest, null, 2),
+    "utf8",
+  );
   await ctx.fs.writeFile(posix.join(distDir, "main.js"), mainJs, "utf8");
 
   return {

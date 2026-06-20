@@ -56,7 +56,7 @@ const floatH = ref(600);
 const insets = ref<Insets>(getInsets());
 let stopInsets: (() => void) | null = null;
 
-// Track the lg breakpoint reactively so docked positioning recomputes when the
+// Track the md breakpoint reactively so docked positioning recomputes when the
 // sidebar collapses to an overlay below it.
 const isDesktop = ref(true);
 
@@ -243,7 +243,7 @@ function onMouseUp() {
 }
 
 function onWindowResize() {
-  isDesktop.value = window.innerWidth >= 1024;
+  isDesktop.value = window.innerWidth >= 768;
   if (mode.value === "floating") {
     // Clamp floating position
     const maxX = window.innerWidth - floatW.value - DOCK_MARGIN;
@@ -282,7 +282,7 @@ onMounted(() => {
     width: props.defaultWidth ?? 380,
   });
 
-  isDesktop.value = window.innerWidth >= 1024;
+  isDesktop.value = window.innerWidth >= 768;
   stopInsets = onInsets((s) => {
     insets.value = s;
   });

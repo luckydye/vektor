@@ -3,10 +3,8 @@ import { marked } from "marked";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   clockIcon,
-  closeSmallIcon,
   copyOutlineIcon,
   linkChainIcon,
-  paperclipIcon,
   pencilSquareIcon,
   plusThinIcon,
   robotIcon,
@@ -33,6 +31,8 @@ import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
+import type { PendingAttachment } from "./MessageInput.vue";
+import MessageInput from "./MessageInput.vue";
 
 const props = defineProps({
   documentId: {
@@ -50,15 +50,6 @@ type UploadedAttachment = {
   isImage: boolean;
 };
 
-type PendingAttachment = {
-  id: string;
-  file: File;
-  name: string;
-  type: string;
-  size: number;
-  previewUrl?: string;
-};
-
 type MentionSuggestion = {
   id: string;
   slug: string;
@@ -74,9 +65,7 @@ const messageInput = ref("");
 const messages = ref<UIMessage[]>([]);
 const messagesContainer = ref<HTMLElement | null>(null);
 const isGenerating = ref(false);
-const messageInputEl = ref<HTMLTextAreaElement | null>(null);
-const fileInput = ref<HTMLInputElement | null>(null);
-const pendingAttachments = ref<PendingAttachment[]>([]);
+const messageInputEl = ref<InstanceType<typeof MessageInput> | null>(null);
 const isUploadingFiles = ref(false);
 const uploadError = ref("");
 const mentionOpen = ref(false);
@@ -127,11 +116,7 @@ function loadUIState() {
 }
 
 const canSend = computed(() => {
-  return !!(
-    !isGenerating.value &&
-    !isUploadingFiles.value &&
-    (messageInput.value.trim() || pendingAttachments.value.length > 0)
-  );
+  return !isGenerating.value && !isUploadingFiles.value;
 });
 
 /**
@@ -163,64 +148,6 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function openFilePicker() {
-  fileInput.value?.click();
-}
-
-function revokePreviewUrl(url?: string) {
-  if (!url) return;
-  URL.revokeObjectURL(url);
-}
-
-function clearPendingAttachments() {
-  for (const attachment of pendingAttachments.value) {
-    revokePreviewUrl(attachment.previewUrl);
-  }
-  pendingAttachments.value = [];
-}
-
-function removePendingAttachment(id: string) {
-  const index = pendingAttachments.value.findIndex((file) => file.id === id);
-  if (index < 0) return;
-  const [removed] = pendingAttachments.value.splice(index, 1);
-  revokePreviewUrl(removed.previewUrl);
-}
-
-function onFilesSelected(event: Event) {
-  const input = event.target as HTMLInputElement;
-  if (!input.files?.length) return;
-  addPendingFiles(input.files);
-  input.value = "";
-}
-
-function onDropFiles(event: DragEvent) {
-  if (!event.dataTransfer?.files?.length || isGenerating.value) return;
-  event.preventDefault();
-  addPendingFiles(event.dataTransfer.files);
-}
-
-function onPasteFiles(event: ClipboardEvent) {
-  if (!event.clipboardData?.files?.length || isGenerating.value) return;
-  addPendingFiles(event.clipboardData.files);
-}
-
-function addPendingFiles(fileList: FileList) {
-  uploadError.value = "";
-  const next: PendingAttachment[] = [];
-  for (const file of Array.from(fileList)) {
-    const isImage = file.type.startsWith("image/");
-    next.push({
-      id: crypto.randomUUID(),
-      file,
-      name: file.name,
-      type: file.type || "application/octet-stream",
-      size: file.size,
-      previewUrl: isImage ? URL.createObjectURL(file) : undefined,
-    });
-  }
-  pendingAttachments.value = [...pendingAttachments.value, ...next];
 }
 
 function buildMessageWithAttachments(
@@ -277,7 +204,7 @@ async function ensureMentionDocs(): Promise<DocumentWithProperties[]> {
 }
 
 async function updateMentionSuggestions() {
-  const textarea = messageInputEl.value;
+  const textarea = messageInputEl.value?.el;
   if (!textarea) {
     closeMentionSuggestions();
     return;
@@ -371,7 +298,7 @@ function selectMention(suggestion: MentionSuggestion) {
   closeMentionSuggestions();
 
   nextTick(() => {
-    const textarea = messageInputEl.value;
+    const textarea = messageInputEl.value?.el;
     if (!textarea) return;
     const nextPos = before.length + token.length;
     textarea.focus();
@@ -406,11 +333,6 @@ function onMessageKeydown(event: KeyboardEvent) {
       closeMentionSuggestions();
       return;
     }
-  }
-
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    sendMessage();
   }
 }
 
@@ -862,7 +784,7 @@ function startNewChat() {
   currentSessionId.value = null;
   messages.value = [];
   uploadError.value = "";
-  clearPendingAttachments();
+  messageInputEl.value?.clearAttachments();
   closeMentionSuggestions();
   showSessionPicker.value = false;
   messages.value.push({
@@ -875,7 +797,7 @@ function startNewChat() {
 function resumeSession(session: ChatSession) {
   currentSessionId.value = session.id;
   uploadError.value = "";
-  clearPendingAttachments();
+  messageInputEl.value?.clearAttachments();
   closeMentionSuggestions();
   messages.value = (session.messages as UIMessage[]).map(normalizeSavedMessage);
   showSessionPicker.value = false;
@@ -974,7 +896,7 @@ async function sendMessage() {
 
   const message = messageInput.value.trim();
   closeMentionSuggestions();
-  const attachmentsToUpload = [...pendingAttachments.value];
+  const attachmentsToUpload = [...(messageInputEl.value?.pendingAttachments ?? [])];
   uploadError.value = "";
 
   showSessionPicker.value = false;
@@ -1043,7 +965,7 @@ async function sendMessage() {
     attachments: uploadedAttachments,
   });
   messageInput.value = "";
-  clearPendingAttachments();
+  messageInputEl.value?.clearAttachments();
   scrollToBottom();
 
   isGenerating.value = true;
@@ -1155,7 +1077,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("resize", updateMentionOverlayPosition);
   window.removeEventListener("scroll", updateMentionOverlayPosition, true);
-  clearPendingAttachments();
   Actions.unregister("ai-chat:toggle");
 });
 </script>
@@ -1233,8 +1154,6 @@ onUnmounted(() => {
         ref="messagesContainer"
         class="flex-1 overflow-y-auto px-3 py-4 space-y-3 messages-container"
         @click="closeMentionSuggestions()"
-        @dragover.prevent
-        @drop="onDropFiles"
       >
         <template
           v-for="(message, index) in messages"
@@ -1432,89 +1351,44 @@ onUnmounted(() => {
         <div
           ref="mentionAnchorEl"
           class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-xl"
-          @dragover.prevent
-          @drop="onDropFiles"
         >
-          <input
-            ref="fileInput"
-            type="file"
-            multiple
-            class="hidden"
-            @change="onFilesSelected"
-          />
-          <div
-            v-if="pendingAttachments.length > 0"
-            class="mb-2 flex flex-wrap gap-1.5"
-          >
-            <div
-              v-for="attachment in pendingAttachments"
-              :key="attachment.id"
-              class="group flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-10 px-1.5 py-1"
-            >
-              <img
-                v-if="attachment.previewUrl"
-                :src="attachment.previewUrl"
-                :alt="attachment.name"
-                class="h-8 w-8 rounded-sm object-cover"
-              />
-              <div v-else class="h-8 w-8 rounded-sm bg-neutral-200 text-neutral-500 flex items-center justify-center text-[10px] font-semibold">
-                FILE
-              </div>
-              <div class="min-w-0 max-w-36">
-                <p class="truncate text-size-small text-neutral-700">{{ attachment.name }}</p>
-                <p class="text-[10px] text-neutral-500">{{ formatFileSize(attachment.size) }}</p>
-              </div>
-              <button
-                type="button"
-                class="text-neutral-400 hover:text-red-500 transition-colors"
-                @click="removePendingAttachment(attachment.id)"
-              >
-                <div class="svg-icon w-3.5 h-3.5" v-html="closeSmallIcon" />
-              </button>
-            </div>
-          </div>
-          <div class="flex items-end gap-2">
-          <button
-            type="button"
-            @click="openFilePicker"
-            title="Attach files"
-            class="shrink-0 text-neutral-400 hover:text-neutral-700 transition-colors mb-0.5"
-          >
-            <div class="svg-icon w-4 h-4" v-html="paperclipIcon" />
-          </button>
-          <textarea
+          <MessageInput
             ref="messageInputEl"
             v-model="messageInput"
+            placeholder="Ask anything..."
+            auto-grow
+            attachments
+            :disabled="!canSend"
+            :is-uploading="isUploadingFiles"
+            :upload-error="uploadError"
+            @submit="sendMessage"
+            @keydown="onMessageKeydown"
             @input="onMessageInput"
             @click="updateMentionSuggestions"
             @keyup="updateMentionSuggestions"
-            @keydown="onMessageKeydown"
-            @paste="onPasteFiles"
-            rows="1"
-            placeholder="Ask anything..."
-            class="flex-1 bg-transparent text-size-medium text-neutral-800 placeholder-neutral-400 focus:outline-none resize-none max-h-40 leading-5"
-            style="field-sizing: content"
-          />
-          <button
-            v-if="isGenerating"
-            @click="cancelGeneration"
-            class="shrink-0 text-neutral-500 hover:text-red-500 transition-colors mb-0.5"
-            title="Stop generating"
           >
-            <div class="svg-icon w-4 h-4" v-html="stopIcon" />
-          </button>
-          <button
-            v-else
-            @click="sendMessage"
-            :disabled="!canSend"
-            class="shrink-0 text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors mb-0.5"
-            title="Send (↵)"
-          >
-            <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
-          </button>
-        </div>
-          <p v-if="isUploadingFiles" class="mt-2 text-size-small text-neutral-500">Uploading files...</p>
-          <p v-if="uploadError" class="mt-2 text-size-small text-red-600">{{ uploadError }}</p>
+            <template #actions>
+              <button
+                v-if="isGenerating"
+                type="button"
+                @click="cancelGeneration"
+                class="shrink-0 text-neutral-500 hover:text-red-500 transition-colors mb-0.5"
+                title="Stop generating"
+              >
+                <div class="svg-icon w-4 h-4" v-html="stopIcon" />
+              </button>
+              <button
+                v-else
+                type="button"
+                @click="sendMessage"
+                :disabled="!canSend"
+                class="shrink-0 text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors mb-0.5"
+                title="Send (↵)"
+              >
+                <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
+              </button>
+            </template>
+          </MessageInput>
         </div>
       </div>
 

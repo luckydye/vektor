@@ -1,11 +1,11 @@
 <template>
-  <div class="flex items-center gap-3 flex-1">
+  <div class="flex items-center gap-3 flex-1 -ml-1">
     <input ref="inputEl" v-if="isEditing" v-model="localTitle" type="text" placeholder="Untitled Document"
-      class="text-size-display font-bold text-neutral-900 bg-transparent focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors"
+      class="text-size-display font-bold text-neutral-900 bg-neutral-50 focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors px-1"
       @blur="updateTitle" @keydown.enter="updateTitle" />
 
     <div v-else :data-document-id="documentId">
-        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow" @dblclick="startEditing">
+        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow hover:bg-neutral-50 px-1" @dblclick="startEditing">
             {{ localTitle || 'Untitled Document' }}
             <div v-if="starred" class="svg-icon w-6 h-6 text-yellow-500" v-html="starFilledIcon" />
         </h1>
@@ -13,43 +13,39 @@
   </div>
 </template>
 
-<script setup>
-import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+<script setup lang="ts">
+import { nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
 
-const props = defineProps({
-  title: {
-    type: String,
-    required: true,
+const props = withDefaults(
+  defineProps<{
+    title: string;
+    documentId?: string;
+    starred?: boolean;
+    initialEditMode?: boolean;
+  }>(),
+  {
+    starred: false,
+    initialEditMode: false,
   },
-  documentId: {
-    type: String,
-    required: true,
-  },
-  starred: {
-    type: Boolean,
-    default: false,
-  },
-  initialEditMode: {
-    type: Boolean,
-    default: false,
-  },
-});
+);
 
-const emit = defineEmits(["title-updated"]);
+const emit = defineEmits<{
+  "title-updated": [title: string];
+}>();
 
-const inputEl = ref(null);
+const inputEl = ref<HTMLInputElement | null>(null);
 const localTitle = ref(props.title);
 const isEditing = ref(props.initialEditMode);
 
 async function startEditing() {
   isEditing.value = true;
   await nextTick();
-  inputEl.value?.focus();
+  inputEl.value?.focus({ preventScroll: true });
 }
 
 watch(
@@ -108,41 +104,6 @@ async function updateTitle() {
   }
   isEditing.value = false;
 }
-
-function handleEditModeStart() {
-  startEditing();
-}
-
-function handleEditModeCancel() {
-  localTitle.value = props.title;
-  isEditing.value = false;
-}
-
-onMounted(() => {
-  window.addEventListener("edit-mode-start", handleEditModeStart);
-  window.addEventListener("edit-mode-cancel", handleEditModeCancel);
-});
-
-onUnmounted(() => {
-  window.removeEventListener("edit-mode-start", handleEditModeStart);
-  window.removeEventListener("edit-mode-cancel", handleEditModeCancel);
-});
-
-const status = ref("idle");
-const error = ref(null);
-
-function handleSaveStatusChange(event) {
-  status.value = event.detail.status;
-  error.value = event.detail.error;
-}
-
-onMounted(() => {
-  window.addEventListener("save-status-changed", handleSaveStatusChange);
-});
-
-onUnmounted(() => {
-  window.removeEventListener("save-status-changed", handleSaveStatusChange);
-});
 </script>
 
 <style scoped>

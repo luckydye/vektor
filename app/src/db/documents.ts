@@ -1,8 +1,10 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { extractFileTextFromBuffer } from "../files/extractText.ts";
+import { getFileStorage } from "../files/storage.ts";
 import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
-import { slugify } from "../utils/utils.ts";
+import { normalizeTimestamp, slugify } from "../utils/utils.ts";
 import {
   filterReadableResources,
   grantPermission,
@@ -15,7 +17,7 @@ import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import { extractMentionsFromHtml } from "./mentions.ts";
 import { createRevision, decompressHtml } from "./revisions.ts";
-import { document, property, revision } from "./schema/space.ts";
+import { document, file as fileTable, property, revision } from "./schema/space.ts";
 import {
   buildDocumentSearchText,
   buildSearchSnippet,
@@ -91,7 +93,7 @@ async function generateUniqueSlug(
   return slug;
 }
 
-async function updateDocumentEmbedding(
+export async function updateDocumentEmbedding(
   spaceId: string,
   documentId: string,
 ): Promise<void> {
@@ -121,8 +123,25 @@ async function updateDocumentEmbedding(
     .where(eq(property.documentId, documentId))
     .all();
 
+  // Collect extracted text from files attached to this document
+  const attachedFiles = await db
+    .select()
+    .from(fileTable)
+    .where(eq(fileTable.documentId, documentId))
+    .all();
+  const fileTexts = attachedFiles.map((f) =>
+    f.extractedText
+      ? `[${f.originalName ?? f.path}]\n${f.extractedText}`
+      : `[${f.originalName ?? f.path}]`,
+  );
+
   const properties = Object.fromEntries(props.map((item) => [item.key, item.value]));
-  const searchText = buildDocumentSearchText(doc.content, properties);
+  const fileText = fileTexts.join("\n\n");
+  const searchText = buildDocumentSearchText(
+    doc.content,
+    properties,
+    fileText || undefined,
+  );
   const searchEmbedding = serializeEmbedding(await embedText(searchText));
 
   await db
@@ -150,12 +169,39 @@ export interface DocumentWithProperties {
   readonly: boolean;
   archived: boolean;
   mentionCount?: number;
+  /** Set for file-table entries — use this URL instead of the doc route */
+  fileUrl?: string;
 }
 
 export type SearchResult = DocumentWithProperties & {
   rank: number;
   snippet: string;
 };
+
+type FileRow = typeof fileTable.$inferSelect;
+
+/** Map a standalone file-index row to the document shape used by listings and search. */
+function fileRowToDocument(f: FileRow): DocumentWithProperties {
+  return {
+    id: f.path,
+    slug: f.path,
+    type: "file",
+    content: "",
+    currentRev: 0,
+    publishedRev: null,
+    properties: {
+      ...(f.originalName ? { title: f.originalName } : {}),
+      ...(f.mimeType ? { mimeType: f.mimeType } : {}),
+    },
+    createdAt: f.updatedAt ?? new Date(0),
+    updatedAt: f.updatedAt ?? new Date(0),
+    createdBy: "",
+    parentId: null,
+    readonly: true,
+    archived: false,
+    fileUrl: f.url ?? undefined,
+  };
+}
 
 // Property filter for advanced search
 // Use value: null to filter for documents that have the property (any value)
@@ -454,6 +500,41 @@ export interface AclViewer {
   userGroups?: string[];
 }
 
+async function syncFileIndex(
+  spaceId: string,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
+): Promise<void> {
+  const storage = getFileStorage();
+  const diskFiles = await storage.list(spaceId);
+  if (diskFiles.length === 0) return;
+
+  const indexed = new Set(
+    (await db.select({ path: fileTable.path }).from(fileTable).all()).map((r) => r.path),
+  );
+
+  const toIndex = diskFiles.filter((f) => !indexed.has(f.key)).slice(0, 200);
+
+  for (const { key, updatedAt } of toIndex) {
+    const buf = await storage.read(spaceId, key);
+    if (!buf) continue;
+    const name = key.split("/").pop() ?? key;
+    const extracted = extractFileTextFromBuffer(buf, name, undefined);
+    const url = storage.url(spaceId, key);
+    await db
+      .insert(fileTable)
+      .values({
+        path: key,
+        documentId: null,
+        originalName: name,
+        mimeType: null,
+        url,
+        updatedAt,
+        extractedText: extracted,
+      })
+      .onConflictDoNothing();
+  }
+}
+
 export async function listDocuments(
   spaceId: string,
   limit?: number,
@@ -562,6 +643,26 @@ export async function listDocuments(
     readonly: doc.readonly,
     archived: doc.archived,
   }));
+
+  if (!type || type === "file") {
+    syncFileIndex(spaceId, db).catch(() => {});
+
+    const standaloneFiles = await db
+      .select()
+      .from(fileTable)
+      .where(sql`${fileTable.documentId} IS NULL`)
+      .orderBy(desc(fileTable.updatedAt))
+      .all();
+
+    const fileResults = standaloneFiles.map(fileRowToDocument);
+
+    if (type === "file") {
+      return { documents: fileResults, total: fileResults.length };
+    }
+
+    results.push(...fileResults);
+    total += fileResults.length;
+  }
 
   return { documents: results, total };
 }
@@ -1175,9 +1276,10 @@ export async function searchDocuments(
     }
   }
 
-  // Separate "type" filters from property filters
+  // Separate special filters from property filters
   const typeFilters = filters.filter((f) => f.key === "type");
-  const propertyFilters = filters.filter((f) => f.key !== "type");
+  const dateFilters = filters.filter((f) => f.key === "_date");
+  const propertyFilters = filters.filter((f) => f.key !== "type" && f.key !== "_date");
 
   // Helper to check if a document matches property filters
   const matchesFilters = (
@@ -1223,6 +1325,8 @@ export async function searchDocuments(
     updatedAt: Date;
     rank: number;
     snippet: string;
+    // Set for standalone file-index entries (instead of a document row)
+    file?: FileRow;
   }[];
 
   if (hasQuery) {
@@ -1293,9 +1397,6 @@ export async function searchDocuments(
       .filter((item): item is NonNullable<typeof item> => item !== null)
       .sort((left, right) => left.rank - right.rank);
 
-    if (ranked.length === 0 && !hasFilters) {
-      return { results: [], total: 0 };
-    }
     allRawResults = ranked;
   } else {
     // Filter-only search (no text query) - get all non-archived documents
@@ -1326,15 +1427,95 @@ export async function searchDocuments(
     `);
   }
 
-  // Filter by accessible IDs (null docIds means job token — all docs accessible)
-  let accessibleResults =
-    docIds === null ? allRawResults : allRawResults.filter((r) => docIds.includes(r.id));
+  // Merge file index entries (standalone + document-attached) so files are
+  // findable directly, unless a type filter explicitly excludes files.
+  const excludeFiles = typeFilters.some((f) => f.value !== null && f.value !== "file");
+  if (!excludeFiles) {
+    const indexedFiles = await db.select().from(fileTable).all();
 
-  // If we have filters, apply them by loading properties for each document
-  if (hasFilters && accessibleResults.length > 0) {
+    for (const f of indexedFiles) {
+      let rank = 0;
+      let snippet = "";
+      if (hasQuery) {
+        const fileSearchText = [f.originalName, f.extractedText]
+          .filter(Boolean)
+          .join("\n");
+        const keywordScore = scoreKeywordOverlap(query, fileSearchText);
+        if (keywordScore === 0) continue;
+        rank = Math.max(0, 1 - keywordScore);
+        snippet = buildSearchSnippet(query, fileSearchText);
+      }
+      allRawResults.push({
+        id: f.path,
+        type: "file",
+        content: "",
+        userId: "",
+        parentId: null,
+        createdAt: f.updatedAt ?? new Date(0),
+        updatedAt: f.updatedAt ?? new Date(0),
+        rank,
+        snippet,
+        file: f,
+      });
+    }
+
+    if (hasQuery) allRawResults.sort((a, b) => a.rank - b.rank);
+  }
+
+  // Filter by accessible IDs (null docIds means job token — all docs accessible).
+  // Standalone files (no parent doc) are accessible to anyone in the space;
+  // document-attached files inherit their parent document's access.
+  let accessibleResults =
+    docIds === null
+      ? allRawResults
+      : allRawResults.filter((r) =>
+          r.file
+            ? r.file.documentId === null || docIds.includes(r.file.documentId)
+            : docIds.includes(r.id),
+        );
+
+  // Apply date range filter
+  if (dateFilters.length > 0 && accessibleResults.length > 0) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    accessibleResults = accessibleResults.filter((r) => {
+      const ua = normalizeTimestamp(r.updatedAt as string | number | Date);
+      for (const df of dateFilters) {
+        switch (df.value) {
+          case "today":
+            if (ua < todayStart) return false;
+            break;
+          case "week":
+            if (ua < weekStart || ua >= todayStart) return false;
+            break;
+          case "month":
+            if (ua < monthStart || ua >= weekStart) return false;
+            break;
+          case "older":
+            if (ua >= monthStart) return false;
+            break;
+        }
+      }
+      return true;
+    });
+  }
+
+  // If we have property/type filters, apply them by loading properties for each document
+  const hasPropertyOrTypeFilters = typeFilters.length > 0 || propertyFilters.length > 0;
+  if (hasPropertyOrTypeFilters && accessibleResults.length > 0) {
     const filteredResults: typeof accessibleResults = [];
 
     for (const row of accessibleResults) {
+      if (row.file) {
+        if (matchesFilters(fileRowToDocument(row.file).properties, "file")) {
+          filteredResults.push(row);
+        }
+        continue;
+      }
+
       const props = await db
         .select()
         .from(property)
@@ -1366,6 +1547,15 @@ export async function searchDocuments(
   const results: SearchResult[] = [];
 
   for (const row of rawResults) {
+    if (row.file) {
+      results.push({
+        ...fileRowToDocument(row.file),
+        rank: row.rank,
+        snippet: row.snippet,
+      });
+      continue;
+    }
+
     const props = await db
       .select()
       .from(property)

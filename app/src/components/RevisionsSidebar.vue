@@ -20,9 +20,12 @@ import { t } from "../utils/lang.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import ActivityFeed from "./ActivityFeed.vue";
 import DockedPanel from "./DockedPanel.vue";
+import Pager from "./Pager.vue";
 import "@sv/elements/popover";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useMembers } from "../composeables/useMembers.ts";
+import { useSync } from "../composeables/useSync.ts";
+import { realtimeTopics } from "../utils/realtime.ts";
 
 const props = defineProps({
   documentId: {
@@ -237,21 +240,11 @@ onMounted(() => {
   }
 
   window.addEventListener("revision:close", onRevisionClose);
-  window.addEventListener("document-published", onDocumentPublished);
 });
 
 onUnmounted(() => {
   window.removeEventListener("revision:close", onRevisionClose);
-  window.removeEventListener("document-published", onDocumentPublished);
 });
-
-function onDocumentPublished() {
-  if (isOpen.value) {
-    refresh();
-  } else {
-    fetchPublishedRev();
-  }
-}
 
 function onRevisionClose() {
   selectedRevisionNumber.value = null;
@@ -278,6 +271,20 @@ watch(
     }
   },
   { immediate: true },
+);
+
+useSync(
+  currentSpaceId,
+  () => [realtimeTopics.document(props.documentId)],
+  (scopes) => {
+    if (!scopes.includes(realtimeTopics.document(props.documentId))) return;
+
+    if (isOpen.value) {
+      refresh();
+    } else {
+      fetchPublishedRev();
+    }
+  },
 );
 </script>
 
@@ -386,26 +393,16 @@ watch(
       </wiki-scroll>
 
       <!-- Pager -->
-      <div
-        v-if="totalPages > 1"
-        class="shrink-0 flex justify-between items-center px-3 py-2 border-t border-neutral-100"
-      >
-        <button
-          @click="prevPage"
-          :disabled="!hasPrevPage || isFetchingAudit"
-          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Previous
-        </button>
-        <span class="text-size-small text-neutral-500">Page {{ page }} of {{ totalPages }}</span>
-        <button
-          @click="nextPage"
-          :disabled="!hasNextPage || isFetchingAudit"
-          class="px-3 py-1.5 text-size-small font-medium border border-neutral-100 rounded-md hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Next
-        </button>
-      </div>
+      <Pager
+        class="shrink-0 px-3 py-2"
+        :page="page"
+        :total-pages="totalPages"
+        :has-prev-page="hasPrevPage"
+        :has-next-page="hasNextPage"
+        :disabled="isFetchingAudit"
+        @previous="prevPage"
+        @next="nextPage"
+      />
     </div>
   </DockedPanel>
 </template>
