@@ -56,7 +56,18 @@ export async function prepateAuthDb(authDb: BunSQLiteDatabase) {
  * Run all DDL migrations on a space database instance.
  * Works for both file-backed and in-memory SQLite databases.
  */
+export async function applySpaceDbPragmas(spaceDb: BunSQLiteDatabase) {
+  // WAL mode: concurrent reads don't block writes, and writes batch into the
+  // WAL file without per-transaction fsyncs (synchronous=NORMAL handles this).
+  await spaceDb.run(sql.raw("PRAGMA journal_mode = WAL"));
+  await spaceDb.run(sql.raw("PRAGMA synchronous = NORMAL"));
+  // Keeps the WAL file small; auto-checkpoint at 1000 pages (default).
+  await spaceDb.run(sql.raw("PRAGMA wal_autocheckpoint = 1000"));
+}
+
 export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
+  await applySpaceDbPragmas(spaceDb);
+
   const metadataSQL = generateCreateTableSQL(spaceSchema.spaceMetadata);
   const documentSQL = generateCreateTableSQL(spaceSchema.document);
   const revisionSQL = generateCreateTableSQL(spaceSchema.revision);
@@ -77,8 +88,11 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
     sql.raw("CREATE INDEX IF NOT EXISTS document_parent_id_idx ON document (parent_id)"),
   );
   await spaceDb.run(
+    sql.raw("DROP INDEX IF EXISTS property_document_id_key_idx"),
+  );
+  await spaceDb.run(
     sql.raw(
-      "CREATE INDEX IF NOT EXISTS property_document_id_key_idx ON property (document_id, key)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS property_document_id_key_unique ON property (document_id, key)",
     ),
   );
 
@@ -188,5 +202,6 @@ export async function prepareSpaceDb(spaceId: string) {
     },
   });
 
+  await applySpaceDbPragmas(spaceDb);
   await initSpaceDbSchema(spaceDb);
 }

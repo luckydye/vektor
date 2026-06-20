@@ -752,6 +752,7 @@ export async function updateDocumentProperty(
   const db = await getSpaceDb(spaceId);
   const now = new Date();
 
+  // Read existing value for audit log (indexed lookup, very fast)
   const existing = await db
     .select()
     .from(property)
@@ -760,57 +761,57 @@ export async function updateDocumentProperty(
 
   const previousValue = existing?.value;
 
-  if (existing) {
-    const updateData: { value: string; updatedAt: Date; type?: string | null } = {
-      value,
-      updatedAt: now,
-    };
-    if (type !== undefined) {
-      updateData.type = type;
-    }
-    await db.update(property).set(updateData).where(eq(property.id, existing.id));
-  } else {
-    await db.insert(property).values({
-      id: createId("property"),
-      documentId,
-      key,
-      value,
-      type: type || null,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  // Create audit log for property update
-  await createAuditLog(db, {
-    spaceId,
-    docId: documentId,
-    userId,
-    event: "property_update",
-    details: {
-      propertyKey: key,
-      propertyType: type || undefined,
-      previousValue,
-      newValue: value,
-    },
-  });
-
+  // Slug generation must happen outside the transaction (reads document table)
   const payload: { slug?: string } = {};
-
-  // If updating the title, also update the document slug
+  let newSlug: string | undefined;
   if (key === "title" && value) {
-    const newSlug = await generateUniqueSlug(spaceId, value, documentId);
-    await db
-      .update(document)
-      .set({ slug: newSlug, updatedAt: now })
-      .where(eq(document.id, documentId));
+    newSlug = await generateUniqueSlug(spaceId, value, documentId);
     payload.slug = newSlug;
-  } else {
-    // Update the document's updatedAt timestamp
-    await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
   }
 
-  await updateDocumentEmbedding(spaceId, documentId);
+  // Batch all writes into one transaction: property upsert + audit log + document timestamp
+  await db.run(sql`BEGIN`);
+  try {
+    if (existing) {
+      const updateData: { value: string; updatedAt: Date; type?: string | null } = {
+        value,
+        updatedAt: now,
+      };
+      if (type !== undefined) updateData.type = type;
+      await db.update(property).set(updateData).where(eq(property.id, existing.id));
+    } else {
+      await db.insert(property).values({
+        id: createId("property"),
+        documentId,
+        key,
+        value,
+        type: type || null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await createAuditLog(db, {
+      spaceId,
+      docId: documentId,
+      userId,
+      event: "property_update",
+      details: { propertyKey: key, propertyType: type || undefined, previousValue, newValue: value },
+    });
+
+    if (newSlug) {
+      await db.update(document).set({ slug: newSlug, updatedAt: now }).where(eq(document.id, documentId));
+    } else {
+      await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
+    }
+
+    await db.run(sql`COMMIT`);
+  } catch (e) {
+    await db.run(sql`ROLLBACK`);
+    throw e;
+  }
+
+  updateDocumentEmbedding(spaceId, documentId).catch(() => {});
   const propertyChangeData = {
     kind: "document_property_changed",
     documentId,
@@ -887,7 +888,7 @@ export async function deleteDocumentProperty(
   // Update the document's updatedAt timestamp
   await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
 
-  await updateDocumentEmbedding(spaceId, documentId);
+  updateDocumentEmbedding(spaceId, documentId).catch(() => {});
   const propertyDeleteData = {
     kind: "document_property_deleted",
     documentId,

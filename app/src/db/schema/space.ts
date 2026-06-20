@@ -87,17 +87,21 @@ export const revision = sqliteTable("revision", {
   createdBy: text("created_by").notNull(),
 });
 
-export const property = sqliteTable("property", {
-  id: text("id").primaryKey(),
-  documentId: text("document_id")
-    .notNull()
-    .references(() => document.id, { onDelete: "cascade" }),
-  key: text("key").notNull(),
-  value: text("value").notNull(),
-  type: text("type"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
+export const property = sqliteTable(
+  "property",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    type: text("type"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [uniqueIndex("property_document_id_key_unique").on(t.documentId, t.key)],
+);
 
 export const category = sqliteTable("category", {
   id: text("id").primaryKey(),
