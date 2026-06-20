@@ -58,6 +58,7 @@
     "#jobs/*": "./src/jobs/*",
     "#observability/*": "./src/observability/*",
     "#files/*": "./src/files/*",
-    "#utils/*": "./src/utils/*"
+    "#utils/*": "./src/utils/*",
+    "#provider/*": "./src/provider/*"
   }
 }

@@ -7,16 +7,13 @@ import {
   alignLeftIcon,
   alignRightIcon,
   boldIcon,
-  cellMergeIcon,
   chevronDownIcon,
   closeSmallIcon,
   closeThickIcon,
-  columnDeleteIcon,
   columns2Icon,
   columns3Icon,
   columns4Icon,
   commentIcon,
-  expressionCellIcon,
   highlightIcon,
   imageFullWidthIcon,
   indentIcon,
@@ -27,19 +24,23 @@ import {
   listUnorderedIcon,
   moreIcon,
   outdentIcon,
-  pasteIcon,
+  arrowsMergeIcon,
+  arrowsSplitIcon,
+  clipboardIcon,
+  columnMinusIcon,
+  columnPlusLeftIcon,
+  columnPlusRightIcon,
+  functionIcon,
+  paintBucketIcon,
+  rowMinusIcon,
+  rowPlusBottomIcon,
+  rowPlusTopIcon,
+  scissorsIcon,
+  tableIcon,
+  trashIcon,
   plusOverlayIcon,
   restoreArrowIcon,
-  rowDeleteIcon,
-  scissorsIcon,
   strikethroughIcon,
-  tableColumnAddAfterIcon,
-  tableColumnAddBeforeIcon,
-  tableDeleteIcon,
-  tableHeaderCellIcon,
-  tableRowAddAfterIcon,
-  tableRowIcon,
-  tableSplitCellIcon,
   textColorIcon,
   underlineIcon,
 } from "../../assets/icons.ts";
@@ -1483,20 +1484,17 @@ if (
           <div class="table-toolbar" style=${this.tableStyle}>
             <div class="menu-group">
               ${this.button(
-                html`${this.icon(tableColumnAddBeforeIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(columnPlusLeftIcon),
                 "Add Column Before",
                 () => this.chain()?.addColumnBefore().run(),
               )}
               ${this.button(
-                html`${this.icon(tableColumnAddAfterIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(columnPlusRightIcon),
                 "Add Column After",
                 () => this.chain()?.addColumnAfter().run(),
               )}
               ${this.button(
-                html`${this.icon(columnDeleteIcon)}
-                  <span class="svg-icon icon-overlay-danger" .innerHTML=${closeThickIcon}></span>`,
+                this.icon(columnMinusIcon),
                 "Delete Column",
                 () => this.chain()?.deleteColumn().run(),
                 { danger: true },
@@ -1506,33 +1504,28 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                html`${this.icon(tableRowIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(rowPlusTopIcon),
                 "Add Row Before",
                 () => this.chain()?.addRowBefore().run(),
               )}
               ${this.button(
-                html`${this.icon(tableRowAddAfterIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${plusOverlayIcon}></span>`,
+                this.icon(rowPlusBottomIcon),
                 "Add Row After",
                 () => this.chain()?.addRowAfter().run(),
               )}
               ${this.button(
-                html`${this.icon(rowDeleteIcon)}
-                  <span class="svg-icon icon-overlay-danger" .innerHTML=${closeThickIcon}></span>`,
+                this.icon(rowMinusIcon),
                 "Delete Row",
                 () => this.chain()?.deleteRow().run(),
                 { danger: true },
               )}
               ${this.button(
-                html`${this.icon(rowDeleteIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${scissorsIcon}></span>`,
+                this.icon(scissorsIcon),
                 "Cut Row",
                 () => this.cutRow(),
               )}
               ${this.button(
-                html`${this.icon(rowDeleteIcon)}
-                  <span class="svg-icon icon-overlay" .innerHTML=${pasteIcon}></span>`,
+                this.icon(clipboardIcon),
                 "Paste Row",
                 () => this.pasteRow(),
                 { disabled: !this.copiedRow },
@@ -1542,22 +1535,22 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                this.icon(tableHeaderCellIcon),
+                this.icon(tableIcon),
                 "Toggle Header Cell",
                 () => this.chain()?.toggleHeaderCell().run(),
                 { active: this.isActive("tableHeader") },
               )}
-              ${this.button(this.icon(cellMergeIcon), "Merge Cells", () =>
+              ${this.button(this.icon(arrowsMergeIcon), "Merge Cells", () =>
                 this.chain()?.mergeCells().run(),
               )}
-              ${this.button(this.icon(tableSplitCellIcon), "Split Cell", () =>
+              ${this.button(this.icon(arrowsSplitIcon), "Split Cell", () =>
                 this.chain()?.splitCell().run(),
               )}
             </div>
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(this.icon(expressionCellIcon), "Insert Expression Cell", () =>
+              ${this.button(this.icon(functionIcon), "Insert Expression Cell", () =>
                 this.chain()?.insertExpressionCell({ formula: "=" }).run(),
               )}
             </div>
@@ -1566,7 +1559,7 @@ if (
             <div class="menu-group">
               <div class="color-picker-wrapper">
                 ${this.colorControl({
-                  icon: highlightIcon,
+                  icon: paintBucketIcon,
                   label: "Cell Background",
                   value:
                     this.cellBackgroundColor === "transparent"
@@ -1576,6 +1569,9 @@ if (
                   onOpen: () => this.cellBgColorInput?.click(),
                   onClear: () =>
                     this.chain()?.setCellAttribute("backgroundColor", null).run(),
+                  presets: BACKGROUND_COLOR_PRESETS,
+                  onSelect: (value) =>
+                    this.chain()?.setCellAttribute("backgroundColor", value).run(),
                   input: html`
                     <input
                       data-cell-bg-color
@@ -1595,7 +1591,7 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                this.icon(tableDeleteIcon),
+                this.icon(trashIcon),
                 "Delete Table",
                 () => this.chain()?.deleteTable().run(),
                 { danger: true },
