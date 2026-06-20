@@ -101,18 +101,6 @@ export function useProperties() {
     type?: string | null,
   ) {
     await updatePropertyMutation.mutateAsync({ documentId, name, value, type });
-
-    const lowerName = name.toLowerCase();
-    if (
-      typeof window !== "undefined" &&
-      (lowerName === "layout" || lowerName === "gridtype" || lowerName === "headerimage")
-    ) {
-      window.dispatchEvent(
-        new CustomEvent("document:property", {
-          detail: { propertyName: name, value },
-        }),
-      );
-    }
   }
 
   async function deleteProperty(documentId: string, name: string) {

@@ -1,24 +1,16 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed } from "vue";
+import { useDocument } from "../composeables/useDocument.ts";
 import { withTransformParams } from "../files/transformUrl.ts";
 
-const props = defineProps<{ initialSrc?: string }>();
+const props = defineProps<{ documentId: string }>();
 
-const src = ref(props.initialSrc ?? null);
+const { document } = useDocument(props.documentId);
 
-function applyTransform(url: string): string {
-  return withTransformParams(url, { w: 1600, format: "webp", q: 85 });
-}
-
-function onPropertyChange(e: Event) {
-  const { propertyName, value } = (e as CustomEvent<{ propertyName: string; value: string }>).detail;
-  if (propertyName === "headerImage") {
-    src.value = value ? applyTransform(value) : null;
-  }
-}
-
-onMounted(() => window.addEventListener("document:property", onPropertyChange));
-onUnmounted(() => window.removeEventListener("document:property", onPropertyChange));
+const src = computed(() => {
+  const url = document.value?.properties?.headerImage;
+  return url ? withTransformParams(url, { w: 1600, format: "webp", q: 85 }) : null;
+});
 </script>
 
 <template>

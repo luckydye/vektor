@@ -233,7 +233,7 @@ if (diffMins >= 1 && diffMins < 60) {
       {!isCanvas && !isApp && !isWorkflow && (
         <HeaderImage
           client:load
-          initialSrc={headerImage ?? undefined}
+          documentId={document.id}
         />
       )}
 

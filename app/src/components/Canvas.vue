@@ -811,17 +811,6 @@ function applyGridType(value: unknown) {
   renderGrid();
 }
 
-// Live in-tab updates: useProperties dispatches this when the grid type changes
-// via the property chip, so the backdrop updates without waiting on a refetch.
-function handlePropertyEvent(event: Event) {
-  const detail = (event as CustomEvent).detail as
-    | { propertyName?: string; value?: unknown }
-    | undefined;
-  if (detail?.propertyName?.toLowerCase() === "gridtype") {
-    applyGridType(detail.value);
-  }
-}
-
 function defaultInkColor() {
   return canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
 }
@@ -2293,7 +2282,6 @@ onMounted(() => {
   window.addEventListener("copy", handleCopy);
   window.addEventListener("cut", handleCut);
   window.addEventListener("paste", handlePaste);
-  window.addEventListener("document:property", handlePropertyEvent);
 });
 
 onUnmounted(() => {
@@ -2313,7 +2301,6 @@ onUnmounted(() => {
   window.removeEventListener("copy", handleCopy);
   window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
-  window.removeEventListener("document:property", handlePropertyEvent);
   imageCache.clear();
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
