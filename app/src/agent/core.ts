@@ -231,6 +231,10 @@ export async function runAgentPrompt(options: {
   signal?: AbortSignal;
   onChunk?: (chunk: string) => void | Promise<void>;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
+  /** Test seam for deterministic provider responses. */
+  modelCaller?: typeof callModel;
+  /** Test seam that avoids reading provider configuration. */
+  provider?: AIProvider;
 }): Promise<AgentResult> {
   const {
     messages,
@@ -246,7 +250,8 @@ export async function runAgentPrompt(options: {
     onEvent,
   } = options;
 
-  const provider = getAIProvider();
+  const provider = options.provider ?? getAIProvider();
+  const modelCaller = options.modelCaller ?? callModel;
 
   // Resolve the document type so the system prompt can inline the right
   // editing playbook. Use the caller-provided type, else fetch once
@@ -293,9 +298,11 @@ export async function runAgentPrompt(options: {
     ...messages,
   ];
   const allChunks: string[] = [];
+  let emptyResponseRetries = 0;
+  const maxEmptyResponseRetries = 2;
 
   while (true) {
-    const { message, finishReason } = await callModel({
+    const { message, finishReason } = await modelCaller({
       provider,
       messages: agentMessages,
       tools,
@@ -313,8 +320,28 @@ export async function runAgentPrompt(options: {
     agentMessages.push(message);
 
     if (!message.tool_calls?.length) {
+      if (!message.content?.trim()) {
+        if (emptyResponseRetries >= maxEmptyResponseRetries) {
+          throw new Error(
+            `The model returned an empty response ${maxEmptyResponseRetries + 1} times.`,
+          );
+        }
+        emptyResponseRetries += 1;
+        await onEvent?.({
+          type: "status",
+          text: "Model planned an action but emitted no tool call; retrying.",
+        });
+        agentMessages.push({
+          role: "user",
+          content:
+            "Continue the requested task now. If it requires a command, call the bash tool with the command; do not only describe or plan the action. Otherwise provide a visible answer.",
+        });
+        continue;
+      }
       return { content: allChunks.join(""), stopReason: finishReason };
     }
+
+    emptyResponseRetries = 0;
 
     for (const toolCall of message.tool_calls) {
       await onEvent?.({

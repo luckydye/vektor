@@ -4,7 +4,7 @@ import { defineCommand } from "just-bash";
  * Stubs for runtimes the model reaches for out of habit (node, python, …)
  * that are NOT installed in the sandbox. Instead of a cryptic
  * "command not found", they redirect to the one available scripting runtime,
- * `js-exec` (a QuickJS sandbox), so the agent recovers in a single step.
+ * `js-exec` (the native JavaScript sandbox), so the agent recovers in a single step.
  */
 function unavailableRuntime(name: string, hint: string) {
   return defineCommand(name, async () => ({
