@@ -8,7 +8,6 @@ import {
   forbiddenResponse,
   jsonResponse,
   parseJsonBody,
-  parsePaginationParams,
   requireParam,
   verifySpaceRole,
   verifyTokenPermission,
@@ -62,7 +61,8 @@ export const GET: APIRoute = (context) =>
       ? { userId: aclUserId, userGroups: await getUserGroups(aclUserId) }
       : null;
 
-    const { limit, offset } = parsePaginationParams(context.url.searchParams);
+    const limitParam = context.url.searchParams.get("limit");
+    const limit = limitParam ? Math.min(Math.max(1, parseInt(limitParam, 10)), 500) : 50;
     const cursor = context.url.searchParams.get("cursor") || undefined;
     const typeParam = context.url.searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = context.url.searchParams.get("categorySlugs");
@@ -123,12 +123,11 @@ export const GET: APIRoute = (context) =>
     const { documents, total, nextCursor } = await listDocuments(
       spaceId,
       limit,
-      offset,
       typeParam,
       viewer,
       cursor,
     );
-    return jsonResponse({ documents, total, limit, offset, nextCursor });
+    return jsonResponse({ documents, total, limit, nextCursor });
   }, "Failed to list documents");
 
 export const POST: APIRoute = (context) =>

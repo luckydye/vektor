@@ -854,13 +854,12 @@ export class ApiClient {
      */
     get: async (
       spaceId: string,
-      query?: Record<string, string | number | boolean | undefined>,
+      query?: { limit?: number; cursor?: string; type?: string } & Record<string, string | number | boolean | undefined>,
     ) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
         total: number;
         limit: number;
-        offset: number;
         nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, query);
       return response;

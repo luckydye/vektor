@@ -553,7 +553,6 @@ export function decodeListCursor(cursor: string): { updatedAt: Date; id: string 
 export async function listDocuments(
   spaceId: string,
   limit?: number,
-  offset?: number,
   type?: string,
   viewer?: AclViewer | null,
   cursor?: string,
@@ -588,10 +587,7 @@ export async function listDocuments(
   let nextCursor: string | null = null;
 
   if (viewer) {
-    // ACL filtering requires fetching all docs before paginating — offset path only.
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(document).where(baseCondition).get();
-    total = countResult?.count ?? 0;
-
+    // ACL filtering requires fetching all docs before paginating.
     const allDocs = await db.select(selectFields).from(document).where(baseCondition).orderBy(desc(document.updatedAt), desc(document.id)).all();
     const readable = await filterReadableResources(
       spaceId, ResourceType.DOCUMENT,
@@ -599,11 +595,10 @@ export async function listDocuments(
     );
     const visible = allDocs.filter((d) => readable.has(d.id));
     total = visible.length;
-    const start = offset ?? 0;
-    docs = (limit !== undefined ? visible.slice(start, start + limit) : visible.slice(start)) as DocRow[];
-  } else if (cursor) {
-    // Keyset pagination: seek past the cursor position using the compound index.
-    const pos = decodeListCursor(cursor);
+    docs = (limit !== undefined ? visible.slice(0, limit) : visible) as DocRow[];
+  } else {
+    // Keyset pagination: no cursor = first page (no seek condition).
+    const pos = cursor ? decodeListCursor(cursor) : null;
     const seekCondition = pos
       ? and(
           baseCondition,
@@ -614,7 +609,6 @@ export async function listDocuments(
         )
       : baseCondition;
 
-    // Fetch limit+1 to determine whether another page exists.
     const fetchLimit = (limit ?? 50) + 1;
     const rows = await db.select(selectFields).from(document).where(seekCondition).orderBy(desc(document.updatedAt), desc(document.id)).limit(fetchLimit).all() as DocRow[];
 
@@ -625,22 +619,7 @@ export async function listDocuments(
     } else {
       docs = rows;
     }
-
-    // Total is expensive on cursor path — return 0 (callers should use hasMore/nextCursor).
     total = 0;
-  } else {
-    // Offset pagination (backward-compat).
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(document).where(baseCondition).get();
-    total = countResult?.count ?? 0;
-
-    const q = db.select(selectFields).from(document).where(baseCondition).orderBy(desc(document.updatedAt), desc(document.id));
-    docs = (limit !== undefined && offset !== undefined
-      ? await q.limit(limit).offset(offset).all()
-      : limit !== undefined
-        ? await q.limit(limit).all()
-        : offset !== undefined
-          ? await q.offset(offset).all()
-          : await q.all()) as DocRow[];
   }
 
   // Fetch properties only for the documents on this page

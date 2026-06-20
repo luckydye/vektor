@@ -106,17 +106,14 @@ const {
   isLoading: isLoadingDocuments,
 } = useInfiniteQuery({
   queryKey: ["documents", props.spaceId],
-  queryFn: async ({ pageParam = 0 }) => {
+  queryFn: async ({ pageParam }: { pageParam: string | null }) => {
     return await api.documents.get(props.spaceId, {
       limit: documentsPageSize,
-      offset: pageParam,
+      cursor: pageParam ?? undefined,
     });
   },
-  getNextPageParam: (lastPage, allPages) => {
-    const loadedCount = allPages.reduce((sum, page) => sum + page.documents.length, 0);
-    return loadedCount < lastPage.total ? loadedCount : undefined;
-  },
-  initialPageParam: 0,
+  getNextPageParam: (lastPage) => lastPage.nextCursor ?? null,
+  initialPageParam: null,
 });
 
 // Flatten all documents from pages (only when not searching)
