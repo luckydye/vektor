@@ -62,7 +62,8 @@ export const GET: APIRoute = (context) =>
       : null;
 
     const limitParam = context.url.searchParams.get("limit");
-    const limit = limitParam ? Math.min(Math.max(1, parseInt(limitParam, 10)), 500) : 50;
+    const limitNum = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50;
     const cursor = context.url.searchParams.get("cursor") || undefined;
     const typeParam = context.url.searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = context.url.searchParams.get("categorySlugs");

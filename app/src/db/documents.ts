@@ -595,7 +595,24 @@ export async function listDocuments(
     );
     const visible = allDocs.filter((d) => readable.has(d.id));
     total = visible.length;
-    docs = (limit !== undefined ? visible.slice(0, limit) : visible) as DocRow[];
+
+    let start = 0;
+    if (cursor) {
+      const pos = decodeListCursor(cursor);
+      if (pos) {
+        const idx = visible.findIndex(
+          (d) => d.updatedAt < pos.updatedAt || (d.updatedAt.getTime() === pos.updatedAt.getTime() && d.id < pos.id),
+        );
+        start = idx === -1 ? visible.length : idx;
+      }
+    }
+    const pageLimit = limit ?? visible.length;
+    const page = visible.slice(start, start + pageLimit) as DocRow[];
+    if (start + pageLimit < visible.length) {
+      const last = page[page.length - 1];
+      nextCursor = last ? encodeListCursor(last.updatedAt, last.id) : null;
+    }
+    docs = page;
   } else {
     // Keyset pagination: no cursor = first page (no seek condition).
     const pos = cursor ? decodeListCursor(cursor) : null;
@@ -671,8 +688,12 @@ export async function listDocuments(
       return { documents: fileResults, total: fileResults.length, nextCursor: null };
     }
 
-    results.push(...fileResults);
-    total += fileResults.length;
+    // Only include files on the first page — subsequent cursor pages contain
+    // documents only, so files aren't duplicated across pages.
+    if (!cursor) {
+      results.push(...fileResults);
+      total += fileResults.length;
+    }
   }
 
   return { documents: results, total, nextCursor };

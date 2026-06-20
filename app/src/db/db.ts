@@ -117,12 +117,12 @@ export async function getSpaceDb(spaceId: string) {
     },
   });
 
-  // Apply connection-local pragmas to the cached operational connection.
-  // journal_mode=WAL is persistent (stored in the DB file) but synchronous=NORMAL
-  // is connection-local and must be re-applied on every new connection.
-  await applySpaceDbPragmas(spaceDb);
-
+  // Cache before awaiting so concurrent first-requests reuse this connection
+  // instead of each creating their own and racing on PRAGMA journal_mode.
   spaceDbCache.set(spaceId, spaceDb);
+
+  // synchronous=NORMAL is connection-local; must be applied on every new connection.
+  await applySpaceDbPragmas(spaceDb);
 
   return spaceDb;
 }
