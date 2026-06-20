@@ -1,11 +1,11 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { Bash } from "just-bash";
+import type { ChatMessage } from "../provider/types.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
 import {
   type AgentEvent,
   type AgentResult,
   type AgentShellBootstrap,
-  type ChatMessage,
   createAgentShell,
   getAIProvider,
   runAgentPrompt,

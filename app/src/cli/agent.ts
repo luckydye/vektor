@@ -5,7 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
-import type { ChatMessage } from "../agent/core.ts";
+import type { ChatMessage } from "../provider/types.ts";
 import { config } from "../config.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 

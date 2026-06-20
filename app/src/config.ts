@@ -1,5 +1,6 @@
 let _publicEnvVars: Record<string, string> | undefined;
 
+export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.5-397b-a17b";
 export const DEFAULT_OLLAMA_MODEL = "qwen3:latest";
 
@@ -163,8 +164,6 @@ export function config() {
 export function getConfiguredOpenRouterModel(): string {
   return config().OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
 }
-
-export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 
 export function getConfiguredAnthropicModel(): string {
   return config().ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
