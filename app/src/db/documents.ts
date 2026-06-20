@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { extractFileTextFromBuffer } from "../files/extractText.ts";
 import { getFileStorage } from "../files/storage.ts";
@@ -615,8 +615,12 @@ export async function listDocuments(
     docs = await baseQuery.all();
   }
 
-  // Fetch all properties in one query instead of N queries
-  const allProps = await db.select().from(property).all();
+  // Fetch properties only for the documents on this page
+  const docIds = docs.map((d) => d.id);
+  const allProps =
+    docIds.length > 0
+      ? await db.select().from(property).where(inArray(property.documentId, docIds)).all()
+      : [];
 
   // Group properties by document ID
   const propsByDocId = new Map<string, Record<string, string>>();
@@ -1200,38 +1204,33 @@ export async function getDocumentChildren(
     docs = docs.filter((doc) => readable.has(doc.id));
   }
 
-  const results: DocumentWithProperties[] = [];
+  const childIds = docs.map((d) => d.id);
+  const allProps =
+    childIds.length > 0
+      ? await db.select().from(property).where(inArray(property.documentId, childIds)).all()
+      : [];
 
-  for (const doc of docs) {
-    const props = await db
-      .select()
-      .from(property)
-      .where(eq(property.documentId, doc.id))
-      .all();
-
-    const properties: Record<string, string> = {};
-    for (const prop of props) {
-      properties[prop.key] = prop.value;
-    }
-
-    results.push({
-      id: doc.id,
-      slug: doc.slug,
-      type: doc.type,
-      content: doc.content,
-      currentRev: doc.currentRev,
-      publishedRev: doc.publishedRev,
-      properties,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-      createdBy: doc.createdBy,
-      parentId: doc.parentId || null,
-      readonly: doc.readonly,
-      archived: doc.archived,
-    });
+  const propsByDocId = new Map<string, Record<string, string>>();
+  for (const prop of allProps) {
+    if (!propsByDocId.has(prop.documentId)) propsByDocId.set(prop.documentId, {});
+    propsByDocId.get(prop.documentId)![prop.key] = prop.value;
   }
 
-  return results;
+  return docs.map((doc) => ({
+    id: doc.id,
+    slug: doc.slug,
+    type: doc.type,
+    content: "",
+    currentRev: doc.currentRev,
+    publishedRev: doc.publishedRev,
+    properties: propsByDocId.get(doc.id) ?? {},
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+    createdBy: doc.createdBy,
+    parentId: doc.parentId || null,
+    readonly: doc.readonly,
+    archived: doc.archived,
+  }));
 }
 
 export async function searchDocuments(

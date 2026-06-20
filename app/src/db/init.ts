@@ -69,6 +69,19 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
   await spaceDb.run(sql.raw(propertySQL));
   await spaceDb.run(sql.raw(categorySQL));
 
+  // Performance indexes — safe to add to existing DBs
+  await spaceDb.run(
+    sql.raw("CREATE INDEX IF NOT EXISTS document_updated_at_idx ON document (updated_at DESC)"),
+  );
+  await spaceDb.run(
+    sql.raw("CREATE INDEX IF NOT EXISTS document_parent_id_idx ON document (parent_id)"),
+  );
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS property_document_id_key_idx ON property (document_id, key)",
+    ),
+  );
+
   const preferenceSQL = generateCreateTableSQL(spaceSchema.preference);
   await spaceDb.run(sql.raw(preferenceSQL));
 
@@ -84,6 +97,11 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
 
   const auditLogSQL = generateCreateTableSQL(spaceSchema.auditLog);
   await spaceDb.run(sql.raw(auditLogSQL));
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS audit_log_doc_id_created_at_idx ON audit_log (doc_id, created_at DESC, id DESC)",
+    ),
+  );
 
   const accessTokenSQL = generateCreateTableSQL(spaceSchema.accessToken);
   await spaceDb.run(sql.raw(accessTokenSQL));
