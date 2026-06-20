@@ -77,5 +77,14 @@ export {
   panCameraByScreenDelta,
   zoomCameraAtPoint,
 } from "./viewport-controls";
+export type {
+  VectorTileLayerStyle,
+  VectorTileMap,
+  VectorTileMapOptions,
+  VectorTileMapStats,
+  VectorTileRect,
+  VectorTileStyleFn,
+} from "./vector-tile";
+export { createVectorTileMap, drawVectorTile } from "./vector-tile";
 export type { WorldOverlayLayer, WorldOverlayOptions } from "./world-overlay";
 export { createWorldOverlayLayer } from "./world-overlay";
