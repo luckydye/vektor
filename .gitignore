@@ -16,6 +16,7 @@ dist
 *.zip
 
 /extensions
+/api
 
 .opencode-runtime
 
