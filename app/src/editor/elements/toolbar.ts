@@ -14,7 +14,6 @@ import {
   columns3Icon,
   columns4Icon,
   commentIcon,
-  highlightIcon,
   imageFullWidthIcon,
   indentIcon,
   italicIcon,
@@ -410,58 +409,24 @@ if (
         const editor = this.getEditor();
         if (!editorReady(editor)) return;
 
-        if (this.shouldShow) {
-          const left = this.leftAlignedToolbarPosition(
-            editor,
-            this.menu?.offsetWidth ?? 600,
-          );
-          const top = this.verticalToolbarPosition(
-            editor,
-            Math.max(this.menu?.offsetHeight ?? 48, 48),
-          );
-          this.floatingStyle = `left:${left}px;top:${top}px;`;
-        }
-
         if (this.tableActive) {
           this.tableStyle = this.getTableStyle(editor);
         } else {
           this.tableStyle = "";
         }
 
+        if (this.shouldShow) {
+          const menuWidth = this.menu?.offsetWidth ?? 600;
+          const menuHeight = Math.max(this.menu?.offsetHeight ?? 48, 48);
+          const left = this.leftAlignedToolbarPosition(editor, menuWidth);
+          const top = this.computeFloatingTop(editor, menuHeight);
+          this.floatingStyle = `left:${left}px;top:${top}px;`;
+        }
+
         this.paint();
       };
 
-      private getTableStyle(editor: Editor) {
-        const { state, view } = editor;
-        const { from } = state.selection;
-        const $from = state.doc.resolve(from);
-        let tableDepth: number | null = null;
-
-        for (let depth = $from.depth; depth > 0; depth--) {
-          if ($from.node(depth).type.name === "table") {
-            tableDepth = depth;
-            break;
-          }
-        }
-
-        if (tableDepth === null) return "";
-
-        const coords = view.coordsAtPos($from.before(tableDepth));
-        const left = this.leftAlignedToolbarPosition(
-          editor,
-          this.tableMenu?.offsetWidth ?? 400,
-        );
-        return `left:${left}px;top:${coords.top}px;`;
-      }
-
-      private leftAlignedToolbarPosition(editor: Editor, toolbarWidth: number) {
-        const padding = 8;
-        const editorLeft = editor.view.dom.getBoundingClientRect().left;
-        const maxLeft = window.innerWidth - toolbarWidth - padding;
-        return Math.min(Math.max(editorLeft, padding), Math.max(padding, maxLeft));
-      }
-
-      private verticalToolbarPosition(editor: Editor, toolbarHeight: number) {
+      private computeFloatingTop(editor: Editor, menuHeight: number): number {
         const padding = 8;
         const gap = 10;
         const { from, to } = editor.state.selection;
@@ -469,19 +434,73 @@ if (
         const end = editor.view.coordsAtPos(to);
         const selectionTop = Math.min(start.top, end.top);
         const selectionBottom = Math.max(start.bottom, end.bottom);
-        const topCandidate = selectionTop - toolbarHeight - gap;
-        const bottomCandidate = selectionBottom + gap;
-        const maxTop = window.innerHeight - toolbarHeight - padding;
+        const maxTop = window.innerHeight - menuHeight - padding;
 
-        if (topCandidate >= padding) {
-          return topCandidate;
+        // Build list of rects the floating toolbar must not enter.
+        // Selection itself is a forbidden zone.
+        const forbidden: Array<{ top: number; bottom: number }> = [
+          { top: selectionTop, bottom: selectionBottom },
+        ];
+
+        // Table toolbar occupies a rect we can read from the previous paint.
+        if (this.tableActive) {
+          const tableTop = this.getTableTop(editor);
+          if (tableTop !== null) {
+            const tableHeight = Math.max(
+              this.tableMenu?.getBoundingClientRect().height ?? 0,
+              48,
+            );
+            forbidden.push({ top: tableTop, bottom: tableTop + tableHeight });
+          }
         }
 
-        if (bottomCandidate <= maxTop) {
-          return bottomCandidate;
+        const overlaps = (t: number) =>
+          forbidden.some(f => t < f.bottom + gap && t + menuHeight > f.top - gap);
+
+        // Prefer above selection
+        const aboveTop = selectionTop - menuHeight - gap;
+        if (aboveTop >= padding && !overlaps(aboveTop)) return aboveTop;
+
+        // Try below selection
+        const belowTop = selectionBottom + gap;
+        if (belowTop <= maxTop && !overlaps(belowTop)) return belowTop;
+
+        // Try below each forbidden zone (e.g. table toolbar)
+        for (const f of forbidden) {
+          const candidate = f.bottom + gap;
+          if (candidate <= maxTop && !overlaps(candidate)) return candidate;
         }
 
-        return Math.min(Math.max(topCandidate, padding), Math.max(padding, maxTop));
+        // Fallback: clamp to screen, preferring below over overlapping
+        return Math.max(padding, Math.min(belowTop, maxTop));
+      }
+
+      private getTableTop(editor: Editor): number | null {
+        const { state, view } = editor;
+        const $from = state.doc.resolve(state.selection.from);
+        for (let depth = $from.depth; depth > 0; depth--) {
+          if ($from.node(depth).type.name === "table") {
+            return view.coordsAtPos($from.before(depth)).top;
+          }
+        }
+        return null;
+      }
+
+      private getTableStyle(editor: Editor) {
+        const top = this.getTableTop(editor);
+        if (top === null) return "";
+        const left = this.leftAlignedToolbarPosition(
+          editor,
+          this.tableMenu?.offsetWidth ?? 400,
+        );
+        return `left:${left}px;top:${top}px;`;
+      }
+
+      private leftAlignedToolbarPosition(editor: Editor, toolbarWidth: number) {
+        const padding = 8;
+        const editorLeft = editor.view.dom.getBoundingClientRect().left;
+        const maxLeft = window.innerWidth - toolbarWidth - padding;
+        return Math.min(Math.max(editorLeft, padding), Math.max(padding, maxLeft));
       }
 
       private updateHeadingLevel(editor: Editor) {
@@ -1397,7 +1416,7 @@ if (
                       </div>
                       <div class="color-picker-wrapper">
                         ${this.colorControl({
-                          icon: highlightIcon,
+                          icon: paintBucketIcon,
                           label: "Background Color",
                           value:
                             this.bgColor === "transparent" ? "#ffff00" : this.bgColor,
