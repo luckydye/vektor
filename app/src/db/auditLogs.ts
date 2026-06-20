@@ -245,7 +245,8 @@ export async function getRecentAuditLogs(
   offset = 0,
 ): Promise<{ rows: AuditLog[]; total: number }> {
   const [countResult, rows] = await Promise.all([
-    db.select({ total: sql<number>`count(*)` }).from(auditLog).get(),
+    // max(id) is O(1) from SQLite's B-tree header; accurate for append-only tables
+    db.select({ total: sql<number>`coalesce(max(id), 0)` }).from(auditLog).get(),
     db
       .select()
       .from(auditLog)

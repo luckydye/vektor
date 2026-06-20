@@ -102,6 +102,11 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
       "CREATE INDEX IF NOT EXISTS audit_log_doc_id_created_at_idx ON audit_log (doc_id, created_at DESC, id DESC)",
     ),
   );
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at DESC, id DESC)",
+    ),
+  );
 
   const accessTokenSQL = generateCreateTableSQL(spaceSchema.accessToken);
   await spaceDb.run(sql.raw(accessTokenSQL));

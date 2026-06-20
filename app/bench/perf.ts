@@ -943,12 +943,17 @@ function report(current: BenchResult, baseline: Baseline | null) {
     let vsText = "n/a";
     if (bas && bas.p99 > 0) {
       const ratio = cur.p99 / bas.p99;
+      const absDeltaMs = cur.p99 - bas.p99;
       const pct = ((ratio - 1) * 100).toFixed(1);
       const sign = ratio > 1 ? "+" : "";
-      if (ratio >= REGRESSION_THRESHOLD) {
+      // Require both a relative and absolute increase to avoid noise on fast endpoints.
+      // Absolute floors: regressions need >50ms delta, warnings need >25ms delta.
+      const isRegression = ratio >= REGRESSION_THRESHOLD && absDeltaMs > 50;
+      const isWarning = ratio >= WARNING_THRESHOLD && absDeltaMs > 25;
+      if (isRegression) {
         vsText = `REGRESSION ${sign}${pct}%`;
         hasRegression = true;
-      } else if (ratio >= WARNING_THRESHOLD) {
+      } else if (isWarning) {
         vsText = `WARNING    ${sign}${pct}%`;
         hasWarning = true;
       } else if (ratio < 1) {
