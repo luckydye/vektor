@@ -10,6 +10,7 @@ import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import type { AccessToken, AccessTokenInsert } from "./schema/space.ts";
 import { accessToken } from "./schema/space.ts";
+import { listAllSpaces } from "./spaces.ts";
 
 export interface CreateAccessTokenOptions {
   spaceId: string;
@@ -317,6 +318,28 @@ export async function getAccessToken(
     .limit(1);
 
   return result[0] || null;
+}
+
+/**
+ * Find which space a raw token belongs to by scanning all spaces.
+ * Returns the spaceId if found and valid, null otherwise.
+ */
+export async function findSpaceForToken(token: string): Promise<string | null> {
+  const spaces = await listAllSpaces();
+  const hashedToken = hashToken(token);
+  for (const space of spaces) {
+    const db = await getSpaceDb(space.id);
+    if (!db) continue;
+    const [result] = await db
+      .select({ id: accessToken.id, expiresAt: accessToken.expiresAt, revokedAt: accessToken.revokedAt })
+      .from(accessToken)
+      .where(and(eq(accessToken.token, hashedToken), isNull(accessToken.revokedAt)))
+      .limit(1);
+    if (!result) continue;
+    if (result.expiresAt && result.expiresAt < new Date()) continue;
+    return space.id;
+  }
+  return null;
 }
 
 /**

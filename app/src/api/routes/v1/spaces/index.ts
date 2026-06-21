@@ -2,15 +2,24 @@ import type { APIRoute } from "astro";
 import {
   badRequestResponse,
   createdResponse,
+  extractAccessToken,
   jsonResponse,
   parseJsonBody,
   requireUser,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { createSpace, listUserSpaces } from "#db/spaces.ts";
+import { findSpaceForToken } from "#db/accessTokens.ts";
+import { createSpace, getSpace, listUserSpaces } from "#db/spaces.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
+    const rawToken = extractAccessToken(context);
+    if (rawToken) {
+      const spaceId = await findSpaceForToken(rawToken);
+      if (!spaceId) return jsonResponse([]);
+      const space = await getSpace(spaceId);
+      return jsonResponse(space ? [space] : []);
+    }
     const user = requireUser(context);
     const spaces = await listUserSpaces(user.id);
     return jsonResponse(spaces);
