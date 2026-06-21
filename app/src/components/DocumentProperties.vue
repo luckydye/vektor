@@ -272,7 +272,7 @@ const properties = computed((): Property[] => {
 
   const otherProps = Object.entries(documentProperties.value)
     .map(([key, value]): Property | null => {
-      if (HIDDEN_PROPERTY_KEYS.includes(key?.toLowerCase())) {
+      if (HIDDEN_PROPERTY_KEYS.includes(key?.toLowerCase()) || key?.startsWith("_")) {
         return null;
       }
       const spaceProperty = spaceProperties.value?.find((sp) => sp.name === key);
