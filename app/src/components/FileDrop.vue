@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { ref } from "vue";
 import { Icon } from "~/src/components/index.ts";
 
-const props = withDefaults(
-  defineProps<{
-    accept?: string;
-    /** Small text shown below the main call-to-action (e.g. accepted formats). */
-    hint?: string;
-    /** Listen for window paste events. */
-    listenPaste?: boolean;
-  }>(),
-  { listenPaste: true },
-);
+const props = defineProps<{
+  accept?: string;
+  /** Small text shown below the main call-to-action (e.g. accepted formats). */
+  hint?: string;
+}>();
 
 const emit = defineEmits<{
   select: [file: File];
@@ -70,19 +65,13 @@ function openPicker() {
   input.click();
 }
 
-onMounted(() => {
-  if (props.listenPaste) window.addEventListener("paste", onPaste);
-});
-onUnmounted(() => {
-  window.removeEventListener("paste", onPaste);
-});
-
 defineExpose({ isDragging, openPicker });
 </script>
 
 <template>
   <div
     ref="dropZone"
+    tabindex="0"
     class="relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors"
     :class="
       isDragging
@@ -92,6 +81,7 @@ defineExpose({ isDragging, openPicker });
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
+    @paste="onPaste"
   >
     <slot :is-dragging="isDragging" :open-picker="openPicker">
       <!-- Default content -->
