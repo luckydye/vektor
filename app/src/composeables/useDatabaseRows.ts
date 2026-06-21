@@ -96,7 +96,7 @@ export function useDatabaseRows(databaseDocumentId: string) {
   const deleteRowMutation = useMutation({
     mutationFn: async (rowId: string) => {
       if (!spaceId.value) throw new Error("No space ID");
-      await api.document.delete(spaceId.value, rowId);
+      await api.document.archive(spaceId.value, rowId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKey.value });
