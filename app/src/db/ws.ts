@@ -1,4 +1,3 @@
-import { config } from "../config.ts";
 import {
   type RealtimeEventInput,
   type RealtimeTopic,
@@ -43,34 +42,11 @@ export function publishSyncEvents(events: RealtimeEventEnvelope[]) {
   }
 }
 
-async function flushSyncEvents() {
+function flushSyncEvents() {
   const events = drainPendingEvents();
-  if (events.length === 0) {
-    return;
-  }
-
-  if (listeners.size > 0) {
+  if (events.length > 0) {
     publishSyncEvents(events);
-    return;
   }
-
-  const appConfig = config();
-  if (!appConfig.COLLABORATION_HOST) {
-    return;
-  }
-
-  await fetch(
-    `http${import.meta.env.DEV ? "" : "s"}://${appConfig.COLLABORATION_HOST}/sync`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(events),
-    },
-  ).catch((error) => {
-    console.warn("Failed to relay realtime events:", error);
-  });
 }
 
 export function subscribeToSyncEvents(
@@ -100,7 +76,7 @@ export function sendSyncEvent(spaceId: string, ...events: RealtimeEventInput[]) 
   }
 
   debounceTimer = setTimeout(() => {
-    void flushSyncEvents();
+    flushSyncEvents();
     debounceTimer = null;
   }, DEBOUNCE_DELAY);
 }

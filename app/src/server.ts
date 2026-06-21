@@ -9,7 +9,7 @@ import { apiRouter } from "./api/server/router.ts";
 import { auth } from "./auth.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
-import { publishSyncEvents, subscribeToSyncEvents } from "./db/ws.ts";
+import { subscribeToSyncEvents } from "./db/ws.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
 import { appLogger } from "./observability/logger.ts";
@@ -500,13 +500,6 @@ async function runAstroHandler(
 // frontend. The API adapter reads the raw Node request body itself so JSON,
 // multipart, binary uploads, MCP, and CalDAV requests keep their original bytes.
 app.use("*", apiRouter);
-
-app.post("/sync", async (c) => {
-  const body = await c.req.json();
-  const events = Array.isArray(body) ? body : [body];
-  publishSyncEvents(events);
-  return new Response(null, { status: 200 });
-});
 
 // The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API
 // server (no client assets, no Astro dev server, no SSR handler).
