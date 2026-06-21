@@ -49,7 +49,7 @@ onUnmounted(() => {
       <div class="flex gap-3 pointer-events-auto">
         <button
           @click="selectType('document')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-white text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
+          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
         >
           <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="fileTextIcon" />
           <span>Doc</span>
@@ -57,7 +57,7 @@ onUnmounted(() => {
 
         <button
           @click="selectType('canvas')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-white text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
+          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
         >
           <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="imageIcon" />
           <span>Canvas</span>
@@ -65,7 +65,7 @@ onUnmounted(() => {
 
         <button
           @click="selectType('workflow')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-white text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
+          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
         >
           <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="boltIcon" />
           <span>Workflow</span>
@@ -73,7 +73,7 @@ onUnmounted(() => {
 
         <button
           @click="selectType('database')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-white text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
+          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
         >
           <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="tableRowIcon" />
           <span>Database</span>
