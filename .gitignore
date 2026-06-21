@@ -16,7 +16,6 @@ dist
 *.zip
 
 /extensions
-/api
 
 .opencode-runtime
 
@@ -25,3 +24,5 @@ dist
 graphify-out
 
 .task
+
+vektor-api-example
