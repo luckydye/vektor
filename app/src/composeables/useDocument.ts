@@ -47,12 +47,12 @@ export function useDocument(documentId: string | undefined, documentType = "docu
   }
 
   const saveDocumentMutation = useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async ({ content, publish }: { content: string; publish?: boolean }) => {
       if (!currentSpaceId.value) {
         throw new Error("No space selected");
       }
       if (documentId) {
-        await api.document.put(currentSpaceId.value, documentId, content);
+        await api.document.put(currentSpaceId.value, documentId, content, { publish });
         return { content, isNew: false };
       } else {
         const defaultTitle =
@@ -98,9 +98,9 @@ export function useDocument(documentId: string | undefined, documentType = "docu
     },
   });
 
-  async function saveDocument(content: string): Promise<boolean> {
+  async function saveDocument(content: string, options?: { publish?: boolean }): Promise<boolean> {
     try {
-      await saveDocumentMutation.mutateAsync(content);
+      await saveDocumentMutation.mutateAsync({ content, publish: options?.publish });
       return true;
     } catch {
       return false;

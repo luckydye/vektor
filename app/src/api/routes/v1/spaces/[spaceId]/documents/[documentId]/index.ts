@@ -135,42 +135,37 @@ async function handlePublishedRevisionPatch(
   documentId: string,
   userId: string,
   publishedRev: number | null,
+  currentRev: number,
 ) {
-  if (publishedRev !== null) {
-    if (
-      typeof publishedRev !== "number" ||
-      !Number.isInteger(publishedRev) ||
-      publishedRev < 1
-    ) {
-      throw badRequestResponse("Published revision must be null or a positive integer");
-    }
-  }
+  // Always publish the current (latest) revision — ignore any specific revision
+  // number the client may have sent.
+  const revToPublish = publishedRev === null ? null : currentRev;
 
   const db = await getSpaceDb(spaceId);
   await db
     .update(documentTable)
-    .set({ publishedRev: publishedRev })
+    .set({ publishedRev: revToPublish })
     .where(eq(documentTable.id, documentId));
 
   await createAuditLog(db, {
     spaceId,
     docId: documentId,
-    revisionId: publishedRev || undefined,
+    revisionId: revToPublish || undefined,
     userId,
-    event: publishedRev === null ? "unpublish" : "publish",
+    event: revToPublish === null ? "unpublish" : "publish",
     details: {
       message:
-        publishedRev === null
+        revToPublish === null
           ? "Document unpublished"
-          : `Published revision ${publishedRev}`,
+          : `Published revision ${revToPublish}`,
     },
   });
 
-  if (publishedRev === null) {
+  if (revToPublish === null) {
     return;
   }
 
-  const revisionContent = await getRevisionContent(spaceId, documentId, publishedRev);
+  const revisionContent = await getRevisionContent(spaceId, documentId, revToPublish);
   if (!revisionContent) {
     return;
   }
@@ -310,6 +305,7 @@ export const PUT: APIRoute = (context) =>
       throw notFoundResponse("Document");
     }
 
+    const publish = context.url.searchParams.get("publish") === "true";
     let userId: string | undefined;
 
     const jobToken = context.request.headers.get("X-Job-Token");
@@ -420,6 +416,14 @@ export const PUT: APIRoute = (context) =>
       userId,
       nextType,
     );
+
+    if (userId) {
+      const revision = await createRevision(spaceId, id, contentSanitized, userId, { message: "Document updated" });
+      if (publish === true) {
+        await handlePublishedRevisionPatch(spaceId, id, userId, revision.rev, revision.rev);
+      }
+    }
+
     return jsonResponse({ document });
   }, "Failed to update document");
 
@@ -505,7 +509,7 @@ export const PATCH: APIRoute = (context) =>
     }
 
     if (publishedRev !== undefined) {
-      await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev);
+      await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev, existingDoc.currentRev);
     }
 
     if (readonly !== undefined) {

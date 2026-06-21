@@ -943,8 +943,11 @@ export class ApiClient {
     /**
      * Update document content (PUT)
      */
-    put: async (spaceId: string, documentId: string, content: string) => {
-      const response = await fetch(`/api/v1/spaces/${spaceId}/documents/${documentId}`, {
+    put: async (spaceId: string, documentId: string, content: string, options?: { publish?: boolean }) => {
+      const url = options?.publish
+        ? `/api/v1/spaces/${spaceId}/documents/${documentId}?publish=true`
+        : `/api/v1/spaces/${spaceId}/documents/${documentId}`;
+      const response = await fetch(url, {
         method: "PUT",
         headers: {
           "Content-Type": "text/html",

@@ -84,7 +84,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveError: documentSaveError,
     saveDocument,
   } = useDocument(documentId.value, documentType.value);
-  const { saveRevision, publishRevision } = useRevisions(documentId.value);
+  const { saveRevision } = useRevisions(documentId.value);
 
   let editorSession = 0;
   let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -106,14 +106,8 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       if (content) {
         if (mode === "suggestion") {
           saved = !!(await saveRevision(content, "Suggested changes", "suggestion"));
-        } else if (mode === "revision") {
-          const revision = await saveRevision(content, "Manual save");
-          if (revision) {
-            await publishRevision(revision.rev);
-          }
-          saved = await saveDocument(content);
         } else {
-          saved = await saveDocument(content);
+          saved = await saveDocument(content, { publish: mode === "revision" });
         }
       }
     } catch (error) {

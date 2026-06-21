@@ -4,7 +4,6 @@ import { and, desc, eq } from "drizzle-orm";
 import { notFoundResponse } from "../db/api.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
-import { invalidateMentionCache } from "./documents.ts";
 import { createId } from "./ids.ts";
 import { document, revision } from "./schema/space.ts";
 
@@ -162,24 +161,8 @@ export async function createRevision(
     createdBy: userId,
   });
 
-  let shouldPublish = false;
   if (status === null) {
-    const doc = await db
-      .select({ publishedRev: document.publishedRev })
-      .from(document)
-      .where(eq(document.id, documentId))
-      .get();
-
-    const updateFields: { currentRev: number; publishedRev?: number } = {
-      currentRev: nextRev,
-    };
-
-    if (doc?.publishedRev !== null && doc?.publishedRev !== undefined) {
-      updateFields.publishedRev = nextRev;
-      shouldPublish = true;
-    }
-
-    await db.update(document).set(updateFields).where(eq(document.id, documentId));
+    await db.update(document).set({ currentRev: nextRev }).where(eq(document.id, documentId));
   }
 
   await createAuditLog(db, {
@@ -195,19 +178,6 @@ export async function createRevision(
       status,
     },
   });
-
-  if (shouldPublish) {
-    invalidateMentionCache(documentId);
-
-    await createAuditLog(db, {
-      spaceId,
-      docId: documentId,
-      revisionId: nextRev,
-      userId,
-      event: "publish",
-      details: { message: `Auto-published revision ${nextRev}` },
-    });
-  }
 
   return {
     id,
