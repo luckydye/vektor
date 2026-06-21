@@ -97,10 +97,15 @@ function toggleMode() {
 </script>
 
 <template>
-  <div class="p-6 bg-background rounded-md w-[400px] mx-auto space-y-4">
-    <h2 v-if="showPasswordLogin || showSsoLogin" class="text-size-title font-semibold text-center mb-6">
-      {{ showPasswordLogin ? (isSignUp ? "Sign Up" : "Sign In") : "Sign In" }}
-    </h2>
+  <div class="w-full space-y-5">
+    <div v-if="showPasswordLogin || showSsoLogin" class="mb-7">
+      <h2 class="font-semibold text-neutral-900" style="font-size: 1.6rem; line-height: 1.2; letter-spacing: -0.02em">
+        {{ isSignUp ? "Create an account" : "Welcome back" }}
+      </h2>
+      <p class="text-size-medium text-neutral-500 mt-1.5">
+        {{ isSignUp ? "Set up your Vektor workspace" : "Sign in to your workspace" }}
+      </p>
+    </div>
 
     <form v-if="showPasswordLogin" @submit.prevent="onEmailLogin" class="space-y-4">
       <FormField v-if="isSignUp" label="Name">
@@ -144,7 +149,7 @@ function toggleMode() {
       <button
         type="button"
         @click="toggleMode"
-        class="w-full text-size-medium text-neutral-900 hover:text-neutral-900 transition-colors"
+        class="w-full text-size-medium text-neutral-500 hover:text-neutral-700 transition-colors"
         :disabled="loading"
       >
         {{ isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up" }}
@@ -162,7 +167,7 @@ function toggleMode() {
 
     <ButtonSecondary
       v-if="showSsoLogin"
-      text="Login mit SSO"
+      text="Continue with SSO"
       class="w-full px-6 py-3 text-base justify-center"
       @click="onOAuthLogin"
       :disabled="loading"
