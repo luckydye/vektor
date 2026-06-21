@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { Feature } from "#db/acl.ts";
+import { Feature, getUserGroups, hasFeature } from "#db/acl.ts";
 import {
   authenticateRequest,
   badRequestResponse,
@@ -119,7 +119,30 @@ export const POST: APIRoute = (context) =>
       if (jobTokenHeader) {
         const parsed = parseJobToken(jobTokenHeader, spaceId);
         if (!parsed) throw forbiddenResponse("Invalid job token");
-        createdBy = parsed.userId ?? "agent";
+        // A job token is a delegated credential. Installing an extension is a
+        // privileged, space-wide action (the new extension's code runs in
+        // every member's browser), so anonymous system tokens are rejected
+        // outright and user-scoped tokens must actually hold the
+        // `manage_extensions` capability — the same gate the access-token
+        // branch enforces below.
+        if (!parsed.userId) {
+          throw forbiddenResponse(
+            "Anonymous job tokens are not allowed to install extensions",
+          );
+        }
+        const groups = await getUserGroups(parsed.userId);
+        const canManage = await hasFeature(
+          spaceId,
+          Feature.MANAGE_EXTENSIONS,
+          parsed.userId,
+          groups,
+        );
+        if (!canManage) {
+          throw forbiddenResponse(
+            "Job token user does not have the manage_extensions capability",
+          );
+        }
+        createdBy = parsed.userId;
       } else {
         const auth = await authenticateRequest(context, spaceId);
         if (auth.type === "user") {
