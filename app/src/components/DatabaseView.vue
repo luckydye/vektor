@@ -105,7 +105,7 @@ const NAME_COL_WIDTH = 240;
 </script>
 
 <template>
-  <div class="flex flex-col h-full min-h-0 overflow-hidden">
+  <div class="flex flex-col h-full min-h-0 overflow-hidden px-xs lg:px-xl">
     <!-- Toolbar -->
     <div class="flex items-center justify-between px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0">
       <span class="text-size-small text-neutral-500">{{ rows.length }} rows</span>

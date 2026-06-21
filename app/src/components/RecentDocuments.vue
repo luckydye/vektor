@@ -81,17 +81,21 @@ onMounted(async () => {
           <span v-else class="text-neutral-400 text-sm font-medium select-none">
             {{ doc.type ? doc.type.toUpperCase() : "DOC" }}
           </span>
-          <div v-if="docTags(doc).length > 0" class="absolute bottom-3 left-3 flex gap-1.5">
+          <div
+            v-if="docTags(doc).length > 0"
+            class="absolute bottom-3 left-3 right-3 flex gap-1.5 min-w-0 max-w-full"
+          >
             <span
               v-for="(tag, i) in docTags(doc).slice(0, 1)"
               :key="i"
-              class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm"
+              class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm min-w-0 max-w-full truncate"
+              :title="tag"
             >
               {{ tag }}
             </span>
             <span
               v-if="docTags(doc).length > 1"
-              class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm"
+              class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm shrink-0"
             >
               +{{ docTags(doc).length - 1 }}
             </span>
@@ -106,7 +110,11 @@ onMounted(async () => {
           <h4 class="doc-title text-size-medium font-bold italic leading-snug line-clamp-3 transition-colors">
             {{ docTitle(doc) }}
           </h4>
-          <p v-if="docTags(doc).length > 0" class="mt-1.5 text-size-small text-neutral-400 truncate">
+          <p
+            v-if="docTags(doc).length > 0"
+            class="mt-1.5 text-size-small text-neutral-400 line-clamp-2 min-w-0 break-words"
+            :title="docTags(doc).join(' | ')"
+          >
             {{ docTags(doc).join(" | ") }}
           </p>
         </div>
