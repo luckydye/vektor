@@ -231,192 +231,191 @@
       </p>
     </section>
 
-    <!-- Secrets -->
-    <section v-if="activeTab === 'secrets'">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Secrets</h2>
-        <button
-          v-if="!isCreatingSecret"
-          @click="isCreatingSecret = true"
-          class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
-        >
-          + Create Secret
-        </button>
-      </div>
-
-      <div v-if="secretsError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
-        {{ secretsError }}
-      </div>
-
-      <div
-        v-if="isCreatingSecret"
-        class="mb-4 p-3 bg-blue-50 border border-blue-200 dark:bg-blue-950/20 dark:border-blue-900 rounded-md"
-      >
-        <form @submit.prevent="handleCreateSecret" class="space-y-3">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
-              <input
-                v-model="newSecretName"
-                type="text"
-                required
-                placeholder="e.g. OPENAI_API_KEY"
-                class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
-              />
-            </div>
-            <div>
-              <label class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
-              <input
-                v-model="newSecretDescription"
-                type="text"
-                placeholder="Optional description"
-                class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-              />
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-size-small font-medium text-neutral-700 mb-1">Secret Value</label>
-              <input
-                v-model="newSecretValue"
-                type="password"
-                required
-                placeholder="Will be encrypted at rest"
-                class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
-              />
-            </div>
-          </div>
-          <div class="flex justify-end gap-2">
-            <button
-              type="button"
-              @click="handleCancelCreateSecret"
-              class="px-3 py-1.5 text-size-medium text-neutral-600 hover:text-neutral-800"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              :disabled="isSubmittingSecret"
-              class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
-            >
-              {{ isSubmittingSecret ? "Saving..." : "Save Secret" }}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <div v-if="isLoadingSecrets" class="text-center py-6 text-size-medium text-neutral-500">Loading secrets...</div>
-      <div v-else-if="secrets.length === 0 && !isCreatingSecret" class="text-center py-6 text-size-medium text-neutral-500">
-        No secrets configured
-      </div>
-      <div v-else-if="secrets.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
-        <table class="min-w-full text-size-medium">
-          <thead class="bg-neutral-50">
-            <tr>
-              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Name</th>
-              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Description</th>
-              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
-              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Updated</th>
-              <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-neutral-100">
-            <tr v-for="secret in secrets" :key="secret.name" class="hover:bg-neutral-50">
-              <td class="px-4 py-2.5 font-medium text-neutral-900 font-mono">{{ secret.name }}</td>
-              <td class="px-4 py-2.5 text-neutral-600">{{ secret.description || "—" }}</td>
-              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ secret.lastUsedAt ? formatDate(secret.lastUsedAt) : "—" }}</td>
-              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(secret.updatedAt) }}</td>
-              <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
-                <button
-                  @click="handleRevealSecret(secret.name)"
-                  class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Reveal
-                </button>
-                <button @click="handleRotateSecret(secret.name)" class="text-size-small text-neutral-500 hover:text-neutral-700">
-                  Rotate
-                </button>
-                <button @click="handleDeleteSecret(secret.name)" class="text-size-small text-red-600 hover:text-red-800">
-                  Delete
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div v-if="selectedSecretName" class="mt-4 p-3 bg-neutral-50 border border-neutral-200 rounded-md">
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-size-small font-medium text-neutral-700">Secret: <span class="font-mono">{{ selectedSecretName }}</span></p>
-          <button @click="selectedSecretName = null; selectedSecretValue = null;" class="text-size-small text-neutral-500 hover:text-neutral-700">Close</button>
-        </div>
-        <div class="flex items-center gap-2 mb-3">
-          <code class="flex-1 px-2 py-1.5 text-size-small bg-background border border-neutral-200 rounded-sm font-mono break-all select-all">{{
-            selectedSecretValue ?? (isLoadingSecretValue ? "Loading..." : "Not loaded")
-          }}</code>
-          <button
-            type="button"
-            @click="handleCopySelectedSecret"
-            :disabled="!selectedSecretValue"
-            class="shrink-0 px-2 py-1.5 text-size-small font-medium text-neutral-700 bg-neutral-100 border border-neutral-200 rounded-sm hover:bg-neutral-200 disabled:opacity-50"
-          >
-            Copy
-          </button>
-        </div>
-
-        <div class="pt-3 border-t border-neutral-200">
-          <p class="text-size-small font-medium text-neutral-700 mb-2">Grant Access</p>
-          <div class="flex flex-wrap items-center gap-2">
-            <select
-              v-model="selectedGrantUserId"
-              class="px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 min-w-[260px]"
-            >
-              <option value="" disabled>
-                {{
-                  isLoadingSecretUsers
-                    ? "Loading users..."
-                    : availableSecretGrantUsers.length > 0
-                      ? "Select user"
-                      : "No available users"
-                }}
-              </option>
-              <option v-for="u in availableSecretGrantUsers" :key="u.id" :value="u.id">
-                {{ u.name }} ({{ u.email }})
-              </option>
-            </select>
-            <button
-              @click="handleGrantSecretAccess"
-              :disabled="!selectedGrantUserId || !selectedSecretName || isGrantingSecretAccess"
-              class="px-3 py-1.5 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
-            >
-              {{ isGrantingSecretAccess ? "Granting..." : "Grant Viewer" }}
-            </button>
-          </div>
-
-          <div v-if="isLoadingSecretPermissions" class="mt-2 text-size-small text-neutral-500">Loading grants...</div>
-          <div v-else-if="secretPermissions.length > 0" class="mt-2 flex flex-wrap gap-1">
-            <span
-              v-for="perm in secretPermissions"
-              :key="`${perm.userId || perm.groupId}-${perm.permission}`"
-              class="inline-flex items-center gap-1 px-2 py-1 text-size-small bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 rounded-sm"
-            >
-              {{ formatSecretPermissionTarget(perm) }} ({{ perm.permission }})
-              <button
-                v-if="perm.userId"
-                @click="handleRevokeSecretAccess(perm.userId)"
-                class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-              >
-                ×
-              </button>
-            </span>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- Extensions -->
     <section v-if="activeTab === 'extensions'">
       <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Extensions</h2>
       <p class="text-size-medium text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
       <ExtensionSettings />
+
+      <div class="mt-8 pt-6 border-t border-neutral-200">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Secrets</h2>
+          <button
+            v-if="!isCreatingSecret"
+            @click="isCreatingSecret = true"
+            class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+          >
+            + Create Secret
+          </button>
+        </div>
+
+        <div v-if="secretsError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+          {{ secretsError }}
+        </div>
+
+        <div
+          v-if="isCreatingSecret"
+          class="mb-4 p-3 bg-blue-50 border border-blue-200 dark:bg-blue-950/20 dark:border-blue-900 rounded-md"
+        >
+          <form @submit.prevent="handleCreateSecret" class="space-y-3">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
+                <input
+                  v-model="newSecretName"
+                  type="text"
+                  required
+                  placeholder="e.g. OPENAI_API_KEY"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
+                />
+              </div>
+              <div>
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
+                <input
+                  v-model="newSecretDescription"
+                  type="text"
+                  placeholder="Optional description"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                />
+              </div>
+              <div class="md:col-span-2">
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Secret Value</label>
+                <input
+                  v-model="newSecretValue"
+                  type="password"
+                  required
+                  placeholder="Will be encrypted at rest"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
+                />
+              </div>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button
+                type="button"
+                @click="handleCancelCreateSecret"
+                class="px-3 py-1.5 text-size-medium text-neutral-600 hover:text-neutral-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                :disabled="isSubmittingSecret"
+                class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
+              >
+                {{ isSubmittingSecret ? "Saving..." : "Save Secret" }}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div v-if="isLoadingSecrets" class="text-center py-6 text-size-medium text-neutral-500">Loading secrets...</div>
+        <div v-else-if="secrets.length === 0 && !isCreatingSecret" class="text-center py-6 text-size-medium text-neutral-500">
+          No secrets configured
+        </div>
+        <div v-else-if="secrets.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
+          <table class="min-w-full text-size-medium">
+            <thead class="bg-neutral-50">
+              <tr>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Name</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Description</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Last Used</th>
+                <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Updated</th>
+                <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+              <tr v-for="secret in secrets" :key="secret.name" class="hover:bg-neutral-50">
+                <td class="px-4 py-2.5 font-medium text-neutral-900 font-mono">{{ secret.name }}</td>
+                <td class="px-4 py-2.5 text-neutral-600">{{ secret.description || "—" }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ secret.lastUsedAt ? formatDate(secret.lastUsedAt) : "—" }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(secret.updatedAt) }}</td>
+                <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
+                  <button
+                    @click="handleRevealSecret(secret.name)"
+                    class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    Reveal
+                  </button>
+                  <button @click="handleRotateSecret(secret.name)" class="text-size-small text-neutral-500 hover:text-neutral-700">
+                    Rotate
+                  </button>
+                  <button @click="handleDeleteSecret(secret.name)" class="text-size-small text-red-600 hover:text-red-800">
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="selectedSecretName" class="mt-4 p-3 bg-neutral-50 border border-neutral-200 rounded-md">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-size-small font-medium text-neutral-700">Secret: <span class="font-mono">{{ selectedSecretName }}</span></p>
+            <button @click="selectedSecretName = null; selectedSecretValue = null;" class="text-size-small text-neutral-500 hover:text-neutral-700">Close</button>
+          </div>
+          <div class="flex items-center gap-2 mb-3">
+            <code class="flex-1 px-2 py-1.5 text-size-small bg-background border border-neutral-200 rounded-sm font-mono break-all select-all">{{
+              selectedSecretValue ?? (isLoadingSecretValue ? "Loading..." : "Not loaded")
+            }}</code>
+            <button
+              type="button"
+              @click="handleCopySelectedSecret"
+              :disabled="!selectedSecretValue"
+              class="shrink-0 px-2 py-1.5 text-size-small font-medium text-neutral-700 bg-neutral-100 border border-neutral-200 rounded-sm hover:bg-neutral-200 disabled:opacity-50"
+            >
+              Copy
+            </button>
+          </div>
+
+          <div class="pt-3 border-t border-neutral-200">
+            <p class="text-size-small font-medium text-neutral-700 mb-2">Grant Access</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <select
+                v-model="selectedGrantUserId"
+                class="px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 min-w-[260px]"
+              >
+                <option value="" disabled>
+                  {{
+                    isLoadingSecretUsers
+                      ? "Loading users..."
+                      : availableSecretGrantUsers.length > 0
+                        ? "Select user"
+                        : "No available users"
+                  }}
+                </option>
+                <option v-for="u in availableSecretGrantUsers" :key="u.id" :value="u.id">
+                  {{ u.name }} ({{ u.email }})
+                </option>
+              </select>
+              <button
+                @click="handleGrantSecretAccess"
+                :disabled="!selectedGrantUserId || !selectedSecretName || isGrantingSecretAccess"
+                class="px-3 py-1.5 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
+              >
+                {{ isGrantingSecretAccess ? "Granting..." : "Grant Viewer" }}
+              </button>
+            </div>
+
+            <div v-if="isLoadingSecretPermissions" class="mt-2 text-size-small text-neutral-500">Loading grants...</div>
+            <div v-else-if="secretPermissions.length > 0" class="mt-2 flex flex-wrap gap-1">
+              <span
+                v-for="perm in secretPermissions"
+                :key="`${perm.userId || perm.groupId}-${perm.permission}`"
+                class="inline-flex items-center gap-1 px-2 py-1 text-size-small bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 rounded-sm"
+              >
+                {{ formatSecretPermissionTarget(perm) }} ({{ perm.permission }})
+                <button
+                  v-if="perm.userId"
+                  @click="handleRevokeSecretAccess(perm.userId)"
+                  class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Jobs -->
@@ -493,7 +492,6 @@ import SpaceMembers from "./SpaceMembers.vue";
 const tabs = [
   { id: "general", label: "General" },
   { id: "api", label: "API" },
-  { id: "secrets", label: "Secrets" },
   { id: "extensions", label: "Extensions" },
   { id: "jobs", label: "Jobs" },
   { id: "archive", label: "Archive" },
