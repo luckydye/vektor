@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
-import { plusIcon, tableColumnAddAfterIcon, trashSmallIcon } from "~/src/assets/icons.ts";
+import { plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "../composeables/useDatabaseRows.ts";
 import { useToast } from "../composeables/useToast.ts";
@@ -131,22 +131,13 @@ const NAME_COL_WIDTH = 240;
     <!-- Toolbar -->
     <div class="flex items-center justify-between px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0">
       <span class="text-size-small text-neutral-500">{{ rows.length }} rows</span>
-      <div class="flex items-center gap-2">
-        <button
-          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-neutral-200 bg-background hover:bg-neutral-50 text-neutral-600 text-size-small transition-colors"
-          @click="openAddColumn"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="tableColumnAddAfterIcon" />
-          Add column
-        </button>
-        <button
-          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-neutral-200 bg-background hover:bg-neutral-50 text-neutral-600 text-size-small transition-colors"
-          @click="addRow"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
-          Add row
-        </button>
-      </div>
+      <button
+        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-neutral-200 bg-background hover:bg-neutral-50 text-neutral-600 text-size-small transition-colors"
+        @click="addRow"
+      >
+        <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
+        Add row
+      </button>
     </div>
 
     <!-- Add column dialog -->
@@ -235,8 +226,16 @@ const NAME_COL_WIDTH = 240;
               </div>
             </th>
 
-            <!-- Actions column -->
-            <th class="border-b border-neutral-100" :style="{ width: '48px' }" />
+            <!-- Add column button -->
+            <th class="border-b border-neutral-100 px-2" :style="{ width: '48px' }">
+              <button
+                class="flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+                title="Add column"
+                @click="openAddColumn"
+              >
+                <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
+              </button>
+            </th>
           </tr>
         </thead>
 
