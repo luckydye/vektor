@@ -4,6 +4,8 @@
     display: none !important;
   }
   /*and this*/
+  #app-header,
+  #document-properties,
   #document-footer,
   #document-actions {
     display: none !important;
