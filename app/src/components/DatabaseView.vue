@@ -136,48 +136,50 @@ const NAME_COL_WIDTH = 240;
     </div>
 
     <!-- Add column dialog -->
-    <div
-      v-if="showAddColumn"
-      class="absolute inset-0 z-50 flex items-center justify-center bg-black/20"
-      @mousedown.self="showAddColumn = false"
-    >
-      <div class="bg-background rounded-xl border border-neutral-200 shadow-large p-5 w-72 flex flex-col gap-3">
-        <div class="text-size-medium font-medium text-neutral-800">Add column</div>
-        <div class="flex flex-col gap-1">
-          <label class="text-size-small text-neutral-500">Name</label>
-          <input
-            ref="newColumnInputRef"
-            v-model="newColumnName"
-            type="text"
-            placeholder="Column name"
-            class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
-            @keydown="onAddColKeydown"
-          />
-        </div>
-        <div class="flex flex-col gap-1">
-          <label class="text-size-small text-neutral-500">Type</label>
-          <select
-            v-model="newColumnType"
-            class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
-          >
-            <option value="text">Text</option>
-            <option value="number">Number</option>
-            <option value="date">Date</option>
-            <option value="select">Select</option>
-          </select>
-        </div>
-        <div class="flex gap-2 justify-end">
-          <button
-            class="px-3 py-1.5 rounded border border-neutral-200 text-size-small hover:bg-neutral-50 transition-colors"
-            @click="showAddColumn = false"
-          >Cancel</button>
-          <button
-            class="px-3 py-1.5 rounded bg-primary-600 text-white text-size-small hover:bg-primary-700 transition-colors"
-            @click="commitAddColumn"
-          >Add</button>
+    <Teleport to="body">
+      <div
+        v-if="showAddColumn"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+        @mousedown.self="showAddColumn = false"
+      >
+        <div class="bg-background rounded-xl border border-neutral-200 shadow-large p-5 w-72 flex flex-col gap-3">
+          <div class="text-size-medium font-medium text-neutral-800">Add column</div>
+          <div class="flex flex-col gap-1">
+            <label class="text-size-small text-neutral-500">Name</label>
+            <input
+              ref="newColumnInputRef"
+              v-model="newColumnName"
+              type="text"
+              placeholder="Column name"
+              class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
+              @keydown="onAddColKeydown"
+            />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-size-small text-neutral-500">Type</label>
+            <select
+              v-model="newColumnType"
+              class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
+            >
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+              <option value="select">Select</option>
+            </select>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button
+              class="px-3 py-1.5 rounded border border-neutral-200 text-size-small hover:bg-neutral-50 transition-colors"
+              @click="showAddColumn = false"
+            >Cancel</button>
+            <button
+              class="px-3 py-1.5 rounded bg-primary-600 text-white text-size-small hover:bg-primary-700 transition-colors"
+              @click="commitAddColumn"
+            >Add</button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Table -->
     <div class="overflow-auto flex-1 min-h-0">
