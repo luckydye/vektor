@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
-import { alertCircleIcon, plusIcon, tableColumnAddAfterIcon, trashSmallIcon } from "~/src/assets/icons.ts";
+import { plusIcon, tableColumnAddAfterIcon, trashSmallIcon } from "~/src/assets/icons.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "../composeables/useDatabaseRows.ts";
+import { useToast } from "../composeables/useToast.ts";
+
+const { error: toastError } = useToast();
 
 const props = defineProps<{
   databaseDocumentId: string;
@@ -90,14 +93,6 @@ async function confirmDeleteColumn(name: string) {
 
 // Row deletion
 const deletingRow = ref<string | null>(null);
-const errorMessage = ref<string | null>(null);
-let errorTimer: ReturnType<typeof setTimeout> | null = null;
-
-function showError(msg: string) {
-  if (errorTimer) clearTimeout(errorTimer);
-  errorMessage.value = msg;
-  errorTimer = setTimeout(() => { errorMessage.value = null; }, 4000);
-}
 
 async function confirmDeleteRow(rowId: string) {
   try {
@@ -105,7 +100,7 @@ async function confirmDeleteRow(rowId: string) {
     deletingRow.value = null;
   } catch (e) {
     deletingRow.value = null;
-    showError(e instanceof Error ? e.message : "Failed to delete row");
+    toastError(e instanceof Error ? e.message : "Failed to delete row");
   }
 }
 
@@ -350,17 +345,6 @@ const NAME_COL_WIDTH = 240;
       </table>
     </div>
 
-    <!-- Error toast -->
-    <Transition name="toast">
-      <div
-        v-if="errorMessage"
-        class="absolute bottom-14 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-red-600 text-white text-size-small shadow-large z-50 pointer-events-none"
-      >
-        <div class="svg-icon w-4 h-4 shrink-0" v-html="alertCircleIcon" />
-        {{ errorMessage }}
-      </div>
-    </Transition>
-
     <!-- Add row footer button -->
     <div class="border-t border-neutral-100 px-3 py-2 shrink-0">
       <button
@@ -374,14 +358,3 @@ const NAME_COL_WIDTH = 240;
   </div>
 </template>
 
-<style scoped>
-.toast-enter-active,
-.toast-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(6px);
-}
-</style>
