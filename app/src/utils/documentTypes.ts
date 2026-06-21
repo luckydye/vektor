@@ -1,5 +1,7 @@
 export const readOnlyDocumentTypes: readonly string[] = ["csv"];
 
+export const fullBleedDocumentTypes: readonly string[] = ["csv", "canvas", "database"];
+
 /**
  * Document types that support the comments overlay. Comments are anchored to
  * rich-text content, so only text-based documents are applicable — canvas,

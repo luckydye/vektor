@@ -3,6 +3,7 @@ import { twMerge } from "tailwind-merge";
 import Breadcrumbs from "~/src/components/Breadcrumbs.vue";
 import AIChatPanel from "../../../components/AIChatPanel.vue";
 import AppView from "../../../components/AppView.vue";
+import DatabaseView from "../../../components/DatabaseView.vue";
 import DocumentActions from "../../../components/DocumentActions.vue";
 import DocumentContent from "../../../components/DocumentContent.vue";
 import DocumentProperties from "../../../components/DocumentProperties.vue";
@@ -121,7 +122,8 @@ const isCanvas = documentType === "canvas";
 const isApp = documentType === "app";
 const isCsv = documentType === "csv";
 const isWorkflow = documentType === "workflow";
-const isPaddedDocument = !isCanvas && !isApp && !isCsv && !isWorkflow;
+const isDatabase = documentType === "database";
+const isPaddedDocument = !isCanvas && !isApp && !isCsv && !isWorkflow && !isDatabase;
 
 // Optional header image (stored as a document property; empty string = none)
 // Request a width-capped webp transform so the browser doesn't download a
@@ -141,6 +143,7 @@ const isReadonly =
   isCanvas ||
   isApp ||
   isWorkflow ||
+  isDatabase ||
   readOnlyDocumentTypes.includes(documentType);
 
 let htmlContent = document.content;
@@ -207,7 +210,7 @@ if (diffMins >= 1 && diffMins < 60) {
       data-layout={effectiveLayout}
       class={twMerge(
         "relative mx-auto flex h-full w-full flex-col",
-        isCsv || effectiveLayout === "full"
+        isCsv || isDatabase || effectiveLayout === "full"
           ? "max-w-full"
           : "max-w-(--document-width)",
       )}
@@ -321,8 +324,8 @@ if (diffMins >= 1 && diffMins < 60) {
       <!-- Main Content -->
       <div
         class={twMerge(
-          "max-w-none overflow-x-auto text-neutral-700",
-          isCsv ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "h-full",
+          "max-w-none text-neutral-700",
+          isCsv || isDatabase ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "h-full overflow-x-auto",
           isPaddedDocument && "px-xs lg:px-xl print:px-0",
         )}
       >
@@ -336,14 +339,21 @@ if (diffMins >= 1 && diffMins < 60) {
           ? <AppView client:only html={htmlContent || ''} />
           : isWorkflow
             ? <WorkflowView client:only documentId={document.id} spaceId={space.id} />
-            : <DocumentContent
-                client:load
-                spaceId={space.id}
-                documentId={document.id}
-                initialHtml={htmlContent}
-                documentType={documentType}
-                readonly={isReadonly}
-              />
+            : isDatabase
+              ? <DatabaseView
+                  client:load
+                  databaseDocumentId={document.id}
+                  spaceSlug={spaceSlug}
+                  schemaJson={document.properties._schema ?? undefined}
+                />
+              : <DocumentContent
+                  client:load
+                  spaceId={space.id}
+                  documentId={document.id}
+                  initialHtml={htmlContent}
+                  documentType={documentType}
+                  readonly={isReadonly}
+                />
         }
       </div>
     </div>

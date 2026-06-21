@@ -7,6 +7,7 @@ import NewDocumentPicker from "~/src/components/NewDocumentPicker.vue";
 import TitleEditor from "~/src/components/TitleEditor.vue";
 import DocumentContent from "../../components/DocumentContent.vue";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
+import { createDocument } from "../../db/documents.ts";
 import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);
@@ -27,6 +28,22 @@ const showPicker = !typeParam;
 const category = Astro.url.searchParams.get("category") || undefined;
 const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
 const spaceSlug = Astro.params.spaceSlug as string;
+
+if (type === "database") {
+  const userId = Astro.locals.user?.id;
+  if (userId) {
+    const dbDoc = await createDocument(
+      space.id,
+      userId,
+      "Untitled Database",
+      "",
+      { title: "Untitled Database" },
+      undefined,
+      "database",
+    );
+    return Astro.redirect(`/${space.slug}/doc/${dbDoc.slug}`);
+  }
+}
 ---
 
 <SpaceLayout title={`${title} - ${space.name} - Wiki`}>

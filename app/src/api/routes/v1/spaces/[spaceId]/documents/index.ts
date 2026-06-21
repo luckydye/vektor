@@ -16,6 +16,7 @@ import {
 import {
   type AclViewer,
   createDocument,
+  getDocumentChildren,
   listAllDocumentsByCategories,
   listDocuments,
 } from "#db/documents.ts";
@@ -68,6 +69,7 @@ export const GET: APIRoute = (context) =>
     const typeParam = context.url.searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = context.url.searchParams.get("categorySlugs");
     const grouped = context.url.searchParams.get("grouped") === "true";
+    const parentIdParam = context.url.searchParams.get("parentId")?.trim() || undefined;
 
     const categorySlugs = categorySlugsParam
       ? categorySlugsParam
@@ -118,6 +120,11 @@ export const GET: APIRoute = (context) =>
         limit: documents.length,
         offset: 0,
       });
+    }
+
+    if (parentIdParam) {
+      const documents = await getDocumentChildren(spaceId, parentIdParam, viewer);
+      return jsonResponse({ documents, total: documents.length, limit: documents.length, nextCursor: null });
     }
 
     // Always return documents without content (content fetched separately when viewing)
