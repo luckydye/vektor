@@ -175,7 +175,7 @@ const NAME_COL_WIDTH = 240;
 
             <!-- Add column button -->
             <th class="border-b border-neutral-100 px-2" :style="{ width: '48px' }">
-              <a-popover-trigger ref="addColumnTriggerRef" class="group/addcol">
+              <a-popover-trigger ref="addColumnTriggerRef">
                 <button
                   slot="trigger"
                   class="flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
@@ -184,8 +184,8 @@ const NAME_COL_WIDTH = 240;
                 >
                   <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
                 </button>
-                <a-popover placements="bottom-end">
-                  <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]/addcol:opacity-100">
+                <a-popover class="group" placements="bottom-end">
+                  <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
                     <div class="bg-background border border-neutral-200 rounded-xl shadow-large p-4 w-56 flex flex-col gap-3 mt-1">
                       <div class="text-size-small font-medium text-neutral-700">Add column</div>
                       <input
