@@ -85,6 +85,13 @@ function onAddColKeydown(e: KeyboardEvent) {
 
 // Per-column delete confirmation
 const deletingColumn = ref<string | null>(null);
+const columnPopoverStyle = ref<Record<string, string>>({});
+
+function openDeleteColumn(name: string, event: MouseEvent) {
+  deletingColumn.value = name;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  columnPopoverStyle.value = { top: `${rect.bottom + 4}px`, left: `${rect.left}px` };
+}
 
 async function confirmDeleteColumn(name: string) {
   await deleteColumn(name);
@@ -93,6 +100,13 @@ async function confirmDeleteColumn(name: string) {
 
 // Row deletion
 const deletingRow = ref<string | null>(null);
+const rowPopoverStyle = ref<Record<string, string>>({});
+
+function openDeleteRow(rowId: string, event: MouseEvent) {
+  deletingRow.value = rowId;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  rowPopoverStyle.value = { top: `${rect.bottom + 4}px`, right: `${window.innerWidth - rect.right}px` };
+}
 
 async function confirmDeleteRow(rowId: string) {
   try {
@@ -206,7 +220,7 @@ const NAME_COL_WIDTH = 240;
             <th
               v-for="col in derivedColumns"
               :key="col.name"
-              class="group relative px-3 py-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide border-b border-r border-neutral-100 whitespace-nowrap"
+              class="group px-3 py-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide border-b border-r border-neutral-100 whitespace-nowrap"
               :style="{ width: `${DEFAULT_COL_WIDTH}px` }"
             >
               <div class="flex items-center justify-between gap-1">
@@ -214,21 +228,10 @@ const NAME_COL_WIDTH = 240;
                 <button
                   class="opacity-0 group-hover:opacity-100 shrink-0 hover:text-red-500 transition-all"
                   title="Delete column"
-                  @click="deletingColumn = col.name"
+                  @click="openDeleteColumn(col.name, $event)"
                 >
                   <div class="svg-icon w-3.5 h-3.5" v-html="trashSmallIcon" />
                 </button>
-              </div>
-              <!-- Delete column confirm -->
-              <div
-                v-if="deletingColumn === col.name"
-                class="absolute top-full left-0 z-50 bg-background border border-neutral-200 rounded-lg shadow-large p-3 flex flex-col gap-2 w-44"
-              >
-                <div class="text-size-small text-neutral-700">Delete column "{{ col.label }}"?</div>
-                <div class="flex gap-2">
-                  <button class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors" @click="deletingColumn = null">Cancel</button>
-                  <button class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteColumn(col.name)">Delete</button>
-                </div>
               </div>
             </th>
 
@@ -313,23 +316,11 @@ const NAME_COL_WIDTH = 240;
             <!-- Row actions -->
             <td class="px-2 py-2 align-top" :style="{ width: '48px' }">
               <button
-                class="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-all relative"
+                class="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-all"
                 title="Delete row"
-                @click="deletingRow = row.id"
+                @click="openDeleteRow(row.id, $event)"
               >
                 <div class="svg-icon w-3.5 h-3.5" v-html="trashSmallIcon" />
-                <!-- Delete row confirm -->
-                <div
-                  v-if="deletingRow === row.id"
-                  class="absolute top-full right-0 z-50 bg-background border border-neutral-200 rounded-lg shadow-large p-3 flex flex-col gap-2 w-44 text-left"
-                  @click.stop
-                >
-                  <div class="text-size-small text-neutral-700">Delete this row?</div>
-                  <div class="flex gap-2">
-                    <button class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors text-neutral-700" @click.stop="deletingRow = null">Cancel</button>
-                    <button class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click.stop="confirmDeleteRow(row.id)">Delete</button>
-                  </div>
-                </div>
               </button>
             </td>
           </tr>
@@ -358,5 +349,45 @@ const NAME_COL_WIDTH = 240;
       </button>
     </div>
   </div>
+
+  <!-- Delete column popover -->
+  <Teleport to="body">
+    <div
+      v-if="deletingColumn"
+      class="fixed inset-0 z-50"
+      @mousedown.self="deletingColumn = null"
+    >
+      <div
+        class="absolute bg-background border border-neutral-200 rounded-lg shadow-large p-3 flex flex-col gap-2 w-44"
+        :style="columnPopoverStyle"
+      >
+        <div class="text-size-small text-neutral-700">Delete column "{{ derivedColumns.find(c => c.name === deletingColumn)?.label }}"?</div>
+        <div class="flex gap-2">
+          <button class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors" @click="deletingColumn = null">Cancel</button>
+          <button class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteColumn(deletingColumn!)">Delete</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Delete row popover -->
+  <Teleport to="body">
+    <div
+      v-if="deletingRow"
+      class="fixed inset-0 z-50"
+      @mousedown.self="deletingRow = null"
+    >
+      <div
+        class="absolute bg-background border border-neutral-200 rounded-lg shadow-large p-3 flex flex-col gap-2 w-44"
+        :style="rowPopoverStyle"
+      >
+        <div class="text-size-small text-neutral-700">Delete this row?</div>
+        <div class="flex gap-2">
+          <button class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors text-neutral-700" @click="deletingRow = null">Cancel</button>
+          <button class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteRow(deletingRow!)">Delete</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
