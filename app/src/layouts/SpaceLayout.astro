@@ -1,6 +1,7 @@
 ---
 import { ClientRouter } from "astro:transitions";
 import CalDAVSetupDialog from "../components/CalDAVSetupDialog.vue";
+import ToastContainer from "../components/ToastContainer.vue";
 import CommandPalatte from "../components/CommandPalatte.vue";
 import DockedWindowLayout from "../components/DockedWindowLayout.vue";
 import DocumentOverlay from "../components/DocumentOverlay.vue";
@@ -207,6 +208,8 @@ const publicEnvVars = () => Astro.locals.publicEnv;
     </div>
 
     <CalDAVSetupDialog client:only />
+
+    <ToastContainer client:only />
 
     <!-- <LinkPreview client:only /> -->
 
