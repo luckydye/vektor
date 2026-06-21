@@ -108,8 +108,16 @@ export async function createRevision(
     lastRevision &&
     Date.now() - new Date(lastRevision.createdAt).getTime() < OVERWRITE_WINDOW_MS;
 
-  // Overwrite the last revision in place if it's a regular save within the 5-hour window.
-  if (lastIsRecent && status === null && (lastRevision!.status ?? null) === null) {
+  const doc = await db
+    .select({ publishedRev: document.publishedRev })
+    .from(document)
+    .where(eq(document.id, documentId))
+    .get();
+  const lastIsPublished = lastRevision && lastRevision.rev === doc?.publishedRev;
+
+  // Overwrite the last revision in place if it's a regular save within the 5-hour window,
+  // but never overwrite the published revision — that would silently change published content.
+  if (lastIsRecent && !lastIsPublished && status === null && (lastRevision!.status ?? null) === null) {
     const compressed = compressHtml(html);
     const updatedMessage = options.message ?? lastRevision!.message;
     await db
