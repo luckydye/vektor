@@ -403,10 +403,10 @@ watchEffect(() => {
           type="button"
           class="inline-flex justify-center items-center px-3xs button-primary-pointer"
           :disabled="isSaving"
-          @click="stopEditing"
+          @click="publishDocument"
         >
           <Icon name="check" />
-          <span>{{ isSaving ? "Saving..." : "Save" }}</span>
+          <span>{{ isSaving ? "Saving..." : "Publish" }}</span>
         </button>
         <a-popover-trigger v-if="documentId" class="flex items-stretch group">
           <button
@@ -414,7 +414,7 @@ watchEffect(() => {
             type="button"
             class="flex items-center justify-center border-l border-primary-700 px-4xs button-primary-pointer"
             :disabled="isSaving"
-            aria-label="Publish options"
+            aria-label="Save options"
           >
             <Icon name="chevron-down" />
           </button>
@@ -428,10 +428,10 @@ watchEffect(() => {
                   type="button"
                   class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
                   :disabled="isSaving"
-                  @click="publishDocument"
+                  @click="stopEditing"
                 >
-                  <div class="font-medium text-size-small">Publish</div>
-                  <div class="text-size-small text-neutral-500">Save revision and publish to all viewers</div>
+                  <div class="font-medium text-size-small">Save</div>
+                  <div class="text-size-small text-neutral-500">Save without publishing to viewers</div>
                 </button>
                 <button
                   type="button"
