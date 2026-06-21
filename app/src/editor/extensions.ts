@@ -37,6 +37,7 @@ import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";
+import { VideoUpload } from "./extensions/VideoUpload.ts";
 
 export type EditorContext = {
   spaceId?: string;
@@ -111,6 +112,12 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
     ),
     withoutDefaultKeyboardShortcuts(
       FileAttachment.configure({
+        spaceId: spaceId,
+        documentId: documentId,
+      }),
+    ),
+    withoutDefaultKeyboardShortcuts(
+      VideoUpload.configure({
         spaceId: spaceId,
         documentId: documentId,
       }),

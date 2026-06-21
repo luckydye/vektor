@@ -6,6 +6,7 @@ import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { addIcon, puzzleIcon } from "~/src/assets/icons.ts";
 import { extensions } from "~/src/utils/extensions.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
+import { handleVideoUpload } from "./VideoUpload.ts";
 
 export interface TrailingNodePlusOptions {
   spaceId: string;
@@ -39,6 +40,14 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       icon: "🖼️",
       command: (editor) => {
         handleImageUpload(editor, spaceId, documentId);
+      },
+    },
+    {
+      title: "Video",
+      description: "Upload and insert a video",
+      icon: "🎬",
+      command: (editor) => {
+        handleVideoUpload(editor, spaceId, documentId);
       },
     },
     {
