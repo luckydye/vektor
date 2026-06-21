@@ -302,13 +302,6 @@ function unregisterToolbarActions() {
 }
 
 watch(editing, (isEditing) => {
-  if (!isEditing) {
-    // Capture editor HTML before the editor is destroyed (DOM update runs after watchers).
-    // Prevents an empty read view when the document query hasn't loaded yet
-    // (e.g. client-side navigation where props.initialHtml is "").
-    const html = editor.value?.getHTML();
-    if (html) renderedHtml.value = html;
-  }
   if (isEditing) {
     registerEditorActions();
     registerToolbarActions();
@@ -422,8 +415,8 @@ useSync(
         <div v-if="documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
             :class="editing ? 'h-full' : ''">
             <document-view ref="documentViewEl"
-                :editor="shouldMountEditor && !documentReadonly ? '' : undefined"
                 :html="renderedHtml"
+                :editor="shouldMountEditor && !documentReadonly ? '' : undefined"
                 :space-id="props.spaceId" :document-id="documentId"
                 v-html="ssrDeclarativeShadowDom" />
         </div>
