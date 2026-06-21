@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "@sv/elements/popover";
 import { nextTick, ref, watch } from "vue";
 import { plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
@@ -58,14 +59,13 @@ function onCellKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") cancelEdit();
 }
 
-// Add column dialog
-const showAddColumn = ref(false);
+// Add column popover
 const newColumnName = ref("");
 const newColumnType = ref<DatabaseColumn["type"]>("text");
 const newColumnInputRef = ref<HTMLInputElement | null>(null);
+const addColumnTriggerRef = ref<HTMLElement | null>(null);
 
-function openAddColumn() {
-  showAddColumn.value = true;
+function onAddColumnTrigger() {
   newColumnName.value = "";
   newColumnType.value = "text";
   nextTick(() => newColumnInputRef.value?.focus());
@@ -75,12 +75,12 @@ async function commitAddColumn() {
   const name = newColumnName.value.trim();
   if (!name) return;
   await addColumn({ name, type: newColumnType.value, label: name });
-  showAddColumn.value = false;
+  (addColumnTriggerRef.value as any)?.hide?.();
 }
 
 function onAddColKeydown(e: KeyboardEvent) {
   if (e.key === "Enter") commitAddColumn();
-  if (e.key === "Escape") showAddColumn.value = false;
+  if (e.key === "Escape") (addColumnTriggerRef.value as any)?.hide?.();
 }
 
 // Per-column delete confirmation
@@ -133,52 +133,6 @@ const NAME_COL_WIDTH = 240;
       <span class="text-size-small text-neutral-500">{{ rows.length }} rows</span>
     </div>
 
-    <!-- Add column dialog -->
-    <Teleport to="body">
-      <div
-        v-if="showAddColumn"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
-        @mousedown.self="showAddColumn = false"
-      >
-        <div class="bg-background rounded-xl border border-neutral-200 shadow-large p-5 w-72 flex flex-col gap-3">
-          <div class="text-size-medium font-medium text-neutral-800">Add column</div>
-          <div class="flex flex-col gap-1">
-            <label class="text-size-small text-neutral-500">Name</label>
-            <input
-              ref="newColumnInputRef"
-              v-model="newColumnName"
-              type="text"
-              placeholder="Column name"
-              class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
-              @keydown="onAddColKeydown"
-            />
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-size-small text-neutral-500">Type</label>
-            <select
-              v-model="newColumnType"
-              class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
-            >
-              <option value="text">Text</option>
-              <option value="number">Number</option>
-              <option value="date">Date</option>
-              <option value="select">Select</option>
-            </select>
-          </div>
-          <div class="flex gap-2 justify-end">
-            <button
-              class="px-3 py-1.5 rounded border border-neutral-200 text-size-small hover:bg-neutral-50 transition-colors"
-              @click="showAddColumn = false"
-            >Cancel</button>
-            <button
-              class="px-3 py-1.5 rounded bg-primary-600 text-white text-size-small hover:bg-primary-700 transition-colors"
-              @click="commitAddColumn"
-            >Add</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
     <!-- Table -->
     <div class="overflow-auto flex-1 min-h-0">
       <div v-if="isLoading" class="flex items-center justify-center h-24 text-neutral-400 text-size-small">
@@ -221,13 +175,44 @@ const NAME_COL_WIDTH = 240;
 
             <!-- Add column button -->
             <th class="border-b border-neutral-100 px-2" :style="{ width: '48px' }">
-              <button
-                class="flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
-                title="Add column"
-                @click="openAddColumn"
-              >
-                <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
-              </button>
+              <a-popover-trigger ref="addColumnTriggerRef" class="group/addcol">
+                <button
+                  slot="trigger"
+                  class="flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+                  title="Add column"
+                  @click="onAddColumnTrigger"
+                >
+                  <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
+                </button>
+                <a-popover placements="bottom-end">
+                  <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]/addcol:opacity-100">
+                    <div class="bg-background border border-neutral-200 rounded-xl shadow-large p-4 w-56 flex flex-col gap-3 mt-1">
+                      <div class="text-size-small font-medium text-neutral-700">Add column</div>
+                      <input
+                        ref="newColumnInputRef"
+                        v-model="newColumnName"
+                        type="text"
+                        placeholder="Column name"
+                        class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
+                        @keydown="onAddColKeydown"
+                      />
+                      <select
+                        v-model="newColumnType"
+                        class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
+                      >
+                        <option value="text">Text</option>
+                        <option value="number">Number</option>
+                        <option value="date">Date</option>
+                        <option value="select">Select</option>
+                      </select>
+                      <button
+                        class="px-3 py-1.5 rounded bg-primary-600 text-white text-size-small hover:bg-primary-700 transition-colors"
+                        @click="commitAddColumn"
+                      >Add</button>
+                    </div>
+                  </div>
+                </a-popover>
+              </a-popover-trigger>
             </th>
           </tr>
         </thead>
