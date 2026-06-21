@@ -1,6 +1,5 @@
 ---
 import { twMerge } from "tailwind-merge";
-import Canvas from "~/src/components/Canvas.vue";
 import DocumentActions from "~/src/components/DocumentActions.vue";
 import DocumentProperties from "~/src/components/DocumentProperties.vue";
 import NewDocumentPicker from "~/src/components/NewDocumentPicker.vue";
@@ -44,64 +43,103 @@ if (type === "database") {
     return Astro.redirect(`/${space.slug}/doc/${dbDoc.slug}`);
   }
 }
+
+const isCanvas = type === "canvas";
+const isApp = type === "app";
+const isCsv = type === "csv";
+const isWorkflow = type === "workflow";
+const isPaddedDocument = !isCanvas && !isApp && !isCsv && !isWorkflow;
 ---
 
 <SpaceLayout title={`${title} - ${space.name} - Wiki`}>
-    <!-- Inset content past the fixed sidebar — except canvas docs, which render
-         full-bleed behind the nav and inset only their (absolute) header below. -->
-    <div data-inset class={twMerge('flex-1 min-h-0', type !== 'canvas' && 'md:ml-(--inset-left) md:mr-(--inset-right)')}>
+  <!-- Inset content past the fixed sidebar — except canvas docs, which render
+       full-bleed behind the nav and inset only their absolute header below. -->
+  <div
+    data-inset
+    class={twMerge(
+      "min-h-0 flex-1",
+      !isCanvas && "md:mr-(--inset-right) md:ml-(--inset-left)",
+    )}
+  >
     <div
       class={twMerge(
-        "space-y-6 mx-auto h-full flex flex-col relative w-full",
-        (type !== 'document' && type !== 'workflow') ? 'max-w-full' : 'max-w-(--document-width)'
+        "relative mx-auto flex h-full w-full flex-col",
+        isCsv ? "max-w-full" : "max-w-(--document-width)",
       )}
-     >
+    >
       <!-- Document Header -->
-      <div data-inset class={twMerge(
-        type === 'canvas' ? 'absolute top-xs right-0 left-0 md:left-(--inset-left) md:right-(--inset-right) z-10' : 'pt-s mb-xl'
+      <div class={twMerge(
+        isApp
+          ? "hidden"
+          : isCanvas
+            ? "block pointer-events-none absolute top-xs right-0 left-0 z-20 lg:right-(--inset-right) lg:left-(--inset-left)"
+            : "mb-xl pt-xs contents",
       )}>
-        <div class="flex gap-6 lg:gap-4 justify-between flex-col-reverse lg:flex-row print:px-0 px-xs lg:px-xl mt-xs">
-          <div>
-            <div class="flex items-start justify-between">
-              <TitleEditor client:load initialEditMode={true} title={title} />
-            </div>
-          </div>
-
-          <DocumentActions documentId={undefined} title={title} readonly={false} client:only />
+        <div
+          class="flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0 mt-2xs mb-4xs"
+          data-inset
+        >
+          <div />
         </div>
 
-        <div class="print:px-0 px-xs lg:px-xl mt-xs">
-          <DocumentProperties client:only documentId={undefined} documentType={type} initialProperties={category ? { category } : {}} />
+        <div
+          class={twMerge(
+            "flex flex-row justify-between gap-6 py-3xs px-xs lg:gap-4 lg:px-xl print:px-0",
+            isCanvas ? "pointer-events-auto" : "bg-neutral-10",
+            "sticky top-0 z-10",
+          )}
+          data-inset
+        >
+          <div class="flex items-start justify-between w-full">
+            <TitleEditor
+              client:load
+              initialEditMode={true}
+              title={title}
+            />
+          </div>
+
+          <DocumentActions
+            client:only
+            documentId={undefined}
+            title={title}
+            readonly={false}
+          />
+        </div>
+
+        <div
+          class={twMerge(
+            "px-xs lg:px-xl print:px-0 mb-l",
+            isCanvas && "pointer-events-auto",
+          )}
+          data-inset
+        >
+          <DocumentProperties
+            client:only
+            documentId={undefined}
+            documentType={type}
+            initialProperties={category ? { category } : {}}
+          />
         </div>
       </div>
 
       <!-- Main Content -->
       <div
         class={twMerge(
-          'max-w-none text-neutral-700 h-full relative',
-          type !== 'canvas' && "print:px-0 px-xs lg:px-xl"
+          "max-w-none overflow-x-auto text-neutral-700 h-full",
+          isPaddedDocument && "px-xs lg:px-xl print:px-0",
         )}
       >
         {showPicker && (
           <NewDocumentPicker client:load spaceSlug={spaceSlug} />
         )}
-        
+
         <DocumentContent
           client:load
           spaceId={space.id}
           documentType={type}
           initialEditMode={true}
         />
-
-	    <div class="h-full">
-      		{type === "canvas" ? (
-         			<Canvas
-            client:only="vue"
-                spaceId={space.id}
-         			/>
-      		) : null}
-		</div>
       </div>
     </div>
-    </div>
+  </div>
 </SpaceLayout>
