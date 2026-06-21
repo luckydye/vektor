@@ -33,9 +33,13 @@ function docTags(doc: DocumentWithProperties): string[] {
     .map(([, v]) => String(v));
 }
 
+const TEASER_TYPES = new Set(["document", "canvas", "database"]);
+
 onMounted(async () => {
   const result = await api.documents.get(props.spaceId, { limit: count });
-  docs.value = result.documents;
+  docs.value = result.documents.filter(
+    (d) => TEASER_TYPES.has(d.type ?? "document"),
+  );
   loading.value = false;
 });
 </script>
