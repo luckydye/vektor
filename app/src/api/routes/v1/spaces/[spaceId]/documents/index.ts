@@ -86,14 +86,12 @@ export const GET: APIRoute = (context) =>
         userEmail,
         viewer,
       );
-      const filteredDocumentsByCategory = typeParam
-        ? Object.fromEntries(
-            Object.entries(documentsByCategory).map(([slug, docs]) => [
-              slug,
-              docs.filter((doc) => doc.type === typeParam),
-            ]),
-          )
-        : documentsByCategory;
+      const filteredDocumentsByCategory = Object.fromEntries(
+        Object.entries(documentsByCategory).map(([slug, docs]) => [
+          slug,
+          docs.filter((doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam)),
+        ]),
+      );
 
       if (grouped) {
         return jsonResponse({
