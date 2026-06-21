@@ -129,15 +129,8 @@ const NAME_COL_WIDTH = 240;
 <template>
   <div class="relative flex flex-col h-full min-h-0 overflow-hidden px-xs lg:px-xl">
     <!-- Toolbar -->
-    <div class="flex items-center justify-between px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0">
+    <div class="flex items-center px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0">
       <span class="text-size-small text-neutral-500">{{ rows.length }} rows</span>
-      <button
-        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-neutral-200 bg-background hover:bg-neutral-50 text-neutral-600 text-size-small transition-colors"
-        @click="addRow"
-      >
-        <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
-        Add row
-      </button>
     </div>
 
     <!-- Add column dialog -->
