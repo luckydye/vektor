@@ -41,6 +41,12 @@ describe("withTransformParams", () => {
     expect(result).toBe(`${uploadUrl}?w=1600&format=webp&q=85`);
   });
 
+  it("appends params to an absolute internal upload URL", () => {
+    const absoluteUrl = `https://vektor.example${uploadUrl}`;
+    const result = withTransformParams(absoluteUrl, { w: 1600, format: "webp", q: 85 });
+    expect(result).toBe(`${absoluteUrl}?w=1600&format=webp&q=85`);
+  });
+
   it("returns external URLs unchanged", () => {
     const ext = "https://example.com/photo.jpg";
     expect(withTransformParams(ext, { w: 1600 })).toBe(ext);
@@ -238,7 +244,8 @@ async function uploadFile(
     body: form,
   });
   if (!res.ok) throw new Error(`Upload failed: ${res.status} ${await res.text()}`);
-  const data = (await res.json()) as { key: string };
+  const data = (await res.json()) as { key: string; url: string };
+  expect(data.url).toBe(`${BASE_URL}/api/v1/spaces/${sid}/uploads/${data.key}`);
   return data.key;
 }
 

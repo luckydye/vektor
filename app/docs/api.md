@@ -330,7 +330,7 @@ Most errors are JSON:
 - User auth: allowlist file types/extensions enforced.
 - Job auth: type allowlist bypassed.
 - Returns:
-- `200` `{ url, key }`.
+- `200` `{ url, key }`, where `url` is absolute.
 
 ## `GET /spaces/:spaceId/uploads/*`
 

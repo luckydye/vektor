@@ -197,9 +197,8 @@ export const POST: APIRoute = (context) =>
         });
       }
 
-      // Return a relative URL — consumers prepend their own base URL.
-      // This avoids jobs fetching via the public domain (which may 403).
-      return jsonResponse({ url, key }, 200);
+      const absoluteUrl = new URL(url, context.url).href;
+      return jsonResponse({ url: absoluteUrl, key }, 200);
     },
     {
       fallbackMessage: "Failed to upload file",

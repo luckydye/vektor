@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
 import { useProperties } from "./useProperties.ts";
 import { useSpace } from "./useSpace.ts";
@@ -18,11 +18,13 @@ export function supportsHeaderImage(documentType?: string): boolean {
  * The header is server-rendered from `document.properties.headerImage`, so
  * mutations reload the page once saved — matching the pin/archive actions.
  */
+export const uploadingDocumentId = ref<string | null>(null);
+
 export function useHeaderImage() {
   const { currentSpaceId } = useSpace();
   const { updateProperty } = useProperties();
 
-  const isUploading = ref(false);
+  const isUploading = computed(() => uploadingDocumentId.value !== null);
   const dialogOpen = ref(false);
 
   async function saveHeaderImage(documentId: string, url: string) {
@@ -36,9 +38,9 @@ export function useHeaderImage() {
 
   /** Upload the chosen file and set it as the document header. */
   async function uploadHeaderImage(documentId: string, file: File) {
-    if (!currentSpaceId.value || isUploading.value) return;
+    if (!currentSpaceId.value || uploadingDocumentId.value !== null) return;
     try {
-      isUploading.value = true;
+      uploadingDocumentId.value = documentId;
       const result = await api.uploads.post(
         currentSpaceId.value,
         file,
@@ -52,7 +54,7 @@ export function useHeaderImage() {
       console.error("Failed to set header image:", error);
       alert("❌ Failed to upload header image. Please try again.");
     } finally {
-      isUploading.value = false;
+      uploadingDocumentId.value = null;
     }
   }
 
