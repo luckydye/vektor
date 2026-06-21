@@ -125,7 +125,7 @@ const activityGroups = computed((): ActivityGroup[] => {
       <!-- User group card -->
       <!-- Default: block, header row (avatar inline) + entries full-width -->
       <!-- @md: flex, avatar as persistent left column -->
-      <div class="px-2 pt-3 pb-2.5 rounded-lg @md:flex @md:gap-3 @md:items-start">
+      <div class="px-1 pb-2.5 rounded-lg @md:flex @md:gap-3 @md:items-start">
 
         <!-- Avatar: left column at @md only -->
         <div class="hidden @md:block shrink-0 pt-0.5">

@@ -143,7 +143,6 @@ onMounted(() => {
 
     <!-- Loading skeleton -->
     <div v-else-if="isLoading" class="space-y-5">
-      <div class="h-3 bg-neutral-200 rounded-sm w-36 animate-pulse" />
       <div v-for="i in 3" :key="`skeleton-${i}`" class="space-y-2 animate-pulse">
         <!-- Group header skeleton -->
         <div class="flex items-center gap-3">
