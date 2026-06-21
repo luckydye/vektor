@@ -70,7 +70,7 @@ export function useDatabaseRows(databaseDocumentId: string) {
     mutationFn: async () => {
       if (!spaceId.value) throw new Error("No space ID");
       return await api.documents.post(spaceId.value, {
-        content: "",
+        content: "<p></p>",
         type: "database-row",
         parentId: databaseDocumentId,
         properties: { title: "Untitled" },
