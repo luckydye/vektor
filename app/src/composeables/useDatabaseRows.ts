@@ -1,6 +1,5 @@
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
-import type { DocumentWithProperties } from "../api/ApiClient.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
@@ -46,7 +45,7 @@ export function useDatabaseRows(databaseDocumentId: string) {
     enabled: computed(() => !!spaceId.value),
   });
 
-  const rows = computed(() => (data.value?.documents ?? []) as DocumentWithProperties[]);
+  const rows = computed(() => data.value?.documents ?? []);
 
   const schemaStr = ref<string | undefined>(undefined);
 
@@ -148,10 +147,8 @@ export function useDatabaseRows(databaseDocumentId: string) {
 
   return {
     rows,
-    schema,
     derivedColumns,
     isLoading,
-    refresh,
     setSchemaStr,
     addRow,
     updateRowProperty,

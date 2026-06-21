@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { plusIcon, tableColumnAddAfterIcon, trashSmallIcon } from "~/src/assets/icons.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "../composeables/useDatabaseRows.ts";
@@ -95,8 +95,6 @@ async function confirmDeleteRow(rowId: string) {
   await deleteRow(rowId);
   deletingRow.value = null;
 }
-
-const columns = computed(() => derivedColumns.value);
 
 function cellValue(row: Record<string, string>, col: string): string {
   return row[col] ?? "";
@@ -196,7 +194,7 @@ const NAME_COL_WIDTH = 240;
 
             <!-- Property column headers -->
             <th
-              v-for="col in columns"
+              v-for="col in derivedColumns"
               :key="col.name"
               class="group relative px-3 py-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide border-b border-r border-neutral-100 whitespace-nowrap"
               :style="{ width: `${DEFAULT_COL_WIDTH}px` }"
@@ -273,7 +271,7 @@ const NAME_COL_WIDTH = 240;
 
             <!-- Property cells -->
             <td
-              v-for="col in columns"
+              v-for="col in derivedColumns"
               :key="col.name"
               class="px-3 py-2 border-r border-neutral-100 align-top"
               :style="{ width: `${DEFAULT_COL_WIDTH}px` }"
@@ -329,7 +327,7 @@ const NAME_COL_WIDTH = 240;
           <!-- Empty state -->
           <tr v-if="rows.length === 0 && !isLoading">
             <td
-              :colspan="columns.length + 2"
+              :colspan="derivedColumns.length + 2"
               class="px-4 py-8 text-center text-size-small text-neutral-400"
             >
               No rows yet. Click "Add row" to get started.
