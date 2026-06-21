@@ -173,18 +173,26 @@ const activityGroups = computed((): ActivityGroup[] => {
                   <!-- Property change pill -->
                   <div
                     v-if="hasPropertyChange(entry)"
-                    class="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-size-small bg-neutral-100 rounded-sm px-2.5 py-1.5 text-neutral-700"
+                    class="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-size-small bg-neutral-100 rounded-sm px-2.5 py-1.5 text-neutral-700 max-w-full"
                   >
-                    <span class="font-medium text-neutral-500">
+                    <span class="font-medium text-neutral-500 shrink-0">
                       {{ formatPropertyKey(entry.details?.propertyKey) }}:
                     </span>
-                    <span v-if="entry.details?.previousValue" class="text-neutral-500">
+                    <span
+                      v-if="entry.details?.previousValue"
+                      class="text-neutral-500 min-w-0 max-w-[40ch] truncate"
+                      :title="entry.details.previousValue"
+                    >
                       {{ entry.details.previousValue }}
                     </span>
                     <span v-else class="text-neutral-400 italic">—</span>
-                    <span class="text-neutral-400 font-mono text-[11px]">→</span>
-                    <span v-if="entry.event === 'property_delete'" class="text-red-500 italic">(removed)</span>
-                    <span v-else-if="entry.details?.newValue" class="font-medium text-neutral-700">
+                    <span class="text-neutral-400 font-mono text-[11px] shrink-0">→</span>
+                    <span v-if="entry.event === 'property_delete'" class="text-red-500 italic shrink-0">(removed)</span>
+                    <span
+                      v-else-if="entry.details?.newValue"
+                      class="font-medium text-neutral-700 min-w-0 max-w-[40ch] truncate"
+                      :title="entry.details.newValue"
+                    >
                       {{ entry.details.newValue }}
                     </span>
                     <span v-else class="text-neutral-400 italic">—</span>
