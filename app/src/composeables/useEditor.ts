@@ -4,7 +4,7 @@ import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useRevisions } from "./useRevisions.ts";
 
-export type SaveMode = "revision" | "suggestion";
+export type SaveMode = "revision" | "suggestion" | "draft";
 
 /** Whether the user has an active editing session on the current document. */
 export const editing = ref(false);
@@ -84,7 +84,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveError: documentSaveError,
     saveDocument,
   } = useDocument(documentId.value, documentType.value);
-  const { saveRevision } = useRevisions(documentId.value);
+  const { saveRevision, publishRevision } = useRevisions(documentId.value);
 
   let editorSession = 0;
   let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -95,7 +95,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveStatusTimer = null;
   }
 
-  async function finishEditing(mode: SaveMode = "revision") {
+  async function finishEditing(mode: SaveMode = "draft") {
     clearSaveStatusTimer();
     saveStatus.value = "saving";
     saveError.value = null;
@@ -106,8 +106,13 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       if (content) {
         if (mode === "suggestion") {
           saved = !!(await saveRevision(content, "Suggested changes", "suggestion"));
+        } else if (mode === "revision") {
+          const revision = await saveRevision(content, "Manual save");
+          if (revision) {
+            await publishRevision(revision.rev);
+          }
+          saved = await saveDocument(content);
         } else {
-          await saveRevision(content, "Manual save");
           saved = await saveDocument(content);
         }
       }
@@ -135,6 +140,13 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
   function registerSaveActions() {
     Actions.register("document:save", {
+      title: "Save Document",
+      description: "Save current document as draft and exit edit mode",
+      group: "edit",
+      run: async () => finishEditing("draft"),
+    });
+
+    Actions.register("document:save:publish", {
       title: "Publish Document",
       description: "Publish current document and exit edit mode",
       group: "edit",
@@ -151,6 +163,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
   function unregisterSaveActions() {
     Actions.unregister("document:save");
+    Actions.unregister("document:save:publish");
     Actions.unregister("document:save:suggestion");
   }
 

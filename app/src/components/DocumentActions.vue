@@ -163,6 +163,8 @@ Actions.register("document:accesstoken", {
 
 const actions = ref<[string, ActionOptions][]>([]);
 const actionsDanger = ref<[string, ActionOptions][]>([]);
+const actionsDev = ref<[string, ActionOptions][]>([]);
+const devMode = ref(false);
 
 function stopEditing() {
   if (!editing.value) return;
@@ -170,6 +172,13 @@ function stopEditing() {
 
   showSaveMenu.value = false;
   Actions.run("document:save");
+}
+
+function publishDocument() {
+  if (!Actions.get("document:save:publish")) return;
+
+  showSaveMenu.value = false;
+  Actions.run("document:save:publish");
 }
 
 function cancelEditing() {
@@ -198,6 +207,35 @@ function saveAsSuggestion() {
 function handleClickOutside(event: MouseEvent) {
   if (actionMenuRef.value && !actionMenuRef.value.contains(event.target as Node)) {
     showSaveMenu.value = false;
+  }
+}
+
+Actions.register("document:dev:copy-document-id", {
+  title: t("Copy Document ID"),
+  icon: () => "copy",
+  description: t("Copy the current document ID to clipboard"),
+  group: "document:dev",
+  run: async () => {
+    if (!props.documentId) return;
+    await navigator.clipboard.writeText(props.documentId);
+  },
+});
+
+Actions.register("document:dev:copy-space-id", {
+  title: t("Copy Space ID"),
+  icon: () => "copy",
+  description: t("Copy the current space ID to clipboard"),
+  group: "document:dev",
+  run: async () => {
+    if (!currentSpaceId.value) return;
+    await navigator.clipboard.writeText(currentSpaceId.value);
+  },
+});
+
+function handleContextMenuMousedown(event: MouseEvent) {
+  devMode.value = event.altKey || event.metaKey;
+  if (devMode.value) {
+    actionsDev.value = Actions.group("document:dev");
   }
 }
 
@@ -392,7 +430,7 @@ watchEffect(() => {
             @click="stopEditing"
           >
             <Icon name="check" />
-            <span>{{ isSaving ? "Publishing..." : "Publish" }}</span>
+            <span>{{ isSaving ? "Saving..." : "Save" }}</span>
           </button>
           <button
             v-if="documentId"
@@ -415,6 +453,19 @@ watchEffect(() => {
             type="button"
             class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
             :disabled="isSaving"
+            @click="publishDocument"
+          >
+            <div class="font-medium text-size-small">
+              Publish
+            </div>
+            <div class="text-size-small text-neutral-500">
+              Save revision and publish to all viewers
+            </div>
+          </button>
+          <button
+            type="button"
+            class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
+            :disabled="isSaving"
             @click="saveAsSuggestion"
           >
             <div class="font-medium text-size-small">
@@ -433,14 +484,16 @@ watchEffect(() => {
       </ButtonSecondary>
     </div>
 
-    <div class="relative flex-none">
+    <div class="relative flex-none" @mousedown="handleContextMenuMousedown">
       <HeaderImageDialog
         v-model:show="dialogOpen"
         @select="(file) => props.documentId && uploadHeaderImage(props.documentId, file)"
       />
       <ContextMenu>
       <ContextMenuItem v-for="[name, options] of actions" :onClick="(event) => runContextMenuAction(event, name)">
-        <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+        <div class="aspect-sqaure flex-none w-[1rem]">
+            <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+        </div>
         <span class="block w-full text-left mr-2" :data-action="name">{{options.title}}</span>
         <a-shortcut :data-shortcut="Actions.getShortcutsForAction(name)?.values().next().value"></a-shortcut>
       </ContextMenuItem>
@@ -448,9 +501,21 @@ watchEffect(() => {
       <hr v-if="actionsDanger.length > 0" />
 
       <ContextMenuItem v-for="[name, options] of actionsDanger" :onClick="(event) => runContextMenuAction(event, name)" class="text-orange-600 hover:text-orange-700">
-        <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+        <div class="aspect-sqaure flex-none w-[1rem]">
+            <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+        </div>
         <span>{{options.title}}</span>
       </ContextMenuItem>
+
+      <template v-if="devMode">
+        <hr />
+        <ContextMenuItem v-for="[name, options] of actionsDev" :onClick="(event) => runContextMenuAction(event, name)" class="text-neutral-400">
+          <div class="aspect-sqaure flex-none w-[1rem]">
+              <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+          </div>
+          <span>{{options.title}}</span>
+        </ContextMenuItem>
+      </template>
     </ContextMenu>
     </div>
   </div>
