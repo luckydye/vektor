@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
+import { computed, onMounted, ref, watch, watchEffect } from "vue";
+import "@sv/elements/popover";
 import {
   ButtonSecondary,
   ContextMenu,
@@ -37,8 +38,6 @@ const userCanEdit = computed(() => {
 });
 
 const isCreatingToken = ref(false);
-const showSaveMenu = ref(false);
-const actionMenuRef = ref<HTMLElement | null>(null);
 const isSaving = computed(() => saveStatus.value === "saving");
 
 function registerEditAction() {
@@ -169,22 +168,18 @@ const devMode = ref(false);
 function stopEditing() {
   if (!editing.value) return;
   if (!Actions.get("document:save")) return;
-
-  showSaveMenu.value = false;
   Actions.run("document:save");
 }
 
-function publishDocument() {
+function publishDocument(e: MouseEvent) {
   if (!Actions.get("document:save:publish")) return;
-
-  showSaveMenu.value = false;
   Actions.run("document:save:publish");
+  (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
 
 function cancelEditing() {
   editing.value = false;
   cancelCount.value++;
-  showSaveMenu.value = false;
   if (props.documentId) {
     syncEditActions(false);
   } else {
@@ -192,22 +187,10 @@ function cancelEditing() {
   }
 }
 
-function toggleSaveMenu(event: MouseEvent) {
-  event.stopPropagation();
-  showSaveMenu.value = !showSaveMenu.value;
-}
-
-function saveAsSuggestion() {
+function saveAsSuggestion(e: MouseEvent) {
   if (!Actions.get("document:save:suggestion")) return;
-
-  showSaveMenu.value = false;
   Actions.run("document:save:suggestion");
-}
-
-function handleClickOutside(event: MouseEvent) {
-  if (actionMenuRef.value && !actionMenuRef.value.contains(event.target as Node)) {
-    showSaveMenu.value = false;
-  }
+  (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
 
 Actions.register("document:dev:copy-document-id", {
@@ -240,8 +223,6 @@ function handleContextMenuMousedown(event: MouseEvent) {
 }
 
 onMounted(async () => {
-  document.addEventListener("click", handleClickOutside);
-
   Actions.subscribe("actions:register", () => {
     actions.value = Actions.group("document");
     actionsDanger.value = Actions.group("document:danger");
@@ -253,10 +234,6 @@ onMounted(async () => {
 
   actions.value = Actions.group("document");
   actionsDanger.value = Actions.group("document:danger");
-});
-
-onUnmounted(() => {
-  document.removeEventListener("click", handleClickOutside);
 });
 
 function runContextMenuAction(e: Event, name: string) {
@@ -421,61 +398,54 @@ watchEffect(() => {
     />
 
     <div v-if="editing" class="flex items-center gap-2">
-      <div ref="actionMenuRef" class="relative">
-        <div class="button-primary-base button-with-icon overflow-hidden">
+      <div class="button-primary-base button-with-icon overflow-hidden items-stretch">
+        <button
+          type="button"
+          class="inline-flex justify-center items-center px-3xs button-primary-pointer"
+          :disabled="isSaving"
+          @click="stopEditing"
+        >
+          <Icon name="check" />
+          <span>{{ isSaving ? "Saving..." : "Save" }}</span>
+        </button>
+        <a-popover-trigger v-if="documentId" class="flex items-stretch group">
           <button
-            type="button"
-            class="inline-flex justify-center items-center px-3xs button-primary-pointer"
-            :disabled="isSaving"
-            @click="stopEditing"
-          >
-            <Icon name="check" />
-            <span>{{ isSaving ? "Saving..." : "Save" }}</span>
-          </button>
-          <button
-            v-if="documentId"
+            slot="trigger"
             type="button"
             class="flex items-center justify-center border-l border-primary-700 px-4xs button-primary-pointer"
             :disabled="isSaving"
             aria-label="Publish options"
-            @click="toggleSaveMenu"
           >
             <Icon name="chevron-down" />
           </button>
-        </div>
-
-        <div
-          v-if="showSaveMenu && documentId"
-          class="absolute top-[calc(100%+4px)] right-0 bg-background border border-neutral-100 rounded-lg p-[4px] flex flex-col gap-[4px] min-w-[220px] z-50"
-          style="box-shadow: -2px 2px 24px 0px rgba(0, 0, 0, 0.1)"
-        >
-          <button
-            type="button"
-            class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
-            :disabled="isSaving"
-            @click="publishDocument"
-          >
-            <div class="font-medium text-size-small">
-              Publish
+          <a-popover class="group" placements="bottom-end">
+            <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
+              <div
+                class="bg-background border border-neutral-100 rounded-lg p-[4px] flex flex-col gap-[4px] min-w-[220px]"
+                style="box-shadow: -2px 2px 24px 0px rgba(0, 0, 0, 0.1)"
+              >
+                <button
+                  type="button"
+                  class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
+                  :disabled="isSaving"
+                  @click="publishDocument"
+                >
+                  <div class="font-medium text-size-small">Publish</div>
+                  <div class="text-size-small text-neutral-500">Save revision and publish to all viewers</div>
+                </button>
+                <button
+                  type="button"
+                  class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
+                  :disabled="isSaving"
+                  @click="saveAsSuggestion"
+                >
+                  <div class="font-medium text-size-small">Save as suggestion</div>
+                  <div class="text-size-small text-neutral-500">Create an open suggestion instead of publishing</div>
+                </button>
+              </div>
             </div>
-            <div class="text-size-small text-neutral-500">
-              Save revision and publish to all viewers
-            </div>
-          </button>
-          <button
-            type="button"
-            class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
-            :disabled="isSaving"
-            @click="saveAsSuggestion"
-          >
-            <div class="font-medium text-size-small">
-              Save as suggestion
-            </div>
-            <div class="text-size-small text-neutral-500">
-              Create an open suggestion instead of publishing
-            </div>
-          </button>
-        </div>
+          </a-popover>
+        </a-popover-trigger>
       </div>
 
       <ButtonSecondary @click="cancelEditing">
