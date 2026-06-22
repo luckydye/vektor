@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useDocument } from "../composeables/useDocument.ts";
 import { uploadingDocumentId } from "../composeables/useHeaderImage.ts";
 import { withTransformParams } from "../files/transformUrl.ts";
@@ -13,8 +13,13 @@ const src = computed(() => {
   return url ? withTransformParams(url, { w: 1600, format: "webp", q: 85 }) : null;
 });
 
+const isMounted = ref(false);
+onMounted(() => { isMounted.value = true; });
+
 const isUploadingHeader = computed(() => uploadingDocumentId.value === props.documentId);
-const showSkeleton = computed(() => isLoading.value || isUploadingHeader.value);
+const showSkeleton = computed(() =>
+  isMounted.value && (isUploadingHeader.value || (isLoading.value && !!props.initialSrc)),
+);
 </script>
 
 <template>

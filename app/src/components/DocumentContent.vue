@@ -24,7 +24,7 @@ import {
 } from "../utils/formattingActions.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
-import type CommentBubble from "./CommentBubble.vue";
+import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "../editor/elements/table-view.ts";
 import "../editor/elements/toolbar.ts";

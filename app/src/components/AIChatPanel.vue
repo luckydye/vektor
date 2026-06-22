@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ inheritAttrs: false });
+
 import { marked } from "marked";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
@@ -31,7 +33,7 @@ import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
-import type MessageInput from "./MessageInput.vue";
+import MessageInput from "./MessageInput.vue";
 import type { PendingAttachment } from "./MessageInput.vue";
 
 const props = defineProps({
