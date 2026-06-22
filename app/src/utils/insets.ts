@@ -23,7 +23,7 @@
 //     invoke the returned unsubscribe in `onUnmounted`.
 
 const SIDEBAR_STORAGE_KEY = "sidebar-width";
-const DEFAULT_SIDEBAR = 250;
+const DEFAULT_SIDEBAR = 280;
 const SELECTOR = "[data-inset]";
 
 export interface Insets {

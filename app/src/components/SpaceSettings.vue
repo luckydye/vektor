@@ -3,98 +3,130 @@
 
     <!-- General Settings -->
     <template #general>
-    <section>
-      <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">General Settings</h2>
-      <form @submit.prevent="handleSave">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      <!-- Profile layout: form left, live preview right -->
+      <div class="flex flex-col lg:flex-row gap-8">
+
+        <!-- Form -->
+        <form class="flex-1 min-w-0 space-y-6" @submit.prevent="handleSave">
+
           <div>
-            <label for="settings-space-name" class="block text-size-small font-medium text-neutral-700 mb-1">
-              Space Name
-            </label>
-            <input id="settings-space-name" v-model="localName" type="text" required
-              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label for="settings-space-slug" class="block text-size-small font-medium text-neutral-700 mb-1">
-              Slug
-            </label>
-            <input id="settings-space-slug" v-model="localSlug" type="text" required pattern="[a-z0-9-]+"
-              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <p class="mt-0.5 text-size-small text-neutral-500">lowercase letters, numbers, hyphens only</p>
-          </div>
-          <div class="md:col-span-2">
-            <label for="settings-space-description" class="block text-size-small font-medium text-neutral-700 mb-1">
-              Description
-            </label>
-            <input id="settings-space-description" v-model="localDescription" type="text"
-              placeholder="e.g., Engineering / Documentation"
-              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label for="settings-brand-color" class="block text-size-small font-medium text-neutral-700 mb-1">
-              Brand Color
-            </label>
-            <div class="flex gap-2 items-center">
-              <input id="settings-brand-color" v-model="localBrandColor" type="color"
-                class="h-8 w-12 border border-neutral-100 rounded-sm cursor-pointer" />
-              <input v-model="localBrandColor" type="text" placeholder="#1e293b" pattern="^#[0-9A-Fa-f]{6}$"
-                class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
-            </div>
-          </div>
-          <div>
-            <label for="settings-logo-svg" class="block text-size-small font-medium text-neutral-700 mb-1">
-              Logo
-            </label>
-            <div class="flex items-center gap-2">
-              <input id="settings-logo-svg" type="file" accept="image/svg+xml,image/png,image/jpeg"
-                @change="handleLogoUpload"
-                class="flex-1 text-size-medium file:mr-2 file:py-1 file:px-2 file:rounded-sm file:border-0 file:text-size-small file:bg-neutral-100 file:text-neutral-700 hover:file:bg-neutral-200" />
-              <div v-if="localLogoSvg" class="flex items-center gap-1 px-2 py-1 bg-neutral-100 rounded-sm">
-                <div v-if="localLogoSvg.startsWith('<')" v-html="localLogoSvg" class="h-5 flex items-center [&>svg]:h-5 [&>svg]:w-auto"></div>
-                <img v-else :src="localLogoSvg" class="h-5" />
-                <button type="button" @click="localLogoSvg = ''" class="text-neutral-400 hover:text-red-500">
-                  <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
-                </button>
+            <p class="text-size-small font-medium text-neutral-500 uppercase tracking-wide mb-3">Identity</p>
+            <div class="space-y-3">
+              <div>
+                <label for="settings-space-name" class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
+                <input id="settings-space-name" v-model="localName" type="text" required
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label for="settings-space-slug" class="block text-size-small font-medium text-neutral-700 mb-1">Slug</label>
+                <input id="settings-space-slug" v-model="localSlug" type="text" required pattern="[a-z0-9-]+"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+                <p class="mt-1 text-size-small text-neutral-400">Lowercase letters, numbers and hyphens only</p>
+              </div>
+              <div>
+                <label for="settings-space-description" class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
+                <input id="settings-space-description" v-model="localDescription" type="text"
+                  placeholder="e.g., Engineering / Documentation"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
           </div>
-        </div>
-        <div v-if="error" class="mt-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
-          {{ error }}
-        </div>
-        <div class="mt-4 flex justify-end">
-          <button type="submit" :disabled="isSaving"
-            class="px-4 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
-            {{ isSaving ? 'Saving...' : 'Save Changes' }}
-          </button>
-        </div>
-      </form>
 
-      <div class="pt-12">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Members</h2>
+          <div class="border-t border-neutral-100 pt-5">
+            <p class="text-size-small font-medium text-neutral-500 uppercase tracking-wide mb-3">Appearance</p>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Brand Color</label>
+                <p class="text-size-small text-neutral-400 mb-2">Used as the accent color across your space</p>
+                <div class="flex gap-2 items-center">
+                  <input id="settings-brand-color" v-model="localBrandColor" type="color"
+                    class="h-9 w-14 border border-neutral-200 rounded-md cursor-pointer p-0.5" />
+                  <input v-model="localBrandColor" type="text" placeholder="#1e293b" pattern="^#[0-9A-Fa-f]{6}$"
+                    class="w-28 px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-size-small font-medium text-neutral-700 mb-1">Logo</label>
+                <p class="text-size-small text-neutral-400 mb-2">SVG, PNG or JPG</p>
+                <div class="flex items-center gap-2">
+                  <label
+                    class="cursor-pointer px-3 py-1.5 text-size-medium font-medium rounded-md border border-neutral-200 bg-white hover:bg-neutral-50 transition-colors text-neutral-700"
+                  >
+                    <input id="settings-logo-svg" type="file" accept="image/svg+xml,image/png,image/jpeg"
+                      @change="handleLogoUpload" class="sr-only" />
+                    {{ localLogoSvg ? 'Change Logo' : 'Upload Logo' }}
+                  </label>
+                  <button v-if="localLogoSvg" type="button" @click="localLogoSvg = ''"
+                    class="px-3 py-1.5 text-size-medium text-red-600 hover:text-red-800 border border-transparent hover:border-red-200 rounded-md transition-colors">
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="error" class="p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+            {{ error }}
+          </div>
+          <div>
+            <button type="submit" :disabled="isSaving"
+              class="px-4 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+              {{ isSaving ? 'Saving…' : 'Save Changes' }}
+            </button>
+          </div>
+        </form>
+
+        <!-- Live preview card -->
+        <div class="lg:w-64 shrink-0">
+          <p class="text-size-small font-medium text-neutral-500 uppercase tracking-wide mb-3">Preview</p>
+          <div class="rounded-xl border border-neutral-200 overflow-hidden shadow-sm">
+            <!-- Banner -->
+            <div class="h-20 w-full transition-colors duration-300" :style="{ backgroundColor: localBrandColor }" />
+            <!-- Logo + name -->
+            <div class="px-4 pb-4">
+              <div class="-mt-6 mb-3">
+                <div class="w-12 h-12 rounded-xl border-2 border-background shadow flex items-center justify-center overflow-hidden"
+                  :style="{ backgroundColor: localBrandColor }">
+                  <template v-if="localLogoSvg">
+                    <div v-if="localLogoSvg.startsWith('<')" v-html="localLogoSvg"
+                      class="w-8 h-8 flex items-center [&>svg]:w-full [&>svg]:h-full" />
+                    <img v-else :src="localLogoSvg" class="w-8 h-8 object-contain" />
+                  </template>
+                  <span v-else class="text-lg font-bold text-white select-none">
+                    {{ (localName || '?')[0].toUpperCase() }}
+                  </span>
+                </div>
+              </div>
+              <p class="font-semibold text-neutral-900 leading-tight">{{ localName || 'Untitled Space' }}</p>
+              <p v-if="localDescription" class="text-size-small text-neutral-500 mt-0.5 line-clamp-2">{{ localDescription }}</p>
+              <p class="text-size-small text-neutral-400 mt-1 font-mono">{{ localSlug }}</p>
+            </div>
+          </div>
         </div>
-        
+      </div>
+
+      <!-- Members -->
+      <div class="mt-10 pt-8 border-t border-neutral-100">
+        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Members</h2>
         <SpaceMembers />
       </div>
-    </section>
 
-    <!-- Danger Zone -->
-    <section class="mt-8 pt-6 border-t border-red-200">
-      <h2 class="text-size-medium font-semibold text-red-700 mb-4">Danger Zone</h2>
-      <div class="border-2 border-red-200 rounded-lg p-4">
-        <div class="flex items-center justify-between">
+      <!-- Danger Zone -->
+      <div class="mt-10 pt-6 border-t border-red-200">
+        <h2 class="text-size-medium font-semibold text-red-700 mb-4">Danger Zone</h2>
+        <div class="border-2 border-red-200 rounded-lg p-4 flex items-center justify-between gap-4">
           <div>
             <p class="text-size-medium font-medium text-neutral-900">Delete this space</p>
             <p class="text-size-small text-neutral-500">All documents and data will be archived. This cannot be undone.</p>
           </div>
           <button type="button" @click="showDeleteConfirm = true"
-            class="px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+            class="shrink-0 px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
             Delete Space
           </button>
         </div>
       </div>
-    </section>
+
     </template>
 
     <!-- API -->

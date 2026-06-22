@@ -22,6 +22,7 @@ const emit = defineEmits<{
 
 type ATabsEl = HTMLElement & { selectTabByIndex: (index: number, focus?: boolean) => void };
 const tabsEl = ref<ATabsEl | null>(null);
+const ready = ref(false);
 
 function onTabSelected(e: Event) {
   const { index } = (e as CustomEvent<{ index: number }>).detail;
@@ -29,7 +30,9 @@ function onTabSelected(e: Event) {
   if (tab) emit("tab-change", tab.id);
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await customElements.whenDefined("a-tabs");
+  ready.value = true;
   if (props.initialTab) {
     const i = props.tabs.findIndex((t) => t.id === props.initialTab);
     if (i > 0) tabsEl.value?.selectTabByIndex(i, false);
@@ -39,7 +42,25 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col min-h-0 h-full">
-    <a-tabs ref="tabsEl" @tab-selected="onTabSelected">
+    <!-- Skeleton shown until a-tabs upgrades -->
+    <template v-if="!ready">
+      <div class="flex border-b border-neutral-100">
+        <div
+          v-for="tab in tabs"
+          :key="tab.id"
+          class="px-4 py-3 border-b-2 border-transparent"
+        >
+          <div class="h-3.5 rounded bg-neutral-100 animate-pulse" :style="`width:${tab.label.length * 7}px`" />
+        </div>
+      </div>
+      <div :class="[compact ? 'px-4 py-3' : 'py-4', 'space-y-3']">
+        <div class="h-3 w-2/3 rounded bg-neutral-100 animate-pulse" />
+        <div class="h-3 w-1/2 rounded bg-neutral-100 animate-pulse" />
+        <div class="h-3 w-3/4 rounded bg-neutral-100 animate-pulse" />
+      </div>
+    </template>
+
+    <a-tabs v-else ref="tabsEl" @tab-selected="onTabSelected">
       <a-tabs-list class="border-b border-neutral-100">
         <a-tabs-tab
           v-for="tab in tabs"
@@ -50,8 +71,7 @@ onMounted(() => {
       <a-tabs-panel
         v-for="tab in tabs"
         :key="tab.id"
-        :class="[compact ? 'px-4 py-3' : 'py-4', 'block px-2']"
-        class="min-w-0"
+        :class="[compact ? 'px-4 py-3' : 'py-4', 'block px-2 min-w-0']"
       >
         <slot :name="tab.id" />
       </a-tabs-panel>

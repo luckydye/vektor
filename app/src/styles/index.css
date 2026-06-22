@@ -5,11 +5,11 @@
 @import "./print.css";
 
 :root {
-  --sidebar-width: 15.625rem;
+  --sidebar-width: 280px;
   /* Layout insets: left = sidebar + left docked panels, right = right docked
      panels. Defaults match an open sidebar with no docked panels; the inset
      subscriber overrides these per-consumer at runtime. */
-  --inset-left: 15.625rem;
+  --inset-left: var(--sidebar-width);
   --inset-right: 0px;
   --site-width: 1600px;
   --document-width: 1200px;

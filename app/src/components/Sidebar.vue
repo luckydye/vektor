@@ -14,7 +14,7 @@ const props = withDefaults(
     maxWidth?: number;
   }>(),
   {
-    defaultWidth: 250,
+    defaultWidth: 280,
     minWidth: 84,
     maxWidth: 500,
   },
