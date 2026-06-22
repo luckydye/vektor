@@ -5,7 +5,7 @@ import type {
 } from "../../viewport/index.ts";
 
 export type CanvasTool = "select" | "draw" | "note" | "text" | "section";
-export type CanvasElementType = "note" | "text" | "image" | "video" | "file" | "document";
+export type CanvasElementType = "note" | "text" | "image" | "video" | "file" | "document" | "link";
 export type CanvasShapeType = CanvasElementType | "section";
 
 export type CanvasShape = {

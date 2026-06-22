@@ -21,6 +21,7 @@ import {
   dragHasDocumentLink,
   droppedDocumentId as getDroppedDocumentId,
 } from "../canvas/elements/documentLink.ts";
+import { createLinkPreviewController, createLinkShape } from "../canvas/elements/link.ts";
 import {
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
@@ -70,6 +71,7 @@ import type {
 import { useCollaboration } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
+import { filenameFromUrl, IMAGE_RESIZE_TIERS, resizeImageUrl, transformImageUrl } from "../utils/imageUrlTransformers.ts";
 import { type TranslationKey, t } from "../utils/lang.ts";
 import {
   buildTransform,
@@ -253,10 +255,20 @@ const documentLinks = createDocumentLinkController({
     saveImmediately();
   },
 });
+const linkPreviews = createLinkPreviewController();
+
 // Tracks only local edits (default trackedOrigins = {null}); remote/agent
 // updates arrive with origin "remote" and are excluded, so undo/redo only
 // reverts this user's own changes.
 const undoManager = new Y.UndoManager([yShapes, yStrokes]);
+
+function getDomainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saveStateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -853,6 +865,17 @@ function renderGrid() {
   });
 }
 
+// Returns the highest-quality already-loaded image for `src` across all tiers,
+// used as a backdrop while the target tier is still decoding.
+function getCachedFallback(src: string): HTMLImageElement | null {
+  for (let i = IMAGE_RESIZE_TIERS.length - 1; i >= 0; i--) {
+    const cached = imageCache.get(resizeImageUrl(src, IMAGE_RESIZE_TIERS[i]));
+    if (cached instanceof HTMLImageElement) return cached;
+  }
+  const cached = imageCache.get(src);
+  return cached instanceof HTMLImageElement ? cached : null;
+}
+
 function renderImages() {
   const canvas = imagesRef.value;
   const ctx = canvas?.getContext("2d");
@@ -870,29 +893,43 @@ function renderImages() {
     const sh = shape.height * t.scale;
     if (sw <= 0 || sh <= 0) continue;
 
-    const cached = imageCache.get(shape.src);
+    // Physical pixel width the image occupies on screen — used to pick the
+    // smallest resolution tier that still renders crisply.
+    const targetPx = Math.ceil(sw * dpr);
+    const tieredSrc = resizeImageUrl(shape.src, targetPx);
+
+    const cached = imageCache.get(tieredSrc);
     if (!cached) {
-      imageCache.set(shape.src, "loading");
+      imageCache.set(tieredSrc, "loading");
       const img = new Image();
-      img.onload = () => {
-        imageCache.set(shape.src!, img);
+      img.src = tieredSrc;
+      // decode() resolves after the image is fully decoded off the main thread,
+      // so drawImage() never has to block to decode inline.
+      img.decode().then(() => {
+        imageCache.set(tieredSrc, img);
         renderImages();
-      };
-      img.onerror = () => {
-        imageCache.set(shape.src!, "error");
+      }).catch(() => {
+        imageCache.set(tieredSrc, "error");
         renderImages();
-      };
-      img.src = shape.src;
+      });
     }
 
-    if (!cached || cached === "loading" || cached === "error") {
+    // While the correctly-sized version is still loading, paint any lower-res
+    // cached version so the image doesn't flash back to a placeholder on zoom.
+    const displayImg =
+      cached instanceof HTMLImageElement
+        ? cached
+        : getCachedFallback(shape.src);
+
+    if (!displayImg) {
       ctx.fillStyle = "rgba(128,128,128,0.15)";
       ctx.fillRect(sx, sy, sw, sh);
     } else {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(cached, sx, sy, sw, sh);
+      ctx.drawImage(displayImg, sx, sy, sw, sh);
     }
+
 
     for (const selection of remoteCanvasImageSelections.value) {
       if (selection.bounds.id !== shape.id) continue;
@@ -1943,6 +1980,28 @@ function pasteCanvasClipboard(
   renderInk();
 }
 
+async function addImageFromUrl(
+  fetchUrl: string,
+  originalUrl: string,
+  at: { x: number; y: number },
+) {
+  let file: File;
+  try {
+    const response = await fetch(fetchUrl);
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) throw new Error("URL did not return an image");
+    const blob = await response.blob();
+    file = new File([blob], filenameFromUrl(originalUrl), { type: blob.type });
+  } catch (err) {
+    saveState.value = "error";
+    saveError.value = `Could not fetch image: ${err instanceof Error ? err.message : String(err)}`;
+    dispatchSaveStatus();
+    return;
+  }
+  await addMediaFile(file, at);
+}
+
 function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select")) return;
@@ -1998,11 +2057,39 @@ function handlePaste(event: ClipboardEvent) {
     return;
   }
 
-  // 4. The clipboard holds some other real content (plain text, etc.) that
+  // 4. Plain-text URL that resolves to an image — fetch and insert as a
+  //    canvas image shape. Must run before the non-empty text bail below
+  //    because an image URL is "real" text we still want to consume.
+  const imageUrl = transformImageUrl(text.trim());
+  if (imageUrl) {
+    event.preventDefault();
+    void addImageFromUrl(imageUrl, text.trim(), insertionPointFromEvent());
+    return;
+  }
+
+  // 5. Plain-text HTTP(S) URL — insert as a link preview card.
+  const trimmedUrl = text.trim();
+  if (/^https?:\/\//i.test(trimmedUrl)) {
+    try {
+      new URL(trimmedUrl);
+      event.preventDefault();
+      const shape = createLinkShape(trimmedUrl, insertionPointFromEvent());
+      yShapes.set(shape.id, createShapeMap(shape));
+      selectOnlyShape(shape.id);
+      activeTool.value = "select";
+      void linkPreviews.loadPreview(trimmedUrl);
+      saveImmediately();
+      return;
+    } catch {
+      // not a valid URL, fall through
+    }
+  }
+
+  // 6. The clipboard holds some other real content (plain text, etc.) that
   //    isn't ours — leave it to the browser, don't paste a stale element.
   if (text.trim().length > 0) return;
 
-  // 5. The system clipboard gave us nothing usable (e.g. a non-secure context
+  // 6. The system clipboard gave us nothing usable (e.g. a non-secure context
   //    where clipboardData is unavailable). Fall back to the last canvas copy
   //    held in memory.
   const internal = parseCanvasClipboard(internalClipboard);
@@ -2193,6 +2280,16 @@ watch(
     }
   },
   { deep: true, immediate: true },
+);
+
+watch(
+  () => shapes.value.filter((s) => s.type === "link").map((s) => s.src),
+  (urls) => {
+    for (const url of urls) {
+      if (url) void linkPreviews.loadPreview(url);
+    }
+  },
+  { immediate: true },
 );
 
 watch(
@@ -2572,6 +2669,62 @@ onUnmounted(() => {
             @wheel.stop
             @open-document="onDocumentShapeOpen(shape, $event)"
           ></document-attachment>
+          <a
+            v-else-if="shape.type === 'link' && shape.src"
+            class="canvas-shape-link"
+            :href="shape.src"
+            target="_blank"
+            rel="noopener noreferrer"
+            draggable="false"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+            @click.capture="onFileShapeClick"
+          >
+            <div
+              v-if="linkPreviews.previewForShape(shape)?.metadata?.video || linkPreviews.previewForShape(shape)?.metadata?.image"
+              class="canvas-link-image"
+            >
+              <video
+                v-if="linkPreviews.previewForShape(shape)?.metadata?.video"
+                :src="`/api/v1/proxy-media?url=${encodeURIComponent(linkPreviews.previewForShape(shape)!.metadata!.video!)}`"
+                autoplay
+                muted
+                loop
+                playsinline
+                draggable="false"
+              ></video>
+              <img
+                v-else
+                :src="linkPreviews.previewForShape(shape)!.metadata!.image!"
+                alt=""
+                draggable="false"
+                @error="($event.target as HTMLImageElement).style.display = 'none'"
+              />
+            </div>
+            <div class="canvas-link-body">
+              <div class="canvas-link-site">
+                <img
+                  v-if="linkPreviews.previewForShape(shape)?.metadata?.favicon"
+                  :src="linkPreviews.previewForShape(shape)!.metadata!.favicon!"
+                  class="canvas-link-favicon"
+                  aria-hidden="true"
+                  draggable="false"
+                  @error="($event.target as HTMLImageElement).style.display = 'none'"
+                />
+                <span class="canvas-link-domain">
+                  {{ linkPreviews.previewForShape(shape)?.metadata?.siteName || getDomainFromUrl(shape.src) }}
+                </span>
+              </div>
+              <div class="canvas-link-title">
+                {{ linkPreviews.previewForShape(shape)?.metadata?.title || shape.src }}
+              </div>
+              <div
+                v-if="linkPreviews.previewForShape(shape)?.metadata?.description"
+                class="canvas-link-desc"
+              >
+                {{ linkPreviews.previewForShape(shape)!.metadata!.description }}
+              </div>
+            </div>
+          </a>
           <div
             v-else-if="shape.type !== 'section'"
             class="canvas-shape-textwrap"
@@ -2772,6 +2925,11 @@ onUnmounted(() => {
   --canvas-doc-accent: #2563eb;
   --canvas-doc-divider: #e5e7eb;
   --canvas-doc-content: #374151;
+  --canvas-link-bg: #ffffff;
+  --canvas-link-border: rgba(15, 23, 42, 0.14);
+  --canvas-link-title: #111827;
+  --canvas-link-domain: #6b7280;
+  --canvas-link-desc: #6b7280;
   --canvas-resize-border: rgba(15, 23, 42, 0.45);
   --canvas-presence-text: #111827;
   position: relative;
@@ -2815,6 +2973,11 @@ onUnmounted(() => {
     --canvas-doc-accent: #93c5fd;
     --canvas-doc-divider: rgba(255, 255, 255, 0.1);
     --canvas-doc-content: #d1d5db;
+    --canvas-link-bg: #1a1d24;
+    --canvas-link-border: rgba(255, 255, 255, 0.12);
+    --canvas-link-title: #f3f4f6;
+    --canvas-link-domain: #9ca3af;
+    --canvas-link-desc: #9ca3af;
     --canvas-resize-border: rgba(255, 255, 255, 0.58);
     --canvas-presence-text: #111827;
   }
@@ -2852,6 +3015,11 @@ onUnmounted(() => {
   --canvas-doc-accent: #93c5fd;
   --canvas-doc-divider: rgba(255, 255, 255, 0.1);
   --canvas-doc-content: #d1d5db;
+  --canvas-link-bg: #1a1d24;
+  --canvas-link-border: rgba(255, 255, 255, 0.12);
+  --canvas-link-title: #f3f4f6;
+  --canvas-link-domain: #9ca3af;
+  --canvas-link-desc: #9ca3af;
   --canvas-resize-border: rgba(255, 255, 255, 0.58);
   --canvas-presence-text: #111827;
 }
@@ -3233,6 +3401,91 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   cursor: move;
+}
+
+.canvas-shape.link {
+  background: var(--canvas-link-bg) !important;
+  cursor: move;
+}
+
+.canvas-shape-link {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  cursor: move;
+}
+
+.canvas-link-image {
+  flex: 1;
+  width: 100%;
+  height: 120px;
+  overflow: hidden;
+  background: var(--canvas-handle-bg);
+}
+
+.canvas-link-image img,
+.canvas-link-image video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.canvas-link-body {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.canvas-link-site {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.canvas-link-favicon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.canvas-link-domain {
+  font-size: 11px;
+  color: var(--canvas-link-domain);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-link-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--canvas-link-title);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.canvas-link-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--canvas-link-desc);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .canvas-section-header {

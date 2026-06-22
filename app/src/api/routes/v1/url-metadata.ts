@@ -16,6 +16,7 @@ export interface LinkMetadata {
   title: string | null;
   description: string | null;
   image: string | null;
+  video: string | null;
   siteName: string | null;
   favicon: string | null;
   updatedAt: string | null;
@@ -172,18 +173,23 @@ async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
 
     const html = await response.text();
 
+    const base = target.toString();
     return {
-      url: target.toString(),
+      url: base,
       title: extractTitle(html),
       description:
         extractMetaContent(html, "og:description") ||
         extractMetaContent(html, "description"),
       image: (() => {
         const img = extractMetaContent(html, "og:image");
-        return img ? resolveUrl(img, target.toString()) : null;
+        return img ? resolveUrl(img, base) : null;
+      })(),
+      video: (() => {
+        const vid = extractMetaContent(html, "og:video") || extractMetaContent(html, "og:video:url");
+        return vid ? resolveUrl(vid, base) : null;
       })(),
       siteName: extractMetaContent(html, "og:site_name"),
-      favicon: extractFavicon(html, target.toString()),
+      favicon: extractFavicon(html, base),
       updatedAt: null,
       fetchedAt: Date.now(),
     };
@@ -297,6 +303,7 @@ export const GET: APIRoute = (context) =>
           title: doc.properties?.title || doc.slug,
           description: doc.content ? extractDescriptionFromContent(doc.content) : null,
           image: null,
+          video: null,
           siteName: space.name,
           favicon: null,
           updatedAt: String(doc.updatedAt),

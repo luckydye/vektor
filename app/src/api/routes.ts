@@ -54,6 +54,7 @@ import * as uploads from "./routes/v1/spaces/[spaceId]/uploads/index.ts";
 import * as workflowRun from "./routes/v1/spaces/[spaceId]/workflows/runs/[runId].ts";
 import * as workflowRuns from "./routes/v1/spaces/[spaceId]/workflows/runs/index.ts";
 import * as spaces from "./routes/v1/spaces/index.ts";
+import * as proxyMedia from "./routes/v1/proxy-media.ts";
 import * as urlMetadata from "./routes/v1/url-metadata.ts";
 import * as users from "./routes/v1/users/index.ts";
 import * as usersMe from "./routes/v1/users/me.ts";
@@ -190,6 +191,7 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs", module: workflowRuns },
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs/[runId]", module: workflowRun },
 
+  { pattern: "/api/v1/proxy-media", module: proxyMedia },
   { pattern: "/api/v1/url-metadata", module: urlMetadata },
   { pattern: "/api/v1/users", module: users },
   { pattern: "/api/v1/users/me", module: usersMe },

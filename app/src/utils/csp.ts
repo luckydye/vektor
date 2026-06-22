@@ -37,9 +37,13 @@ export const APP_CSP = [
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
-  // anthropic / openrouter / openai / ollama (self-hosted) gateways for the
-  // chat completions proxy. add `https:` for any future public LLM host.
-  "connect-src 'self' https://api.anthropic.com https://openrouter.ai https://api.openai.com wss: ws:",
+  // `https:` is intentionally broad here — same rationale as `img-src https:`
+  // above. Canvas image-URL paste and the AI provider gateways (Anthropic,
+  // OpenRouter, OpenAI) both need outbound fetch access, and the set of valid
+  // target hosts is open-ended (user-pasted image CDNs, self-hosted LLMs, …).
+  // XSS-exfil via fetch is therefore not mitigated by this directive; the
+  // defence-in-depth note at the top of the file applies here too.
+  "connect-src 'self' https: wss: ws:",
   "font-src 'self' data:",
   "object-src 'none'",
   "frame-src 'none'",
