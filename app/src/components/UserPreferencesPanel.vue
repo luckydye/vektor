@@ -172,10 +172,10 @@ watch(
 
   <!-- Tabbed settings layout -->
   <SettingsLayout :tabs="tabs" compact class="min-h-[200px]">
-    <template #default="{ activeTab }">
 
-      <!-- Appearance tab -->
-      <section v-if="activeTab === 'appearance'">
+    <!-- Appearance tab -->
+    <template #appearance>
+      <section>
         <p class="text-size-small font-medium text-neutral-700 mb-1.5">Theme</p>
         <select
           :value="themePreference"
@@ -187,9 +187,11 @@ watch(
           <option value="dark">Dark</option>
         </select>
       </section>
+    </template>
 
-      <!-- Integrations tab -->
-      <section v-if="activeTab === 'integrations'">
+    <!-- Integrations tab -->
+    <template #integrations>
+      <section>
         <p class="text-size-small text-neutral-500 mb-2">
           Space:
           <span class="font-medium text-foreground">{{ activeSpaceName || "None" }}</span>
@@ -268,7 +270,7 @@ watch(
           </div>
         </div>
       </section>
-
     </template>
+
   </SettingsLayout>
 </template>

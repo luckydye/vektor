@@ -1,11 +1,9 @@
 <template>
-  <SettingsLayout :tabs="tabs" :model-value="activeTab" @update:model-value="setTab">
-    <template #default>
-
-    <!-- Content -->
+  <SettingsLayout :tabs="tabs" :initial-tab="tabFromHash()" @tab-change="setTab">
 
     <!-- General Settings -->
-    <section v-if="activeTab === 'general'">
+    <template #general>
+    <section>
       <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">General Settings</h2>
       <form @submit.prevent="handleSave">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -81,8 +79,27 @@
       </div>
     </section>
 
-    <!-- Access Tokens -->
-    <section v-if="activeTab === 'api'">
+    <!-- Danger Zone -->
+    <section class="mt-8 pt-6 border-t border-red-200">
+      <h2 class="text-size-medium font-semibold text-red-700 mb-4">Danger Zone</h2>
+      <div class="border-2 border-red-200 rounded-lg p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-size-medium font-medium text-neutral-900">Delete this space</p>
+            <p class="text-size-small text-neutral-500">All documents and data will be archived. This cannot be undone.</p>
+          </div>
+          <button type="button" @click="showDeleteConfirm = true"
+            class="px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+            Delete Space
+          </button>
+        </div>
+      </div>
+    </section>
+    </template>
+
+    <!-- API -->
+    <template #api>
+    <section>
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Access Tokens</h2>
         <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-size-small text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
@@ -207,7 +224,7 @@
     </section>
 
     <!-- MCP Server -->
-    <section v-if="activeTab === 'api'" class="mt-8 pt-6 border-t border-neutral-100">
+    <section class="mt-8 pt-6 border-t border-neutral-100">
       <h2 class="text-size-medium font-semibold text-neutral-900 mb-2">MCP Server</h2>
       <p class="text-size-medium text-neutral-600 mb-4">
         Connect AI tools like Claude Desktop, Cursor, or Claude Code to this space via the
@@ -230,9 +247,11 @@
         <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">install_extension</code>.
       </p>
     </section>
+    </template>
 
     <!-- Extensions -->
-    <section v-if="activeTab === 'extensions'">
+    <template #extensions>
+    <section>
       <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Extensions</h2>
       <p class="text-size-medium text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
       <ExtensionSettings />
@@ -417,37 +436,24 @@
         </div>
       </div>
     </section>
+    </template>
 
     <!-- Jobs -->
-    <section v-if="activeTab === 'jobs'">
+    <template #jobs>
+    <section>
       <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Jobs</h2>
       <JobsSettings />
     </section>
+    </template>
 
     <!-- Archive -->
-    <section v-if="activeTab === 'archive'">
+    <template #archive>
+    <section>
       <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Archived Documents</h2>
       <ArchivedDocuments v-if="currentSpace" :space-id="currentSpace.id" :space-slug="currentSpace.slug" />
     </section>
-
-    <!-- Danger Zone -->
-    <section v-if="activeTab === 'general'" class="mt-8 pt-6 border-t border-red-200">
-      <h2 class="text-size-medium font-semibold text-red-700 mb-4">Danger Zone</h2>
-      <div class="border-2 border-red-200 rounded-lg p-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-size-medium font-medium text-neutral-900">Delete this space</p>
-            <p class="text-size-small text-neutral-500">All documents and data will be archived. This cannot be undone.</p>
-          </div>
-          <button type="button" @click="showDeleteConfirm = true"
-            class="px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
-            Delete Space
-          </button>
-        </div>
-      </div>
-    </section>
-
     </template>
+
   </SettingsLayout>
 
   <!-- Delete Confirmation Modal -->
@@ -480,7 +486,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
@@ -501,18 +507,12 @@ type TabId = (typeof tabs)[number]["id"];
 const validTabIds = tabs.map((t) => t.id) as string[];
 
 function tabFromHash(): TabId {
+  if (typeof window === "undefined") return "general";
   const hash = window.location.hash.slice(1);
   return validTabIds.includes(hash) ? (hash as TabId) : "general";
 }
 
-const activeTab = ref<TabId>("general");
-
-function handleHashChange() {
-  activeTab.value = tabFromHash();
-}
-
 function setTab(id: string) {
-  activeTab.value = id as TabId;
   window.location.hash = id;
 }
 
@@ -1036,15 +1036,9 @@ async function handleCopySelectedSecret() {
 }
 
 onMounted(() => {
-  activeTab.value = tabFromHash();
-  window.addEventListener("hashchange", handleHashChange);
   loadAccessTokens();
   loadSecrets();
   loadSecretAssignableUsers();
-});
-
-onUnmounted(() => {
-  window.removeEventListener("hashchange", handleHashChange);
 });
 
 watch(
