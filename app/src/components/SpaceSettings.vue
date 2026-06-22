@@ -3,16 +3,14 @@
 
     <!-- General Settings -->
     <template #general>
+      <div>
 
-      <!-- Profile layout: form left, live preview right -->
-      <div class="flex flex-col lg:flex-row gap-8">
+        <!-- Profile: form + sticky preview -->
+        <div class="flex flex-col-reverse sm:flex-row gap-8 sm:gap-10 items-start">
 
-        <!-- Form -->
-        <form class="flex-1 min-w-0 space-y-6" @submit.prevent="handleSave">
-
-          <div>
-            <p class="text-size-small font-medium text-neutral-500 uppercase tracking-wide mb-3">Identity</p>
-            <div class="space-y-3">
+          <!-- Form -->
+          <form class="flex-1 min-w-0 w-full" @submit.prevent="handleSave">
+            <div class="space-y-4">
               <div>
                 <label for="settings-space-name" class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
                 <input id="settings-space-name" v-model="localName" type="text" required
@@ -31,102 +29,85 @@
                   class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
-          </div>
+            <div v-if="error" class="mt-4 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+              {{ error }}
+            </div>
+            <div class="mt-6 flex justify-end">
+              <button type="submit" :disabled="isSaving"
+                class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors">
+                {{ isSaving ? 'Saving…' : 'Save Changes' }}
+              </button>
+            </div>
+          </form>
 
-          <div class="border-t border-neutral-100 pt-5">
-            <p class="text-size-small font-medium text-neutral-500 uppercase tracking-wide mb-3">Appearance</p>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-size-small font-medium text-neutral-700 mb-1">Brand Color</label>
-                <p class="text-size-small text-neutral-400 mb-2">Used as the accent color across your space</p>
-                <div class="flex gap-2 items-center">
-                  <input id="settings-brand-color" v-model="localBrandColor" type="color"
-                    class="h-9 w-14 border border-neutral-200 rounded-md cursor-pointer p-0.5" />
-                  <input v-model="localBrandColor" type="text" placeholder="#1e293b" pattern="^#[0-9A-Fa-f]{6}$"
-                    class="w-28 px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
+          <!-- Interactive preview card — sticky -->
+          <div class="w-full sm:w-72 shrink-0 sm:sticky top-4">
+            <p class="text-size-small text-neutral-400 mb-2">Click to edit</p>
+            <div class="rounded-xl border border-neutral-200 overflow-hidden">
+
+              <!-- Banner — click to pick color -->
+              <label class="relative h-24 w-full block cursor-pointer group transition-colors duration-300"
+                :style="{ backgroundColor: localBrandColor }" title="Change color">
+                <input type="color" v-model="localBrandColor" class="sr-only" />
+                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                  <span class="text-[11px] font-medium text-white drop-shadow">Change color</span>
                 </div>
-              </div>
-              <div>
-                <label class="block text-size-small font-medium text-neutral-700 mb-1">Logo</label>
-                <p class="text-size-small text-neutral-400 mb-2">SVG, PNG or JPG</p>
-                <div class="flex items-center gap-2">
-                  <label
-                    class="cursor-pointer px-3 py-1.5 text-size-medium font-medium rounded-md border border-neutral-200 bg-white hover:bg-neutral-50 transition-colors text-neutral-700"
-                  >
-                    <input id="settings-logo-svg" type="file" accept="image/svg+xml,image/png,image/jpeg"
-                      @change="handleLogoUpload" class="sr-only" />
-                    {{ localLogoSvg ? 'Change Logo' : 'Upload Logo' }}
+              </label>
+
+              <div class="px-3 pb-3">
+                <div class="-mt-8 mb-2.5 flex items-end gap-1.5">
+                  <!-- Logo — click to upload, ×  to remove -->
+                  <label class="relative w-16 h-16 rounded-xl border-2 border-white shadow-sm flex items-center justify-center overflow-hidden cursor-pointer group"
+                    :style="{ backgroundColor: localBrandColor }" title="Change logo">
+                    <input type="file" accept="image/svg+xml,image/png,image/jpeg" @change="handleLogoUpload" class="sr-only" />
+                    <template v-if="localLogoSvg">
+                      <div v-if="localLogoSvg.startsWith('<')" v-html="localLogoSvg"
+                        class="w-full h-full p-1.5 [&>svg]:w-full [&>svg]:h-full" />
+                      <img v-else :src="localLogoSvg" class="w-full h-full object-cover" />
+                    </template>
+                    <span v-else class="text-sm font-bold text-white select-none leading-none">
+                      {{ (localName || '?')[0].toUpperCase() }}
+                    </span>
+                    <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 rounded-lg">
+                      <svg class="w-4 h-4 text-white" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+                    </div>
                   </label>
                   <button v-if="localLogoSvg" type="button" @click="localLogoSvg = ''"
-                    class="px-3 py-1.5 text-size-medium text-red-600 hover:text-red-800 border border-transparent hover:border-red-200 rounded-md transition-colors">
+                    class="text-[11px] text-neutral-400 hover:text-red-500 transition-colors leading-none pb-0.5">
                     Remove
                   </button>
                 </div>
+
+                <p class="text-size-medium font-semibold text-neutral-900 leading-snug truncate">{{ localName || 'Untitled Space' }}</p>
+                <p v-if="localDescription" class="text-size-small text-neutral-500 mt-0.5 line-clamp-2 leading-snug">{{ localDescription }}</p>
+                <p class="text-[11px] text-neutral-400 mt-1 font-mono truncate">{{ localSlug }}</p>
               </div>
             </div>
           </div>
 
-          <div v-if="error" class="p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
-            {{ error }}
-          </div>
-          <div>
-            <button type="submit" :disabled="isSaving"
-              class="px-4 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
-              {{ isSaving ? 'Saving…' : 'Save Changes' }}
+        </div>
+
+        <!-- Members -->
+        <div class="mt-10 pt-8 border-t border-neutral-100">
+          <SpaceMembers />
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="mt-10 pt-6 border-t border-primary-200">
+          <h2 class="text-size-medium font-semibold text-red-700 mb-3">Danger Zone</h2>
+          <div class="border border-primary-200 rounded-lg p-4 flex items-center justify-between gap-4">
+            <div>
+              <p class="text-size-medium font-medium text-neutral-900">Delete this space</p>
+              <p class="text-size-small text-neutral-500 mt-0.5">All documents and data will be archived. This cannot be undone.</p>
+            </div>
+            <button type="button" @click="showDeleteConfirm = true"
+              class="shrink-0 px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors">
+              Delete Space
             </button>
           </div>
-        </form>
-
-        <!-- Live preview card -->
-        <div class="lg:w-64 shrink-0">
-          <p class="text-size-small font-medium text-neutral-500 uppercase tracking-wide mb-3">Preview</p>
-          <div class="rounded-xl border border-neutral-200 overflow-hidden shadow-sm">
-            <!-- Banner -->
-            <div class="h-20 w-full transition-colors duration-300" :style="{ backgroundColor: localBrandColor }" />
-            <!-- Logo + name -->
-            <div class="px-4 pb-4">
-              <div class="-mt-6 mb-3">
-                <div class="w-12 h-12 rounded-xl border-2 border-background shadow flex items-center justify-center overflow-hidden"
-                  :style="{ backgroundColor: localBrandColor }">
-                  <template v-if="localLogoSvg">
-                    <div v-if="localLogoSvg.startsWith('<')" v-html="localLogoSvg"
-                      class="w-8 h-8 flex items-center [&>svg]:w-full [&>svg]:h-full" />
-                    <img v-else :src="localLogoSvg" class="w-8 h-8 object-contain" />
-                  </template>
-                  <span v-else class="text-lg font-bold text-white select-none">
-                    {{ (localName || '?')[0].toUpperCase() }}
-                  </span>
-                </div>
-              </div>
-              <p class="font-semibold text-neutral-900 leading-tight">{{ localName || 'Untitled Space' }}</p>
-              <p v-if="localDescription" class="text-size-small text-neutral-500 mt-0.5 line-clamp-2">{{ localDescription }}</p>
-              <p class="text-size-small text-neutral-400 mt-1 font-mono">{{ localSlug }}</p>
-            </div>
-          </div>
         </div>
-      </div>
 
-      <!-- Members -->
-      <div class="mt-10 pt-8 border-t border-neutral-100">
-        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Members</h2>
-        <SpaceMembers />
       </div>
-
-      <!-- Danger Zone -->
-      <div class="mt-10 pt-6 border-t border-red-200">
-        <h2 class="text-size-medium font-semibold text-red-700 mb-4">Danger Zone</h2>
-        <div class="border-2 border-red-200 rounded-lg p-4 flex items-center justify-between gap-4">
-          <div>
-            <p class="text-size-medium font-medium text-neutral-900">Delete this space</p>
-            <p class="text-size-small text-neutral-500">All documents and data will be archived. This cannot be undone.</p>
-          </div>
-          <button type="button" @click="showDeleteConfirm = true"
-            class="shrink-0 px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
-            Delete Space
-          </button>
-        </div>
-      </div>
-
     </template>
 
     <!-- API -->
@@ -294,7 +275,7 @@
           <button
             v-if="!isCreatingSecret"
             @click="isCreatingSecret = true"
-            class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+            class="text-size-small text-blue-600 hover:text-blue-800 font-medium"
           >
             + Create Secret
           </button>
@@ -306,7 +287,7 @@
 
         <div
           v-if="isCreatingSecret"
-          class="mb-4 p-3 bg-blue-50 border border-blue-200 dark:bg-blue-950/20 dark:border-blue-900 rounded-md"
+          class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md"
         >
           <form @submit.prevent="handleCreateSecret" class="space-y-3">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -317,7 +298,7 @@
                   type="text"
                   required
                   placeholder="e.g. OPENAI_API_KEY"
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                 />
               </div>
               <div>
@@ -326,7 +307,7 @@
                   v-model="newSecretDescription"
                   type="text"
                   placeholder="Optional description"
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div class="md:col-span-2">
@@ -336,7 +317,7 @@
                   type="password"
                   required
                   placeholder="Will be encrypted at rest"
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 font-mono"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                 />
               </div>
             </div>
@@ -351,7 +332,7 @@
               <button
                 type="submit"
                 :disabled="isSubmittingSecret"
-                class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
+                class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {{ isSubmittingSecret ? "Saving..." : "Save Secret" }}
               </button>
@@ -383,7 +364,7 @@
                 <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
                   <button
                     @click="handleRevealSecret(secret.name)"
-                    class="text-size-small text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                    class="text-size-small text-blue-600 hover:text-blue-800"
                   >
                     Reveal
                   </button>
@@ -420,10 +401,10 @@
 
           <div class="pt-3 border-t border-neutral-200">
             <p class="text-size-small font-medium text-neutral-700 mb-2">Grant Access</p>
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-center justify-end gap-2">
               <select
                 v-model="selectedGrantUserId"
-                class="px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 min-w-[260px]"
+                class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
               >
                 <option value="" disabled>
                   {{
@@ -441,7 +422,7 @@
               <button
                 @click="handleGrantSecretAccess"
                 :disabled="!selectedGrantUserId || !selectedSecretName || isGrantingSecretAccess"
-                class="px-3 py-1.5 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:opacity-50"
+                class="px-3 py-1.5 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
                 {{ isGrantingSecretAccess ? "Granting..." : "Grant Viewer" }}
               </button>
@@ -452,13 +433,13 @@
               <span
                 v-for="perm in secretPermissions"
                 :key="`${perm.userId || perm.groupId}-${perm.permission}`"
-                class="inline-flex items-center gap-1 px-2 py-1 text-size-small bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300 rounded-sm"
+                class="inline-flex items-center gap-1 px-2 py-1 text-size-small bg-blue-50 text-blue-700 rounded-sm"
               >
                 {{ formatSecretPermissionTarget(perm) }} ({{ perm.permission }})
                 <button
                   v-if="perm.userId"
                   @click="handleRevokeSecretAccess(perm.userId)"
-                  class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  class="text-blue-500 hover:text-blue-700"
                 >
                   ×
                 </button>

@@ -71,9 +71,11 @@ onMounted(async () => {
       <a-tabs-panel
         v-for="tab in tabs"
         :key="tab.id"
-        :class="[compact ? 'px-4 py-3' : 'py-4', 'block px-2 min-w-0']"
+        class="block min-w-0"
       >
-        <slot :name="tab.id" />
+        <div :class="[compact ? 'px-4' : '', 'px-2 py-4']">
+            <slot :name="tab.id" />
+        </div>
       </a-tabs-panel>
     </a-tabs>
   </div>

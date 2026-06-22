@@ -325,6 +325,15 @@ async function copyMemberId(memberId) {
 
 <template>
   <div class="space-y-6">
+    <div class="flex items-center justify-between">
+      <h2 class="text-size-large font-semibold text-neutral-900">Members</h2>
+      <button
+        @click="showAddMember = true"
+        class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        Invite People
+      </button>
+    </div>
 
     <!-- Loading State -->
     <div v-if="isLoading || loadingUsers" class="flex justify-center py-8">
@@ -412,18 +421,6 @@ async function copyMemberId(memberId) {
       <div class="svg-icon mx-auto h-12 w-12 text-neutral-400" v-html="usersGroupIcon" />
       <p class="mt-4 text-neutral-500">No members yet. Add your first member to get started.</p>
     </div>
-    
-    <div class="flex justify-between items-center">
-        <!-- Add Button -->
-        <div class="flex justify-end">
-            <button
-            @click="showAddMember = true"
-            class="px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-            Add Access
-            </button>
-        </div>
-    </div>
   </div>
 
   <!-- Add Member Modal -->
@@ -433,7 +430,7 @@ async function copyMemberId(memberId) {
     @click.self="showAddMember = false"
   >
     <div class="bg-background rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-      <h3 class="text-size-title font-semibold text-neutral-900 mb-4">Add Access</h3>
+      <h3 class="text-size-title font-semibold text-neutral-900 mb-4">Invite People</h3>
       <form @submit.prevent="handleAddMember" class="space-y-4">
         <div>
           <label for="member-type" class="block text-size-medium font-medium text-neutral-900 mb-1">
@@ -512,7 +509,7 @@ async function copyMemberId(memberId) {
             :disabled="addingMember"
             class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {{ addingMember ? 'Adding...' : 'Add Access' }}
+            {{ addingMember ? 'Adding...' : 'Invite People' }}
           </button>
         </div>
       </form>
