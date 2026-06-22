@@ -459,7 +459,7 @@ const statusBadgeClass: Record<string, string> = {
       <!-- Results panel -->
       <a-tabs-panel>
         <div class="space-y-4 pt-4">
-          <template v-if="selectedRunDetail.status === 'completed'">
+          <template v-if="selectedRunDetail?.status === 'completed'">
             <!-- HTML output -->
             <div v-if="outputHtml" class="rounded-xl border border-neutral-200 overflow-hidden">
               <div v-html="outputHtml" class="p-2" />

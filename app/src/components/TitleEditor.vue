@@ -6,8 +6,8 @@
 
     <div v-else :data-document-id="documentId">
         <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 px-1"
-          :class="{ 'cursor-text hover:bg-neutral-50': userCanEdit, 'cursor-default': !userCanEdit }"
-          @dblclick="userCanEdit && startEditing()">
+          :class="{ 'cursor-text hover:bg-neutral-50': canEdit, 'cursor-default': !canEdit }"
+          @dblclick="canEdit && startEditing()">
             {{ localTitle || 'Untitled Document' }}
             <div v-if="starred" class="svg-icon w-6 h-6 text-yellow-500" v-html="starFilledIcon" />
         </h1>
@@ -16,26 +16,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { canEdit } from "../composeables/usePermissions.ts";
-
-const { currentSpaceId, currentSpace } = useSpace();
-
-const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
 
 const props = withDefaults(
   defineProps<{
     title: string;
+    spaceId?: string;
+    spaceSlug?: string;
     documentId?: string;
     starred?: boolean;
     initialEditMode?: boolean;
+    canEdit?: boolean;
   }>(),
   {
     starred: false,
     initialEditMode: false,
+    canEdit: false,
   },
 );
 
@@ -45,10 +43,10 @@ const emit = defineEmits<{
 
 const inputEl = ref<HTMLInputElement | null>(null);
 const localTitle = ref(props.title);
-const isEditing = ref(props.initialEditMode && userCanEdit.value);
+const isEditing = ref(props.initialEditMode && props.canEdit);
 
 async function startEditing() {
-  if (!userCanEdit.value) return;
+  if (!props.canEdit) return;
   isEditing.value = true;
   await nextTick();
   inputEl.value?.focus({ preventScroll: true });
@@ -63,7 +61,7 @@ watch(
 
 async function updateTitle() {
   if (localTitle.value !== props.title) {
-    if (!userCanEdit.value) {
+    if (!props.canEdit) {
       localTitle.value = props.title;
       isEditing.value = false;
       return;
@@ -75,7 +73,6 @@ async function updateTitle() {
       }),
     );
 
-    // If there's no documentId, store the title for when the document is created
     if (!props.documentId) {
       window.dispatchEvent(
         new CustomEvent("pending-title-changed", {
@@ -86,11 +83,9 @@ async function updateTitle() {
     }
 
     try {
-      if (!currentSpaceId.value) {
-        throw new Error("No space selected");
-      }
+      if (!props.spaceId) throw new Error("No space selected");
 
-      const data = await api.document.patch(currentSpaceId.value, props.documentId, {
+      const data = await api.document.patch(props.spaceId, props.documentId, {
         properties: {
           title: {
             value: localTitle.value,
@@ -98,15 +93,12 @@ async function updateTitle() {
         },
       });
 
-      // Update URL with new slug
       const newSlug = data.slug;
-      if (newSlug && currentSpace.value?.slug) {
+      if (newSlug && props.spaceSlug) {
         const currentPath = window.location.pathname;
-        const docPathPattern = new RegExp(`/${currentSpace.value.slug}/doc/[^/]+`);
-
+        const docPathPattern = new RegExp(`/${props.spaceSlug}/doc/[^/]+`);
         if (docPathPattern.test(currentPath)) {
-          const newPath = `/${currentSpace.value.slug}/doc/${newSlug}`;
-          window.history.replaceState({}, "", newPath);
+          window.history.replaceState({}, "", `/${props.spaceSlug}/doc/${newSlug}`);
         }
       }
     } catch (error) {

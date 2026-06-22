@@ -26,6 +26,17 @@ if (accessDenied) {
   return accessDenied;
 }
 
+const userId = Astro.locals.user.id;
+const userGroups = await getUserGroups(userId);
+const userCanEdit = await hasPermission(
+  space.id,
+  ResourceType.SPACE,
+  space.id,
+  userId,
+  "editor",
+  userGroups,
+);
+
 const typeParam = Astro.url.searchParams.get("type");
 const type = typeParam || "document";
 const showPicker = !typeParam;
@@ -34,34 +45,19 @@ const title = type === "canvas" ? "Untitled Canvas" : "Untitled Document";
 const spaceSlug = Astro.params.spaceSlug as string;
 
 if (type === "database") {
-  const userId = Astro.locals.user?.id;
-  if (userId) {
-    // Viewing the picker is viewer-level, but actually creating a document
-    // (which the API path gates on editor) must not be bypassable via this
-    // SSR page. Require editor on the space before inserting a database row.
-    const groups = await getUserGroups(userId);
-    const canEdit = await hasPermission(
-      space.id,
-      ResourceType.SPACE,
-      space.id,
-      userId,
-      "editor",
-      groups,
-    );
-    if (!canEdit) {
-      return Astro.redirect(`/${space.slug}`);
-    }
-    const dbDoc = await createDocument(
-      space.id,
-      userId,
-      "Untitled Database",
-      "",
-      { title: "Untitled Database" },
-      undefined,
-      "database",
-    );
-    return Astro.redirect(`/${space.slug}/doc/${dbDoc.slug}`);
+  if (!userCanEdit) {
+    return Astro.redirect(`/${space.slug}`);
   }
+  const dbDoc = await createDocument(
+    space.id,
+    userId,
+    "Untitled Database",
+    "",
+    { title: "Untitled Database" },
+    undefined,
+    "database",
+  );
+  return Astro.redirect(`/${space.slug}/doc/${dbDoc.slug}`);
 }
 
 const isCanvas = type === "canvas";
@@ -115,6 +111,9 @@ const isPaddedDocument = !isCanvas && !isApp && !isCsv && !isWorkflow;
               client:load
               initialEditMode={true}
               title={title}
+              spaceId={space.id}
+              spaceSlug={space.slug}
+              canEdit={userCanEdit}
             />
           </div>
 
