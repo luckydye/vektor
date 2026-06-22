@@ -10,7 +10,7 @@ import { file as fileTable } from "#db/schema/space.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
 
 const MIME_TYPES: Record<string, string> = {
@@ -51,7 +51,7 @@ export const GET: APIRoute = (context) =>
       const spaceId = requireParam(context.params, "spaceId");
       const path = requireParam(context.params, "path");
 
-      await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
+      await authenticateSpaceAccess(context, spaceId, "viewer");
 
       // Security: Validate path to prevent traversal and malformed paths
       if (!isSafeUploadPath(path)) {

@@ -11,13 +11,17 @@ if (result.response) {
 }
 const { space } = result;
 
+if (!Astro.locals.user) {
+  return Astro.redirect("/login");
+}
+
 // Check ACL permissions - user must be owner
-const userGroups = await getUserGroups(Astro.locals.user!.id);
+const userGroups = await getUserGroups(Astro.locals.user.id);
 const isOwner = await hasPermission(
   space.id,
   ResourceType.SPACE,
   space.id,
-  Astro.locals.user!.id,
+  Astro.locals.user.id,
   "owner",
   userGroups,
 );

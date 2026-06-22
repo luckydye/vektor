@@ -8,12 +8,12 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { createCategory, listCategories, reorderCategories } from "#db/categories.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.params, "spaceId");
-    await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
+    await authenticateSpaceAccess(context, spaceId, "viewer");
 
     const categories = await listCategories(spaceId);
 

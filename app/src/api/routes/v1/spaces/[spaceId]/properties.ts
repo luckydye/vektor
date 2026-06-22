@@ -1,18 +1,12 @@
 import type { APIRoute } from "astro";
-import {
-  jsonResponse,
-  requireParam,
-  requireUser,
-  verifySpaceRole,
-  withApiErrorHandling,
-} from "#db/api.ts";
+import { jsonResponse, requireParam, withApiErrorHandling } from "#db/api.ts";
 import { getAllPropertiesWithValues, type PropertyInfo } from "#db/documents.ts";
+import { authenticateSpaceAccess } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await authenticateSpaceAccess(context, spaceId, "viewer");
 
     const properties: PropertyInfo[] = await getAllPropertiesWithValues(spaceId);
 

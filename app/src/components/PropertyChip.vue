@@ -15,6 +15,7 @@ const props = defineProps<{
   label?: string;
   icon?: string;
   variant?: "default" | "special";
+  readonly?: boolean;
   property?: Property | null;
   propertyValues?: (property: Property) => Promise<SelectMenuItem[]>;
 }>();
@@ -33,6 +34,7 @@ const searchInput = ref("");
 const dateValue = ref("");
 
 const handleClick = async () => {
+  if (props.readonly || !props.property) return;
   if (props.property) {
     isEditPopoverOpen.value = !isEditPopoverOpen.value;
     propertyName.value = props.property.name;
@@ -126,8 +128,8 @@ onMounted(() => {
         'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
         'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
         'py-1': true,
-        'cursor-pointer': property !== null,
-        'cursor-default': property === null,
+        'cursor-pointer': property !== null && !readonly,
+        'cursor-default': property === null || readonly,
       }"
       @click="handleClick"
     >
@@ -152,8 +154,8 @@ onMounted(() => {
         'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
         'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
         'py-1': true,
-        'cursor-pointer': property !== null,
-        'cursor-default': property === null,
+        'cursor-pointer': property !== null && !readonly,
+        'cursor-default': property === null || readonly,
       }"
       @click="handleClick"
     >

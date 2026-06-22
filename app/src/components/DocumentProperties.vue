@@ -27,6 +27,7 @@ import { getTextColor } from "../utils/utils.ts";
 const props = defineProps<{
   documentId?: string;
   documentType?: string;
+  readonly?: boolean;
   initialProperties: Record<string, string | null | undefined> | undefined;
   initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
 }>();
@@ -315,13 +316,13 @@ const availableNewProperties = computed(() => {
         :label="getPropertyLabel(property)"
         :icon="getPropertyIcon(property)"
         :variant="getPropertyVariant(property)"
+        :readonly="readonly"
         :property="property as any"
         :property-values="getPropertyValues"
-        @update="handleUpdateProperty"
-        @delete="handleDeleteProperty"
+        v-bind="readonly ? {} : { onUpdate: handleUpdateProperty, onDelete: handleDeleteProperty }"
       />
 
-      <div class="relative">
+      <div v-if="!readonly" class="relative">
         <ButtonIconSmall :icon="plusIcon" aria-label="New property" @click="toggleCreatePopover" />
 
         <PropertyPopover

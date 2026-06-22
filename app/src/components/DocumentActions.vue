@@ -119,7 +119,7 @@ Actions.register("document:accesstoken", {
   title: t("Copy API Command"),
   icon: () => "webhook",
   description: t("Creates API token to access this document"),
-  group: "document",
+  group: "document:dev",
   run: async () => {
     if (isCreatingToken.value) return;
 

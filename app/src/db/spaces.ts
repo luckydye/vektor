@@ -9,6 +9,7 @@ import {
   countSpaceMembers,
   getUserGroups,
   grantPermission,
+  hasPermission,
   listUserPermissions,
   ResourceType,
 } from "./acl.ts";
@@ -245,6 +246,29 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
   }
 
   return userSpaces;
+}
+
+export async function listPublicSpaces(): Promise<Space[]> {
+  const allSpaces = await listAllSpaces();
+  const publicSpaces: Space[] = [];
+
+  for (const space of allSpaces) {
+    try {
+      const canView = await hasPermission(
+        space.id,
+        ResourceType.SPACE,
+        space.id,
+        "",
+        "viewer",
+        ["public"],
+      );
+      if (canView) {
+        publicSpaces.push({ ...space, userRole: "viewer" });
+      }
+    } catch {}
+  }
+
+  return publicSpaces;
 }
 
 export async function updateSpace(

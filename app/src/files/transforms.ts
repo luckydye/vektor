@@ -27,6 +27,19 @@ export interface TransformParams {
 
 const OUTPUT_FORMATS = new Set(["webp", "jpeg", "png"]);
 
+// Allowed discrete widths/heights for image transforms.
+// Snapping to these presets bounds the transform cache to a finite number of
+// variants per image — preventing CPU and disk exhaustion via crafted params.
+const ALLOWED_DIMENSIONS = [160, 320, 640, 960, 1280, 1920];
+const FIXED_QUALITY = 80;
+
+function snapToPreset(value: number, presets: number[]): number {
+  if (value <= 0) return 0;
+  return presets.reduce((best, preset) =>
+    Math.abs(preset - value) < Math.abs(best - value) ? preset : best,
+  );
+}
+
 const OUTPUT_MIME: Record<string, string> = {
   webp: "image/webp",
   jpeg: "image/jpeg",
@@ -53,18 +66,17 @@ export function parseTransformParams(
   const wRaw = searchParams.get("w");
   const hRaw = searchParams.get("h");
   const formatRaw = searchParams.get("format");
-  const qRaw = searchParams.get("q");
 
-  const w = wRaw ? Math.max(0, Math.floor(Number(wRaw))) : 0;
-  const h = hRaw ? Math.max(0, Math.floor(Number(hRaw))) : 0;
+  const w = wRaw ? snapToPreset(Math.max(0, Math.floor(Number(wRaw))), ALLOWED_DIMENSIONS) : 0;
+  const h = hRaw ? snapToPreset(Math.max(0, Math.floor(Number(hRaw))), ALLOWED_DIMENSIONS) : 0;
   const format =
     formatRaw && OUTPUT_FORMATS.has(formatRaw)
       ? (formatRaw as TransformParams["format"])
       : null;
-  const quality = qRaw ? Math.min(100, Math.max(1, Math.floor(Number(qRaw)))) : 80;
+  const quality = FIXED_QUALITY;
 
   // Only proceed if at least one meaningful param was provided
-  if (!w && !h && !format && !qRaw) return null;
+  if (!w && !h && !format) return null;
   // Ignore NaN inputs
   if ((wRaw && Number.isNaN(Number(wRaw))) || (hRaw && Number.isNaN(Number(hRaw))))
     return null;

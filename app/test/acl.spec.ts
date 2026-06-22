@@ -2022,6 +2022,70 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
     const html = await response.text();
     expect(html).toContain("Public Test Document");
   });
+
+  it("should allow unauthenticated users to list documents in a public space", async () => {
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${publicTestSpaceId}/documents?limit=10`,
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(Array.isArray(data.documents)).toBe(true);
+    expect(data.documents.length).toBeGreaterThan(0);
+  });
+
+  it("should allow unauthenticated users to fetch a document in a public space", async () => {
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${publicTestSpaceId}/documents/${publicTestDocId}`,
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.document).toBeDefined();
+  });
+
+  it("should allow unauthenticated users to search documents in a public space", async () => {
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${publicTestSpaceId}/search?q=Public`,
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toBeDefined();
+    expect(Array.isArray(data.results)).toBe(true);
+  });
+
+  it("should allow unauthenticated users to access the search page in a public space", async () => {
+    const response = await fetch(
+      `${BASE_URL}/${publicTestSpaceSlug}/search`,
+      { redirect: "manual" },
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("should allow unauthenticated users to list categories in a public space", async () => {
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${publicTestSpaceId}/categories`,
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(Array.isArray(data.categories)).toBe(true);
+  });
+
+  it("should allow unauthenticated users to list properties in a public space", async () => {
+    const response = await fetch(
+      `${BASE_URL}/api/v1/spaces/${publicTestSpaceId}/properties`,
+    );
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(Array.isArray(data.properties)).toBe(true);
+  });
+
+  it("should include public spaces in unauthenticated spaces list", async () => {
+    const response = await fetch(`${BASE_URL}/api/v1/spaces`);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(Array.isArray(data)).toBe(true);
+    const slugs = data.map((s: any) => s.slug);
+    expect(slugs).toContain(publicTestSpaceSlug);
+  });
 });
 
 describe("ACL API Tests - Unauthenticated Access", () => {

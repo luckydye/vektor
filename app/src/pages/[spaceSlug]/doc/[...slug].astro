@@ -75,14 +75,10 @@ if (!document) {
 const userId = Astro.locals.user?.id || null;
 const userGroups = userId ? await getUserGroups(userId) : ["public"];
 
-const hasAccess = await hasPermission(
-  space.id,
-  ResourceType.DOCUMENT,
-  document.id,
-  userId || "",
-  "viewer",
-  userGroups,
-);
+const [hasAccess, userCanEdit] = await Promise.all([
+  hasPermission(space.id, ResourceType.DOCUMENT, document.id, userId || "", "viewer", userGroups),
+  hasPermission(space.id, ResourceType.DOCUMENT, document.id, userId || "", "editor", userGroups),
+]);
 
 if (!hasAccess) {
   // If not authenticated and no public access, redirect to login
@@ -315,6 +311,7 @@ if (diffMins >= 1 && diffMins < 60) {
               client:load
               documentId={document.id}
               documentType={documentType}
+              readonly={!userCanEdit}
               initialProperties={{ ...document.properties, parentId: document.parentId }}
               initialCategory={category}
             />

@@ -7,20 +7,18 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { type PropertyFilter, searchDocuments } from "#db/documents.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { authenticateSpaceAccess } from "#utils/auth.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
       const spaceId = requireParam(context.params, "spaceId");
 
-      // Resolve the identity used for per-document ACL filtering in
-      // searchDocuments. For user sessions this is the user id; for access
-      // tokens it is `token:<id>` so results are scoped to what the token can
-      // actually read. Only trusted server-minted job tokens with no user
-      // context (auth.userId === null) get the unfiltered, system-wide view.
-      const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
-      const userId: string | null = auth.type === "user" ? auth.user.id : auth.userId;
+      const access = await authenticateSpaceAccess(context, spaceId, "viewer");
+      // searchDocuments uses null for "trusted system view" (no per-document
+      // ACL filtering). Public access is treated as trusted within the space
+      // so documents inheriting space-level access are searchable.
+      const userId = access.isPublic ? null : access.aclUserId;
 
       const query = context.url.searchParams.get("q") || "";
       const { limit, offset } = parsePaginationParams(context.url.searchParams, {

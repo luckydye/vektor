@@ -5,7 +5,9 @@
       @blur="updateTitle" @keydown.enter="updateTitle" />
 
     <div v-else :data-document-id="documentId">
-        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 cursor-text text-shadow hover:bg-neutral-50 px-1" @dblclick="startEditing">
+        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 px-1"
+          :class="{ 'cursor-text hover:bg-neutral-50': userCanEdit, 'cursor-default': !userCanEdit }"
+          @dblclick="userCanEdit && startEditing()">
             {{ localTitle || 'Untitled Document' }}
             <div v-if="starred" class="svg-icon w-6 h-6 text-yellow-500" v-html="starFilledIcon" />
         </h1>
@@ -14,12 +16,15 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { canEdit } from "../composeables/usePermissions.ts";
 
 const { currentSpaceId, currentSpace } = useSpace();
+
+const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
 
 const props = withDefaults(
   defineProps<{
@@ -40,9 +45,10 @@ const emit = defineEmits<{
 
 const inputEl = ref<HTMLInputElement | null>(null);
 const localTitle = ref(props.title);
-const isEditing = ref(props.initialEditMode);
+const isEditing = ref(props.initialEditMode && userCanEdit.value);
 
 async function startEditing() {
+  if (!userCanEdit.value) return;
   isEditing.value = true;
   await nextTick();
   inputEl.value?.focus({ preventScroll: true });
@@ -57,6 +63,11 @@ watch(
 
 async function updateTitle() {
   if (localTitle.value !== props.title) {
+    if (!userCanEdit.value) {
+      localTitle.value = props.title;
+      isEditing.value = false;
+      return;
+    }
     emit("title-updated", localTitle.value);
     window.dispatchEvent(
       new CustomEvent("title-changed", {

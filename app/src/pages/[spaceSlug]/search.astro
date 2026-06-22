@@ -1,10 +1,9 @@
 ---
 import AIChatPanel from "~/src/components/AIChatPanel.vue";
 import SearchComponent from "../../components/Search.vue";
-import { verifySpaceAccess } from "../../db/api.ts";
 import SpaceLayout from "../../layouts/SpaceLayout.astro";
 import { t } from "../../utils/lang.ts";
-import { resolveSpacePage } from "../../utils/spacePage.ts";
+import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
 
 const lang = Astro.preferredLocale || "en";
 
@@ -14,12 +13,10 @@ if (result.response) {
 }
 const { space } = result;
 
-const user = Astro.locals.user;
-if (!user) {
-  return Astro.redirect("/login");
+const accessDenied = await requireSpaceViewer(Astro, space);
+if (accessDenied) {
+  return accessDenied;
 }
-
-await verifySpaceAccess(space.id, user.id);
 ---
 
 <SpaceLayout title={`Search - ${space.name} - Wiki`}>

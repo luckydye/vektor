@@ -634,3 +634,51 @@ export async function authenticateRequest(
 
   throw unauthorizedResponse();
 }
+
+/**
+ * Like authenticateRequest, but returns null instead of throwing when the
+ * caller is unauthenticated. Callers must separately verify that the space
+ * grants the `public` group the required role before proceeding, otherwise
+ * the request must be rejected with unauthorizedResponse().
+ */
+export async function tryAuthenticateRequest(
+  context: APIContext,
+  spaceId: string,
+): Promise<
+  | { type: "user"; user: NonNullable<APIContext["locals"]["user"]> }
+  | { type: "token"; token: ValidateTokenResult }
+  | null
+> {
+  const user = context.locals.user;
+  if (user) {
+    return { type: "user", user };
+  }
+
+  const tokenResult = await authenticateWithToken(context, spaceId);
+  if (tokenResult) {
+    return { type: "token", token: tokenResult };
+  }
+
+  return null;
+}
+
+/**
+ * Verify that the `public` group has the required role on a space, granting
+ * unauthenticated callers access. Throws unauthorizedResponse() otherwise.
+ */
+export async function verifyPublicSpaceRole(
+  spaceId: string,
+  requiredRole: string,
+): Promise<void> {
+  const hasPublicAccess = await hasPermission(
+    spaceId,
+    ResourceType.SPACE,
+    spaceId,
+    "",
+    requiredRole,
+    ["public"],
+  );
+  if (!hasPublicAccess) {
+    throw unauthorizedResponse();
+  }
+}

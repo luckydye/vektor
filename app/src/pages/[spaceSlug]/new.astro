@@ -16,6 +16,10 @@ if (result.response) {
 }
 const { space } = result;
 
+if (!Astro.locals.user) {
+  return Astro.redirect("/login");
+}
+
 // Check ACL permissions - user must be a member of the space
 const accessDenied = await requireSpaceViewer(Astro, space);
 if (accessDenied) {

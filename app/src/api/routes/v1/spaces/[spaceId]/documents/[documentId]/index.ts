@@ -13,6 +13,7 @@ import {
   requireParam,
   requireUser,
   successResponse,
+  tryAuthenticateRequest,
   unauthorizedResponse,
   verifyDocumentAccess,
   verifyDocumentRole,
@@ -232,8 +233,8 @@ export const GET: APIRoute = (context) =>
       }
     } else {
       // Authenticate with either user session or access token
-      const auth = await authenticateRequest(context, spaceId);
-      if (auth.type === "token") {
+      const auth = await tryAuthenticateRequest(context, spaceId);
+      if (auth?.type === "token") {
         await verifyTokenPermission(
           auth.token,
           spaceId,
@@ -241,8 +242,11 @@ export const GET: APIRoute = (context) =>
           id,
           requiredRole,
         );
-      } else {
+      } else if (auth?.type === "user") {
         await verifyDocumentRole(spaceId, id, auth.user.id, requiredRole);
+      } else {
+        // Unauthenticated — verifyDocumentRole handles public access
+        await verifyDocumentRole(spaceId, id, null, requiredRole);
       }
     }
 

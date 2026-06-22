@@ -9,7 +9,7 @@ import {
   requireUser,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { createSpace, getSpace, listUserSpaces } from "#db/spaces.ts";
+import { createSpace, getSpace, listPublicSpaces, listUserSpaces } from "#db/spaces.ts";
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -20,8 +20,13 @@ export const GET: APIRoute = (context) =>
       const space = await getSpace(spaceId);
       return jsonResponse(space ? [space] : []);
     }
-    const user = requireUser(context);
-    const spaces = await listUserSpaces(user.id);
+    const user = context.locals.user;
+    if (user) {
+      const spaces = await listUserSpaces(user.id);
+      return jsonResponse(spaces);
+    }
+    // Unauthenticated — return spaces with public viewer access.
+    const spaces = await listPublicSpaces();
     return jsonResponse(spaces);
   }, "Failed to list spaces");
 

@@ -1,26 +1,24 @@
 import type { APIRoute } from "astro";
-import { getTokenUserId } from "#db/accessTokens.ts";
-import { getUserGroups, ResourceType } from "#db/acl.ts";
 import {
-  authenticateRequest,
   badRequestResponse,
   createdResponse,
   forbiddenResponse,
   jsonResponse,
   parseJsonBody,
   requireParam,
-  verifySpaceRole,
-  verifyTokenPermission,
   withApiErrorHandling,
 } from "#db/api.ts";
 import {
-  type AclViewer,
   createDocument,
   getDocumentChildren,
   listAllDocumentsByCategories,
   listDocuments,
 } from "#db/documents.ts";
-import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import {
+  authenticateJobTokenOrSpaceRole,
+  authenticateSpaceAccess,
+  spaceAccessToViewer,
+} from "#utils/auth.ts";
 import {
   getDocumentTypeForContentType,
   getMimeType,
@@ -31,36 +29,8 @@ export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.params, "spaceId");
 
-    const jobAuth = context.request.headers.get("X-Job-Token")
-      ? await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer")
-      : null;
-    const auth = jobAuth ? null : await authenticateRequest(context, spaceId);
-
-    if (!jobAuth && auth?.type === "token") {
-      await verifyTokenPermission(
-        auth.token,
-        spaceId,
-        ResourceType.SPACE,
-        spaceId,
-        "viewer",
-      );
-    }
-    if (!jobAuth && auth?.type === "user") {
-      await verifySpaceRole(spaceId, auth.user.id, "viewer");
-    }
-
-    // Identity for per-document ACL filtering. Only trusted server-minted job
-    // tokens without user context (userId === null) get the unfiltered view.
-    const aclUserId = jobAuth
-      ? jobAuth.type === "user"
-        ? jobAuth.user.id
-        : jobAuth.userId
-      : auth.type === "user"
-        ? auth.user.id
-        : getTokenUserId(auth.token.tokenId);
-    const viewer: AclViewer | null = aclUserId
-      ? { userId: aclUserId, userGroups: await getUserGroups(aclUserId) }
-      : null;
+    const access = await authenticateSpaceAccess(context, spaceId, "viewer");
+    const viewer = spaceAccessToViewer(access);
 
     const limitParam = context.url.searchParams.get("limit");
     const limitNum = limitParam ? parseInt(limitParam, 10) : NaN;
@@ -80,7 +50,7 @@ export const GET: APIRoute = (context) =>
       : [];
 
     if (categorySlugs.length > 0) {
-      const userEmail = auth?.type === "user" ? auth.user.email : undefined;
+      const userEmail = access.user?.email;
       const documentsByCategory = await listAllDocumentsByCategories(
         spaceId,
         categorySlugs,
