@@ -46,13 +46,25 @@
             <div class="rounded-xl border border-neutral-200 overflow-hidden">
 
               <!-- Banner — click to pick color -->
-              <label class="relative h-24 w-full block cursor-pointer group transition-colors duration-300"
-                :style="{ backgroundColor: localBrandColor }" title="Change color">
-                <input type="color" v-model="localBrandColor" class="sr-only" />
-                <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
-                  <span class="text-[11px] font-medium text-white drop-shadow">Change color</span>
+              <a-popover-trigger showdelay="0" hidedelay="100" class="block">
+                <div slot="trigger" class="relative h-24 w-full cursor-pointer group transition-colors duration-300"
+                  :style="{ backgroundColor: localBrandColor }" title="Change color">
+                  <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+                    <span class="text-[11px] font-medium text-white drop-shadow">Change color</span>
+                  </div>
                 </div>
-              </label>
+                <a-popover class="group" placements="bottom-start">
+                  <div class="w-max py-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
+                    <div class="bg-background border border-neutral-100 rounded-lg p-2 origin-top-left scale-95 transition-all shadow-large duration-150 group-[&[enabled]]:scale-100">
+                      <a-color-picker
+                        class="w-[220px]"
+                        :value="localBrandColor"
+                        @change="localBrandColor = ($event.target as HTMLElement & { value: string }).value"
+                      ></a-color-picker>
+                    </div>
+                  </div>
+                </a-popover>
+              </a-popover-trigger>
 
               <div class="px-3 pb-3">
                 <div class="-mt-8 mb-2.5 flex items-end gap-1.5">
@@ -499,6 +511,8 @@
 </template>
 
 <script setup lang="ts">
+import "@sv/elements/color-picker";
+import "@sv/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";

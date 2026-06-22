@@ -34,7 +34,6 @@ const { pathname, spaceSlug } = useRoute();
 const {
   currentSpace,
   spaces,
-  setCurrentSpace,
   createSpace,
   isLoading: spaceIsLoading,
 } = useSpace();
@@ -125,8 +124,6 @@ const userCanEdit = computed(() => {
 const handleSpaceSelect = (space: UiSpace) => {
   const fullSpace = spaces.value?.find((s: ApiSpace) => s.id === space.id);
   if (fullSpace) {
-    setCurrentSpace(fullSpace);
-    // Navigate to the selected space
     window.location.href = `/${fullSpace.slug}`;
   }
 };
