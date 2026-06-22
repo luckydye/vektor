@@ -22,6 +22,11 @@ export default defineConfig({
       //
       tailwindcss(),
     ],
+    build: {
+      rollupOptions: {
+        external: [/\.node$/],
+      },
+    },
     envPrefix: "VEKTOR_",
     server: {
       cors: {

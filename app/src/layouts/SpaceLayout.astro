@@ -45,6 +45,27 @@ if (Astro.locals.user) {
 // Generate color palette from brand color
 const paletteCss = generatePaletteCss(brandColor);
 
+const dynamicStyles = `
+  :root {
+    --color-primary: ${brandColor};
+    ${paletteCss.light}
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) body {
+      --color-primary: ${brandColor};
+      ${paletteCss.dark}
+    }
+  }
+  :root[data-theme="dark"] body {
+    --color-primary: ${brandColor};
+    ${paletteCss.dark}
+  }
+  :root[data-theme="light"] body {
+    --color-primary: ${brandColor};
+    ${paletteCss.light}
+  }
+`;
+
 const publicEnvVars = () => Astro.locals.publicEnv;
 ---
 
@@ -149,26 +170,7 @@ const publicEnvVars = () => Astro.locals.publicEnv;
       });
     </script>
 
-    <style set:html={`
-      :root {
-        --color-primary: ${brandColor};
-        ${paletteCss.light}
-      }
-      @media (prefers-color-scheme: dark) {
-        :root:not([data-theme]) body {
-          --color-primary: ${brandColor};
-          ${paletteCss.dark}
-        }
-      }
-      :root[data-theme="dark"] body {
-        --color-primary: ${brandColor};
-        ${paletteCss.dark}
-      }
-      :root[data-theme="light"] body {
-        --color-primary: ${brandColor};
-        ${paletteCss.light}
-      }
-    `}></style>
+    <style set:html={dynamicStyles}></style>
 
     <Translations client:load lang={lang} />
   </head>
@@ -185,9 +187,9 @@ const publicEnvVars = () => Astro.locals.publicEnv;
         initInsets();
       </script>
 
-      <!-- Main content spans the full width (behind the fixed sidebar). Each
+      {/* Main content spans the full width (behind the fixed sidebar). Each
            content view opts into the sidebar inset itself, so full-bleed views
-           (e.g. canvas documents) can render behind the navigation. -->
+           (e.g. canvas documents) can render behind the navigation. */}
       <div class="main-content min-h-screen h-full transition-all md:transition-none relative">
         <!-- Mobile Header Navigation -->
         <MobileHeader

@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 
 const appDir = join(import.meta.dir);
@@ -63,6 +63,26 @@ export async function generateClientAssetsModule() {
 }
 
 await generateClientAssetsModule();
+
+// Patch dist/server/entry.mjs so resolveClientDir works inside the compiled
+// Bun binary. @astrojs/node@11 walks up from import.meta.url looking for a
+// "server" path segment, which doesn't exist when bundled (import.meta.url
+// becomes "file:///$bunfs/root/vektor.js"). Since options.client already
+// holds the absolute URL of the client dir, we use it directly. The resolved
+// path is only used to serve pre-rendered error pages (404/500.html), which
+// don't exist in SSR mode, so a build-machine path is fine in all cases.
+{
+  const entryMjs = join(appDir, "dist/server/entry.mjs");
+  let src = await readFile(entryMjs, "utf-8");
+  // Replace the whole function by matching from its declaration to the
+  // //#endregion comment that follows it (avoids fragile nested-brace counting).
+  src = src.replace(
+    /function resolveClientDir\(options\)\s*\{[\s\S]*?\n\/\/#endregion/,
+    `function resolveClientDir(options) { return url.fileURLToPath(new URL(options.client)); }\n//#endregion`,
+  );
+  await writeFile(entryMjs, src, "utf-8");
+  console.log("[patch] patched resolveClientDir in dist/server/entry.mjs");
+}
 
 import { existsSync } from "node:fs";
 
