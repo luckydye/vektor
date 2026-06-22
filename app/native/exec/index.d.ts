@@ -29,12 +29,7 @@ export function evalJsSync(
 // Workflow VM — step-driven async JS sandbox
 // ──────────────────────────────────────────────────────────────────────────────
 
-export type WorkflowVmEventType =
-  | "done"
-  | "error"
-  | "log"
-  | "pending_job"
-  | "pending";
+export type WorkflowVmEventType = "done" | "error" | "log" | "pending_job" | "pending";
 
 export interface WorkflowVmEvent {
   type: WorkflowVmEventType;
@@ -53,10 +48,7 @@ export interface WorkflowVmEvent {
 }
 
 /** Create a workflow VM session. Returns an opaque numeric session ID. */
-export function workflowVmCreate(
-  code: string,
-  inputs: Record<string, unknown>,
-): number;
+export function workflowVmCreate(code: string, inputs: Record<string, unknown>): number;
 
 /**
  * Advance the VM by one step.
@@ -77,12 +69,7 @@ export function workflowVmResolveJob(
 ): void;
 
 /** Reject a pending runJob with an error message. */
-export function workflowVmRejectJob(
-  id: number,
-  jobId: string,
-  error: string,
-): void;
+export function workflowVmRejectJob(id: number, jobId: string, error: string): void;
 
 /** Destroy a workflow VM session and free its resources. */
 export function workflowVmDestroy(id: number): void;
-

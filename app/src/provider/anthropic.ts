@@ -225,7 +225,8 @@ export async function callAnthropic(options: {
         toolCalls[toolCalls.length - 1]!.arguments += delta.partial_json;
       }
     } else if (type === "message_delta") {
-      const stopReason = (chunk as { delta?: { stop_reason?: string } }).delta?.stop_reason;
+      const stopReason = (chunk as { delta?: { stop_reason?: string } }).delta
+        ?.stop_reason;
       if (stopReason === "tool_use") finishReason = "tool_calls";
       else if (stopReason) finishReason = stopReason;
     }
@@ -354,8 +355,7 @@ export async function proxyToAnthropic(
               ],
             });
           } else if (typed.type === "message_delta" && typed.delta?.stop_reason) {
-            finishReason =
-              typed.delta.stop_reason === "tool_use" ? "tool_calls" : "stop";
+            finishReason = typed.delta.stop_reason === "tool_use" ? "tool_calls" : "stop";
           }
         }
         send({

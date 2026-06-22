@@ -248,7 +248,9 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       );
 
       if (scroll) {
-        const activeEl = popup.querySelector(`[role="option"][aria-selected="true"]`) as HTMLElement | null;
+        const activeEl = popup.querySelector(
+          `[role="option"][aria-selected="true"]`,
+        ) as HTMLElement | null;
         activeEl?.scrollIntoView({ block: "nearest" });
       }
     }
@@ -407,12 +409,19 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       );
 
       if (scroll) {
-        const activeEl = slashPopup.querySelector(`[role="option"][aria-selected="true"]`) as HTMLElement | null;
+        const activeEl = slashPopup.querySelector(
+          `[role="option"][aria-selected="true"]`,
+        ) as HTMLElement | null;
         activeEl?.scrollIntoView({ block: "nearest" });
       }
     }
 
-    function placeSlashPopupAtCursor(view: { coordsAtPos: (pos: number) => { left: number; bottom: number; top: number } }, pos: number) {
+    function placeSlashPopupAtCursor(
+      view: {
+        coordsAtPos: (pos: number) => { left: number; bottom: number; top: number };
+      },
+      pos: number,
+    ) {
       if (!slashPopup) return;
 
       const coords = view.coordsAtPos(pos);
@@ -436,7 +445,9 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       slashPopup.style.top = `${top}px`;
     }
 
-    function openSlashPopup(view: { coordsAtPos: (pos: number) => { left: number; bottom: number; top: number } }) {
+    function openSlashPopup(view: {
+      coordsAtPos: (pos: number) => { left: number; bottom: number; top: number };
+    }) {
       if (slashPopup) closeSlashPopup();
 
       allSlashItems = createContentItems(spaceId, documentId);
@@ -534,7 +545,10 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
                 return true;
               case "ArrowDown":
                 event.preventDefault();
-                slashSelectedIndex = Math.min(slashSelectedIndex + 1, slashItems.length - 1);
+                slashSelectedIndex = Math.min(
+                  slashSelectedIndex + 1,
+                  slashItems.length - 1,
+                );
                 renderSlashPopup(true);
                 return true;
               case "ArrowUp":

@@ -3,7 +3,9 @@ import { type PartialToolCall, parseNDJSON } from "./utils.ts";
 
 type OllamaProvider = { provider: "ollama"; baseUrl: string; model: string };
 
-export function toOllamaMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
+export function toOllamaMessages(
+  messages: ChatMessage[],
+): Array<Record<string, unknown>> {
   const toolNames = new Map<string, string>();
 
   return messages.map((message) => {

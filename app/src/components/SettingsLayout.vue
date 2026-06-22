@@ -20,7 +20,9 @@ const emit = defineEmits<{
   "tab-change": [id: string];
 }>();
 
-type ATabsEl = HTMLElement & { selectTabByIndex: (index: number, focus?: boolean) => void };
+type ATabsEl = HTMLElement & {
+  selectTabByIndex: (index: number, focus?: boolean) => void;
+};
 const tabsEl = ref<ATabsEl | null>(null);
 const ready = ref(false);
 

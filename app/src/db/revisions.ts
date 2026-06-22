@@ -117,7 +117,12 @@ export async function createRevision(
 
   // Overwrite the last revision in place if it's a regular save within the 5-hour window,
   // but never overwrite the published revision — that would silently change published content.
-  if (lastIsRecent && !lastIsPublished && status === null && (lastRevision!.status ?? null) === null) {
+  if (
+    lastIsRecent &&
+    !lastIsPublished &&
+    status === null &&
+    (lastRevision!.status ?? null) === null
+  ) {
     const compressed = compressHtml(html);
     const updatedMessage = options.message ?? lastRevision!.message;
     await db
@@ -170,7 +175,10 @@ export async function createRevision(
   });
 
   if (status === null) {
-    await db.update(document).set({ currentRev: nextRev }).where(eq(document.id, documentId));
+    await db
+      .update(document)
+      .set({ currentRev: nextRev })
+      .where(eq(document.id, documentId));
   }
 
   await createAuditLog(db, {

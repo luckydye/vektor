@@ -64,7 +64,8 @@ export const GET: APIRoute = (context) =>
 
     const limitParam = context.url.searchParams.get("limit");
     const limitNum = limitParam ? parseInt(limitParam, 10) : NaN;
-    const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50;
+    const limit =
+      Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50;
     const cursor = context.url.searchParams.get("cursor") || undefined;
     const typeParam = context.url.searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = context.url.searchParams.get("categorySlugs");
@@ -89,7 +90,9 @@ export const GET: APIRoute = (context) =>
       const filteredDocumentsByCategory = Object.fromEntries(
         Object.entries(documentsByCategory).map(([slug, docs]) => [
           slug,
-          docs.filter((doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam)),
+          docs.filter(
+            (doc) => doc.type !== "record" && (!typeParam || doc.type === typeParam),
+          ),
         ]),
       );
 
@@ -122,7 +125,12 @@ export const GET: APIRoute = (context) =>
 
     if (parentIdParam) {
       const documents = await getDocumentChildren(spaceId, parentIdParam, viewer);
-      return jsonResponse({ documents, total: documents.length, limit: documents.length, nextCursor: null });
+      return jsonResponse({
+        documents,
+        total: documents.length,
+        limit: documents.length,
+        nextCursor: null,
+      });
     }
 
     // Always return documents without content (content fetched separately when viewing)

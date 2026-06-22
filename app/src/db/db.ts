@@ -2,7 +2,12 @@ import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { isInMemoryDb } from "../inMemoryDb.ts";
-import { applySpaceDbPragmas, initSpaceDbSchema, prepareSpaceDb, prepateAuthDb } from "./init.ts";
+import {
+  applySpaceDbPragmas,
+  initSpaceDbSchema,
+  prepareSpaceDb,
+  prepateAuthDb,
+} from "./init.ts";
 import * as schema from "./schema.ts";
 
 const DATA_DIR = "./data";

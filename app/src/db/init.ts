@@ -82,14 +82,14 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
 
   // Performance indexes — safe to add to existing DBs
   await spaceDb.run(
-    sql.raw("CREATE INDEX IF NOT EXISTS document_updated_at_idx ON document (updated_at DESC)"),
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS document_updated_at_idx ON document (updated_at DESC)",
+    ),
   );
   await spaceDb.run(
     sql.raw("CREATE INDEX IF NOT EXISTS document_parent_id_idx ON document (parent_id)"),
   );
-  await spaceDb.run(
-    sql.raw("DROP INDEX IF EXISTS property_document_id_key_idx"),
-  );
+  await spaceDb.run(sql.raw("DROP INDEX IF EXISTS property_document_id_key_idx"));
   // Deduplicate before creating the unique index — the old code had a SELECT+INSERT
   // race that could produce duplicate (document_id, key) rows in existing DBs.
   // Keep the most-recently updated row for each pair; delete the rest.

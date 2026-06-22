@@ -331,7 +331,11 @@ export async function findSpaceForToken(token: string): Promise<string | null> {
     const db = await getSpaceDb(space.id);
     if (!db) continue;
     const [result] = await db
-      .select({ id: accessToken.id, expiresAt: accessToken.expiresAt, revokedAt: accessToken.revokedAt })
+      .select({
+        id: accessToken.id,
+        expiresAt: accessToken.expiresAt,
+        revokedAt: accessToken.revokedAt,
+      })
       .from(accessToken)
       .where(and(eq(accessToken.token, hashedToken), isNull(accessToken.revokedAt)))
       .limit(1);

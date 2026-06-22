@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-  DEFAULT_VEKTOR_URL,
-  VektorApiError,
   createVektorClient,
+  DEFAULT_VEKTOR_URL,
   type Document,
+  VektorApiError,
 } from "../src/index.ts";
 
 const listedDocument: Document = {
@@ -47,9 +47,16 @@ describe("VektorClient", () => {
         const url = new URL(input.toString());
         paths.push(url.pathname);
         if (url.pathname.endsWith("/documents")) {
-          return Response.json({ documents: [listedDocument], total: 1, limit: 500, offset: 0 });
+          return Response.json({
+            documents: [listedDocument],
+            total: 1,
+            limit: 500,
+            offset: 0,
+          });
         }
-        return Response.json({ document: { ...listedDocument, content: "<p>Hello</p>" } });
+        return Response.json({
+          document: { ...listedDocument, content: "<p>Hello</p>" },
+        });
       },
     });
 

@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { findSpaceForToken } from "#db/accessTokens.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -8,7 +9,6 @@ import {
   requireUser,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { findSpaceForToken } from "#db/accessTokens.ts";
 import { createSpace, getSpace, listUserSpaces } from "#db/spaces.ts";
 
 export const GET: APIRoute = (context) =>

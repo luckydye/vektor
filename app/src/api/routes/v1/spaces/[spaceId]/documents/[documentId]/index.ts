@@ -418,9 +418,17 @@ export const PUT: APIRoute = (context) =>
     );
 
     if (userId) {
-      const revision = await createRevision(spaceId, id, contentSanitized, userId, { message: "Document updated" });
+      const revision = await createRevision(spaceId, id, contentSanitized, userId, {
+        message: "Document updated",
+      });
       if (publish === true) {
-        await handlePublishedRevisionPatch(spaceId, id, userId, revision.rev, revision.rev);
+        await handlePublishedRevisionPatch(
+          spaceId,
+          id,
+          userId,
+          revision.rev,
+          revision.rev,
+        );
       }
     }
 
@@ -509,7 +517,13 @@ export const PATCH: APIRoute = (context) =>
     }
 
     if (publishedRev !== undefined) {
-      await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev, existingDoc.currentRev);
+      await handlePublishedRevisionPatch(
+        spaceId,
+        id,
+        userId,
+        publishedRev,
+        existingDoc.currentRev,
+      );
     }
 
     if (readonly !== undefined) {

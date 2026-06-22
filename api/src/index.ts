@@ -184,9 +184,16 @@ export class VektorClient {
     return this.get("/api/v1/spaces", {}, signal);
   }
 
-  listDocuments(spaceId: string, options: ListDocumentsOptions = {}): Promise<Page<Document>> {
+  listDocuments(
+    spaceId: string,
+    options: ListDocumentsOptions = {},
+  ): Promise<Page<Document>> {
     const { signal, ...query } = options;
-    return this.get(`/api/v1/spaces/${encodeURIComponent(spaceId)}/documents`, query, signal);
+    return this.get(
+      `/api/v1/spaces/${encodeURIComponent(spaceId)}/documents`,
+      query,
+      signal,
+    );
   }
 
   async listDocumentsByCategories(
@@ -204,7 +211,11 @@ export class VektorClient {
     return response.documentsByCategory;
   }
 
-  async getDocument(spaceId: string, documentId: string, signal?: AbortSignal): Promise<Document> {
+  async getDocument(
+    spaceId: string,
+    documentId: string,
+    signal?: AbortSignal,
+  ): Promise<Document> {
     const response = await this.get<{ document: Document }>(
       `/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}`,
       {},
@@ -213,7 +224,12 @@ export class VektorClient {
     return response.document;
   }
 
-  async getRevision(spaceId: string, documentId: string, rev: number, signal?: AbortSignal): Promise<Revision> {
+  async getRevision(
+    spaceId: string,
+    documentId: string,
+    rev: number,
+    signal?: AbortSignal,
+  ): Promise<Revision> {
     const response = await this.get<{ revision: Revision }>(
       `/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}`,
       { rev },

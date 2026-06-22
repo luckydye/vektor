@@ -105,7 +105,10 @@ const rowPopoverStyle = ref<Record<string, string>>({});
 function openDeleteRow(rowId: string, event: MouseEvent) {
   deletingRow.value = rowId;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  rowPopoverStyle.value = { top: `${rect.bottom + 4}px`, right: `${window.innerWidth - rect.right}px` };
+  rowPopoverStyle.value = {
+    top: `${rect.bottom + 4}px`,
+    right: `${window.innerWidth - rect.right}px`,
+  };
 }
 
 async function confirmDeleteRow(rowId: string) {

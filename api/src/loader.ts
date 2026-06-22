@@ -1,10 +1,10 @@
 import type { Loader } from "astro/loaders";
-import type { VektorClient } from "./index.ts";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { join, extname } from "path";
+import { extname, join } from "path";
 import sharp from "sharp";
+import { fileURLToPath } from "url";
+import type { VektorClient } from "./index.ts";
 
 function contentExt(url: string, contentType: string): string {
   return (
@@ -117,7 +117,8 @@ async function rewriteImages(
   const srcs = new Set<string>();
   for (const [tag] of html.matchAll(IMG_TAG)) {
     for (const [, name, , value] of tag.matchAll(IMG_ATTR)) {
-      const urls = name.toLowerCase() === "src" ? [value] : parseSrcset(value).map((c) => c.url);
+      const urls =
+        name.toLowerCase() === "src" ? [value] : parseSrcset(value).map((c) => c.url);
       for (const url of urls) {
         if (url && !url.startsWith("data:")) srcs.add(url);
       }
@@ -188,7 +189,9 @@ export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
         cursor = page.nextCursor;
       }
       const published = documents.filter((doc) => doc.publishedRev !== null);
-      logger.info(`Fetching ${published.length} published document(s) from Vektor (${documents.length - published.length} unpublished skipped)...`);
+      logger.info(
+        `Fetching ${published.length} published document(s) from Vektor (${documents.length - published.length} unpublished skipped)...`,
+      );
 
       const seen = new Set<string>();
 
@@ -210,8 +213,12 @@ export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
 
           const rawHeaderImage = full.properties.headerImage ?? null;
           const [content, headerImageResult] = await Promise.all([
-            revision.content ? rewriteImages(revision.content, client, assetsDir, urlCache, gate) : null,
-            rawHeaderImage ? downloadImage(rawHeaderImage, client, assetsDir, urlCache, gate) : null,
+            revision.content
+              ? rewriteImages(revision.content, client, assetsDir, urlCache, gate)
+              : null,
+            rawHeaderImage
+              ? downloadImage(rawHeaderImage, client, assetsDir, urlCache, gate)
+              : null,
           ]);
 
           store.set({

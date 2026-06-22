@@ -79,7 +79,11 @@ function getParsedTile(data: ArrayBuffer): ParsedLayer[] {
     const features: ParsedFeature[] = [];
     for (let i = 0; i < layer.length; i++) {
       const f = layer.feature(i);
-      features.push({ type: f.type, properties: f.properties, geometry: f.loadGeometry() });
+      features.push({
+        type: f.type,
+        properties: f.properties,
+        geometry: f.loadGeometry(),
+      });
     }
     layers.push({ name: layerName, extent: layer.extent, features });
   }
@@ -225,12 +229,25 @@ export interface VectorTileMapStats {
 
 export interface VectorTileMap {
   // Kick off fetches for any uncached tiles visible in the current view.
-  ensureTiles(cameraZoom: number, transform: WorldTransform, screenW: number, screenH: number): void;
+  ensureTiles(
+    cameraZoom: number,
+    transform: WorldTransform,
+    screenW: number,
+    screenH: number,
+  ): void;
   // Draw all cached tiles with backdrop buffering: a lower-zoom tile is
   // rendered first so there is no blank gap while higher-zoom tiles load.
-  draw(ctx: CanvasRenderingContext2D, transform: WorldTransform, cameraZoom: number): VectorTileMapStats;
+  draw(
+    ctx: CanvasRenderingContext2D,
+    transform: WorldTransform,
+    cameraZoom: number,
+  ): VectorTileMapStats;
   // Draw tile borders + z/x/y labels for the active zoom level (debug overlay).
-  drawDebug(ctx: CanvasRenderingContext2D, transform: WorldTransform, cameraZoom: number): void;
+  drawDebug(
+    ctx: CanvasRenderingContext2D,
+    transform: WorldTransform,
+    cameraZoom: number,
+  ): void;
 }
 
 export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMap {
@@ -254,28 +271,44 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
   // Compute only the tiles visible in the current viewport at the given zoom level.
   // Derives tile indices directly from the world→screen transform so it is O(visible)
   // regardless of how many tiles exist at that zoom level globally.
-  function tilesForZoom(tileZ: number, transform: WorldTransform, screenW: number, screenH: number) {
+  function tilesForZoom(
+    tileZ: number,
+    transform: WorldTransform,
+    screenW: number,
+    screenH: number,
+  ) {
     const tileCount = 1 << tileZ; // 2^tileZ tiles per axis
     const tileW = worldWidth / tileCount;
     const tileH = worldHeight / tileCount;
 
     // Visible world bounds from screen corners.
-    const wLeft   = (0       - transform.dx) / transform.scale;
-    const wRight  = (screenW - transform.dx) / transform.scale;
-    const wTop    = (0       - transform.dy) / transform.scale;
+    const wLeft = (0 - transform.dx) / transform.scale;
+    const wRight = (screenW - transform.dx) / transform.scale;
+    const wTop = (0 - transform.dy) / transform.scale;
     const wBottom = (screenH - transform.dy) / transform.scale;
 
-    const xMin = Math.max(0, Math.floor((wLeft  - worldX) / tileW));
+    const xMin = Math.max(0, Math.floor((wLeft - worldX) / tileW));
     const xMax = Math.min(tileCount - 1, Math.floor((wRight - worldX) / tileW));
-    const yMin = Math.max(0, Math.floor((wTop   - worldY) / tileH));
+    const yMin = Math.max(0, Math.floor((wTop - worldY) / tileH));
     const yMax = Math.min(tileCount - 1, Math.floor((wBottom - worldY) / tileH));
 
-    const tiles: Array<{ key: string; z: number; x: number; y: number; worldX: number; worldY: number; worldWidth: number; worldHeight: number }> = [];
+    const tiles: Array<{
+      key: string;
+      z: number;
+      x: number;
+      y: number;
+      worldX: number;
+      worldY: number;
+      worldWidth: number;
+      worldHeight: number;
+    }> = [];
     for (let ty = yMin; ty <= yMax; ty++) {
       for (let tx = xMin; tx <= xMax; tx++) {
         tiles.push({
           key: `${tileZ}/${tx}/${ty}`,
-          z: tileZ, x: tx, y: ty,
+          z: tileZ,
+          x: tx,
+          y: ty,
           worldX: worldX + tx * tileW,
           worldY: worldY + ty * tileH,
           worldWidth: tileW,
@@ -296,7 +329,7 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
   // ≤ their render resolution, which also eliminates bilinear-filter fringing at
   // high-contrast edges like road outlines.
   const renderSize = Math.min(
-    Math.pow(2, Math.ceil(Math.log2(Math.max(1024 * dpr, 1)))),
+    2 ** Math.ceil(Math.log2(Math.max(1024 * dpr, 1))),
     maxRenderSize,
   );
 
@@ -315,7 +348,8 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
     surface.height = renderSize;
 
     const sCtx = surface.getContext("2d");
-    if (!sCtx || !("fillRect" in sCtx)) throw new Error("tile surface 2d context required");
+    if (!sCtx || !("fillRect" in sCtx))
+      throw new Error("tile surface 2d context required");
     drawVectorTile(
       sCtx as CanvasRenderingContext2D,
       buf,
@@ -371,14 +405,23 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
   }
 
   return {
-    ensureTiles(cameraZoom: number, transform: WorldTransform, screenW: number, screenH: number): void {
+    ensureTiles(
+      cameraZoom: number,
+      transform: WorldTransform,
+      screenW: number,
+      screenH: number,
+    ): void {
       const tileZ = tileZoomForCamera(cameraZoom);
       for (const t of tilesForZoom(tileZ, transform, screenW, screenH)) {
         if (!cache.has(t.key)) fetchTile(t.z, t.x, t.y, t.key);
       }
     },
 
-    draw(ctx: CanvasRenderingContext2D, transform: WorldTransform, cameraZoom: number): VectorTileMapStats {
+    draw(
+      ctx: CanvasRenderingContext2D,
+      transform: WorldTransform,
+      cameraZoom: number,
+    ): VectorTileMapStats {
       const tileZ = tileZoomForCamera(cameraZoom);
       const screenW = ctx.canvas.width / dpr;
       const screenH = ctx.canvas.height / dpr;
@@ -386,7 +429,11 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
       // Find the nearest lower zoom level with any cached visible tiles to use as backdrop.
       let backdropZ = -1;
       for (let z = tileZ - 1; z >= minZ; z--) {
-        if (tilesForZoom(z, transform, screenW, screenH).some((t) => cache.get(t.key) instanceof ArrayBuffer)) {
+        if (
+          tilesForZoom(z, transform, screenW, screenH).some(
+            (t) => cache.get(t.key) instanceof ArrayBuffer,
+          )
+        ) {
           backdropZ = z;
           break;
         }
@@ -414,10 +461,18 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
       }
 
       const loaded = drawZoomLevel(ctx, tileZ, transform, screenW, screenH);
-      return { tileZ, loaded, total: tilesForZoom(tileZ, transform, screenW, screenH).length };
+      return {
+        tileZ,
+        loaded,
+        total: tilesForZoom(tileZ, transform, screenW, screenH).length,
+      };
     },
 
-    drawDebug(ctx: CanvasRenderingContext2D, transform: WorldTransform, cameraZoom: number): void {
+    drawDebug(
+      ctx: CanvasRenderingContext2D,
+      transform: WorldTransform,
+      cameraZoom: number,
+    ): void {
       const tileZ = tileZoomForCamera(cameraZoom);
       const screenW = ctx.canvas.width / dpr;
       const screenH = ctx.canvas.height / dpr;
@@ -425,7 +480,11 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
       // Mirror draw(): collect the backdrop zoom level (if any) + active level.
       const levelsToShow: Array<{ z: number; isBackdrop: boolean }> = [];
       for (let z = tileZ - 1; z >= minZ; z--) {
-        if (tilesForZoom(z, transform, screenW, screenH).some((t) => cache.get(t.key) instanceof ArrayBuffer)) {
+        if (
+          tilesForZoom(z, transform, screenW, screenH).some(
+            (t) => cache.get(t.key) instanceof ArrayBuffer,
+          )
+        ) {
           levelsToShow.push({ z, isBackdrop: true });
           break;
         }
@@ -451,10 +510,13 @@ export function createVectorTileMap(options: VectorTileMapOptions): VectorTileMa
             ctx.strokeStyle = "rgba(120,180,255,0.8)";
           } else {
             ctx.strokeStyle =
-              status instanceof ArrayBuffer ? "rgba(80,220,80,0.9)" :
-              status === "loading"          ? "rgba(255,200,0,0.9)" :
-              status === "error"            ? "rgba(255,60,60,0.9)" :
-                                             "rgba(160,160,160,0.6)";
+              status instanceof ArrayBuffer
+                ? "rgba(80,220,80,0.9)"
+                : status === "loading"
+                  ? "rgba(255,200,0,0.9)"
+                  : status === "error"
+                    ? "rgba(255,60,60,0.9)"
+                    : "rgba(160,160,160,0.6)";
           }
           ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1);
 

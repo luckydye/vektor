@@ -66,7 +66,11 @@ function replacePlaceholderWithVideo(editor: Editor, url: string): void {
       .insertContentAt(range.from, { type: "video", attrs: { src: url } })
       .run();
   } else {
-    editor.chain().focus().insertContent({ type: "video", attrs: { src: url } }).run();
+    editor
+      .chain()
+      .focus()
+      .insertContent({ type: "video", attrs: { src: url } })
+      .run();
   }
 }
 

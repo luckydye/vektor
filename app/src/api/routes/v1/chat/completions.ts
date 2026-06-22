@@ -27,10 +27,20 @@ export const POST: APIRoute = (context) =>
       const bodyJson = await parseJsonBody(context.request);
 
       if (provider.provider === "anthropic") {
-        return proxyToAnthropic(provider.apiKey, provider.model, bodyJson, context.request.signal);
+        return proxyToAnthropic(
+          provider.apiKey,
+          provider.model,
+          bodyJson,
+          context.request.signal,
+        );
       }
       if (provider.provider === "ollama") {
-        return proxyToOllama(provider.baseUrl, provider.model, bodyJson, context.request.signal);
+        return proxyToOllama(
+          provider.baseUrl,
+          provider.model,
+          bodyJson,
+          context.request.signal,
+        );
       }
 
       bodyJson.model = provider.model;
@@ -92,4 +102,3 @@ async function logChatCompletionUpstreamFailure(
     body: responseBody.slice(0, 2000),
   });
 }
-

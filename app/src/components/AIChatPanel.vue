@@ -31,8 +31,8 @@ import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
+import type MessageInput from "./MessageInput.vue";
 import type { PendingAttachment } from "./MessageInput.vue";
-import MessageInput from "./MessageInput.vue";
 
 const props = defineProps({
   documentId: {

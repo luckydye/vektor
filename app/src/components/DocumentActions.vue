@@ -30,7 +30,13 @@ const props = defineProps<{
 
 const { currentSpaceId, currentSpace } = useSpace();
 const { toggle: toggleDockedWindow } = useDockedWindows();
-const { supportsHeaderImage, changeHeaderImage, uploadHeaderImage, removeHeaderImage, dialogOpen } = useHeaderImage();
+const {
+  supportsHeaderImage,
+  changeHeaderImage,
+  uploadHeaderImage,
+  removeHeaderImage,
+  dialogOpen,
+} = useHeaderImage();
 const { cancelCount, editing, saveStatus } = useEditor();
 
 const userCanEdit = computed(() => {

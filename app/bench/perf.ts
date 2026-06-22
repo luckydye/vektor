@@ -82,7 +82,14 @@ const SECTION_TYPES = [
   "Retrospectives",
 ];
 
-const DOC_STATUSES = ["draft", "review", "approved", "published", "deprecated", "archived"];
+const DOC_STATUSES = [
+  "draft",
+  "review",
+  "approved",
+  "published",
+  "deprecated",
+  "archived",
+];
 const DOC_PRIORITIES = ["p0", "p1", "p2", "p3"];
 const OWNERS = ["alice", "bob", "charlie", "dana", "eve", "frank", "grace", "henry"];
 
@@ -139,7 +146,11 @@ function generateHtml(title: string, paragraphs = 3): string {
   return `<h1>${title}</h1>${headings.join("")}${codeBlock}${paras.slice(3).join("")}`;
 }
 
-function generateProperties(dept: string, section: string, i: number): Record<string, string> {
+function generateProperties(
+  dept: string,
+  section: string,
+  i: number,
+): Record<string, string> {
   return {
     title: `${dept} / ${section} / Doc ${i}`,
     status: randomItem(DOC_STATUSES),
@@ -241,7 +252,11 @@ function killPortIfBusy(port: number): void {
   // silently hijacking `waitForServer` and serving requests against stale data.
   try {
     const result = Bun.spawnSync(["lsof", "-ti", `:${port}`]);
-    const pids = new TextDecoder().decode(result.stdout).trim().split("\n").filter(Boolean);
+    const pids = new TextDecoder()
+      .decode(result.stdout)
+      .trim()
+      .split("\n")
+      .filter(Boolean);
     for (const pid of pids) {
       process.kill(Number(pid), "SIGKILL");
       console.log(`  Killed stale process PID ${pid} on port ${port}`);
@@ -253,9 +268,7 @@ function killPortIfBusy(port: number): void {
 
 function startServer(): ReturnType<typeof Bun.spawn> {
   if (!existsSync(BINARY)) {
-    throw new Error(
-      `Release binary not found at ${BINARY}. Run 'task compile' first.`,
-    );
+    throw new Error(`Release binary not found at ${BINARY}. Run 'task compile' first.`);
   }
 
   killPortIfBusy(PORT);
@@ -328,7 +341,11 @@ async function seed(): Promise<SeedState> {
         method: "POST",
         body: JSON.stringify({
           content: generateHtml(`${dept} Overview`, 2),
-          properties: { title: `${dept} Overview`, status: "published", department: dept },
+          properties: {
+            title: `${dept} Overview`,
+            status: "published",
+            department: dept,
+          },
         }),
       },
     );
@@ -361,8 +378,11 @@ async function seed(): Promise<SeedState> {
   console.log(`  Created ${DEPARTMENTS.length * SECTION_TYPES.length} section documents`);
 
   // 3. Leaf documents filling the remainder of DOC_COUNT
-  const leafCount = DOC_COUNT - DEPARTMENTS.length - DEPARTMENTS.length * SECTION_TYPES.length;
-  const docsPerSection = Math.ceil(leafCount / (DEPARTMENTS.length * SECTION_TYPES.length));
+  const leafCount =
+    DOC_COUNT - DEPARTMENTS.length - DEPARTMENTS.length * SECTION_TYPES.length;
+  const docsPerSection = Math.ceil(
+    leafCount / (DEPARTMENTS.length * SECTION_TYPES.length),
+  );
 
   const leafIds: string[] = [];
   let leafCreated = 0;
@@ -430,26 +450,31 @@ async function seed(): Promise<SeedState> {
   // SQLite serialises writes; concurrency of 2 minimises lock-wait overhead.
   const REV_CONCURRENCY = Math.min(CONCURRENCY, 2);
 
-  const revDocTasks: (() => Promise<void>)[] = docRevCounts.map(({ docId, count }) => async () => {
-    for (let r = 0; r < count; r++) {
-      const res = await api(`/api/v1/spaces/${spaceId}/documents/${docId}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          content: generateHtml(`Revision ${r}`, randomInt(1, 4)),
-        }),
-      });
-      if (!res.ok) {
-        // Drain body to avoid socket hang; ignore the error
-        await res.text().catch(() => {});
-      }
-      revsCreated++;
-      const pct = Math.floor((revsCreated / totalRevs) * 100);
-      if (pct >= lastPct + 10) {
-        lastPct = pct;
-        process.stdout.write(`  Creating revisions: ${pct}% (${revsCreated}/${totalRevs})\r`);
-      }
-    }
-  });
+  const revDocTasks: (() => Promise<void>)[] = docRevCounts.map(
+    ({ docId, count }) =>
+      async () => {
+        for (let r = 0; r < count; r++) {
+          const res = await api(`/api/v1/spaces/${spaceId}/documents/${docId}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              content: generateHtml(`Revision ${r}`, randomInt(1, 4)),
+            }),
+          });
+          if (!res.ok) {
+            // Drain body to avoid socket hang; ignore the error
+            await res.text().catch(() => {});
+          }
+          revsCreated++;
+          const pct = Math.floor((revsCreated / totalRevs) * 100);
+          if (pct >= lastPct + 10) {
+            lastPct = pct;
+            process.stdout.write(
+              `  Creating revisions: ${pct}% (${revsCreated}/${totalRevs})\r`,
+            );
+          }
+        }
+      },
+  );
 
   await pool(revDocTasks, REV_CONCURRENCY);
   console.log(`\n  Created ~${revsCreated} revisions across ${leafIds.length} documents`);
@@ -467,17 +492,14 @@ async function seed(): Promise<SeedState> {
 
       // Top-level comments (need reference)
       for (let c = 0; c < topCount; c++) {
-        const res = await api(
-          `/api/v1/spaces/${spaceId}/documents/${docId}/comments`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              content: randomItem(LOREM_SENTENCES),
-              reference: `block-${randomInt(1, 20)}`,
-              type: "text",
-            }),
-          },
-        );
+        const res = await api(`/api/v1/spaces/${spaceId}/documents/${docId}/comments`, {
+          method: "POST",
+          body: JSON.stringify({
+            content: randomItem(LOREM_SENTENCES),
+            reference: `block-${randomInt(1, 20)}`,
+            type: "text",
+          }),
+        });
         if (res.ok) {
           const { comment } = (await res.json()) as { comment: { id: string } };
           topIds.push(comment.id);
@@ -491,17 +513,14 @@ async function seed(): Promise<SeedState> {
       for (const parentId of topIds) {
         if (Math.random() > 0.3) continue;
         for (let r = 0; r < randomInt(1, 3); r++) {
-          const res = await api(
-            `/api/v1/spaces/${spaceId}/documents/${docId}/comments`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                content: randomItem(LOREM_SENTENCES),
-                parentId,
-                type: "text",
-              }),
-            },
-          );
+          const res = await api(`/api/v1/spaces/${spaceId}/documents/${docId}/comments`, {
+            method: "POST",
+            body: JSON.stringify({
+              content: randomItem(LOREM_SENTENCES),
+              parentId,
+              type: "text",
+            }),
+          });
           if (res.ok) commentsCreated++;
           else await res.text().catch(() => {});
         }
@@ -608,8 +627,12 @@ async function measureN(
     throw new Error(`${label}: all ${n} requests failed`);
   }
   if (errorRate > 0.05) {
-    console.log(`  ${label.padEnd(32)} HIGH ERROR RATE: ${errors}/${n} failed (${(errorRate * 100).toFixed(1)}%)`);
-    throw new Error(`${label}: error rate ${(errorRate * 100).toFixed(1)}% exceeds 5% threshold`);
+    console.log(
+      `  ${label.padEnd(32)} HIGH ERROR RATE: ${errors}/${n} failed (${(errorRate * 100).toFixed(1)}%)`,
+    );
+    throw new Error(
+      `${label}: error rate ${(errorRate * 100).toFixed(1)}% exceeds 5% threshold`,
+    );
   }
   const s = stats(times);
   const errNote = errors > 0 ? `  errors=${errors}` : "";
@@ -657,12 +680,15 @@ function fmt(bytes: number): string {
 async function measureColdStart(): Promise<ColdStartResult> {
   killPortIfBusy(PORT + 1);
   const t0 = performance.now();
-  const coldServer = Bun.spawn([BINARY, "serve", "--port", String(PORT + 1), "--no-auth"], {
-    env: { ...process.env, HOST: "127.0.0.1", VEKTOR_OTEL_ENABLED: "0" },
-    cwd: BENCH_DIR,
-    stdout: "ignore",
-    stderr: "ignore",
-  });
+  const coldServer = Bun.spawn(
+    [BINARY, "serve", "--port", String(PORT + 1), "--no-auth"],
+    {
+      env: { ...process.env, HOST: "127.0.0.1", VEKTOR_OTEL_ENABLED: "0" },
+      cwd: BENCH_DIR,
+      stdout: "ignore",
+      stderr: "ignore",
+    },
+  );
 
   const coldBase = `http://127.0.0.1:${PORT + 1}`;
   let spawnToFirstByteMs = 0;
@@ -692,7 +718,10 @@ async function measureColdStart(): Promise<ColdStartResult> {
     while (Date.now() < deadline2) {
       try {
         const res = await fetch(`${coldBase}/api/v1/spaces`);
-        if (res.ok) { await res.text(); break; }
+        if (res.ok) {
+          await res.text();
+          break;
+        }
         await res.text();
       } catch {
         await Bun.sleep(50);
@@ -750,12 +779,16 @@ async function bench(state: SeedState): Promise<BenchResult> {
     }
     deepCursor = cur;
   }
-  const documentListPaginated = await measureN("GET documents (cursor, 50)", 50, async () => {
-    const url = deepCursor
-      ? `/api/v1/spaces/${spaceId}/documents?limit=50&cursor=${encodeURIComponent(deepCursor)}`
-      : `/api/v1/spaces/${spaceId}/documents?limit=50`;
-    await apiJson(url);
-  });
+  const documentListPaginated = await measureN(
+    "GET documents (cursor, 50)",
+    50,
+    async () => {
+      const url = deepCursor
+        ? `/api/v1/spaces/${spaceId}/documents?limit=50&cursor=${encodeURIComponent(deepCursor)}`
+        : `/api/v1/spaces/${spaceId}/documents?limit=50`;
+      await apiJson(url);
+    },
+  );
 
   const revisionHistory = await measureN("GET revisions", 300, async () => {
     const id = randomItem(documentIds);
@@ -784,52 +817,76 @@ async function bench(state: SeedState): Promise<BenchResult> {
   // ── Write latency ─────────────────────────────────────────────────────────
   console.log("\n── Write latency ──");
 
-  const propertyPatch = await measureN("PATCH properties", 300, async (i) => {
-    const id = randomItem(documentIds);
-    const statuses = DOC_STATUSES;
-    await apiJson(`/api/v1/spaces/${spaceId}/documents/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        properties: {
-          status: statuses[i % statuses.length],
-          reviewed: i % 2 === 0 ? "true" : "false",
-          version: `${randomInt(1, 9)}.${randomInt(0, 9)}.${randomInt(0, 9)}`,
-        },
-      }),
-    });
-  }, Math.min(CONCURRENCY, 20));
+  const propertyPatch = await measureN(
+    "PATCH properties",
+    300,
+    async (i) => {
+      const id = randomItem(documentIds);
+      const statuses = DOC_STATUSES;
+      await apiJson(`/api/v1/spaces/${spaceId}/documents/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          properties: {
+            status: statuses[i % statuses.length],
+            reviewed: i % 2 === 0 ? "true" : "false",
+            version: `${randomInt(1, 9)}.${randomInt(0, 9)}.${randomInt(0, 9)}`,
+          },
+        }),
+      });
+    },
+    Math.min(CONCURRENCY, 20),
+  );
 
-  const documentWrite = await measureN("PUT document (new revision)", 200, async (i) => {
-    const id = randomItem(documentIds);
-    await apiJson(`/api/v1/spaces/${spaceId}/documents/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        content: generateHtml(`Bench revision ${i}`, randomInt(1, 3)),
-      }),
-    });
-  }, Math.min(CONCURRENCY, 10));
+  const documentWrite = await measureN(
+    "PUT document (new revision)",
+    200,
+    async (i) => {
+      const id = randomItem(documentIds);
+      await apiJson(`/api/v1/spaces/${spaceId}/documents/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          content: generateHtml(`Bench revision ${i}`, randomInt(1, 3)),
+        }),
+      });
+    },
+    Math.min(CONCURRENCY, 10),
+  );
 
   // ── Search ────────────────────────────────────────────────────────────────
   console.log("\n── Search ──");
 
   const SEARCH_TERMS = [
-    "architecture", "deploy", "security", "API",
-    "monitoring", "review", "onboarding", "migration",
-    "performance", "database", "SLO", "incident",
+    "architecture",
+    "deploy",
+    "security",
+    "API",
+    "monitoring",
+    "review",
+    "onboarding",
+    "migration",
+    "performance",
+    "database",
+    "SLO",
+    "incident",
   ];
   let totalResults = 0;
   let zeroResultQueries = 0;
   const searchQueries = SEARCH_TERMS.length * 5; // 5 passes per term
 
-  const search = await measureN("GET search", searchQueries, async (i) => {
-    const term = SEARCH_TERMS[i % SEARCH_TERMS.length];
-    const data = await apiJson<{ documents?: unknown[] }>(
-      `/api/v1/spaces/${spaceId}/search?q=${encodeURIComponent(term)}&limit=20`,
-    );
-    const count = data.documents?.length ?? 0;
-    totalResults += count;
-    if (count === 0) zeroResultQueries++;
-  }, Math.min(CONCURRENCY, 10));
+  const search = await measureN(
+    "GET search",
+    searchQueries,
+    async (i) => {
+      const term = SEARCH_TERMS[i % SEARCH_TERMS.length];
+      const data = await apiJson<{ documents?: unknown[] }>(
+        `/api/v1/spaces/${spaceId}/search?q=${encodeURIComponent(term)}&limit=20`,
+      );
+      const count = data.documents?.length ?? 0;
+      totalResults += count;
+      if (count === 0) zeroResultQueries++;
+    },
+    Math.min(CONCURRENCY, 10),
+  );
 
   const searchQuality: SearchQuality = {
     avgResultCount: totalResults / searchQueries,
@@ -873,7 +930,9 @@ async function bench(state: SeedState): Promise<BenchResult> {
 
   payloads.searchResult = await measurePayload("GET search (limit 20)", 20, async (i) => {
     const term = SEARCH_TERMS[i % SEARCH_TERMS.length];
-    return getBytes(`/api/v1/spaces/${spaceId}/search?q=${encodeURIComponent(term)}&limit=20`);
+    return getBytes(
+      `/api/v1/spaces/${spaceId}/search?q=${encodeURIComponent(term)}&limit=20`,
+    );
   });
 
   return {
@@ -921,10 +980,19 @@ function saveBaseline(result: BenchResult) {
 const REGRESSION_THRESHOLD = 1.5; // 50% slower
 const WARNING_THRESHOLD = 1.25; // 25% slower
 
-type LatencyKey = keyof Pick<BenchResult,
-  "documentFetch" | "documentList" | "documentListPaginated" |
-  "revisionHistory" | "commentList" | "auditLogList" | "spaceAuditLog" |
-  "search" | "childrenList" | "propertyPatch" | "documentWrite"
+type LatencyKey = keyof Pick<
+  BenchResult,
+  | "documentFetch"
+  | "documentList"
+  | "documentListPaginated"
+  | "revisionHistory"
+  | "commentList"
+  | "auditLogList"
+  | "spaceAuditLog"
+  | "search"
+  | "childrenList"
+  | "propertyPatch"
+  | "documentWrite"
 >;
 
 function report(current: BenchResult, baseline: Baseline | null) {
@@ -936,23 +1004,25 @@ function report(current: BenchResult, baseline: Baseline | null) {
 
   // ── Latency table ──────────────────────────────────────────────────────────
   const metrics: Array<{ key: LatencyKey; label: string }> = [
-    { key: "documentFetch",          label: "GET document" },
-    { key: "documentList",           label: "GET documents (page 1, 500)" },
-    { key: "documentListPaginated",  label: "GET documents (cursor, 50)" },
-    { key: "revisionHistory",        label: "GET revisions" },
-    { key: "commentList",            label: "GET comments" },
-    { key: "auditLogList",           label: "GET doc audit-logs" },
-    { key: "spaceAuditLog",          label: "GET space audit-logs" },
-    { key: "childrenList",           label: "GET children" },
-    { key: "propertyPatch",          label: "PATCH properties" },
-    { key: "documentWrite",          label: "PUT document (revision)" },
-    { key: "search",                 label: "GET search" },
+    { key: "documentFetch", label: "GET document" },
+    { key: "documentList", label: "GET documents (page 1, 500)" },
+    { key: "documentListPaginated", label: "GET documents (cursor, 50)" },
+    { key: "revisionHistory", label: "GET revisions" },
+    { key: "commentList", label: "GET comments" },
+    { key: "auditLogList", label: "GET doc audit-logs" },
+    { key: "spaceAuditLog", label: "GET space audit-logs" },
+    { key: "childrenList", label: "GET children" },
+    { key: "propertyPatch", label: "PATCH properties" },
+    { key: "documentWrite", label: "PUT document (revision)" },
+    { key: "search", label: "GET search" },
   ];
 
   const W = 36;
   const sep = "─".repeat(W + 52);
   console.log(sep);
-  console.log(`${"Metric".padEnd(W)} ${"avg".padStart(8)} ${"p50".padStart(8)} ${"p95".padStart(8)} ${"p99".padStart(8)}  vs baseline`);
+  console.log(
+    `${"Metric".padEnd(W)} ${"avg".padStart(8)} ${"p50".padStart(8)} ${"p95".padStart(8)} ${"p99".padStart(8)}  vs baseline`,
+  );
   console.log(sep);
 
   for (const m of metrics) {
@@ -991,30 +1061,38 @@ function report(current: BenchResult, baseline: Baseline | null) {
   console.log(sep);
 
   // ── Cold start ─────────────────────────────────────────────────────────────
-  console.log(`\nCold start  spawn→first-byte: ${current.coldStart.spawnToFirstByteMs.toFixed(0)}ms   spawn→ready: ${current.coldStart.spawnToReadyMs.toFixed(0)}ms`);
+  console.log(
+    `\nCold start  spawn→first-byte: ${current.coldStart.spawnToFirstByteMs.toFixed(0)}ms   spawn→ready: ${current.coldStart.spawnToReadyMs.toFixed(0)}ms`,
+  );
   if (baseline) {
     const bcs = baseline.result.coldStart;
-    const fbDelta = ((current.coldStart.spawnToFirstByteMs / bcs.spawnToFirstByteMs - 1) * 100).toFixed(1);
+    const fbDelta = (
+      (current.coldStart.spawnToFirstByteMs / bcs.spawnToFirstByteMs - 1) *
+      100
+    ).toFixed(1);
     const sign = current.coldStart.spawnToFirstByteMs > bcs.spawnToFirstByteMs ? "+" : "";
     console.log(`  vs baseline: first-byte ${sign}${fbDelta}%`);
   }
 
   // ── Search quality ─────────────────────────────────────────────────────────
   const sq = current.searchQuality;
-  console.log(`\nSearch quality  avg results=${sq.avgResultCount.toFixed(1)}  zero-result queries=${sq.zeroResultQueries}/${sq.totalQueries}`);
+  console.log(
+    `\nSearch quality  avg results=${sq.avgResultCount.toFixed(1)}  zero-result queries=${sq.zeroResultQueries}/${sq.totalQueries}`,
+  );
 
   // ── Payload sizes ──────────────────────────────────────────────────────────
   console.log("\nPayload sizes:");
   const pW = 30;
   for (const [key, ps] of Object.entries(current.payloads)) {
-    const label = {
-      documentFetch: "GET document",
-      documentListPage: "GET documents (50)",
-      documentListLarge: "GET documents (500)",
-      revisionHistory: "GET revisions",
-      commentList: "GET comments",
-      searchResult: "GET search (limit 20)",
-    }[key] ?? key;
+    const label =
+      {
+        documentFetch: "GET document",
+        documentListPage: "GET documents (50)",
+        documentListLarge: "GET documents (500)",
+        revisionHistory: "GET revisions",
+        commentList: "GET comments",
+        searchResult: "GET search (limit 20)",
+      }[key] ?? key;
     const bas = baseline?.result.payloads[key];
     let delta = "";
     if (bas && bas.avgBytes > 0) {
@@ -1060,10 +1138,12 @@ async function main() {
     }
   }
 
-  let existingSeed = BENCH_ONLY ? loadSeedState() : null;
+  const existingSeed = BENCH_ONLY ? loadSeedState() : null;
 
   if (BENCH_ONLY && !existingSeed) {
-    throw new Error("--bench-only specified but no seed state found. Run without --bench-only first.");
+    throw new Error(
+      "--bench-only specified but no seed state found. Run without --bench-only first.",
+    );
   }
 
   const server = startServer();

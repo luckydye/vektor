@@ -5,9 +5,9 @@ import DocumentProperties from "~/src/components/DocumentProperties.vue";
 import NewDocumentPicker from "~/src/components/NewDocumentPicker.vue";
 import TitleEditor from "~/src/components/TitleEditor.vue";
 import DocumentContent from "../../components/DocumentContent.vue";
-import SpaceLayout from "../../layouts/SpaceLayout.astro";
 import { getUserGroups, hasPermission, ResourceType } from "../../db/acl.ts";
 import { createDocument } from "../../db/documents.ts";
+import SpaceLayout from "../../layouts/SpaceLayout.astro";
 import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);

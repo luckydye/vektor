@@ -854,7 +854,10 @@ export class ApiClient {
      */
     get: async (
       spaceId: string,
-      query?: { limit?: number; cursor?: string; type?: string } & Record<string, string | number | boolean | undefined>,
+      query?: { limit?: number; cursor?: string; type?: string } & Record<
+        string,
+        string | number | boolean | undefined
+      >,
     ) => {
       const response = await this.apiGet<{
         documents: DocumentWithProperties[];
@@ -943,7 +946,12 @@ export class ApiClient {
     /**
      * Update document content (PUT)
      */
-    put: async (spaceId: string, documentId: string, content: string, options?: { publish?: boolean }) => {
+    put: async (
+      spaceId: string,
+      documentId: string,
+      content: string,
+      options?: { publish?: boolean },
+    ) => {
       const url = options?.publish
         ? `/api/v1/spaces/${spaceId}/documents/${documentId}?publish=true`
         : `/api/v1/spaces/${spaceId}/documents/${documentId}`;

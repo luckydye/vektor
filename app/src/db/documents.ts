@@ -537,7 +537,9 @@ async function syncFileIndex(
 
 // Cursor encodes the (updatedAt, id) position of the last returned document.
 export function encodeListCursor(updatedAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify({ t: updatedAt.getTime(), id })).toString("base64url");
+  return Buffer.from(JSON.stringify({ t: updatedAt.getTime(), id })).toString(
+    "base64url",
+  );
 }
 
 export function decodeListCursor(cursor: string): { updatedAt: Date; id: string } | null {
@@ -556,7 +558,11 @@ export async function listDocuments(
   type?: string,
   viewer?: AclViewer | null,
   cursor?: string,
-): Promise<{ documents: DocumentWithProperties[]; total: number; nextCursor: string | null }> {
+): Promise<{
+  documents: DocumentWithProperties[];
+  total: number;
+  nextCursor: string | null;
+}> {
   const db = await getSpaceDb(spaceId);
   const baseCondition = type
     ? and(nonArchivedDocumentCondition, eq(document.type, type))
@@ -576,11 +582,22 @@ export async function listDocuments(
     archived: document.archived,
   };
 
-  type DocRow = typeof selectFields extends Record<string, infer _> ? {
-    id: string; createdAt: Date; updatedAt: Date; parentId: string | null;
-    publishedRev: number | null; slug: string; type: string | null;
-    currentRev: number; createdBy: string; readonly: boolean; archived: boolean;
-  } : never;
+  type DocRow =
+    typeof selectFields extends Record<string, infer _>
+      ? {
+          id: string;
+          createdAt: Date;
+          updatedAt: Date;
+          parentId: string | null;
+          publishedRev: number | null;
+          slug: string;
+          type: string | null;
+          currentRev: number;
+          createdBy: string;
+          readonly: boolean;
+          archived: boolean;
+        }
+      : never;
 
   let docs: DocRow[];
   let total = 0;
@@ -588,10 +605,18 @@ export async function listDocuments(
 
   if (viewer) {
     // ACL filtering requires fetching all docs before paginating.
-    const allDocs = await db.select(selectFields).from(document).where(baseCondition).orderBy(desc(document.updatedAt), desc(document.id)).all();
+    const allDocs = await db
+      .select(selectFields)
+      .from(document)
+      .where(baseCondition)
+      .orderBy(desc(document.updatedAt), desc(document.id))
+      .all();
     const readable = await filterReadableResources(
-      spaceId, ResourceType.DOCUMENT,
-      allDocs.map((d) => d.id), viewer.userId, viewer.userGroups,
+      spaceId,
+      ResourceType.DOCUMENT,
+      allDocs.map((d) => d.id),
+      viewer.userId,
+      viewer.userGroups,
     );
     const visible = allDocs.filter((d) => readable.has(d.id));
     total = visible.length;
@@ -601,7 +626,9 @@ export async function listDocuments(
       const pos = decodeListCursor(cursor);
       if (pos) {
         const idx = visible.findIndex(
-          (d) => d.updatedAt < pos.updatedAt || (d.updatedAt.getTime() === pos.updatedAt.getTime() && d.id < pos.id),
+          (d) =>
+            d.updatedAt < pos.updatedAt ||
+            (d.updatedAt.getTime() === pos.updatedAt.getTime() && d.id < pos.id),
         );
         start = idx === -1 ? visible.length : idx;
       }
@@ -627,7 +654,13 @@ export async function listDocuments(
       : baseCondition;
 
     const fetchLimit = (limit ?? 50) + 1;
-    const rows = await db.select(selectFields).from(document).where(seekCondition).orderBy(desc(document.updatedAt), desc(document.id)).limit(fetchLimit).all() as DocRow[];
+    const rows = (await db
+      .select(selectFields)
+      .from(document)
+      .where(seekCondition)
+      .orderBy(desc(document.updatedAt), desc(document.id))
+      .limit(fetchLimit)
+      .all()) as DocRow[];
 
     if (rows.length === fetchLimit) {
       docs = rows.slice(0, -1);
@@ -815,12 +848,20 @@ export async function updateDocumentProperty(
     docId: documentId,
     userId,
     event: "property_update",
-    details: { propertyKey: key, propertyType: type || undefined, previousValue, newValue: value },
+    details: {
+      propertyKey: key,
+      propertyType: type || undefined,
+      previousValue,
+      newValue: value,
+    },
   });
 
   if (key === "title" && value) {
     const newSlug = await generateUniqueSlug(spaceId, value, documentId);
-    await db.update(document).set({ slug: newSlug, updatedAt: now }).where(eq(document.id, documentId));
+    await db
+      .update(document)
+      .set({ slug: newSlug, updatedAt: now })
+      .where(eq(document.id, documentId));
     payload.slug = newSlug;
   } else {
     await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
@@ -1223,7 +1264,11 @@ export async function getDocumentChildren(
   const childIds = docs.map((d) => d.id);
   const allProps =
     childIds.length > 0
-      ? await db.select().from(property).where(inArray(property.documentId, childIds)).all()
+      ? await db
+          .select()
+          .from(property)
+          .where(inArray(property.documentId, childIds))
+          .all()
       : [];
 
   const propsByDocId = new Map<string, Record<string, string>>();

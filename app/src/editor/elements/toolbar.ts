@@ -6,14 +6,21 @@ import {
   alignJustifyIcon,
   alignLeftIcon,
   alignRightIcon,
+  arrowsMergeIcon,
+  arrowsSplitIcon,
   boldIcon,
   chevronDownIcon,
+  clipboardIcon,
   closeSmallIcon,
   closeThickIcon,
+  columnMinusIcon,
+  columnPlusLeftIcon,
+  columnPlusRightIcon,
   columns2Icon,
   columns3Icon,
   columns4Icon,
   commentIcon,
+  functionIcon,
   imageFullWidthIcon,
   indentIcon,
   italicIcon,
@@ -23,24 +30,17 @@ import {
   listUnorderedIcon,
   moreIcon,
   outdentIcon,
-  arrowsMergeIcon,
-  arrowsSplitIcon,
-  clipboardIcon,
-  columnMinusIcon,
-  columnPlusLeftIcon,
-  columnPlusRightIcon,
-  functionIcon,
   paintBucketIcon,
+  plusOverlayIcon,
+  restoreArrowIcon,
   rowMinusIcon,
   rowPlusBottomIcon,
   rowPlusTopIcon,
   scissorsIcon,
-  tableIcon,
-  trashIcon,
-  plusOverlayIcon,
-  restoreArrowIcon,
   strikethroughIcon,
+  tableIcon,
   textColorIcon,
+  trashIcon,
   underlineIcon,
 } from "../../assets/icons.ts";
 
@@ -455,7 +455,7 @@ if (
         }
 
         const overlaps = (t: number) =>
-          forbidden.some(f => t < f.bottom + gap && t + menuHeight > f.top - gap);
+          forbidden.some((f) => t < f.bottom + gap && t + menuHeight > f.top - gap);
 
         // Prefer above selection
         const aboveTop = selectionTop - menuHeight - gap;
@@ -1502,15 +1502,11 @@ if (
         return html`
           <div class="table-toolbar" style=${this.tableStyle}>
             <div class="menu-group">
-              ${this.button(
-                this.icon(columnPlusLeftIcon),
-                "Add Column Before",
-                () => this.chain()?.addColumnBefore().run(),
+              ${this.button(this.icon(columnPlusLeftIcon), "Add Column Before", () =>
+                this.chain()?.addColumnBefore().run(),
               )}
-              ${this.button(
-                this.icon(columnPlusRightIcon),
-                "Add Column After",
-                () => this.chain()?.addColumnAfter().run(),
+              ${this.button(this.icon(columnPlusRightIcon), "Add Column After", () =>
+                this.chain()?.addColumnAfter().run(),
               )}
               ${this.button(
                 this.icon(columnMinusIcon),
@@ -1522,15 +1518,11 @@ if (
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(
-                this.icon(rowPlusTopIcon),
-                "Add Row Before",
-                () => this.chain()?.addRowBefore().run(),
+              ${this.button(this.icon(rowPlusTopIcon), "Add Row Before", () =>
+                this.chain()?.addRowBefore().run(),
               )}
-              ${this.button(
-                this.icon(rowPlusBottomIcon),
-                "Add Row After",
-                () => this.chain()?.addRowAfter().run(),
+              ${this.button(this.icon(rowPlusBottomIcon), "Add Row After", () =>
+                this.chain()?.addRowAfter().run(),
               )}
               ${this.button(
                 this.icon(rowMinusIcon),
@@ -1538,11 +1530,7 @@ if (
                 () => this.chain()?.deleteRow().run(),
                 { danger: true },
               )}
-              ${this.button(
-                this.icon(scissorsIcon),
-                "Cut Row",
-                () => this.cutRow(),
-              )}
+              ${this.button(this.icon(scissorsIcon), "Cut Row", () => this.cutRow())}
               ${this.button(
                 this.icon(clipboardIcon),
                 "Paste Row",

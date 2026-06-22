@@ -98,7 +98,10 @@ export function useDocument(documentId: string | undefined, documentType = "docu
     },
   });
 
-  async function saveDocument(content: string, options?: { publish?: boolean }): Promise<boolean> {
+  async function saveDocument(
+    content: string,
+    options?: { publish?: boolean },
+  ): Promise<boolean> {
     try {
       await saveDocumentMutation.mutateAsync({ content, publish: options?.publish });
       return true;
