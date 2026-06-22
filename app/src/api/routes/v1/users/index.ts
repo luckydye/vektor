@@ -12,6 +12,7 @@ import {
 } from "#db/api.ts";
 import { getAuthDb } from "#db/db.ts";
 import { user } from "#db/schema/auth.ts";
+import { listUserSpaces } from "#db/spaces.ts";
 
 /**
  * GET /api/v1/users
@@ -22,7 +23,10 @@ import { user } from "#db/schema/auth.ts";
  *   - `?spaceId=<id>`                   → members of a space the caller belongs to
  *   - `?spaceId=<id>&scope=candidates`  → directory for adding members; restricted
  *                                         to space OWNERS (includes email so an
- *                                         owner can disambiguate users to invite)
+ *                                         owner can disambiguate users to invite).
+ *                                         Scoped to users the caller already
+ *                                         shares a space with — never a
+ *                                         cross-tenant dump.
  * A bare listing of all users is no longer permitted.
  */
 export const GET: APIRoute = (context) =>
@@ -57,6 +61,20 @@ export const GET: APIRoute = (context) =>
       // owner can tell users apart; gated behind ownership of this space.
       if (context.url.searchParams.get("scope") === "candidates") {
         await verifySpaceRole(spaceId, caller.id, "owner");
+        // Restrict to users the caller can already "see" — members of any
+        // space the caller is also a member of. Without this, a fresh owner
+        // of a single space could dump the entire cross-tenant user
+        // directory (with verified emails) by querying ?scope=candidates.
+        const callerSpaces = await listUserSpaces(caller.id);
+        const visibleUserIds = new Set<string>([caller.id]);
+        for (const s of callerSpaces) {
+          for (const id of await getSpaceMemberIds(s.id)) {
+            visibleUserIds.add(id);
+          }
+        }
+        if (visibleUserIds.size === 0) {
+          return jsonResponse([]);
+        }
         const candidates = await db
           .select({
             id: user.id,
@@ -64,7 +82,8 @@ export const GET: APIRoute = (context) =>
             email: user.email,
             image: user.image,
           })
-          .from(user);
+          .from(user)
+          .where(inArray(user.id, [...visibleUserIds]));
         return jsonResponse(candidates);
       }
 
