@@ -1,6 +1,7 @@
 ---
 import FirstSpacePrompt from "../components/FirstSpacePrompt.vue";
 import { config } from "../config.ts";
+import { getUserGroups, hasPermission, ResourceType } from "../db/acl.ts";
 import { getSpaceBySlug, listUserSpaces } from "../db/spaces.ts";
 import BaseLayout from "../layouts/BaseLayout.astro";
 
@@ -9,16 +10,28 @@ if (!Astro.locals.session) {
 }
 
 const appConfig = config();
+const userId = Astro.locals.user!.id;
 
 const defaultSpace = appConfig.DEFAULT_SPACE
   ? await getSpaceBySlug(appConfig.DEFAULT_SPACE)
   : null;
 
 if (defaultSpace) {
-  return Astro.redirect(`/${defaultSpace.slug}`);
+  const userGroups = await getUserGroups(userId);
+  const canAccess = await hasPermission(
+    defaultSpace.id,
+    ResourceType.SPACE,
+    defaultSpace.id,
+    userId,
+    "viewer",
+    userGroups,
+  );
+  if (canAccess) {
+    return Astro.redirect(`/${defaultSpace.slug}`);
+  }
 }
 
-const userSpaces = await listUserSpaces(Astro.locals.user!.id);
+const userSpaces = await listUserSpaces(userId);
 
 if (userSpaces.length !== 0) {
   return Astro.redirect(`/${userSpaces[0].slug}`);
