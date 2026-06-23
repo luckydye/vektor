@@ -335,7 +335,7 @@ defineExpose({ isEditMode, toggleEditMode });
 <template>
   <div class="document-tree">
     <template v-if="isMounted">
-    <div v-if="!isEditMode && categories.length === 0" class="px-3 py-4 text-center">
+    <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-3 py-4 text-center">
       <p class="text-size-medium text-neutral-500">No categories yet</p>
     </div>
 

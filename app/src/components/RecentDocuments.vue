@@ -46,8 +46,9 @@ onMounted(async () => {
   <div>
     <h2 class="text-size-title mb-4">Recently Modified</h2>
 
+    <div class="h-60">
     <!-- Skeleton -->
-    <div v-if="loading" class="flex gap-4 overflow-hidden">
+    <div v-if="loading" class="flex h-full overflow-hidden">
       <div v-for="i in count" :key="i" class="flex-none w-60 pr-4">
         <div class="aspect-video bg-neutral-100 animate-pulse rounded-xl" />
         <div class="mt-3 space-y-2">
@@ -58,12 +59,12 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-else-if="docs.length === 0" class="text-size-small text-neutral-400">
+    <div v-else-if="docs.length === 0" class="h-full text-size-small text-neutral-400">
       No documents yet.
     </div>
 
     <!-- Slider -->
-    <a-track v-else snap class="flex w-full overflow-visible">
+    <a-track v-else snap class="flex h-full w-full overflow-visible">
       <a
         v-for="doc in docs"
         :key="doc.id"
@@ -135,6 +136,7 @@ onMounted(async () => {
         </div>
       </a>
     </a-track>
+    </div>
   </div>
 </template>
 
