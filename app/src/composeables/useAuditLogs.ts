@@ -26,9 +26,6 @@ export function useAuditLogs(documentId: string, pageSize = 50) {
     page: paged.page,
     totalPages: paged.totalPages,
     total: paged.total,
-    hasPrevPage: paged.hasPrevPage,
-    hasNextPage: paged.hasNextPage,
-    nextPage: paged.nextPage,
-    prevPage: paged.prevPage,
+    goToPage: paged.goToPage,
   };
 }

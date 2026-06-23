@@ -52,10 +52,7 @@ const {
   items: runList,
   page: runPage,
   totalPages: runTotalPages,
-  hasPrevPage: runHasPrevPage,
-  hasNextPage: runHasNextPage,
-  prevPage: runPrevPage,
-  nextPage: runNextPage,
+  goToPage: runGoToPage,
   refresh: refreshRuns,
 } = usePagedList<RunSummary>({
   queryKey: computed(() => ["workflow_runs", props.spaceId, props.documentId]),
@@ -658,10 +655,7 @@ const statusBadgeClass: Record<string, string> = {
               class="mt-4 pt-3 mb-12"
               :page="runPage"
               :total-pages="runTotalPages"
-              :has-prev-page="runHasPrevPage"
-              :has-next-page="runHasNextPage"
-              @previous="runPrevPage"
-              @next="runNextPage"
+              @change="runGoToPage"
             />
           </div>
           <p v-else class="text-size-medium text-neutral-400 py-8 text-center">No runs yet.</p>

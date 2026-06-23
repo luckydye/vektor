@@ -140,11 +140,8 @@
         class="mt-3 pt-3"
         :page="runsPage"
         :total-pages="runsTotalPages"
-        :has-prev-page="runsHasPrevPage"
-        :has-next-page="runsHasNextPage"
         :disabled="isFetchingRuns"
-        @previous="runsPrevPage"
-        @next="runsNextPage"
+        @change="runsGoToPage"
       />
     </div>
   </div>
@@ -184,10 +181,7 @@ const {
   error: runsQueryError,
   page: runsPage,
   totalPages: runsTotalPages,
-  hasPrevPage: runsHasPrevPage,
-  hasNextPage: runsHasNextPage,
-  prevPage: runsPrevPage,
-  nextPage: runsNextPage,
+  goToPage: runsGoToPage,
   refresh: refreshRuns,
 } = usePagedList({
   queryKey: computed(() => ["job_runs", currentSpace.value?.id]),

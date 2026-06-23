@@ -122,8 +122,8 @@
       </div>
     </template>
 
-    <!-- API -->
-    <template #api>
+    <!-- Integrations -->
+    <template #integrations>
     <section>
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Access Tokens</h2>
@@ -272,11 +272,8 @@
         <code class="px-1 py-0.5 bg-neutral-100 rounded-sm">install_extension</code>.
       </p>
     </section>
-    </template>
 
-    <!-- Extensions -->
-    <template #extensions>
-    <section>
+    <section class="mt-8 pt-6 border-t border-neutral-100">
       <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Extensions</h2>
       <p class="text-size-medium text-neutral-900 mt-1">Install and manage extensions to add functionality</p>
       <ExtensionSettings />
@@ -524,8 +521,7 @@ import SpaceMembers from "./SpaceMembers.vue";
 
 const tabs = [
   { id: "general", label: "General" },
-  { id: "api", label: "API" },
-  { id: "extensions", label: "Extensions" },
+  { id: "integrations", label: "Integrations" },
   { id: "jobs", label: "Jobs" },
   { id: "archive", label: "Archive" },
 ] as const;

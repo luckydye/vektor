@@ -49,10 +49,7 @@ const {
   error: searchError,
   page,
   totalPages,
-  hasPrevPage,
-  hasNextPage,
-  prevPage: handlePrevPage,
-  nextPage: handleNextPage,
+  goToPage: handleGoToPage,
 } = usePagedList({
   queryKey: computed(() => [
     "search",
@@ -401,11 +398,8 @@ const batchArchive = async (ids: string[]) => {
                 class="mt-8 pt-5"
                 :page="page"
                 :total-pages="totalPages"
-                :has-prev-page="hasPrevPage"
-                :has-next-page="hasNextPage"
                 :disabled="isFetchingSearch"
-                @previous="handlePrevPage"
-                @next="handleNextPage"
+                @change="handleGoToPage"
               />
             </template>
 

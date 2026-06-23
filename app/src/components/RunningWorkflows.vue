@@ -31,10 +31,7 @@ const {
   isLoading,
   page,
   totalPages,
-  hasPrevPage,
-  hasNextPage,
-  prevPage,
-  nextPage,
+  goToPage,
   refresh,
 } = usePagedList<WorkflowRun>({
   queryKey: computed(() => ["workflow_runs", props.spaceId]),
@@ -245,10 +242,7 @@ const groupedRuns = computed(() => {
       class="mt-4 pt-4"
       :page="page"
       :total-pages="totalPages"
-      :has-prev-page="hasPrevPage"
-      :has-next-page="hasNextPage"
-      @previous="prevPage"
-      @next="nextPage"
+      @change="goToPage"
     />
   </div>
 </template>

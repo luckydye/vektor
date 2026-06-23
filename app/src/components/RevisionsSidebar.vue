@@ -50,10 +50,7 @@ const {
   fetchAuditLogs,
   page,
   totalPages,
-  hasPrevPage,
-  hasNextPage,
-  nextPage,
-  prevPage,
+  goToPage,
 } = useAuditLogs(props.documentId);
 
 const { currentSpaceId } = useSpace();
@@ -397,11 +394,8 @@ useSync(
         class="shrink-0 px-3 py-2"
         :page="page"
         :total-pages="totalPages"
-        :has-prev-page="hasPrevPage"
-        :has-next-page="hasNextPage"
         :disabled="isFetchingAudit"
-        @previous="prevPage"
-        @next="nextPage"
+        @change="goToPage"
       />
     </div>
   </DockedPanel>

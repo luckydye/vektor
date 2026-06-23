@@ -19,10 +19,7 @@ const {
   error,
   page,
   totalPages,
-  hasPrevPage,
-  hasNextPage,
-  prevPage,
-  nextPage,
+  goToPage,
   refresh,
 } = usePagedList({
   queryKey: computed(() => ["archived_docs", props.spaceId]),
@@ -162,11 +159,8 @@ const handleBatchDelete = async (ids: Set<string>, deselectAll: () => void) => {
         class="mt-3 pt-3"
         :page="page"
         :total-pages="totalPages"
-        :has-prev-page="hasPrevPage"
-        :has-next-page="hasNextPage"
         :disabled="isFetching"
-        @previous="prevPage"
-        @next="nextPage"
+        @change="goToPage"
       />
     </div>
   </div>
