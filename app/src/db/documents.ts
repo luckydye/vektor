@@ -211,12 +211,14 @@ export interface PropertyFilter {
   value: string | null;
 }
 
+type PropertyInit = string | { value: string; type?: string | null };
+
 export async function createDocument(
   spaceId: string,
   createdBy: string,
   slug: string,
   content: string,
-  initialProperties?: Record<string, string>,
+  initialProperties?: Record<string, PropertyInit>,
   parentId?: string | null,
   type?: string,
   createdAt?: Date,
@@ -249,12 +251,15 @@ export async function createDocument(
 
   const properties = initialProperties || {};
 
-  for (const [key, value] of Object.entries(properties)) {
+  for (const [key, raw] of Object.entries(properties)) {
+    const propValue = typeof raw === "object" && raw !== null ? raw.value : raw;
+    const propType = typeof raw === "object" && raw !== null ? (raw.type ?? null) : null;
     await db.insert(property).values({
       id: createId("property"),
       documentId: id,
       key,
-      value,
+      value: propValue,
+      type: propType,
       createdAt: now,
       updatedAt: now,
     });
