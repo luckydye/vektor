@@ -56,13 +56,13 @@ export function contentDisposition(extension: string | undefined): string {
 export const EXTENSION_ASSET_CSP = "sandbox allow-scripts allow-popups allow-forms";
 
 /**
- * CSP for extension JS/CSS assets loaded via dynamic import() or <link>.
- * We intentionally do NOT include `sandbox` here: Chrome hangs the import()
- * promise indefinitely when a module script response carries CSP sandbox on
- * HTTPS origins. JS runs in the page context anyway, so the sandbox would not
- * add meaningful isolation.
+ * JS/CSS assets must carry no CSP. Any CSP directive on a module-script
+ * response (including `default-src 'none'` and `sandbox`) causes Chrome to
+ * silently hang the dynamic import() promise on HTTPS origins. The page's own
+ * CSP already governs what modules may be loaded; a per-module response CSP
+ * adds no meaningful isolation.
  */
-export const EXTENSION_ASSET_CSP_SCRIPT = "default-src 'none'";
+export const EXTENSION_ASSET_CSP_SCRIPT: string | null = null;
 
 /** Security headers applied to all served user files. */
 export function servedFileSecurityHeaders(

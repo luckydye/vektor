@@ -50,14 +50,10 @@ export const GET: APIRoute = (context) =>
       return notFoundResponse("Asset path");
     }
 
-    console.log(`[ext-asset] start ${extensionId}/${assetPath} user=${user.id}`);
-
     // Check ACL-based access to extension
     await verifyExtensionAccess(spaceId, extensionId, user.id);
-    console.log(`[ext-asset] access ok ${extensionId}/${assetPath}`);
 
     const packageBuffer = await getExtensionPackage(spaceId, extensionId);
-    console.log(`[ext-asset] package ${extensionId}/${assetPath} size=${packageBuffer?.length ?? "null"}`);
     if (!packageBuffer) {
       return notFoundResponse("Extension");
     }
@@ -78,20 +74,21 @@ export const GET: APIRoute = (context) =>
 
     const mimeType = getMimeType(assetPath);
     const ext = assetPath.split(".").pop()?.toLowerCase() ?? "";
-    // JS/CSS modules are loaded via dynamic import() — applying CSP sandbox to
-    // them causes Chrome to hang the import promise indefinitely on HTTPS origins.
-    // Reserve the sandbox CSP for HTML/SVG, which can be rendered as documents.
-    const csp = ext === "js" || ext === "mjs" || ext === "css"
-      ? EXTENSION_ASSET_CSP_SCRIPT
-      : EXTENSION_ASSET_CSP;
+    // JS/CSS are loaded via dynamic import() / <link>. Any CSP on the module
+    // script response (sandbox or default-src) causes Chrome to hang the
+    // import() promise indefinitely. Omit CSP entirely for these types.
+    const isScript = ext === "js" || ext === "mjs" || ext === "css";
+    const csp = isScript ? EXTENSION_ASSET_CSP_SCRIPT : EXTENSION_ASSET_CSP;
 
-    return new Response(fileData, {
-      status: 200,
-      headers: {
-        "Content-Type": mimeType,
-        "Cache-Control": "public, max-age=3600",
-        "Content-Security-Policy": csp,
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    const headers: Record<string, string> = {
+      "Content-Type": mimeType,
+      "Content-Length": String(fileData.length),
+      "Cache-Control": "public, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
+    };
+    if (csp !== null) {
+      headers["Content-Security-Policy"] = csp;
+    }
+
+    return new Response(fileData, { status: 200, headers });
   }, "Failed to serve asset");
