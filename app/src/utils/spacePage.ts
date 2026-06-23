@@ -63,6 +63,12 @@ export async function requireSpaceViewer(
   );
 
   if (!hasAccess) {
+    if (!astro.locals.session) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "/login" },
+      });
+    }
     return new Response(null, {
       status: 403,
       statusText: "Forbidden",
