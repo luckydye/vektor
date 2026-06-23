@@ -54,8 +54,7 @@ function localEmbedding(text: string): number[] {
 
 async function remoteEmbedding(text: string): Promise<number[]> {
   const runtimeConfig = config();
-  const apiKey =
-    runtimeConfig.SEARCH_EMBEDDINGS_API_KEY || runtimeConfig.OPENROUTER_API_KEY;
+  const apiKey = runtimeConfig.SEARCH_EMBEDDINGS_API_KEY;
   const model = runtimeConfig.SEARCH_EMBEDDINGS_MODEL || "text-embedding-3-small";
   const baseUrl =
     runtimeConfig.SEARCH_EMBEDDINGS_BASE_URL || "https://openrouter.ai/api/v1";

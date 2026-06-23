@@ -15,7 +15,3 @@ function getEnvBoolean(key: string, defaultValue: boolean = false): boolean {
   }
   return value === "true" || value === "1" || value === "yes";
 }
-
-export const features: FeatureFlags = {
-  canvas: getEnvBoolean("FEATURE_CANVAS", false),
-};

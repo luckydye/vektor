@@ -1,6 +1,7 @@
+import { getAIProvider } from "../db/aiConfig.ts";
 import { getUserProfile, setUserProfile } from "../db/userProfiles.ts";
 import { appLogger } from "../observability/logger.ts";
-import { callModel, getAIProvider } from "./core.ts";
+import { callModel } from "./core.ts";
 
 /** How long after the last completed turn before the profile is regenerated. */
 const IDLE_DELAY_MS = 10 * 60 * 1000;
@@ -46,7 +47,7 @@ async function runProfileUpdate(options: {
   userId: string;
   sessionMessages: unknown[];
 }): Promise<void> {
-  const provider = getAIProvider();
+  const provider = await getAIProvider(options.spaceId);
   const currentProfile = await getUserProfile(options.spaceId, options.userId);
 
   type DisplayMsg = { role: string; content?: string | null };

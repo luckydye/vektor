@@ -3,7 +3,7 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { config, getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
+import { config, getLocalOrigin } from "../config.ts";
 import { extractFile } from "../db/extensions.ts";
 import { activeTraceHeaders } from "../observability/otel.ts";
 import { createJobToken } from "./jobToken.ts";
@@ -91,7 +91,6 @@ export async function createSandbox(): Promise<Sandbox> {
 
       const workerData = {
         ...inputs,
-        ...getLlmWorkerConfig(),
         jobId: executionId,
         spaceId,
         apiUrl,

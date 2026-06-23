@@ -265,6 +265,10 @@ export interface SpaceSecret {
   lastUsedAt: Date | string | null;
 }
 
+export type AIConfigMeta =
+  | { configured: false }
+  | { configured: true; provider: string; model: string; baseUrl?: string; hasApiKey: boolean };
+
 export type OAuthIntegrationProvider = "gitlab" | "youtrack";
 
 export interface OAuthIntegrationConnection {
@@ -1395,6 +1399,32 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/secrets/${encodeURIComponent(name)}`,
       );
+    },
+  };
+
+  agentSettings = {
+    get: async (spaceId: string) => {
+      return await this.apiGet<{ aiProvider: AIConfigMeta }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/settings/ai-provider`,
+      );
+    },
+
+    put: async (
+      spaceId: string,
+      body:
+        | { provider: "anthropic" | "openrouter"; model: string; apiKey: string }
+        | { provider: "ollama"; model: string; baseUrl: string },
+    ) => {
+      return await this.apiPut<{ aiProvider: AIConfigMeta }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/settings/ai-provider`,
+        body,
+      );
+    },
+
+    delete: async (spaceId: string) => {
+      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/settings/ai-provider`);
     },
   };
 

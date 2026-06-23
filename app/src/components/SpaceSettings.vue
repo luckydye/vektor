@@ -460,6 +460,13 @@
     </section>
     </template>
 
+    <!-- Agent -->
+    <template #agent>
+    <section>
+      <AgentSettings />
+    </section>
+    </template>
+
     <!-- Jobs -->
     <template #jobs>
     <section>
@@ -513,6 +520,7 @@ import "@sv/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";
+import AgentSettings from "./AgentSettings.vue";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
 import JobsSettings from "./JobsSettings.vue";
@@ -522,6 +530,7 @@ import SpaceMembers from "./SpaceMembers.vue";
 const tabs = [
   { id: "general", label: "General" },
   { id: "integrations", label: "Integrations" },
+  { id: "agent", label: "Agent" },
   { id: "jobs", label: "Jobs" },
   { id: "archive", label: "Archive" },
 ] as const;

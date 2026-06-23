@@ -3,7 +3,6 @@
 declare namespace App {
   // Note: 'import {} from ""' syntax does not work in .d.ts files.
   type PublicEnv = {
-    VEKTOR_FEATURE_CANVAS?: string;
     VEKTOR_SITE_URL?: string;
     VEKTOR_API_URL?: string;
     VEKTOR_COLLABORATION_HOST?: string;

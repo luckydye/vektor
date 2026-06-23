@@ -1,11 +1,5 @@
 import { Bash } from "just-bash";
-import {
-  config,
-  getConfiguredAnthropicModel,
-  getConfiguredOllamaBaseUrl,
-  getConfiguredOllamaModel,
-  getConfiguredOpenRouterModel,
-} from "../config.ts";
+import { getAIProvider } from "../db/aiConfig.ts";
 import { callAnthropic } from "../provider/anthropic.ts";
 import { callOllama } from "../provider/ollama.ts";
 import { callOpenRouter } from "../provider/openrouter.ts";
@@ -117,34 +111,6 @@ ${
 }`;
 }
 
-export function getAIProvider(): AIProvider {
-  const cfg = config();
-  if (cfg.OLLAMA_BASE_URL) {
-    return {
-      provider: "ollama",
-      baseUrl: getConfiguredOllamaBaseUrl(),
-      model: getConfiguredOllamaModel(),
-    };
-  }
-  if (cfg.ANTHROPIC_API_KEY) {
-    return {
-      provider: "anthropic",
-      apiKey: cfg.ANTHROPIC_API_KEY,
-      model: getConfiguredAnthropicModel(),
-    };
-  }
-  if (cfg.OPENROUTER_API_KEY) {
-    return {
-      provider: "openrouter",
-      apiKey: cfg.OPENROUTER_API_KEY,
-      model: getConfiguredOpenRouterModel(),
-    };
-  }
-  throw new Error(
-    "No AI provider configured. Set OLLAMA_BASE_URL, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY.",
-  );
-}
-
 export async function callModel(options: {
   provider: AIProvider;
   messages: ChatMessage[];
@@ -250,7 +216,7 @@ export async function runAgentPrompt(options: {
     onEvent,
   } = options;
 
-  const provider = options.provider ?? getAIProvider();
+  const provider = options.provider ?? await getAIProvider(spaceId);
   const modelCaller = options.modelCaller ?? callModel;
 
   // Resolve the document type so the system prompt can inline the right

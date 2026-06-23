@@ -2,12 +2,12 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import type { Bash } from "just-bash";
 import type { ChatMessage } from "../provider/types.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
+import { getAIProvider } from "../db/aiConfig.ts";
 import {
   type AgentEvent,
   type AgentResult,
   type AgentShellBootstrap,
   createAgentShell,
-  getAIProvider,
   runAgentPrompt,
 } from "./core.ts";
 
@@ -143,7 +143,7 @@ async function restoreShellState(bash: Bash, state: SerializedShellState) {
   }
 }
 
-function getOrCreateSession(options: {
+async function getOrCreateSession(options: {
   chatId: string;
   apiUrl: string;
   spaceId: string;
@@ -165,7 +165,7 @@ function getOrCreateSession(options: {
       connectedProviders: options.connectedProviders,
     };
     existing.updatedAt = now;
-    return Promise.resolve(existing);
+    return existing;
   }
 
   const parsedShellState = options.shellSnapshot
@@ -187,16 +187,16 @@ function getOrCreateSession(options: {
     } satisfies VektorMcpConfig,
   };
   const session = {
-    bash: createAgentShell(mcpConfigRef, bootstrap, getAIProvider()),
+    bash: createAgentShell(mcpConfigRef, bootstrap, await getAIProvider(options.spaceId)),
     mcpConfigRef,
     connectedProviders: options.connectedProviders,
     updatedAt: now,
   };
   sessionStore.set(key, session);
   if (parsedShellState) {
-    return restoreShellState(session.bash, parsedShellState).then(() => session);
+    await restoreShellState(session.bash, parsedShellState);
   }
-  return Promise.resolve(session);
+  return session;
 }
 
 export async function runAgentInWorker(options: {

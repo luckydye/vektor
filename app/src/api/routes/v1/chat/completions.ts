@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
-import { getAIProvider } from "#agent/core.ts";
+import { getAIProvider } from "#db/aiConfig.ts";
 import {
+  badRequestResponse,
   errorResponse,
   parseJsonBody,
   unauthorizedResponse,
@@ -15,15 +16,19 @@ import { getOpenAICompatibleChatCompletionsUrl } from "#provider/openrouter.ts";
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
     async () => {
+      const spaceId = context.request.headers.get("X-Space-Id");
+      if (!spaceId) {
+        throw badRequestResponse("X-Space-Id header is required");
+      }
+
       if (!context.locals.user) {
         const jobToken = context.request.headers.get("X-Job-Token");
-        const spaceId = context.request.headers.get("X-Space-Id");
-        if (!jobToken || !spaceId || !verifyJobToken(jobToken, spaceId)) {
+        if (!jobToken || !verifyJobToken(jobToken, spaceId)) {
           throw unauthorizedResponse();
         }
       }
 
-      const provider = getAIProvider();
+      const provider = await getAIProvider(spaceId);
       const bodyJson = await parseJsonBody(context.request);
 
       if (provider.provider === "anthropic") {

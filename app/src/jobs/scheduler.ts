@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { getLlmWorkerConfig, getLocalOrigin } from "../config.ts";
+import { getLocalOrigin } from "../config.ts";
 import { extractFile } from "../db/extensions.ts";
 import {
   classifyJobError,
@@ -226,7 +226,6 @@ export async function runJob(
 
         const workerData = {
           ...inputs,
-          ...getLlmWorkerConfig(),
           jobId: executionId,
           spaceId,
           // Job-side API calls must stay on internal backend origin.

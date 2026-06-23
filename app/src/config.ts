@@ -1,9 +1,5 @@
 let _publicEnvVars: Record<string, string> | undefined;
 
-export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
-export const DEFAULT_OPENROUTER_MODEL = "qwen/qwen3.5-397b-a17b";
-export const DEFAULT_OLLAMA_MODEL = "qwen3:latest";
-
 const publicEnvVars = () => {
   if (_publicEnvVars) {
     return _publicEnvVars;
@@ -29,9 +25,6 @@ export function config() {
   if (typeof document === "undefined") {
     const process = globalThis.process;
     return {
-      // Feature flags
-      FEATURE_CANVAS: process.env.VEKTOR_FEATURE_CANVAS,
-
       /**
        * Public origin as in the browser
        */
@@ -110,12 +103,6 @@ export function config() {
       YOUTRACK_OAUTH_TOKEN_URL: process.env.VEKTOR_YOUTRACK_OAUTH_TOKEN_URL,
       YOUTRACK_OAUTH_USERINFO_URL: process.env.VEKTOR_YOUTRACK_OAUTH_USERINFO_URL,
 
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-      OPENROUTER_MODEL: process.env.OPENROUTER_MODEL,
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-      ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
-      OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
-      OLLAMA_MODEL: process.env.OLLAMA_MODEL,
       SEARCH_EMBEDDINGS_PROVIDER: process.env.VEKTOR_SEARCH_EMBEDDINGS_PROVIDER,
       SEARCH_EMBEDDINGS_MODEL: process.env.VEKTOR_SEARCH_EMBEDDINGS_MODEL,
       SEARCH_EMBEDDINGS_BASE_URL: process.env.VEKTOR_SEARCH_EMBEDDINGS_BASE_URL,
@@ -150,7 +137,6 @@ export function config() {
 
   const publicEnv = publicEnvVars();
   return {
-    FEATURE_CANVAS: publicEnv.VEKTOR_FEATURE_CANVAS,
     SITE_URL: publicEnv.VEKTOR_SITE_URL,
     API_URL: publicEnv.VEKTOR_API_URL,
     COLLABORATION_HOST: publicEnv.VEKTOR_COLLABORATION_HOST,
@@ -159,38 +145,6 @@ export function config() {
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
   } as const;
-}
-
-export function getConfiguredOpenRouterModel(): string {
-  return config().OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
-}
-
-export function getConfiguredAnthropicModel(): string {
-  return config().ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
-}
-
-export function getConfiguredOllamaBaseUrl(): string {
-  const baseUrl = config().OLLAMA_BASE_URL?.trim();
-  if (!baseUrl) {
-    throw new Error("OLLAMA_BASE_URL is required when using Ollama.");
-  }
-  return baseUrl.replace(/\/$/, "");
-}
-
-export function getConfiguredOllamaModel(): string {
-  return config().OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
-}
-
-/** LLM provider settings passed to job workers via workerData. */
-export function getLlmWorkerConfig() {
-  return {
-    openrouterApiKey: config().OPENROUTER_API_KEY,
-    openrouterModel: getConfiguredOpenRouterModel(),
-    anthropicApiKey: config().ANTHROPIC_API_KEY,
-    anthropicModel: getConfiguredAnthropicModel(),
-    ollamaBaseUrl: config().OLLAMA_BASE_URL ? getConfiguredOllamaBaseUrl() : null,
-    ollamaModel: config().OLLAMA_BASE_URL ? getConfiguredOllamaModel() : null,
-  };
 }
 
 /**
@@ -210,7 +164,6 @@ export function isTrustProxyEnabled(): boolean {
 export function getPublicEnv(): App.PublicEnv {
   const appConfig = config();
   return {
-    VEKTOR_FEATURE_CANVAS: appConfig.FEATURE_CANVAS,
     VEKTOR_SITE_URL: appConfig.SITE_URL,
     VEKTOR_API_URL: appConfig.API_URL,
     VEKTOR_COLLABORATION_HOST: appConfig.COLLABORATION_HOST,
