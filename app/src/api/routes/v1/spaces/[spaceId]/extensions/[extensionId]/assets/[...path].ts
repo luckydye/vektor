@@ -50,10 +50,14 @@ export const GET: APIRoute = (context) =>
       return notFoundResponse("Asset path");
     }
 
+    console.log(`[ext-asset] start ${extensionId}/${assetPath} user=${user.id}`);
+
     // Check ACL-based access to extension
     await verifyExtensionAccess(spaceId, extensionId, user.id);
+    console.log(`[ext-asset] access ok ${extensionId}/${assetPath}`);
 
     const packageBuffer = await getExtensionPackage(spaceId, extensionId);
+    console.log(`[ext-asset] package ${extensionId}/${assetPath} size=${packageBuffer?.length ?? "null"}`);
     if (!packageBuffer) {
       return notFoundResponse("Extension");
     }
