@@ -197,8 +197,7 @@ export const POST: APIRoute = (context) =>
         });
       }
 
-      const absoluteUrl = new URL(url, context.url).href;
-      return jsonResponse({ url: absoluteUrl, key }, 200);
+      return jsonResponse({ url, key }, 200);
     },
     {
       fallbackMessage: "Failed to upload file",
