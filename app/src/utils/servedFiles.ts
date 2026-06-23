@@ -47,14 +47,22 @@ export function contentDisposition(extension: string | undefined): string {
 }
 
 /**
- * CSP for extension assets. Unlike uploads, extensions are *meant* to ship
- * runnable code (their own JS/HTML UI), so we cannot force download. Instead we
- * sandbox the document into an opaque origin: `allow-scripts` lets the
- * extension run, but the absence of `allow-same-origin` means a malicious
- * extension's HTML, when navigated to or framed, cannot read the app origin's
- * cookies/storage or issue same-origin requests — defeating session theft.
+ * CSP for extension HTML/SVG assets. Sandboxes the document into an opaque
+ * origin: `allow-scripts` lets the extension run, but the absence of
+ * `allow-same-origin` means a malicious extension's HTML, when navigated to or
+ * framed, cannot read the app origin's cookies/storage or issue same-origin
+ * requests — defeating session theft.
  */
 export const EXTENSION_ASSET_CSP = "sandbox allow-scripts allow-popups allow-forms";
+
+/**
+ * CSP for extension JS/CSS assets loaded via dynamic import() or <link>.
+ * We intentionally do NOT include `sandbox` here: Chrome hangs the import()
+ * promise indefinitely when a module script response carries CSP sandbox on
+ * HTTPS origins. JS runs in the page context anyway, so the sandbox would not
+ * add meaningful isolation.
+ */
+export const EXTENSION_ASSET_CSP_SCRIPT = "default-src 'none'";
 
 /** Security headers applied to all served user files. */
 export function servedFileSecurityHeaders(

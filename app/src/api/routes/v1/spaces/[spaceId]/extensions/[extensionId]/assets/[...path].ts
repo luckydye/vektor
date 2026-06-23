@@ -7,7 +7,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { extractFile, getExtensionPackage } from "#db/extensions.ts";
-import { EXTENSION_ASSET_CSP } from "#utils/servedFiles.ts";
+import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/servedFiles.ts";
 
 const MIME_TYPES: Record<string, string> = {
   js: "application/javascript",
@@ -73,15 +73,20 @@ export const GET: APIRoute = (context) =>
     }
 
     const mimeType = getMimeType(assetPath);
+    const ext = assetPath.split(".").pop()?.toLowerCase() ?? "";
+    // JS/CSS modules are loaded via dynamic import() — applying CSP sandbox to
+    // them causes Chrome to hang the import promise indefinitely on HTTPS origins.
+    // Reserve the sandbox CSP for HTML/SVG, which can be rendered as documents.
+    const csp = ext === "js" || ext === "mjs" || ext === "css"
+      ? EXTENSION_ASSET_CSP_SCRIPT
+      : EXTENSION_ASSET_CSP;
 
     return new Response(fileData, {
       status: 200,
       headers: {
         "Content-Type": mimeType,
         "Cache-Control": "public, max-age=3600",
-        // Sandbox extension content into an opaque origin and block MIME
-        // sniffing so a malicious asset cannot run as same-origin code.
-        "Content-Security-Policy": EXTENSION_ASSET_CSP,
+        "Content-Security-Policy": csp,
         "X-Content-Type-Options": "nosniff",
       },
     });
