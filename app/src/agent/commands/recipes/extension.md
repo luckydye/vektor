@@ -78,7 +78,33 @@ export function activate(ctx) {
   yState.observe(() => console.log('turn:', yState.get('turn')));
 }
 ```
-`clientId` is the Yjs numeric peer ID. Lowest value among connected peers = stable host for authoritative writes.
+`clientId` is the Yjs numeric peer ID. There is no awareness object — use a YMap to track peers and share ephemeral state (cursors, presence):
+```js
+export function activate(ctx) {
+  if (!ctx.collaboration) return;
+  const { ydoc, clientId } = ctx.collaboration;
+
+  // Each peer registers itself; others see the full set via observe
+  const peers = ydoc.getMap('ext.mygame.peers');
+  peers.set(String(clientId), { cursor: null });
+
+  // Host election: peer with the lowest numeric clientId is the host
+  function isHost() {
+    const ids = [...peers.keys()].map(Number);
+    return ids.length === 0 || Math.min(...ids) === clientId;
+  }
+
+  peers.observe(() => {
+    console.log('host?', isHost());
+  });
+
+  return () => {
+    // deactivate: remove self so others stop counting this peer
+    peers.delete(String(clientId));
+  };
+}
+```
+Return a cleanup function from `activate` (or use `deactivate`) to remove the peer entry — otherwise stale entries remain until the ydoc is garbage-collected.
 
 ## ctx.api — wiki API client
 Available inside `activate`/`deactivate` via `ctx.api` and `ctx.spaceId`:

@@ -43,11 +43,7 @@ import { document as documentTable } from "#db/schema/space.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import {
-  getDocumentTypeForContentType,
-  getMimeType,
-  toHtmlIfMarkdown,
-} from "#utils/documentContent.ts";
+import { getMimeType, toHtmlIfMarkdown } from "#utils/documentContent.ts";
 import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { stripScriptTags } from "#utils/utils.ts";
@@ -406,7 +402,7 @@ export const PUT: APIRoute = (context) =>
         throw badRequestResponse("Content is required and must be a string");
       }
 
-      nextType = getDocumentTypeForContentType(contentType) ?? existingDoc.type;
+      nextType = existingDoc.type;
       content = toHtmlIfMarkdown(rawContent, contentType, nextType);
     }
 
