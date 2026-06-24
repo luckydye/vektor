@@ -71,6 +71,9 @@ const activeChatTurns = new Map<string, ActiveChatTurn>();
 /** How long a completed turn stays in the map so reconnecting clients can catch up. */
 const ACTIVE_TURN_RETENTION_MS = 1000 * 60 * 5;
 
+/** Keep the streaming response active across reverse proxies while the agent is quiet. */
+const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
 function getActiveTurnKey(options: {
   spaceId: string;
   userId: string | null;
@@ -341,6 +344,7 @@ function createStreamingResponse(
     new ReadableStream({
       async start(controller) {
         let closed = false;
+        let heartbeat: ReturnType<typeof setInterval> | null = null;
         const send = (payload: Record<string, unknown> | string) => {
           if (closed) return;
           const data =
@@ -404,6 +408,21 @@ function createStreamingResponse(
         const listener = (event: AgentEvent) => sendAgentEvent(event);
 
         try {
+          // Flush the response immediately and keep it active while the model is
+          // thinking or a tool is running. Comment frames are ignored by SSE
+          // clients but prevent nginx from treating the upstream as idle.
+          controller.enqueue(encoder.encode(": connected\n\n"));
+          heartbeat = setInterval(() => {
+            if (closed) return;
+            try {
+              controller.enqueue(encoder.encode(": heartbeat\n\n"));
+            } catch {
+              closed = true;
+              if (heartbeat) clearInterval(heartbeat);
+            }
+          }, SSE_HEARTBEAT_INTERVAL_MS);
+          (heartbeat as { unref?: () => void }).unref?.();
+
           // Replay buffered events to late-joining clients.
           for (const event of turn.events) {
             sendAgentEvent(event);
@@ -440,6 +459,7 @@ function createStreamingResponse(
           });
           send("[DONE]");
         } finally {
+          if (heartbeat) clearInterval(heartbeat);
           turn.listeners.delete(listener);
           closed = true;
           try {
@@ -456,7 +476,10 @@ function createStreamingResponse(
     {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-cache, no-transform",
+        // nginx buffers chunked upstream responses by default. ACP is a live
+        // SSE stream and cannot set Content-Length like fixed asset responses.
+        "X-Accel-Buffering": "no",
         Connection: "keep-alive",
       },
     },
