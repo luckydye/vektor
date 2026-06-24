@@ -524,12 +524,22 @@ function addEdgeCurve(
   ctx.lineTo(last.x, last.y);
 }
 
+const sampleCache = new WeakMap<
+  FreehandPath,
+  { scale: number; dx: number; dy: number; samples: ScreenStrokeSample[] }
+>();
+
 function sampleFreehandPath(
   path: FreehandPath,
   transform: WorldTransform,
   style: FreehandStrokeStyle,
 ): ScreenStrokeSample[] {
   if (!path.start) return [];
+
+  const cached = sampleCache.get(path);
+  if (cached && cached.scale === transform.scale && cached.dx === transform.dx && cached.dy === transform.dy) {
+    return cached.samples;
+  }
 
   const samples: ScreenStrokeSample[] = [
     {
@@ -572,6 +582,7 @@ function sampleFreehandPath(
     fromWidth = toWidth;
   }
 
+  sampleCache.set(path, { scale: transform.scale, dx: transform.dx, dy: transform.dy, samples });
   return samples;
 }
 

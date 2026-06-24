@@ -111,7 +111,7 @@ export function createViewportControls({
   onTouchGestureStart,
   minZoom = 0.2,
   maxZoom = 20,
-  wheelZoomSpeed = 0.01,
+  wheelZoomSpeed = 0.001,
 }: ViewportControlsOptions): ViewportControls {
   const touchPointers = new Map<number, PointerEvent>();
   let lastTouchGesture: LastTouchGesture | null = null;
@@ -199,36 +199,57 @@ export function createViewportControls({
     }
   }
 
-  function handleViewportWheel(e: WheelEvent) {
-    e.preventDefault();
+  let wheelRafId: number | null = null;
+  let pendingDx = 0;
+  let pendingDy = 0;
+  let pendingZoom = 1;
+  let pendingZoomX = 0;
+  let pendingZoomY = 0;
+
+  function flushWheel() {
+    wheelRafId = null;
     const camera = getCamera();
     const screen = getScreen();
     const fit = getFit();
+
+    let result = camera;
+    if (pendingDx !== 0 || pendingDy !== 0) {
+      result = panCameraByScreenDelta({ camera: result, screen, fit, dxPx: pendingDx, dyPx: pendingDy });
+      pendingDx = 0;
+      pendingDy = 0;
+    }
+    if (pendingZoom !== 1) {
+      result = zoomCameraAtPoint({
+        camera: result,
+        screen,
+        fit,
+        screenX: pendingZoomX,
+        screenY: pendingZoomY,
+        zoom: result.zoom * pendingZoom,
+        minZoom,
+        maxZoom,
+      });
+      pendingZoom = 1;
+    }
+    setCamera(result);
+  }
+
+  function handleViewportWheel(e: WheelEvent) {
+    e.preventDefault();
     const pointer = targetPoint(target, e.clientX, e.clientY);
 
     if (e.ctrlKey || e.metaKey) {
-      setCamera(
-        zoomCameraAtPoint({
-          camera,
-          screen,
-          fit,
-          screenX: pointer.x,
-          screenY: pointer.y,
-          zoom: camera.zoom * Math.exp(-e.deltaY * wheelZoomSpeed),
-          minZoom,
-          maxZoom,
-        }),
-      );
+      // Accumulate zoom multiplicatively; use the latest pointer as anchor.
+      pendingZoom *= Math.exp(-e.deltaY * wheelZoomSpeed);
+      pendingZoomX = pointer.x;
+      pendingZoomY = pointer.y;
     } else {
-      setCamera(
-        panCameraByScreenDelta({
-          camera,
-          screen,
-          fit,
-          dxPx: e.deltaX,
-          dyPx: e.deltaY,
-        }),
-      );
+      pendingDx += e.deltaX;
+      pendingDy += e.deltaY;
+    }
+
+    if (wheelRafId === null) {
+      wheelRafId = requestAnimationFrame(flushWheel);
     }
   }
 
@@ -277,6 +298,10 @@ export function createViewportControls({
       touchPointers.clear();
       touchGestureActive = false;
       lastTouchGesture = null;
+      if (wheelRafId !== null) {
+        cancelAnimationFrame(wheelRafId);
+        wheelRafId = null;
+      }
     },
   };
 }

@@ -763,8 +763,10 @@ function saveImmediately() {
   void manualSave();
 }
 
+let cachedViewportRect: DOMRect | null = null;
+
 function screenPoint(event: MouseEvent) {
-  const rect = viewportRef.value?.getBoundingClientRect();
+  const rect = cachedViewportRect;
   return {
     x: event.clientX - (rect?.left ?? 0),
     y: event.clientY - (rect?.top ?? 0),
@@ -946,6 +948,24 @@ function renderImages() {
   }
 }
 
+let inkRafId: number | null = null;
+function scheduleInkRender() {
+  if (inkRafId !== null) return;
+  inkRafId = requestAnimationFrame(() => {
+    inkRafId = null;
+    renderInk();
+  });
+}
+
+let presenceRafId: number | null = null;
+function schedulePresenceUpdate() {
+  if (presenceRafId !== null) return;
+  presenceRafId = requestAnimationFrame(() => {
+    presenceRafId = null;
+    updatePresence();
+  });
+}
+
 function renderInk() {
   const canvas = inkRef.value;
   const context = canvas?.getContext("2d");
@@ -966,7 +986,8 @@ function renderInk() {
 }
 
 function resize() {
-  const rect = viewportRef.value?.getBoundingClientRect();
+  const rect = viewportRef.value?.getBoundingClientRect() ?? null;
+  cachedViewportRect = rect;
   screen.value = {
     width: Math.max(1, Math.round(rect?.width ?? 1)),
     height: Math.max(1, Math.round(rect?.height ?? 1)),
@@ -1639,18 +1660,20 @@ function handlePointerMove(event: PointerEvent) {
   localPointer.value = screenToWorld(point);
 
   if (drawingSession && drawingSession.pointerId === event.pointerId) {
-    activeFreehandStroke.value = addCanvasDrawingPoint(
-      drawingSession,
-      event,
-      screenToWorld(point),
-    );
-    renderInk();
+    for (const coalesced of event.getCoalescedEvents()) {
+      activeFreehandStroke.value = addCanvasDrawingPoint(
+        drawingSession,
+        coalesced,
+        screenToWorld(screenPoint(coalesced)),
+      );
+    }
+    scheduleInkRender();
     event.preventDefault();
     return;
   }
 
   if (!dragState || dragState.pointerId !== event.pointerId) {
-    updatePresence();
+    schedulePresenceUpdate();
     return;
   }
 
@@ -1662,7 +1685,7 @@ function handlePointerMove(event: PointerEvent) {
       dxPx: dragState.startPointer.x - event.clientX,
       dyPx: dragState.startPointer.y - event.clientY,
     });
-    updatePresence();
+    schedulePresenceUpdate();
     return;
   }
 
@@ -1675,7 +1698,7 @@ function handlePointerMove(event: PointerEvent) {
     };
     marqueeRect.value = rect;
     applyMarqueeSelection(dragState, rect);
-    updatePresence();
+    schedulePresenceUpdate();
     return;
   }
 
@@ -1735,7 +1758,7 @@ function handlePointerMove(event: PointerEvent) {
   });
   // Yjs shape edits don't trigger an ink redraw, so guides won't appear without
   // this explicit render.
-  renderInk();
+  scheduleInkRender();
 }
 
 function handlePointerUp(event: PointerEvent) {
@@ -2402,6 +2425,8 @@ onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
+  if (inkRafId !== null) cancelAnimationFrame(inkRafId);
+  if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
 });
 </script>
 
