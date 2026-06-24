@@ -69,6 +69,7 @@ import type {
   CanvasTool,
 } from "../canvas/elements/types.ts";
 import { useCollaboration } from "../composeables/useCollaboration.ts";
+import { extensions } from "../utils/extensions.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { filenameFromUrl, IMAGE_RESIZE_TIERS, resizeImageUrl, transformImageUrl } from "../utils/imageUrlTransformers.ts";
@@ -2385,6 +2386,7 @@ onMounted(() => {
   colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   colorSchemeMedia.addEventListener("change", updateThemeMode);
 
+  extensions.setActiveCollaboration(ydoc);
   setupPresence();
   isReady = true;
   if (savePrunedInvalidShapesWhenReady) {
@@ -2405,6 +2407,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  extensions.setActiveCollaboration(null);
   viewportControls?.dispose();
   resizeObserver?.disconnect();
   textShapeObserver?.disconnect();

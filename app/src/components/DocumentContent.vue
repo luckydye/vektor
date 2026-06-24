@@ -14,6 +14,7 @@ import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { setActiveEditor } from "../editor/activeEditor.ts";
+import { extensions } from "../utils/extensions.ts";
 import { type DocumentPresenceProfile, findYSyncState } from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
 import { Actions } from "../utils/actions.ts";
@@ -321,6 +322,7 @@ watch(editing, (isEditing) => {
 });
 
 onMounted(() => {
+  extensions.setActiveCollaboration(collaboration.ydoc.value);
   resetEditingState();
   isMounted.value = true;
 
@@ -337,6 +339,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  extensions.setActiveCollaboration(null);
   collaboration.clearPresence();
   unregisterEditorActions();
   unregisterToolbarActions();

@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/core";
+import * as Y from "yjs";
 import { api, type ExtensionRoute } from "../api/client.ts";
 import { getActiveEditor } from "../editor/activeEditor.ts";
 import {
@@ -53,15 +54,15 @@ export type ExtensionContext = {
     register: (id: string, provider: SuggestionProvider) => void;
     unregister: (id: string) => void;
   };
-  /** Extension-scoped key-value storage (deprecated; no longer persisted) */
-  storage: {
-    get: (key: string) => Promise<string | null>;
-    set: (key: string, value: string) => Promise<void>;
-    delete: (key: string) => Promise<void>;
-    list: (prefix?: string) => Promise<Array<{ key: string; value: string }>>;
-  };
   /** Returns the active editor instance, or null if no editor is active */
   getActiveEditor: () => Editor | null;
+  /**
+   * The active collaboration session, or null when no collaborative document
+   * is currently open (e.g. the extension is running outside a canvas/editor).
+   * Use ydoc.getMap("game.<name>") to store synced game state. clientId is the
+   * Yjs numeric peer ID — the peer with the lowest value is a stable host.
+   */
+  collaboration: { ydoc: Y.Doc; clientId: number } | null;
 };
 
 export type ExtensionInfo = {
@@ -122,6 +123,11 @@ export class Extensions {
   loaded = new Map<string, LoadedExtension>();
   spaceId: string | null = null;
   currentRoute: string | null = null;
+  activeYdoc: Y.Doc | null = null;
+
+  setActiveCollaboration(ydoc: Y.Doc | null) {
+    this.activeYdoc = ydoc;
+  }
 
   /**
    * Initialise extensions for a space
@@ -317,6 +323,7 @@ export class Extensions {
       throw new Error("Cannot create context without spaceId");
     }
 
+    const instance = this;
     return {
       extensionId,
       spaceId: this.spaceId,
@@ -355,17 +362,11 @@ export class Extensions {
           unregisterSuggestionProvider(fullId);
         },
       },
-      storage: {
-        get: async () => null,
-        set: async () => {
-          throw new Error("Extension storage is no longer supported.");
-        },
-        delete: async () => {
-          throw new Error("Extension storage is no longer supported.");
-        },
-        list: async () => [],
-      },
       getActiveEditor,
+      get collaboration() {
+        const ydoc = instance.activeYdoc;
+        return ydoc ? { ydoc, clientId: ydoc.clientID } : null;
+      },
     };
   }
 
