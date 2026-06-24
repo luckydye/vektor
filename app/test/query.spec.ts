@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { type App, computed, effectScope, nextTick, ref } from "vue";
+import {
+  type App,
+  computed,
+  createSSRApp,
+  defineComponent,
+  effectScope,
+  h,
+  nextTick,
+  ref,
+} from "vue";
+import { renderToString } from "vue/server-renderer";
 import {
   QueryClient,
   QueryPlugin,
@@ -45,6 +55,32 @@ beforeEach(() => {
 });
 
 describe("query client", () => {
+  it("isolates query data between Vue apps", async () => {
+    const firstClient = new QueryClient();
+    const secondClient = new QueryClient();
+    firstClient.setQueryData(["current-user"], "first-user");
+    secondClient.setQueryData(["current-user"], "second-user");
+
+    const TestComponent = defineComponent({
+      setup() {
+        const queryClient = useQueryClient();
+        return () => h("span", queryClient.getQueryData(["current-user"]));
+      },
+    });
+    const firstApp = createSSRApp(TestComponent);
+    const secondApp = createSSRApp(TestComponent);
+    firstApp.use(QueryPlugin, { queryClient: firstClient });
+    secondApp.use(QueryPlugin, { queryClient: secondClient });
+
+    const [firstHtml, secondHtml] = await Promise.all([
+      renderToString(firstApp),
+      renderToString(secondApp),
+    ]);
+
+    expect(firstHtml).toBe("<span>first-user</span>");
+    expect(secondHtml).toBe("<span>second-user</span>");
+  });
+
   it("fetches query data and exposes loading state", async () => {
     let calls = 0;
     const scope = effectScope();

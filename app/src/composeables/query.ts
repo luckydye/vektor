@@ -1,5 +1,15 @@
-import type { App, MaybeRef, Ref, ShallowRef } from "vue";
-import { computed, isRef, onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
+import type { App, InjectionKey, MaybeRef, Ref, ShallowRef } from "vue";
+import {
+  computed,
+  getCurrentInstance,
+  inject,
+  isRef,
+  onScopeDispose,
+  ref,
+  shallowRef,
+  toValue,
+  watch,
+} from "vue";
 
 type QueryKey = readonly unknown[];
 type QueryKeyInput = MaybeRef<QueryKey>;
@@ -205,17 +215,27 @@ export class QueryClient {
 }
 
 let activeQueryClient = new QueryClient();
+const QUERY_CLIENT_KEY: InjectionKey<QueryClient> = Symbol("query-client");
 
 export const QueryPlugin = {
-  install(_app: App, options?: { queryClient?: QueryClient }) {
-    if (options?.queryClient) {
-      activeQueryClient = options.queryClient;
+  install(app: App, options?: { queryClient?: QueryClient }) {
+    const queryClient = options?.queryClient ?? new QueryClient();
+
+    // Vue creates a separate app for each Astro island. Providing the client
+    // keeps SSR renders isolated even when multiple requests render at once.
+    if (typeof app.provide === "function") {
+      app.provide(QUERY_CLIENT_KEY, queryClient);
+    } else {
+      // Retain the non-component fallback for effect-scope consumers and tests.
+      activeQueryClient = queryClient;
     }
   },
 };
 
 export function useQueryClient(): QueryClient {
-  return activeQueryClient;
+  return getCurrentInstance()
+    ? inject(QUERY_CLIENT_KEY, activeQueryClient)
+    : activeQueryClient;
 }
 
 function notify(entry: QueryEntry): void {
