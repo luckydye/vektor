@@ -404,7 +404,7 @@ defineExpose({ isEditMode, toggleEditMode });
           </div>
         </category-target>
 
-        <div v-show="expandedItems.has(category.id) && !isEditMode" class="space-y-1">
+        <div v-show="expandedItems.has(category.id) && !isEditMode" class="space-y-1 pt-1 pb-1.5">
           <DocumentTreeItem v-for="doc in category.rootDocs" :key="doc.id" :doc="doc" :all-docs="category.docs"
             :active-doc-id="getActiveDocSlug()" :expanded-items="expandedItems" @toggle="toggleItem" />
         </div>

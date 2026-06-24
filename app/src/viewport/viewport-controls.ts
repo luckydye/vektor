@@ -111,7 +111,7 @@ export function createViewportControls({
   onTouchGestureStart,
   minZoom = 0.2,
   maxZoom = 20,
-  wheelZoomSpeed = 0.001,
+  wheelZoomSpeed = 0.01,
 }: ViewportControlsOptions): ViewportControls {
   const touchPointers = new Map<number, PointerEvent>();
   let lastTouchGesture: LastTouchGesture | null = null;
