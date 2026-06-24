@@ -95,6 +95,13 @@ tasks:
     cmds:
       - ./vektor serve --no-auth
 
+  check:
+    desc: Typecheck the project.
+    dir: ./app
+    cmds:
+      - ../node_modules/.bin/tsgo --noEmit
+      - bunx biome check
+
   test:
     dir: ./app
     dotenv:

@@ -1,6 +1,5 @@
 {
   "name": "@wiki/app",
-  "type": "module",
   "version": "0.0.1",
   "dependencies": {
     "@astrojs/node": "^11.0.0",
@@ -59,5 +58,6 @@
     "#files/*": "./src/files/*",
     "#utils/*": "./src/utils/*",
     "#provider/*": "./src/provider/*"
-  }
+  },
+  "type": "module"
 }

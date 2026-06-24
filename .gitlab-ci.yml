@@ -34,9 +34,26 @@ deploy:
   stage: deploy
   when: manual
   needs: [build]
-  script: task -t ./Deploy.yml deploy
+  script:
+    - mkdir -p ~/.ssh
+    - cat $SSH_KNOWN_HOST >> ~/.ssh/known_hosts
+    - chmod -R 400 ~/.ssh
+    - chmod 400 $SSH_DEPLOY_KEY
+    - scp -v -i $SSH_DEPLOY_KEY ./compose.yaml $DEST_HOST_USER@$DEST_HOST:$DEST_HOST_DIR/compose.yaml
+    - scp -v -i $SSH_DEPLOY_KEY $DEST_ENV $DEST_HOST_USER@$DEST_HOST:$DEST_HOST_DIR/env
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST docker compose -f $DEST_HOST_DIR/compose.yaml down
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST "docker login $CI_REGISTRY -u gitlab-ci-token -p $CI_JOB_TOKEN"
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST docker compose -f $DEST_HOST_DIR/compose.yaml pull
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST "mkdir -p $DEST_HOST_DIR/bin"
+    - scp -O -i $SSH_DEPLOY_KEY ./app/vektor $DEST_HOST_USER@$DEST_HOST:$DEST_HOST_DIR/bin/vektor
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST docker compose -f $DEST_HOST_DIR/compose.yaml up -d
 
 shutdown:
   stage: deploy
   when: manual
-  script: task -t ./Deploy.yml shutdown
+  script:
+    - mkdir -p ~/.ssh
+    - cat $SSH_KNOWN_HOST >> ~/.ssh/known_hosts
+    - chmod -R 400 ~/.ssh
+    - chmod 400 $SSH_DEPLOY_KEY
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST docker compose -f $DEST_HOST_DIR/compose.yaml down
