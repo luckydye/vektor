@@ -1,7 +1,6 @@
 <script setup lang="ts">
 defineOptions({ inheritAttrs: false });
 
-import { marked } from "marked";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import {
   clockIcon,
@@ -29,12 +28,13 @@ import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
 import { t } from "../utils/lang.ts";
+import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
-import MessageInput from "./MessageInput.vue";
 import type { PendingAttachment } from "./MessageInput.vue";
+import MessageInput from "./MessageInput.vue";
 
 const props = defineProps({
   documentId: {
@@ -206,14 +206,13 @@ async function ensureMentionDocs(): Promise<DocumentWithProperties[]> {
 }
 
 async function updateMentionSuggestions() {
-  const textarea = messageInputEl.value?.el;
-  if (!textarea) {
+  const selection = messageInputEl.value?.getSelectionContext();
+  if (!selection) {
     closeMentionSuggestions();
     return;
   }
 
-  const caret = textarea.selectionStart ?? messageInput.value.length;
-  const beforeCaret = messageInput.value.slice(0, caret);
+  const { caret, beforeCaret } = selection;
   const match = beforeCaret.match(/(?:^|\s)@([a-zA-Z0-9._/-]*)$/);
   if (!match) {
     closeMentionSuggestions();
@@ -293,19 +292,8 @@ function selectMention(suggestion: MentionSuggestion) {
   const start = mentionStart.value;
   const end = mentionEnd.value;
   if (start < 0 || end < 0) return;
-  const token = `@[${suggestion.title}](doc:${suggestion.id}) `;
-  const before = messageInput.value.slice(0, start);
-  const after = messageInput.value.slice(end);
-  messageInput.value = `${before}${token}${after}`;
+  messageInputEl.value?.insertMention(start, end, suggestion.title, suggestion.id);
   closeMentionSuggestions();
-
-  nextTick(() => {
-    const textarea = messageInputEl.value?.el;
-    if (!textarea) return;
-    const nextPos = before.length + token.length;
-    textarea.focus();
-    textarea.setSelectionRange(nextPos, nextPos);
-  });
 }
 
 function onMessageKeydown(event: KeyboardEvent) {
@@ -1046,18 +1034,6 @@ function scrollThinkingToBottom() {
   });
 }
 
-const markdownRenderer = new marked.Renderer();
-markdownRenderer.html = ({ text }: { text: string }) =>
-  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-function renderMarkdown(content: string): string {
-  return marked.parse(content, {
-    breaks: true,
-    gfm: true,
-    renderer: markdownRenderer,
-  }) as string;
-}
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 Actions.register("ai-chat:toggle", {
@@ -1206,7 +1182,7 @@ onUnmounted(() => {
             </div>
             <div class="flex-1 min-w-0">
               <div class="bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm">
-                <div class="px-3.5 py-3 text-size-medium text-neutral-800 leading-relaxed markdown-content" v-html="renderMarkdown(message.content)"></div>
+                <div class="px-3.5 py-3 text-size-medium text-neutral-800 leading-relaxed markdown-content" v-html="renderMessageMarkdown(message.content)"></div>
               </div>
               <!-- Timestamp + model + copy/refresh icons -->
               <div class="flex items-center justify-between mt-1.5 px-0.5">
@@ -1264,7 +1240,7 @@ onUnmounted(() => {
             v-else
             class="max-w-[80%] bg-primary-600 text-white rounded-xl px-3.5 py-2.5 ml-auto"
           >
-            <p class="text-size-medium whitespace-pre-wrap leading-relaxed">{{ message.content }}</p>
+            <div class="text-size-medium leading-relaxed markdown-content user-markdown" v-html="renderMessageMarkdown(message.content)" />
             <div v-if="message.attachments?.length" class="mt-2 space-y-1.5">
               <a
                 v-for="attachment in message.attachments"
@@ -1490,7 +1466,9 @@ details[open] .details-chevron { transform: rotate(90deg); }
 .markdown-content :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
 .markdown-content :deep(blockquote) { border-left: 3px solid var(--color-neutral-200); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-neutral-500); }
 .markdown-content :deep(strong) { font-weight: 600; }
+.markdown-content :deep(em) { font-style: italic; }
 .markdown-content :deep(hr) { margin: 0.75rem 0; border-color: var(--color-neutral-200); }
+.user-markdown :deep(a) { color: inherit; }
 
 /* ── Chat bubble theming ────────────────────────────────────────────── */
 

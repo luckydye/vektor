@@ -30,6 +30,7 @@ import type { Comment } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { useComments } from "../composeables/useComments.ts";
 import docStyles from "../styles/document.css?inline";
+import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
 
 interface OverlayState {
   documentId: string;
@@ -305,9 +306,10 @@ function formatCommentTime(date: Date | string): string {
                                 </span>
                               </div>
 
-                              <p class="mt-1 text-size-medium text-neutral-700 leading-relaxed">
-                                {{ comment.content }}
-                              </p>
+                              <div
+                                class="mt-1 text-size-medium text-neutral-700 leading-relaxed markdown-comment"
+                                v-html="renderMessageMarkdown(comment.content)"
+                              />
                             </div>
                           </div>
                         </div>
@@ -341,3 +343,11 @@ function formatCommentTime(date: Date | string): string {
     </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+.markdown-comment :deep(ul) { list-style: disc; padding-left: 1.25rem; }
+.markdown-comment :deep(ol) { list-style: decimal; padding-left: 1.25rem; }
+.markdown-comment :deep(strong) { font-weight: 600; }
+.markdown-comment :deep(em) { font-style: italic; }
+.markdown-comment :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
+</style>

@@ -3,6 +3,7 @@ import { nextTick, ref, watch } from "vue";
 import { checkThinIcon, closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
 import { useMembers } from "../composeables/useMembers.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";
+import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
 import Avatar from "./Avatar.vue";
 import ButtonGhost from "./ButtonGhost.vue";
 import MessageInput from "./MessageInput.vue";
@@ -141,9 +142,10 @@ watch(
             </ButtonGhost>
           </div>
 
-          <div class="text-size-medium text-neutral-700 leading-relaxed whitespace-pre-wrap break-words">
-            {{ comment.content }}
-          </div>
+          <div
+            class="comment-markdown text-size-medium text-neutral-700 leading-relaxed break-words"
+            v-html="renderMessageMarkdown(comment.content)"
+          />
         </div>
       </div>
     </div>
@@ -165,3 +167,12 @@ watch(
     </div>
   </div>
 </template>
+
+<style scoped>
+.comment-markdown :deep(p) { margin: 0.2rem 0; }
+.comment-markdown :deep(ul) { list-style: disc; padding-left: 1.1rem; }
+.comment-markdown :deep(ol) { list-style: decimal; padding-left: 1.1rem; }
+.comment-markdown :deep(strong) { font-weight: 600; }
+.comment-markdown :deep(em) { font-style: italic; }
+.comment-markdown :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
+</style>
