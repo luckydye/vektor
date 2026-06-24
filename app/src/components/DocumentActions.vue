@@ -37,7 +37,7 @@ const {
   removeHeaderImage,
   dialogOpen,
 } = useHeaderImage();
-const { cancelCount, editing, saveStatus } = useEditor();
+const { cancelCount, editing, saveStatus, hasChanges } = useEditor();
 
 const userCanEdit = computed(() => {
   return canEdit(currentSpace.value?.userRole);
@@ -45,6 +45,7 @@ const userCanEdit = computed(() => {
 
 const isCreatingToken = ref(false);
 const isSaving = computed(() => saveStatus.value === "saving");
+const saveDisabled = computed(() => isSaving.value || !hasChanges.value);
 
 function registerEditAction() {
   Actions.register("document:edit", {
@@ -408,7 +409,7 @@ watchEffect(() => {
         <button
           type="button"
           class="inline-flex justify-center items-center px-3xs button-primary-pointer"
-          :disabled="isSaving"
+          :disabled="saveDisabled"
           @click="publishDocument"
         >
           <Icon name="check" />
@@ -419,7 +420,7 @@ watchEffect(() => {
             slot="trigger"
             type="button"
             class="flex items-center justify-center border-l border-primary-700 px-4xs button-primary-pointer"
-            :disabled="isSaving"
+            :disabled="saveDisabled"
             aria-label="Save options"
           >
             <Icon name="chevron-down" />
@@ -433,7 +434,7 @@ watchEffect(() => {
                 <button
                   type="button"
                   class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
-                  :disabled="isSaving"
+                  :disabled="saveDisabled"
                   @click="stopEditing"
                 >
                   <div class="font-medium text-size-small">Save</div>
@@ -442,7 +443,7 @@ watchEffect(() => {
                 <button
                   type="button"
                   class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
-                  :disabled="isSaving"
+                  :disabled="saveDisabled"
                   @click="saveAsSuggestion"
                 >
                   <div class="font-medium text-size-small">Save as suggestion</div>

@@ -91,6 +91,7 @@ provideCollaboration(collaboration);
 const {
   editing,
   cancelCount,
+  hasChanges,
   resetEditingState,
   shouldMountEditor,
   canMountEditor,
@@ -177,15 +178,23 @@ watch(
       collaboration.updatePresence();
     };
 
+    const trackLocalChange = ({ transaction }: { transaction: { docChanged: boolean; getMeta: (key: string) => unknown } }) => {
+      if (transaction.docChanged && !transaction.getMeta("y-sync$")) {
+        hasChanges.value = true;
+      }
+    };
+
     currentEditor.on("selectionUpdate", updatePresence);
     currentEditor.on("focus", updatePresence);
     currentEditor.on("blur", updatePresence);
     currentEditor.on("transaction", updatePresence);
+    currentEditor.on("update", trackLocalChange as Parameters<typeof currentEditor.on>[1]);
     onCleanup(() => {
       currentEditor.off("selectionUpdate", updatePresence);
       currentEditor.off("focus", updatePresence);
       currentEditor.off("blur", updatePresence);
       currentEditor.off("transaction", updatePresence);
+      currentEditor.off("update", trackLocalChange as Parameters<typeof currentEditor.on>[1]);
     });
   },
   { flush: "post" },

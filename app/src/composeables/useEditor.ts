@@ -13,6 +13,9 @@ export const editing = ref(false);
 export const saveStatus: Ref<SaveStatus | ""> = ref("");
 export const saveError = ref<Error | null>(null);
 
+/** Whether the document content has changed since the edit session started. */
+export const hasChanges = ref(false);
+
 /**
  * Incremented each time the user explicitly cancels editing (as opposed to
  * saving). DocumentContent watches this to run cancel-specific cleanup
@@ -25,6 +28,7 @@ export function resetEditingState() {
   editing.value = false;
   saveStatus.value = "";
   saveError.value = null;
+  hasChanges.value = false;
 }
 
 type UseEditorOptions = {
@@ -40,6 +44,7 @@ type EditorState = {
   editing: typeof editing;
   saveStatus: typeof saveStatus;
   saveError: typeof saveError;
+  hasChanges: typeof hasChanges;
   cancelCount: typeof cancelCount;
   resetEditingState: typeof resetEditingState;
   shouldMountEditor: Ref<boolean>;
@@ -63,6 +68,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
       editing,
       saveStatus,
       saveError,
+      hasChanges,
       cancelCount,
       resetEditingState,
       shouldMountEditor,
@@ -122,6 +128,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     }
 
     editing.value = false;
+    hasChanges.value = false;
     saveStatus.value = "saved";
     saveStatusTimer = setTimeout(() => {
       if (saveStatus.value === "saved") {
@@ -220,6 +227,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     editing,
     saveStatus,
     saveError,
+    hasChanges,
     cancelCount,
     resetEditingState,
     shouldMountEditor,
