@@ -2387,6 +2387,7 @@ onMounted(() => {
   colorSchemeMedia.addEventListener("change", updateThemeMode);
 
   extensions.setActiveCollaboration(ydoc);
+  extensions.setActiveDocumentId(props.documentId ?? null);
   setupPresence();
   isReady = true;
   if (savePrunedInvalidShapesWhenReady) {
@@ -2408,6 +2409,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   extensions.setActiveCollaboration(null);
+  extensions.setActiveDocumentId(null);
   viewportControls?.dispose();
   resizeObserver?.disconnect();
   textShapeObserver?.disconnect();

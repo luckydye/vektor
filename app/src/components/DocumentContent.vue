@@ -323,6 +323,7 @@ watch(editing, (isEditing) => {
 
 onMounted(() => {
   extensions.setActiveCollaboration(collaboration.ydoc.value);
+  extensions.setActiveDocumentId(documentId.value ?? null);
   resetEditingState();
   isMounted.value = true;
 
@@ -340,6 +341,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   extensions.setActiveCollaboration(null);
+  extensions.setActiveDocumentId(null);
   collaboration.clearPresence();
   unregisterEditorActions();
   unregisterToolbarActions();

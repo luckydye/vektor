@@ -34,11 +34,18 @@ export type { SuggestionItem, SuggestionProvider };
  */
 export type ViewRenderFn = (container: HTMLElement) => void | (() => void);
 
+export type VektorGlobal = Omit<ExtensionContext, "extensionId"> & {
+  /** All loaded extensions in the current space */
+  extensions: Extensions;
+};
+
 export type ExtensionContext = {
   extensionId: string;
   spaceId: string;
   /** Current extension route path, if rendering a view */
   route: string | null;
+  /** The active document ID, or null when no document is open */
+  documentId: string | null;
   api: typeof api;
   actions: {
     register: (id: string, options: ActionOptions) => string;
@@ -64,6 +71,7 @@ export type ExtensionContext = {
    */
   collaboration: { ydoc: Y.Doc; clientId: number } | null;
 };
+
 
 export type ExtensionInfo = {
   id: string;
@@ -124,9 +132,24 @@ export class Extensions {
   spaceId: string | null = null;
   currentRoute: string | null = null;
   activeYdoc: Y.Doc | null = null;
+  activeDocumentId: string | null = null;
+
+  private readonly globalLoaded: LoadedExtension = {
+    info: { id: "vektor" } as ExtensionInfo,
+    module: null,
+    viewModule: null,
+    registeredActions: new Set(),
+    registeredViews: new Map(),
+    registeredSuggestions: new Set(),
+    viewCleanup: null,
+  };
 
   setActiveCollaboration(ydoc: Y.Doc | null) {
     this.activeYdoc = ydoc;
+  }
+
+  setActiveDocumentId(documentId: string | null) {
+    this.activeDocumentId = documentId;
   }
 
   /**
@@ -147,6 +170,13 @@ export class Extensions {
     }
 
     this.spaceId = spaceId;
+
+    if (typeof window !== "undefined") {
+      const ctx = this.createContext("vektor", this.globalLoaded);
+      const { extensionId: _, ...descriptors } = Object.getOwnPropertyDescriptors(ctx);
+      // @ts-expect-error
+      globalThis.vektor = Object.defineProperties({ extensions: this }, descriptors);
+    }
 
     this.initPromise = (async () => {
       const extensions = await this.fetchExtensions(spaceId);
@@ -327,7 +357,12 @@ export class Extensions {
     return {
       extensionId,
       spaceId: this.spaceId,
-      route: this.currentRoute,
+      get route() {
+        return instance.currentRoute;
+      },
+      get documentId() {
+        return instance.activeDocumentId;
+      },
       api,
       actions: {
         register: (id: string, options: ActionOptions) => {
@@ -574,11 +609,6 @@ export class Extensions {
 // Singleton instance
 export const extensions = new Extensions();
 
-// Expose globally for debugging
-if (typeof window !== "undefined") {
-  // @ts-expect-error
-  globalThis.Extensions = extensions;
-}
 
 const HTMLElement = globalThis.HTMLElement || class {};
 
