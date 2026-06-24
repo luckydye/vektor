@@ -180,7 +180,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
     <CreateSpaceDialog v-model:show="showCreateDialog" @create="handleCreateSpace" />
     
     <!-- Space Selector -->
-    <div class="px-4xs py-4xs flex-none sticky top-0 bg-background z-10 border-b border-neutral-100 rounded-t-md">
+    <div class="px-5xs py-5xs flex-none sticky top-0 bg-background z-10 border-b border-neutral-100 rounded-t-md">
       <SpaceSelector
         :spaces="uiSpaces"
         :model-value="currentSpace?.id"

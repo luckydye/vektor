@@ -14,7 +14,7 @@ const props = defineProps<{
   <a
     :href="props.href"
     :class="twMerge(
-      'button-with-icon inline-flex items-center px-3xs rounded-md font-normal text-neutral-800 transition-colors hover:transition-none cursor-pointer',
+      'button-with-icon inline-flex items-center px-[0.8rem] rounded-md font-normal text-neutral-800 transition-colors hover:transition-none cursor-pointer',
       '@max-xs:justify-center',
       isActive ? 'bg-primary-100 text-primary-700' : 'hover:bg-primary-50 active:bg-primary-100',
       'leading-[36px] min-h-[36px]',

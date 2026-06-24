@@ -15,7 +15,7 @@ const props = withDefaults(
   }>(),
   {
     defaultWidth: 280,
-    minWidth: 84,
+    minWidth: 76,
     maxWidth: 500,
   },
 );
@@ -200,7 +200,7 @@ onUnmounted(() => {
             
             <div class="before:backdrop-surface-blur flex flex-col bg-background/90 rounded-lg relative overflow-hidden border border-neutral-100 w-full h-full">
                 <!-- Navigation -->
-                <wiki-scroll name="navigation" class="z-1 flex-1 overflow-y-auto overflow-x-hidden min-w-[70px]">
+                <wiki-scroll name="navigation" class="z-1 flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]">
                     <Navigation />
                 </wiki-scroll>
 

@@ -340,7 +340,7 @@ defineExpose({ isEditMode, toggleEditMode });
     </div>
 
     <!-- Categories List and Documents -->
-    <div class="px-5xs space-y-1">
+    <div class="px-4xs space-y-1">
       <!-- Category Items -->
       <div v-for="category in categoriesWithDocs" :key="category.id">
         <category-target

@@ -153,7 +153,7 @@ const handleCreateDoc = (event: Event) => {
     </a-popover-trigger>
     
     <!-- Action Buttons -->
-    <div class="@max-sm:hidden flex items-start gap-2xs flex-none py-4xs pr-5xs">
+    <div class="@max-sm:hidden flex items-center gap-2xs flex-none py-5xs pr-3xs">
       <ButtonSecondary v-if="props.canCreateDocs" aria-label="New document" @click="handleCreateDoc">
         <Icon name="plus" class="-mx-1" />
       </ButtonSecondary>
