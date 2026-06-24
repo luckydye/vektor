@@ -3,8 +3,8 @@ title: Create a new document
 keywords: create, new, document, page, title, parent
 ---
 
-Content comes from a file or stdin (HTML or Markdown):
-   echo "<h1>Notes</h1><p>...</p>" | vektor create --title "Notes"
-   vektor create --title "Child page" --parent <parent-document-id> page.html
-   vektor create --title "My App" --type app app.html     # sandboxed HTML app
-The result prints the new document id. Use --json for full metadata.
+Call `write_document` without a document ID. Pass HTML or Markdown in `content`:
+   {"title":"Notes","content":"<h1>Notes</h1><p>...</p>"}
+   {"title":"Child page","parentId":"<parent-document-id>","content":"..."}
+   {"title":"My App","type":"app","content":"<!doctype html>..."}
+The result contains the new document ID and metadata.

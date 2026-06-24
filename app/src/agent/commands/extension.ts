@@ -1,8 +1,7 @@
 import { posix } from "node:path";
 import { defineCommand } from "just-bash";
 import { extractManifest } from "../../utils/extensionManifest.ts";
-import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
-import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
+import { installExtension, type VektorMcpConfig } from "../../utils/vektorMcp.ts";
 
 const USAGE = "usage: extension install <zip-file> | extension init <name>\n";
 
@@ -41,9 +40,9 @@ async function handleInstall(
   const content = zipBuffer.toString("base64");
   const filename = posix.basename(filePath);
 
-  const result = await callVektorTool(mcpConfig, "install_extension", {
+  const result = await installExtension(mcpConfig, {
     filename,
-    content,
+    contentBase64: content,
   });
 
   return {

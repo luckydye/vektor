@@ -213,7 +213,7 @@ if (diffMins >= 1 && diffMins < 60) {
     >
       <!-- Archived Document Disclaimer -->
       {document.archived && (
-        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 lg:mx-10">
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 md:mx-10">
           <div class="flex items-start justify-between gap-3">
             <div class="space-y-2">
               <div class="text-yellow-600 font-semibold text-size-medium">
@@ -242,12 +242,12 @@ if (diffMins >= 1 && diffMins < 60) {
         isApp
           ? "hidden"
           : isCanvas
-            ? "block pointer-events-none absolute top-xs right-0 left-0 z-20 lg:right-(--inset-right) lg:left-(--inset-left)"
+            ? "block pointer-events-none absolute top-xs right-0 left-0 z-20 md:right-(--inset-right) md:left-(--inset-left)"
             : "mb-xl pt-xs contents",
       )}>
           <div
             class={twMerge(
-              "flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0 mt-2xs mb-4xs",
+              "flex min-h-7 items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs",
               isCanvas && "pointer-events-auto",
             )}
             data-inset
@@ -274,7 +274,7 @@ if (diffMins >= 1 && diffMins < 60) {
     
           <div
             class={twMerge(
-              "flex flex-row justify-between gap-6 py-3xs px-xs lg:gap-4 lg:px-xl print:px-0",
+              "flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0",
               isCanvas ? "pointer-events-auto" : "bg-neutral-10",
               "sticky top-0 z-10"
             )}
@@ -305,7 +305,7 @@ if (diffMins >= 1 && diffMins < 60) {
           <div
             id="document-properties"
             class={twMerge(
-              "px-xs lg:px-xl print:px-0 mb-l",
+              "px-xs md:px-xl print:px-0 mb-l",
               isCanvas && "pointer-events-auto",
             )}
             data-inset
@@ -326,7 +326,7 @@ if (diffMins >= 1 && diffMins < 60) {
         class={twMerge(
           "max-w-none text-neutral-700",
           isCsv || isDatabase ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "h-full overflow-x-auto",
-          isPaddedDocument && "px-xs lg:px-xl print:px-0",
+          isPaddedDocument && "px-xs md:px-xl print:px-0",
         )}
       >
         <RevisionView

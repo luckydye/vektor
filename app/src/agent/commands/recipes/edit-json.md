@@ -3,10 +3,10 @@ title: Edit a JSON document with jq-style paths
 keywords: edit, json, set, unset, push, path, jq
 ---
 
-1. Read it first: vektor read <id>
-2. Operations (paths are simplified jq; values parsed as JSON, else taken as string):
-   vektor edit <id> set .config.timeout 30
-   vektor edit <id> set .items[0].name "Widget"
-   vektor edit <id> push .items '{"name":"new entry"}'    # append to array
-   vektor edit <id> unset .items[2]                       # remove element/key
-Quoted keys work too: set '.["weird key"].x' 1
+1. Read it first with `read_document`, or `get_current_document` for the current page.
+2. Call `edit_document` with one or more operations. Paths are simplified jq paths:
+   {"documentId":"<id>","operations":[{"op":"set","path":".config.timeout","value":30}]}
+   {"documentId":"<id>","operations":[{"op":"set","path":".items[0].name","value":"Widget"}]}
+   {"documentId":"<id>","operations":[{"op":"push","path":".items","value":{"name":"new entry"}}]}
+   {"documentId":"<id>","operations":[{"op":"unset","path":".items[2]"}]}
+Quoted keys work too: `.['weird key'].x`.

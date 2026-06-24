@@ -240,22 +240,6 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     {
-      name: "upload_artifact",
-      description:
-        "Upload a file artifact to the current Vektor space. Pass raw text in content, or base64-encoded bytes with encoding=base64 for binary files.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          filename: { type: "string" },
-          content: { type: "string" },
-          contentType: { type: "string" },
-          encoding: { type: "string", enum: ["base64"] },
-          documentId: { type: "string" },
-        },
-        required: ["filename", "content"],
-      },
-    },
-    {
       name: "write_document",
       description:
         "Create or update a document in the current Vektor space. Omit documentId to create a new document, provide it to update an existing one. Content can be HTML or Markdown.",
@@ -382,19 +366,6 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     {
-      name: "install_extension",
-      description:
-        "Install or update a Vektor extension from a ZIP package. Pass base64-encoded ZIP content. The ZIP must contain manifest.json at root and dist/ with JS entry points.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          filename: { type: "string" },
-          content: { type: "string" },
-        },
-        required: ["filename", "content"],
-      },
-    },
-    {
       name: "get_documentation",
       description:
         "Get Vektor documentation for a specific section (api, extensions, workflows).",
@@ -452,6 +423,49 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         ]
       : []),
   ];
+}
+
+export async function uploadFile(
+  config: VektorMcpConfig,
+  options: {
+    filename: string;
+    contentBase64: string;
+    contentType?: string;
+    documentId?: string;
+  },
+) {
+  const form = new FormData();
+  const bytes = Buffer.from(options.contentBase64, "base64");
+  form.set("filename", options.filename);
+  form.set(
+    "file",
+    new Blob([bytes], {
+      type: options.contentType ?? "application/octet-stream",
+    }),
+    options.filename,
+  );
+  if (options.documentId) {
+    form.set("documentId", options.documentId);
+  }
+  return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/uploads`, {
+    method: "POST",
+    body: form,
+    headers: { Origin: new URL(config.apiUrl).origin },
+  });
+}
+
+export async function installExtension(
+  config: VektorMcpConfig,
+  options: { filename: string; contentBase64: string },
+) {
+  const form = new FormData();
+  const bytes = Buffer.from(options.contentBase64, "base64");
+  form.set("file", new Blob([bytes], { type: "application/zip" }), options.filename);
+  return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/extensions`, {
+    method: "POST",
+    body: form,
+    headers: { Origin: new URL(config.apiUrl).origin },
+  });
 }
 
 export async function callTool(config: VektorMcpConfig, name: string, rawArgs: unknown) {
@@ -639,30 +653,6 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
         `/api/v1/spaces/${config.spaceId}/workflows/runs${buildQuery({ documentId, sourceExtensionId })}`,
       );
     }
-    case "upload_artifact": {
-      const form = new FormData();
-      const filename = expectString(args, "filename");
-      const content = expectString(args, "content");
-      const contentType =
-        expectString(args, "contentType", { optional: true }) ??
-        "application/octet-stream";
-      const encoding = expectString(args, "encoding", { optional: true });
-      const bytes =
-        encoding === "base64"
-          ? Buffer.from(content, "base64")
-          : new TextEncoder().encode(content);
-      form.set("filename", filename);
-      form.set("file", new Blob([bytes], { type: contentType }), filename);
-      const documentId = expectString(args, "documentId", { optional: true });
-      if (documentId) {
-        form.set("documentId", documentId);
-      }
-      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/uploads`, {
-        method: "POST",
-        body: form,
-        headers: { Origin: new URL(config.apiUrl).origin },
-      });
-    }
     case "get_documentation": {
       const section = expectString(args, "section");
       return await apiRequest(config, `/docs/${section}`);
@@ -685,18 +675,6 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
           body: JSON.stringify({ method, path, headers, body }),
         },
       );
-    }
-    case "install_extension": {
-      const form = new FormData();
-      const filename = expectString(args, "filename");
-      const content = expectString(args, "content");
-      const bytes = Buffer.from(content, "base64");
-      form.set("file", new Blob([bytes], { type: "application/zip" }), filename);
-      return await apiRequest(config, `/api/v1/spaces/${config.spaceId}/extensions`, {
-        method: "POST",
-        body: form,
-        headers: { Origin: new URL(config.apiUrl).origin },
-      });
     }
     default:
       throw new Error(`Unknown tool: ${name}`);

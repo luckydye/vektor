@@ -1,7 +1,6 @@
 import { posix } from "node:path";
 import { defineCommand } from "just-bash";
-import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
-import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
+import { uploadFile, type VektorMcpConfig } from "../../utils/vektorMcp.ts";
 
 export function uploadCommand(mcpConfigRef: { current: VektorMcpConfig }) {
   return defineCommand("upload", async (args, ctx) => {
@@ -41,10 +40,9 @@ export function uploadCommand(mcpConfigRef: { current: VektorMcpConfig }) {
     const content = Buffer.from(bytes).toString("base64");
     const filename = posix.basename(filePath);
 
-    const result = await callVektorTool(mcpConfigRef.current, "upload_artifact", {
+    const result = await uploadFile(mcpConfigRef.current, {
       filename,
-      content,
-      encoding: "base64",
+      contentBase64: content,
       ...(contentType ? { contentType } : {}),
       ...(documentId ? { documentId } : {}),
     });

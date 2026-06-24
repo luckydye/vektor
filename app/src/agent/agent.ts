@@ -2,7 +2,6 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import type { Bash } from "just-bash";
 import type { ChatMessage } from "../provider/types.ts";
 import type { VektorMcpConfig } from "../utils/vektorMcp.ts";
-import { getAIProvider } from "../db/aiConfig.ts";
 import {
   type AgentEvent,
   type AgentResult,
@@ -187,7 +186,7 @@ async function getOrCreateSession(options: {
     } satisfies VektorMcpConfig,
   };
   const session = {
-    bash: createAgentShell(mcpConfigRef, bootstrap, await getAIProvider(options.spaceId)),
+    bash: createAgentShell(mcpConfigRef, bootstrap),
     mcpConfigRef,
     connectedProviders: options.connectedProviders,
     updatedAt: now,
