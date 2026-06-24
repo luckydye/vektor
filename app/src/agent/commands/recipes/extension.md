@@ -65,6 +65,21 @@ Add `"document"` to a route's `placements` array to make it appear in the docume
 - Use `["page", "document"]` to appear in both places
 - The view entry and `ctx.views.register` work exactly the same as for page routes — the framework handles embedding the rendered container as a document block
 
+## ctx.collaboration — shared Yjs document
+Available when a canvas or document is open; `null` otherwise. Always guard:
+```js
+export function activate(ctx) {
+  if (!ctx.collaboration) return;
+  const { ydoc, clientId } = ctx.collaboration;
+
+  // Read/write synced state — visible to all peers in the room
+  const yState = ydoc.getMap('game.mygame');
+  yState.set('turn', 1);
+  yState.observe(() => console.log('turn:', yState.get('turn')));
+}
+```
+`clientId` is the Yjs numeric peer ID. Lowest value among connected peers = stable host for authoritative writes.
+
 ## ctx.api — wiki API client
 Available inside `activate`/`deactivate` via `ctx.api` and `ctx.spaceId`:
 ```js

@@ -107,8 +107,9 @@ The context object passed to `activate` and `deactivate`:
 | `api` | `ApiClient` | Wiki API client |
 | `actions` | `Actions` | Action registration |
 | `views` | `Views` | View registration for custom routes |
-| `storage` | `Storage` | Extension-scoped key-value storage |
+| `suggestions` | `Suggestions` | Suggestion provider registration |
 | `getActiveEditor()` | `() => Editor \| null` | Returns the active TipTap editor instance |
+| `collaboration` | `{ ydoc: Y.Doc; clientId: number } \| null` | Active Yjs document and peer ID; null outside canvas/editor |
 
 ## Actions
 
@@ -293,6 +294,68 @@ const text = editor.getText();
 
 The editor is a [TipTap Editor](https://tiptap.dev/docs/editor/api/editor) instance. Refer to TipTap documentation for the full API.
 
+## Suggestions
+
+Register slash-command or trigger-character providers for the editor:
+
+```ts
+export function activate({ suggestions }: ExtensionContext): void {
+  suggestions.register("my-ext.commands", {
+    char: "/",
+    items: async (query) => [
+      { id: "heading", label: "Heading", description: "Insert a heading" },
+      { id: "list", label: "Bullet List", description: "Insert a bullet list" },
+    ].filter((item) => item.label.toLowerCase().includes(query.toLowerCase())),
+    onSelect: (item, editor) => {
+      if (item.id === "heading") {
+        editor.chain().focus().setHeading({ level: 1 }).run();
+      } else if (item.id === "list") {
+        editor.chain().focus().toggleBulletList().run();
+      }
+    },
+  });
+}
+
+export function deactivate({ suggestions }: ExtensionContext): void {
+  suggestions.unregister("my-ext.commands");
+}
+```
+
+Providers are global — they activate in any editor that opens, not just the one active at registration time.
+
+## Collaboration
+
+When a canvas or document is open, `ctx.collaboration` provides access to the shared Yjs document:
+
+```ts
+export function activate({ collaboration }: ExtensionContext): void {
+  if (!collaboration) return; // no document open yet
+
+  const { ydoc, clientId } = collaboration;
+
+  // Store synced state under a namespaced key
+  const yState = ydoc.getMap("game.mygame");
+  yState.set("score", 0);
+
+  // Observe changes from any peer
+  yState.observe(() => {
+    console.log("score:", yState.get("score"));
+  });
+}
+```
+
+`collaboration` is `null` when no canvas or document is open. Always guard against it.
+
+### Leader election
+
+`clientId` is the Yjs numeric peer ID. The peer with the lowest `clientId` among currently connected peers is a stable, self-healing host — if the host disconnects, the next-lowest peer takes over. Use this to assign one peer as the authority for writes that must not conflict (random events, turn advancement, etc.):
+
+```ts
+// In the view entry where you have access to awareness/presence
+const connectedClientIds = getConnectedClientIds(); // from your own presence tracking
+const isHost = clientId === Math.min(...connectedClientIds);
+```
+
 ## Example Extension
 
 ### Actions Only
@@ -300,7 +363,7 @@ The editor is a [TipTap Editor](https://tiptap.dev/docs/editor/api/editor) insta
 ```ts
 import type { ExtensionContext } from "@wiki/app/src/utils/extensions";
 
-export function activate({ actions, api, spaceId, getActiveEditor }: ExtensionContext): void {
+export function activate({ actions, api, spaceId, getActiveEditor, collaboration }: ExtensionContext): void {
   actions.register("word-count", {
     title: "Show Word Count",
     description: "Display document word count",
