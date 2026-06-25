@@ -12,9 +12,12 @@ export function useInlineSuggestions(options: {
 }) {
   const { spaceId, documentId, isEditing, editor } = options;
 
-  const { revisions, saveRevision, fetchHistory } = useRevisions(documentId.value);
+  const { revisions, saveRevision, fetchHistory, updateRevisionStatus } = useRevisions(
+    documentId.value,
+  );
 
   const suggestionPatches = ref<Record<number, string>>({});
+  const hiddenSuggestionHunks = ref<Set<string>>(new Set());
 
   const openSuggestions = computed(() =>
     revisions.value.filter((r) => r.status === "open"),
@@ -84,6 +87,10 @@ export function useInlineSuggestions(options: {
           rev: s.rev,
           message: s.message,
           patch: suggestionPatches.value[s.rev],
+          hiddenHunks: Array.from(hiddenSuggestionHunks.value)
+            .filter((key) => key.startsWith(`${s.rev}:`))
+            .map((key) => Number(key.split(":")[1]))
+            .filter((hunkIndex) => Number.isInteger(hunkIndex)),
         })),
     );
   }
@@ -119,6 +126,24 @@ export function useInlineSuggestions(options: {
     }
 
     setEditorHtml(nextHtml);
+    hideSuggestionHunk(revisionRev, hunkIndex);
+  }
+
+  function hideSuggestionHunk(revisionRev: number, hunkIndex: number) {
+    const next = new Set(hiddenSuggestionHunks.value);
+    next.add(`${revisionRev}:${hunkIndex}`);
+    hiddenSuggestionHunks.value = next;
+    syncInlineSuggestions();
+  }
+
+  async function declineSuggestion(revisionRev: number) {
+    const revision = await updateRevisionStatus(revisionRev, "dismissed");
+    if (!revision) throw new Error(`Failed to dismiss suggestion ${revisionRev}`);
+
+    const { [revisionRev]: _dismissedPatch, ...remainingPatches } =
+      suggestionPatches.value;
+    suggestionPatches.value = remainingPatches;
+    syncInlineSuggestions();
   }
 
   function handleInlineSuggestionAccept(
@@ -127,12 +152,19 @@ export function useInlineSuggestions(options: {
     acceptSuggestionHunk(event.detail.revisionRev, event.detail.hunkIndex);
   }
 
+  async function handleInlineSuggestionDecline(
+    event: CustomEvent<{ revisionRev: number; hunkIndex: number }>,
+  ) {
+    await declineSuggestion(event.detail.revisionRev);
+  }
+
   watch(
     isEditing,
     async (editing) => {
       if (!editing || !documentId.value) {
         clearQueuedInlineSuggestionsSync();
         suggestionPatches.value = {};
+        hiddenSuggestionHunks.value = new Set();
         editor.value?.commands.clearInlineSuggestions();
         return;
       }
@@ -155,5 +187,6 @@ export function useInlineSuggestions(options: {
   return {
     saveRevision,
     handleInlineSuggestionAccept,
+    handleInlineSuggestionDecline,
   };
 }

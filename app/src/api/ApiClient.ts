@@ -114,6 +114,8 @@ export interface RevisionMetadata {
   createdBy: string;
 }
 
+export type RevisionSuggestionStatus = "open" | "applied" | "dismissed";
+
 export interface Category {
   id: string;
   name: string;
@@ -268,7 +270,13 @@ export interface SpaceSecret {
 
 export type AIConfigMeta =
   | { configured: false }
-  | { configured: true; provider: string; model: string; baseUrl?: string; hasApiKey: boolean };
+  | {
+      configured: true;
+      provider: string;
+      model: string;
+      baseUrl?: string;
+      hasApiKey: boolean;
+    };
 
 export type OAuthIntegrationProvider = "gitlab" | "youtrack";
 
@@ -1056,6 +1064,19 @@ export class ApiClient {
       );
       return response.revisions;
     },
+    patch: async (
+      spaceId: string,
+      documentId: string,
+      rev: number,
+      body: { status: RevisionSuggestionStatus },
+    ) => {
+      const response = await this.apiPatch<{ revision: RevisionMetadata }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/revisions?rev=${rev}`,
+        body,
+      );
+      return response.revision;
+    },
   };
 
   documentAuditLogs = {
@@ -1425,7 +1446,10 @@ export class ApiClient {
     },
 
     delete: async (spaceId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/settings/ai-provider`);
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/settings/ai-provider`,
+      );
     },
   };
 

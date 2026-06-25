@@ -11,6 +11,7 @@ export interface InlineSuggestion {
   rev: number;
   message: string | null;
   patch: string;
+  hiddenHunks?: number[];
 }
 
 const INLINE_CONTEXT_ROWS = 1;
@@ -49,6 +50,10 @@ function parseSuggestionHunks(suggestions: InlineSuggestion[]): SuggestionHunk[]
 
     for (const file of patches) {
       file.hunks.forEach((hunk, hunkIndex) => {
+        if (suggestion.hiddenHunks?.includes(hunkIndex)) {
+          return;
+        }
+
         const rows = hunkLinesToRows(hunk.lines);
 
         hunks.push({
@@ -311,7 +316,7 @@ function renderSuggestionWidget(hunk: SuggestionHunk) {
   const acceptButton = document.createElement("button");
   acceptButton.type = "button";
   acceptButton.className = "wiki-inline-suggestion-accept";
-  acceptButton.textContent = "Accept hunk";
+  acceptButton.textContent = "Accept Hunk";
   acceptButton.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -325,7 +330,28 @@ function renderSuggestionWidget(hunk: SuggestionHunk) {
     );
   });
 
-  header.append(heading, message, acceptButton);
+  const declineButton = document.createElement("button");
+  declineButton.type = "button";
+  declineButton.className = "wiki-inline-suggestion-decline";
+  declineButton.textContent = "Decline";
+  declineButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.dispatchEvent(
+      new CustomEvent("inline-suggestion:decline", {
+        detail: {
+          revisionRev: hunk.revisionRev,
+          hunkIndex: hunk.hunkIndex,
+        },
+      }),
+    );
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "wiki-inline-suggestion-actions";
+  actions.append(declineButton, acceptButton);
+
+  header.append(heading, message, actions);
   root.appendChild(header);
 
   const rows = document.createElement("div");

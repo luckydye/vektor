@@ -172,10 +172,18 @@ date-picker {
   color: var(--color-neutral-600);
 }
 
-.wiki-inline-suggestion-accept {
+.wiki-inline-suggestion-actions {
   grid-row: 1 / span 2;
   grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   align-self: center;
+  justify-self: end;
+}
+
+.wiki-inline-suggestion-accept,
+.wiki-inline-suggestion-decline {
   padding: 0.4rem 0.7rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-neutral-300);
@@ -183,6 +191,11 @@ date-picker {
   color: var(--color-neutral-900);
   font-size: 0.75rem;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.wiki-inline-suggestion-decline {
+  color: var(--color-neutral-600);
 }
 
 .wiki-inline-suggestion-lines {

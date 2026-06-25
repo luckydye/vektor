@@ -107,12 +107,13 @@ const {
   getEditorHtml: () => editor.value?.getHTML() ?? null,
   collaboration,
 });
-const { handleInlineSuggestionAccept } = useInlineSuggestions({
-  spaceId: currentSpaceId,
-  documentId,
-  isEditing: editing,
-  editor,
-});
+const { handleInlineSuggestionAccept, handleInlineSuggestionDecline } =
+  useInlineSuggestions({
+    spaceId: currentSpaceId,
+    documentId,
+    isEditing: editing,
+    editor,
+  });
 
 function currentPresenceState(): DocumentPresenceState {
   const currentEditor = editor.value;
@@ -361,6 +362,10 @@ onMounted(() => {
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
   );
+  window.addEventListener(
+    "inline-suggestion:decline",
+    handleInlineSuggestionDecline as EventListener,
+  );
 
   window.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -377,6 +382,10 @@ onUnmounted(() => {
   window.removeEventListener(
     "inline-suggestion:accept",
     handleInlineSuggestionAccept as EventListener,
+  );
+  window.removeEventListener(
+    "inline-suggestion:decline",
+    handleInlineSuggestionDecline as EventListener,
   );
   window.removeEventListener("visibilitychange", handleVisibilityChange);
 });

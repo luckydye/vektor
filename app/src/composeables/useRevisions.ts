@@ -1,5 +1,10 @@
 import { type Ref, ref } from "vue";
-import { api, type RevisionMetadata, type RevisionWithContent } from "../api/client.ts";
+import {
+  api,
+  type RevisionMetadata,
+  type RevisionSuggestionStatus,
+  type RevisionWithContent,
+} from "../api/client.ts";
 import { useSpace } from "./useSpace.ts";
 
 export type RevisionStatus = "idle" | "saving" | "saved" | "error";
@@ -92,6 +97,35 @@ export function useRevisions(documentId: string | undefined) {
     }
   }
 
+  async function updateRevisionStatus(
+    rev: number,
+    status: RevisionSuggestionStatus,
+  ): Promise<RevisionMetadata | null> {
+    if (!currentSpaceId.value) {
+      throw new Error("No space selected");
+    }
+
+    if (!documentId) {
+      throw new Error("No document selected");
+    }
+
+    try {
+      const updatedRevision = await api.documentHistory.patch(
+        currentSpaceId.value,
+        documentId,
+        rev,
+        { status },
+      );
+      revisions.value = revisions.value.map((revision) =>
+        revision.rev === updatedRevision.rev ? updatedRevision : revision,
+      );
+      return updatedRevision;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : "Unknown error";
+      return null;
+    }
+  }
+
   async function getRevision(rev: number): Promise<RevisionWithContent | null> {
     if (!currentSpaceId.value) {
       throw new Error("No space selected");
@@ -118,6 +152,7 @@ export function useRevisions(documentId: string | undefined) {
     saveRevision,
     publishRevision,
     fetchHistory,
+    updateRevisionStatus,
     getRevision,
   };
 }

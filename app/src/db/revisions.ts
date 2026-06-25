@@ -344,6 +344,22 @@ export async function getRevisionMetadata(
   return rowToRevisionMetadata(revisionRecord);
 }
 
+export async function updateRevisionStatus(
+  spaceId: string,
+  documentId: string,
+  rev: number,
+  status: NonNullable<Revision["status"]>,
+): Promise<Omit<Revision, "snapshot"> | null> {
+  const db = await getSpaceDb(spaceId);
+
+  await db
+    .update(revision)
+    .set({ status })
+    .where(and(eq(revision.documentId, documentId), eq(revision.rev, rev)));
+
+  return getRevisionMetadata(spaceId, documentId, rev);
+}
+
 export async function listRevisionMetadata(
   spaceId: string,
   documentId: string,
