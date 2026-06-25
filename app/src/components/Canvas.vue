@@ -21,7 +21,6 @@ import {
   dragHasDocumentLink,
   droppedDocumentId as getDroppedDocumentId,
 } from "../canvas/elements/documentLink.ts";
-import { createLinkPreviewController, createLinkShape } from "../canvas/elements/link.ts";
 import {
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
@@ -44,6 +43,7 @@ import {
   createUploadedFileShape,
   dragHasCanvasFiles,
 } from "../canvas/elements/files.ts";
+import { createLinkPreviewController, createLinkShape } from "../canvas/elements/link.ts";
 import {
   createUploadedMediaShape,
   isMediaElementType,
@@ -69,11 +69,21 @@ import type {
   CanvasTool,
 } from "../canvas/elements/types.ts";
 import { useCollaboration } from "../composeables/useCollaboration.ts";
-import { extensions } from "../utils/extensions.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
-import { filenameFromUrl, IMAGE_RESIZE_TIERS, resizeImageUrl, transformImageUrl } from "../utils/imageUrlTransformers.ts";
+import { extensions } from "../utils/extensions.ts";
+import {
+  filenameFromUrl,
+  IMAGE_RESIZE_TIERS,
+  resizeImageUrl,
+  transformImageUrl,
+} from "../utils/imageUrlTransformers.ts";
 import { type TranslationKey, t } from "../utils/lang.ts";
+import {
+  CANVAS_CURSOR_COLOR_CHANGE_EVENT,
+  CANVAS_CURSOR_COLOR_STORAGE_KEY,
+  readCanvasCursorColor,
+} from "../utils/userPreferences.ts";
 import {
   buildTransform,
   computeSnapGuides,
@@ -104,6 +114,7 @@ const props = defineProps<{
 type CanvasPresenceState = {
   kind: "canvas";
   pointer: { x: number; y: number } | null;
+  cursorColor?: string;
   view: { x: number; y: number; scale: number };
   selectionIds: string[];
   focusedNodeId: string | null;
@@ -214,6 +225,7 @@ const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
 const noteColor = ref<string>(NOTE_COLORS[0]);
 const penColor = ref<string>(PEN_COLORS[0]);
+const cursorColor = ref<string>(readCanvasCursorColor());
 const drawStrokeMode = ref<DrawStrokeMode>("pen");
 // Backdrop grid style, driven by the document's "gridtype" property. "grid"
 // draws ruled lines, "dots" a dot grid, and "clean" leaves the backdrop empty.
@@ -315,6 +327,10 @@ const remoteCanvasSelections = computed(() =>
         {
           clientId: presence.clientId,
           user: presence.user,
+          cursorColor:
+            state.cursorColor ||
+            presence.user.color ||
+            getPresenceColor(presence.user.id),
           itemId,
           bounds: shape,
         },
@@ -342,7 +358,10 @@ const remoteCanvasStrokeSelections = computed(() =>
     ids: new Set(
       presence.state?.selectionIds.filter((id) => strokesById.value.has(id)) ?? [],
     ),
-    color: presence.user.color || getPresenceColor(presence.user.id),
+    color:
+      presence.state?.cursorColor ||
+      presence.user.color ||
+      getPresenceColor(presence.user.id),
   })),
 );
 
@@ -778,12 +797,40 @@ const transform = computed(() =>
   buildTransform(camera.value, screen.value, FIT_REFERENCE),
 );
 
-// Panning (middle/right-drag) shows the grabbing hand; the select tool rests on
-// the default arrow, while the content-placing tools use a crosshair.
+function makeCanvasCursor(color: string): string {
+  if (typeof document === "undefined") return "default";
+
+  const size = 18;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "default";
+  ctx.scale(0.56, 0.56);
+
+  const path = new Path2D(
+    "M5.1 4.8a1.2 1.2 0 0 1 1.53-1.54l20.4 8.28a1.2 1.2 0 0 1-.14 2.26l-7.81 2.01a2.4 2.4 0 0 0-1.72 1.72l-2.01 7.81a1.2 1.2 0 0 1-2.26.14z",
+  );
+
+  ctx.shadowColor = "rgba(15, 23, 42, 0.25)";
+  ctx.shadowBlur = 2;
+  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = color;
+  ctx.fill(path);
+  ctx.shadowColor = "transparent";
+  ctx.lineWidth = 1.8;
+  ctx.strokeStyle = "white";
+  ctx.lineJoin = "round";
+  ctx.stroke(path);
+
+  return `url("${canvas.toDataURL()}") 3 3, default`;
+}
+
+// Panning (middle/right-drag) shows the grabbing hand; otherwise the canvas uses
+// a local colored cursor that matches the color broadcast to collaborators.
 const viewportCursor = computed(() => {
   if (isPanning.value) return "grabbing";
-  if (activeTool.value === "select") return "default";
-  return "crosshair";
+  return makeCanvasCursor(cursorColor.value);
 });
 
 function screenToWorld(point: { x: number; y: number }) {
@@ -908,21 +955,22 @@ function renderImages() {
       img.src = tieredSrc;
       // decode() resolves after the image is fully decoded off the main thread,
       // so drawImage() never has to block to decode inline.
-      img.decode().then(() => {
-        imageCache.set(tieredSrc, img);
-        renderImages();
-      }).catch(() => {
-        imageCache.set(tieredSrc, "error");
-        renderImages();
-      });
+      img
+        .decode()
+        .then(() => {
+          imageCache.set(tieredSrc, img);
+          renderImages();
+        })
+        .catch(() => {
+          imageCache.set(tieredSrc, "error");
+          renderImages();
+        });
     }
 
     // While the correctly-sized version is still loading, paint any lower-res
     // cached version so the image doesn't flash back to a placeholder on zoom.
     const displayImg =
-      cached instanceof HTMLImageElement
-        ? cached
-        : getCachedFallback(shape.src);
+      cached instanceof HTMLImageElement ? cached : getCachedFallback(shape.src);
 
     if (!displayImg) {
       ctx.fillStyle = "rgba(128,128,128,0.15)";
@@ -933,10 +981,9 @@ function renderImages() {
       ctx.drawImage(displayImg, sx, sy, sw, sh);
     }
 
-
     for (const selection of remoteCanvasImageSelections.value) {
       if (selection.bounds.id !== shape.id) continue;
-      ctx.strokeStyle = selection.user.color || getPresenceColor(selection.user.id);
+      ctx.strokeStyle = selection.cursorColor;
       ctx.lineWidth = 2;
       ctx.strokeRect(sx - 2, sy - 2, sw + 4, sh + 4);
     }
@@ -1024,6 +1071,7 @@ function presenceState(): CanvasPresenceState {
   return {
     kind: "canvas",
     pointer: localPointer.value,
+    cursorColor: cursorColor.value,
     view: {
       x: camera.value.centerX,
       y: camera.value.centerY,
@@ -1272,6 +1320,25 @@ function setPenColor(color: string) {
       stroke.set("updatedAt", Date.now());
     }
   });
+}
+
+function syncCursorColor(color = readCanvasCursorColor()) {
+  cursorColor.value = color;
+  updatePresence();
+}
+
+function handleCursorColorPreferenceChange(event: Event) {
+  const color =
+    event instanceof CustomEvent && typeof event.detail?.color === "string"
+      ? event.detail.color
+      : readCanvasCursorColor();
+  syncCursorColor(color);
+}
+
+function handleStorageChange(event: StorageEvent) {
+  if (event.key === CANVAS_CURSOR_COLOR_STORAGE_KEY) {
+    syncCursorColor();
+  }
 }
 
 function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
@@ -2386,6 +2453,13 @@ onMounted(() => {
   colorSchemeMedia = window.matchMedia("(prefers-color-scheme: dark)");
   colorSchemeMedia.addEventListener("change", updateThemeMode);
 
+  syncCursorColor();
+  window.addEventListener(
+    CANVAS_CURSOR_COLOR_CHANGE_EVENT,
+    handleCursorColorPreferenceChange,
+  );
+  window.addEventListener("storage", handleStorageChange);
+
   extensions.setActiveCollaboration(ydoc);
   extensions.setActiveDocumentId(props.documentId ?? null);
   setupPresence();
@@ -2426,6 +2500,11 @@ onUnmounted(() => {
   window.removeEventListener("copy", handleCopy);
   window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
+  window.removeEventListener(
+    CANVAS_CURSOR_COLOR_CHANGE_EVENT,
+    handleCursorColorPreferenceChange,
+  );
+  window.removeEventListener("storage", handleStorageChange);
   imageCache.clear();
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
@@ -2591,7 +2670,7 @@ onUnmounted(() => {
             top: `${selection.bounds.y}px`,
             width: `${selection.bounds.width}px`,
             height: `${selection.bounds.height}px`,
-            '--presence-color': selection.user.color || getPresenceColor(selection.user.id),
+            '--presence-color': selection.cursorColor,
           }"
         >
         </div>
@@ -2801,7 +2880,10 @@ onUnmounted(() => {
         :class="{ 'is-instant': isCameraMoving }"
         :style="{
           transform: `translate(${worldToScreen(presence.state!.pointer!).x}px, ${worldToScreen(presence.state!.pointer!).y}px)`,
-          '--presence-color': presence.user.color || getPresenceColor(presence.user.id),
+          '--presence-color':
+            presence.state!.cursorColor ||
+            presence.user.color ||
+            getPresenceColor(presence.user.id),
         }"
       >
         <svg

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import "@sv/elements/color-picker";
+import "@sv/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
 import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import {
@@ -7,12 +9,18 @@ import {
   type OAuthIntegrationProvider,
 } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import {
+  DEFAULT_CANVAS_CURSOR_COLOR,
+  readCanvasCursorColor,
+  saveCanvasCursorColor,
+} from "../utils/userPreferences.ts";
 import SettingsLayout from "./SettingsLayout.vue";
 
 type ThemePreference = "system" | "light" | "dark";
 
 const THEME_STORAGE_KEY = "user-theme-preference";
 const themePreference = ref<ThemePreference>("system");
+const cursorColor = ref<string>(DEFAULT_CANVAS_CURSOR_COLOR);
 const integrationProviders: OAuthIntegrationProvider[] = ["gitlab", "youtrack"];
 const integrationConnections = ref<OAuthIntegrationConnection[]>([]);
 const isLoadingIntegrations = ref(false);
@@ -66,6 +74,10 @@ const handleThemeChange = (event: Event) => {
   const preference = target.value;
   if (!isThemePreference(preference)) return;
   setThemePreference(preference);
+};
+
+const setCursorColor = (color: string) => {
+  cursorColor.value = saveCanvasCursorColor(color);
 };
 
 const loadIntegrations = async () => {
@@ -134,6 +146,7 @@ onMounted(() => {
   } else {
     setThemePreference("system");
   }
+  cursorColor.value = readCanvasCursorColor();
 
   const url = new URL(window.location.href);
   const integrationStatus = url.searchParams.get("status");
@@ -186,6 +199,42 @@ watch(
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
+      </section>
+
+      <section class="mt-4">
+        <p class="text-size-small font-medium text-neutral-700 mb-1.5">
+          Canvas cursor color
+        </p>
+        <a-popover-trigger>
+          <button
+            slot="trigger"
+            type="button"
+            class="w-full px-2.5 py-1.5 rounded-md border border-neutral-100 bg-background text-size-medium text-foreground hover:bg-neutral-50 transition-colors flex items-center justify-between gap-3"
+            aria-label="Canvas cursor color"
+          >
+            <span>{{ cursorColor }}</span>
+            <span
+              class="w-5 h-5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(15,23,42,0.2),0_1px_2px_rgba(15,23,42,0.18)]"
+              :style="{ background: cursorColor }"
+              aria-hidden="true"
+            ></span>
+          </button>
+          <a-popover class="group" placements="top-start">
+            <div
+              class="w-max py-2 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
+            >
+              <div
+                class="bg-background border border-neutral-100 rounded-lg p-2 origin-bottom-left scale-95 transition-all shadow-large duration-150 group-[&[enabled]]:scale-100"
+              >
+                <a-color-picker
+                  class="w-[220px]"
+                  :value="cursorColor"
+                  @change="setCursorColor(($event.target as HTMLElement & { value: string }).value)"
+                ></a-color-picker>
+              </div>
+            </div>
+          </a-popover>
+        </a-popover-trigger>
       </section>
     </template>
 
