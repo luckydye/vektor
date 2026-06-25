@@ -515,8 +515,8 @@
 </template>
 
 <script setup lang="ts">
-import "@sv/elements/color-picker";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/color-picker";
+import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";

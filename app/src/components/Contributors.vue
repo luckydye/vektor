@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { useContributors } from "../composeables/useContributors.ts";
 import Avatar from "./Avatar.vue";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/popover";
 
 interface Props {
   documentId?: string;

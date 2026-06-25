@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import "@sv/elements/popover";
+import "@atrium-ui/elements/popover";
 import { nextTick, ref, watch } from "vue";
 import { plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";

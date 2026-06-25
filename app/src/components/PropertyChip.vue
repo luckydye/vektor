@@ -5,8 +5,8 @@ import Icon from "./Icon.vue";
 import type { Property } from "./PropertyPopover.vue";
 import type { SelectMenuItem } from "./SelectMenu.vue";
 import SelectMenu from "./SelectMenu.vue";
-import "@sv/elements/blur";
-import "@sv/elements/calendar";
+import "@atrium-ui/elements/blur";
+import "@atrium-ui/elements/calendar";
 import { plusIcon } from "~/src/assets/icons.ts";
 
 const inputElement = ref();

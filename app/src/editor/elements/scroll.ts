@@ -1,4 +1,4 @@
-import "@sv/elements/scroll";
+import "@atrium-ui/elements/scroll";
 
 customElements.define(
   "wiki-scroll",

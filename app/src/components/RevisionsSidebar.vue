@@ -21,7 +21,7 @@ import { normalizeTimestamp } from "../utils/utils.ts";
 import ActivityFeed from "./ActivityFeed.vue";
 import DockedPanel from "./DockedPanel.vue";
 import Pager from "./Pager.vue";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/popover";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useMembers } from "../composeables/useMembers.ts";
 import { useSync } from "../composeables/useSync.ts";

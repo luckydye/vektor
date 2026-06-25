@@ -2,7 +2,7 @@
 import { cogIcon, mailIcon, signOutIcon, archiveBoxIcon } from "~/src/assets/icons.ts";
 import Avatar from "./Avatar.vue";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
 import { authClient } from "../composeables/auth-client.ts";
 import { useUserProfile } from "../composeables/useUserProfile.ts";

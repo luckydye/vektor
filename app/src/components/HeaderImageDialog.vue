@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/popover";
 import { Icon } from "~/src/components/index.ts";
 import { t } from "../utils/lang.ts";
 import FileDrop from "./FileDrop.vue";

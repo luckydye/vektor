@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import "@sv/elements/list";
+import "@atrium-ui/elements/list";
 
 const props = defineProps<{
   onClick: (e: Event) => void;

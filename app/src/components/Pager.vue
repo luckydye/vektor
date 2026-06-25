@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import "@sv/elements/pager";
+import "@atrium-ui/elements/pager";
 
 const props = defineProps<{
   page: number;

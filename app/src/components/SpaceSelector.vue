@@ -5,7 +5,7 @@ import settingsIcon from "../assets/icons/settings.svg?raw";
 import ButtonPrimary from "./ButtonPrimary.vue";
 import ButtonSecondary from "./ButtonSecondary.vue";
 import Icon from "./Icon.vue";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/popover";
 import { computed } from "vue";
 
 // UI-specific Space interface for the selector

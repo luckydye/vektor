@@ -15,7 +15,7 @@ import { usePagedList } from "../composeables/usePagedList.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
-import "@sv/elements/tabs";
+import "@atrium-ui/elements/tabs";
 import DataTable from "./DataTable.vue";
 import Pager from "./Pager.vue";
 

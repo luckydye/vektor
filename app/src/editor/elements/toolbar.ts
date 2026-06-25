@@ -1,6 +1,6 @@
 import type { ChainedCommands, Editor } from "@tiptap/core";
-import "@sv/elements/color-picker";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/color-picker";
+import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
 import {
   alignCenterIcon,

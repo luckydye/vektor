@@ -1,4 +1,4 @@
-import { type Easing, type InputState, Track, type Trait } from "@sv/elements/track";
+import { type Easing, type InputState, Track, type Trait } from "@atrium-ui/elements/track";
 
 export class DrawerTrack extends Track {
   public override traits: Trait[] = [

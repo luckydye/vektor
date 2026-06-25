@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import "@sv/elements/track";
+import "@atrium-ui/elements/track";
 import { onMounted, ref } from "vue";
 import type { DocumentWithProperties } from "../api/client.ts";
 import { api } from "../api/client.ts";

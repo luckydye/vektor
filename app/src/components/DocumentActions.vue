@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
-import "@sv/elements/popover";
+import "@atrium-ui/elements/popover";
 import {
   ButtonSecondary,
   ContextMenu,

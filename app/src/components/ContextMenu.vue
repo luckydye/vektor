@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import ButtonSecondary from "./ButtonSecondary.vue";
 import Icon from "./Icon.vue";
-import "@sv/elements/popover";
-import "@sv/elements/list";
+import "@atrium-ui/elements/popover";
+import "@atrium-ui/elements/list";
 
 function handleSubmit(e: CustomEvent<{ detail: { selected: HTMLElement } }>) {
   e.detail.selected?.querySelector("button")?.click();
