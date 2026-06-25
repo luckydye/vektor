@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cogIcon, mailIcon, signOutIcon } from "~/src/assets/icons.ts";
+import { cogIcon, mailIcon, signOutIcon, archiveBoxIcon } from "~/src/assets/icons.ts";
 import Avatar from "./Avatar.vue";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@sv/elements/popover";
@@ -93,6 +93,13 @@ onMounted(() => {
               >
                 <div class="svg-icon w-4 h-4" v-html="mailIcon" />
                 <span class="leading-none font-medium">Send feedback</span>
+              </a>
+              <a
+                href="https://github.com/luckydye/vektor"
+                class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
+              >
+                <div class="svg-icon w-4 h-4" v-html="archiveBoxIcon" />
+                <span class="leading-none font-medium">Source</span>
               </a>
               <button
                 type="button"
