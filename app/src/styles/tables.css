@@ -49,6 +49,17 @@ table {
     z-index: -1;
   }
 
+  .selectedCell,
+  .selectedCell * {
+    cursor: cell;
+    user-select: none;
+  }
+
+  .selectedCell::selection,
+  .selectedCell *::selection {
+    background: transparent;
+  }
+
   .column-resize-handle {
     background-color: blue;
     bottom: -2px;
@@ -58,6 +69,13 @@ table {
     top: 0;
     width: 4px;
   }
+}
+
+.table-cell-selection-active table td,
+.table-cell-selection-active table th,
+.table-cell-selection-active table td *,
+.table-cell-selection-active table th * {
+  cursor: cell;
 }
 
 .resize-cursor {

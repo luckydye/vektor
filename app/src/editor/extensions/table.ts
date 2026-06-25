@@ -1,5 +1,8 @@
 import { type AnyExtension, Extension } from "@tiptap/core";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
+import { Plugin } from "@tiptap/pm/state";
+import { CellSelection } from "@tiptap/pm/tables";
+import type { EditorView } from "@tiptap/pm/view";
 import { ExpressionCell } from "./ExpressionCell.ts";
 
 const colwidthAttribute = {
@@ -23,6 +26,27 @@ function withoutDefaultKeyboardShortcuts<T extends AnyExtension>(extension: T): 
   return extension.extend({
     addKeyboardShortcuts: () => ({}),
   }) as T;
+}
+
+function clearNativeSelection(view: EditorView) {
+  const root = view.root;
+  const selection =
+    "getSelection" in root && typeof root.getSelection === "function"
+      ? root.getSelection()
+      : window.getSelection();
+
+  if (!selection?.isCollapsed) {
+    selection?.removeAllRanges();
+  }
+}
+
+function syncCellSelectionUi(view: EditorView) {
+  const hasCellSelection = view.state.selection instanceof CellSelection;
+  view.dom.classList.toggle("table-cell-selection-active", hasCellSelection);
+
+  if (hasCellSelection) {
+    clearNativeSelection(view);
+  }
 }
 
 export const TableEditing = Extension.create({
@@ -69,6 +93,25 @@ export const TableEditing = Extension.create({
         }),
       ),
       ExpressionCell,
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        view: (view) => {
+          syncCellSelectionUi(view);
+
+          return {
+            update(view) {
+              syncCellSelectionUi(view);
+            },
+            destroy() {
+              view.dom.classList.remove("table-cell-selection-active");
+            },
+          };
+        },
+      }),
     ];
   },
 });
