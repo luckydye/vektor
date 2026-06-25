@@ -14,17 +14,18 @@ import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { setActiveEditor } from "../editor/activeEditor.ts";
-import { extensions } from "../utils/extensions.ts";
 import { type DocumentPresenceProfile, findYSyncState } from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
 import { Actions } from "../utils/actions.ts";
-import { supportsComments } from "../utils/documentTypes.ts";
+import { supportsComments, supportsDocumentEditor } from "../utils/documentTypes.ts";
+import { extensions } from "../utils/extensions.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
 } from "../utils/formattingActions.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
+// biome-ignore lint/style/useImportType: used as a runtime component in the template.
 import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "../editor/elements/table-view.ts";
@@ -50,6 +51,9 @@ const props = withDefaults(
 const documentId = computed(() => props.documentId);
 const documentType = computed(() => props.documentType || "document");
 const documentReadonly = computed(() => props.readonly);
+const supportsRichTextDocument = computed(() =>
+  supportsDocumentEditor(documentType.value),
+);
 
 const { currentSpaceId } = useSpace();
 const pendingReload = ref(false);
@@ -177,7 +181,11 @@ watch(
       collaboration.updatePresence();
     };
 
-    const trackLocalChange = ({ transaction }: { transaction: { docChanged: boolean; getMeta: (key: string) => unknown } }) => {
+    const trackLocalChange = ({
+      transaction,
+    }: {
+      transaction: { docChanged: boolean; getMeta: (key: string) => unknown };
+    }) => {
       if (transaction.docChanged && !transaction.getMeta("y-sync$")) {
         hasChanges.value = true;
       }
@@ -187,13 +195,19 @@ watch(
     currentEditor.on("focus", updatePresence);
     currentEditor.on("blur", updatePresence);
     currentEditor.on("transaction", updatePresence);
-    currentEditor.on("update", trackLocalChange as Parameters<typeof currentEditor.on>[1]);
+    currentEditor.on(
+      "update",
+      trackLocalChange as Parameters<typeof currentEditor.on>[1],
+    );
     onCleanup(() => {
       currentEditor.off("selectionUpdate", updatePresence);
       currentEditor.off("focus", updatePresence);
       currentEditor.off("blur", updatePresence);
       currentEditor.off("transaction", updatePresence);
-      currentEditor.off("update", trackLocalChange as Parameters<typeof currentEditor.on>[1]);
+      currentEditor.off(
+        "update",
+        trackLocalChange as Parameters<typeof currentEditor.on>[1],
+      );
     });
   },
   { flush: "post" },
@@ -337,20 +351,6 @@ watch(editing, (isEditing) => {
   }
 });
 
-watch(documentId, (currentDocumentId, previousDocumentId) => {
-  if (!isMounted.value || currentDocumentId === previousDocumentId) return;
-
-  resetEditingState();
-  autoEditModeAppliedForDocumentId = null;
-  extensions.setActiveDocumentId(currentDocumentId ?? null);
-  maybeStartAutoEditMode();
-});
-
-watch(canMountEditor, () => {
-  if (!isMounted.value) return;
-  maybeStartAutoEditMode();
-});
-
 onMounted(() => {
   extensions.setActiveCollaboration(collaboration.ydoc.value);
   extensions.setActiveDocumentId(documentId.value ?? null);
@@ -455,11 +455,11 @@ useSync(
             :html="renderedHtml" class="block flex-1 min-h-0"></table-view>
 
         <!-- Document View (read + edit, single persistent instance) -->
-        <div v-if="documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
+        <div v-if="supportsRichTextDocument"
             :class="editing ? 'h-full' : ''">
             <document-view ref="documentViewEl"
                 :html="renderedHtml"
-                :editor="shouldMountEditor && !documentReadonly ? '' : undefined"
+                :editor="shouldMountEditor && canMountEditor ? '' : undefined"
                 :space-id="props.spaceId" :document-id="documentId"
                 v-html="ssrDeclarativeShadowDom" />
         </div>
@@ -479,7 +479,7 @@ useSync(
     </template>
 
     <document-statusbar
-        v-if="editing && !documentReadonly && documentType !== 'canvas' && documentType !== 'app' && documentType !== 'csv'"
+        v-if="editing && canMountEditor"
         class="fixed inset-x-0 bottom-0 z-10 mx-auto block max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs lg:px-xl pb-4 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none md:left-(--inset-left) md:right-(--inset-right)"
     ></document-statusbar>
         

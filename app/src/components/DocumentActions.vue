@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, watchEffect } from "vue";
+import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import "@sv/elements/popover";
 import {
   ButtonSecondary,
@@ -9,6 +9,7 @@ import {
 } from "~/src/components/index.ts";
 import { api } from "../api/client.ts";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
+import { useDocumentContext } from "../composeables/useDocument.ts";
 import { useEditor } from "../composeables/useEditor.ts";
 import { useHeaderImage } from "../composeables/useHeaderImage.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
@@ -21,12 +22,8 @@ import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
 import WorkflowRunButton from "./WorkflowRunButton.vue";
 
 const props = defineProps<{
-  documentId?: string;
   title?: string;
-  readonly: boolean;
-  documentType?: string;
   headerImage?: string;
-  publishedVersion?: number | null;
 }>();
 
 const { currentSpaceId, currentSpace } = useSpace();
@@ -39,38 +36,26 @@ const {
   dialogOpen,
 } = useHeaderImage();
 const { cancelCount, editing, saveStatus, hasChanges } = useEditor();
+const {
+  documentContext,
+  canUseDocumentEditor,
+  hasPublishedVersion,
+  markDocumentPublished,
+} = useDocumentContext();
 
-const userCanEdit = computed(() => {
-  return canEdit(currentSpace.value?.userRole);
-});
+const userCanEdit = computed(() => documentContext.value.userCanEdit);
+const userCanManageDocument = computed(() => canEdit(currentSpace.value?.userRole));
+const documentId = computed(() => documentContext.value.documentId);
+const documentType = computed(() => documentContext.value.documentType);
 
 const isCreatingToken = ref(false);
-const localPublishedVersion = ref(props.publishedVersion);
-const publishRequested = ref(false);
 const isSaving = computed(() => saveStatus.value === "saving");
-const hasPublishedVersion = computed(() => localPublishedVersion.value != null);
 const canPublishCurrentDraft = computed(
-  () => !props.documentId || !hasPublishedVersion.value || hasChanges.value,
+  () => !documentId.value || !hasPublishedVersion.value || hasChanges.value,
 );
 const publishDisabled = computed(() => isSaving.value || !canPublishCurrentDraft.value);
 const suggestionSaveDisabled = computed(() => isSaving.value || !hasChanges.value);
-const showCancel = computed(() => !props.documentId || hasPublishedVersion.value);
-
-watch(
-  () => props.publishedVersion,
-  (publishedVersion) => {
-    localPublishedVersion.value = publishedVersion;
-  },
-);
-
-watch(saveStatus, (status) => {
-  if (status === "saved" && publishRequested.value) {
-    localPublishedVersion.value ??= 0;
-    publishRequested.value = false;
-  } else if (status === "error") {
-    publishRequested.value = false;
-  }
-});
+const showCancel = computed(() => !documentId.value || hasPublishedVersion.value);
 
 function registerEditAction() {
   Actions.register("document:edit", {
@@ -81,24 +66,13 @@ function registerEditAction() {
   });
 }
 
-function syncEditActions(isEditing = editing.value) {
-  if (isEditing) {
-    Actions.unregister("document:edit");
-  } else {
-    registerEditAction();
-  }
-}
-
 function startEditing() {
-  if (props.readonly || !userCanEdit.value) {
+  if (!canUseDocumentEditor.value) {
     return;
   }
 
   editing.value = true;
-  syncEditActions(true);
 }
-
-watch(editing, syncEditActions, { immediate: true });
 
 function markdownDownloadName() {
   const name = (props.title || "document")
@@ -156,21 +130,21 @@ Actions.register("document:accesstoken", {
         throw new Error("No space selected");
       }
 
-      if (!props.documentId) {
+      if (!documentId.value) {
         return;
       }
 
       // Create a 30-day access token for this document
-      const documentName = props.title || props.documentId;
+      const documentName = props.title || documentId.value;
       const tokenResult = await api.accessTokens.create(currentSpaceId.value, {
         name: `API Access: ${documentName} (${new Date().toISOString().split("T")[0]})`,
         resourceType: "document",
-        resourceId: props.documentId,
+        resourceId: documentId.value,
         permission: "editor",
         expiresInDays: 30,
       });
 
-      const command = `curl -X PUT ${location.origin}/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId} \\
+      const command = `curl -X PUT ${location.origin}/api/v1/spaces/${currentSpaceId.value}/documents/${documentId.value} \\
     -H "Content-Type: application/json" \\
     -H "Authorization: Bearer ${tokenResult.token}" \\
     -d '{"content": "<html>Your content here</html>"}'`;
@@ -197,26 +171,28 @@ const actionsDanger = ref<[string, ActionOptions][]>([]);
 const actionsDev = ref<[string, ActionOptions][]>([]);
 const devMode = ref(false);
 
-function publishDocument(e: MouseEvent) {
-  if (!Actions.get("document:save:publish")) return;
-  publishRequested.value = true;
-  Actions.run("document:save:publish");
+async function publishDocument(e: MouseEvent) {
+  const action = Actions.get("document:save:publish");
+  if (!action) return;
+  await action.run();
+  if (saveStatus.value === "saved") {
+    markDocumentPublished();
+  }
   (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
 
 function cancelEditing() {
   editing.value = false;
   cancelCount.value++;
-  if (props.documentId) {
-    syncEditActions(false);
-  } else {
+  if (!documentId.value) {
     window.history.back();
   }
 }
 
-function saveAsSuggestion(e: MouseEvent) {
-  if (!Actions.get("document:save:suggestion")) return;
-  Actions.run("document:save:suggestion");
+async function saveAsSuggestion(e: MouseEvent) {
+  const action = Actions.get("document:save:suggestion");
+  if (!action) return;
+  await action.run();
   (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
 
@@ -226,8 +202,8 @@ Actions.register("document:dev:copy-document-id", {
   description: t("Copy the current document ID to clipboard"),
   group: "document:dev",
   run: async () => {
-    if (!props.documentId) return;
-    await navigator.clipboard.writeText(props.documentId);
+    if (!documentId.value) return;
+    await navigator.clipboard.writeText(documentId.value);
   },
 });
 
@@ -250,6 +226,8 @@ function handleContextMenuMousedown(event: MouseEvent) {
 }
 
 onMounted(async () => {
+  registerEditAction();
+
   Actions.subscribe("actions:register", () => {
     actions.value = Actions.group("document");
     actionsDanger.value = Actions.group("document:danger");
@@ -263,6 +241,10 @@ onMounted(async () => {
   actionsDanger.value = Actions.group("document:danger");
 });
 
+onUnmounted(() => {
+  Actions.unregister("document:edit");
+});
+
 function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
   e.target?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
@@ -272,9 +254,9 @@ watchEffect(() => {
   Actions.unregister("document:pin");
   Actions.unregister("document:unpin");
 
-  if (userCanEdit.value && currentSpace.value && props.documentId) {
+  if (userCanManageDocument.value && currentSpace.value && documentId.value) {
     const isPinned =
-      currentSpace.value.preferences?.pinnedDocumentId === props.documentId;
+      currentSpace.value.preferences?.pinnedDocumentId === documentId.value;
 
     if (isPinned) {
       Actions.register("document:unpin", {
@@ -300,11 +282,10 @@ watchEffect(() => {
         group: "document",
         run: async () => {
           const spaceId = currentSpace.value?.id;
-          const documentId = props.documentId;
-          if (!spaceId || !documentId) return;
+          if (!spaceId || !documentId.value) return;
 
           await api.space.patch(spaceId, {
-            preferences: { pinnedDocumentId: documentId },
+            preferences: { pinnedDocumentId: documentId.value },
           });
           window.location.reload();
         },
@@ -316,7 +297,7 @@ watchEffect(() => {
 watchEffect(() => {
   Actions.unregister("document:archive");
 
-  if (userCanEdit.value === true) {
+  if (userCanManageDocument.value === true) {
     Actions.register("document:archive", {
       title: t("Archive Document"),
       icon: () => "archive",
@@ -334,12 +315,12 @@ watchEffect(() => {
           throw new Error("No space loaded");
         }
 
-        if (!props.documentId) {
+        if (!documentId.value) {
           return;
         }
 
         const response = await fetch(
-          `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}`,
+          `/api/v1/spaces/${currentSpaceId.value}/documents/${documentId.value}`,
           {
             method: "DELETE",
           },
@@ -359,18 +340,18 @@ watchEffect(() => {
   Actions.unregister("document:set-header");
   Actions.unregister("document:remove-header");
 
-  const documentId = props.documentId;
+  const currentDocumentId = documentId.value;
   if (
-    userCanEdit.value === true &&
-    documentId &&
-    supportsHeaderImage(props.documentType)
+    userCanManageDocument.value === true &&
+    currentDocumentId &&
+    supportsHeaderImage(documentType.value)
   ) {
     Actions.register("document:set-header", {
       title: props.headerImage ? t("Change header") : t("Add header image"),
       icon: () => "image",
       description: t("Set the header image for this document"),
       group: "document",
-      run: async () => changeHeaderImage(documentId),
+      run: async () => changeHeaderImage(currentDocumentId),
     });
 
     if (props.headerImage) {
@@ -379,7 +360,7 @@ watchEffect(() => {
         icon: () => "image",
         description: t("Remove the header image from this document"),
         group: "document:danger",
-        run: async () => removeHeaderImage(documentId),
+        run: async () => removeHeaderImage(currentDocumentId),
       });
     }
   }
@@ -409,7 +390,7 @@ watchEffect(() => {
     </button>
 
     <button
-      v-if="!editing && !readonly && userCanEdit"
+      v-if="canUseDocumentEditor && !editing"
       type="button"
       class="button-primary px-3"
       @click="startEditing"
@@ -424,7 +405,7 @@ watchEffect(() => {
       :spaceId="currentSpaceId"
     />
 
-    <div v-if="editing" class="flex items-center gap-2">
+    <div v-if="canUseDocumentEditor && editing" class="flex items-center gap-2">
       <div class="button-primary-base button-with-icon overflow-hidden items-stretch">
         <button
           type="button"
@@ -475,7 +456,7 @@ watchEffect(() => {
     <div class="relative flex-none" @mousedown="handleContextMenuMousedown">
       <HeaderImageDialog
         v-model:show="dialogOpen"
-        @select="(file) => props.documentId && uploadHeaderImage(props.documentId, file)"
+        @select="(file) => documentId && uploadHeaderImage(documentId, file)"
       />
       <ContextMenu>
       <ContextMenuItem v-for="[name, options] of actions" :onClick="(event) => runContextMenuAction(event, name)">

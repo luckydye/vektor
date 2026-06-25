@@ -6,6 +6,7 @@ import AppView from "../../../components/AppView.vue";
 import DatabaseView from "../../../components/DatabaseView.vue";
 import DocumentActions from "../../../components/DocumentActions.vue";
 import DocumentContent from "../../../components/DocumentContent.vue";
+import DocumentContextProvider from "../../../components/DocumentContextProvider.vue";
 import DocumentProperties from "../../../components/DocumentProperties.vue";
 import HeaderImage from "../../../components/HeaderImage.vue";
 import RestoreButton from "../../../components/RestoreButton.vue";
@@ -76,8 +77,22 @@ const userId = Astro.locals.user?.id || null;
 const userGroups = userId ? await getUserGroups(userId) : ["public"];
 
 const [hasAccess, userCanEdit] = await Promise.all([
-  hasPermission(space.id, ResourceType.DOCUMENT, document.id, userId || "", "viewer", userGroups),
-  hasPermission(space.id, ResourceType.DOCUMENT, document.id, userId || "", "editor", userGroups),
+  hasPermission(
+    space.id,
+    ResourceType.DOCUMENT,
+    document.id,
+    userId || "",
+    "viewer",
+    userGroups,
+  ),
+  hasPermission(
+    space.id,
+    ResourceType.DOCUMENT,
+    document.id,
+    userId || "",
+    "editor",
+    userGroups,
+  ),
 ]);
 
 if (!hasAccess) {
@@ -211,6 +226,15 @@ if (diffMins >= 1 && diffMins < 60) {
           : "max-w-(--document-width)",
       )}
     >
+      <DocumentContextProvider
+        client:load
+        documentId={document.id}
+        documentType={documentType}
+        readonly={isReadonly}
+        publishedVersion={document.publishedRev}
+        userCanEdit={userCanEdit}
+      />
+
       <!-- Archived Document Disclaimer -->
       {document.archived && (
         <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 md:mx-10">
@@ -294,12 +318,8 @@ if (diffMins >= 1 && diffMins < 60) {
     
             <DocumentActions
               client:only
-              documentId={document.id}
               title={title}
-              readonly={isReadonly}
-              documentType={documentType}
               headerImage={headerImage ?? undefined}
-              publishedVersion={document.publishedRev}
             />
           </div>
           

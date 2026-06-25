@@ -7,7 +7,12 @@ export const readOnlyDocumentTypes: readonly string[] = ["csv"];
  * type defaults to "document".
  */
 export const commentableDocumentTypes: readonly string[] = ["document"];
+export const documentEditorTypes: readonly string[] = ["document", "workflow"];
 
 export function supportsComments(type: string | null | undefined): boolean {
   return commentableDocumentTypes.includes(type ?? "document");
+}
+
+export function supportsDocumentEditor(type: string | null | undefined): boolean {
+  return documentEditorTypes.includes(type ?? "document");
 }

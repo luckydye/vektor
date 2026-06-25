@@ -1,6 +1,7 @@
 ---
 import { twMerge } from "tailwind-merge";
 import DocumentActions from "~/src/components/DocumentActions.vue";
+import DocumentContextProvider from "~/src/components/DocumentContextProvider.vue";
 import DocumentProperties from "~/src/components/DocumentProperties.vue";
 import NewDocumentPicker from "~/src/components/NewDocumentPicker.vue";
 import TitleEditor from "~/src/components/TitleEditor.vue";
@@ -83,6 +84,15 @@ const isPaddedDocument = !isCanvas && !isApp && !isCsv && !isWorkflow;
         isCsv ? "max-w-full" : "max-w-(--document-width)",
       )}
     >
+      <DocumentContextProvider
+        client:load
+        documentId={undefined}
+        documentType={type}
+        readonly={false}
+        publishedVersion={null}
+        userCanEdit={userCanEdit}
+      />
+
       <!-- Document Header -->
       <div class={twMerge(
         isApp
@@ -119,9 +129,7 @@ const isPaddedDocument = !isCanvas && !isApp && !isCsv && !isWorkflow;
 
           <DocumentActions
             client:only
-            documentId={undefined}
             title={title}
-            readonly={false}
           />
         </div>
 

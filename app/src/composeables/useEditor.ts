@@ -1,5 +1,6 @@
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
 import { Actions } from "../utils/actions.ts";
+import { supportsDocumentEditor } from "../utils/documentTypes.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useRevisions } from "./useRevisions.ts";
@@ -79,11 +80,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
 
   const suggestionSavedCount = ref(0);
   const canMountEditor = computed(
-    () =>
-      !readonly.value &&
-      documentType.value !== "canvas" &&
-      documentType.value !== "app" &&
-      documentType.value !== "csv",
+    () => !readonly.value && supportsDocumentEditor(documentType.value),
   );
   const {
     saveStatus: documentSaveStatus,

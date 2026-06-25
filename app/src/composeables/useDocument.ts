@@ -1,11 +1,100 @@
 import { computed, type Ref, ref } from "vue";
 import { api } from "../api/client.ts";
+import { supportsDocumentEditor } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+export type DocumentContext = {
+  documentId?: string;
+  documentType: string;
+  readonly: boolean;
+  publishedVersion: number | null;
+  userCanEdit: boolean;
+};
+
+export type DocumentContextInput = Partial<DocumentContext>;
+
+const documentContext = ref<DocumentContext>({
+  documentId: undefined,
+  documentType: "document",
+  readonly: false,
+  publishedVersion: null,
+  userCanEdit: false,
+});
+
+function normalizeDocumentContext(input: DocumentContextInput): DocumentContext {
+  return {
+    documentId: input.documentId,
+    documentType: input.documentType || "document",
+    readonly: input.readonly ?? false,
+    publishedVersion: input.publishedVersion ?? null,
+    userCanEdit: input.userCanEdit ?? false,
+  };
+}
+
+function sameDocumentContext(a: DocumentContext, b: DocumentContext): boolean {
+  return (
+    a.documentId === b.documentId &&
+    a.documentType === b.documentType &&
+    a.readonly === b.readonly &&
+    a.publishedVersion === b.publishedVersion &&
+    a.userCanEdit === b.userCanEdit
+  );
+}
+
+export function useDocumentContext() {
+  const canUseDocumentEditor = computed(
+    () =>
+      supportsDocumentEditor(documentContext.value.documentType) &&
+      !documentContext.value.readonly &&
+      documentContext.value.userCanEdit,
+  );
+  const hasPublishedVersion = computed(
+    () => documentContext.value.publishedVersion != null,
+  );
+
+  function setDocumentContext(input: DocumentContextInput): boolean {
+    const nextContext = normalizeDocumentContext({
+      ...documentContext.value,
+      ...input,
+    });
+    if (sameDocumentContext(documentContext.value, nextContext)) return false;
+
+    documentContext.value = nextContext;
+    return true;
+  }
+
+  function markDocumentPublished(version = 0): void {
+    if (documentContext.value.publishedVersion != null) return;
+    documentContext.value = {
+      ...documentContext.value,
+      publishedVersion: version,
+    };
+  }
+
+  function resetDocumentContext(): void {
+    documentContext.value = {
+      documentId: undefined,
+      documentType: "document",
+      readonly: false,
+      publishedVersion: null,
+      userCanEdit: false,
+    };
+  }
+
+  return {
+    documentContext,
+    canUseDocumentEditor,
+    hasPublishedVersion,
+    setDocumentContext,
+    markDocumentPublished,
+    resetDocumentContext,
+  };
+}
 
 export function useDocument(documentId: string | undefined, documentType = "document") {
   const { currentSpaceId, currentSpace } = useSpace();
