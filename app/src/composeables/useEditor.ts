@@ -4,7 +4,7 @@ import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useRevisions } from "./useRevisions.ts";
 
-export type SaveMode = "revision" | "suggestion" | "draft";
+export type SaveMode = "revision" | "suggestion";
 
 /** Whether the user has an active editing session on the current document. */
 export const editing = ref(false);
@@ -53,7 +53,7 @@ type EditorState = {
 type DocumentEditor = EditorState & {
   canMountEditor: Ref<boolean>;
   suggestionSavedCount: Ref<number>;
-  finishEditing: (mode?: SaveMode) => Promise<void>;
+  finishEditing: (mode: SaveMode) => Promise<void>;
   startEditorSession: () => Promise<void>;
   stopEditorSession: () => void;
 };
@@ -101,7 +101,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveStatusTimer = null;
   }
 
-  async function finishEditing(mode: SaveMode = "draft") {
+  async function finishEditing(mode: SaveMode) {
     clearSaveStatusTimer();
     saveStatus.value = "saving";
     saveError.value = null;
@@ -140,13 +140,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   }
 
   function registerSaveActions() {
-    Actions.register("document:save", {
-      title: "Save Document",
-      description: "Save current document as draft and exit edit mode",
-      group: "edit",
-      run: async () => finishEditing("draft"),
-    });
-
     Actions.register("document:save:publish", {
       title: "Publish Document",
       description: "Publish current document and exit edit mode",
@@ -163,7 +156,6 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   }
 
   function unregisterSaveActions() {
-    Actions.unregister("document:save");
     Actions.unregister("document:save:publish");
     Actions.unregister("document:save:suggestion");
   }

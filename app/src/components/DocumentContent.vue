@@ -39,13 +39,11 @@ const props = withDefaults(
     documentType?: string;
     readonly?: boolean;
     spaceId: string;
-    initialEditMode?: boolean;
   }>(),
   {
     initialHtml: "",
     documentType: "document",
     readonly: false,
-    initialEditMode: false,
   },
 );
 
@@ -261,6 +259,7 @@ watch(
 let toolbarActionsRegistered = false;
 let leaveToolbarActionSubscriptions: Array<() => void> = [];
 let formattingActionsRegistered = false;
+let autoEditModeAppliedForDocumentId: string | undefined | null;
 
 function registerEditorActions() {
   if (formattingActionsRegistered) return;
@@ -311,6 +310,23 @@ function unregisterToolbarActions() {
   toolbarActionsRegistered = false;
 }
 
+function shouldAutoStartEditMode() {
+  if (!canMountEditor.value) return false;
+  if (!documentId.value) return true;
+  return documentData.value?.publishedRev === null;
+}
+
+function maybeStartAutoEditMode() {
+  const currentDocumentId = documentId.value ?? null;
+  if (
+    shouldAutoStartEditMode() &&
+    autoEditModeAppliedForDocumentId !== currentDocumentId
+  ) {
+    autoEditModeAppliedForDocumentId = currentDocumentId;
+    editing.value = true;
+  }
+}
+
 watch(editing, (isEditing) => {
   if (isEditing) {
     registerEditorActions();
@@ -319,6 +335,20 @@ watch(editing, (isEditing) => {
     unregisterEditorActions();
     unregisterToolbarActions();
   }
+});
+
+watch(documentId, (currentDocumentId, previousDocumentId) => {
+  if (!isMounted.value || currentDocumentId === previousDocumentId) return;
+
+  resetEditingState();
+  autoEditModeAppliedForDocumentId = null;
+  extensions.setActiveDocumentId(currentDocumentId ?? null);
+  maybeStartAutoEditMode();
+});
+
+watch(canMountEditor, () => {
+  if (!isMounted.value) return;
+  maybeStartAutoEditMode();
 });
 
 onMounted(() => {
@@ -334,9 +364,7 @@ onMounted(() => {
 
   window.addEventListener("visibilitychange", handleVisibilityChange);
 
-  if (props.initialEditMode && canMountEditor.value) {
-    editing.value = true;
-  }
+  maybeStartAutoEditMode();
 });
 
 onUnmounted(() => {
@@ -378,6 +406,7 @@ watch(documentData, (doc) => {
   if (typeof doc.content === "string") {
     renderedHtml.value = doc.content;
   }
+  maybeStartAutoEditMode();
   const full =
     doc.properties?.layout === "full" ||
     (!doc.properties?.layout &&

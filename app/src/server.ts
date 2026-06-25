@@ -33,7 +33,14 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "./utils/realtime.ts";
-import { getRoom, loadYDoc, type YRoom, yRooms } from "./utils/yjsRooms.ts";
+import {
+  getRoom,
+  loadYDoc,
+  persistYRoomDraft,
+  scheduleYRoomDraftPersist,
+  type YRoom,
+  yRooms,
+} from "./utils/yjsRooms.ts";
 
 type Bindings = {
   incoming: IncomingMessage;
@@ -226,6 +233,7 @@ async function handleRealtimeWebSocket(
         if (!room?.doc) return;
 
         Y.applyUpdate(room.doc, update, websocket);
+        scheduleYRoomDraftPersist(roomKey);
 
         const frame = wsEncodeYjsUpdate(documentId, update);
         for (const client of room.clients) {
@@ -390,6 +398,7 @@ async function handleRealtimeWebSocket(
     for (const roomKey of yjsRooms) {
       const room = yRooms.get(roomKey);
       if (!room) continue;
+      void persistYRoomDraft(roomKey);
       room.clients.delete(websocket);
       if (room.clients.size === 0 && room.presences.size === 0) {
         yRooms.delete(roomKey);

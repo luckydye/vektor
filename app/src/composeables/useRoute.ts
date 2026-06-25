@@ -15,10 +15,12 @@ export function useRoute() {
 
   onMounted(() => {
     updatePath();
+    document.addEventListener("astro:page-load", updatePath);
     window.addEventListener("popstate", updatePath);
     window.addEventListener("hashchange", updatePath);
   });
   onUnmounted(() => {
+    document.removeEventListener("astro:page-load", updatePath);
     window.removeEventListener("popstate", updatePath);
     window.removeEventListener("hashchange", updatePath);
   });

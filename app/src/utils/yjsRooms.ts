@@ -4,7 +4,7 @@ import { Node } from "@tiptap/pm/model";
 import type { WebSocket } from "ws";
 import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
-import { getDocument } from "#db/documents.ts";
+import { getDocument, updateDocument } from "#db/documents.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -14,6 +14,7 @@ import {
 } from "#utils/realtime.ts";
 import { contentExtensions } from "../editor/extensions.ts";
 import { parseCanvasContent, seedCanvasDoc } from "./canvasYjs.ts";
+import { stripScriptTags } from "./utils.ts";
 
 export interface YRoom {
   doc?: Y.Doc;
@@ -25,6 +26,15 @@ export const yRooms = new Map<string, YRoom>();
 
 export function roomKey(spaceId: string, documentId: string): string {
   return `${spaceId}:${documentId}`;
+}
+
+function splitRoomKey(key: string): { spaceId: string; documentId: string } | null {
+  const separator = key.indexOf(":");
+  if (separator < 0) return null;
+  return {
+    spaceId: key.slice(0, separator),
+    documentId: key.slice(separator + 1),
+  };
 }
 
 function loadCanvasYDoc(content: string): Y.Doc {
@@ -213,6 +223,55 @@ function broadcastToRoom(room: YRoom, frame: Uint8Array): void {
       client.send(frame);
     }
   }
+}
+
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const PERSIST_DEBOUNCE_MS = 1000;
+
+function serializeRoomContent(
+  spaceId: string,
+  documentId: string,
+  doc: Y.Doc,
+  type: string | null | undefined,
+): string {
+  if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(doc));
+  return toCleanHtml(doc, contentExtensions({ spaceId, documentId }));
+}
+
+export async function persistYRoomDraft(key: string): Promise<void> {
+  const timer = persistTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    persistTimers.delete(key);
+  }
+
+  const ids = splitRoomKey(key);
+  if (!ids) return;
+
+  const room = yRooms.get(key);
+  if (!room?.doc) return;
+
+  const dbDoc = await getDocument(ids.spaceId, ids.documentId);
+  if (!dbDoc) return;
+
+  const content = stripScriptTags(
+    serializeRoomContent(ids.spaceId, ids.documentId, room.doc, dbDoc.type),
+  );
+  if (content === (dbDoc.content ?? "")) return;
+
+  await updateDocument(ids.spaceId, ids.documentId, content, undefined, dbDoc.type);
+}
+
+export function scheduleYRoomDraftPersist(key: string): void {
+  const existing = persistTimers.get(key);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    persistTimers.delete(key);
+    void persistYRoomDraft(key);
+  }, PERSIST_DEBOUNCE_MS);
+  timer.unref?.();
+  persistTimers.set(key, timer);
 }
 
 const AGENT_CLIENT_ID = "agent";

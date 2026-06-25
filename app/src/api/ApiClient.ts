@@ -2206,6 +2206,7 @@ export class ApiClient {
     if (!ydocs) {
       ydocs = new Set();
       connection.yjsRooms.set(documentId, ydocs);
+      ydocs.add(entry);
       // First doc for this room — announce the join (replayed on reconnect).
       this.sendRealtimeState(connection, wsEncode(WsMsgType.YjsJoin, { documentId }));
     } else {
@@ -2217,8 +2218,8 @@ export class ApiClient {
           onSynced?.();
         });
       }
+      ydocs.add(entry);
     }
-    ydocs.add(entry);
 
     const handleUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === "remote") return;

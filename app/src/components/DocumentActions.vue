@@ -26,6 +26,7 @@ const props = defineProps<{
   readonly: boolean;
   documentType?: string;
   headerImage?: string;
+  publishedVersion?: number | null;
 }>();
 
 const { currentSpaceId, currentSpace } = useSpace();
@@ -44,8 +45,32 @@ const userCanEdit = computed(() => {
 });
 
 const isCreatingToken = ref(false);
+const localPublishedVersion = ref(props.publishedVersion);
+const publishRequested = ref(false);
 const isSaving = computed(() => saveStatus.value === "saving");
-const saveDisabled = computed(() => isSaving.value || !hasChanges.value);
+const hasPublishedVersion = computed(() => localPublishedVersion.value != null);
+const canPublishCurrentDraft = computed(
+  () => !props.documentId || !hasPublishedVersion.value || hasChanges.value,
+);
+const publishDisabled = computed(() => isSaving.value || !canPublishCurrentDraft.value);
+const suggestionSaveDisabled = computed(() => isSaving.value || !hasChanges.value);
+const showCancel = computed(() => !props.documentId || hasPublishedVersion.value);
+
+watch(
+  () => props.publishedVersion,
+  (publishedVersion) => {
+    localPublishedVersion.value = publishedVersion;
+  },
+);
+
+watch(saveStatus, (status) => {
+  if (status === "saved" && publishRequested.value) {
+    localPublishedVersion.value ??= 0;
+    publishRequested.value = false;
+  } else if (status === "error") {
+    publishRequested.value = false;
+  }
+});
 
 function registerEditAction() {
   Actions.register("document:edit", {
@@ -172,14 +197,9 @@ const actionsDanger = ref<[string, ActionOptions][]>([]);
 const actionsDev = ref<[string, ActionOptions][]>([]);
 const devMode = ref(false);
 
-function stopEditing() {
-  if (!editing.value) return;
-  if (!Actions.get("document:save")) return;
-  Actions.run("document:save");
-}
-
 function publishDocument(e: MouseEvent) {
   if (!Actions.get("document:save:publish")) return;
+  publishRequested.value = true;
   Actions.run("document:save:publish");
   (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
@@ -409,7 +429,7 @@ watchEffect(() => {
         <button
           type="button"
           class="inline-flex justify-center items-center px-3xs button-primary-pointer"
-          :disabled="saveDisabled"
+          :disabled="publishDisabled"
           @click="publishDocument"
         >
           <Icon name="check" />
@@ -420,8 +440,8 @@ watchEffect(() => {
             slot="trigger"
             type="button"
             class="flex items-center justify-center border-l border-primary-700 px-4xs button-primary-pointer"
-            :disabled="saveDisabled"
-            aria-label="Save options"
+            :disabled="isSaving"
+            aria-label="Publish options"
           >
             <Icon name="chevron-down" />
           </button>
@@ -434,16 +454,7 @@ watchEffect(() => {
                 <button
                   type="button"
                   class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
-                  :disabled="saveDisabled"
-                  @click="stopEditing"
-                >
-                  <div class="font-medium text-size-small">Save</div>
-                  <div class="text-size-small text-neutral-500">Save without publishing to viewers</div>
-                </button>
-                <button
-                  type="button"
-                  class="w-full text-left px-3xs py-[8px] rounded-md transition-colors hover:bg-primary-10"
-                  :disabled="saveDisabled"
+                  :disabled="suggestionSaveDisabled"
                   @click="saveAsSuggestion"
                 >
                   <div class="font-medium text-size-small">Save as suggestion</div>
@@ -455,7 +466,7 @@ watchEffect(() => {
         </a-popover-trigger>
       </div>
 
-      <ButtonSecondary @click="cancelEditing">
+      <ButtonSecondary v-if="showCancel" @click="cancelEditing">
         <Icon name="close" />
         <span>Cancel</span>
       </ButtonSecondary>
