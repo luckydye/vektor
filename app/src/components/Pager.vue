@@ -12,8 +12,8 @@ const emit = defineEmits<{
 }>();
 
 function onPagerChange(e: Event) {
+  e.preventDefault();
   if (props.disabled) {
-    e.preventDefault();
     return;
   }
   emit("change", (e as CustomEvent<{ page: number }>).detail.page);

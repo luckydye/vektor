@@ -18,7 +18,6 @@ const viewingRevision = ref(false);
 const revisionNumber = ref<number | null>(null);
 const revisionContent = ref("");
 const viewingSuggestion = ref(false);
-const sidebarOpen = ref(false);
 const showingDiff = ref(false);
 const diffPatch = ref("");
 
@@ -68,10 +67,6 @@ function closeRevisionView() {
   window.dispatchEvent(new CustomEvent("revision:close"));
 }
 
-function handleSidebarToggle(event: CustomEvent) {
-  sidebarOpen.value = event.detail.isOpen;
-}
-
 async function handleRevisionDiff(event: CustomEvent) {
   if (!currentSpaceId.value) return;
 
@@ -96,7 +91,6 @@ async function handleRevisionDiff(event: CustomEvent) {
 onMounted(() => {
   window.addEventListener("revision:view", handleRevisionView as EventListener);
   window.addEventListener("revision:close", handleRevisionClose);
-  window.addEventListener("revisions:toggled", handleSidebarToggle as EventListener);
   window.addEventListener(
     "revision:diff",
     handleRevisionDiff as unknown as EventListener,
@@ -106,7 +100,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("revision:view", handleRevisionView as EventListener);
   window.removeEventListener("revision:close", handleRevisionClose);
-  window.removeEventListener("revisions:toggled", handleSidebarToggle as EventListener);
   window.removeEventListener(
     "revision:diff",
     handleRevisionDiff as unknown as EventListener,
@@ -118,8 +111,7 @@ onUnmounted(() => {
   <div v-if="viewingRevision">
     <!-- Revision Disclaimer Banner -->
     <div
-      class="sticky top-0 z-60 bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center justify-between duration-300 mb-10"
-      :style="{ marginRight: sidebarOpen ? '432px' : '0' }"
+      class="sticky top-0 z-60 bg-amber-50 border border-amber-200 px-6 py-4 flex items-center justify-between duration-300 mb-10"
     >
       <div class="flex items-center gap-3">
         <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
