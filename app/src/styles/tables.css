@@ -78,6 +78,10 @@ table {
   cursor: cell;
 }
 
+.table-cell-selection-dragging table .column-resize-handle {
+  display: none;
+}
+
 .resize-cursor {
   cursor: col-resize;
 }

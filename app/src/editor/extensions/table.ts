@@ -49,6 +49,22 @@ function syncCellSelectionUi(view: EditorView) {
   }
 }
 
+function dispatchTableSelectionPointerState(active: boolean) {
+  window.dispatchEvent(
+    new CustomEvent("table-selection-pointer-state", {
+      detail: { active },
+    }),
+  );
+}
+
+function isTableCellTarget(target: EventTarget | null, view: EditorView) {
+  if (!(target instanceof Element) || !view.dom.contains(target)) {
+    return false;
+  }
+
+  return target.closest("td, th") !== null;
+}
+
 export const TableEditing = Extension.create({
   name: "tableEditing",
 
@@ -101,13 +117,49 @@ export const TableEditing = Extension.create({
       new Plugin({
         view: (view) => {
           syncCellSelectionUi(view);
+          let pointerDownInTable = false;
+          let dispatchedPointerState = false;
+
+          const syncPointerSelection = (view: EditorView) => {
+            const active =
+              pointerDownInTable && view.state.selection instanceof CellSelection;
+            view.dom.classList.toggle("table-cell-selection-dragging", active);
+            if (active === dispatchedPointerState) return;
+            dispatchedPointerState = active;
+            dispatchTableSelectionPointerState(active);
+          };
+
+          const endPointerSelection = () => {
+            if (!pointerDownInTable) return;
+            pointerDownInTable = false;
+            syncPointerSelection(view);
+          };
+
+          const handleMouseDown = (event: MouseEvent) => {
+            if (event.button !== 0 || !isTableCellTarget(event.target, view)) {
+              return;
+            }
+
+            pointerDownInTable = true;
+            syncPointerSelection(view);
+          };
+
+          view.dom.addEventListener("mousedown", handleMouseDown);
+          view.root.addEventListener("mouseup", endPointerSelection);
+          view.root.addEventListener("dragstart", endPointerSelection);
 
           return {
             update(view) {
               syncCellSelectionUi(view);
+              syncPointerSelection(view);
             },
             destroy() {
+              view.dom.removeEventListener("mousedown", handleMouseDown);
+              view.root.removeEventListener("mouseup", endPointerSelection);
+              view.root.removeEventListener("dragstart", endPointerSelection);
+              endPointerSelection();
               view.dom.classList.remove("table-cell-selection-active");
+              view.dom.classList.remove("table-cell-selection-dragging");
             },
           };
         },

@@ -32,7 +32,6 @@ import {
   moreIcon,
   outdentIcon,
   paintBucketIcon,
-  plusOverlayIcon,
   restoreArrowIcon,
   rowMinusIcon,
   rowPlusBottomIcon,
@@ -243,6 +242,7 @@ if (
       private bgColor = "transparent";
       private bgColorActive = false;
       private tableActive = false;
+      private tableSelectionPointerDown = false;
       private cellBackgroundColor = "transparent";
       private cellBackgroundActive = false;
       private copiedRow: unknown = null;
@@ -259,6 +259,10 @@ if (
       connectedCallback() {
         window.addEventListener("editor-destroyed", this.handleEditModeEnd);
         window.addEventListener("editor-update", this.update);
+        window.addEventListener(
+          "table-selection-pointer-state",
+          this.handleTableSelectionPointerState as EventListener,
+        );
         window.addEventListener("resize", this.updatePosition, { passive: true });
         document.addEventListener("pointerup", this.handlePointerUp);
         document.addEventListener("scroll", this.updatePosition, {
@@ -273,6 +277,10 @@ if (
       disconnectedCallback() {
         window.removeEventListener("editor-destroyed", this.handleEditModeEnd);
         window.removeEventListener("editor-update", this.update);
+        window.removeEventListener(
+          "table-selection-pointer-state",
+          this.handleTableSelectionPointerState as EventListener,
+        );
         window.removeEventListener("resize", this.updatePosition);
         document.removeEventListener("pointerup", this.handlePointerUp);
         document.removeEventListener("scroll", this.updatePosition);
@@ -286,7 +294,6 @@ if (
         return this.root.querySelector<HTMLElement>(".table-toolbar");
       }
 
-
       private getEditor() {
         return this.editor;
       }
@@ -294,10 +301,18 @@ if (
       private handleEditModeEnd = () => {
         this.shouldShow = false;
         this.tableActive = false;
+        this.tableSelectionPointerDown = false;
         this.secondaryOpen = false;
         this.interacting = false;
         this.imageActive = false;
         this.dismissedSelectionKey = null;
+        this.paint();
+      };
+
+      private handleTableSelectionPointerState = (
+        event: CustomEvent<{ active: boolean }>,
+      ) => {
+        this.tableSelectionPointerDown = event.detail.active;
         this.paint();
       };
 
@@ -308,6 +323,7 @@ if (
         }
         this.shouldShow = false;
         this.tableActive = false;
+        this.tableSelectionPointerDown = false;
         this.secondaryOpen = false;
         this.interacting = false;
         this.paint();
@@ -868,12 +884,20 @@ if (
             .table-toolbar {
               position: fixed;
               z-index: 50;
+              opacity: 1;
+              pointer-events: auto;
               display: flex;
               flex-direction: column;
               align-items: flex-start;
               gap: 0.25rem;
               color: var(--tb-text);
               font-family: inherit;
+              transition: opacity 0.12s ease;
+            }
+
+            .toolbar-hidden {
+              opacity: 0;
+              pointer-events: none;
             }
 
             .table-toolbar {
@@ -1090,7 +1114,7 @@ if (
 
         return html`
           <div
-            class="floating-menu"
+            class=${`floating-menu${this.tableSelectionPointerDown ? " toolbar-hidden" : ""}`}
             style=${this.floatingStyle}
             @mousedown=${() => {
               this.interacting = true;
@@ -1393,7 +1417,10 @@ if (
 
       private renderTableToolbar() {
         return html`
-          <div class="table-toolbar" style=${this.tableStyle}>
+          <div
+            class=${`table-toolbar${this.tableSelectionPointerDown ? " toolbar-hidden" : ""}`}
+            style=${this.tableStyle}
+          >
             <div class="menu-group">
               ${this.button(this.icon(columnPlusLeftIcon), "Add Column Before", () =>
                 this.chain()?.addColumnBefore().run(),
