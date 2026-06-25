@@ -133,7 +133,12 @@ onMounted(() => {
       }"
       @click="handleClick"
     >
-        <div v-if="icon" v-html="icon" />
+        <div
+          v-if="icon"
+          v-html="icon"
+          class="[&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:inline"
+          :class="variant === 'special' ? '[&_svg]:text-primary-700' : '[&_svg]:text-primary-600'"
+        />
         <div v-if="!icon" class="w-[18px] h-[18px] rounded-sm flex items-center justify-center bg-primary-500" />
         <span
             :class="twMerge(
@@ -159,7 +164,12 @@ onMounted(() => {
       }"
       @click="handleClick"
     >
-      <div v-if="icon" v-html="icon" />
+      <div
+        v-if="icon"
+        v-html="icon"
+        class="[&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:inline"
+        :class="variant === 'special' ? '[&_svg]:text-primary-700' : '[&_svg]:text-primary-600'"
+      />
       <span
         :class="{
           'text-primary-700': variant === 'special',
@@ -174,7 +184,7 @@ onMounted(() => {
     <a-blur v-if="isEditPopoverOpen && property" enabled @exit="handleExit" class="absolute -top-4xs -left-4xs bg-neutral-10 border border-neutral-100 rounded-lg p-5xs flex flex-col z-50 shadow-large">
       <!-- Property name input with delete button -->
       <div class="flex items-center gap-4xs px-3xs w-full">
-        <div v-if="icon" v-html="icon" />
+        <div v-if="icon" v-html="icon" class="[&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:text-neutral-950" />
         <div class="flex-1 overflow-hidden py-5xs whitespace-nowrap">
           <input
             v-if="property.type !== 'date'"
@@ -192,10 +202,10 @@ onMounted(() => {
         </div>
         <button
           type="button"
-          class="shrink-0 transition-opacity hover:opacity-70 cursor-pointer"
+          class="shrink-0 transition-opacity hover:opacity-70 cursor-pointer text-neutral-950"
           @click="handleDelete"
         >
-          <Icon name="trash" />
+          <Icon name="trash" class="w-[18px] h-[18px]" />
         </button>
       </div>
 
@@ -218,34 +228,3 @@ onMounted(() => {
     </a-blur>
   </div>
 </template>
-
-<style scoped>
-button :deep(svg) {
-  width: 18px;
-  height: 18px;
-  display: inline;
-}
-
-button.bg-primary-50 :deep(svg) {
-  color: var(--color-primary-700);
-}
-
-button.bg-background :deep(svg) {
-  color: var(--color-primary-600);
-}
-
-a-blur :deep(svg) {
-  width: 18px;
-  height: 18px;
-  color: var(--color-neutral-950);
-}
-
-a-calendar {
-    --calendar-hover-bg: rgba(250, 250, 250, 0.1);
-    --calendar-selected-bg: var(--color-primary-500);
-    --calendar-selected-color: white;
-    --calendar-range-bg: var(--color-primary-300);
-    --calendar-highlight-bg: rgba(234, 179, 8, 0.4);
-    --calendar-focus-outline: currentColor;
-}
-</style>

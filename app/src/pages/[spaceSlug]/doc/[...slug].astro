@@ -362,7 +362,7 @@ if (diffMins >= 1 && diffMins < 60) {
             ? <WorkflowView client:only documentId={document.id} spaceId={space.id} />
             : isDatabase
               ? <DatabaseView
-                  client:load
+                  client:only="vue"
                   databaseDocumentId={document.id}
                   spaceSlug={spaceSlug}
                   schemaJson={document.properties._schema ?? undefined}
