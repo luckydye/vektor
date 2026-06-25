@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createJobToken } from "../src/jobs/jobToken.ts";
 import { LOCAL_USER, LOCAL_USER_ID } from "../src/noAuth.ts";
+import { createZipBuffer } from "../src/utils/zip.ts";
 
 process.env.AUTH_SECRET ??= "api-test-secret-do-not-use-in-production";
 
@@ -159,6 +160,99 @@ describe("API Tests - Spaces", () => {
     const data = await response.json();
     expect(data.name).toBe("Updated Test Space");
     expect(data.slug).toBe("updated-test-space");
+  });
+});
+
+describe("API Tests - Extensions", () => {
+  function createExtensionPackage(id: string): Buffer {
+    return createZipBuffer([
+      {
+        name: "manifest.json",
+        data: Buffer.from(
+          JSON.stringify({
+            id,
+            name: "Toggle Test",
+            version: "1.0.0",
+            entries: {},
+            jobs: [{ id: "toggle-test-noop", name: "Noop", entry: "jobs/noop.mjs" }],
+          }),
+        ),
+      },
+      {
+        name: "jobs/noop.mjs",
+        data: Buffer.from("export default async function noop() { return {}; }\n"),
+      },
+    ]);
+  }
+
+  it("can disable and re-enable extensions", async () => {
+    const spaceResponse = await apiRequest("/api/v1/spaces", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Extension Toggle Space",
+        slug: "extension-toggle-space",
+      }),
+    });
+    expect(spaceResponse.status).toBe(201);
+    const spaceData = await spaceResponse.json();
+    const spaceId = spaceData.space.id;
+
+    const form = new FormData();
+    const packageBuffer = createExtensionPackage("toggle-test");
+    const packageBytes = packageBuffer.buffer.slice(
+      packageBuffer.byteOffset,
+      packageBuffer.byteOffset + packageBuffer.byteLength,
+    ) as ArrayBuffer;
+    form.append(
+      "file",
+      new File([packageBytes], "toggle-test.zip", { type: "application/zip" }),
+    );
+
+    const uploadResponse = await fetch(
+      `${BASE_URL}/api/v1/spaces/${spaceId}/extensions`,
+      {
+        method: "POST",
+        body: form,
+      },
+    );
+    expect(uploadResponse.status).toBe(201);
+    expect((await uploadResponse.json()).enabled).toBe(true);
+
+    const disableResponse = await apiRequest(
+      `/api/v1/spaces/${spaceId}/extensions/toggle-test`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: false }),
+      },
+    );
+    expect(disableResponse.status).toBe(200);
+    expect((await disableResponse.json()).enabled).toBe(false);
+
+    const listResponse = await apiRequest(`/api/v1/spaces/${spaceId}/extensions`);
+    expect(listResponse.status).toBe(200);
+    const listData = await listResponse.json();
+    expect(listData.extensions).toContainEqual(
+      expect.objectContaining({ id: "toggle-test", enabled: false }),
+    );
+
+    const runResponse = await apiRequest(`/api/v1/spaces/${spaceId}/jobs/run`, {
+      method: "POST",
+      body: JSON.stringify({ jobId: "toggle-test-noop" }),
+    });
+    expect(runResponse.status).toBe(400);
+    expect(await runResponse.json()).toEqual({
+      error: 'Job "toggle-test-noop" not found',
+    });
+
+    const enableResponse = await apiRequest(
+      `/api/v1/spaces/${spaceId}/extensions/toggle-test`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: true }),
+      },
+    );
+    expect(enableResponse.status).toBe(200);
+    expect((await enableResponse.json()).enabled).toBe(true);
   });
 });
 

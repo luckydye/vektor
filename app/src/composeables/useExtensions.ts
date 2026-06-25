@@ -81,12 +81,44 @@ export function useExtensions() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      extensionId,
+      enabled,
+    }: {
+      extensionId: string;
+      enabled: boolean;
+    }) => {
+      if (!currentSpaceId.value) {
+        throw new Error("No space selected");
+      }
+      return await api.extensions.update(currentSpaceId.value, extensionId, { enabled });
+    },
+    onSuccess: (updatedExtension) => {
+      const spaceId = currentSpaceId.value;
+      queryClient.invalidateQueries({ queryKey: ["extensions", spaceId] });
+
+      if (!spaceId) {
+        return;
+      }
+      if (updatedExtension.enabled) {
+        extensions.loadExtension(updatedExtension);
+      } else {
+        extensions.unloadExtension(updatedExtension.id);
+      }
+    },
+  });
+
   const uploadExtension = async (file: File) => {
     return await uploadMutation.mutateAsync(file);
   };
 
   const deleteExtension = async (extensionId: string) => {
     return await deleteMutation.mutateAsync(extensionId);
+  };
+
+  const setExtensionEnabled = async (extensionId: string, enabled: boolean) => {
+    return await updateMutation.mutateAsync({ extensionId, enabled });
   };
 
   const downloadPackage = async (extensionId: string) => {
@@ -110,8 +142,10 @@ export function useExtensions() {
     uploadError,
     isUploading: uploadMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    isUpdating: updateMutation.isPending,
     uploadExtension,
     deleteExtension,
+    setExtensionEnabled,
     downloadPackage,
     refresh,
   };

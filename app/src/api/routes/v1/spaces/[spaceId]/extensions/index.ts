@@ -35,7 +35,7 @@ export const GET: APIRoute = (context) =>
     const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     const { extensions: allExtensions, errors: manifestErrors } =
-      await listExtensionsWithErrors(spaceId);
+      await listExtensionsWithErrors(spaceId, { includeDisabled: true });
 
     const extensions =
       auth.type === "job"
@@ -55,6 +55,7 @@ export const GET: APIRoute = (context) =>
         name: ext.manifest.name,
         version: ext.manifest.version,
         description: ext.manifest.description,
+        enabled: ext.enabled,
         entries: ext.manifest.entries,
         routes: ext.manifest.routes,
         jobs: ext.manifest.jobs,
@@ -159,7 +160,9 @@ export const POST: APIRoute = (context) =>
       }
 
       // Check if extension already exists - update it if so
-      const existing = await getExtension(spaceId, extensionId);
+      const existing = await getExtension(spaceId, extensionId, {
+        includeDisabled: true,
+      });
 
       let ext = null;
       try {
@@ -180,6 +183,7 @@ export const POST: APIRoute = (context) =>
         name: ext.manifest.name,
         version: ext.manifest.version,
         description: ext.manifest.description,
+        enabled: ext.enabled,
         entries: ext.manifest.entries,
         routes: ext.manifest.routes,
         jobs: ext.manifest.jobs,

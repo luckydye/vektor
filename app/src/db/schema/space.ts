@@ -46,6 +46,7 @@ export const comment = sqliteTable("comment", {
 export const extension = sqliteTable("extension", {
   id: text("id").primaryKey(),
   package: blob("snapshot", { mode: "buffer" }).notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   createdBy: text("created_by").notNull(),

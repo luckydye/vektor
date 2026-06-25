@@ -78,6 +78,7 @@ export type ExtensionInfo = {
   name: string;
   version: string;
   description?: string;
+  enabled: boolean;
   entries: {
     frontend?: string;
     view?: string;
@@ -228,6 +229,10 @@ export class Extensions {
    * Load a single extension's frontend entry
    */
   async loadExtension(info: ExtensionInfo): Promise<void> {
+    if (!info.enabled) {
+      return;
+    }
+
     if (this.loaded.has(info.id)) {
       return;
     }

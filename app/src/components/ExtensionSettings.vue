@@ -23,6 +23,7 @@
           <thead class="bg-neutral-50">
             <tr>
               <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Extension</th>
+              <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Status</th>
               <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Version</th>
               <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Entry Points</th>
               <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Updated</th>
@@ -36,6 +37,14 @@
                 <div class="font-medium text-neutral-900">{{ ext.name }}</div>
                 <div class="text-size-small text-neutral-500 font-mono">{{ ext.id }}</div>
                 <div v-if="ext.description" class="text-size-small text-neutral-500 mt-0.5">{{ ext.description }}</div>
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap">
+                <SwitchToggle
+                  :model-value="ext.enabled"
+                  :disabled="isUpdating"
+                  :label="ext.enabled ? 'Enabled' : 'Disabled'"
+                  @update:model-value="handleToggle(ext.id, $event)"
+                />
               </td>
               <td class="px-4 py-2.5 whitespace-nowrap text-neutral-900 font-mono">{{ ext.version }}</td>
               <td class="px-4 py-2.5">
@@ -70,6 +79,7 @@
                 <div class="font-mono text-neutral-900">{{ item.id }}</div>
                 <div class="text-size-small text-amber-700 mt-0.5">{{ item.error }}</div>
               </td>
+              <td class="px-4 py-2.5 text-neutral-400">Invalid</td>
               <td class="px-4 py-2.5 text-neutral-400">—</td>
               <td class="px-4 py-2.5 text-neutral-400">—</td>
               <td class="px-4 py-2.5 text-neutral-400">—</td>
@@ -119,6 +129,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useExtensions } from "../composeables/useExtensions.ts";
+import SwitchToggle from "./SwitchToggle.vue";
 
 const {
   extensions,
@@ -127,8 +138,10 @@ const {
   uploadError,
   isUploading,
   isDeleting,
+  isUpdating,
   uploadExtension,
   deleteExtension,
+  setExtensionEnabled,
   downloadPackage,
 } = useExtensions();
 
@@ -147,6 +160,10 @@ async function handleFileSelect(event: Event) {
 async function handleDelete(extensionId: string) {
   if (!confirm(`Are you sure you want to delete this extension?`)) return;
   await deleteExtension(extensionId);
+}
+
+async function handleToggle(extensionId: string, enabled: boolean) {
+  await setExtensionEnabled(extensionId, enabled);
 }
 
 function formatDate(dateStr: string | Date) {

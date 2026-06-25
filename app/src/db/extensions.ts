@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getLocalExtension, getLocalExtensionPackage } from "../jobs/localJobs.ts";
 import {
   type ExtensionManifest,
@@ -24,6 +24,7 @@ export { extractFile, extractManifest };
 export interface Extension {
   id: string;
   manifest: ExtensionManifest;
+  enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -34,13 +35,21 @@ export interface ExtensionManifestLoadError {
   error: string;
 }
 
-export async function listExtensions(spaceId: string): Promise<Extension[]> {
-  const { extensions } = await listExtensionsWithErrors(spaceId);
+interface ExtensionQueryOptions {
+  includeDisabled?: boolean;
+}
+
+export async function listExtensions(
+  spaceId: string,
+  options: ExtensionQueryOptions = {},
+): Promise<Extension[]> {
+  const { extensions } = await listExtensionsWithErrors(spaceId, options);
   return extensions;
 }
 
 export async function listExtensionsWithErrors(
   spaceId: string,
+  options: ExtensionQueryOptions = {},
 ): Promise<{ extensions: Extension[]; errors: ExtensionManifestLoadError[] }> {
   const db = await getSpaceDb(spaceId);
   const rows = await db.select().from(extension);
@@ -48,6 +57,9 @@ export async function listExtensionsWithErrors(
   const extensions: Extension[] = [];
   const errors: ExtensionManifestLoadError[] = [];
   for (const row of rows) {
+    if (!options.includeDisabled && !row.enabled) {
+      continue;
+    }
     const result = safeExtractManifest(row.package, row.id);
     if (!result.manifest) {
       errors.push({
@@ -59,6 +71,7 @@ export async function listExtensionsWithErrors(
     extensions.push({
       id: row.id,
       manifest: result.manifest,
+      enabled: row.enabled,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       createdBy: row.createdBy,
@@ -74,12 +87,20 @@ export async function listExtensionsWithErrors(
 export async function getExtension(
   spaceId: string,
   extensionId: string,
+  options: ExtensionQueryOptions = {},
 ): Promise<Extension | null> {
   const local = getLocalExtension();
   if (local && extensionId === local.id) return local;
 
   const db = await getSpaceDb(spaceId);
-  const rows = await db.select().from(extension).where(eq(extension.id, extensionId));
+  const conditions = [eq(extension.id, extensionId)];
+  if (!options.includeDisabled) {
+    conditions.push(eq(extension.enabled, true));
+  }
+  const rows = await db
+    .select()
+    .from(extension)
+    .where(and(...conditions));
 
   if (rows.length === 0) {
     return null;
@@ -93,6 +114,7 @@ export async function getExtension(
   return {
     id: row.id,
     manifest: result.manifest,
+    enabled: row.enabled,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     createdBy: row.createdBy,
@@ -132,6 +154,7 @@ export async function createExtension(
   await db.insert(extension).values({
     id: extensionId,
     package: packageBuffer,
+    enabled: true,
     createdAt: now,
     updatedAt: now,
     createdBy: userId,
@@ -140,6 +163,7 @@ export async function createExtension(
   return {
     id: extensionId,
     manifest,
+    enabled: true,
     createdAt: now,
     updatedAt: now,
     createdBy: userId,
@@ -157,6 +181,7 @@ export async function updateExtension(
   const existingRows = await db
     .select({
       id: extension.id,
+      enabled: extension.enabled,
       createdAt: extension.createdAt,
       createdBy: extension.createdBy,
     })
@@ -180,6 +205,55 @@ export async function updateExtension(
   return {
     id: extensionId,
     manifest,
+    enabled: existing.enabled,
+    createdAt: existing.createdAt,
+    updatedAt: now,
+    createdBy: existing.createdBy,
+  };
+}
+
+export async function setExtensionEnabled(
+  spaceId: string,
+  extensionId: string,
+  enabled: boolean,
+): Promise<Extension | null> {
+  const local = getLocalExtension();
+  if (local && extensionId === local.id) return null;
+
+  const db = await getSpaceDb(spaceId);
+  const now = new Date();
+  const rows = await db
+    .select({
+      id: extension.id,
+      package: extension.package,
+      createdAt: extension.createdAt,
+      createdBy: extension.createdBy,
+    })
+    .from(extension)
+    .where(eq(extension.id, extensionId));
+
+  const existing = rows[0];
+  if (!existing) {
+    return null;
+  }
+
+  await db
+    .update(extension)
+    .set({
+      enabled,
+      updatedAt: now,
+    })
+    .where(eq(extension.id, extensionId));
+
+  const result = safeExtractManifest(existing.package, extensionId);
+  if (!result.manifest) {
+    return null;
+  }
+
+  return {
+    id: extensionId,
+    manifest: result.manifest,
+    enabled,
     createdAt: existing.createdAt,
     updatedAt: now,
     createdBy: existing.createdBy,

@@ -225,6 +225,7 @@ export interface ExtensionInfo {
   name: string;
   version: string;
   description?: string;
+  enabled: boolean;
   entries: {
     frontend?: string;
     view?: string;
@@ -1500,6 +1501,21 @@ export class ApiClient {
       return await this.apiGet<ExtensionInfo>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/extensions/${extensionId}`,
+      );
+    },
+
+    /**
+     * Enable or disable an extension
+     */
+    update: async (
+      spaceId: string,
+      extensionId: string,
+      body: { enabled: boolean },
+    ): Promise<ExtensionInfo> => {
+      return await this.apiPatch<ExtensionInfo>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/extensions/${extensionId}`,
+        body,
       );
     },
 

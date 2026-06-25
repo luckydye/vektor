@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import {
   jsonResponse,
   notFoundResponse,
+  parseJsonBody,
   requireParam,
   requireUser,
   successResponse,
@@ -9,7 +10,7 @@ import {
   verifySpaceOwnership,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { deleteExtension, getExtension } from "#db/extensions.ts";
+import { deleteExtension, getExtension, setExtensionEnabled } from "#db/extensions.ts";
 import { getSpace } from "#db/spaces.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
@@ -28,7 +29,7 @@ export const GET: APIRoute = (context) =>
       await verifyExtensionAccess(spaceId, extensionId, auth.user.id);
     }
 
-    const ext = await getExtension(spaceId, extensionId);
+    const ext = await getExtension(spaceId, extensionId, { includeDisabled: true });
     if (!ext) {
       return notFoundResponse("Extension");
     }
@@ -38,6 +39,7 @@ export const GET: APIRoute = (context) =>
       name: ext.manifest.name,
       version: ext.manifest.version,
       description: ext.manifest.description,
+      enabled: ext.enabled,
       entries: ext.manifest.entries,
       routes: ext.manifest.routes,
       jobs: ext.manifest.jobs,
@@ -46,6 +48,43 @@ export const GET: APIRoute = (context) =>
       createdBy: ext.createdBy,
     });
   }, "Failed to get extension");
+
+/**
+ * PATCH /api/v1/spaces/:spaceId/extensions/:extensionId
+ * Update extension settings (owners only)
+ */
+export const PATCH: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const spaceId = requireParam(context.params, "spaceId");
+    const extensionId = requireParam(context.params, "extensionId");
+
+    await verifySpaceOwnership(spaceId, user.id, getSpace);
+
+    const body = await parseJsonBody<{ enabled?: unknown }>(context.request);
+    if (typeof body.enabled !== "boolean") {
+      return jsonResponse({ error: "enabled must be a boolean" }, 400);
+    }
+
+    const ext = await setExtensionEnabled(spaceId, extensionId, body.enabled);
+    if (!ext) {
+      return notFoundResponse("Extension");
+    }
+
+    return jsonResponse({
+      id: ext.id,
+      name: ext.manifest.name,
+      version: ext.manifest.version,
+      description: ext.manifest.description,
+      enabled: ext.enabled,
+      entries: ext.manifest.entries,
+      routes: ext.manifest.routes,
+      jobs: ext.manifest.jobs,
+      createdAt: ext.createdAt.toISOString(),
+      updatedAt: ext.updatedAt.toISOString(),
+      createdBy: ext.createdBy,
+    });
+  }, "Failed to update extension");
 
 /**
  * DELETE /api/v1/spaces/:spaceId/extensions/:extensionId

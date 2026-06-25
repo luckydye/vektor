@@ -46,6 +46,7 @@ function build(): { extension: Extension; packageBuffer: Buffer } | null {
     extension: {
       id: EXTENSION_ID,
       manifest,
+      enabled: true,
       createdAt: now,
       updatedAt: now,
       createdBy: "system",
