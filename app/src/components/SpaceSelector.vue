@@ -117,7 +117,7 @@ const handleCreateDoc = (event: Event) => {
                 :key="space.id"
                 type="button"
                 @click="handleSpaceSelect(space, $event)"
-                class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors hover:bg-neutral-100 text-left"
+                class="flex items-center gap-2.5 px-4xs py-4xs w-full rounded-md transition-colors hover:bg-neutral-100 text-left"
                 :class="{
                   'bg-primary-100': space.id === modelValue,
                 }"
