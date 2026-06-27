@@ -51,7 +51,11 @@ export function useSpace() {
     onSuccess: (updatedSpace, variables) => {
       queryClient.setQueryData(["wiki_spaces"], (old: Space[] | undefined) => {
         if (!old) return [updatedSpace];
-        return old.map((s) => (s.id === variables.spaceId ? updatedSpace : s));
+        return old.map((s) => {
+          if (s.id !== variables.spaceId) return s;
+          // PATCH endpoint doesn't return userRole; preserve it from the cached entry.
+          return { ...updatedSpace, userRole: s.userRole };
+        });
       });
     },
   });
