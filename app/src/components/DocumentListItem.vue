@@ -6,7 +6,6 @@ import { formatDate } from "../utils/utils.ts";
 
 const props = defineProps<{
   document: SearchResult | DocumentWithProperties;
-  spaceSlug: string;
   showSnippet?: boolean;
   searchQuery?: string;
   selected?: boolean;
@@ -78,7 +77,7 @@ const isSearchResult = (
 
       <!-- Link spans cols 2–4: title + type + properties -->
       <a
-        :href="document.fileUrl ?? `/${spaceSlug}/doc/${document.slug}`"
+        :href="document.fileUrl ?? `/doc/${document.slug}`"
         :target="document.fileUrl ? '_blank' : undefined"
         :rel="document.fileUrl ? 'noopener noreferrer' : undefined"
         class="col-span-3 grid grid-cols-[1fr_80px_200px] items-start min-w-0"

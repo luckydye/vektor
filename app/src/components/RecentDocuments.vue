@@ -13,7 +13,6 @@ function teaserImageUrl(url: string): string {
 
 const props = defineProps<{
   spaceId: string;
-  spaceSlug: string;
   limit?: number;
 }>();
 
@@ -70,7 +69,7 @@ function docTags(doc: DocumentWithProperties): string[] {
       <a
         v-for="doc in docs"
         :key="doc.id"
-        :href="doc.fileUrl ?? `/${spaceSlug}/doc/${doc.slug}`"
+        :href="doc.fileUrl ?? `/doc/${doc.slug}`"
         :target="doc.fileUrl ? '_blank' : undefined"
         :rel="doc.fileUrl ? 'noopener noreferrer' : undefined"
         class="group flex-none w-60 block pr-4"
@@ -127,7 +126,7 @@ function docTags(doc: DocumentWithProperties): string[] {
 
       <!-- Trailing "view all" card -->
       <a
-        :href="`/${spaceSlug}/search`"
+        href="/search"
         class="group flex-none w-60 block pr-4"
       >
         <div class="aspect-video rounded-xl border-2 border-dashed border-neutral-200 flex items-center justify-center group-hover:border-neutral-300 transition-colors">

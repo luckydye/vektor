@@ -26,7 +26,6 @@ import SearchFilters from "./SearchFilters.vue";
 
 const props = defineProps<{
   spaceId: string;
-  spaceSlug: string;
 }>();
 
 const { currentSpace } = useSpace();
@@ -367,7 +366,6 @@ const batchArchive = async (ids: string[]) => {
             v-for="result in sortedResults"
             :key="result.id"
             :document="result"
-            :space-slug="props.spaceSlug"
             :show-snippet="true"
             :search-query="searchQuery"
             :selected="selectedIds.has(result.id)"
@@ -396,8 +394,7 @@ const batchArchive = async (ids: string[]) => {
                 v-for="doc in docs"
                 :key="doc.id"
                 :document="doc"
-                :space-slug="props.spaceSlug"
-                :selected="selectedIds.has(doc.id)"
+                    :selected="selectedIds.has(doc.id)"
                 :selectable="selectable"
                 @toggle-select="toggleSelect"
               />

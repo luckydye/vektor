@@ -22,7 +22,6 @@ type WorkflowRun = {
 };
 
 const props = defineProps<{
-  spaceSlug: string;
   spaceId: string;
 }>();
 
@@ -70,8 +69,8 @@ onUnmounted(() => {
 });
 
 function docHref(run: WorkflowRun): string {
-  if (run.documentSlug) return `/${props.spaceSlug}/doc/${run.documentSlug}`;
-  return `/${props.spaceSlug}`;
+  if (run.documentSlug) return `/doc/${run.documentSlug}`;
+  return "/";
 }
 
 function isActive(run: WorkflowRun): boolean {

@@ -228,7 +228,7 @@ watch(title, (t) => {
               <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
               <Breadcrumbs
                 v-else
-                :spaceSlug="currentSpace.slug"
+               
                 :category="docCategory"
                 :parents="parentBreadcrumbs"
                 :currentTitle="title"
@@ -256,7 +256,7 @@ watch(title, (t) => {
                 :title="title"
                 :documentId="doc.id"
                 :spaceId="currentSpace.id"
-                :spaceSlug="currentSpace.slug"
+               
                 :canEdit="userCanEdit"
               />
             </div>
@@ -294,7 +294,7 @@ watch(title, (t) => {
           <DatabaseView
             v-else-if="isDatabase"
             :databaseDocumentId="doc.id"
-            :spaceSlug="currentSpace.slug"
+           
             :schemaJson="doc.properties._schema"
           />
           <DocumentContent

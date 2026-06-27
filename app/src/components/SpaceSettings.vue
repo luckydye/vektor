@@ -479,7 +479,7 @@
     <template #archive>
     <section>
       <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Archived Documents</h2>
-      <ArchivedDocuments v-if="currentSpace" :space-id="currentSpace.id" :space-slug="currentSpace.slug" />
+      <ArchivedDocuments v-if="currentSpace" :space-id="currentSpace.id" />
     </section>
     </template>
 

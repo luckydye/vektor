@@ -16,7 +16,6 @@ interface Category {
 }
 
 interface Props {
-  spaceSlug: string;
   category?: Category | null;
   parents?: BreadcrumbItem[];
   currentTitle: string;
@@ -36,7 +35,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
       <!-- Category -->
       <li v-if="category" class="flex items-center gap-1.5">
         <a
-          :href="`/${spaceSlug}?category=${category.slug}`"
+          :href="`/?category=${category.slug}`"
           class="inline-flex items-center gap-1.5 hover:text-neutral-900 hover:underline transition-colors"
         >
           <span v-if="category.icon" class="text-base">{{ category.icon }}</span>
@@ -48,7 +47,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
       <!-- Parent Documents -->
       <li v-for="parent in parents" :key="parent.id" class="flex items-center gap-1.5">
         <a
-          :href="`/${spaceSlug}/doc/${parent.slug}`"
+          :href="`/doc/${parent.slug}`"
           class="hover:text-neutral-900 hover:underline transition-colors truncate max-w-[200px] px-1"
           :title="parent.title"
         >

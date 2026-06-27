@@ -42,7 +42,7 @@ onMounted(async () => {
   const autoTitle = AUTO_CREATE_TYPES[type.value];
   if (!autoTitle || !currentSpace.value) return;
   if (!userCanEdit.value) {
-    router.push(`/${currentSpace.value.slug}`);
+    router.push("/");
     return;
   }
   redirecting.value = true;
@@ -105,7 +105,7 @@ onMounted(async () => {
               :initialEditMode="true"
               :title="title"
               :spaceId="currentSpace.id"
-              :spaceSlug="currentSpace.slug"
+             
               :canEdit="userCanEdit"
             />
           </div>
@@ -132,7 +132,7 @@ onMounted(async () => {
           isPaddedDocument && 'px-xs lg:px-xl print:px-0',
         )"
       >
-        <NewDocumentPicker v-if="showPicker" :spaceSlug="currentSpace.slug" />
+        <NewDocumentPicker v-if="showPicker" />
         <DocumentContent :spaceId="currentSpace.id" :documentType="type" />
       </div>
     </div>

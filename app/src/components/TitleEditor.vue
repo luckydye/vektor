@@ -25,7 +25,6 @@ const props = withDefaults(
   defineProps<{
     title: string;
     spaceId?: string;
-    spaceSlug?: string;
     documentId?: string;
     starred?: boolean;
     initialEditMode?: boolean;
@@ -95,11 +94,10 @@ async function updateTitle() {
       });
 
       const newSlug = data.slug;
-      if (newSlug && props.spaceSlug) {
+      if (newSlug) {
         const currentPath = window.location.pathname;
-        const docPathPattern = new RegExp(`/${props.spaceSlug}/doc/[^/]+`);
-        if (docPathPattern.test(currentPath)) {
-          replaceBrowserUrl(`/${props.spaceSlug}/doc/${newSlug}`);
+        if (/\/doc\/[^/]+/.test(currentPath)) {
+          replaceBrowserUrl(`/doc/${newSlug}`);
         }
       }
     } catch (error) {

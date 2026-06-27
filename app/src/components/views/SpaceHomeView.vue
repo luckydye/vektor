@@ -25,12 +25,12 @@ const homeTopViews = computed(() =>
       <PinnedDocument
         v-if="currentSpace.preferences.pinnedDocumentId"
         :spaceId="currentSpace.id"
-        :spaceSlug="currentSpace.slug"
+       
         :pinnedDocumentId="currentSpace.preferences.pinnedDocumentId"
       />
 
       <div>
-        <RecentDocuments :spaceId="currentSpace.id" :spaceSlug="currentSpace.slug" :limit="10" />
+        <RecentDocuments :spaceId="currentSpace.id" :limit="10" />
       </div>
 
       <div v-if="homeTopViews.length > 0" class="space-y-4 mb-20">

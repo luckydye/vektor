@@ -10,7 +10,6 @@ const { error: toastError } = useToast();
 
 const props = defineProps<{
   databaseDocumentId: string;
-  spaceSlug: string;
   schemaJson?: string;
 }>();
 
@@ -245,7 +244,7 @@ const NAME_COL_WIDTH = 240;
               </div>
               <div v-else class="flex items-center gap-2 min-w-0">
                 <a
-                  :href="`/${spaceSlug}/doc/${row.slug}`"
+                  :href="`/doc/${row.slug}`"
                   class="flex-1 truncate text-neutral-800 font-medium hover:text-primary-600 hover:underline transition-colors"
                 >
                   {{ row.properties.title || "Untitled" }}

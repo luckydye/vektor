@@ -9,7 +9,6 @@ import Pager from "./Pager.vue";
 
 const props = defineProps<{
   spaceId: string;
-  spaceSlug: string;
 }>();
 
 const {
@@ -130,7 +129,6 @@ const handleBatchDelete = async (ids: Set<string>, deselectAll: () => void) => {
             v-for="doc in documents"
             :key="doc.id"
             :document="doc"
-            :space-slug="spaceSlug"
             :selected="selectedIds.has(doc.id)"
             :selectable="selectable"
             @toggle-select="toggleSelect"
