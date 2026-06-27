@@ -113,7 +113,7 @@ provide("ssr:now", Date.now());
 // immediately without waiting for async queries.
 const queryClient = useQueryClient();
 if (props.initialSpace) {
-  queryClient.setQueryData(["wiki_spaces"], [props.initialSpace]);
+  queryClient.setQueryData(["wiki_spaces"], [props.initialSpace], { stale: true });
 }
 if (props.initialSpace && props.initialDocument) {
   queryClient.setQueryData(

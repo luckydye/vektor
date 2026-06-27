@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/track";
-import { onMounted, ref } from "vue";
+import { computed } from "vue";
 import type { DocumentWithProperties } from "../api/client.ts";
 import { api } from "../api/client.ts";
+import { useQuery } from "../composeables/query.ts";
 import { withTransformParams } from "../files/transformUrl.ts";
 import { formatDate } from "../utils/utils.ts";
 
@@ -16,10 +17,18 @@ const props = defineProps<{
   limit?: number;
 }>();
 
-const docs = ref<DocumentWithProperties[]>([]);
-const loading = ref(true);
-
+const TEASER_TYPES = new Set(["document", "canvas", "database"]);
 const count = props.limit ?? 5;
+
+const { data: docsData, isPending: loading } = useQuery({
+  queryKey: computed(() => ["wiki_documents_recent", props.spaceId, count]),
+  queryFn: async () => {
+    const result = await api.documents.get(props.spaceId, { limit: count });
+    return result.documents.filter((d) => TEASER_TYPES.has(d.type ?? "document"));
+  },
+});
+
+const docs = computed(() => docsData.value ?? []);
 
 function docTitle(doc: DocumentWithProperties) {
   return doc.properties?.title || doc.properties?.name || "Untitled";
@@ -33,13 +42,6 @@ function docTags(doc: DocumentWithProperties): string[] {
     .map(([, v]) => String(v));
 }
 
-const TEASER_TYPES = new Set(["document", "canvas", "database"]);
-
-onMounted(async () => {
-  const result = await api.documents.get(props.spaceId, { limit: count });
-  docs.value = result.documents.filter((d) => TEASER_TYPES.has(d.type ?? "document"));
-  loading.value = false;
-});
 </script>
 
 <template>

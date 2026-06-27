@@ -178,7 +178,7 @@ export class QueryClient {
     return entry;
   }
 
-  setQueryData<T>(queryKey: QueryKeyInput, updater: QueryDataUpdater<T>): void {
+  setQueryData<T>(queryKey: QueryKeyInput, updater: QueryDataUpdater<T>, options?: { stale?: boolean }): void {
     const entry = this.getEntry<T>(queryKey);
     const nextData =
       typeof updater === "function"
@@ -188,7 +188,7 @@ export class QueryClient {
     entry.data.value = nextData;
     entry.hasData.value = true;
     entry.error.value = null;
-    entry.updatedAt = Date.now();
+    entry.updatedAt = options?.stale ? 0 : Date.now();
     notify(entry);
   }
 

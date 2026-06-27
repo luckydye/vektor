@@ -45,9 +45,10 @@ const currentSpace = computed(() => {
   return props.spaces?.[0] || null;
 });
 
-const handleSpaceSelect = (space: Space) => {
+const handleSpaceSelect = (space: Space, event: MouseEvent) => {
   emit("update:modelValue", space.id);
   emit("select", space);
+  (event.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 };
 
 const handleSettings = (event: Event) => {
@@ -115,7 +116,7 @@ const handleCreateDoc = (event: Event) => {
                 v-for="space in spaces"
                 :key="space.id"
                 type="button"
-                @click="handleSpaceSelect(space)"
+                @click="handleSpaceSelect(space, $event)"
                 class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors hover:bg-neutral-100 text-left"
                 :class="{
                   'bg-primary-100': space.id === modelValue,

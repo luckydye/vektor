@@ -17,8 +17,9 @@ Features:
 -->
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed } from "vue";
 import { type AuditLog, api } from "../api/client.ts";
+import { useQuery } from "../composeables/query.ts";
 import ActivityFeed from "./ActivityFeed.vue";
 
 type AuditLogEntry = AuditLog;
@@ -36,36 +37,22 @@ interface Document {
   type?: string;
 }
 
-interface Props {
+const props = withDefaults(defineProps<{
   spaceId: string;
   limit?: number;
-}
-
-const props = withDefaults(defineProps<Props>(), {
+}>(), {
   limit: 10,
 });
 
-const activities = ref<AuditLogEntry[]>([]);
-const isLoading = ref(true);
-const error = ref<string | null>(null);
-const users = ref<Map<string, User>>(new Map());
-const documents = ref<Map<string, Document>>(new Map());
-
-async function fetchActivities() {
-  try {
-    isLoading.value = true;
-    error.value = null;
-
+const { data, isPending: isLoading, error: queryError } = useQuery({
+  queryKey: computed(() => ["space_activity", props.spaceId, props.limit]),
+  queryFn: async () => {
     const [logsData, usersData] = await Promise.all([
       api.auditLogs.get(props.spaceId, { limit: props.limit }),
-      fetch(`/api/v1/users?spaceId=${encodeURIComponent(props.spaceId)}`).then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch users");
-        return r.json();
-      }),
+      api.users.get(props.spaceId),
     ]);
 
-    // Filter out ACL permission events
-    activities.value = logsData.auditLogs.filter(
+    const activities = logsData.auditLogs.filter(
       (log) => log.event !== "acl_grant" && log.event !== "acl_revoke",
     );
 
@@ -73,61 +60,48 @@ async function fetchActivities() {
     for (const user of usersData) {
       usersMap.set(user.id, user);
     }
-    users.value = usersMap;
 
-    await fetchDocuments();
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "Unknown error";
-    console.error("Error fetching activities:", err);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function fetchDocuments() {
-  const docIds = new Set<string>();
-
-  for (const activity of activities.value) {
-    if (activity.docId && activity.docId !== props.spaceId) {
-      docIds.add(activity.docId);
-    }
-  }
-
-  const docPromises = Array.from(docIds).map(async (docId) => {
-    try {
-      const response = await fetch(`/api/v1/spaces/${props.spaceId}/documents/${docId}`);
-      if (response.ok) {
-        const data = await response.json();
-        documents.value.set(docId, data.document);
+    const docIds = new Set<string>();
+    for (const activity of activities) {
+      if (activity.docId && activity.docId !== props.spaceId) {
+        docIds.add(activity.docId);
       }
-    } catch (err) {
-      console.error(`Failed to fetch document ${docId}:`, err);
     }
-  });
 
-  await Promise.all(docPromises);
-}
+    const docsMap = new Map<string, Document>();
+    await Promise.all(
+      Array.from(docIds).map(async (docId) => {
+        try {
+          const doc = await api.document.get(props.spaceId, docId);
+          docsMap.set(docId, doc);
+        } catch {
+          // best-effort
+        }
+      }),
+    );
+
+    return { activities, usersMap, docsMap };
+  },
+});
+
+const activities = computed(() => data.value?.activities ?? []);
+const error = computed(() => queryError.value?.message ?? null);
 
 function getUser(userId?: string | null): User | undefined {
   if (!userId) return undefined;
-  return users.value.get(userId) ?? undefined;
+  return data.value?.usersMap.get(userId);
 }
 
 function getUserName(userId?: string | null): string {
   if (!userId) return "Unknown user";
-  const user = users.value.get(userId);
+  const user = data.value?.usersMap.get(userId);
   return user?.name || user?.email || userId;
 }
 
 function getDocumentName(docId: string): string {
   if (docId === props.spaceId) return "Home";
-  const doc = documents.value.get(docId);
-  return doc?.slug || "Unknown document";
+  return data.value?.docsMap.get(docId)?.slug ?? "Unknown document";
 }
-
-onMounted(() => {
-  fetchActivities();
-});
 </script>
 
 <template>

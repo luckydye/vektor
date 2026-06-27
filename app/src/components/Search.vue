@@ -288,7 +288,7 @@ const batchArchive = async (ids: string[]) => {
 <template>
   <div>
     <!-- Search Box -->
-    <div class="flex gap-3 mb-6">
+    <div class="flex gap-3 mb-3">
       <div class="relative flex-1">
         <div class="svg-icon absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none" v-html="searchMagnifierIcon" />
         <input
@@ -322,147 +322,126 @@ const batchArchive = async (ids: string[]) => {
       </button>
     </div>
 
-    <!-- Two-column layout -->
-    <div class="flex gap-6 items-start">
+    <!-- Filter chips row -->
+    <div class="mb-6">
+      <SearchFilters
+        :spaceId="props.spaceId"
+        v-model="activeFilters"
+        @search="handleSearch"
+      />
+    </div>
 
-      <!-- Filter Sidebar -->
-      <div class="hidden lg:block w-56 shrink-0 sticky top-2">
-        <div class="bg-background border border-neutral-100 rounded-lg overflow-hidden">
-          <SearchFilters
-            :spaceId="props.spaceId"
-            v-model="activeFilters"
-            @search="handleSearch"
+    <!-- Error Message -->
+    <div v-if="searchError" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-size-medium">
+      <div class="svg-icon w-5 h-5 shrink-0" v-html="closeCircleFilledIcon" />
+      {{ searchError.message ?? "Search failed" }}
+    </div>
+
+    <!-- Document table (shared by both search results and browse mode) -->
+    <DocumentList
+      v-if="currentItems.length > 0"
+      :items="currentItems"
+      :can-batch-archive="userCanEdit"
+      :is-batch-archiving="isBatchArchiving"
+      @batch-archive="batchArchive"
+    >
+      <template #header-label>
+        <template v-if="hasSearched">
+          {{ total }} result{{ total !== 1 ? "s" : "" }}
+          <span v-if="activeFilters.length > 0" class="normal-case tracking-normal opacity-70">
+            · {{ activeFilters.length }} filter{{ activeFilters.length !== 1 ? "s" : "" }}
+          </span>
+        </template>
+        <template v-else>
+          {{ allDocuments.length }} document{{ allDocuments.length !== 1 ? "s" : "" }}
+          <span v-if="documentsData?.pages[0]" class="normal-case tracking-normal opacity-70">
+            · {{ documentsData.pages[0].total }} total
+          </span>
+        </template>
+      </template>
+
+      <template #default="{ selectedIds, toggleSelect, selectable }">
+        <!-- Search results: flat ranked list (only when text query present) -->
+        <template v-if="hasSearched && committedQuery.trim()">
+          <DocumentListItem
+            v-for="result in sortedResults"
+            :key="result.id"
+            :document="result"
+            :space-slug="props.spaceSlug"
+            :show-snippet="true"
+            :search-query="searchQuery"
+            :selected="selectedIds.has(result.id)"
+            :selectable="selectable"
+            @toggle-select="toggleSelect"
           />
-        </div>
-      </div>
 
-      <!-- Main Content -->
-      <div class="flex-1 min-w-0">
+          <!-- Pagination -->
+          <Pager
+            class="mt-8 pt-5"
+            :page="page"
+            :total-pages="totalPages"
+            :disabled="isFetchingSearch"
+            @change="handleGoToPage"
+          />
+        </template>
 
-        <!-- Mobile filters (collapsed inline above results) -->
-        <div class="lg:hidden mb-4">
-          <div class="bg-background border border-neutral-100 rounded-lg overflow-hidden">
-            <SearchFilters
-              :spaceId="props.spaceId"
-              v-model="activeFilters"
-              @search="handleSearch"
-            />
-          </div>
-        </div>
-
-        <!-- Error Message -->
-        <div v-if="searchError" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-size-medium">
-          <div class="svg-icon w-5 h-5 shrink-0" v-html="closeCircleFilledIcon" />
-          {{ searchError.message ?? "Search failed" }}
-        </div>
-
-        <!-- Document table (shared by both search results and browse mode) -->
-        <DocumentList
-          v-if="currentItems.length > 0"
-          :items="currentItems"
-          :can-batch-archive="userCanEdit"
-          :is-batch-archiving="isBatchArchiving"
-          @batch-archive="batchArchive"
-        >
-          <template #header-label>
-            <template v-if="hasSearched">
-              {{ total }} result{{ total !== 1 ? "s" : "" }}
-              <span v-if="activeFilters.length > 0" class="normal-case tracking-normal opacity-70">
-                · {{ activeFilters.length }} filter{{ activeFilters.length !== 1 ? "s" : "" }}
-              </span>
-            </template>
-            <template v-else>
-              {{ allDocuments.length }} document{{ allDocuments.length !== 1 ? "s" : "" }}
-              <span v-if="documentsData?.pages[0]" class="normal-case tracking-normal opacity-70">
-                · {{ documentsData.pages[0].total }} total
-              </span>
-            </template>
-          </template>
-
-          <template #default="{ selectedIds, toggleSelect, selectable }">
-            <!-- Search results: flat ranked list (only when text query present) -->
-            <template v-if="hasSearched && committedQuery.trim()">
+        <!-- Browse mode: grouped list -->
+        <template v-else>
+          <template v-for="(docs, groupKey) in groupedDocuments" :key="groupKey">
+            <div v-if="docs.length > 0" class="mb-8">
+              <div class="px-8 py-1.5 text-[11px] font-medium text-neutral uppercase tracking-wider bg-neutral-50 border-b border-neutral-100 sticky top-9 z-1">
+                {{ groupKey === "thisWeek" ? "This Week" : groupKey === "thisMonth" ? "This Month" : groupKey }}
+              </div>
               <DocumentListItem
-                v-for="result in sortedResults"
-                :key="result.id"
-                :document="result"
+                v-for="doc in docs"
+                :key="doc.id"
+                :document="doc"
                 :space-slug="props.spaceSlug"
-                :show-snippet="true"
-                :search-query="searchQuery"
-                :selected="selectedIds.has(result.id)"
+                :selected="selectedIds.has(doc.id)"
                 :selectable="selectable"
                 @toggle-select="toggleSelect"
               />
-
-              <!-- Pagination -->
-              <Pager
-                class="mt-8 pt-5"
-                :page="page"
-                :total-pages="totalPages"
-                :disabled="isFetchingSearch"
-                @change="handleGoToPage"
-              />
-            </template>
-
-            <!-- Browse mode: grouped list -->
-            <template v-else>
-              <template v-for="(docs, groupKey) in groupedDocuments" :key="groupKey">
-                <div v-if="docs.length > 0" class="mb-8">
-                  <div class="px-8 py-1.5 text-[11px] font-medium text-neutral uppercase tracking-wider bg-neutral-50 border-b border-neutral-100 sticky top-9 z-1">
-                    {{ groupKey === "thisWeek" ? "This Week" : groupKey === "thisMonth" ? "This Month" : groupKey }}
-                  </div>
-                  <DocumentListItem
-                    v-for="doc in docs"
-                    :key="doc.id"
-                    :document="doc"
-                    :space-slug="props.spaceSlug"
-                    :selected="selectedIds.has(doc.id)"
-                    :selectable="selectable"
-                    @toggle-select="toggleSelect"
-                  />
-                </div>
-              </template>
-
-              <div v-if="hasMoreDocuments" class="flex justify-center mt-6 pt-6 border-t border-neutral-100">
-                <button
-                  @click="() => fetchNextPage()"
-                  :disabled="isFetchingNextPage"
-                  class="flex items-center gap-2 px-5 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <div v-if="isFetchingNextPage" class="svg-icon w-4 h-4 animate-spin" v-html="spinnerIcon" />
-                  {{ isFetchingNextPage ? "Loading…" : "Load more" }}
-                </button>
-              </div>
-            </template>
+            </div>
           </template>
-        </DocumentList>
 
-        <!-- No search results -->
-        <div v-else-if="hasSearched && !isSearching && !searchError" class="text-center py-12">
-          <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="searchMagnifierIcon" />
-          <h3 class="text-size-large font-semibold text-neutral-800 mb-2">No results found</h3>
-          <p class="text-neutral-600 mb-8">
-            <span v-if="searchQuery.trim()">
-              No documents match <span class="font-semibold">"{{ searchQuery }}"</span>
-            </span>
-            <span v-else>No documents match your filters</span>
-          </p>
-        </div>
+          <div v-if="hasMoreDocuments" class="flex justify-center mt-6 pt-6 border-t border-neutral-100">
+            <button
+              @click="() => fetchNextPage()"
+              :disabled="isFetchingNextPage"
+              class="flex items-center gap-2 px-5 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <div v-if="isFetchingNextPage" class="svg-icon w-4 h-4 animate-spin" v-html="spinnerIcon" />
+              {{ isFetchingNextPage ? "Loading…" : "Load more" }}
+            </button>
+          </div>
+        </template>
+      </template>
+    </DocumentList>
 
-        <!-- Loading documents -->
-        <div v-else-if="!hasSearched && isLoadingDocuments" class="text-center py-12">
-          <div class="svg-icon w-10 h-10 mx-auto mb-4 text-neutral-300 animate-spin" v-html="spinnerIcon" />
-          <p class="text-size-medium text-neutral-500">Loading documents…</p>
-        </div>
-
-        <!-- No documents yet -->
-        <div v-else-if="!hasSearched && !isLoadingDocuments" class="text-center py-12">
-          <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="documentIcon" />
-          <h3 class="text-size-large font-semibold text-neutral-700 mb-2">No documents yet</h3>
-          <p class="text-neutral-500 text-size-medium">There are no documents in this space yet</p>
-        </div>
-
-      </div>
+    <!-- No search results -->
+    <div v-else-if="hasSearched && !isSearching && !searchError" class="text-center py-12">
+      <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="searchMagnifierIcon" />
+      <h3 class="text-size-large font-semibold text-neutral-800 mb-2">No results found</h3>
+      <p class="text-neutral-600 mb-8">
+        <span v-if="searchQuery.trim()">
+          No documents match <span class="font-semibold">"{{ searchQuery }}"</span>
+        </span>
+        <span v-else>No documents match your filters</span>
+      </p>
     </div>
+
+    <!-- Loading documents -->
+    <div v-else-if="!hasSearched && isLoadingDocuments" class="text-center py-12">
+      <div class="svg-icon w-10 h-10 mx-auto mb-4 text-neutral-300 animate-spin" v-html="spinnerIcon" />
+      <p class="text-size-medium text-neutral-500">Loading documents…</p>
+    </div>
+
+    <!-- No documents yet -->
+    <div v-else-if="!hasSearched && !isLoadingDocuments" class="text-center py-12">
+      <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="documentIcon" />
+      <h3 class="text-size-large font-semibold text-neutral-700 mb-2">No documents yet</h3>
+      <p class="text-neutral-500 text-size-medium">There are no documents in this space yet</p>
+    </div>
+
   </div>
 </template>
