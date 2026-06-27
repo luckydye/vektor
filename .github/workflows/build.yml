@@ -1,0 +1,30 @@
+name: Build binary
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - run: task setup && task compile
+        working-directory: app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vektor-${{ matrix.arch }}
+          path: app/vektor
