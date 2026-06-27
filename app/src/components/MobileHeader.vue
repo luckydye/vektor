@@ -14,7 +14,7 @@
       </span>
 
       <a
-        :href="`/${spaceSlug}/search`"
+        href="/search"
         class="flex items-center justify-center w-9 h-9 rounded-lg transition-colors"
         :class="isSearchActive ? 'text-primary-600 bg-primary-50' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'"
       >
@@ -32,12 +32,10 @@ import { Actions } from "../utils/actions.ts";
 
 const props = withDefaults(
   defineProps<{
-    spaceSlug?: string;
     spaceName?: string;
     pathname?: string;
   }>(),
   {
-    spaceSlug: "",
     spaceName: "",
     pathname: "",
   },

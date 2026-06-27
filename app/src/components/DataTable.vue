@@ -8,7 +8,6 @@ const DEFAULT_COL_WIDTH = 200;
 
 const props = defineProps<{
   data: Record<string, unknown>[];
-  spaceSlug: string;
   documentId?: string;
   exportFileName?: string;
 }>();
@@ -92,7 +91,7 @@ function documentHref(column: string, value: unknown): string | null {
   if (!isDocumentIdColumn(column)) return null;
   const text = cellText(value).trim();
   if (!text) return null;
-  return `/${props.spaceSlug}/doc/${encodeURIComponent(text)}`;
+  return `/doc/${encodeURIComponent(text)}`;
 }
 
 // Column resizing

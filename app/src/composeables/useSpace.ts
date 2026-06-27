@@ -1,10 +1,9 @@
-import { computed } from "vue";
+import { computed, inject, ref, type Ref } from "vue";
 import { api, type Space } from "../api/client.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
-import { useRoute } from "./useRoute.ts";
 
 export function useSpace() {
-  const { spaceSlug } = useRoute();
+  const activeSpaceId = inject<Ref<string | null>>("space:activeId", ref(null));
   const queryClient = useQueryClient();
 
   const { data: spaces, isPending } = useQuery({
@@ -14,13 +13,14 @@ export function useSpace() {
 
   const currentSpace = computed<Space | null>(() => {
     if (!spaces.value) return null;
-    if (!spaceSlug.value) return spaces.value[0] ?? null;
-    return spaces.value.find((s: Space) => s.slug === spaceSlug.value || s.id === spaceSlug.value) ?? null;
+    if (activeSpaceId.value) {
+      return spaces.value.find((s: Space) => s.id === activeSpaceId.value) ?? spaces.value[0] ?? null;
+    }
+    return spaces.value[0] ?? null;
   });
 
-  // True once the spaces list has loaded and the slug/id in the URL doesn't match any space.
   const spaceNotFound = computed(() =>
-    !isPending.value && !!spaceSlug.value && spaces.value !== undefined && currentSpace.value === null,
+    !isPending.value && spaces.value !== undefined && currentSpace.value === null,
   );
 
   const createSpaceMutation = useMutation({

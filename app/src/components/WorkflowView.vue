@@ -12,7 +12,6 @@ import {
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
-import { useRoute } from "../composeables/useRoute.ts";
 import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
@@ -40,14 +39,6 @@ const selectedRunError = ref<string | null>(null);
 const logsExpanded = ref(false);
 let unsubscribeRuns: (() => void) | null = null;
 let unsubscribeRun: (() => void) | null = null;
-const { spaceSlug } = useRoute();
-const currentSpaceSlug = computed(
-  () =>
-    spaceSlug.value ||
-    (typeof window !== "undefined"
-      ? window.location.pathname.split("/").filter(Boolean)[0]
-      : ""),
-);
 
 const {
   items: runList,
@@ -212,7 +203,7 @@ watch(
     if (selectedRunSourceExtensionId.value !== sourceExtId) return;
     const firstRoute = ext.routes?.[0];
     sourceExtensionHref.value = firstRoute
-      ? `/${currentSpaceSlug.value}/x/${firstRoute.path}`
+      ? `/x/${firstRoute.path}`
       : null;
   },
   { immediate: true },
@@ -314,7 +305,7 @@ watch(outputDocumentId, async (id) => {
     return;
   }
   const doc = await api.document.get(props.spaceId, id);
-  outputDocumentHref.value = `/${currentSpaceSlug.value}/doc/${doc.slug}`;
+  outputDocumentHref.value = `/doc/${doc.slug}`;
   outputDocumentTitle.value =
     (doc as { properties?: { title?: string } }).properties?.title || doc.slug;
 });
@@ -341,7 +332,7 @@ async function toggleHistoryRun(runId: string) {
     const doc = await api.document.get(props.spaceId, docId);
     historyRunDocHrefs.value = new Map([
       ...historyRunDocHrefs.value,
-      [runId, `/${currentSpaceSlug.value}/doc/${doc.slug}`],
+      [runId, `/doc/${doc.slug}`],
     ]);
     historyRunDocTitles.value = new Map([
       ...historyRunDocTitles.value,
@@ -467,7 +458,6 @@ const statusBadgeClass: Record<string, string> = {
             <DataTable
               v-if="outputData"
               :data="outputData"
-              :space-slug="currentSpaceSlug"
               :document-id="props.documentId"
               :export-file-name="selectedRunTitle ?? 'data'"
             />
@@ -632,7 +622,6 @@ const statusBadgeClass: Record<string, string> = {
                     <DataTable
                       v-if="historyOutputData(run.runId)"
                       :data="historyOutputData(run.runId)!"
-                      :space-slug="currentSpaceSlug"
                       :document-id="props.documentId"
                       :export-file-name="historyRunTitle(run) ?? 'data'"
                     />

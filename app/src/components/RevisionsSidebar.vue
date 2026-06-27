@@ -13,7 +13,6 @@ import {
 import type { AuditLog } from "../api/client.ts";
 import { useAuditLogs } from "../composeables/useAuditLogs.ts";
 import { useRevisions } from "../composeables/useRevisions.ts";
-import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
 import { replaceBrowserUrl } from "../utils/browserHistory.ts";
@@ -55,7 +54,6 @@ const {
 } = useAuditLogs(props.documentId);
 
 const { currentSpaceId } = useSpace();
-const { spaceSlug } = useRoute();
 const { members } = useMembers();
 
 const publishedRev = ref<number | null>(null);
@@ -187,8 +185,7 @@ async function publishRevisionAction(revisionId: number | null | undefined) {
 }
 
 function copyRevisionLink(entryId: string) {
-  if (!spaceSlug.value) return;
-  const url = `${window.location.origin}/${spaceSlug.value}/rev/${entryId}`;
+  const url = `${window.location.origin}/rev/${entryId}`;
   navigator.clipboard.writeText(url);
 }
 

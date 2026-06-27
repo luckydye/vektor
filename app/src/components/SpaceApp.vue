@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrentInstance, onMounted, onUnmounted, provide, watch } from "vue";
+import { getCurrentInstance, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { createMemoryHistory, createRouter, createWebHistory, RouterView } from "vue-router";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
 import ClientOnly from "./ClientOnly.vue";
@@ -39,17 +39,17 @@ const isServer = typeof window === "undefined";
 const router = createRouter({
   history: isServer ? createMemoryHistory(props.url ?? "/") : createWebHistory(),
   routes: [
-    { path: "/:spaceSlug", component: SpaceHomeView },
-    { path: "/:spaceSlug/search", component: SpaceSearchView },
-    { path: "/:spaceSlug/new", component: NewDocumentView },
-    { path: "/:spaceSlug/settings", component: SpaceSettingsView },
+    { path: "/", component: SpaceHomeView },
+    { path: "/search", component: SpaceSearchView },
+    { path: "/new", component: NewDocumentView },
+    { path: "/settings", component: SpaceSettingsView },
     {
-      path: "/:spaceSlug/doc/:documentSlug(.*)",
+      path: "/doc/:documentSlug(.*)",
       component: DocumentPageView,
       props: (route) => ({ documentSlug: route.params.documentSlug }),
     },
-    { path: "/:spaceSlug/x/:pathMatch(.*)*", component: ExtensionRouteView },
-    { path: "/:spaceSlug/rev/:id", redirect: (to) => `/${to.params.spaceSlug}` },
+    { path: "/x/:pathMatch(.*)*", component: ExtensionRouteView },
+    { path: "/rev/:id", redirect: "/" },
     { path: "/:pathMatch(.*)*", component: NotFoundView },
   ],
 });
@@ -108,6 +108,12 @@ await router.isReady();
 // async initial navigation completes.
 provide("ssr:url", props.url ?? "");
 provide("ssr:now", Date.now());
+
+// Provide the server-resolved space ID as the source of truth.
+// useSpace() reads this instead of deriving the active space from the URL slug.
+const activeSpaceId = ref<string | null>(props.initialSpace?.id ?? null);
+provide("space:activeId", activeSpaceId);
+provide("space:setCurrentSpace", (id: string) => { activeSpaceId.value = id; });
 
 // Seed the query cache with SSR-fetched data so child components render
 // immediately without waiting for async queries.
@@ -173,15 +179,6 @@ onUnmounted(() => {
   }
 });
 
-// Redirect /spaceId/... → /spaceSlug/... once the space resolves.
-watch(currentSpace, (space) => {
-  if (!space) return;
-  const urlSegment = router.currentRoute.value.params.spaceSlug as string;
-  if (!urlSegment || urlSegment === space.slug) return;
-  const fullPath = router.currentRoute.value.fullPath;
-  router.replace(`/${space.slug}${fullPath.slice(urlSegment.length + 1)}`);
-}, { immediate: true });
-
 watch(currentSpaceId, (newSpaceId) => {
   if (newSpaceId) {
     extensions.init(newSpaceId).catch(console.error);
@@ -193,7 +190,6 @@ watch(currentSpaceId, (newSpaceId) => {
   <div id="root" class="mx-auto relative origin-top">
     <div class="main-content min-h-screen h-full transition-all md:transition-none relative">
       <MobileHeader
-        :spaceSlug="currentSpace?.slug ?? ''"
         :spaceName="currentSpace?.name ?? ''"
         :pathname="pathname"
       />

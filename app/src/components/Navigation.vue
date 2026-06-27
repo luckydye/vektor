@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
+import { computed, inject, onMounted, onUnmounted, ref, Teleport } from "vue";
 import { useRouter } from "vue-router";
 import {
   boltIcon,
@@ -31,7 +31,8 @@ interface UiSpace {
 }
 
 const router = useRouter();
-const { pathname, spaceSlug } = useRoute();
+const { pathname } = useRoute();
+const setCurrentSpace = inject<(id: string) => void>("space:setCurrentSpace", () => {});
 
 const {
   currentSpace,
@@ -55,7 +56,7 @@ const activeRoute = computed(() => {
     activeRoute = match ? `x/${match[1]}` : "";
   } else if (pathname.value.includes("/settings")) {
     activeRoute = "settings";
-  } else if (pathname.value.split("/").filter(Boolean).length === 1) {
+  } else if (pathname.value === "/" || pathname.value.split("/").filter(Boolean).length === 0) {
     activeRoute = "home";
   }
 
@@ -117,7 +118,8 @@ const userCanEdit = computed(() => {
 const handleSpaceSelect = (space: UiSpace) => {
   const fullSpace = spaces.value?.find((s: ApiSpace) => s.id === space.id);
   if (fullSpace) {
-    router.push(`/${fullSpace.slug}`);
+    setCurrentSpace(fullSpace.id);
+    router.push("/");
   }
 };
 
@@ -134,7 +136,8 @@ const handleCreateSpace = async (data: {
     const newSpace = await createSpace(data.name, data.slug, {
       brandColor: data.brandColor,
     });
-    router.push(`/${newSpace.slug}`);
+    setCurrentSpace(newSpace.id);
+    router.push("/");
   } catch (err) {
     console.error("Failed to create space:", err);
   }
@@ -149,7 +152,7 @@ Actions.register("document:create", {
   description: t("Create a new document"),
   run: async () => {
     if (currentSpace.value) {
-      router.push(`/${currentSpace.value.slug}/new`);
+      router.push("/new");
     }
   },
 });
@@ -159,7 +162,7 @@ Actions.register("find:open", {
   description: t("Open find document dialog"),
   run: async () => {
     if (currentSpace.value) {
-      router.push(`/${currentSpace.value.slug}/search`);
+      router.push("/search");
     }
   },
 });
@@ -190,7 +193,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
               class="flex-1"
               :icon="homeIcon"
               :text="t('Home')"
-              :href="`/${spaceSlug}/`"
+              href="/"
               :is-active="activeRoute === 'home'"
           />
           <button
@@ -205,13 +208,13 @@ Actions.mapShortcut("meta-shift-f", "find:open");
             v-if="userCanAccessSettings"
             :icon="settingsIcon"
             :text="t('Settings')"
-            :href="`/${spaceSlug}/settings`"
+            href="/settings"
             :is-active="activeRoute === 'settings'"
         />
         <MenuLink
             :icon="searchIcon"
             :text="t('Find')"
-            :href="`/${spaceSlug}/search`"
+            href="/search"
             :is-active="activeRoute === 'search'"
         >
             <a-shortcut class="ml-6 flex-none @max-xs:hidden!" data-shortcut="cmd-shift-f"></a-shortcut>
@@ -225,7 +228,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
             :key="`${link.extensionId}-${link.route}`"
             :icon="link.icon || puzzleIcon"
             :text="link.title"
-            :href="`/${spaceSlug}/x/${link.route}`"
+            :href="`/x/${link.route}`"
             :is-active="activeRoute === `x/${link.route}`"
         />
     </div>

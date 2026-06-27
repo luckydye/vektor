@@ -9,15 +9,11 @@ export function useRoute() {
 
   const pathname = computed(() => vueRoute.path || ssrUrl);
 
-  const spaceSlug = computed(
-    () => (vueRoute.params.spaceSlug as string) || ssrUrl.split("/")[1] || "",
-  );
-
   const documentSlug = computed(() => {
     if (vueRoute.params.documentSlug) return vueRoute.params.documentSlug as string;
     const match = ssrUrl.match(/\/doc\/(.+)$/);
     return match ? match[1] : "";
   });
 
-  return { pathname, spaceSlug, documentSlug };
+  return { pathname, documentSlug };
 }

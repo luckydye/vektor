@@ -8,14 +8,13 @@ import {
   searchMagnifierIcon,
 } from "~/src/assets/icons.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
-import { useRoute } from "../composeables/useRoute.ts";
 import { Actions } from "../utils/actions.ts";
 import { history } from "../utils/history.ts";
 import { formatRelativeTime } from "../utils/utils.ts";
 
 const router = useRouter();
 const { documents } = useDocuments();
-const { spaceSlug } = useRoute();
+
 
 const isOpen = ref(false);
 const searchQuery = ref("");
@@ -25,7 +24,7 @@ const resultsContainer = ref(null);
 const historyEntries = ref([]);
 
 const getLastVisited = (doc) => {
-  const url = `/${spaceSlug.value}/doc/${doc.slug}`;
+  const url = `/doc/${doc.slug}`;
   const entry = historyEntries.value.find((h) => h.url === url);
   return entry ? entry.lastVisited : null;
 };
@@ -44,8 +43,8 @@ const filteredResults = computed(() => {
   }
 
   const sortedDocs = [...docs].sort((a, b) => {
-    const aUrl = `/${spaceSlug.value}/doc/${a.slug}`;
-    const bUrl = `/${spaceSlug.value}/doc/${b.slug}`;
+    const aUrl = `/doc/${a.slug}`;
+    const bUrl = `/doc/${b.slug}`;
     const aHistory = historyEntries.value.find((entry) => entry.url === aUrl);
     const bHistory = historyEntries.value.find((entry) => entry.url === bUrl);
     if (aHistory && bHistory) return bHistory.lastVisited - aHistory.lastVisited;
@@ -137,7 +136,7 @@ const scrollToSelected = () => {
 
 const navigateToDocument = async (doc) => {
   if (doc?.slug) {
-    const url = `/${spaceSlug.value}/doc/${doc.slug}`;
+    const url = `/doc/${doc.slug}`;
     const title = doc.properties?.title || "Untitled Document";
     try {
       await history.log(url, title);
