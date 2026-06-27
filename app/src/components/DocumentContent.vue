@@ -9,7 +9,7 @@ import {
   provideCollaboration,
   useCollaboration,
 } from "../composeables/useCollaboration.ts";
-import { useEditor } from "../composeables/useEditor.ts";
+import { resetEditingState, useEditor } from "../composeables/useEditor.ts";
 import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
@@ -373,6 +373,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  resetEditingState();
   extensions.setActiveCollaboration(null);
   extensions.setActiveDocumentId(null);
   collaboration.clearPresence();

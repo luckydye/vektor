@@ -115,15 +115,6 @@ const isReadonly = computed(() =>
 );
 
 watch(
-  () => doc.value?.id,
-  (newId, oldId) => {
-    if (oldId && newId !== oldId) {
-      resetEditingState();
-    }
-  },
-);
-
-watch(
   [doc, documentType, isReadonly, userCanEdit],
   ([currentDoc, type, readonly, canEditDocument]) => {
     if (!currentDoc) return;
@@ -181,6 +172,7 @@ watch(title, (t) => {
 <template>
   <div v-if="doc && currentSpace">
     <div
+      :key="doc.id"
       data-inset
       :class="twMerge('min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')"
     >
