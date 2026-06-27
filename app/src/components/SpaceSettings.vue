@@ -17,12 +17,6 @@
                   class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label for="settings-space-slug" class="block text-size-small font-medium text-neutral-700 mb-1">Slug</label>
-                <input id="settings-space-slug" v-model="localSlug" type="text" required pattern="[a-z0-9-]+"
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
-                <p class="mt-1 text-size-small text-neutral-400">Lowercase letters, numbers and hyphens only</p>
-              </div>
-              <div>
                 <label for="settings-space-description" class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
                 <input id="settings-space-description" v-model="localDescription" type="text"
                   placeholder="e.g., Engineering / Documentation"
@@ -92,7 +86,7 @@
 
                 <p class="text-size-medium font-semibold text-neutral-900 leading-snug truncate">{{ localName || 'Untitled Space' }}</p>
                 <p v-if="localDescription" class="text-size-small text-neutral-500 mt-0.5 line-clamp-2 leading-snug">{{ localDescription }}</p>
-                <p class="text-[11px] text-neutral-400 mt-1 font-mono truncate">{{ localSlug }}</p>
+                <p class="text-[11px] text-neutral-400 mt-1 font-mono truncate">{{ currentSpace?.slug }}</p>
               </div>
             </div>
           </div>
@@ -556,7 +550,6 @@ const emit = defineEmits(["saved"]);
 const { currentSpace, updateSpace } = useSpace();
 
 const localName = ref("");
-const localSlug = ref("");
 const localDescription = ref("");
 const localBrandColor = ref("#1e293b");
 const localLogoSvg = ref("");
@@ -690,7 +683,6 @@ watch(
   () => {
     if (currentSpace.value) {
       localName.value = currentSpace.value.name;
-      localSlug.value = currentSpace.value.slug;
       localDescription.value = currentSpace.value.preferences?.description || "";
       localBrandColor.value = currentSpace.value.preferences?.brandColor || "#1e293b";
       localLogoSvg.value = currentSpace.value.preferences?.logoSvg || "";
@@ -745,7 +737,7 @@ async function handleSave() {
     await updateSpace(
       currentSpace.value.id,
       localName.value.trim(),
-      localSlug.value.trim(),
+      currentSpace.value.slug,
       {
         description: localDescription.value.trim(),
         brandColor: localBrandColor.value,
@@ -753,11 +745,6 @@ async function handleSave() {
       },
     );
     emit("saved");
-    const newSlug = localSlug.value.trim();
-    if (newSlug !== currentSpace.value?.slug) {
-      // Slug changed → router base changes, so do a full reload to the new URL.
-      window.location.href = `/${newSlug}/settings`;
-    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to update space";
   } finally {
