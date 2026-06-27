@@ -39,7 +39,7 @@ const isServer = typeof window === "undefined";
 const routerBase = props.initialSpace?.slug ? `/${props.initialSpace.slug}/` : "/";
 
 const router = createRouter({
-  history: isServer ? createMemoryHistory(props.url ?? "/") : createWebHistory(routerBase),
+  history: isServer ? createMemoryHistory(routerBase) : createWebHistory(routerBase),
   routes: [
     { path: "/", component: SpaceHomeView },
     { path: "/search", component: SpaceSearchView },
@@ -101,14 +101,24 @@ if (instance) {
   instance.appContext.app.use(router);
 }
 
+// Strip the router base so the URL is relative to the base (e.g. "/test/doc/foo" → "/doc/foo").
+// createMemoryHistory(routerBase) and createWebHistory(routerBase) both expect base-relative paths.
+const ssrRelativeUrl = (() => {
+  const url = props.url ?? "/";
+  if (routerBase !== "/" && url.startsWith(routerBase)) {
+    return url.slice(routerBase.length - 1) || "/";
+  }
+  return url;
+})();
+
 if (isServer) {
-  await router.push(props.url ?? "/");
+  await router.push(ssrRelativeUrl);
 }
 await router.isReady();
 
 // Provide initial URL so useRoute() can parse params before the router's
 // async initial navigation completes.
-provide("ssr:url", props.url ?? "");
+provide("ssr:url", ssrRelativeUrl);
 provide("ssr:now", Date.now());
 
 // Provide the server-resolved space ID as the source of truth.
