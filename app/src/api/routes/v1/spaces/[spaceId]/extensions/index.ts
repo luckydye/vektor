@@ -17,6 +17,7 @@ import {
   createExtension,
   type ExtensionManifest,
   getExtension,
+  getExtensionSourcePolicy,
   listExtensionsWithErrors,
   updateExtension,
 } from "#db/extensions.ts";
@@ -56,6 +57,9 @@ export const GET: APIRoute = (context) =>
         version: ext.manifest.version,
         description: ext.manifest.description,
         enabled: ext.enabled,
+        source: ext.source,
+        sourceRef: ext.sourceRef,
+        sourcePublisher: ext.sourcePublisher,
         entries: ext.manifest.entries,
         routes: ext.manifest.routes,
         jobs: ext.manifest.jobs,
@@ -159,6 +163,14 @@ export const POST: APIRoute = (context) =>
         }
       }
 
+      // Enforce the server-wide allowed-sources policy
+      const allowedSources = getExtensionSourcePolicy();
+      if (!allowedSources.includes("upload")) {
+        return forbiddenResponse(
+          "This space does not allow uploading extension packages directly. Install extensions from the marketplace instead.",
+        );
+      }
+
       // Check if extension already exists - update it if so
       const existing = await getExtension(spaceId, extensionId, {
         includeDisabled: true,
@@ -184,6 +196,9 @@ export const POST: APIRoute = (context) =>
         version: ext.manifest.version,
         description: ext.manifest.description,
         enabled: ext.enabled,
+        source: ext.source,
+        sourceRef: ext.sourceRef,
+        sourcePublisher: ext.sourcePublisher,
         entries: ext.manifest.entries,
         routes: ext.manifest.routes,
         jobs: ext.manifest.jobs,

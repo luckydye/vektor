@@ -9,6 +9,7 @@ import {
   type JobDefinition,
   type JobIOField,
 } from "../utils/extensionManifest.ts";
+import { config } from "../config.ts";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
 
@@ -21,10 +22,15 @@ export type {
 };
 export { extractFile, extractManifest };
 
+export type ExtensionSource = "upload" | "marketplace" | "system";
+
 export interface Extension {
   id: string;
   manifest: ExtensionManifest;
   enabled: boolean;
+  source: ExtensionSource;
+  sourceRef: string | null;
+  sourcePublisher: string | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -72,6 +78,9 @@ export async function listExtensionsWithErrors(
       id: row.id,
       manifest: result.manifest,
       enabled: row.enabled,
+      source: (row.source as ExtensionSource) ?? "upload",
+      sourceRef: row.sourceRef ?? null,
+      sourcePublisher: row.sourcePublisher ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       createdBy: row.createdBy,
@@ -115,6 +124,9 @@ export async function getExtension(
     id: row.id,
     manifest: result.manifest,
     enabled: row.enabled,
+    source: (row.source as ExtensionSource) ?? "upload",
+    sourceRef: row.sourceRef ?? null,
+    sourcePublisher: row.sourcePublisher ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     createdBy: row.createdBy,
@@ -141,20 +153,33 @@ export async function getExtensionPackage(
   return rows[0].package;
 }
 
+export interface CreateExtensionOptions {
+  source?: ExtensionSource;
+  sourceRef?: string | null;
+  sourcePublisher?: string | null;
+}
+
 export async function createExtension(
   spaceId: string,
   extensionId: string,
   packageBuffer: Buffer,
   userId: string,
+  options: CreateExtensionOptions = {},
 ): Promise<Extension> {
   const db = await getSpaceDb(spaceId);
   const now = new Date();
   const manifest = extractManifest(packageBuffer);
+  const source = options.source ?? "upload";
+  const sourceRef = options.sourceRef ?? null;
+  const sourcePublisher = options.sourcePublisher ?? null;
 
   await db.insert(extension).values({
     id: extensionId,
     package: packageBuffer,
     enabled: true,
+    source,
+    sourceRef,
+    sourcePublisher,
     createdAt: now,
     updatedAt: now,
     createdBy: userId,
@@ -164,6 +189,9 @@ export async function createExtension(
     id: extensionId,
     manifest,
     enabled: true,
+    source,
+    sourceRef,
+    sourcePublisher,
     createdAt: now,
     updatedAt: now,
     createdBy: userId,
@@ -182,6 +210,9 @@ export async function updateExtension(
     .select({
       id: extension.id,
       enabled: extension.enabled,
+      source: extension.source,
+      sourceRef: extension.sourceRef,
+      sourcePublisher: extension.sourcePublisher,
       createdAt: extension.createdAt,
       createdBy: extension.createdBy,
     })
@@ -206,6 +237,9 @@ export async function updateExtension(
     id: extensionId,
     manifest,
     enabled: existing.enabled,
+    source: (existing.source as ExtensionSource) ?? "upload",
+    sourceRef: existing.sourceRef ?? null,
+    sourcePublisher: existing.sourcePublisher ?? null,
     createdAt: existing.createdAt,
     updatedAt: now,
     createdBy: existing.createdBy,
@@ -226,6 +260,9 @@ export async function setExtensionEnabled(
     .select({
       id: extension.id,
       package: extension.package,
+      source: extension.source,
+      sourceRef: extension.sourceRef,
+      sourcePublisher: extension.sourcePublisher,
       createdAt: extension.createdAt,
       createdBy: extension.createdBy,
     })
@@ -254,6 +291,9 @@ export async function setExtensionEnabled(
     id: extensionId,
     manifest: result.manifest,
     enabled,
+    source: (existing.source as ExtensionSource) ?? "upload",
+    sourceRef: existing.sourceRef ?? null,
+    sourcePublisher: existing.sourcePublisher ?? null,
     createdAt: existing.createdAt,
     updatedAt: now,
     createdBy: existing.createdBy,
@@ -306,4 +346,23 @@ export async function findExtensionForRoute(
   }
 
   return null;
+}
+
+export const ALL_EXTENSION_SOURCES: ExtensionSource[] = ["upload", "marketplace", "system"];
+
+/**
+ * Returns the set of extension sources the server will accept, as configured
+ * by the VEKTOR_EXTENSION_ALLOWED_SOURCES environment variable.
+ * Defaults to all sources when the variable is unset.
+ */
+export function getExtensionSourcePolicy(): ExtensionSource[] {
+  const raw = config().EXTENSION_ALLOWED_SOURCES;
+  if (!raw) return [...ALL_EXTENSION_SOURCES];
+
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is ExtensionSource => ["upload", "marketplace", "system"].includes(s));
+
+  return parts.length > 0 ? parts : [...ALL_EXTENSION_SOURCES];
 }

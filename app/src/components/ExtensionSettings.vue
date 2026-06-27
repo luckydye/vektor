@@ -106,7 +106,7 @@
       </div>
 
       <!-- Upload Section -->
-      <div class="flex items-center gap-4">
+      <div v-if="uploadAllowed" class="flex items-center gap-4">
         <label
           class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-neutral-100 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
         >
@@ -122,14 +122,24 @@
           </span>
         </label>
       </div>
+      <div v-else class="p-3 bg-neutral-50 border border-neutral-200 rounded-md">
+        <p class="text-size-medium text-neutral-500">Direct extension uploads are not allowed in this space. Extensions must be installed from the marketplace.</p>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { config } from "../config.ts";
 import { useExtensions } from "../composeables/useExtensions.ts";
 import SwitchToggle from "./SwitchToggle.vue";
+
+const uploadAllowed = computed(() => {
+  const raw = config().EXTENSION_ALLOWED_SOURCES;
+  if (!raw) return true;
+  return raw.split(",").map((s) => s.trim()).includes("upload");
+});
 
 const {
   extensions,

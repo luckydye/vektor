@@ -1,6 +1,6 @@
 let _publicEnvVars: Record<string, string> | undefined;
 
-const publicEnvVars = () => {
+const publicEnvVars = (): Record<string, string> => {
   if (_publicEnvVars) {
     return _publicEnvVars;
   }
@@ -18,7 +18,7 @@ const publicEnvVars = () => {
     throw new Error(`Failed to parse public environment variables: ${error}`);
   }
 
-  return _publicEnvVars;
+  return _publicEnvVars!;
 };
 
 export function config() {
@@ -114,6 +114,14 @@ export function config() {
       // must only ever be enabled for trusted local development.
       JOB_ALLOW_UNSANDBOXED: process.env.VEKTOR_JOB_ALLOW_UNSANDBOXED,
 
+      /**
+       * Comma-separated list of extension sources the server will accept.
+       * Valid values: upload, marketplace, system.
+       * Defaults to all sources when unset.
+       * Example: VEKTOR_EXTENSION_ALLOWED_SOURCES=marketplace,system
+       */
+      EXTENSION_ALLOWED_SOURCES: process.env.VEKTOR_EXTENSION_ALLOWED_SOURCES,
+
       // OpenTelemetry
       OTEL_ENABLED: process.env.VEKTOR_OTEL_ENABLED,
       OTEL_SERVICE_NAME: process.env.VEKTOR_OTEL_SERVICE_NAME,
@@ -144,6 +152,7 @@ export function config() {
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
+    EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
   } as const;
 }
 
@@ -171,6 +180,7 @@ export function getPublicEnv(): App.PublicEnv {
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
     VEKTOR_NO_AUTH: appConfig.NO_AUTH,
+    VEKTOR_EXTENSION_ALLOWED_SOURCES: appConfig.EXTENSION_ALLOWED_SOURCES,
   };
 }
 

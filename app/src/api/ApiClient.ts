@@ -222,12 +222,17 @@ export interface ExtensionJobInfo {
   outputs?: Record<string, ExtensionJobField>;
 }
 
+export type ExtensionSource = "upload" | "marketplace" | "system";
+
 export interface ExtensionInfo {
   id: string;
   name: string;
   version: string;
   description?: string;
   enabled: boolean;
+  source: ExtensionSource;
+  sourceRef: string | null;
+  sourcePublisher: string | null;
   entries: {
     frontend?: string;
     view?: string;
