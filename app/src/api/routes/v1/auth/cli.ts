@@ -1,9 +1,11 @@
 /**
  * GET /api/v1/auth/cli
+ * POST /api/v1/auth/cli
  *
  * Browser-based CLI login. Requires an active user session (browser cookie).
- * Validates that redirect_uri is a localhost callback, generates a short-lived
- * one-time code, and redirects back to the CLI's local server.
+ * GET validates that redirect_uri is a localhost callback and shows an approval
+ * page. POST validates the selected space, generates a short-lived one-time code,
+ * and redirects back to the CLI's local server.
  *
  * Query params:
  *   redirect_uri  must be http://localhost:<port>/callback or http://127.0.0.1:<port>/callback
@@ -13,7 +15,7 @@
 import { randomBytes } from "node:crypto";
 import type { APIRoute } from "astro";
 import { badRequestResponse, requireUser, withApiErrorHandling } from "#db/api.ts";
-import { listUserSpaces } from "#db/spaces.ts";
+import { listUserSpaces, type Space } from "#db/spaces.ts";
 
 // One-time codes: code → { userId, spaceId, expiresAt }
 export const pendingCliCodes = new Map<
@@ -21,7 +23,13 @@ export const pendingCliCodes = new Map<
   { userId: string; spaceId: string; expiresAt: number }
 >();
 
+const pendingCliApprovals = new Map<
+  string,
+  { userId: string; redirectUri: string; state: string; expiresAt: number }
+>();
+
 const CODE_TTL_MS = 60_000;
+const APPROVAL_TTL_MS = 5 * 60_000;
 
 function isLocalhostUri(uri: string): boolean {
   try {
@@ -34,6 +42,412 @@ function isLocalhostUri(uri: string): boolean {
   } catch {
     return false;
   }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function safeHexColor(value: string | undefined): string {
+  return value && /^#[\da-fA-F]{3,8}$/.test(value) ? value : "#a25ebb";
+}
+
+function cliCallbackUrl(
+  redirectUri: string,
+  state: string,
+  params: Record<string, string>,
+): string {
+  const callbackUrl = new URL(redirectUri);
+  callbackUrl.searchParams.set("state", state);
+  for (const [key, value] of Object.entries(params)) {
+    callbackUrl.searchParams.set(key, value);
+  }
+  return callbackUrl.toString();
+}
+
+function redirectToCli(
+  redirectUri: string,
+  state: string,
+  params: Record<string, string>,
+): Response {
+  return Response.redirect(cliCallbackUrl(redirectUri, state, params), 302);
+}
+
+function renderCliCallbackPage(
+  callbackUrl: string,
+  title: string,
+  message: string,
+): Response {
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+        color: #151820;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        width: min(100% - 40px, 380px);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.6rem;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+      p {
+        margin: 0 0 18px;
+        color: #647395;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      a {
+        color: #78378f;
+        font-size: 14px;
+        font-weight: 600;
+      }
+    </style>
+    <script>
+      window.location.href = ${JSON.stringify(callbackUrl)};
+    </script>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(message)}</p>
+      <a href="${escapeHtml(callbackUrl)}">Continue to the CLI callback</a>
+    </main>
+  </body>
+</html>`;
+
+  return new Response(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": Buffer.byteLength(html).toString(),
+    },
+  });
+}
+
+function renderCliAuthPage(options: {
+  spaces: Space[];
+  redirectUri: string;
+  state: string;
+  approval: string;
+  error?: string;
+}): Response {
+  const { spaces, redirectUri, state, approval, error } = options;
+  const selectedSpaceId = spaces[0]?.id;
+  const spaceOptions = spaces
+    .map((space) => {
+      const role = space.userRole ? `${space.userRole} access` : "Space access";
+      const brandColor = safeHexColor(space.preferences.brandColor);
+      return `
+        <label class="space-option">
+          <input
+            type="radio"
+            name="spaceId"
+            value="${escapeHtml(space.id)}"
+            ${space.id === selectedSpaceId ? "checked" : ""}
+            required
+          />
+          <span class="space-mark" style="--space-color: ${escapeHtml(brandColor)}"></span>
+          <span class="space-copy">
+            <span class="space-name">${escapeHtml(space.name)}</span>
+            <span class="space-meta">${escapeHtml(role)} - /${escapeHtml(space.slug)}</span>
+          </span>
+        </label>`;
+    })
+    .join("");
+
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Allow Vektor CLI Access</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --primary-10: #e0d1e6;
+        --primary-50: #d6bfde;
+        --primary-200: #c099cf;
+        --primary-300: #b686c8;
+        --primary-400: #ac72c1;
+        --primary-600: #9949b6;
+        --primary-700: #78378f;
+        --neutral-50: #f3f4f7;
+        --neutral-100: #e2e5eb;
+        --neutral-300: #a4adc2;
+        --neutral-500: #647395;
+        --neutral-700: #3e485e;
+        --neutral-900: #151820;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #ffffff;
+        color: var(--neutral-900);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .page { display: flex; min-height: 100vh; }
+      .brand {
+        position: relative;
+        display: none;
+        width: 52%;
+        min-height: 100vh;
+        overflow: hidden;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 48px;
+        background: linear-gradient(150deg, #2a1035 0%, #0e0415 100%);
+      }
+      .brand::before {
+        content: "";
+        position: absolute;
+        top: -160px;
+        right: -160px;
+        width: 560px;
+        height: 560px;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(162, 94, 187, 0.22) 0%, transparent 68%);
+      }
+      .brand::after {
+        content: "";
+        position: absolute;
+        left: -128px;
+        bottom: -128px;
+        width: 420px;
+        height: 420px;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(120, 55, 143, 0.18) 0%, transparent 70%);
+      }
+      .brand-inner { position: relative; z-index: 1; }
+      .logo { display: flex; align-items: center; gap: 10px; color: #ffffff; font-size: 15px; font-weight: 600; }
+      .logo-mark {
+        display: inline-flex;
+        width: 32px;
+        height: 32px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 8px;
+        background: rgba(255,255,255,0.1);
+      }
+      .brand h1 {
+        margin: 0 0 16px;
+        max-width: 520px;
+        color: #ffffff;
+        font-size: 2.3rem;
+        line-height: 1.18;
+        letter-spacing: 0;
+      }
+      .brand p {
+        margin: 0;
+        max-width: 480px;
+        color: #c2b6d4;
+        font-size: 14px;
+        line-height: 1.75;
+      }
+      .brand ul {
+        display: grid;
+        gap: 12px;
+        margin: 40px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .brand li { display: flex; align-items: center; gap: 12px; color: #c2b6d4; font-size: 13px; }
+      .feature-icon {
+        display: inline-flex;
+        width: 32px;
+        height: 32px;
+        flex: none;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        background: rgba(255,255,255,0.07);
+      }
+      .brand-footer { color: #56295f; font-size: 11.5px; letter-spacing: 0.02em; }
+      .main {
+        display: flex;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+      }
+      .panel { width: 100%; max-width: 420px; }
+      .mobile-logo { margin-bottom: 40px; color: var(--neutral-900); }
+      h2 {
+        margin: 0;
+        color: var(--neutral-900);
+        font-size: 1.6rem;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+      .intro { margin: 6px 0 28px; color: var(--neutral-500); font-size: 14px; line-height: 1.45; }
+      .field-label { display: block; margin-bottom: 8px; color: var(--neutral-700); font-size: 12px; font-weight: 600; }
+      .space-list { display: grid; gap: 8px; margin-bottom: 18px; }
+      .space-option {
+        display: grid;
+        grid-template-columns: 18px 34px minmax(0, 1fr);
+        align-items: center;
+        gap: 12px;
+        min-height: 58px;
+        padding: 10px 12px;
+        border: 1px solid var(--neutral-100);
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: pointer;
+        transition: border-color 150ms ease, background-color 150ms ease;
+      }
+      .space-option:has(input:checked) {
+        border-color: var(--primary-300);
+        background: #fbf7fc;
+      }
+      .space-option input { width: 16px; height: 16px; accent-color: var(--primary-600); }
+      .space-mark {
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(0,0,0,0.08);
+        border-radius: 8px;
+        background:
+          linear-gradient(135deg, rgba(255,255,255,0.34), rgba(255,255,255,0)),
+          var(--space-color);
+      }
+      .space-copy { min-width: 0; }
+      .space-name {
+        display: block;
+        overflow: hidden;
+        color: var(--neutral-900);
+        font-size: 14px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .space-meta {
+        display: block;
+        overflow: hidden;
+        margin-top: 2px;
+        color: var(--neutral-500);
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .error {
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border-radius: 6px;
+        background: #fef2f2;
+        color: #b91c1c;
+        font-size: 13px;
+      }
+      .actions { display: flex; gap: 10px; }
+      button {
+        min-height: 38px;
+        border: 0;
+        border-radius: 8px;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 150ms ease;
+      }
+      .allow {
+        flex: 1;
+        background: var(--primary-200);
+        border: 1px solid var(--primary-300);
+        color: #ffffff;
+      }
+      .allow:hover { background: var(--primary-400); }
+      .cancel {
+        padding: 0 16px;
+        background: var(--neutral-100);
+        color: var(--primary-700);
+      }
+      .cancel:hover { background: var(--primary-10); }
+      @media (min-width: 1024px) {
+        .brand { display: flex; }
+        .mobile-logo { display: none; }
+      }
+      @media (max-width: 520px) {
+        .main { align-items: flex-start; padding: 28px 20px; }
+        .actions { flex-direction: column; }
+        .cancel { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <aside class="brand">
+        <div class="brand-inner logo">
+          <span class="logo-mark">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2 2.5L8 13.5L14 2.5" stroke="white" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+          <span>Vektor</span>
+        </div>
+        <div class="brand-inner">
+          <h1>Allow CLI access to your workspace.</h1>
+          <p>Choose the space this command line token should use. The token will be scoped to that space and can be revoked later from Vektor.</p>
+          <ul>
+            <li><span class="feature-icon">OK</span><span>Generates a scoped API token for the selected space</span></li>
+            <li><span class="feature-icon">OK</span><span>Returns the token only to the local CLI callback</span></li>
+            <li><span class="feature-icon">OK</span><span>Requires your explicit approval before continuing</span></li>
+          </ul>
+        </div>
+        <div class="brand-inner brand-footer">Open source - Self-hosted - Privacy-first</div>
+      </aside>
+      <main class="main">
+        <section class="panel" aria-labelledby="cli-auth-title">
+          <div class="mobile-logo logo">
+            <span class="logo-mark" style="background: var(--primary-600)">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2 2.5L8 13.5L14 2.5" stroke="white" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </span>
+            <span>Vektor</span>
+          </div>
+          <h2 id="cli-auth-title">Authorize Vektor CLI</h2>
+          <p class="intro">Select the space to connect, then allow access.</p>
+          <form method="post" action="/api/v1/auth/cli">
+            <input type="hidden" name="redirect_uri" value="${escapeHtml(redirectUri)}" />
+            <input type="hidden" name="state" value="${escapeHtml(state)}" />
+            <input type="hidden" name="approval" value="${escapeHtml(approval)}" />
+            <span class="field-label">Space</span>
+            <div class="space-list">${spaceOptions}</div>
+            ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
+            <div class="actions">
+              <button class="allow" type="submit" name="intent" value="allow">Allow Access</button>
+              <button class="cancel" type="submit" name="intent" value="cancel" formnovalidate>Cancel</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>`;
+
+  return new Response(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Length": Buffer.byteLength(html).toString(),
+    },
+  });
 }
 
 export const GET: APIRoute = (context) =>
@@ -50,17 +464,93 @@ export const GET: APIRoute = (context) =>
       throw badRequestResponse("state is required and must be at least 16 characters");
     }
 
-    // Pick the user's first space.
     const spaces = await listUserSpaces(user.id);
     if (spaces.length === 0) {
-      const url = new URL(redirectUri);
-      url.searchParams.set("error", "no_spaces");
-      url.searchParams.set("state", state);
-      return Response.redirect(url.toString(), 302);
+      return redirectToCli(redirectUri, state, { error: "no_spaces" });
     }
-    const spaceId = spaces[0].id;
 
-    // Mint a one-time code.
+    const approval = createCliApproval(user.id, redirectUri, state);
+    return renderCliAuthPage({ spaces, redirectUri, state, approval });
+  }, "CLI auth failed");
+
+function createCliApproval(userId: string, redirectUri: string, state: string): string {
+  const approval = randomBytes(32).toString("hex");
+  pendingCliApprovals.set(approval, {
+    userId,
+    redirectUri,
+    state,
+    expiresAt: Date.now() + APPROVAL_TTL_MS,
+  });
+  setTimeout(() => pendingCliApprovals.delete(approval), APPROVAL_TTL_MS);
+  return approval;
+}
+
+export const POST: APIRoute = (context) =>
+  withApiErrorHandling(async () => {
+    const user = requireUser(context);
+    const formData = await context.request.formData();
+    const redirectUri = formData.get("redirect_uri");
+    const state = formData.get("state");
+    const approval = formData.get("approval");
+    const intent = formData.get("intent");
+    const spaceId = formData.get("spaceId");
+
+    if (typeof redirectUri !== "string" || !isLocalhostUri(redirectUri)) {
+      throw badRequestResponse("redirect_uri must be http://localhost:<port>/callback");
+    }
+    if (typeof state !== "string" || state.length < 16) {
+      throw badRequestResponse("state is required and must be at least 16 characters");
+    }
+
+    if (intent === "cancel") {
+      return renderCliCallbackPage(
+        cliCallbackUrl(redirectUri, state, { error: "access_denied" }),
+        "Access canceled",
+        "Returning to the CLI.",
+      );
+    }
+
+    if (typeof approval !== "string") {
+      throw badRequestResponse("approval is required");
+    }
+
+    const approvalEntry = pendingCliApprovals.get(approval);
+    pendingCliApprovals.delete(approval);
+    if (
+      !approvalEntry ||
+      approvalEntry.userId !== user.id ||
+      approvalEntry.redirectUri !== redirectUri ||
+      approvalEntry.state !== state ||
+      Date.now() > approvalEntry.expiresAt
+    ) {
+      throw badRequestResponse("Approval has expired. Restart CLI login.");
+    }
+
+    const spaces = await listUserSpaces(user.id);
+    if (spaces.length === 0) {
+      return renderCliCallbackPage(
+        cliCallbackUrl(redirectUri, state, { error: "no_spaces" }),
+        "No spaces available",
+        "Returning to the CLI.",
+      );
+    }
+
+    if (typeof spaceId !== "string") {
+      const nextApproval = createCliApproval(user.id, redirectUri, state);
+      return renderCliAuthPage({
+        spaces,
+        redirectUri,
+        state,
+        approval: nextApproval,
+        error: "Choose a space before allowing access.",
+      });
+    }
+
+    const selectedSpace = spaces.find((space) => space.id === spaceId);
+    if (!selectedSpace) {
+      throw badRequestResponse("Selected space is not available to this user");
+    }
+
     const code = randomBytes(32).toString("hex");
     pendingCliCodes.set(code, {
       userId: user.id,
@@ -71,10 +561,9 @@ export const GET: APIRoute = (context) =>
     // Expire the code automatically.
     setTimeout(() => pendingCliCodes.delete(code), CODE_TTL_MS);
 
-    const callbackUrl = new URL(redirectUri);
-    callbackUrl.searchParams.set("code", code);
-    callbackUrl.searchParams.set("state", state);
-    callbackUrl.searchParams.set("space", spaceId);
-
-    return Response.redirect(callbackUrl.toString(), 302);
+    return renderCliCallbackPage(
+      cliCallbackUrl(redirectUri, state, { code, space: selectedSpace.id }),
+      "Access allowed",
+      "Returning to the CLI.",
+    );
   }, "CLI auth failed");

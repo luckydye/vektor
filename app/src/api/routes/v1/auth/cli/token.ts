@@ -1,7 +1,7 @@
 /**
  * POST /api/v1/auth/cli/token
  *
- * Exchanges the one-time code produced by GET /api/v1/auth/cli for a real
+ * Exchanges the one-time code produced by POST /api/v1/auth/cli for a real
  * access token. No session cookie required — the code itself is the proof of
  * authentication. Single-use; expires 60 seconds after issuance.
  *

@@ -11,6 +11,7 @@
  *   vektor extension package [id]
  *   vektor extension upload [id] [--space <space-id>] [--token <api-token>]
  *   vektor cat <docId>
+ *   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
  *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>] [--parent <docId>]    (types: markdown, document, csv, app; file defaults to stdin)
  *   vektor create [--slug <slug>] [--type <type>]
  *   vektor ls [--limit <n>]
@@ -35,6 +36,7 @@ import {
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
 import { commandLogin } from "./src/cli/login.ts";
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
+import { commandUploadFile } from "./src/cli/upload.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
 import { config } from "./src/config.ts";
 
@@ -92,6 +94,7 @@ Commands:
   vektor extension package [id]
   vektor extension upload [id]
   vektor cat <docId>
+  vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
   vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>] [--parent <docId>]    (types: markdown, document, csv, app; file defaults to stdin)
   vektor ls [--limit <n>]
   vektor query <query>
@@ -221,6 +224,19 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "upload") {
+    const { positional, flags } = parseFlags(rest);
+    if (!positional[0]) throw new Error("upload requires a <file>");
+    await commandUploadFile({
+      source: positional[0],
+      filename: flags.filename,
+      documentId: flags.document ?? flags["document-id"],
+      contentType: flags["content-type"],
+      json: "json" in flags,
+    });
+    return;
+  }
+
   if (command === "write") {
     const { positional, flags } = parseFlags(rest);
     const isDocId =
@@ -308,7 +324,7 @@ async function main(): Promise<void> {
   }
 
   throw new Error(
-    `Unknown command: ${command}\n\nTry: serve, workflow, extension, cat, write, set, ls, query, category`,
+    `Unknown command: ${command}\n\nTry: serve, workflow, extension, cat, upload, write, set, ls, query, category`,
   );
 }
 

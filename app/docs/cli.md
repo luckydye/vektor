@@ -8,6 +8,7 @@ The CLI is a single Bun-compiled binary built from `vektor.ts`. All commands are
 vektor.ts               routing, global flag parsing, help text
 src/cli/document.ts     cat, write, set, ls, query
 src/cli/category.ts     category ls/create/edit/rm
+src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)
 src/cli/resolve.ts      resolveHost(), resolveSpaceId()
@@ -130,6 +131,24 @@ The key pitfall: the regex that strips marked's injected `<input disabled="">` m
   - Set a property to `null` to delete it
 
 The `set` command makes two PATCH requests when both properties and parent are given.
+
+## Uploading Files
+
+`vektor upload <file>` uploads a local file to `/api/v1/spaces/:spaceId/uploads`.
+It prints tab-separated `<key>\t<url>` by default, or the full upload response with `--json`.
+
+```sh
+vektor upload ./report.pdf
+vektor upload ./report.pdf --document doc_123 --filename final-report.pdf
+vektor upload ./data --filename data.csv --content-type text/csv --json
+```
+
+Options:
+
+- `--filename <name>` overrides the uploaded filename used for extension validation and metadata.
+- `--document <docId>` or `--document-id <docId>` associates the file with a document and triggers re-indexing.
+- `--content-type <mime>` overrides Bun's MIME inference.
+- `--json` prints `{ "url": "...", "key": "..." }`.
 
 ## Testing Without Rebuilding
 
