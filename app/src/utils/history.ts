@@ -102,4 +102,6 @@ export class History {
 /**
  * Singleton instance for convenience
  */
-export const history = new History(location.pathname.split("/")[1]);
+export const history = new History(
+  typeof window !== "undefined" ? location.pathname.split("/")[1] : "",
+);

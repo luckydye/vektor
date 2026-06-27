@@ -13,8 +13,8 @@ function createQueryClient() {
 }
 
 // Astro islands are separate Vue apps in the browser and intentionally share
-// one cache. On the server every app/render gets its own cache so request data
-// can never survive in the module graph or race with another request.
+// one cache. On the server every app/render gets its own instance so request
+// data can never leak between renders.
 const browserQueryClient = typeof window === "undefined" ? null : createQueryClient();
 
 export default (app: App) => {

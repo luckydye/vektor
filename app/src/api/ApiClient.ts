@@ -1127,6 +1127,15 @@ export class ApiClient {
     },
   };
 
+  documentBreadcrumbs = {
+    get: async (spaceId: string, documentId: string) => {
+      const response = await this.apiGet<{
+        breadcrumbs: Array<{ id: string; slug: string; title: string }>;
+      }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}/breadcrumbs`);
+      return response.breadcrumbs;
+    },
+  };
+
   documentPublish = {
     /**
      * Restore a document to a specific revision

@@ -1,34 +1,57 @@
 ---
 import "../styles/index.css";
+import { generatePaletteCss } from "../utils/utils.ts";
 
 export interface Props {
   title?: string;
+  meta?: {
+    title?: string;
+    description?: string;
+    image?: string;
+    url?: string;
+  };
+  brandColor?: string;
+  spaceId?: string;
 }
 
-const { title = "Wiki" } = Astro.props;
+const { title = "Wiki", meta, brandColor, spaceId } = Astro.props;
+const lang = Astro.preferredLocale || "en";
 const publicEnv = Astro.locals.publicEnv;
+
+let dynamicStyles = "";
+if (brandColor) {
+  const paletteCss = generatePaletteCss(brandColor);
+  dynamicStyles = `
+    :root { --color-primary: ${brandColor}; ${paletteCss.light} }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme]) body { --color-primary: ${brandColor}; ${paletteCss.dark} }
+    }
+    :root[data-theme="dark"] body { --color-primary: ${brandColor}; ${paletteCss.dark} }
+    :root[data-theme="light"] body { --color-primary: ${brandColor}; ${paletteCss.light} }
+  `;
+}
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={lang}>
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <script type="application/json" id="env" set:html={JSON.stringify(publicEnv)}></script>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#181818" media="(prefers-color-scheme: dark)" />
+    {meta?.description && <meta name="description" content={meta.description} />}
+    {meta?.title && <meta property="og:title" content={meta.title} />}
+    {meta?.description && <meta property="og:description" content={meta.description} />}
+    {meta?.image && <meta property="og:image" content={meta.image} />}
+    {meta?.url && <meta property="og:url" content={meta.url} />}
+    {dynamicStyles && <style set:html={dynamicStyles} />}
   </head>
 
-  <body class="bg-background font-sans">
-    <div class="mx-auto min-h-screen grid grid-rows-[1fr]">
-      <main class="h-full">
-        <div class="px-10 py-8 pt-5 h-full flex justify-center items-center">
-          <div class="content">
-            <slot />
-          </div>
-        </div>
-      </main>
-    </div>
+  <body class="bg-background font-sans" data-space-id={spaceId ?? ""}>
+    <slot />
   </body>
 </html>

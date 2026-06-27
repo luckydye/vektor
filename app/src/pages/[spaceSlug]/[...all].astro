@@ -1,0 +1,20 @@
+---
+import SpaceApp from "../../components/SpaceApp.vue";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
+
+const result = await resolveSpacePage(Astro);
+if (result.response) return result.response;
+const { space } = result;
+
+const accessDenied = await requireSpaceViewer(Astro, space);
+if (accessDenied) return accessDenied;
+---
+
+<BaseLayout
+  title={space.name}
+  brandColor={space.preferences?.brandColor}
+  spaceId={space.id}
+>
+  <SpaceApp client:load url={Astro.url.pathname} />
+</BaseLayout>

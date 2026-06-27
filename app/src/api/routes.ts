@@ -17,6 +17,7 @@ import * as spaceAuditLogs from "./routes/v1/spaces/[spaceId]/audit-logs.ts";
 import * as category from "./routes/v1/spaces/[spaceId]/categories/[id].ts";
 import * as categories from "./routes/v1/spaces/[spaceId]/categories/index.ts";
 import * as documentAuditLogs from "./routes/v1/spaces/[spaceId]/documents/[documentId]/audit-logs.ts";
+import * as documentBreadcrumbs from "./routes/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs.ts";
 import * as documentChildren from "./routes/v1/spaces/[spaceId]/documents/[documentId]/children.ts";
 import * as documentComments from "./routes/v1/spaces/[spaceId]/documents/[documentId]/comments.ts";
 import * as documentContributors from "./routes/v1/spaces/[spaceId]/documents/[documentId]/contributors.ts";
@@ -117,6 +118,10 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/audit-logs",
     module: documentAuditLogs,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/breadcrumbs",
+    module: documentBreadcrumbs,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/children",

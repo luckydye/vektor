@@ -27,6 +27,7 @@ import {
   deleteDocument,
   deleteDocumentProperty,
   getDocument,
+  getDocumentBySlug,
   restoreDocument,
   setDocumentParent,
   updateDocument,
@@ -205,12 +206,21 @@ async function handleReadonlyPatch(
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
+    const rawId = requireParam(context.params, "documentId");
     const revParam = context.url.searchParams.get("rev");
     const draft = context.url.searchParams.get("draft") === "true";
     // live=true returns the draft content as currently held in the document's
     // collaboration room (if open), so partial edits reference the same state.
     const live = context.url.searchParams.get("live") === "true";
+
+    // Resolve slug → ID: try by ID first, fall back to slug so client-side
+    // routing can pass the URL slug directly instead of needing a separate lookup.
+    let id = rawId;
+    const preCheck = await getDocument(spaceId, rawId);
+    if (!preCheck) {
+      const bySlug = await getDocumentBySlug(spaceId, rawId);
+      if (bySlug) id = bySlug.id;
+    }
 
     // Draft/live content is unpublished, so it requires editor; the published
     // view only requires viewer.
