@@ -57,7 +57,8 @@ const canPublishCurrentDraft = computed(
 );
 const publishDisabled = computed(() => isSaving.value || !canPublishCurrentDraft.value);
 const suggestionSaveDisabled = computed(() => isSaving.value || !hasChanges.value);
-const showCancel = computed(() => !documentId.value || hasPublishedVersion.value);
+const isNewDocument = computed(() => !documentId.value);
+const showCancel = computed(() => !isNewDocument.value && hasPublishedVersion.value);
 
 function registerEditAction() {
   Actions.register("document:edit", {
@@ -416,9 +417,9 @@ watchEffect(() => {
           @click="publishDocument"
         >
           <Icon name="check" />
-          <span>{{ isSaving ? "Saving..." : "Publish" }}</span>
+          <span>{{ isSaving ? "Saving..." : isNewDocument ? "Create" : "Publish" }}</span>
         </button>
-        <a-popover-trigger v-if="documentId" class="flex items-stretch group">
+        <a-popover-trigger v-if="!isNewDocument" class="flex items-stretch group">
           <button
             slot="trigger"
             type="button"

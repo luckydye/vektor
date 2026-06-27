@@ -1,4 +1,5 @@
 import { computed, type Ref, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api } from "../api/client.ts";
 import { supportsDocumentEditor } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
@@ -99,6 +100,7 @@ export function useDocumentContext() {
 export function useDocument(documentId: string | undefined, documentType = "document") {
   const { currentSpaceId, currentSpace } = useSpace();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const saveStatus: Ref<SaveStatus> = ref("idle");
   const saveError: Ref<string | null> = ref(null);
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -167,7 +169,7 @@ export function useDocument(documentId: string | undefined, documentType = "docu
       saveStatus.value = "saved";
 
       if (data.isNew && data.document && currentSpace.value) {
-        window.location.href = `/${currentSpace.value.slug}/doc/${data.document.slug}`;
+        router.push(`/${currentSpace.value.slug}/doc/${data.document.slug}`);
         return;
       }
 

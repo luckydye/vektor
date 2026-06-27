@@ -30,19 +30,26 @@ const isCsv = computed(() => type.value === "csv");
 const isWorkflow = computed(() => type.value === "workflow");
 const isPaddedDocument = computed(() => !isCanvas.value && !isApp.value && !isCsv.value && !isWorkflow.value);
 
+const AUTO_CREATE_TYPES: Record<string, string> = {
+  database: "Untitled Database",
+  canvas: "Untitled Canvas",
+  workflow: "Untitled Workflow",
+};
+
 const redirecting = ref(false);
 
 onMounted(async () => {
-  if (type.value !== "database" || !currentSpace.value) return;
+  const autoTitle = AUTO_CREATE_TYPES[type.value];
+  if (!autoTitle || !currentSpace.value) return;
   if (!userCanEdit.value) {
     router.push(`/${currentSpace.value.slug}`);
     return;
   }
   redirecting.value = true;
   const doc = await api.documents.post(currentSpace.value.id, {
-    type: "database",
+    type: type.value,
     content: "",
-    properties: { title: "Untitled Database" },
+    properties: { title: autoTitle },
   });
   router.push(`/${currentSpace.value.slug}/doc/${doc.slug}`);
 });
