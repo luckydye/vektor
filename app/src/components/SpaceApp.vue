@@ -36,8 +36,10 @@ const props = defineProps<{
 
 const isServer = typeof window === "undefined";
 
+const routerBase = props.initialSpace?.slug ? `/${props.initialSpace.slug}/` : "/";
+
 const router = createRouter({
-  history: isServer ? createMemoryHistory(props.url ?? "/") : createWebHistory(),
+  history: isServer ? createMemoryHistory(props.url ?? "/") : createWebHistory(routerBase),
   routes: [
     { path: "/", component: SpaceHomeView },
     { path: "/search", component: SpaceSearchView },
@@ -113,7 +115,6 @@ provide("ssr:now", Date.now());
 // useSpace() reads this instead of deriving the active space from the URL slug.
 const activeSpaceId = ref<string | null>(props.initialSpace?.id ?? null);
 provide("space:activeId", activeSpaceId);
-provide("space:setCurrentSpace", (id: string) => { activeSpaceId.value = id; });
 
 // Seed the query cache with SSR-fetched data so child components render
 // immediately without waiting for async queries.

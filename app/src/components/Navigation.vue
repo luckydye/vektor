@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref, Teleport } from "vue";
+import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
 import { useRouter } from "vue-router";
 import {
   boltIcon,
@@ -32,7 +32,6 @@ interface UiSpace {
 
 const router = useRouter();
 const { pathname } = useRoute();
-const setCurrentSpace = inject<(id: string) => void>("space:setCurrentSpace", () => {});
 
 const {
   currentSpace,
@@ -118,8 +117,7 @@ const userCanEdit = computed(() => {
 const handleSpaceSelect = (space: UiSpace) => {
   const fullSpace = spaces.value?.find((s: ApiSpace) => s.id === space.id);
   if (fullSpace) {
-    setCurrentSpace(fullSpace.id);
-    router.push("/");
+    window.location.href = `/${fullSpace.slug}/`;
   }
 };
 
@@ -136,8 +134,7 @@ const handleCreateSpace = async (data: {
     const newSpace = await createSpace(data.name, data.slug, {
       brandColor: data.brandColor,
     });
-    setCurrentSpace(newSpace.id);
-    router.push("/");
+    window.location.href = `/${newSpace.slug}/`;
   } catch (err) {
     console.error("Failed to create space:", err);
   }

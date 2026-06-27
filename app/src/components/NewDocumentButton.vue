@@ -19,7 +19,7 @@ function handleCreateDocument(type: "document" | "canvas" = "document") {
   isCreating.value = true;
   showTypeMenu.value = false;
 
-  router.push(`/${currentSpace.value.slug}/new?type=${type}`);
+  router.push(`/new?type=${type}`);
 }
 
 function toggleTypeMenu(event: MouseEvent) {

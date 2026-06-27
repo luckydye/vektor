@@ -83,9 +83,6 @@ const isActive = computed(() => {
 });
 
 function getDocumentUrl(docSlug) {
-  if (currentSpace.value) {
-    return `/${currentSpace.value.slug}/doc/${docSlug}`;
-  }
   return `/doc/${docSlug}`;
 }
 </script>

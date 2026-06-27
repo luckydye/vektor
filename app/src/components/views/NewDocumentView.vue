@@ -51,7 +51,7 @@ onMounted(async () => {
     content: "",
     properties: { title: autoTitle },
   });
-  router.push(`/${currentSpace.value.slug}/doc/${doc.slug}`);
+  router.push(`/doc/${doc.slug}`);
 });
 </script>
 

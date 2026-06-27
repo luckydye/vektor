@@ -169,7 +169,7 @@ export function useDocument(documentId: string | undefined, documentType = "docu
       saveStatus.value = "saved";
 
       if (data.isNew && data.document && currentSpace.value) {
-        router.push(`/${currentSpace.value.slug}/doc/${data.document.slug}`);
+        router.push(`/doc/${data.document.slug}`);
         return;
       }
 
