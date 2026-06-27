@@ -65,15 +65,15 @@ export type {
   RenderedTile,
   ViewportCamera,
 } from "./types";
-export type {
-  VectorTileLayerStyle,
-  VectorTileMap,
-  VectorTileMapOptions,
-  VectorTileMapStats,
-  VectorTileRect,
-  VectorTileStyleFn,
-} from "./vector-tile";
-export { createVectorTileMap, drawVectorTile } from "./vector-tile";
+// export type {
+//   VectorTileLayerStyle,
+//   VectorTileMap,
+//   VectorTileMapOptions,
+//   VectorTileMapStats,
+//   VectorTileRect,
+//   VectorTileStyleFn,
+// } from "./vector-tile";
+// export { createVectorTileMap, drawVectorTile } from "./vector-tile";
 export type {
   PanCameraByScreenDeltaOptions,
   ViewportControls,
