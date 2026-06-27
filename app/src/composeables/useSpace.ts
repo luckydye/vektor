@@ -53,8 +53,8 @@ export function useSpace() {
         if (!old) return [updatedSpace];
         return old.map((s) => {
           if (s.id !== variables.spaceId) return s;
-          // PATCH endpoint doesn't return userRole; preserve it from the cached entry.
-          return { ...updatedSpace, userRole: s.userRole };
+          // PATCH endpoint doesn't return userRole/memberCount; preserve from cached entry.
+          return { ...updatedSpace, userRole: s.userRole, memberCount: s.memberCount };
         });
       });
     },
