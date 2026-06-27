@@ -94,7 +94,7 @@
         </div>
 
         <!-- Members -->
-        <div class="mt-10 pt-8 border-t border-neutral-100">
+        <div class="mt-10">
           <SpaceMembers />
         </div>
 
