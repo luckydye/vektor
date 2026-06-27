@@ -19,6 +19,7 @@
 import { nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
+import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 
 const props = withDefaults(
   defineProps<{
@@ -98,7 +99,7 @@ async function updateTitle() {
         const currentPath = window.location.pathname;
         const docPathPattern = new RegExp(`/${props.spaceSlug}/doc/[^/]+`);
         if (docPathPattern.test(currentPath)) {
-          window.history.replaceState({}, "", `/${props.spaceSlug}/doc/${newSlug}`);
+          replaceBrowserUrl(`/${props.spaceSlug}/doc/${newSlug}`);
         }
       }
     } catch (error) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, Teleport, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
+import { useRouter } from "vue-router";
 import {
   boltIcon,
   checkThinIcon,
@@ -29,6 +30,7 @@ interface UiSpace {
   logoSvg?: string;
 }
 
+const router = useRouter();
 const { pathname, spaceSlug } = useRoute();
 
 const {
@@ -73,15 +75,6 @@ const isLoading = computed(() => {
   return !pathname.value || spaceIsLoading.value;
 });
 
-const hasEverLoaded = ref(false);
-watch(
-  isLoading,
-  (loading) => {
-    if (!loading) hasEverLoaded.value = true;
-  },
-  { immediate: true },
-);
-
 onMounted(() => {
   // Update menu links when extensions finish loading
   updateExtensionMenuLinks();
@@ -124,7 +117,7 @@ const userCanEdit = computed(() => {
 const handleSpaceSelect = (space: UiSpace) => {
   const fullSpace = spaces.value?.find((s: ApiSpace) => s.id === space.id);
   if (fullSpace) {
-    window.location.href = `/${fullSpace.slug}`;
+    router.push(`/${fullSpace.slug}`);
   }
 };
 
@@ -141,8 +134,7 @@ const handleCreateSpace = async (data: {
     const newSpace = await createSpace(data.name, data.slug, {
       brandColor: data.brandColor,
     });
-    // Navigate to the new space
-    window.location.href = `/${newSpace.slug}`;
+    router.push(`/${newSpace.slug}`);
   } catch (err) {
     console.error("Failed to create space:", err);
   }
@@ -157,7 +149,7 @@ Actions.register("document:create", {
   description: t("Create a new document"),
   run: async () => {
     if (currentSpace.value) {
-      window.location.href = `/${currentSpace.value.slug}/new`;
+      router.push(`/${currentSpace.value.slug}/new`);
     }
   },
 });
@@ -167,7 +159,7 @@ Actions.register("find:open", {
   description: t("Open find document dialog"),
   run: async () => {
     if (currentSpace.value) {
-      window.location.href = `/${currentSpace.value.slug}/search`;
+      router.push(`/${currentSpace.value.slug}/search`);
     }
   },
 });
@@ -252,25 +244,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
           <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
         </button>
       </div>
-      <div v-if="isLoading && !hasEverLoaded" class="px-5xs space-y-1 hidden md:flex flex-col">
-        <!-- Category skeleton -->
-        <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
-          <!-- Category header -->
-          <div class="flex items-center gap-2 p-2 rounded-md">
-            <div class="w-6 h-6 bg-neutral-200 rounded-sm flex-none animate-pulse" />
-            <div class="h-4 bg-neutral-200 rounded-sm w-24 animate-pulse" />
-          </div>
-          <!-- Documents under category -->
-          <div class="pl-3 space-y-1">
-            <div v-for="j in 2" :key="`doc-skeleton-${i}-${j}`" class="flex items-center gap-2 p-2 rounded-md">
-              <div class="w-4 h-4 bg-neutral-200 rounded-sm animate-pulse flex-none" />
-              <div class="h-3 bg-neutral-200 rounded-sm w-32 animate-pulse flex-1" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <DocumentTree ref="documentTree" v-show="!isLoading" />
+      <DocumentTree ref="documentTree" />
     </div>
   </nav>
 </template>

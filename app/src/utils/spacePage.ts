@@ -1,5 +1,6 @@
 import type { AstroGlobal } from "astro";
-import { getUserGroups, hasPermission, ResourceType } from "../db/acl.ts";
+import { getUserGroups, hasPermission, listUserPermissions, ResourceType } from "../db/acl.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
 import { getSpaceBySlug, type Space } from "../db/spaces.ts";
 
 type SpacePageResult =
@@ -37,6 +38,36 @@ export async function resolveSpacePage(
   }
 
   return { space };
+}
+
+/**
+ * Resolves the effective role the current session user has in a space.
+ * Returns "owner", a permission string (e.g. "editor", "viewer"), or null
+ * for unauthenticated / no-access callers. Used to annotate initialSpace
+ * so the client knows role-dependent UI (settings, new-doc) immediately.
+ */
+export async function resolveUserSpaceRole(
+  astro: Pick<AstroGlobal, "locals">,
+  space: Space,
+): Promise<string | null> {
+  const user = astro.locals.user;
+
+  if (isNoAuthMode() && user?.id === LOCAL_USER_ID) return "owner";
+  if (!user) return null;
+
+  if (space.createdBy === user.id) return "owner";
+
+  const userGroups = await getUserGroups(user.id);
+  const permissions = await listUserPermissions(
+    space.id,
+    user.id,
+    userGroups,
+    ResourceType.SPACE,
+  );
+  const match = permissions.find(
+    (p) => p.resourceType === ResourceType.SPACE && p.resourceId === space.id,
+  );
+  return match?.permission ?? null;
 }
 
 /**

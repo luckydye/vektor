@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { boltIcon, fileTextIcon, imageIcon, tableRowIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceSlug: string;
 }>();
 
+const router = useRouter();
 const visible = ref(true);
 
 function focusEditor() {
@@ -18,7 +20,7 @@ function selectType(type: string) {
     visible.value = false;
     focusEditor();
   } else {
-    window.location.href = `/${props.spaceSlug}/new?type=${type}`;
+    router.push(`/${props.spaceSlug}/new?type=${type}`);
   }
 }
 

@@ -1,33 +1,23 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, inject } from "vue";
+import { useRoute as useVueRoute } from "vue-router";
 
 export function useRoute() {
-  const pathname = ref("");
-  const spaceSlug = computed(() => {
-    return pathname.value?.split("/")[1];
-  });
+  const vueRoute = useVueRoute();
+  // Fallback for the brief window before Vue Router resolves its initial
+  // async navigation — params are empty until then.
+  const ssrUrl = inject<string>("ssr:url", "");
+
+  const pathname = computed(() => vueRoute.path || ssrUrl);
+
+  const spaceSlug = computed(
+    () => (vueRoute.params.spaceSlug as string) || ssrUrl.split("/")[1] || "",
+  );
+
   const documentSlug = computed(() => {
-    return pathname.value?.split("/doc/")[2];
+    if (vueRoute.params.documentSlug) return vueRoute.params.documentSlug as string;
+    const match = ssrUrl.match(/\/doc\/(.+)$/);
+    return match ? match[1] : "";
   });
 
-  const updatePath = () => {
-    pathname.value = window.location.pathname;
-  };
-
-  onMounted(() => {
-    updatePath();
-    document.addEventListener("astro:page-load", updatePath);
-    window.addEventListener("popstate", updatePath);
-    window.addEventListener("hashchange", updatePath);
-  });
-  onUnmounted(() => {
-    document.removeEventListener("astro:page-load", updatePath);
-    window.removeEventListener("popstate", updatePath);
-    window.removeEventListener("hashchange", updatePath);
-  });
-
-  return {
-    pathname,
-    spaceSlug,
-    documentSlug,
-  };
+  return { pathname, spaceSlug, documentSlug };
 }

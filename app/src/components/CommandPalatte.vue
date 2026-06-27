@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import {
   boltIcon,
   chevronRightThinIcon,
@@ -12,6 +13,7 @@ import { Actions } from "../utils/actions.ts";
 import { history } from "../utils/history.ts";
 import { formatRelativeTime } from "../utils/utils.ts";
 
+const router = useRouter();
 const { documents } = useDocuments();
 const { spaceSlug } = useRoute();
 
@@ -142,7 +144,11 @@ const navigateToDocument = async (doc) => {
     } catch (error) {
       console.error("Failed to log history:", error);
     }
-    window.location.href = url;
+    if (url.startsWith("/") && !url.startsWith("//")) {
+      router.push(url);
+    } else {
+      window.location.href = url;
+    }
   }
   closePalette();
 };

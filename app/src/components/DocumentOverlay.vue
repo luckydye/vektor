@@ -20,6 +20,7 @@
  *   });
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
+import { useRouter } from "vue-router";
 import {
   closeXIcon,
   commentIcon,
@@ -38,6 +39,7 @@ interface OverlayState {
   slug?: string;
 }
 
+const router = useRouter();
 const isOpen = ref(false);
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -113,12 +115,11 @@ function closeOverlay() {
 function navigateToDocument() {
   if (!currentState.value?.slug) return;
 
-  // Get space slug from current URL
   const pathParts = window.location.pathname.split("/").filter(Boolean);
   const targetSpaceSlug = pathParts[0];
 
   if (targetSpaceSlug && currentState.value.slug) {
-    window.location.href = `/${targetSpaceSlug}/doc/${currentState.value.slug}`;
+    router.push(`/${targetSpaceSlug}/doc/${currentState.value.slug}`);
   }
 }
 

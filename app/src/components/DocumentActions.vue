@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { useRouter } from "vue-router";
 import "@atrium-ui/elements/popover";
 import {
   ButtonSecondary,
@@ -26,6 +27,7 @@ const props = defineProps<{
   headerImage?: string;
 }>();
 
+const router = useRouter();
 const { currentSpaceId, currentSpace } = useSpace();
 const { toggle: toggleDockedWindow } = useDockedWindows();
 const {
@@ -330,7 +332,7 @@ watchEffect(() => {
           throw new Error(`Archive failed: ${response.statusText}`);
         }
 
-        window.location.href = `/${currentSpace.value.slug}`;
+        router.push(`/${currentSpace.value.slug}`);
       },
     });
   }

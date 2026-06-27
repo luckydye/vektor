@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { defineAsyncComponent, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { clockIcon } from "~/src/assets/icons.ts";
+import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import DiffView from "./DiffView.vue";
 
@@ -55,9 +56,7 @@ function handleRevisionClose() {
 
   const params = new URLSearchParams(location.search);
   params.delete("revision");
-  history.replaceState(
-    null,
-    "",
+  replaceBrowserUrl(
     `${location.origin}${location.pathname}${params.toString() ? `?${params.toString()}` : ""}`,
   );
 }

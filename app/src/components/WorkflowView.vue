@@ -13,6 +13,7 @@ import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { useRoute } from "../composeables/useRoute.ts";
+import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import "@atrium-ui/elements/tabs";
@@ -81,7 +82,7 @@ function setRunSearchParam(runId: string) {
   const url = new URL(window.location.href);
   url.searchParams.set("run", runId);
   url.hash = "";
-  window.history.replaceState({}, "", url);
+  replaceBrowserUrl(url);
 }
 
 // Follow the selected run with a per-run realtime subscription.

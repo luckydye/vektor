@@ -1,10 +1,10 @@
 import type { APIRoute } from "astro";
 import {
   jsonResponse,
-  notFoundResponse,
   requireParam,
   tryAuthenticateRequest,
-  verifyDocumentRole,
+  verifyPublicSpaceRole,
+  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocumentBreadcrumbs } from "#db/documents.ts";
@@ -16,15 +16,11 @@ export const GET: APIRoute = (context) =>
 
     const auth = await tryAuthenticateRequest(context, spaceId);
     if (auth?.type === "user") {
-      await verifyDocumentRole(spaceId, id, auth.user.id, "viewer");
+      await verifySpaceRole(spaceId, auth.user.id, "viewer");
     } else {
-      await verifyDocumentRole(spaceId, id, null, "viewer");
+      await verifyPublicSpaceRole(spaceId, "viewer");
     }
 
     const breadcrumbs = await getDocumentBreadcrumbs(spaceId, id);
-    if (!breadcrumbs) {
-      throw notFoundResponse("Document");
-    }
-
     return jsonResponse({ breadcrumbs });
   }, "Failed to get document breadcrumbs");

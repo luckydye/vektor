@@ -17,6 +17,7 @@ import { useInfiniteQuery } from "../composeables/query.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 import DocumentList from "./DocumentList.vue";
 import DocumentListItem from "./DocumentListItem.vue";
@@ -89,7 +90,7 @@ const updateUrlParams = () => {
   } else {
     url.searchParams.delete("filters");
   }
-  window.history.replaceState({}, "", url);
+  replaceBrowserUrl(url);
 };
 
 // Infinite query for documents (when not searching)

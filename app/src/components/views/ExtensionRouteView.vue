@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useRoute } from "vue-router";
 import ExtensionView from "../ExtensionView.vue";
 import { useExtensions } from "../../composeables/useExtensions.ts";
 import { useSpace } from "../../composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
 const { extensions } = useExtensions();
+const vueRoute = useRoute();
 
-// Path is everything after /:spaceSlug/x/
-const routePath = computed(() => {
-  const parts = window.location.pathname.split("/x/");
-  return parts[1] ?? "";
-});
+const routePath = computed(() => (vueRoute.params.pathMatch as string[]).join("/"));
 
 const match = computed(() => {
   if (!routePath.value) return null;

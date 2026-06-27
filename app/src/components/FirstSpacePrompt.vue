@@ -127,9 +127,11 @@
 
 <script setup>
 import { onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { folderLargeIcon } from "~/src/assets/icons.ts";
 import { slugify } from "../utils/utils.ts";
 
+const router = useRouter();
 const showPrompt = ref(false);
 const spaceName = ref("");
 const spaceSlug = ref("");
@@ -215,7 +217,7 @@ async function handleCreateSpace() {
     const data = await response.json();
     const newSpace = data.space;
     showPrompt.value = false;
-    window.location.href = `/${newSpace.slug}`;
+    router.push(`/${newSpace.slug}`);
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Unknown error occurred";
     console.error("Failed to create space:", err);

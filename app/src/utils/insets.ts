@@ -78,12 +78,6 @@ function wire() {
     if (typeof w === "number") sidebar = w;
     notify();
   });
-
-  // New page = new static consumers; re-sync after client-side navigation.
-  document.addEventListener("astro:page-load", () => {
-    sidebar = readSavedSidebar();
-    notify();
-  });
 }
 
 /** Current insets (sidebar/left/right) in px. */

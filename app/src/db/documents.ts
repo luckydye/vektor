@@ -1725,6 +1725,7 @@ export interface BreadcrumbItem {
   id: string;
   slug: string;
   title: string;
+  categorySlug?: string;
 }
 
 export async function getDocumentBreadcrumbs(
@@ -1760,13 +1761,17 @@ export async function getDocumentBreadcrumbs(
     const props = await db
       .select()
       .from(property)
-      .where(and(eq(property.documentId, doc.id), eq(property.key, "title")))
-      .get();
+      .where(and(eq(property.documentId, doc.id), inArray(property.key, ["title", "category"])))
+      .all();
+
+    const title = props.find((p) => p.key === "title")?.value || "Untitled";
+    const categorySlug = props.find((p) => p.key === "category")?.value;
 
     breadcrumbs.unshift({
       id: doc.id,
       slug: doc.slug,
-      title: props?.value || "Untitled",
+      title,
+      ...(categorySlug ? { categorySlug } : {}),
     });
 
     currentId = doc.parentId;

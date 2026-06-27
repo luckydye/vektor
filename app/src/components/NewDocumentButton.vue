@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { Icon } from "~/src/components/index.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 
+const router = useRouter();
 const isCreating = ref(false);
 const showTypeMenu = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -17,7 +19,7 @@ function handleCreateDocument(type: "document" | "canvas" = "document") {
   isCreating.value = true;
   showTypeMenu.value = false;
 
-  window.location.href = `/${currentSpace.value.slug}/new?type=${type}`;
+  router.push(`/${currentSpace.value.slug}/new?type=${type}`);
 }
 
 function toggleTypeMenu(event: MouseEvent) {

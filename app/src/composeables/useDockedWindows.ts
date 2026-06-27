@@ -63,8 +63,7 @@ function register(
   opts?: Partial<Pick<DockedWindowState, "mode" | "side" | "width">>,
 ) {
   if (windows.value.has(id)) return;
-  const persisted = loadState(id);
-  const state: DockedWindowState = persisted ?? {
+  const state: DockedWindowState = {
     mode: opts?.mode ?? "docked",
     side: opts?.side ?? "right",
     width: opts?.width ?? 380,
@@ -72,6 +71,15 @@ function register(
   };
   windows.value.set(id, state);
   windows.value = new Map(windows.value);
+
+  const persisted = loadState(id);
+  if (persisted) {
+    queueMicrotask(() => {
+      if (!windows.value.has(id)) return;
+      windows.value.set(id, persisted);
+      windows.value = new Map(windows.value);
+    });
+  }
 }
 
 // Remove window from reactive state (localStorage untouched so state survives navigation)

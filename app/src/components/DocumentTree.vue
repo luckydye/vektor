@@ -12,11 +12,13 @@ import { api } from "../api/client.ts";
 import { useCategories } from "../composeables/useCategories.ts";
 import { useCategoryDocuments } from "../composeables/useCategoryDocuments.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
+import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { getTextColor } from "../utils/utils.ts";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();
+const { documentSlug: activeDocSlug } = useRoute();
 const {
   categories,
   createCategory,
@@ -253,19 +255,6 @@ function toggleItem(itemId) {
   saveExpandedItems(expandedItems.value);
 }
 
-function getActiveDocSlug() {
-  const currentPath = window.location.pathname;
-  const spaceAwareMatch = currentPath.match(/^\/[^/]+\/doc\/([^/]+)$/);
-  const legacyMatch = currentPath.match(/^\/doc\/([^/]+)$/);
-
-  if (spaceAwareMatch) {
-    return spaceAwareMatch[1];
-  }
-  if (legacyMatch) {
-    return legacyMatch[1];
-  }
-  return null;
-}
 
 async function handleDocumentParentChange(event) {
   const { documentId, newParentId } = event.detail;
@@ -334,13 +323,31 @@ defineExpose({ isEditMode, toggleEditMode });
 
 <template>
   <div class="document-tree">
+    <div v-if="!isMounted || isLoading" class="px-5xs space-y-1 hidden md:flex flex-col">
+      <!-- Category skeleton -->
+      <div v-for="i in 3" :key="`cat-skeleton-${i}`" class="space-y-1">
+        <!-- Category header -->
+        <div class="flex items-center gap-2 p-2 rounded-md">
+          <div class="w-6 h-6 bg-neutral-200 rounded-sm flex-none animate-pulse" />
+          <div class="h-4 bg-neutral-200 rounded-sm w-24 animate-pulse" />
+        </div>
+        <!-- Documents under category -->
+        <div class="pl-3 space-y-1">
+          <div v-for="j in 2" :key="`doc-skeleton-${i}-${j}`" class="flex items-center gap-2 p-2 rounded-md">
+            <div class="w-4 h-4 bg-neutral-200 rounded-sm animate-pulse flex-none" />
+            <div class="h-3 bg-neutral-200 rounded-sm w-32 animate-pulse flex-1" />
+          </div>
+        </div>
+      </div>
+    </div>
+
     <template v-if="isMounted">
     <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-3 py-4 text-center">
       <p class="text-size-medium text-neutral-500">No categories yet</p>
     </div>
 
     <!-- Categories List and Documents -->
-    <div class="px-4xs space-y-1">
+    <div v-if="!isLoading" class="px-4xs space-y-1">
       <!-- Category Items -->
       <div v-for="category in categoriesWithDocs" :key="category.id">
         <category-target
@@ -406,7 +413,7 @@ defineExpose({ isEditMode, toggleEditMode });
 
         <div v-show="expandedItems.has(category.id) && !isEditMode" class="space-y-1 pt-1 pb-1.5">
           <DocumentTreeItem v-for="doc in category.rootDocs" :key="doc.id" :doc="doc" :all-docs="category.docs"
-            :active-doc-id="getActiveDocSlug()" :expanded-items="expandedItems" @toggle="toggleItem" />
+            :active-doc-id="activeDocSlug" :expanded-items="expandedItems" @toggle="toggleItem" />
         </div>
       </div>
 

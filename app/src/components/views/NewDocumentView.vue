@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRoute as useVueRoute, useRouter } from "vue-router";
 import { twMerge } from "tailwind-merge";
 import DocumentActions from "../DocumentActions.vue";
 import DocumentContent from "../DocumentContent.vue";
@@ -11,12 +12,14 @@ import { api } from "../../api/client.ts";
 import { useSpace } from "../../composeables/useSpace.ts";
 import { canEdit } from "../../composeables/usePermissions.ts";
 
+const router = useRouter();
+const vueRoute = useVueRoute();
 const { currentSpace } = useSpace();
 
-const typeParam = computed(() => new URLSearchParams(window.location.search).get("type") ?? "");
+const typeParam = computed(() => (vueRoute.query.type as string) ?? "");
 const type = computed(() => typeParam.value || "document");
 const showPicker = computed(() => !typeParam.value);
-const category = computed(() => new URLSearchParams(window.location.search).get("category") ?? undefined);
+const category = computed(() => (vueRoute.query.category as string) ?? undefined);
 const title = computed(() => type.value === "canvas" ? "Untitled Canvas" : "Untitled Document");
 
 const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
@@ -32,7 +35,7 @@ const redirecting = ref(false);
 onMounted(async () => {
   if (type.value !== "database" || !currentSpace.value) return;
   if (!userCanEdit.value) {
-    window.location.href = `/${currentSpace.value.slug}`;
+    router.push(`/${currentSpace.value.slug}`);
     return;
   }
   redirecting.value = true;
@@ -41,7 +44,7 @@ onMounted(async () => {
     content: "",
     properties: { title: "Untitled Database" },
   });
-  window.location.href = `/${currentSpace.value.slug}/doc/${doc.slug}`;
+  router.push(`/${currentSpace.value.slug}/doc/${doc.slug}`);
 });
 </script>
 

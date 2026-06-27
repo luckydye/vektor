@@ -13,9 +13,15 @@ export function useSpace() {
   });
 
   const currentSpace = computed<Space | null>(() => {
-    if (!spaces.value || !spaceSlug.value) return null;
-    return spaces.value.find((s: Space) => s.slug === spaceSlug.value) ?? spaces.value[0] ?? null;
+    if (!spaces.value) return null;
+    if (!spaceSlug.value) return spaces.value[0] ?? null;
+    return spaces.value.find((s: Space) => s.slug === spaceSlug.value || s.id === spaceSlug.value) ?? null;
   });
+
+  // True once the spaces list has loaded and the slug/id in the URL doesn't match any space.
+  const spaceNotFound = computed(() =>
+    !isPending.value && !!spaceSlug.value && spaces.value !== undefined && currentSpace.value === null,
+  );
 
   const createSpaceMutation = useMutation({
     mutationFn: async (params: {
@@ -95,6 +101,7 @@ export function useSpace() {
     isLoading: isPending,
     currentSpace,
     currentSpaceId,
+    spaceNotFound,
     spaces,
     createSpace,
     updateSpace,

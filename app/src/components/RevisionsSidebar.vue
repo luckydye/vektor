@@ -16,6 +16,7 @@ import { useRevisions } from "../composeables/useRevisions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
+import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import { t } from "../utils/lang.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import ActivityFeed from "./ActivityFeed.vue";
@@ -63,6 +64,11 @@ const selectedRevisionNumber = ref<number | null>(null);
 
 const { toggle: toggleWindow, windows } = useDockedWindows();
 const isOpen = computed(() => windows.value.get("revisions")?.open ?? false);
+
+function dispatchWindowEvent(event: Event) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(event);
+}
 
 /** Sorted audit log entries, newest first. */
 const sortedEntries = computed(() =>
@@ -150,9 +156,9 @@ async function viewRevision(revisionId: number | null | undefined) {
 
     const url = new URL(window.location.href);
     url.searchParams.set("revision", revisionId.toString());
-    window.history.replaceState({}, "", url);
+    replaceBrowserUrl(url);
 
-    window.dispatchEvent(
+    dispatchWindowEvent(
       new CustomEvent("revision:view", {
         detail: {
           revision: revisionId,
@@ -189,7 +195,7 @@ function copyRevisionLink(entryId: string) {
 function showDiff(entry: AuditLog) {
   if (!entry.revisionId) return;
   const revision = revisionsByNumber.value.get(entry.revisionId);
-  window.dispatchEvent(
+  dispatchWindowEvent(
     new CustomEvent("revision:diff", {
       detail: { revision: entry.revisionId, isSuggestion: revision?.status !== null },
       bubbles: true,
@@ -247,7 +253,7 @@ function onRevisionClose() {
   selectedRevisionNumber.value = null;
   const url = new URL(window.location.href);
   url.searchParams.delete("revision");
-  window.history.replaceState({}, "", url);
+  replaceBrowserUrl(url);
 }
 
 watch(
@@ -258,7 +264,7 @@ watch(
     }
     const prevOpen = prev?.[0];
     if (open !== prevOpen) {
-      window.dispatchEvent(
+      dispatchWindowEvent(
         new CustomEvent("revisions:toggled", {
           detail: { isOpen: open },
           bubbles: true,

@@ -1,7 +1,8 @@
 ---
 import SpaceApp from "../../components/SpaceApp.vue";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { requireSpaceViewer, resolveSpacePage } from "../../utils/spacePage.ts";
+import { getDocumentBySlug } from "../../db/documents.ts";
+import { requireSpaceViewer, resolveSpacePage, resolveUserSpaceRole } from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);
 if (result.response) return result.response;
@@ -9,6 +10,14 @@ const { space } = result;
 
 const accessDenied = await requireSpaceViewer(Astro, space);
 if (accessDenied) return accessDenied;
+
+const userRole = await resolveUserSpaceRole(Astro, space);
+const initialSpace = { ...space, userRole: userRole ?? undefined };
+
+const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
+const initialDocument = docSlugMatch
+  ? await getDocumentBySlug(space.id, docSlugMatch[1]) ?? undefined
+  : undefined;
 ---
 
 <BaseLayout
@@ -16,5 +25,10 @@ if (accessDenied) return accessDenied;
   brandColor={space.preferences?.brandColor}
   spaceId={space.id}
 >
-  <SpaceApp client:load url={Astro.url.pathname} />
+  <SpaceApp
+    client:load
+    url={Astro.url.pathname}
+    initialSpace={initialSpace}
+    initialDocument={initialDocument}
+  />
 </BaseLayout>
