@@ -518,7 +518,6 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";
 import AgentSettings from "./AgentSettings.vue";
@@ -538,8 +537,6 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 const validTabIds = tabs.map((t) => t.id) as string[];
-
-const router = useRouter();
 
 function tabFromHash(): TabId {
   if (typeof window === "undefined") return "general";
@@ -756,7 +753,11 @@ async function handleSave() {
       },
     );
     emit("saved");
-    router.push(`/${localSlug.value.trim()}`);
+    const newSlug = localSlug.value.trim();
+    if (newSlug !== currentSpace.value?.slug) {
+      // Slug changed → router base changes, so do a full reload to the new URL.
+      window.location.href = `/${newSlug}/settings`;
+    }
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to update space";
   } finally {
