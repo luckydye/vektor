@@ -101,14 +101,22 @@ if (instance) {
   instance.appContext.app.use(router);
 }
 
-// Strip the router base so the URL is relative to the base (e.g. "/test/doc/foo" → "/doc/foo").
+function stripRouterBase(url: string, base: string) {
+  if (base === "/") return url || "/";
+
+  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
+  if (url === normalizedBase) return "/";
+  if (url.startsWith(`${normalizedBase}/`)) {
+    return url.slice(normalizedBase.length) || "/";
+  }
+  return url || "/";
+}
+
+// Strip the router base so the URL is relative to the base (e.g. "/test/doc/foo" -> "/doc/foo").
 // createMemoryHistory(routerBase) and createWebHistory(routerBase) both expect base-relative paths.
 const ssrRelativeUrl = (() => {
   const url = props.url ?? "/";
-  if (routerBase !== "/" && url.startsWith(routerBase)) {
-    return url.slice(routerBase.length - 1) || "/";
-  }
-  return url;
+  return stripRouterBase(url, routerBase);
 })();
 
 if (isServer) {

@@ -81,13 +81,7 @@ body {
   color: var(--color-forground);
 }
 
-.main-content {
-  font-size: var(--content-text-size, 1.125rem);
-  /*transition:
-    margin-right 300ms ease,
-    margin-left 300ms ease;*/
-}
-
-hr {
-  color: var(--color-neutral-100);
+* {
+  scrollbar-color: var(--color-neutral-500) transparent;
+  scrollbar-width: thin;
 }

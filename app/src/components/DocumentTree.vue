@@ -113,10 +113,11 @@ const formData = ref({
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
   if (isEditMode.value) {
-    // Collapse all categories when entering edit mode
+    // Collapse without saving — localStorage still holds the real state
     expandedItems.value.clear();
-    saveExpandedItems(expandedItems.value);
   } else {
+    // Restore from localStorage
+    expandedItems.value = loadExpandedItems();
     resetForm();
   }
 }
@@ -365,7 +366,7 @@ defineExpose({ isEditMode, toggleEditMode });
               'cursor-move': isEditMode
             }"
           >
-            <button @click="toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5">
+            <button @click="!isEditMode && toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5">
               <div class="flex-none relative w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold" :style="{
                 backgroundColor: category.color || '#E5E7EB',
                 color: getTextColor(category.color)

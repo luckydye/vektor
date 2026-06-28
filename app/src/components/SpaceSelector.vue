@@ -88,7 +88,7 @@ const handleCreateDoc = (event: Event) => {
             <!-- Space Icon -->
             <div class="flex-none w-[2.375rem] aspect-square rounded-md flex items-center justify-center bg-primary-500 overflow-hidden" :style="{ background: currentSpace?.color }">
               <div v-if="currentSpace?.logoSvg && currentSpace.logoSvg.startsWith('<')" v-html="currentSpace.logoSvg" class="text-white" />
-              <img v-else-if="currentSpace?.logoSvg" :src="currentSpace.logoSvg" class="w-full h-full object-contain" />
+              <img v-else-if="currentSpace?.logoSvg" :src="currentSpace.logoSvg" class="w-full h-full object-cover" />
               <div v-else v-html="homeIcon" class="text-white" />
             </div>
   

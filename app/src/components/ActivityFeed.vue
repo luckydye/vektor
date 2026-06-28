@@ -124,11 +124,11 @@ const activityGroups = computed((): ActivityGroup[] => {
 
       <!-- User group card -->
       <!-- Default: block, header row (avatar inline) + entries full-width -->
-      <!-- @md: flex, avatar as persistent left column -->
-      <div class="px-1 pb-2.5 rounded-lg @md:flex @md:gap-3 @md:items-start">
+      <!-- @sm: flex, avatar as persistent left column -->
+      <div class="px-1 pb-2.5 rounded-lg @sm:flex @sm:gap-3 @sm:items-start">
 
-        <!-- Avatar: left column at @md only -->
-        <div class="hidden @md:block shrink-0 pt-0.5">
+        <!-- Avatar: left column at @sm only -->
+        <div class="hidden @sm:block shrink-0 pt-0.5">
           <Avatar
             :id="group.userId ?? undefined"
             :user="getUser?.(group.userId)"
@@ -140,17 +140,17 @@ const activityGroups = computed((): ActivityGroup[] => {
         <div class="flex-1 min-w-0 space-y-2">
 
           <!-- Group header: Name • Summary · time [optional action] -->
-          <!-- At default the avatar lives inline here; hidden at @md -->
+          <!-- At default the avatar lives inline here; hidden at @sm -->
           <div class="flex items-center gap-2">
             <div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 flex-1 min-w-0">
-              <div class="@md:hidden shrink-0 self-center mr-0.5">
+              <div class="@sm:hidden shrink-0 self-center mr-0.5">
                 <Avatar
                   :id="group.userId ?? undefined"
                   :user="getUser?.(group.userId)"
                   :size="28"
                 />
               </div>
-              <span class="text-size-medium font-semibold text-primary-600 leading-[1.7rem] @md:leading-[2.175rem]">
+              <span class="text-size-medium font-semibold text-primary-600 leading-[1.7rem] @sm:leading-[2.175rem]">
                 {{ getUserName(group.userId) }}
               </span>
               <span class="text-neutral-300 select-none text-size-small">•</span>
@@ -165,7 +165,7 @@ const activityGroups = computed((): ActivityGroup[] => {
           </div>
 
           <!-- Per-entry rows -->
-          <div class="space-y-1 ml-4 @md:ml-0">
+          <div class="space-y-1 ml-4 @sm:ml-0">
             <template v-for="entry in group.items" :key="entry.id">
               <div class="flex items-start gap-2">
 

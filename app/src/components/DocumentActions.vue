@@ -470,8 +470,6 @@ watchEffect(() => {
         <a-shortcut :data-shortcut="Actions.getShortcutsForAction(name)?.values().next().value"></a-shortcut>
       </ContextMenuItem>
 
-      <hr v-if="actionsDanger.length > 0" />
-
       <ContextMenuItem v-for="[name, options] of actionsDanger" :onClick="(event) => runContextMenuAction(event, name)" class="text-orange-600 hover:text-orange-700">
         <div class="aspect-sqaure flex-none w-[1rem]">
             <Icon :name="(options.icon?.() as any) || 'placeholder'" />
@@ -480,7 +478,6 @@ watchEffect(() => {
       </ContextMenuItem>
 
       <template v-if="devMode">
-        <hr />
         <ContextMenuItem v-for="[name, options] of actionsDev" :onClick="(event) => runContextMenuAction(event, name)" class="text-neutral-400">
           <div class="aspect-sqaure flex-none w-[1rem]">
               <Icon :name="(options.icon?.() as any) || 'placeholder'" />
