@@ -135,6 +135,7 @@ watch(
 );
 
 onUnmounted(() => {
+  resetEditingState();
   if (
     doc.value &&
     documentContext.value.documentId === doc.value.id &&

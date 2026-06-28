@@ -373,7 +373,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  resetEditingState();
   extensions.setActiveCollaboration(null);
   extensions.setActiveDocumentId(null);
   collaboration.clearPresence();
