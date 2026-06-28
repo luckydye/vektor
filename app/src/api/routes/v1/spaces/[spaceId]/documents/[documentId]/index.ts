@@ -45,6 +45,7 @@ import { sendSyncEvent } from "#db/ws.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#utils/documentContent.ts";
+import { htmlToMarkdown } from "#utils/documentMarkdown.ts";
 import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { stripScriptTags } from "#utils/utils.ts";
@@ -300,6 +301,14 @@ export const GET: APIRoute = (context) =>
           content: publishedContent,
         };
       }
+    }
+
+    const accept = context.request.headers.get("Accept") ?? "";
+    if (accept.includes("text/markdown") || accept.includes("text/plain")) {
+      return new Response(htmlToMarkdown(document.content ?? ""), {
+        status: 200,
+        headers: { "Content-Type": "text/markdown; charset=utf-8" },
+      });
     }
 
     return jsonResponse({ document });

@@ -4,18 +4,24 @@
  * Vektor CLI
  *
  * Usage:
+ *   vektor login
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
- *   vektor workflow run <docId> [--input key=value ...] [--json] [--space <id>] [--token <tok>]
- *   vektor workflow logs <runId> [--space <id>] [--token <tok>]
+ *   vektor agent [prompt...] [--doc <slug|id>] [--once]
+ *   vektor workflow run <docId> [--input key=value ...] [--json]
+ *   vektor workflow logs <runId>
  *   vektor extension create <id>
  *   vektor extension package [id]
- *   vektor extension upload [id] [--space <space-id>] [--token <api-token>]
+ *   vektor extension upload [id]
  *   vektor cat <docId>
  *   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
- *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>] [--parent <docId>]    (types: markdown, document, csv, app; file defaults to stdin)
- *   vektor create [--slug <slug>] [--type <type>]
+ *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>]
  *   vektor ls [--limit <n>]
  *   vektor query <query>
+ *   vektor set <docId> [key=value ...] [-key ...] [--title <title>] [--category <slug>] [--parent <docId|->]
+ *   vektor category ls
+ *   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
+ *   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
+ *   vektor category rm <slug>
  */
 
 import { commandAgent } from "./src/cli/agent.ts";
@@ -95,14 +101,14 @@ Commands:
   vektor extension upload [id]
   vektor cat <docId>
   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
-  vektor write [<docId>] [<file>|-] [--slug <slug>] [--type <type>] [--parent <docId>]    (types: markdown, document, csv, app; file defaults to stdin)
+  vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>]
   vektor ls [--limit <n>]
   vektor query <query>
-  vektor set <docId> [key=value ...] [-key ...] [--parent <docId|->]
+  vektor set <docId> [key=value ...] [-key ...] [--title <title>] [--category <slug>] [--parent <docId|->]
   vektor category ls
   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
-  vektor category edit <id|slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
-  vektor category rm <id|slug>
+  vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
+  vektor category rm <slug>
 
 Env vars:
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
@@ -121,9 +127,15 @@ async function main(): Promise<void> {
 
   const [command, ...rest] = argv;
 
-  if (!command) {
+  if (command === "--version" || command === "-v") {
+    const { version } = await import("./package.json");
+    process.stdout.write(`${version}\n`);
+    process.exit(0);
+  }
+
+  if (!command || command === "--help" || command === "-h") {
     printUsage();
-    process.exit(1);
+    process.exit(command ? 0 : 1);
   }
 
   if (command === "login") {
@@ -247,11 +259,17 @@ async function main(): Promise<void> {
     if (isDocId) {
       await commandWrite(positional[0], positional[1]);
     } else {
+      const properties: Record<string, string> = {};
+      if (flags.title) properties.title = flags.title;
+      if (flags.category) properties.category = flags.category;
       await commandDocCreate({
         slug: flags.slug,
-        type: flags.type ?? "markdown",
+        type: flags.type,
         source: positional[0],
         parent: flags.parent,
+        created: flags.created,
+        modified: flags.modified,
+        ...(Object.keys(properties).length > 0 ? { properties } : {}),
       });
     }
     return;
@@ -261,7 +279,11 @@ async function main(): Promise<void> {
     const { positional, flags } = parseFlags(rest);
     const [docId, ...assignments] = positional;
     if (!docId) throw new Error("set requires a <docId>");
-    await commandSet(docId, assignments, { parent: flags.parent });
+    await commandSet(docId, assignments, {
+      parent: flags.parent,
+      title: flags.title,
+      category: flags.category,
+    });
     return;
   }
 
@@ -301,7 +323,7 @@ async function main(): Promise<void> {
 
     if (subcommand === "edit") {
       const { positional, flags } = parseFlags(subArgs);
-      if (!positional[0]) throw new Error("category edit requires an <id|slug>");
+      if (!positional[0]) throw new Error("category edit requires a <slug>");
       await commandCategoryEdit(positional[0], {
         name: flags.name,
         slug: flags.slug,
@@ -313,7 +335,7 @@ async function main(): Promise<void> {
     }
 
     if (subcommand === "rm" || subcommand === "delete") {
-      if (!subArgs[0]) throw new Error("category rm requires an <id|slug>");
+      if (!subArgs[0]) throw new Error("category rm requires a <slug>");
       await commandCategoryRm(subArgs[0]);
       return;
     }

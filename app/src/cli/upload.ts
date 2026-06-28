@@ -19,6 +19,11 @@ async function resolveConnection() {
   return { host, token, spaceId };
 }
 
+export function toAbsoluteUrl(host: string, url: string): string {
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${host.replace(/\/$/, "")}${url}`;
+}
+
 export async function commandUploadFile(flags: {
   source: string;
   filename?: string;
@@ -65,10 +70,12 @@ export async function commandUploadFile(flags: {
   }
 
   const result = (await res.json()) as UploadResult;
+  const absoluteUrl = toAbsoluteUrl(host, result.url);
+
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...result, url: absoluteUrl }, null, 2)}\n`);
     return;
   }
 
-  process.stdout.write(`${result.key}\t${result.url}\n`);
+  process.stdout.write(`${result.key}\t${absoluteUrl}\n`);
 }

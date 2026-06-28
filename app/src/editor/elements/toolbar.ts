@@ -1172,6 +1172,9 @@ if (
                     active: this.isActive("underline"),
                   },
                 )}
+                ${this.button(this.icon(linkIcon), "Link", () => this.setLink(), {
+                  active: this.isActive("link"),
+                })}
               </div>
               <div class="menu-divider"></div>
 
@@ -1266,9 +1269,6 @@ if (
                           active: this.isActive("strike"),
                         },
                       )}
-                      ${this.button(this.icon(linkIcon), "Link", () => this.setLink(), {
-                        active: this.isActive("link"),
-                      })}
                     </div>
                     <div class="menu-divider"></div>
 

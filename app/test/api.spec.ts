@@ -125,6 +125,22 @@ describe("API Tests - Spaces", () => {
     });
   });
 
+  it("converts markdown to HTML when contentType:text/markdown is set in the body", async () => {
+    const res = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        slug: "markdown-type-test",
+        contentType: "text/markdown",
+        content: "# Hello\n",
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const { document } = await res.json();
+    expect(document.content).toContain("<h1");
+    expect(document.slug).toBe("markdown-type-test");
+  });
+
   it("should list spaces", async () => {
     const response = await apiRequest("/api/v1/spaces");
     expect(response.status).toBe(200);

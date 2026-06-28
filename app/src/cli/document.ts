@@ -58,13 +58,19 @@ async function resolveConnection() {
 export async function commandCat(docId: string): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
 
-  const data = (await apiFetch(
-    host,
-    token,
-    `/api/v1/spaces/${spaceId}/documents/${docId}`,
-  )) as { document: { content: string } };
+  const res = await fetch(apiUrl(host, `/api/v1/spaces/${spaceId}/documents/${docId}`), {
+    headers: {
+      ...authHeaders(token),
+      Accept: "text/markdown",
+    },
+  });
 
-  process.stdout.write(data.document.content);
+  if (!res.ok) {
+    const text = await res.text().catch(() => String(res.status));
+    throw new Error(`API GET documents/${docId} failed (${res.status}): ${text}`);
+  }
+
+  process.stdout.write(await res.text());
 }
 
 async function readSource(source?: string): Promise<string> {
@@ -129,20 +135,30 @@ export async function commandCreate(flags: {
   type?: string;
   source?: string;
   parent?: string;
+  modified?: string;
+  created?: string;
+  properties?: Record<string, string>;
 }): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
   const raw = await readSource(flags.source);
   const { meta, content } = parseFrontmatter(raw);
 
-  const type = flags.type ?? meta.type ?? "markdown";
+  const type = flags.type ?? meta.type;
   const slug = flags.slug ?? meta.slug ?? meta.guid;
-  const title = meta.title ?? titleFromFilename(flags.source);
+  const title = flags.properties?.title ?? meta.title ?? titleFromFilename(flags.source);
+  const updatedAt = flags.modified ?? meta.modified;
+  const createdAt = flags.created ?? meta.created;
 
-  // Everything not used as a first-class field goes into properties.
+  // Build properties: frontmatter base, then explicit CLI flags on top.
   const properties: Record<string, string> = {};
   if (title) properties.title = title;
   for (const [key, value] of Object.entries(meta)) {
     if (!FIRST_CLASS.has(key)) properties[key] = value;
+  }
+  if (flags.properties) {
+    for (const [key, value] of Object.entries(flags.properties)) {
+      properties[key] = value;
+    }
   }
 
   const data = (await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents`, {
@@ -150,11 +166,12 @@ export async function commandCreate(flags: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       content,
-      type,
+      contentType: "text/markdown",
+      ...(type ? { type } : {}),
       ...(slug ? { slug } : {}),
       ...(flags.parent ? { parentId: flags.parent } : {}),
-      ...(meta.created ? { createdAt: meta.created } : {}),
-      ...(meta.modified ? { updatedAt: meta.modified } : {}),
+      ...(createdAt ? { createdAt } : {}),
+      ...(updatedAt ? { updatedAt } : {}),
       ...(Object.keys(properties).length > 0 ? { properties } : {}),
     }),
   })) as { document: { id: string; slug: string } };
@@ -177,24 +194,30 @@ export async function commandLs(flags: { limit?: string }): Promise<void> {
   }
 }
 
-// vektor set <docId> [key=value ...] [-key ...] [--parent <id|->]
+// vektor set <docId> [key=value ...] [-key ...] [--title <t>] [--category <slug>] [--parent <id|->]
 //
 // Positional args after docId are property assignments:
 //   key=value   → set property
 //   -key        → delete property (value null)
+// --title and --category are shorthands for title=value and category=value.
 // --parent <id> sets the parent; --parent - clears it.
 export async function commandSet(
   docId: string,
   assignments: string[],
-  opts: { parent?: string },
+  opts: { parent?: string; title?: string; category?: string },
 ): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
   const base = `/api/v1/spaces/${spaceId}/documents/${docId}`;
 
+  // Merge --title/--category shorthands into property assignments.
+  const allAssignments = [...assignments];
+  if (opts.title) allAssignments.unshift(`title=${opts.title}`);
+  if (opts.category) allAssignments.unshift(`category=${opts.category}`);
+
   // Send properties patch if any assignments were given.
-  if (assignments.length > 0) {
+  if (allAssignments.length > 0) {
     const properties: Record<string, string | null> = {};
-    for (const arg of assignments) {
+    for (const arg of allAssignments) {
       if (arg.startsWith("-") && !arg.includes("=")) {
         properties[arg.slice(1)] = null; // delete
       } else {

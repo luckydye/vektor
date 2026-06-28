@@ -37,7 +37,6 @@ async function fetchCategory(
   spaceId: string,
   idOrSlug: string,
 ): Promise<Category> {
-  // Try direct lookup by id first, then scan the list by slug.
   const listRes = await fetch(
     `${host.replace(/\/$/, "")}/api/v1/spaces/${spaceId}/categories`,
     { headers: authHeaders(token) },
@@ -60,7 +59,7 @@ export async function commandCategoryLs(): Promise<void> {
   const { categories } = (await res.json()) as { categories: Category[] };
   for (const c of categories) {
     const meta = [c.color, c.icon].filter(Boolean).join(" ");
-    process.stdout.write(`${c.id}\t${c.slug}\t${c.name}${meta ? `\t${meta}` : ""}\n`);
+    process.stdout.write(`${c.slug}\t${c.name}${meta ? `\t${meta}` : ""}\n`);
   }
 }
 
@@ -91,7 +90,7 @@ export async function commandCategoryCreate(flags: {
   if (!res.ok)
     throw new Error(`Failed to create category (${res.status}): ${await res.text()}`);
   const { category } = (await res.json()) as { category: Category };
-  process.stdout.write(`${category.id}\t${category.slug}\t${category.name}\n`);
+  process.stdout.write(`${category.slug}\t${category.name}\n`);
 }
 
 export async function commandCategoryEdit(
@@ -127,7 +126,7 @@ export async function commandCategoryEdit(
   if (!res.ok)
     throw new Error(`Failed to update category (${res.status}): ${await res.text()}`);
   const { category } = (await res.json()) as { category: Category };
-  process.stdout.write(`${category.id}\t${category.slug}\t${category.name}\n`);
+  process.stdout.write(`${category.slug}\t${category.name}\n`);
 }
 
 export async function commandCategoryRm(idOrSlug: string): Promise<void> {
@@ -140,5 +139,5 @@ export async function commandCategoryRm(idOrSlug: string): Promise<void> {
   );
   if (!res.ok)
     throw new Error(`Failed to delete category (${res.status}): ${await res.text()}`);
-  process.stdout.write(`deleted\t${existing.id}\t${existing.slug}\n`);
+  process.stdout.write(`deleted\t${existing.slug}\n`);
 }

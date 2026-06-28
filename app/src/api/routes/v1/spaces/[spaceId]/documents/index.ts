@@ -128,6 +128,7 @@ export const POST: APIRoute = (context) =>
     let properties: Record<string, unknown> | undefined;
     let parentId: string | undefined;
     let type: string | undefined;
+    let slugHint: string | undefined;
     let createdAt: Date | undefined;
     let updatedAt: Date | undefined;
 
@@ -138,8 +139,10 @@ export const POST: APIRoute = (context) =>
         properties: jsonProperties,
         parentId: jsonParentId,
         type: jsonType,
+        slug: jsonSlug,
         createdAt: jsonCreatedAt,
         updatedAt: jsonUpdatedAt,
+        contentType: jsonBodyContentType,
       } = body;
 
       if (!jsonContent || typeof jsonContent !== "string") {
@@ -150,11 +153,12 @@ export const POST: APIRoute = (context) =>
       properties = jsonProperties;
       parentId = jsonParentId;
       type = jsonType;
+      if (jsonSlug && typeof jsonSlug === "string") slugHint = jsonSlug;
       if (jsonCreatedAt && typeof jsonCreatedAt === "string")
         createdAt = new Date(jsonCreatedAt);
       if (jsonUpdatedAt && typeof jsonUpdatedAt === "string")
         updatedAt = new Date(jsonUpdatedAt);
-      content = toHtmlIfMarkdown(content, contentType, type);
+      content = toHtmlIfMarkdown(content, jsonBodyContentType ?? contentType, type);
     } else {
       const rawContent = await context.request.text();
       if (!rawContent) {
@@ -167,6 +171,7 @@ export const POST: APIRoute = (context) =>
       content = toHtmlIfMarkdown(rawContent, contentType, type);
       const titleHeader = context.request.headers.get("X-Document-Title");
       const slugHeader = context.request.headers.get("X-Document-Slug");
+      if (slugHeader) slugHint = slugHeader;
       if (titleHeader || slugHeader)
         properties = {
           ...(titleHeader ? { title: titleHeader } : {}),
@@ -178,13 +183,13 @@ export const POST: APIRoute = (context) =>
       throw badRequestResponse("Content is required and must be a string");
     }
 
-    const title = properties?.title || "untitled";
+    const slugBase = slugHint || (properties?.title as string | undefined) || "untitled";
 
     // createDocument now handles slug uniqueness internally
     const document = await createDocument(
       spaceId,
       userId,
-      title,
+      slugBase,
       content,
       properties,
       parentId,

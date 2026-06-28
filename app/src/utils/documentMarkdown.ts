@@ -210,7 +210,7 @@ function nodeToMarkdown(node: AnyNode): string {
   }
 }
 
-function htmlToMarkdown(html: string): string {
+export function htmlToMarkdown(html: string): string {
   if (!html) return "";
   const ast = html5parser.parse(html);
   return ast
