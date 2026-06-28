@@ -600,8 +600,16 @@ export async function listAccessibleResources(
   resourceType: ResourceType,
   userGroups?: string[],
   minPermission?: string,
-): Promise<string[]> {
+): Promise<string[] | null> {
   const db = await getSpaceDb(spaceId);
+
+  // Space-level permission implies access to all resources in the space that
+  // have no per-resource ACL restrictions (same fallback as hasPermission()).
+  // Return null to signal "all accessible" — callers treat null like a job token.
+  const spacePerm = await getPermission(spaceId, ResourceType.SPACE, spaceId, userId, userGroups);
+  if (spacePerm) {
+    return null;
+  }
 
   const conditions = [eq(acl.userId, userId), eq(acl.resourceType, resourceType)];
 

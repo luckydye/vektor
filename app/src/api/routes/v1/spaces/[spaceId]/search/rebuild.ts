@@ -6,7 +6,7 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { rebuildSearchIndex } from "#db/documents.ts";
+import { rebuildSearchIndex } from "#db/search.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
