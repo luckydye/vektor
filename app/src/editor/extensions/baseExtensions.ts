@@ -850,7 +850,7 @@ export const TaskList = Node.create({
   group: "block list",
   content: "taskItem+",
   parseHTML() {
-    return [{ tag: 'ul[data-type="taskList"]' }];
+    return [{ tag: 'ul[data-type="taskList"]', priority: 51 }];
   },
   renderHTML({ HTMLAttributes }) {
     return [
