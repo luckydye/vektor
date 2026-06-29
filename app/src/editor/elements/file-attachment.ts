@@ -228,7 +228,6 @@ if (
             }
             .preview-area {
               flex: 1;
-              min-height: 100px;
               display: flex;
               align-items: center;
               justify-content: center;

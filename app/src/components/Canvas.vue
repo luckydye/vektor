@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, toRef, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRaw, toRef, watch } from "vue";
 import * as Y from "yjs";
 import {
   canvasFitViewIcon,
@@ -79,6 +79,7 @@ import {
   transformImageUrl,
 } from "../utils/imageUrlTransformers.ts";
 import { type TranslationKey, t } from "../utils/lang.ts";
+import { useToast } from "../composeables/useToast.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   CANVAS_CURSOR_COLOR_STORAGE_KEY,
@@ -204,15 +205,15 @@ const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
 const imagesRef = ref<HTMLCanvasElement | null>(null);
 const imageCache = new Map<string, HTMLImageElement | "loading" | "error">();
-const shapes = ref<CanvasShape[]>([]);
-const strokes = ref<CanvasStroke[]>([]);
+const shapes = shallowRef<CanvasShape[]>([]);
+const strokes = shallowRef<CanvasStroke[]>([]);
 const selectedShapeIds = ref<Set<string>>(new Set());
 const selectedStrokeIds = ref<Set<string>>(new Set());
 // Live screen-space rectangle while drag-selecting; null when not marqueeing.
 const marqueeRect = ref<Rect | null>(null);
 // Alignment guides shown while dragging shapes; empty when no edge/center of
 // the dragged group is snapped to another shape. Drawn on the ink overlay.
-const activeSnapGuides = ref<SnapGuide[]>([]);
+let activeSnapGuides: SnapGuide[] = [];
 // How close (in screen px) a dragged edge/center must come to another shape's
 // edge/center before it snaps to it.
 const SNAP_THRESHOLD_PX = 6;
@@ -231,10 +232,10 @@ const drawStrokeMode = ref<DrawStrokeMode>("pen");
 // draws ruled lines, "dots" a dot grid, and "clean" leaves the backdrop empty.
 type GridType = "grid" | "clean" | "dots";
 const gridType = ref<GridType>("dots");
-const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
-const saveError = ref<string | null>(null);
+const saveState = ref<"idle" | "saving" | "saved">("idle");
+const toast = useToast();
 const isDarkMode = ref(false);
-const localPointer = ref<{ x: number; y: number } | null>(null);
+let localPointer: { x: number; y: number } | null = null;
 
 const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
@@ -290,7 +291,7 @@ let dragState: DragState | null = null;
 // read this to tell a click (open the document) from a drag (just reposition).
 let dragMoved = false;
 let drawingSession: CanvasDrawingSession | null = null;
-const activeFreehandStroke = ref<FreehandStroke | null>(null);
+let activeFreehandStroke: FreehandStroke | null = null;
 // Screen-space position of the long-press context menu, null when hidden.
 const contextMenuPos = ref<{ x: number; y: number } | null>(null);
 // World-space insertion point captured when the context menu was opened.
@@ -723,7 +724,7 @@ function serializeSnapshot(): string {
 function dispatchSaveStatus() {
   window.dispatchEvent(
     new CustomEvent("save-status-changed", {
-      detail: { status: saveState.value, error: saveError.value },
+      detail: { status: saveState.value },
     }),
   );
 }
@@ -731,7 +732,6 @@ function dispatchSaveStatus() {
 async function manualSave() {
   if (!isReady) return;
   saveState.value = "saving";
-  saveError.value = null;
   dispatchSaveStatus();
 
   try {
@@ -760,8 +760,8 @@ async function manualSave() {
       }
     }, 1600);
   } catch (err) {
-    saveState.value = "error";
-    saveError.value = err instanceof Error ? err.message : String(err);
+    saveState.value = "idle";
+    toast.error(err instanceof Error ? err.message : String(err));
     dispatchSaveStatus();
   }
 }
@@ -797,8 +797,11 @@ const transform = computed(() =>
   buildTransform(camera.value, screen.value, FIT_REFERENCE),
 );
 
+const canvasCursorCache = new Map<string, string>();
 function makeCanvasCursor(color: string): string {
   if (typeof document === "undefined") return "default";
+  const cached = canvasCursorCache.get(color);
+  if (cached) return cached;
 
   const size = 18;
   const canvas = document.createElement("canvas");
@@ -823,7 +826,9 @@ function makeCanvasCursor(color: string): string {
   ctx.lineJoin = "round";
   ctx.stroke(path);
 
-  return `url("${canvas.toDataURL()}") 3 3, default`;
+  const result = `url("${canvas.toDataURL()}") 3 3, default`;
+  canvasCursorCache.set(color, result);
+  return result;
 }
 
 // Panning (middle/right-drag) shows the grabbing hand; otherwise the canvas uses
@@ -841,10 +846,23 @@ function worldToScreen(point: { x: number; y: number }) {
   return viewportWorldToScreen(point.x, point.y, transform.value);
 }
 
+// Cached CSS variable values — read once at mount and on theme change.
+// getComputedStyle().getPropertyValue() forces a style recalc so we must
+// not call it per-frame.
+let cssGridMajor = "rgba(15, 23, 42, 0.13)";
+let cssGridMinor = "rgba(15, 23, 42, 0.07)";
+let cssInkColor = FREEHAND_STYLE.color;
+
 function canvasCssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
   const source = viewportRef.value ?? document.documentElement;
   return getComputedStyle(source).getPropertyValue(name).trim() || fallback;
+}
+
+function refreshCssVars() {
+  cssGridMajor = canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)");
+  cssGridMinor = canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)");
+  cssInkColor = canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
 }
 
 function resolveDarkMode() {
@@ -861,6 +879,7 @@ function updateThemeMode() {
 }
 
 function renderThemeChanged() {
+  refreshCssVars();
   renderGrid();
   renderInk();
 }
@@ -874,7 +893,7 @@ function applyGridType(value: unknown) {
 }
 
 function defaultInkColor() {
-  return canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
+  return cssInkColor;
 }
 
 function renderGrid() {
@@ -890,7 +909,7 @@ function renderGrid() {
   if (gridType.value === "dots") {
     drawWorldDots(context, transform.value, screen.value, {
       size: 40,
-      color: canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)"),
+      color: cssGridMajor,
       radius: 1.2,
       minScreenSpacing: 8,
     });
@@ -901,13 +920,13 @@ function renderGrid() {
     levels: [
       {
         size: 40,
-        color: canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)"),
+        color: cssGridMinor,
         lineWidth: 1,
         minScreenSpacing: 8,
       },
       {
         size: 200,
-        color: canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)"),
+        color: cssGridMajor,
         lineWidth: 1,
         minScreenSpacing: 24,
       },
@@ -1025,10 +1044,10 @@ function renderInk() {
     screen: screen.value,
     transform: transform.value,
     strokes: strokes.value,
-    activeStroke: activeFreehandStroke.value,
+    activeStroke: activeFreehandStroke,
     selectedStrokeIds: selectedStrokeIds.value,
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
-    snapGuides: activeSnapGuides.value,
+    snapGuides: activeSnapGuides,
     defaultInkColor: defaultInkColor(),
   });
 }
@@ -1068,16 +1087,20 @@ function resize() {
 }
 
 function presenceState(): CanvasPresenceState {
+  const cam = camera.value;
+  // Use toRaw on reactive Sets/Maps to bypass per-element proxy overhead
+  // when iterating — these are snapshot reads, not reactive dependencies.
+  const rawIds = toRaw(selectedShapeIds.value);
+  const rawStrokeIds = toRaw(selectedStrokeIds.value);
+  const selectionIds: string[] = [];
+  for (const id of rawIds) selectionIds.push(id);
+  for (const id of rawStrokeIds) selectionIds.push(id);
   return {
     kind: "canvas",
-    pointer: localPointer.value,
+    pointer: localPointer,
     cursorColor: cursorColor.value,
-    view: {
-      x: camera.value.centerX,
-      y: camera.value.centerY,
-      scale: camera.value.zoom,
-    },
-    selectionIds: [...selectedShapeIds.value, ...selectedStrokeIds.value],
+    view: { x: cam.centerX, y: cam.centerY, scale: cam.zoom },
+    selectionIds,
     focusedNodeId: selectedShape.value?.id ?? null,
     activeTool: activeTool.value,
   };
@@ -1093,7 +1116,7 @@ function setupPresence() {
 
 function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   if (event) return screenToWorld(screenPoint(event));
-  if (localPointer.value) return localPointer.value;
+  if (localPointer) return localPointer;
   return screenToWorld({
     x: screen.value.width / 2,
     y: screen.value.height / 2,
@@ -1102,7 +1125,6 @@ function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
 
 async function addMediaFile(file: File, at: { x: number; y: number }) {
   saveState.value = "saving";
-  saveError.value = null;
   dispatchSaveStatus();
 
   try {
@@ -1121,8 +1143,8 @@ async function addMediaFile(file: File, at: { x: number; y: number }) {
     saveState.value = "idle";
     dispatchSaveStatus();
   } catch (err) {
-    saveState.value = "error";
-    saveError.value = err instanceof Error ? err.message : String(err);
+    saveState.value = "idle";
+    toast.error(err instanceof Error ? err.message : String(err));
     dispatchSaveStatus();
   }
 }
@@ -1136,7 +1158,6 @@ function uploadCanvasMediaFile(file: File): Promise<string> {
 
 async function addCanvasFile(file: File, at: { x: number; y: number }) {
   saveState.value = "saving";
-  saveError.value = null;
   dispatchSaveStatus();
 
   try {
@@ -1155,8 +1176,8 @@ async function addCanvasFile(file: File, at: { x: number; y: number }) {
     saveState.value = "idle";
     dispatchSaveStatus();
   } catch (err) {
-    saveState.value = "error";
-    saveError.value = err instanceof Error ? err.message : String(err);
+    saveState.value = "idle";
+    toast.error(err instanceof Error ? err.message : String(err));
     dispatchSaveStatus();
   }
 }
@@ -1370,7 +1391,7 @@ function startFreehand(event: PointerEvent) {
 
   clearSelection();
   drawingSession = started.session;
-  activeFreehandStroke.value = started.stroke;
+  activeFreehandStroke = started.stroke;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
 }
@@ -1382,7 +1403,7 @@ function finishFreehand(event: PointerEvent) {
     yStrokes.set(finished.id, createStrokeMap(finished));
   }
   drawingSession = null;
-  activeFreehandStroke.value = null;
+  activeFreehandStroke = null;
   renderInk();
 }
 
@@ -1571,7 +1592,7 @@ function handleViewportPointerDown(event: PointerEvent) {
   viewportRef.value?.focus({ preventScroll: true });
 
   const point = screenPoint(event);
-  localPointer.value = screenToWorld(point);
+  localPointer = screenToWorld(point);
 
   if (event.button === 1 || event.button === 2) {
     startPan(event);
@@ -1674,7 +1695,7 @@ function snapDragOffset(
 ): { dx: number; dy: number } {
   const startBounds = movingGroupBounds(drag);
   if (disabled || !startBounds) {
-    activeSnapGuides.value = [];
+    activeSnapGuides = [];
     return { dx, dy };
   }
 
@@ -1719,17 +1740,17 @@ function snapDragOffset(
     threshold: SNAP_THRESHOLD_PX / transform.value.scale,
   });
 
-  activeSnapGuides.value = snap.guides;
+  activeSnapGuides = snap.guides;
   return { dx: dx + snap.dx, dy: dy + snap.dy };
 }
 
 function handlePointerMove(event: PointerEvent) {
   const point = screenPoint(event);
-  localPointer.value = screenToWorld(point);
+  localPointer = screenToWorld(point);
 
   if (drawingSession && drawingSession.pointerId === event.pointerId) {
     for (const coalesced of event.getCoalescedEvents()) {
-      activeFreehandStroke.value = addCanvasDrawingPoint(
+      activeFreehandStroke = addCanvasDrawingPoint(
         drawingSession,
         coalesced,
         screenToWorld(screenPoint(coalesced)),
@@ -1834,8 +1855,8 @@ function handlePointerUp(event: PointerEvent) {
   if (dragState?.pointerId === event.pointerId) {
     if (dragState.type === "marquee") marqueeRect.value = null;
     if (dragState.type === "pan") isPanning.value = false;
-    if (activeSnapGuides.value.length > 0) {
-      activeSnapGuides.value = [];
+    if (activeSnapGuides.length > 0) {
+      activeSnapGuides = [];
       renderInk();
     }
     dragState = null;
@@ -1843,7 +1864,7 @@ function handlePointerUp(event: PointerEvent) {
 }
 
 function handlePointerLeave() {
-  localPointer.value = null;
+  localPointer = null;
   updatePresence();
 }
 
@@ -2085,9 +2106,7 @@ async function addImageFromUrl(
     const blob = await response.blob();
     file = new File([blob], filenameFromUrl(originalUrl), { type: blob.type });
   } catch (err) {
-    saveState.value = "error";
-    saveError.value = `Could not fetch image: ${err instanceof Error ? err.message : String(err)}`;
-    dispatchSaveStatus();
+    toast.error(`Could not fetch image: ${err instanceof Error ? err.message : String(err)}`);
     return;
   }
   await addMediaFile(file, at);
@@ -2126,7 +2145,6 @@ function handlePaste(event: ClipboardEvent) {
   if (isFigmaClipboardHtml(html)) {
     event.preventDefault();
     saveState.value = "saving";
-    saveError.value = null;
     dispatchSaveStatus();
     void pasteFigmaClipboard(html, insertionPointFromEvent(), {
       uploadMediaFile: uploadCanvasMediaFile,
@@ -2137,12 +2155,9 @@ function handlePaste(event: ClipboardEvent) {
         activeTool.value = "select";
       }
       if (result.error) {
-        saveState.value = "error";
-        saveError.value =
-          result.error instanceof Error ? result.error.message : String(result.error);
-      } else {
-        saveState.value = "idle";
+        toast.error(result.error instanceof Error ? result.error.message : String(result.error));
       }
+      saveState.value = "idle";
       dispatchSaveStatus();
     });
     return;
@@ -2384,17 +2399,24 @@ watch(
 );
 
 watch(
-  [camera, screen],
+  () => [
+    camera.value.centerX,
+    camera.value.centerY,
+    camera.value.zoom,
+    screen.value.width,
+    screen.value.height,
+  ],
   () => {
     renderGrid();
     renderInk();
     renderImages();
     updatePresence();
   },
-  { deep: true },
+  { flush: "post" },
 );
 
 onMounted(() => {
+  refreshCssVars();
   yShapes.observeDeep((_events, transaction) => {
     syncShapesFromY();
     // Persist only this client's own edits (local edits have origin null; undo/
@@ -2434,7 +2456,7 @@ onMounted(() => {
       dragState = null;
       isPanning.value = false;
       drawingSession = null;
-      activeFreehandStroke.value = null;
+      activeFreehandStroke = null;
       renderInk();
     },
     minZoom: 0.15,
@@ -2638,7 +2660,6 @@ onUnmounted(() => {
       >
         <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="canvasFitViewIcon" />
       </button>
-      <span v-if="saveState === 'error'" class="canvas-save-state error">{{ saveError }}</span>
     </div>
 
     <div
@@ -3329,20 +3350,6 @@ onUnmounted(() => {
 .canvas-color-swatch.active {
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-}
-
-.canvas-save-state {
-  color: #047857;
-  font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.canvas-save-state.error {
-  max-width: 320px;
-  overflow: hidden;
-  color: #b91c1c;
-  text-overflow: ellipsis;
 }
 
 .canvas-viewport {

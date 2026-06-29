@@ -109,6 +109,11 @@ const DEFAULT_DOT_RADIUS = 1.2;
 const DOT_PATTERN_TILE_SIZE = 64;
 const DOT_PATTERN_CACHE_LIMIT = 64;
 const dotPatternTiles = new Map<string, CanvasImageSource>();
+// CanvasPattern objects are tied to a specific ctx — key includes a ctx id.
+// We reuse the same grid canvas across frames so the ctx is stable.
+const dotPatternCache = new Map<string, CanvasPattern>();
+let dotPatternCtxId = 0;
+const dotPatternCtxIds = new WeakMap<CanvasRenderingContext2D, number>();
 
 function positiveModulo(value: number, divisor: number) {
   return ((value % divisor) + divisor) % divisor;
@@ -210,13 +215,29 @@ export function drawWorldDots(
   const radius = options.radius ?? DEFAULT_DOT_RADIUS;
   const color = options.color ?? DEFAULT_GRID_COLOR;
   const patternTile = getDotPatternTile(color, radius, screenSpacing);
-  const pattern = ctx.createPattern(patternTile, "repeat");
 
-  if (
-    !pattern ||
-    typeof pattern.setTransform !== "function" ||
-    typeof DOMMatrix !== "function"
-  ) {
+  // Cache CanvasPattern per (ctx, tile) — createPattern is non-trivial.
+  if (!dotPatternCtxIds.has(ctx)) dotPatternCtxIds.set(ctx, ++dotPatternCtxId);
+  const ctxId = dotPatternCtxIds.get(ctx)!;
+  const roundedSpacing = roundedPatternSpacing(screenSpacing);
+  const sourceRadius = Math.max(0.5, (radius * DOT_PATTERN_TILE_SIZE) / roundedSpacing);
+  const patternKey = `${ctxId}|${color}|${sourceRadius.toFixed(3)}`;
+  let pattern = dotPatternCache.get(patternKey);
+  if (!pattern) {
+    const created = ctx.createPattern(patternTile, "repeat");
+    if (!created) {
+      drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius);
+      return;
+    }
+    pattern = created;
+    if (dotPatternCache.size >= DOT_PATTERN_CACHE_LIMIT) {
+      const oldestKey = dotPatternCache.keys().next().value;
+      if (oldestKey) dotPatternCache.delete(oldestKey);
+    }
+    dotPatternCache.set(patternKey, pattern);
+  }
+
+  if (typeof pattern.setTransform !== "function" || typeof DOMMatrix !== "function") {
     drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius);
     return;
   }

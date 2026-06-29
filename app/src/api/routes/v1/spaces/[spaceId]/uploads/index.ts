@@ -17,67 +17,7 @@ import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
-const ALLOWED_TYPES = [
-  // Images
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  "image/svg+xml",
-  // Videos
-  "video/mp4",
-  "video/webm",
-  "video/quicktime", // .mov
-  "video/x-m4v",
-  "video/ogg",
-  // Documents
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-  "application/vnd.ms-powerpoint", // .ppt
-  "application/vnd.ms-excel", // .xls
-  "application/msword", // .doc
-  "text/markdown", // .md
-  "text/plain", // .txt (fallback for .md)
-  "text/csv", // .csv
-  "application/pdf", // .pdf
-  "application/zip", // .zip
-  "application/x-zip-compressed", // .zip (alternative)
-  "application/json", // .json
-  "application/xml", // .xml
-  "text/xml", // .xml (alternative)
-  "model/obj", // .obj
-];
-
-const ALLOWED_EXTENSIONS = [
-  "jpg",
-  "jpeg",
-  "png",
-  "gif",
-  "webp",
-  "svg",
-  "mp4",
-  "webm",
-  "mov",
-  "m4v",
-  "ogv",
-  "docx",
-  "doc",
-  "pdf",
-  "pptx",
-  "ppt",
-  "xlsx",
-  "xls",
-  "csv",
-  "zip",
-  "md",
-  "txt",
-  "json",
-  "xml",
-  "obj",
-];
-const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB for documents
+const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(
@@ -125,20 +65,6 @@ export const POST: APIRoute = (context) =>
 
       if (documentId !== null && !isSafeUploadIdPart(documentId)) {
         return badRequestResponse("Invalid documentId");
-      }
-
-      // Job uploads (authenticated via X-Job-Token) are trusted server-side code;
-      // skip the type allowlist. User uploads are validated as before.
-      if (!isJobAuth) {
-        const extension = originalName.split(".").pop()?.toLowerCase() || "";
-        const isAllowedExtension = ALLOWED_EXTENSIONS.includes(extension);
-        const isAllowedMime = ALLOWED_TYPES.includes(file.type);
-
-        if (!isAllowedExtension && !isAllowedMime) {
-          return badRequestResponse(
-            `Invalid file type. Allowed extensions: ${ALLOWED_EXTENSIONS.join(", ")}`,
-          );
-        }
       }
 
       // Validate file size (user uploads only; job uploads are trusted)
