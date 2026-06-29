@@ -1,5 +1,11 @@
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const MAX_EXCEL_CELL_LENGTH = 32767;
+const MIN_COLUMN_WIDTH = 12;
+const MAX_COLUMN_WIDTH = 60;
+const DEFAULT_ROW_HEIGHT = 18;
+const MAX_ROW_HEIGHT = 45;
+const APPROX_PIXELS_PER_POINT = 4 / 3;
+const APPROX_LINE_HEIGHT_PX = 18;
 
 type ZipEntry = {
   name: string;
@@ -81,30 +87,84 @@ function columnName(index: number): string {
   return name;
 }
 
+function normalizedCellText(value: string): string {
+  return String(value).slice(0, MAX_EXCEL_CELL_LENGTH);
+}
+
+function visibleTextLength(value: string): number {
+  return value
+    .split(/\r\n|\r|\n/)
+    .reduce((longest, line) => Math.max(longest, line.length), 0);
+}
+
+function columnWidths(rows: string[][]): number[] {
+  const columnCount = Math.max(...rows.map((row) => row.length), 1);
+  return Array.from({ length: columnCount }, (_, columnIndex) => {
+    const longest = rows.reduce((maxLength, row) => {
+      const cell = row[columnIndex] ?? "";
+      return Math.max(maxLength, visibleTextLength(normalizedCellText(cell)));
+    }, 0);
+
+    return Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, longest + 2));
+  });
+}
+
+function rowHeight(row: string[], widths: number[]): number {
+  const estimatedLines = Math.max(
+    1,
+    ...row.map((cell, columnIndex) => {
+      const text = normalizedCellText(cell);
+      const explicitLines = text.split(/\r\n|\r|\n/);
+      const width = Math.max(widths[columnIndex] ?? MAX_COLUMN_WIDTH, 1);
+      return explicitLines.reduce(
+        (lineCount, line) => lineCount + Math.max(1, Math.ceil(line.length / width)),
+        0,
+      );
+    }),
+  );
+  const estimatedHeight = Math.round(
+    (estimatedLines * APPROX_LINE_HEIGHT_PX) / APPROX_PIXELS_PER_POINT,
+  );
+  return Math.max(DEFAULT_ROW_HEIGHT, Math.min(MAX_ROW_HEIGHT, estimatedHeight));
+}
+
 function worksheetXml(rows: string[][]): string {
+  const widths = columnWidths(rows);
+  const colsXml = widths
+    .map(
+      (width, index) =>
+        `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`,
+    )
+    .join("");
+
   const rowXml = rows
     .map((row, rowIndex) => {
       const cells = row
         .map((cell, columnIndex) => {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
-          const text = escapeXml(String(cell).slice(0, MAX_EXCEL_CELL_LENGTH));
-          return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+          const text = escapeXml(normalizedCellText(cell));
+          return `<c r="${ref}" t="inlineStr" s="1"><is><t xml:space="preserve">${text}</t></is></c>`;
         })
         .join("");
 
-      return `<row r="${rowIndex + 1}">${cells}</row>`;
+      return `<row r="${rowIndex + 1}" ht="${rowHeight(row, widths)}" customHeight="1">${cells}</row>`;
     })
     .join("");
 
-  const columnCount = Math.max(...rows.map((row) => row.length), 1);
+  const columnCount = widths.length;
   const rowCount = Math.max(rows.length, 1);
   const dimension = `A1:${columnName(columnCount - 1)}${rowCount}`;
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="${dimension}"/>
-  <sheetViews><sheetView workbookViewId="0"/></sheetViews>
-  <sheetFormatPr defaultRowHeight="15"/>
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="${DEFAULT_ROW_HEIGHT}"/>
+  <cols>${colsXml}</cols>
   <sheetData>${rowXml}</sheetData>
 </worksheet>`;
 }
@@ -230,6 +290,7 @@ function buildXlsx(rows: string[][]): Uint8Array {
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`),
     },
     {
@@ -253,7 +314,25 @@ function buildXlsx(rows: string[][]): Uint8Array {
       data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`),
+    },
+    {
+      name: "xl/styles.xml",
+      data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`),
     },
     {
       name: "xl/worksheets/sheet1.xml",
