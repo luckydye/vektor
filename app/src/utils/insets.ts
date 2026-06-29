@@ -16,15 +16,14 @@
 //   • docked panel widths — pushed in by the docked-windows layer via
 //     `setDockInsets` whenever a panel docks/undocks/resizes.
 //
-// Two consumption styles are supported:
-//   • Static (Astro-rendered) HTML: mark the element with `data-inset`; it is
-//     picked up by the DOM scan with no retained per-element closure.
-//   • Vue components: call `bindInsets(el)` / `onInsets(cb)` in `onMounted` and
-//     invoke the returned unsubscribe in `onUnmounted`.
+// Consumption:
+//   • <inset-view> custom element — self-subscribes on connectedCallback,
+//     unsubscribes on disconnectedCallback. No scanning or timing required.
+//   • Vue components: call `bindInsets(el)` / `onInsets(cb)` in `onMounted`
+//     and invoke the returned unsubscribe in `onUnmounted`.
 
 const SIDEBAR_STORAGE_KEY = "sidebar-width";
 const DEFAULT_SIDEBAR = 280;
-const SELECTOR = "[data-inset]";
 
 export interface Insets {
   /** Raw sidebar width in px. */
@@ -51,19 +50,7 @@ function snapshot(): Insets {
   return { sidebar, left: sidebar + leftDock, right: rightDock };
 }
 
-// Apply to static `[data-inset]` elements by re-scanning the DOM, so no closure
-// is retained per element (avoids leaks across client-side navigation).
-function applyToDom() {
-  if (typeof document === "undefined") return;
-  const { left, right } = snapshot();
-  for (const el of document.querySelectorAll<HTMLElement>(SELECTOR)) {
-    el.style.setProperty("--inset-left", `${left}px`);
-    el.style.setProperty("--inset-right", `${right}px`);
-  }
-}
-
 function notify() {
-  applyToDom();
   const s = snapshot();
   for (const cb of subscribers) cb(s);
 }
@@ -112,8 +99,20 @@ export function bindInsets(el: HTMLElement): () => void {
   });
 }
 
-/** Start the subscriber and apply the current insets to any static consumers already in the DOM. */
-export function initInsets() {
-  wire();
-  notify();
+// <inset-view> custom element — replace `<div data-inset>` with this tag.
+// Self-subscribes when connected to the DOM; no external initInsets() call needed.
+if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" && !customElements.get("inset-view")) {
+  customElements.define(
+    "inset-view",
+    class InsetView extends HTMLElement {
+      private unsub?: () => void;
+      connectedCallback() {
+        this.unsub = bindInsets(this);
+      }
+      disconnectedCallback() {
+        this.unsub?.();
+        this.unsub = undefined;
+      }
+    },
+  );
 }

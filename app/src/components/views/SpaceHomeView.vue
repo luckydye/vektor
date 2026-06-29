@@ -21,7 +21,7 @@ const homeTopViews = computed(() =>
 
 <template>
   <div v-if="currentSpace" class="min-h-screen h-full flex flex-col relative overflow-x-hidden">
-    <div data-inset class="space-y-12 pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl md:ml-(--inset-left) md:mr-(--inset-right)">
+    <inset-view class="block space-y-12 pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl md:ml-(--inset-left) md:mr-(--inset-right)">
       <PinnedDocument
         v-if="currentSpace.preferences.pinnedDocumentId"
         :spaceId="currentSpace.id"
@@ -46,7 +46,7 @@ const homeTopViews = computed(() =>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3xl mb-20">
         <SpaceActivity :spaceId="currentSpace.id" :limit="15" />
       </div>
-    </div>
+    </inset-view>
   </div>
 
 </template>

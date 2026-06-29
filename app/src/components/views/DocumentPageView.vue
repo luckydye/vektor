@@ -172,10 +172,9 @@ watch(title, (t) => {
 
 <template>
   <div v-if="doc && currentSpace">
-    <div
+    <inset-view
       :key="doc.id"
-      data-inset
-      :class="twMerge('min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')"
+      :class="twMerge('block min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')"
     >
       <div
         :data-type="documentType"
@@ -218,12 +217,11 @@ watch(title, (t) => {
                 : 'mb-xl pt-xs contents',
           )"
         >
-          <div
+          <inset-view
             :class="twMerge(
-              'flex min-h-7 items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
+              'block flex min-h-7 items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
               isCanvas && 'pointer-events-auto',
             )"
-            data-inset
           >
             <div>
               <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
@@ -241,15 +239,14 @@ watch(title, (t) => {
             >
               <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
             </div>
-          </div>
+          </inset-view>
 
-          <div
+          <inset-view
             :class="twMerge(
-              'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
+              'block flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
               isCanvas ? 'pointer-events-auto' : 'bg-neutral-10',
               'sticky top-0 z-10',
             )"
-            data-inset
           >
             <div class="flex items-start justify-between w-full">
               <TitleEditor
@@ -257,17 +254,16 @@ watch(title, (t) => {
                 :title="title"
                 :documentId="doc.id"
                 :spaceId="currentSpace.id"
-               
+
                 :canEdit="userCanEdit"
               />
             </div>
             <DocumentActions :title="title" />
-          </div>
+          </inset-view>
 
-          <div
+          <inset-view
             id="document-properties"
-            :class="twMerge('px-xs md:px-xl print:px-0 mb-l', isCanvas && 'pointer-events-auto')"
-            data-inset
+            :class="twMerge('block px-xs md:px-xl print:px-0 mb-l', isCanvas && 'pointer-events-auto')"
           >
             <DocumentProperties
               :documentId="doc.id"
@@ -276,7 +272,7 @@ watch(title, (t) => {
               :initialProperties="{ ...doc.properties, parentId: doc.parentId }"
               :initialCategory="null"
             />
-          </div>
+          </inset-view>
         </div>
 
         <div
@@ -308,7 +304,7 @@ watch(title, (t) => {
           />
         </div>
       </div>
-    </div>
+    </inset-view>
   </div>
 
   <div v-else-if="docQuery.isLoading.value" class="flex items-center justify-center h-64 text-neutral-400">

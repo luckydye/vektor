@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrentInstance, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { getCurrentInstance, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { createMemoryHistory, createRouter, createWebHistory, RouterView } from "vue-router";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
 import ClientOnly from "./ClientOnly.vue";
@@ -26,7 +26,7 @@ import { Actions } from "../utils/actions.js";
 import shortcuts from "../config/shortcuts.json";
 import { extensions } from "../utils/extensions.ts";
 import { history } from "../utils/history.ts";
-import { initInsets } from "../utils/insets.ts";
+import "../utils/insets.ts";
 
 const props = defineProps<{
   url?: string;
@@ -59,10 +59,6 @@ const router = createRouter({
 if (!isServer) {
   router.afterEach((to) => {
     history.log(to.fullPath, document.title);
-    // Re-apply insets to newly mounted [data-inset] elements. The global CSS
-    // defaults --inset-left to 280px; without this, navigated-to pages
-    // always render as if the sidebar is fully open.
-    nextTick(initInsets);
   });
 }
 
@@ -180,8 +176,6 @@ onMounted(async () => {
   ]);
 
   navigator.serviceWorker.register("/sw.js").catch(console.error);
-
-  initInsets();
 
   for (const [shortcut, actions] of Object.entries(shortcuts)) {
     for (const action of Array.isArray(actions) ? actions : [actions]) {

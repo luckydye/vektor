@@ -56,10 +56,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div
+  <inset-view
     v-if="currentSpace && !redirecting"
-    data-inset
-    :class="twMerge('min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')"
+    :class="twMerge('block min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')"
   >
     <div
       :class="twMerge(
@@ -85,44 +84,41 @@ onMounted(async () => {
               : 'mb-xl pt-xs contents',
         )"
       >
-        <div
-          class="flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0 mt-2xs mb-4xs"
-          data-inset
+        <inset-view
+          class="block flex min-h-7 items-center justify-between px-xs lg:px-xl print:px-0 mt-2xs mb-4xs"
         >
           <div />
-        </div>
+        </inset-view>
 
-        <div
+        <inset-view
           :class="twMerge(
-            'flex flex-row justify-between gap-6 py-3xs px-xs lg:gap-4 lg:px-xl print:px-0',
+            'block flex flex-row justify-between gap-6 py-3xs px-xs lg:gap-4 lg:px-xl print:px-0',
             isCanvas ? 'pointer-events-auto' : 'bg-neutral-10',
             'sticky top-0 z-10',
           )"
-          data-inset
         >
           <div class="flex items-start justify-between w-full">
             <TitleEditor
               :initialEditMode="true"
               :title="title"
               :spaceId="currentSpace.id"
-             
+
               :canEdit="userCanEdit"
             />
           </div>
 
           <DocumentActions :title="title" />
-        </div>
+        </inset-view>
 
-        <div
-          :class="twMerge('px-xs lg:px-xl print:px-0 mb-l', isCanvas && 'pointer-events-auto')"
-          data-inset
+        <inset-view
+          :class="twMerge('block px-xs lg:px-xl print:px-0 mb-l', isCanvas && 'pointer-events-auto')"
         >
           <DocumentProperties
             :documentId="undefined"
             :documentType="type"
             :initialProperties="category ? { category } : {}"
           />
-        </div>
+        </inset-view>
       </div>
 
       <!-- Main Content -->
@@ -136,5 +132,5 @@ onMounted(async () => {
         <DocumentContent :spaceId="currentSpace.id" :documentType="type" />
       </div>
     </div>
-  </div>
+  </inset-view>
 </template>
