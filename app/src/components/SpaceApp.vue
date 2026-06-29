@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrentInstance, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { getCurrentInstance, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { createMemoryHistory, createRouter, createWebHistory, RouterView } from "vue-router";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
 import ClientOnly from "./ClientOnly.vue";
@@ -59,6 +59,10 @@ const router = createRouter({
 if (!isServer) {
   router.afterEach((to) => {
     history.log(to.fullPath, document.title);
+    // Re-apply insets to newly mounted [data-inset] elements. The global CSS
+    // defaults --inset-left to 280px; without this, navigated-to pages
+    // always render as if the sidebar is fully open.
+    nextTick(initInsets);
   });
 }
 
@@ -187,20 +191,14 @@ onMounted(async () => {
 
   history.log(location.pathname, document.title);
 
-  if (currentSpaceId.value) {
-    extensions.init(currentSpaceId.value).catch(console.error);
+  if (activeSpaceId.value) {
+    extensions.init(activeSpaceId.value).catch(console.error);
   }
 });
 
 onUnmounted(() => {
   if (!isServer) {
     document.removeEventListener("click", handleDocumentClick);
-  }
-});
-
-watch(currentSpaceId, (newSpaceId) => {
-  if (newSpaceId) {
-    extensions.init(newSpaceId).catch(console.error);
   }
 });
 </script>
