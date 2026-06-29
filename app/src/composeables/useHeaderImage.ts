@@ -6,7 +6,7 @@ import { useSpace } from "./useSpace.ts";
 const HEADER_IMAGE_PROPERTY = "headerImage";
 
 // Document types that don't render a header image.
-const UNSUPPORTED_TYPES = ["canvas", "app", "workflow"];
+const UNSUPPORTED_TYPES = ["app", "workflow"];
 
 export function supportsHeaderImage(documentType?: string): boolean {
   return !UNSUPPORTED_TYPES.includes(documentType ?? "");

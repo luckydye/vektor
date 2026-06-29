@@ -48,7 +48,7 @@ onMounted(() => {
     <button
       slot="trigger"
       type="button"
-      class="block rounded-full mx-3 my-2 border-2 border-neutral-100 hover:border-primary-500 transition-colors duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 group-[[enabled]]:border-primary-500"
+      class="block rounded-full mx-1.5 my-2 border-2 border-neutral-100 hover:border-primary-500 transition-colors duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 group-[[enabled]]:border-primary-500"
     >
       <Avatar :user="user" />
     </button>

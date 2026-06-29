@@ -28,13 +28,16 @@ export const GET: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, "owner");
-
     const typeFilter = context.url.searchParams.get("type") || "all";
     const resourceType =
       (context.url.searchParams.get("resourceType") as ResourceType) ||
       ResourceType.SPACE;
     const resourceId = context.url.searchParams.get("resourceId") || spaceId;
+
+    // Editors can list role permissions at any resource level.
+    // Feature permission listing is owner-only.
+    const requiredRole = typeFilter === "feature" ? "owner" : "editor";
+    await verifySpaceRole(spaceId, user.id, requiredRole);
 
     const permissions: Array<{ type: string; permission: unknown }> = [];
 
@@ -77,11 +80,29 @@ export const POST: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, "owner");
-
     const body = await parseJsonBody(context.request);
     const { type, roleOrFeature, userId, groupId, action, resourceType, resourceId } =
       body;
+
+    const targetResourceType = (resourceType as ResourceType) || ResourceType.SPACE;
+
+    // Auth rules for role grants/revokes:
+    //   - Granting owner requires owner.
+    //   - Revoking any space-level role requires owner.
+    //   - Editors can grant viewer/editor at space or document level.
+    //   - Editors can revoke document-level permissions.
+    // Feature operations always require owner.
+    if (type === "role") {
+      if (action === "grant" && roleOrFeature === "owner") {
+        await verifySpaceRole(spaceId, user.id, "owner");
+      } else if (action === "revoke" && targetResourceType !== ResourceType.DOCUMENT) {
+        await verifySpaceRole(spaceId, user.id, "owner");
+      } else {
+        await verifySpaceRole(spaceId, user.id, "editor");
+      }
+    } else {
+      await verifySpaceRole(spaceId, user.id, "owner");
+    }
 
     if (!type || !["role", "feature"].includes(type)) {
       throw badRequestResponse("type must be 'role' or 'feature'");
@@ -109,7 +130,6 @@ export const POST: APIRoute = (context) =>
         throw badRequestResponse("roleOrFeature must be one of: viewer, editor, owner");
       }
 
-      const targetResourceType = (resourceType as ResourceType) || ResourceType.SPACE;
       const targetResourceId = resourceId || spaceId;
 
       if (action === "grant" || action === "deny") {

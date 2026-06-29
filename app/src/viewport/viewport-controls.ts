@@ -36,6 +36,7 @@ export interface ViewportControlsOptions extends ViewportZoomLimits {
   getFit: () => FitReference;
   onTouchGestureStart?: () => void;
   wheelZoomSpeed?: number;
+  pinchZoomSpeed?: number;
 }
 
 export interface ViewportControls {
@@ -111,7 +112,8 @@ export function createViewportControls({
   onTouchGestureStart,
   minZoom = 0.2,
   maxZoom = 20,
-  wheelZoomSpeed = 0.01,
+  wheelZoomSpeed = 0.003,
+  pinchZoomSpeed = 0.01,
 }: ViewportControlsOptions): ViewportControls {
   const touchPointers = new Map<number, PointerEvent>();
   let lastTouchGesture: LastTouchGesture | null = null;
@@ -239,8 +241,10 @@ export function createViewportControls({
     const pointer = targetPoint(target, e.clientX, e.clientY);
 
     if (e.ctrlKey || e.metaKey) {
-      // Accumulate zoom multiplicatively; use the latest pointer as anchor.
-      pendingZoom *= Math.exp(-e.deltaY * wheelZoomSpeed);
+      // ctrlKey without metaKey = trackpad pinch (browser-synthesised).
+      // metaKey (or real ctrl+scroll) = mouse wheel zoom.
+      const speed = e.ctrlKey && !e.metaKey ? pinchZoomSpeed : wheelZoomSpeed;
+      pendingZoom *= Math.exp(-e.deltaY * speed);
       pendingZoomX = pointer.x;
       pendingZoomY = pointer.y;
     } else {

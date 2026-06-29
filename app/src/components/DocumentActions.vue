@@ -18,6 +18,7 @@ import { useSpace } from "../composeables/useSpace.ts";
 import { type ActionOptions, Actions } from "../utils/actions.ts";
 import { t } from "../utils/lang.ts";
 import Contributors from "./Contributors.vue";
+import DocumentShareDialog from "./DocumentShareDialog.vue";
 import HeaderImageDialog from "./HeaderImageDialog.vue";
 import WorkflowEditorOverlay from "./WorkflowEditorOverlay.vue";
 import WorkflowRunButton from "./WorkflowRunButton.vue";
@@ -51,6 +52,7 @@ const documentId = computed(() => documentContext.value.documentId);
 const documentType = computed(() => documentContext.value.documentType);
 
 const isCreatingToken = ref(false);
+const showShareDialog = ref(false);
 const isSaving = computed(() => saveStatus.value === "saving");
 const canPublishCurrentDraft = computed(
   () => !documentId.value || !hasPublishedVersion.value || hasChanges.value,
@@ -246,6 +248,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   Actions.unregister("document:edit");
+  Actions.unregister("document:share");
 });
 
 function runContextMenuAction(e: Event, name: string) {
@@ -334,6 +337,22 @@ watchEffect(() => {
         }
 
         router.push(`/${currentSpace.value.slug}`);
+      },
+    });
+  }
+});
+
+watchEffect(() => {
+  Actions.unregister("document:share");
+
+  if (userCanManageDocument.value && documentId.value) {
+    Actions.register("document:share", {
+      title: t("Share"),
+      icon: () => "share",
+      description: t("Invite people to this document or space"),
+      group: "document",
+      run: async () => {
+        showShareDialog.value = true;
       },
     });
   }
@@ -460,6 +479,12 @@ watchEffect(() => {
       <HeaderImageDialog
         v-model:show="dialogOpen"
         @select="(file) => documentId && uploadHeaderImage(documentId, file)"
+      />
+      <DocumentShareDialog
+        v-if="documentId"
+        v-model:show="showShareDialog"
+        :documentId="documentId"
+        :documentTitle="title"
       />
       <ContextMenu>
       <ContextMenuItem v-for="[name, options] of actions" :onClick="(event) => runContextMenuAction(event, name)">
