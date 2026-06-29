@@ -93,6 +93,7 @@ Actions.register("document:print", {
   icon: () => "print",
   description: t("Print current document"),
   group: "document",
+  order: 40,
   run: async () => {
     window.print();
   },
@@ -103,6 +104,7 @@ Actions.register("document:export", {
   icon: () => "download",
   description: t("Export current document to markdown"),
   group: "document",
+  order: 50,
   run: async () => {
     const response = await fetch(location.href, {
       headers: { Accept: "text/markdown" },
@@ -125,6 +127,7 @@ Actions.register("document:accesstoken", {
   icon: () => "webhook",
   description: t("Creates API token to access this document"),
   group: "document:dev",
+  order: 10,
   run: async () => {
     if (isCreatingToken.value) return;
 
@@ -206,6 +209,7 @@ Actions.register("document:dev:copy-document-id", {
   icon: () => "copy",
   description: t("Copy the current document ID to clipboard"),
   group: "document:dev",
+  order: 20,
   run: async () => {
     if (!documentId.value) return;
     await navigator.clipboard.writeText(documentId.value);
@@ -217,6 +221,7 @@ Actions.register("document:dev:copy-space-id", {
   icon: () => "copy",
   description: t("Copy the current space ID to clipboard"),
   group: "document:dev",
+  order: 30,
   run: async () => {
     if (!currentSpaceId.value) return;
     await navigator.clipboard.writeText(currentSpaceId.value);
@@ -270,6 +275,7 @@ watchEffect(() => {
         icon: () => "pin-filled",
         description: t("Remove this document from the space home page"),
         group: "document",
+        order: 20,
         run: async () => {
           const spaceId = currentSpace.value?.id;
           if (!spaceId) return;
@@ -286,6 +292,7 @@ watchEffect(() => {
         icon: () => "pin",
         description: t("Showcase this document on the space home page"),
         group: "document",
+        order: 20,
         run: async () => {
           const spaceId = currentSpace.value?.id;
           if (!spaceId || !documentId.value) return;
@@ -309,6 +316,7 @@ watchEffect(() => {
       icon: () => "archive",
       description: t("Archive current document"),
       group: "document:danger",
+      order: 20,
       run: async () => {
         if (!confirm("Are you sure you want to archive this document?")) {
           return;
@@ -351,6 +359,7 @@ watchEffect(() => {
       icon: () => "share",
       description: t("Invite people to this document or space"),
       group: "document",
+      order: 10,
       run: async () => {
         showShareDialog.value = true;
       },
@@ -373,6 +382,7 @@ watchEffect(() => {
       icon: () => "image",
       description: t("Set the header image for this document"),
       group: "document",
+      order: 30,
       run: async () => changeHeaderImage(currentDocumentId),
     });
 
@@ -382,6 +392,7 @@ watchEffect(() => {
         icon: () => "image",
         description: t("Remove the header image from this document"),
         group: "document:danger",
+        order: 10,
         run: async () => removeHeaderImage(currentDocumentId),
       });
     }

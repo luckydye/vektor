@@ -3,6 +3,7 @@ export type ActionOptions = {
   description?: string;
   icon?: () => string;
   group?: string;
+  order?: number;
   run: () => Promise<void>;
 };
 
@@ -104,11 +105,11 @@ export class Actions {
   }
 
   static group(groupId: string) {
-    const actions = new Set<[string, ActionOptions]>();
+    const actions: [string, ActionOptions][] = [];
     for (const [id, action] of globalActions) {
-      if ((action.group || "other") === groupId) actions.add([id, action]);
+      if ((action.group || "other") === groupId) actions.push([id, action]);
     }
-    return [...actions];
+    return actions.sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0));
   }
 
   /**
