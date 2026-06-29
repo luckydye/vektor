@@ -224,7 +224,7 @@
                   <div class="flex flex-wrap gap-1">
                     <span v-for="resource in token.resources" :key="`${resource.resourceType}-${resource.resourceId}`"
                       class="px-1.5 py-0.5 text-size-small bg-blue-50 text-blue-700 rounded-sm">
-                      {{ resource.resourceType }}: {{ resource.permission }}
+                      {{ resourceLabel(resource) }}
                     </span>
                     <span v-if="!token.resources?.length" class="text-size-small text-neutral-400 italic">None</span>
                   </div>
@@ -758,6 +758,16 @@ function formatDate(date: string | Date): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function resourceLabel(resource: { resourceType: string; resourceId: string; permission: string }): string {
+  if (resource.resourceType === "feature" && resource.resourceId === "manage_extensions") {
+    return "Extensions (install/update)";
+  }
+  if (resource.resourceType === "feature") {
+    return `Feature: ${resource.resourceId}`;
+  }
+  return `${resource.resourceType}: ${resource.resourceId} (${resource.permission})`;
 }
 
 async function handleDeleteSpace() {

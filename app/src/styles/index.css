@@ -72,11 +72,12 @@
   );
 }
 
+:root {
+  scrollbar-gutter: stable;
+}
+
 body {
   height: 100vh;
-  scrollbar-width: thin;
-  scrollbar-gutter: stable;
-
   background: var(--color-neutral-10);
   color: var(--color-forground);
 }
