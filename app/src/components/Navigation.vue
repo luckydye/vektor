@@ -235,13 +235,12 @@ Actions.mapShortcut("meta-shift-f", "find:open");
       <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
         <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">{{ t('Categories') }}</h3>
         <button
-          v-if="documentTree"
-          @click="documentTree.toggleEditMode()"
+          @click="documentTree?.toggleEditMode()"
           class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
-          :title="documentTree.isEditMode ? 'Done editing' : 'Edit categories'"
+          :title="documentTree?.isEditMode ? 'Done editing' : 'Edit categories'"
         >
-          <div v-if="!documentTree.isEditMode" class="svg-icon w-4 h-4" v-html="pencilIcon" />
-          <div v-else class="svg-icon w-4 h-4" v-html="checkThinIcon" />
+          <div v-if="!documentTree?.isEditMode" class="svg-icon" v-html="pencilIcon" />
+          <div v-else class="svg-icon" v-html="checkThinIcon" />
         </button>
       </div>
       <DocumentTree ref="documentTree" />
