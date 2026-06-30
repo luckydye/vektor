@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import {
   calendarIcon,
   chevronDownIcon,
@@ -23,6 +23,8 @@ defineSlots<{
   "batch-actions"(props: { selectedIds: Set<string>; deselectAll: () => void }): unknown;
   "row-actions"(props: { doc: DocumentWithProperties }): unknown;
 }>();
+
+onMounted(() => { import("~/src/editor/elements/page-target.ts"); });
 
 // ── Category lookup ──────────────────────────────────────────────────────────
 
@@ -275,10 +277,11 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
 
         <!-- Group rows -->
         <div v-if="!collapsed.has(group.label)" class="border border-neutral-100 rounded-lg overflow-hidden">
-          <div
+          <page-target
             v-for="(doc, idx) in group.docs"
             :key="doc.id"
-            class="relative flex items-center group/row hover:bg-neutral-50"
+            :data-document-id="doc.id"
+            class="relative flex items-center group/row hover:bg-neutral-50 [&[data-dragging]]:opacity-50"
             :class="[
               idx !== 0 ? 'border-t border-neutral-100' : '',
               selectedIds.has(doc.id) ? 'bg-primary-50 hover:bg-primary-50' : '',
@@ -331,7 +334,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
             >
               <slot name="row-actions" :doc="doc" />
             </div>
-          </div>
+          </page-target>
         </div>
       </div>
     </div>
