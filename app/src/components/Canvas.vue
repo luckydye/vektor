@@ -71,7 +71,7 @@ import type {
 import { useCollaboration } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
-import "../canvas/elements/text-editor.ts";
+import "../editor/elements/rich-text-editor.ts";
 import { extensions } from "../utils/extensions.ts";
 import {
   filenameFromUrl,
@@ -1244,7 +1244,7 @@ function addShape(type: "note" | "text" | "section", at: { x: number; y: number 
     const selector =
       type === "section"
         ? `[data-section-title="${shape.id}"]`
-        : `[data-shape-text="${shape.id}"]`;
+        : `.canvas-shape[data-shape-id="${shape.id}"] rich-text-editor`;
     const el = document.querySelector<HTMLElement>(selector);
     el?.focus();
     (el as HTMLInputElement | HTMLTextAreaElement | null)?.select?.();
@@ -2855,11 +2855,10 @@ onUnmounted(() => {
               </div>
             </div>
           </a>
-          <canvas-text-editor
+          <rich-text-editor
             v-else-if="shape.type !== 'section'"
             class="canvas-shape-textwrap"
             :value="shape.text"
-            :shape-id="shape.id"
             @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
             @editor-focus="selectOnlyShape(shape.id)"
             @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
@@ -3646,7 +3645,7 @@ onUnmounted(() => {
   flex: 1 1 auto;
 }
 
-.canvas-shape-textwrap :deep(.canvas-shape-text) {
+.canvas-shape-textwrap :deep(.tiptap) {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -3664,28 +3663,28 @@ onUnmounted(() => {
   user-select: text;
 }
 
-.canvas-shape-textwrap :deep(.canvas-shape-text p) {
+.canvas-shape-textwrap :deep(.tiptap p) {
   margin: 0;
 }
 
-.canvas-shape-textwrap :deep(.canvas-shape-text ul) {
+.canvas-shape-textwrap :deep(.tiptap ul) {
   list-style-type: disc;
   padding-left: 1.5rem;
   margin: 0.25rem 0;
 }
 
-.canvas-shape-textwrap :deep(.canvas-shape-text ol) {
+.canvas-shape-textwrap :deep(.tiptap ol) {
   list-style-type: decimal;
   padding-left: 1.5rem;
   margin: 0.25rem 0;
 }
 
-.canvas-shape-textwrap :deep(.canvas-shape-text li) {
+.canvas-shape-textwrap :deep(.tiptap li) {
   display: list-item;
   margin: 0.125rem 0;
 }
 
-.canvas-shape-textwrap :deep(.canvas-shape-text li > p) {
+.canvas-shape-textwrap :deep(.tiptap li > p) {
   display: inline;
 }
 
@@ -3694,7 +3693,7 @@ onUnmounted(() => {
   display: block;
 }
 
-.canvas-shape.text :deep(.canvas-shape-text) {
+.canvas-shape.text :deep(.tiptap) {
   font-size: 20px;
   font-weight: 650;
   cursor: move;
@@ -3702,7 +3701,7 @@ onUnmounted(() => {
   word-break: break-word;
 }
 
-.canvas-shape.note :deep(.canvas-shape-text) {
+.canvas-shape.note :deep(.tiptap) {
   color: #111827;
 }
 

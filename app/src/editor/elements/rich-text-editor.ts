@@ -10,18 +10,18 @@ import {
   OrderedList,
   Paragraph,
   Text,
-} from "../../editor/extensions/baseExtensions.ts";
+} from "../extensions/baseExtensions.ts";
 import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "../../utils/messageMarkdown.ts";
 
-if (typeof customElements !== "undefined" && !customElements.get("canvas-text-editor")) {
+if (typeof customElements !== "undefined" && !customElements.get("rich-text-editor")) {
   customElements.define(
-    "canvas-text-editor",
-    class CanvasTextEditorElement extends HTMLElement {
+    "rich-text-editor",
+    class RichTextEditorElement extends HTMLElement {
       private editor: Editor | null = null;
       private lastValue = "";
 
       static get observedAttributes() {
-        return ["value", "shape-id"];
+        return ["value"];
       }
 
       connectedCallback() {
@@ -40,9 +40,6 @@ if (typeof customElements !== "undefined" && !customElements.get("canvas-text-ed
           if (!this.editor || v === this.lastValue) return;
           this.lastValue = v;
           this.editor.commands.setContent(messageMarkdownToHtml(v), { emitUpdate: false });
-        }
-        if (name === "shape-id" && this.editor) {
-          this.editor.view.dom.setAttribute("data-shape-text", newValue ?? "");
         }
       }
 
@@ -64,8 +61,6 @@ if (typeof customElements !== "undefined" && !customElements.get("canvas-text-ed
           ],
           editorProps: {
             attributes: {
-              class: "canvas-shape-text",
-              "data-shape-text": this.getAttribute("shape-id") ?? "",
               spellcheck: "false",
             },
             handleDOMEvents: {
