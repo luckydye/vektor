@@ -2862,7 +2862,7 @@ onUnmounted(() => {
             @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
             @editor-focus="selectOnlyShape(shape.id)"
             @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
-            @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
+            @pointerdown.stop="shape.type === 'text' && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
           />
           <button
             v-if="shape.type !== 'text' && selectedShape?.id === shape.id"

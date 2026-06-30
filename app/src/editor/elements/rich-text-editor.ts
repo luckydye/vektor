@@ -72,12 +72,46 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
         }
         this.textContent = "";
         this.mountEditor();
+        this.addEventListener("pointerdown", this._onPointerDown);
       }
 
       disconnectedCallback() {
+        this.removeEventListener("pointerdown", this._onPointerDown);
         this.editor?.destroy();
         this.editor = null;
       }
+
+      // When the editor is not yet focused, prevent mousedown from reaching
+      // ProseMirror (which would start text-selection tracking). Instead,
+      // detect click vs drag ourselves and only focus on a clean click.
+      private _onPointerDown = (event: PointerEvent) => {
+        if (this.editor?.isFocused) return;
+
+        // Suppressing pointerdown's default prevents the browser from firing
+        // the corresponding mousedown, which ProseMirror uses to start
+        // selection tracking — so dragging the shape won't select text.
+        event.preventDefault();
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        let dragged = false;
+
+        const onMove = (e: PointerEvent) => {
+          if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) {
+            dragged = true;
+            window.removeEventListener("pointermove", onMove);
+          }
+        };
+
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          if (!dragged) this.editor?.commands.focus();
+        };
+
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+      };
 
       private mountEditor() {
         this.editor = new Editor({
@@ -101,6 +135,17 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
               spellcheck: "false",
             },
             handleDOMEvents: {
+              // Stop keyboard events from bubbling out of the shadow so
+              // canvas-level shortcuts (Delete, Escape, etc.) don't fire
+              // while the user is typing.
+              keydown: (_view, event) => {
+                event.stopPropagation();
+                return false;
+              },
+              keyup: (_view, event) => {
+                event.stopPropagation();
+                return false;
+              },
               focus: () => {
                 this.dispatchEvent(new CustomEvent("editor-focus", { bubbles: true, composed: true }));
                 return false;
