@@ -55,6 +55,7 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
       private editor: Editor | null = null;
       private lastValue = "";
       private shadow: ShadowRoot;
+      private _mount: HTMLDivElement;
 
       constructor() {
         super();
@@ -62,6 +63,9 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
         const style = document.createElement("style");
         style.textContent = SHADOW_STYLES;
         this.shadow.appendChild(style);
+        this._mount = document.createElement("div");
+        this._mount.style.cssText = "display:contents";
+        this.shadow.appendChild(this._mount);
       }
 
       connectedCallback() {
@@ -115,7 +119,7 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
 
       private mountEditor() {
         this.editor = new Editor({
-          element: this.shadow as unknown as HTMLElement,
+          element: this._mount,
           content: messageMarkdownToHtml(this.lastValue),
           injectCSS: false,
           extensions: [
