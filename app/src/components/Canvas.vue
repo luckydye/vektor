@@ -71,6 +71,7 @@ import type {
 import { useCollaboration } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
+import CanvasTextEditor from "./CanvasTextEditor.vue";
 import { extensions } from "../utils/extensions.ts";
 import {
   filenameFromUrl,
@@ -1240,13 +1241,13 @@ function addShape(type: "note" | "text" | "section", at: { x: number; y: number 
   selectOnlyShape(shape.id);
   activeTool.value = "select";
   nextTick(() => {
-    const input = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+    const selector =
       type === "section"
         ? `[data-section-title="${shape.id}"]`
-        : `[data-shape-text="${shape.id}"]`,
-    );
-    input?.focus();
-    input?.select();
+        : `[data-shape-text="${shape.id}"]`;
+    const el = document.querySelector<HTMLElement>(selector);
+    el?.focus();
+    (el as HTMLInputElement | HTMLTextAreaElement | null)?.select?.();
   });
 }
 
@@ -1254,11 +1255,10 @@ function updateShapeText(shape: CanvasShape, text: string) {
   updateShape(shape.id, { text });
 }
 
-function handleTextBlur(shape: CanvasShape, event: FocusEvent) {
+function handleTextBlur(shape: CanvasShape, value: string) {
   // A text element with no content has nothing to anchor it, so remove it once
   // editing ends. Notes and sections keep their box even when empty.
   if (shape.type !== "text") return;
-  const value = (event.target as HTMLTextAreaElement).value;
   if (!shouldRemoveTextShape(value)) return;
   yShapes.delete(shape.id);
   if (selectedShapeIds.value.has(shape.id)) {
@@ -2855,22 +2855,15 @@ onUnmounted(() => {
               </div>
             </div>
           </a>
-          <div
+          <CanvasTextEditor
             v-else-if="shape.type !== 'section'"
-            class="canvas-shape-textwrap"
-            :data-replicated-value="shape.text"
-          >
-            <textarea
-              class="canvas-shape-text"
-              :data-shape-text="shape.id"
-              :value="shape.text"
-              spellcheck="false"
-              @focus="selectOnlyShape(shape.id)"
-              @blur="handleTextBlur(shape, $event)"
-              @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
-              @input="updateShapeText(shape, ($event.target as HTMLTextAreaElement).value)"
-            ></textarea>
-          </div>
+            :model-value="shape.text"
+            :shape-id="shape.id"
+            @update:model-value="updateShapeText(shape, $event)"
+            @focus="selectOnlyShape(shape.id)"
+            @blur="handleTextBlur(shape, $event)"
+            @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
+          />
           <button
             v-if="shape.type !== 'text' && selectedShape?.id === shape.id"
             type="button"
@@ -3368,7 +3361,6 @@ onUnmounted(() => {
 }
 
 /* Re-enable text selection inside editable shape content. */
-.canvas-shape-text,
 .canvas-section-title {
   -webkit-user-select: text;
   user-select: text;
@@ -3653,57 +3645,24 @@ onUnmounted(() => {
   flex: 1 1 auto;
 }
 
-.canvas-shape-text {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  flex: 1 1 auto;
-  border: 0;
-  background: transparent;
-  padding: 10px 12px;
-  color: var(--canvas-text);
-  font: inherit;
-  font-size: 15px;
-  line-height: 1.35;
-  outline: none;
-  overflow: hidden;
-  resize: none;
-}
-
-/* Text shapes auto-size to their content: a hidden replica of the text (the
-   ::after) sizes the box, and the textarea is overlaid on top of it. Both
-   share the same styles, so the box always fits the text exactly. */
+/* Text shapes auto-size to their content via TipTap's natural height. */
 .canvas-shape.text .canvas-shape-textwrap {
-  position: relative;
   display: block;
 }
 
-.canvas-shape.text .canvas-shape-textwrap::after {
-  content: attr(data-replicated-value) " ";
-  display: block;
-  visibility: hidden;
-  white-space: pre;
-}
-
-.canvas-shape.text .canvas-shape-text,
-.canvas-shape.text .canvas-shape-textwrap::after {
+.canvas-shape.text :deep(.canvas-shape-text) {
   box-sizing: border-box;
   padding: 10px 12px;
   font: inherit;
   font-size: 20px;
   font-weight: 650;
   line-height: 1.35;
-}
-
-.canvas-shape.text .canvas-shape-text {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
   cursor: move;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.canvas-shape.note .canvas-shape-text {
+.canvas-shape.note :deep(.canvas-shape-text) {
   color: #111827;
 }
 
