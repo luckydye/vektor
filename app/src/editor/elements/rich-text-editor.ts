@@ -48,7 +48,7 @@ const SHADOW_STYLES = `
   .tiptap li > p { display: inline; }
 `;
 
-if (typeof customElements !== "undefined" && !customElements.get("rich-text-editor")) {
+if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" && !customElements.get("rich-text-editor")) {
   customElements.define(
     "rich-text-editor",
     class RichTextEditorElement extends HTMLElement {
