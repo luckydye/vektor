@@ -1,165 +1,118 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { spinnerIcon } from "~/src/assets/icons.ts";
+import { spinnerIcon, trashIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
-import { usePagedList } from "../composeables/usePagedList.ts";
-import DocumentList from "./DocumentList.vue";
-import DocumentListItem from "./DocumentListItem.vue";
-import Pager from "./Pager.vue";
+import { useQuery } from "../composeables/query.ts";
+import DocumentGroupedList from "./DocumentGroupedList.vue";
 
 const props = defineProps<{
   spaceId: string;
 }>();
 
-const {
-  items: documents,
-  isLoading,
-  isFetching,
-  error,
-  page,
-  totalPages,
-  goToPage,
-  refresh,
-} = usePagedList({
+const { data: docs, isPending: isLoading, error, refetch } = useQuery({
   queryKey: computed(() => ["archived_docs", props.spaceId]),
-  fetcher: ({ limit, offset }) =>
-    api.documents.archived(props.spaceId, { limit, offset }).then((r) => ({
-      items: r.documents,
-      total: r.total,
-    })),
-  pageSize: 50,
+  queryFn: () =>
+    api.documents.archived(props.spaceId, { limit: 500 }).then((r) => r.documents),
 });
 
-const handleRestore = async (documentId: string) => {
+const { data: categories } = useQuery({
+  queryKey: computed(() => ["categories", props.spaceId]),
+  queryFn: () => api.categories.get(props.spaceId),
+});
+
+async function handleRestore(documentId: string) {
   try {
     await api.document.restore(props.spaceId, documentId);
-    refresh();
+    refetch();
   } catch (err) {
     alert(err instanceof Error ? err.message : "Failed to restore document");
   }
-};
+}
 
-const handleDelete = async (documentId: string) => {
-  if (
-    !confirm(
-      "Are you sure you want to permanently delete this document? This action cannot be undone.",
-    )
-  )
-    return;
+async function handleDelete(documentId: string) {
+  if (!confirm("Permanently delete this document? This cannot be undone.")) return;
   try {
     await api.document.delete(props.spaceId, documentId);
-    refresh();
+    refetch();
   } catch (err) {
     alert(err instanceof Error ? err.message : "Failed to delete document");
   }
-};
+}
 
-const handleBatchRestore = async (ids: Set<string>, deselectAll: () => void) => {
+async function handleBatchRestore(ids: Set<string>, deselectAll: () => void) {
   const count = ids.size;
   if (!confirm(`Restore ${count} document${count !== 1 ? "s" : ""}?`)) return;
   try {
-    for (const id of ids) {
-      await api.document.restore(props.spaceId, id);
-    }
+    for (const id of ids) await api.document.restore(props.spaceId, id);
     deselectAll();
-    refresh();
+    refetch();
   } catch (err) {
     alert(err instanceof Error ? err.message : "Failed to restore documents");
   }
-};
+}
 
-const handleBatchDelete = async (ids: Set<string>, deselectAll: () => void) => {
+async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
   const count = ids.size;
-  if (
-    !confirm(
-      `Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`,
-    )
-  )
-    return;
+  if (!confirm(`Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`)) return;
   try {
-    for (const id of ids) {
-      await api.document.delete(props.spaceId, id);
-    }
+    for (const id of ids) await api.document.delete(props.spaceId, id);
     deselectAll();
-    refresh();
+    refetch();
   } catch (err) {
     alert(err instanceof Error ? err.message : "Failed to delete documents");
   }
-};
+}
 </script>
 
 <template>
   <div>
-    <div v-if="isLoading" class="text-center py-8">
-      <div class="svg-icon w-8 h-8 mx-auto mb-3 text-neutral-300 animate-spin" v-html="spinnerIcon" />
-      <p class="text-size-medium text-neutral-500">Loading archived documents…</p>
+    <div v-if="isLoading" class="flex flex-col items-center py-12 gap-3">
+      <div class="svg-icon w-6 h-6 text-neutral-300 animate-spin" v-html="spinnerIcon" />
+      <p class="text-size-small text-neutral-400">Loading archived documents…</p>
     </div>
 
-    <div v-else-if="error" class="text-center py-8">
-      <p class="text-red-600">{{ error?.message ?? "Failed to load archived documents" }}</p>
+    <div v-else-if="error" class="py-8 text-center">
+      <p class="text-size-small text-red-600">{{ error?.message ?? "Failed to load archived documents" }}</p>
     </div>
 
-    <div v-else-if="documents.length === 0" class="text-center py-8">
-      <p class="text-neutral">No archived documents</p>
-    </div>
+    <DocumentGroupedList
+      v-else
+      :items="docs ?? []"
+      :categories="categories"
+      search-placeholder="Search archived documents..."
+      empty-text="No archived documents"
+    >
+      <template #batch-actions="{ selectedIds, deselectAll }">
+        <button
+          @click="handleBatchRestore(selectedIds, deselectAll)"
+          class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 transition-colors"
+        >
+          Restore selected
+        </button>
+        <button
+          @click="handleBatchDelete(selectedIds, deselectAll)"
+          class="p-1.5 border border-neutral-200 rounded-md text-neutral-500 hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+          title="Delete selected permanently"
+        >
+          <div class="block svg-icon w-4 h-4" v-html="trashIcon" />
+        </button>
+      </template>
 
-    <div v-else>
-      <DocumentList :items="documents">
-        <template #header-label>
-          {{ documents.length }} document{{ documents.length !== 1 ? "s" : "" }}
-        </template>
-
-        <template #batch-actions="{ selectedIds, deselectAll }">
-          <button
-            @click="handleBatchRestore(selectedIds, deselectAll)"
-            class="flex items-center gap-1.5 px-3 py-1 bg-background border border-neutral-100 rounded-md text-size-small text-green-700 hover:border-green-300 hover:text-green-900 transition-colors"
-          >
-            Restore
-          </button>
-          <button
-            @click="handleBatchDelete(selectedIds, deselectAll)"
-            class="flex items-center gap-1.5 px-3 py-1 bg-background border border-neutral-100 rounded-md text-size-small text-red-700 hover:border-red-300 hover:text-red-900 transition-colors"
-          >
-            Delete Permanently
-          </button>
-        </template>
-
-        <template #default="{ selectedIds, toggleSelect, selectable }">
-          <DocumentListItem
-            v-for="doc in documents"
-            :key="doc.id"
-            :document="doc"
-            :selected="selectedIds.has(doc.id)"
-            :selectable="selectable"
-            @toggle-select="toggleSelect"
-          >
-            <template #actions>
-              <div class="flex items-center gap-2">
-                <button
-                  @click.stop="handleRestore(doc.id)"
-                  class="text-size-small text-green-600 hover:text-green-800 font-medium"
-                >
-                  Restore
-                </button>
-                <button
-                  @click.stop="handleDelete(doc.id)"
-                  class="text-size-small text-red-600 hover:text-red-800 font-medium"
-                >
-                  Delete
-                </button>
-              </div>
-            </template>
-          </DocumentListItem>
-        </template>
-      </DocumentList>
-
-      <Pager
-        class="mt-3 pt-3"
-        :page="page"
-        :total-pages="totalPages"
-        :disabled="isFetching"
-        @change="goToPage"
-      />
-    </div>
+      <template #row-actions="{ doc }">
+        <button
+          @click="handleRestore(doc.id)"
+          class="px-2.5 py-1 text-[11px] font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors"
+        >
+          Restore
+        </button>
+        <button
+          @click="handleDelete(doc.id)"
+          class="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+          title="Delete permanently"
+        >
+          <div class="svg-icon w-3.5 h-3.5" v-html="trashIcon" />
+        </button>
+      </template>
+    </DocumentGroupedList>
   </div>
 </template>

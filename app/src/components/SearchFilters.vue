@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import {
-  chevronDownIcon,
+  calendarIcon,
   chevronRightThinIcon,
   closeXIcon,
   plusIcon,
 } from "~/src/assets/icons.ts";
 import { api, type PropertyFilter } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
+import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 
 const props = defineProps<{
@@ -22,15 +23,39 @@ const emit = defineEmits<{
 
 const DATE_FILTER_KEY = "_date";
 
-const DATE_FILTERS = [
-  { label: "Today", value: "today" },
-  { label: "This week", value: "week" },
-  { label: "This month", value: "month" },
-  { label: "Older", value: "older" },
-];
+const activeDateFilter = computed(
+  () => props.modelValue.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
+);
 
-const dateLabel = (value: string) =>
-  DATE_FILTERS.find((d) => d.value === value)?.label ?? value;
+const activeDateRange = computed(() => {
+  const v = activeDateFilter.value;
+  if (!v?.includes("/")) return null;
+  const [start, end] = v.split("/");
+  return { start: new Date(start), end: new Date(end) };
+});
+
+const dateRangeLabel = computed(() => {
+  if (!activeDateRange.value) return null;
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return `${fmt(activeDateRange.value.start)} – ${fmt(activeDateRange.value.end)}`;
+});
+
+function onCalendarChange(e: Event) {
+  const value = (e.target as HTMLElement & { value?: string }).value ?? "";
+  const withoutDate = props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY);
+  if (!value) {
+    emit("update:modelValue", withoutDate);
+  } else {
+    emit("update:modelValue", [...withoutDate, { key: DATE_FILTER_KEY, value }]);
+  }
+  emit("search");
+}
+
+function clearDateFilter(e: MouseEvent) {
+  e.stopPropagation();
+  emit("update:modelValue", props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY));
+  emit("search");
+}
 
 const expandedProperties = ref<Set<string>>(new Set());
 
@@ -56,10 +81,6 @@ const TYPE_STYLES: Record<string, string> = {
   file: "bg-neutral-100 text-neutral-600",
   document: "bg-neutral-100 text-neutral-600",
 };
-
-const activeDateFilter = computed(
-  () => props.modelValue.find((f) => f.key === DATE_FILTER_KEY)?.value ?? null,
-);
 
 const activePropertyFilters = computed(
   () => props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY && f.key !== "type"),
@@ -90,26 +111,6 @@ const toggleFilter = (key: string, value: string | null) => {
   }
 };
 
-const setDateFilter = (value: string, event: MouseEvent) => {
-  const withoutDate = props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY);
-  if (activeDateFilter.value === value) {
-    emit("update:modelValue", withoutDate);
-  } else {
-    emit("update:modelValue", [...withoutDate, { key: DATE_FILTER_KEY, value }]);
-  }
-  (event.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
-  emit("search");
-};
-
-const clearDateFilter = (event: MouseEvent) => {
-  event.stopPropagation();
-  emit(
-    "update:modelValue",
-    props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY),
-  );
-  emit("search");
-};
-
 const toggleProperty = (name: string) => {
   if (expandedProperties.value.has(name)) {
     expandedProperties.value.delete(name);
@@ -136,31 +137,34 @@ const popoverInner = "bg-background border border-neutral-100 rounded-lg origin-
 <template>
   <div class="flex flex-wrap items-center gap-2 select-none">
 
-    <!-- Date filter chip -->
+    <!-- Date range picker -->
     <a-popover-trigger class="group">
       <button
         slot="trigger"
-        :class="[chipBase, activeDateFilter ? chipActive : chipInactive]"
+        :class="[chipBase, activeDateRange ? chipActive : chipInactive]"
       >
-        <span>{{ activeDateFilter ? `Modified: ${dateLabel(activeDateFilter)}` : "Modified" }}</span>
-        <button v-if="activeDateFilter" @click="clearDateFilter" class="hover:opacity-70 flex-none">
+        <div class="svg-icon w-3 h-3 opacity-60" v-html="calendarIcon" />
+        <span>{{ dateRangeLabel ?? 'Modified' }}</span>
+        <button v-if="activeDateRange" @click="clearDateFilter" class="hover:opacity-70 flex-none">
           <div class="svg-icon w-3 h-3" v-html="closeXIcon" />
         </button>
-        <div v-else class="svg-icon w-3 h-3 opacity-40" v-html="chevronDownIcon" />
       </button>
 
       <a-popover class="group" placements="bottom-start">
         <div :class="popoverPanel">
-          <div :class="[popoverInner, 'min-w-[130px] p-1']">
-            <button
-              v-for="df in DATE_FILTERS"
-              :key="df.value"
-              @click="setDateFilter(df.value, $event)"
-              class="w-full text-left px-3 py-1.5 rounded-md text-size-small transition-colors hover:transition-none"
-              :class="activeDateFilter === df.value ? 'bg-primary-100 text-primary-700 font-medium' : 'text-neutral-700 hover:bg-primary-50'"
-            >
-              {{ df.label }}
-            </button>
+          <div :class="[popoverInner, 'p-3']">
+            <a-calendar
+              mode="range"
+              week-start="1"
+              :value="activeDateFilter ?? undefined"
+              @change="onCalendarChange"
+              style="
+                --calendar-selected-bg: var(--color-primary-500);
+                --calendar-selected-color: white;
+                --calendar-range-bg: var(--color-primary-100);
+                --calendar-hover-bg: var(--color-neutral-100);
+              "
+            />
           </div>
         </div>
       </a-popover>
