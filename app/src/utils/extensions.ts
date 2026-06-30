@@ -204,30 +204,20 @@ export class Extensions {
    * Fetch extension list from API
    */
   async fetchExtensions(spaceId: string): Promise<ExtensionInfo[]> {
-    const response = await fetch(`/api/v1/spaces/${spaceId}/extensions`);
-
-    if (!response.ok) {
+    let result: { extensions: ExtensionInfo[]; errors: import("../api/ApiClient.ts").ExtensionManifestError[] };
+    try {
+      result = await api.extensions.get(spaceId);
+    } catch (err) {
       // Silently fail if user doesn't have access (non-owners)
-      if (response.status === 403) {
-        return [];
-      }
-      throw new Error(`Failed to fetch extensions: ${response.status}`);
+      if (err instanceof Error && err.message.includes("403")) return [];
+      throw err;
     }
 
-    const payload = (await response.json()) as {
-      extensions?: ExtensionInfo[];
-      errors?: Array<{ id: string; error: string }>;
-    };
-
-    if (payload.errors?.length) {
-      for (const err of payload.errors) {
-        console.warn(
-          `Extension '${err.id}' could not be loaded from manifest: ${err.error}`,
-        );
-      }
+    for (const err of result.errors) {
+      console.warn(`Extension '${err.id}' could not be loaded from manifest: ${err.error}`);
     }
 
-    return payload.extensions ?? [];
+    return result.extensions;
   }
 
   /**

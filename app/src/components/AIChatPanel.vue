@@ -863,19 +863,7 @@ function cancelGeneration() {
   // Without this the server cannot distinguish an intentional cancel from an
   // accidental disconnect, and the agent would keep running in the background.
   if (currentSessionId.value && currentSpaceId.value) {
-    void fetch("/api/v1/chat/acp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "session/cancel",
-        params: {
-          sessionId: currentSessionId.value,
-          spaceId: currentSpaceId.value,
-        },
-      }),
-    });
+    void api.aiChatSessions.cancel(currentSpaceId.value, currentSessionId.value);
   }
   abortController?.abort();
   abortController = null;

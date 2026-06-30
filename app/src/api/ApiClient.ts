@@ -401,6 +401,41 @@ export interface Comment {
   } | null;
 }
 
+export interface AIChatMessage {
+  role: "user" | "assistant" | "system" | "tool" | "status" | "thinking";
+  content: string;
+  timestamp: number;
+  toolName?: string;
+  toolCallId?: string;
+  toolPhase?: "call" | "result";
+  isError?: boolean;
+  attachments?: Array<{
+    key: string;
+    url: string;
+    name: string;
+    type: string;
+    size: number;
+    isImage: boolean;
+  }>;
+}
+
+export interface AIChatSession {
+  id: string;
+  title: string;
+  spaceId: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: AIChatMessage[];
+  conversationHistory: Array<{
+    role: "system" | "user" | "assistant" | "tool";
+    content?: string | null;
+    thinking?: string | null;
+    tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
+    tool_call_id?: string;
+  }>;
+  shellSnapshot?: string | null;
+}
+
 interface RealtimeSubscription {
   topics: Set<RealtimeTopic>;
   callback: (event: RealtimeEventMessage) => void;
@@ -1016,6 +1051,17 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/documents/${documentId}`,
         body,
+      );
+    },
+
+    /**
+     * Update document content via JSON body (used for code/workflow documents)
+     */
+    putCode: async (spaceId: string, documentId: string, content: string): Promise<void> => {
+      await this.apiPut<unknown>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}`,
+        { content },
       );
     },
 
@@ -1907,6 +1953,73 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/jobs/schedules/${scheduleId}`,
       );
+    },
+  };
+
+  aiChatSessions = {
+    list: async (spaceId: string): Promise<AIChatSession[]> => {
+      const { sessions } = await this.apiFetch<{ sessions: AIChatSession[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions`,
+        { credentials: "same-origin" },
+      );
+      return sessions;
+    },
+
+    get: async (spaceId: string, sessionId: string): Promise<AIChatSession | null> => {
+      const response = await fetch(
+        `${this.baseUrl}/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions/${encodeURIComponent(sessionId)}`,
+        { credentials: "same-origin" },
+      );
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+      const { session } = (await response.json()) as { session: AIChatSession };
+      return session;
+    },
+
+    save: async (session: AIChatSession): Promise<void> => {
+      await this.apiFetch<{ session: AIChatSession }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(session.spaceId)}/ai-chat/sessions/${encodeURIComponent(session.id)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(session),
+        },
+      );
+    },
+
+    delete: async (spaceId: string, sessionId: string): Promise<void> => {
+      await this.apiFetch<{ success: true }>(
+        this.baseUrl,
+        `/api/v1/spaces/${encodeURIComponent(spaceId)}/ai-chat/sessions/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE", credentials: "same-origin" },
+      );
+    },
+
+    cancel: async (spaceId: string, sessionId: string): Promise<void> => {
+      await this.apiFetch<void>(this.baseUrl, "/api/v1/chat/acp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "session/cancel",
+          params: { sessionId, spaceId },
+        }),
+      });
+    },
+  };
+
+  documentDiff = {
+    get: async (spaceId: string, documentId: string, rev: string): Promise<string> => {
+      const response = await fetch(
+        `${this.baseUrl}/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}/diff?rev=${encodeURIComponent(rev)}`,
+        { credentials: "same-origin" },
+      );
+      if (!response.ok) throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+      return response.text();
     },
   };
 

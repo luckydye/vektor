@@ -3,6 +3,7 @@ import Image from "@tiptap/extension-image";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { api } from "../../api/client.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
 export interface ImageUploadOptions {
@@ -19,23 +20,7 @@ async function uploadImage(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
-  if (documentId) {
-    formData.append("documentId", documentId);
-  }
-
-  const response = await fetch(`/api/v1/spaces/${spaceId}/uploads`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to upload image");
-  }
-
-  const data = await response.json();
+  const data = await api.uploads.post(spaceId, file, undefined, documentId);
   return data.url;
 }
 

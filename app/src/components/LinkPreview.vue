@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import { documentIcon } from "~/src/assets/icons.ts";
+import { api } from "../api/client.ts";
 import type { LinkMetadata } from "../api/routes/v1/url-metadata.ts";
 
 const activePreview = ref<{
@@ -21,14 +22,9 @@ async function fetchMetadata(url: string): Promise<LinkMetadata | null> {
   const cached = metadataCache.get(url);
   if (cached) return cached;
 
-  const response = await fetch(`/api/v1/url-metadata?url=${encodeURIComponent(url)}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch metadata");
-  }
-
-  const data = await response.json();
-  metadataCache.set(url, data);
-  return data;
+  const data = await api.linkPreview.get(url);
+  metadataCache.set(url, data as LinkMetadata);
+  return data as LinkMetadata;
 }
 
 function isValidLink(element: HTMLElement): element is HTMLAnchorElement {

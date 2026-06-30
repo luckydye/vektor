@@ -1,3 +1,4 @@
+import { api } from "../../api/client.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 const mediaMinSize = { width: 80, height: 60 };
@@ -92,20 +93,7 @@ export async function uploadMediaFile(
   file: File,
   options: { spaceId: string; documentId?: string },
 ): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file, file.name || "upload");
-  if (options.documentId) formData.append("documentId", options.documentId);
-
-  const response = await fetch(`/api/v1/spaces/${options.spaceId}/uploads`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-
-  const result = (await response.json()) as { url: string };
+  const result = await api.uploads.post(options.spaceId, file, file.name || "upload", options.documentId);
   const url = result.url;
   return url.startsWith("/") ? `${window.location.origin}${url}` : url;
 }

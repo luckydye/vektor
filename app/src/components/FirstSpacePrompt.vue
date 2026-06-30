@@ -129,6 +129,7 @@
 import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { folderLargeIcon } from "~/src/assets/icons.ts";
+import { api } from "../api/client.ts";
 import { slugify } from "../utils/utils.ts";
 
 const router = useRouter();
@@ -173,12 +174,7 @@ async function handleLogoUpload(event) {
 
 async function checkForSpaces() {
   try {
-    const response = await fetch("/api/v1/spaces");
-    if (!response.ok) {
-      throw new Error("Failed to fetch spaces");
-    }
-
-    const spaces = await response.json();
+    const spaces = await api.spaces.get();
     showPrompt.value = spaces.length === 0;
   } catch (err) {
     console.error("Failed to check spaces:", err);
@@ -194,28 +190,14 @@ async function handleCreateSpace() {
   error.value = null;
 
   try {
-    const response = await fetch("/api/v1/spaces", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const newSpace = await api.spaces.post({
+      name: spaceName.value.trim(),
+      slug: spaceSlug.value.trim(),
+      preferences: {
+        brandColor: brandColor.value,
+        logoSvg: logoSvg.value,
       },
-      body: JSON.stringify({
-        name: spaceName.value.trim(),
-        slug: spaceSlug.value.trim(),
-        preferences: {
-          brandColor: brandColor.value,
-          logoSvg: logoSvg.value,
-        },
-      }),
     });
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || "Failed to create space");
-    }
-
-    const data = await response.json();
-    const newSpace = data.space;
     showPrompt.value = false;
     router.push(`/${newSpace.slug}`);
   } catch (err) {

@@ -333,16 +333,7 @@ watchEffect(() => {
           return;
         }
 
-        const response = await fetch(
-          `/api/v1/spaces/${currentSpaceId.value}/documents/${documentId.value}`,
-          {
-            method: "DELETE",
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error(`Archive failed: ${response.statusText}`);
-        }
+        await api.document.archive(currentSpaceId.value, documentId.value);
 
         router.push(`/${currentSpace.value.slug}`);
       },

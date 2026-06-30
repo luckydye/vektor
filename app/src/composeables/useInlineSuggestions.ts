@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import { applyPatch, parsePatch } from "diff";
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
+import { api } from "../api/client.ts";
 import { prettyPrintHtml } from "../utils/prettyHtml.ts";
 import { useRevisions } from "./useRevisions.ts";
 
@@ -31,13 +32,8 @@ export function useInlineSuggestions(options: {
 
     const patches = await Promise.all(
       openSuggestions.value.map(async (suggestion) => {
-        const response = await fetch(
-          `/api/v1/spaces/${spaceId.value}/documents/${documentId.value}/diff?rev=${suggestion.rev}`,
-        );
-        if (!response.ok) {
-          throw new Error(`Failed to fetch diff for suggestion ${suggestion.rev}`);
-        }
-        return [suggestion.rev, await response.text()] as const;
+        const patch = await api.documentDiff.get(spaceId.value, documentId.value, suggestion.rev);
+        return [suggestion.rev, patch] as const;
       }),
     );
 

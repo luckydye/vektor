@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { api } from "../../api/client.ts";
 import type { LinkMetadata } from "../../api/routes/v1/url-metadata.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
@@ -50,11 +51,7 @@ export function createLinkPreviewController() {
     setPreview(url, { status: "loading", metadata: null });
 
     try {
-      const response = await fetch(
-        `/api/v1/url-metadata?url=${encodeURIComponent(url)}`,
-      );
-      if (!response.ok) throw new Error(`${response.status}`);
-      const metadata: LinkMetadata = await response.json();
+      const metadata = await api.linkPreview.get(url);
       setPreview(url, { status: "loaded", metadata });
     } catch {
       setPreview(url, { status: "error", metadata: null });

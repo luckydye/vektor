@@ -114,11 +114,7 @@ async function saveContent(code: string) {
   if (saving.value) return;
   saving.value = true;
   try {
-    await fetch(`/api/v1/spaces/${props.spaceId}/documents/${props.documentId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: code }),
-    });
+    await api.document.putCode(props.spaceId, props.documentId, code);
     savedAt.value = Date.now();
     if (savedTimer) clearTimeout(savedTimer);
     savedTimer = setTimeout(() => {
