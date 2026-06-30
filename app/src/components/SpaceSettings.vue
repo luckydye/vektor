@@ -5,39 +5,12 @@
     <template #general>
       <div>
 
-        <!-- Profile: form + sticky preview -->
-        <div class="flex flex-col-reverse sm:flex-row gap-8 sm:gap-10 items-start">
-
-          <!-- Form -->
-          <form class="flex-1 min-w-0 w-full" @submit.prevent="handleSave">
-            <div class="space-y-4">
-              <div>
-                <label for="settings-space-name" class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
-                <input id="settings-space-name" v-model="localName" type="text" required
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label for="settings-space-description" class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
-                <input id="settings-space-description" v-model="localDescription" type="text"
-                  placeholder="e.g., Engineering / Documentation"
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-            <div v-if="error" class="mt-4 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
-              {{ error }}
-            </div>
-            <div class="mt-6 flex justify-end">
-              <button type="submit" :disabled="isSaving"
-                class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors">
-                {{ isSaving ? 'Saving…' : 'Save Changes' }}
-              </button>
-            </div>
-          </form>
+        <!-- Profile: preview + form -->
+        <div class="flex flex-col sm:flex-row gap-8 sm:gap-10 items-start">
 
           <!-- Interactive preview card — sticky -->
           <div class="w-full sm:w-72 shrink-0 sm:sticky top-4">
-            <p class="text-size-small text-neutral-400 mb-2">Click to edit</p>
-            <div class="rounded-xl border border-neutral-200 overflow-hidden">
+<div class="rounded-xl border border-neutral-200 overflow-hidden">
 
               <!-- Banner — click to pick color -->
               <a-popover-trigger showdelay="0" hidedelay="100" class="block">
@@ -90,6 +63,32 @@
               </div>
             </div>
           </div>
+
+          <!-- Form -->
+          <form class="flex-1 min-w-0 w-full" @submit.prevent="handleSave">
+            <div class="space-y-4">
+              <div>
+                <label for="settings-space-name" class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
+                <input id="settings-space-name" v-model="localName" type="text" required
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label for="settings-space-description" class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
+                <input id="settings-space-description" v-model="localDescription" type="text"
+                  placeholder="e.g., Engineering / Documentation"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div v-if="error" class="mt-4 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+              {{ error }}
+            </div>
+            <div class="mt-6 flex justify-end">
+              <button type="submit" :disabled="isSaving"
+                class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors">
+                {{ isSaving ? 'Saving…' : 'Save Changes' }}
+              </button>
+            </div>
+          </form>
 
         </div>
 

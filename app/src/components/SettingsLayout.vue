@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 import "@atrium-ui/elements/tabs";
 
 interface Tab {
@@ -35,6 +35,7 @@ function onTabSelected(e: Event) {
 onMounted(async () => {
   await customElements.whenDefined("a-tabs");
   ready.value = true;
+  await nextTick();
   if (props.initialTab) {
     const i = props.tabs.findIndex((t) => t.id === props.initialTab);
     if (i > 0) tabsEl.value?.selectTabByIndex(i, false);
