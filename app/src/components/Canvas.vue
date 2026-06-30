@@ -3643,65 +3643,23 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-}
-
-.canvas-shape-textwrap :deep(.tiptap) {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  flex: 1 1 auto;
-  border: 0;
-  background: transparent;
-  padding: 10px 12px;
+  --editor-padding: 10px 12px;
   color: var(--canvas-text);
-  font: inherit;
   font-size: 15px;
   line-height: 1.35;
-  outline: none;
-  overflow: hidden;
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-.canvas-shape-textwrap :deep(.tiptap p) {
-  margin: 0;
-}
-
-.canvas-shape-textwrap :deep(.tiptap ul) {
-  list-style-type: disc;
-  padding-left: 1.5rem;
-  margin: 0.25rem 0;
-}
-
-.canvas-shape-textwrap :deep(.tiptap ol) {
-  list-style-type: decimal;
-  padding-left: 1.5rem;
-  margin: 0.25rem 0;
-}
-
-.canvas-shape-textwrap :deep(.tiptap li) {
-  display: list-item;
-  margin: 0.125rem 0;
-}
-
-.canvas-shape-textwrap :deep(.tiptap li > p) {
-  display: inline;
 }
 
 /* Text shapes auto-size to their content via TipTap's natural height. */
 .canvas-shape.text .canvas-shape-textwrap {
   display: block;
-}
-
-.canvas-shape.text :deep(.tiptap) {
   font-size: 20px;
   font-weight: 650;
   cursor: move;
-  white-space: pre-wrap;
-  word-break: break-word;
+  --editor-white-space: pre-wrap;
+  --editor-word-break: break-word;
 }
 
-.canvas-shape.note :deep(.tiptap) {
+.canvas-shape.note .canvas-shape-textwrap {
   color: #111827;
 }
 
