@@ -2680,6 +2680,7 @@ onUnmounted(() => {
         class="canvas-world"
         :style="{
           transform: `translate(${transform.dx}px, ${transform.dy}px) scale(${transform.scale})`,
+          '--canvas-scale': transform.scale,
         }"
       >
         <div
@@ -3220,8 +3221,8 @@ onUnmounted(() => {
   z-index: 4;
   box-sizing: border-box;
   border-radius: 8px;
-  outline: 2px solid var(--presence-color);
-  outline-offset: 2px;
+  outline: calc(2px / var(--canvas-scale, 1)) solid var(--presence-color);
+  outline-offset: calc(2px / var(--canvas-scale, 1));
   pointer-events: none;
 }
 
@@ -3350,8 +3351,8 @@ onUnmounted(() => {
 }
 
 .canvas-shape.selected {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
+  outline: calc(2px / var(--canvas-scale, 1)) solid #2563eb;
+  outline-offset: calc(2px / var(--canvas-scale, 1));
 }
 
 .canvas-shape.text {
@@ -3410,7 +3411,7 @@ onUnmounted(() => {
 }
 
 .canvas-shape.section.selected {
-  outline-offset: 4px;
+  outline-offset: calc(4px / var(--canvas-scale, 1));
 }
 
 .canvas-shape.section .canvas-section-header,
