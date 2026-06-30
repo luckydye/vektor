@@ -34,6 +34,13 @@ if (defaultSpace) {
 const userSpaces = await listUserSpaces(userId);
 
 if (userSpaces.length !== 0) {
+  const lastVisitedSlug = Astro.cookies.get("lastVisitedSpace")?.value;
+  if (lastVisitedSlug) {
+    const lastVisited = userSpaces.find((s) => s.slug === lastVisitedSlug);
+    if (lastVisited) {
+      return Astro.redirect(`/${lastVisited.slug}`);
+    }
+  }
   return Astro.redirect(`/${userSpaces[0].slug}`);
 }
 ---
