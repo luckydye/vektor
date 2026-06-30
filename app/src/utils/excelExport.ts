@@ -280,8 +280,35 @@ function createZip(entries: ZipEntry[]): Uint8Array {
   return concat([...fileParts, centralDirectory, endRecord]);
 }
 
-function buildXlsx(rows: string[][]): Uint8Array {
-  return createZip([
+export interface ExcelSheet {
+  name: string;
+  rows: string[][];
+}
+
+export function sanitizeSheetName(name: string): string {
+  return name
+    .replace(/[\\/?*[\]:]/g, "_")
+    .replace(/^'+|'+$/g, "")
+    .trim()
+    .slice(0, 31);
+}
+
+function buildXlsx(sheets: ExcelSheet[]): Uint8Array {
+  const stylesRelId = `rId${sheets.length + 1}`;
+
+  const contentTypeOverrides = sheets
+    .map((_, i) => `  <Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
+    .join("\n");
+
+  const sheetElements = sheets
+    .map((s, i) => `    <sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
+    .join("\n");
+
+  const sheetRelationships = sheets
+    .map((_, i) => `  <Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`)
+    .join("\n");
+
+  const entries: ZipEntry[] = [
     {
       name: "[Content_Types].xml",
       data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -289,7 +316,7 @@ function buildXlsx(rows: string[][]): Uint8Array {
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+${contentTypeOverrides}
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>`),
     },
@@ -305,7 +332,7 @@ function buildXlsx(rows: string[][]): Uint8Array {
       data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Data" sheetId="1" r:id="rId1"/>
+${sheetElements}
   </sheets>
 </workbook>`),
     },
@@ -313,8 +340,8 @@ function buildXlsx(rows: string[][]): Uint8Array {
       name: "xl/_rels/workbook.xml.rels",
       data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+${sheetRelationships}
+  <Relationship Id="${stylesRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`),
     },
     {
@@ -334,15 +361,21 @@ function buildXlsx(rows: string[][]): Uint8Array {
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`),
     },
-    {
-      name: "xl/worksheets/sheet1.xml",
-      data: textData(worksheetXml(rows)),
-    },
-  ]);
+    ...sheets.map((sheet, i) => ({
+      name: `xl/worksheets/sheet${i + 1}.xml`,
+      data: textData(worksheetXml(sheet.rows)),
+    })),
+  ];
+
+  return createZip(entries);
 }
 
 export function downloadExcelRows(rows: string[][], fileName: string): void {
-  const blob = new Blob([buildXlsx(rows)], { type: XLSX_MIME });
+  downloadExcelSheets([{ name: "Data", rows }], fileName);
+}
+
+export function downloadExcelSheets(sheets: ExcelSheet[], fileName: string): void {
+  const blob = new Blob([buildXlsx(sheets)], { type: XLSX_MIME });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = excelFileName(fileName);

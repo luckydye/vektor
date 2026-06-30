@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
-import { downloadExcelRows } from "../utils/excelExport.ts";
+import { downloadExcelSheets, sanitizeSheetName } from "../utils/excelExport.ts";
+import type { ExcelSheet } from "../utils/excelExport.ts";
+import ExcelExportDialog from "./ExcelExportDialog.vue";
+import type { ExcelExportConfig } from "./ExcelExportDialog.vue";
 
 const PAGE_SIZE = 10;
 const DEFAULT_COL_WIDTH = 200;
@@ -74,13 +77,46 @@ function cellText(v: unknown): string {
   return String(v);
 }
 
+const showExportDialog = ref(false);
+
 function downloadExcel() {
+  showExportDialog.value = true;
+}
+
+function handleExportDownload(config: ExcelExportConfig) {
+  showExportDialog.value = false;
   const tableColumns = columns.value;
-  const rows = [
+
+  const overviewRows = [
     tableColumns,
     ...filtered.value.map((row) => tableColumns.map((col) => cellText(row[col]))),
   ];
-  downloadExcelRows(rows, props.exportFileName ?? "data.xlsx");
+
+  const sheets: ExcelSheet[] = [{ name: "Overview", rows: overviewRows }];
+  const usedNames = new Set(["Overview"]);
+
+  for (let i = 0; i < filtered.value.length; i++) {
+    const row = filtered.value[i];
+
+    let baseName = sanitizeSheetName(cellText(row[config.sheetNameColumn]).trim()) || `Row ${i + 1}`;
+    if (baseName.length > 28) baseName = baseName.slice(0, 28);
+    let sheetName = baseName;
+    let n = 2;
+    while (usedNames.has(sheetName)) {
+      sheetName = `${baseName.slice(0, 25)} ${n++}`;
+    }
+    usedNames.add(sheetName);
+
+    const content = cellText(row[config.splitColumn]);
+    const del = config.delimiter.trim();
+    const sections = del
+      ? content.split(del).map((s) => s.trim()).filter(Boolean)
+      : [content];
+
+    sheets.push({ name: sheetName, rows: sections.map((s) => [s]) });
+  }
+
+  downloadExcelSheets(sheets, props.exportFileName ?? "data.xlsx");
 }
 
 function isDocumentIdColumn(column: string): boolean {
@@ -149,6 +185,13 @@ onUnmounted(() => {
 
 <template>
   <div>
+    <ExcelExportDialog
+      v-if="showExportDialog"
+      :columns="columns"
+      :row-count="filtered.length"
+      @cancel="showExportDialog = false"
+      @download="handleExportDownload"
+    />
     <div
       class="flex items-center gap-3 h-9 border-b border-neutral-100 bg-neutral-50 px-4"
     >
