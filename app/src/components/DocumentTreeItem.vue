@@ -22,9 +22,21 @@
       </a>
     </div>
 
-    <div v-if="isExpanded && hasChildren" class="mt-1 ml-2 border-l border-neutral-200 space-y-1">
-      <DocumentTreeItem v-for="child in children" :key="child.id" :doc="child" :all-docs="allDocs"
-        :active-doc-id="activeDocId" :expanded-items="expandedItems" @toggle="$emit('toggle', $event)" />
+    <div v-if="isExpanded && hasChildren" class="mt-1 ml-2 space-y-1">
+      <div v-for="(child, index) in children" :key="child.id" class="relative">
+        <!-- continuous vertical rail for non-last items; extends through the space-y-1 gap -->
+        <div
+          v-if="index < children.length - 1"
+          class="absolute left-0 top-0 bottom-[-0.25rem] w-px bg-neutral-200"
+        ></div>
+        <!-- L-shaped connector for the last item -->
+        <div
+          v-else
+          class="absolute left-0 top-0 h-[14px] w-[0.535rem] border-l border-b border-neutral-200"
+        ></div>
+        <DocumentTreeItem :doc="child" :all-docs="allDocs"
+          :active-doc-id="activeDocId" :expanded-items="expandedItems" @toggle="$emit('toggle', $event)" />
+      </div>
     </div>
   </page-target>
 </template>
