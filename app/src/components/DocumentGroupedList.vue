@@ -8,7 +8,6 @@ import {
   clockIcon,
   closeXIcon,
   documentIcon,
-  searchIcon,
 } from "~/src/assets/icons.ts";
 import type { Category, DocumentWithProperties } from "../api/client.ts";
 import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
@@ -16,7 +15,6 @@ import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 const props = defineProps<{
   items: DocumentWithProperties[];
   categories?: Category[];
-  searchPlaceholder?: string;
   emptyText?: string;
   showToolbar?: boolean;
 }>();
@@ -36,9 +34,6 @@ const categoryBySlug = computed(() => {
 
 // ── Filters & sort ───────────────────────────────────────────────────────────
 
-const search = ref("");
-const filterCategory = ref("");
-const filterType = ref("");
 const dateRangeStart = ref<Date | null>(null);
 const dateRangeEnd = ref<Date | null>(null);
 
@@ -64,41 +59,8 @@ function clearDateRange() {
   dateRangeEnd.value = null;
 }
 
-const availableCategories = computed(() => {
-  const slugs = new Set<string>();
-  for (const d of props.items) {
-    const s = d.properties?.category;
-    if (s) slugs.add(s);
-  }
-  return [...slugs].map((slug) => ({
-    slug,
-    name: categoryBySlug.value.get(slug)?.name ?? slug,
-  }));
-});
-
-const availableTypes = computed(() => {
-  const types = new Set<string>();
-  for (const d of props.items) {
-    if (d.type) types.add(d.type);
-  }
-  return [...types];
-});
-
 const filtered = computed(() => {
   let docs = props.items;
-  const q = search.value.trim().toLowerCase();
-  if (q) {
-    docs = docs.filter((d) => {
-      const title = d.properties?.title || d.properties?.name || "";
-      return title.toLowerCase().includes(q);
-    });
-  }
-  if (filterCategory.value) {
-    docs = docs.filter((d) => d.properties?.category === filterCategory.value);
-  }
-  if (filterType.value) {
-    docs = docs.filter((d) => d.type === filterType.value);
-  }
   if (dateRangeStart.value) {
     const start = dateRangeStart.value.getTime();
     docs = docs.filter((d) => normalizeTimestamp(d.updatedAt).getTime() >= start);
@@ -215,37 +177,6 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
   <div>
     <!-- Toolbar -->
     <div v-if="showToolbar !== false" class="flex items-center gap-2 mb-4">
-      <!-- Search -->
-      <div class="relative flex-1 max-w-sm">
-        <div class="svg-icon absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" v-html="searchIcon" />
-        <input
-          v-model="search"
-          type="text"
-          :placeholder="searchPlaceholder ?? 'Search documents...'"
-          class="w-full pl-8 pr-3 py-1.5 text-size-small border border-neutral-200 rounded-md bg-background placeholder-neutral-400 focus:outline-none focus:ring-1 focus:ring-primary-300 focus:border-primary-300"
-        />
-      </div>
-
-      <!-- Category filter -->
-      <select
-        v-if="availableCategories.length > 0"
-        v-model="filterCategory"
-        class="px-2.5 py-1.5 text-size-small border border-neutral-200 rounded-md bg-background text-neutral-700 focus:outline-none focus:ring-1 focus:ring-primary-300"
-      >
-        <option value="">Category</option>
-        <option v-for="c in availableCategories" :key="c.slug" :value="c.slug">{{ c.name }}</option>
-      </select>
-
-      <!-- Type filter -->
-      <select
-        v-if="availableTypes.length > 1"
-        v-model="filterType"
-        class="px-2.5 py-1.5 text-size-small border border-neutral-200 rounded-md bg-background text-neutral-700 focus:outline-none focus:ring-1 focus:ring-primary-300"
-      >
-        <option value="">Type</option>
-        <option v-for="t in availableTypes" :key="t" :value="t" class="capitalize">{{ t }}</option>
-      </select>
-
       <!-- Date range picker -->
       <a-popover-trigger>
         <button
@@ -318,7 +249,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
 
     <!-- Empty state -->
     <div v-if="filtered.length === 0" class="py-12 text-center text-size-small text-neutral-400">
-      {{ items.length === 0 ? (emptyText ?? 'No documents') : 'No documents match your filters' }}
+      {{ items.length === 0 ? (emptyText ?? 'No documents') : 'No documents in the selected date range' }}
     </div>
 
     <!-- Groups -->

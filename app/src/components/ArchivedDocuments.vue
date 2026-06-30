@@ -79,7 +79,6 @@ async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
       v-else
       :items="docs ?? []"
       :categories="categories"
-      search-placeholder="Search archived documents..."
       empty-text="No archived documents"
     >
       <template #batch-actions="{ selectedIds, deselectAll }">
