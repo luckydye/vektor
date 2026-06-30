@@ -112,7 +112,7 @@ export function createViewportControls({
   onTouchGestureStart,
   minZoom = 0.2,
   maxZoom = 20,
-  wheelZoomSpeed = 0.003,
+  wheelZoomSpeed = 0.001,
   pinchZoomSpeed = 0.01,
 }: ViewportControlsOptions): ViewportControls {
   const touchPointers = new Map<number, PointerEvent>();
@@ -243,7 +243,7 @@ export function createViewportControls({
     if (e.ctrlKey || e.metaKey) {
       // ctrlKey without metaKey = trackpad pinch (browser-synthesised).
       // metaKey (or real ctrl+scroll) = mouse wheel zoom.
-      const speed = e.ctrlKey && !e.metaKey ? pinchZoomSpeed : wheelZoomSpeed;
+      const speed = e.ctrlKey ? wheelZoomSpeed : pinchZoomSpeed;
       pendingZoom *= Math.exp(-e.deltaY * speed);
       pendingZoomX = pointer.x;
       pendingZoomY = pointer.y;

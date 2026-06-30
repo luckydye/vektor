@@ -3021,8 +3021,8 @@ onUnmounted(() => {
 
 <style scoped>
 .canvas-root {
-  --canvas-bg: #f8fafc;
-  --canvas-text: #111827;
+  --canvas-bg: var(--color-neutral-50);
+  --canvas-text: var(--color-neutral-900);
   --canvas-muted: #6b7280;
   --canvas-strong: #374151;
   --canvas-toolbar-bg: rgba(255, 255, 255, 0.94);
@@ -3068,9 +3068,7 @@ onUnmounted(() => {
 }
 
 @media (prefers-color-scheme: dark) {
-  :global(:root:not([data-theme])) .canvas-root {
-    --canvas-bg: #0f1115;
-    --canvas-text: #f3f4f6;
+  .canvas-root {
     --canvas-muted: #9ca3af;
     --canvas-strong: #e5e7eb;
     --canvas-toolbar-bg: rgba(24, 24, 27, 0.94);
@@ -3107,47 +3105,6 @@ onUnmounted(() => {
     --canvas-resize-border: rgba(255, 255, 255, 0.58);
     --canvas-presence-text: #111827;
   }
-}
-
-.canvas-root.is-dark,
-:global(:root[data-theme="dark"]) .canvas-root {
-  --canvas-bg: #0f1115;
-  --canvas-text: #f3f4f6;
-  --canvas-muted: #9ca3af;
-  --canvas-strong: #e5e7eb;
-  --canvas-toolbar-bg: rgba(24, 24, 27, 0.94);
-  --canvas-toolbar-border: rgba(255, 255, 255, 0.12);
-  --canvas-toolbar-shadow: rgba(0, 0, 0, 0.38);
-  --canvas-tool-text: #d1d5db;
-  --canvas-tool-hover-bg: rgba(255, 255, 255, 0.08);
-  --canvas-tool-active-bg: rgba(37, 99, 235, 0.26);
-  --canvas-tool-active-border: rgba(96, 165, 250, 0.48);
-  --canvas-tool-active-text: #bfdbfe;
-  --canvas-divider-color: rgba(255, 255, 255, 0.12);
-  --canvas-grid-minor: rgba(255, 255, 255, 0.07);
-  --canvas-grid-major: rgba(255, 255, 255, 0.13);
-  --canvas-ink-color: #f3f4f6;
-  --canvas-shape-border: rgba(255, 255, 255, 0.16);
-  --canvas-shape-shadow: rgba(0, 0, 0, 0.32);
-  --canvas-handle-bg: rgba(255, 255, 255, 0.12);
-  --canvas-section-bg: rgba(96, 165, 250, 0.09);
-  --canvas-section-border: rgba(147, 197, 253, 0.62);
-  --canvas-section-title-bg: #172033;
-  --canvas-section-title-focus-bg: #111827;
-  --canvas-section-title-border: rgba(147, 197, 253, 0.36);
-  --canvas-section-title-text: #dbeafe;
-  --canvas-image-bg: #111827;
-  --canvas-doc-bg: #1a1d24;
-  --canvas-doc-accent: #93c5fd;
-  --canvas-doc-divider: rgba(255, 255, 255, 0.1);
-  --canvas-doc-content: #d1d5db;
-  --canvas-link-bg: #1a1d24;
-  --canvas-link-border: rgba(255, 255, 255, 0.12);
-  --canvas-link-title: #f3f4f6;
-  --canvas-link-domain: #9ca3af;
-  --canvas-link-desc: #9ca3af;
-  --canvas-resize-border: rgba(255, 255, 255, 0.58);
-  --canvas-presence-text: #111827;
 }
 
 .canvas-toolbar {
@@ -3652,8 +3609,6 @@ onUnmounted(() => {
 /* Text shapes auto-size to their content via TipTap's natural height. */
 .canvas-shape.text .canvas-shape-textwrap {
   display: block;
-  font-size: 20px;
-  font-weight: 650;
   cursor: move;
   --editor-white-space: pre-wrap;
   --editor-word-break: break-word;

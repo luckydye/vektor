@@ -227,7 +227,7 @@ watch(title, (t) => {
               <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
               <Breadcrumbs
                 v-else
-               
+
                 :category="docCategory"
                 :parents="parentBreadcrumbs"
                 :currentTitle="title"
@@ -237,7 +237,9 @@ watch(title, (t) => {
               v-if="doc.updatedAt"
               class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500"
             >
-              <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
+              <ClientOnly>
+                <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
+              </ClientOnly>
             </div>
           </inset-view>
 
@@ -291,7 +293,7 @@ watch(title, (t) => {
           <DatabaseView
             v-else-if="isDatabase"
             :databaseDocumentId="doc.id"
-           
+
             :schemaJson="doc.properties._schema"
           />
           <DocumentContent
