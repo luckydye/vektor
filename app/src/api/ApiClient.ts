@@ -264,6 +264,15 @@ export interface AccessToken {
   }>;
 }
 
+type PermissionResourceType =
+  | "space"
+  | "document"
+  | "document_tree"
+  | "category"
+  | "extension"
+  | "secret"
+  | "feature";
+
 export interface SpaceSecret {
   name: string;
   description: string | null;
@@ -701,7 +710,7 @@ export class ApiClient {
       spaceId: string,
       type?: "role" | "feature" | "all",
       options?: {
-        resourceType?: string;
+        resourceType?: PermissionResourceType;
         resourceId?: string;
       },
     ) => {
@@ -729,7 +738,7 @@ export class ApiClient {
         roleOrFeature: string;
         userId?: string;
         groupId?: string;
-        resourceType?: string;
+        resourceType?: PermissionResourceType;
         resourceId?: string;
       },
     ) => {
@@ -767,7 +776,7 @@ export class ApiClient {
         roleOrFeature: string;
         userId?: string;
         groupId?: string;
-        resourceType?: string;
+        resourceType?: PermissionResourceType;
         resourceId?: string;
       },
     ) => {

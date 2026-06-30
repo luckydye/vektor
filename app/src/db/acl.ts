@@ -3,7 +3,7 @@ import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "./db.ts";
 import { user } from "./schema/auth.ts";
-import { acl } from "./schema/space.ts";
+import { acl, category, document, property } from "./schema/space.ts";
 
 export interface AclEntry {
   resourceType: string;
@@ -18,6 +18,7 @@ export interface AclEntry {
 export const ResourceType = {
   SPACE: "space",
   DOCUMENT: "document",
+  DOCUMENT_TREE: "document_tree",
   CATEGORY: "category",
   EXTENSION: "extension",
   SECRET: "secret",
@@ -61,6 +62,16 @@ const PERMISSION_HIERARCHY: Record<string, number> = {
   viewer: 1,
   editor: 3,
   owner: 5,
+};
+
+type AclRow = {
+  resourceType: string;
+  resourceId: string;
+  userId: string | null;
+  groupId: string | null;
+  permission: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 /**
@@ -156,7 +167,7 @@ export async function grantPermission(
     });
   }
 
-  if (resourceType === ResourceType.DOCUMENT) {
+  if (resourceType === ResourceType.DOCUMENT || resourceType === ResourceType.DOCUMENT_TREE) {
     await createAuditLog(db, {
       spaceId,
       docId: resourceId,
@@ -200,7 +211,7 @@ export async function revokePermission(
 
   await db.delete(acl).where(and(...conditions));
 
-  if (resourceType === ResourceType.DOCUMENT) {
+  if (resourceType === ResourceType.DOCUMENT || resourceType === ResourceType.DOCUMENT_TREE) {
     await createAuditLog(db, {
       spaceId,
       docId: resourceId,
@@ -295,6 +306,187 @@ export async function getPermission(
   };
 }
 
+function bestAclEntry(rows: Array<AclRow | AclEntry>): AclEntry | null {
+  if (rows.length === 0) return null;
+
+  const result = rows.sort((a, b) => {
+    const levelA = PERMISSION_HIERARCHY[a.permission] || 0;
+    const levelB = PERMISSION_HIERARCHY[b.permission] || 0;
+    return levelB - levelA;
+  })[0];
+
+  return {
+    resourceType: result.resourceType,
+    resourceId: result.resourceId,
+    userId: result.userId || undefined,
+    groupId: result.groupId || undefined,
+    permission: result.permission,
+    createdAt: new Date(result.createdAt),
+    updatedAt: new Date(result.updatedAt),
+  };
+}
+
+async function getBestPermissionForResourceIds(
+  spaceId: string,
+  resourceType: ResourceType,
+  resourceIds: string[],
+  userId: string,
+  userGroups?: string[],
+): Promise<AclEntry | null> {
+  if (resourceIds.length === 0) return null;
+
+  const db = await getSpaceDb(spaceId);
+  const allPermissions: AclRow[] = [];
+
+  const userResults = await db
+    .select()
+    .from(acl)
+    .where(
+      and(
+        eq(acl.resourceType, resourceType),
+        inArray(acl.resourceId, resourceIds),
+        eq(acl.userId, userId),
+        isNull(acl.groupId),
+      ),
+    )
+    .all();
+
+  allPermissions.push(...userResults);
+
+  const effectiveGroups = userGroups && userGroups.length > 0 ? userGroups : ["public"];
+  const groupResults = await db
+    .select()
+    .from(acl)
+    .where(
+      and(
+        eq(acl.resourceType, resourceType),
+        inArray(acl.resourceId, resourceIds),
+        isNull(acl.userId),
+        inArray(acl.groupId, effectiveGroups),
+      ),
+    )
+    .all();
+
+  allPermissions.push(...groupResults);
+  return bestAclEntry(allPermissions);
+}
+
+async function getDocumentAncestorIds(
+  spaceId: string,
+  documentId: string,
+): Promise<string[]> {
+  const db = await getSpaceDb(spaceId);
+  const rows = await db
+    .select({ id: document.id, parentId: document.parentId })
+    .from(document)
+    .all();
+
+  const parentById = new Map(rows.map((row) => [row.id, row.parentId]));
+  const ancestors: string[] = [];
+  const seen = new Set<string>([documentId]);
+  let current = parentById.get(documentId);
+
+  while (current && !seen.has(current)) {
+    ancestors.push(current);
+    seen.add(current);
+    current = parentById.get(current);
+  }
+
+  return ancestors;
+}
+
+async function getDocumentDescendantIds(
+  spaceId: string,
+  rootIds: string[],
+): Promise<Set<string>> {
+  const db = await getSpaceDb(spaceId);
+  const roots = new Set(rootIds);
+  const descendants = new Set(rootIds);
+  if (rootIds.length === 0) return descendants;
+
+  const rows = await db
+    .select({ id: document.id, parentId: document.parentId })
+    .from(document)
+    .all();
+
+  const childrenByParent = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row.parentId) continue;
+    const children = childrenByParent.get(row.parentId) ?? [];
+    children.push(row.id);
+    childrenByParent.set(row.parentId, children);
+  }
+
+  const stack = Array.from(roots);
+  while (stack.length > 0) {
+    const parentId = stack.pop()!;
+    for (const childId of childrenByParent.get(parentId) ?? []) {
+      if (descendants.has(childId)) continue;
+      descendants.add(childId);
+      stack.push(childId);
+    }
+  }
+
+  return descendants;
+}
+
+async function getDocumentCategoryResourceIds(
+  spaceId: string,
+  documentId: string,
+): Promise<string[]> {
+  const db = await getSpaceDb(spaceId);
+  const documentIds = [documentId, ...(await getDocumentAncestorIds(spaceId, documentId))];
+  const categoryProperties = await db
+    .select({ value: property.value })
+    .from(property)
+    .where(
+      and(
+        inArray(property.documentId, documentIds),
+        inArray(property.key, ["category", "collection"]),
+      ),
+    )
+    .all();
+
+  const slugs = [...new Set(categoryProperties.map((row) => row.value).filter(Boolean))];
+  if (slugs.length === 0) return [];
+
+  const categoryRows = await db
+    .select({ id: category.id })
+    .from(category)
+    .where(inArray(category.slug, slugs))
+    .all();
+
+  return categoryRows.map((row) => row.id);
+}
+
+async function getDocumentIdsForCategoryRoots(
+  spaceId: string,
+  categoryIds: string[],
+): Promise<Set<string>> {
+  const db = await getSpaceDb(spaceId);
+  const ids = new Set<string>();
+  if (categoryIds.length === 0) return ids;
+
+  const categories = await db
+    .select({ slug: category.slug })
+    .from(category)
+    .where(inArray(category.id, categoryIds))
+    .all();
+  const slugs = categories.map((row) => row.slug);
+  if (slugs.length === 0) return ids;
+
+  const directRows = await db
+    .select({ documentId: property.documentId })
+    .from(property)
+    .where(and(inArray(property.key, ["category", "collection"]), inArray(property.value, slugs)))
+    .all();
+
+  const rootIds = directRows.map((row) => row.documentId);
+  const descendantIds = await getDocumentDescendantIds(spaceId, rootIds);
+  for (const id of descendantIds) ids.add(id);
+  return ids;
+}
+
 export async function listPermissions(
   spaceId: string,
   resourceType: ResourceType,
@@ -377,6 +569,58 @@ export async function hasPermission(
     return true;
   }
 
+  if (resourceType === ResourceType.DOCUMENT) {
+    const directPermission = await getPermission(
+      spaceId,
+      ResourceType.DOCUMENT,
+      resourceId,
+      userId,
+      userGroups,
+    );
+
+    const treeResourceIds = [
+      resourceId,
+      ...(await getDocumentAncestorIds(spaceId, resourceId)),
+    ];
+    const treePermission = await getBestPermissionForResourceIds(
+      spaceId,
+      ResourceType.DOCUMENT_TREE,
+      treeResourceIds,
+      userId,
+      userGroups,
+    );
+    const categoryPermission = await getBestPermissionForResourceIds(
+      spaceId,
+      ResourceType.CATEGORY,
+      await getDocumentCategoryResourceIds(spaceId, resourceId),
+      userId,
+      userGroups,
+    );
+
+    const documentPermission = bestAclEntry(
+      [directPermission, treePermission, categoryPermission].filter(
+        (entry): entry is AclEntry => !!entry,
+      ),
+    );
+
+    if (documentPermission) {
+      return meetsPermissionLevel(documentPermission.permission, requiredPermission);
+    }
+
+    const spacePermission = await getPermission(
+      spaceId,
+      ResourceType.SPACE,
+      spaceId,
+      userId,
+      userGroups,
+    );
+
+    return !!(
+      spacePermission &&
+      meetsPermissionLevel(spacePermission.permission, requiredPermission)
+    );
+  }
+
   const userPermission = await getPermission(
     spaceId,
     resourceType,
@@ -386,11 +630,8 @@ export async function hasPermission(
   );
 
   if (!userPermission) {
-    // For documents and extensions, fall back to space-level permission
-    if (
-      resourceType === ResourceType.DOCUMENT ||
-      resourceType === ResourceType.EXTENSION
-    ) {
+    // Extensions fall back to space-level permission.
+    if (resourceType === ResourceType.EXTENSION) {
       const spacePermission = await getPermission(
         spaceId,
         ResourceType.SPACE,
@@ -602,23 +843,31 @@ export async function listAccessibleResources(
   minPermission?: string,
 ): Promise<string[] | null> {
   const db = await getSpaceDb(spaceId);
+  const effectiveGroups =
+    userGroups && userGroups.length > 0 ? userGroups : await getUserGroups(userId);
+  const validPermissions = minPermission
+    ? Object.entries(PERMISSION_HIERARCHY)
+        .filter(([_, level]) => level >= (PERMISSION_HIERARCHY[minPermission] || 0))
+        .map(([perm]) => perm)
+    : null;
 
   // Space-level permission implies access to all resources in the space that
   // have no per-resource ACL restrictions (same fallback as hasPermission()).
   // Return null to signal "all accessible" — callers treat null like a job token.
-  const spacePerm = await getPermission(spaceId, ResourceType.SPACE, spaceId, userId, userGroups);
+  const spacePerm = await getPermission(
+    spaceId,
+    ResourceType.SPACE,
+    spaceId,
+    userId,
+    effectiveGroups,
+  );
   if (spacePerm) {
     return null;
   }
 
   const conditions = [eq(acl.userId, userId), eq(acl.resourceType, resourceType)];
 
-  if (minPermission) {
-    const minLevel = PERMISSION_HIERARCHY[minPermission] || 0;
-    const validPermissions = Object.entries(PERMISSION_HIERARCHY)
-      .filter(([_, level]) => level >= minLevel)
-      .map(([perm]) => perm);
-
+  if (validPermissions) {
     conditions.push(inArray(acl.permission, validPermissions));
   }
 
@@ -629,19 +878,14 @@ export async function listAccessibleResources(
     .all();
 
   // Also get group-based accessible resources
-  if (userGroups && userGroups.length > 0) {
+  if (effectiveGroups.length > 0) {
     const groupConditions = [
       isNull(acl.userId),
-      inArray(acl.groupId, userGroups),
+      inArray(acl.groupId, effectiveGroups),
       eq(acl.resourceType, resourceType),
     ];
 
-    if (minPermission) {
-      const minLevel = PERMISSION_HIERARCHY[minPermission] || 0;
-      const validPermissions = Object.entries(PERMISSION_HIERARCHY)
-        .filter(([_, level]) => level >= minLevel)
-        .map(([perm]) => perm);
-
+    if (validPermissions) {
       groupConditions.push(inArray(acl.permission, validPermissions));
     }
 
@@ -652,6 +896,62 @@ export async function listAccessibleResources(
       .all();
 
     results.push(...groupResults);
+  }
+
+  if (resourceType === ResourceType.DOCUMENT) {
+    const treeConditions = [
+      eq(acl.resourceType, ResourceType.DOCUMENT_TREE),
+      or(
+        and(eq(acl.userId, userId), isNull(acl.groupId)),
+        and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+      ),
+    ];
+
+    if (validPermissions) {
+      treeConditions.push(inArray(acl.permission, validPermissions));
+    }
+
+    const treeRoots = await db
+      .select({ resourceId: acl.resourceId })
+      .from(acl)
+      .where(and(...treeConditions))
+      .all();
+
+    const descendantIds = await getDocumentDescendantIds(
+      spaceId,
+      treeRoots.map((row) => row.resourceId),
+    );
+
+    results.push(...Array.from(descendantIds).map((resourceId) => ({ resourceId })));
+  }
+
+  if (resourceType === ResourceType.DOCUMENT) {
+    const categoryConditions = [
+      eq(acl.resourceType, ResourceType.CATEGORY),
+      or(
+        and(eq(acl.userId, userId), isNull(acl.groupId)),
+        and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+      ),
+    ];
+
+    if (validPermissions) {
+      categoryConditions.push(inArray(acl.permission, validPermissions));
+    }
+
+    const categoryRoots = await db
+      .select({ resourceId: acl.resourceId })
+      .from(acl)
+      .where(and(...categoryConditions))
+      .all();
+
+    const categoryDocumentIds = await getDocumentIdsForCategoryRoots(
+      spaceId,
+      categoryRoots.map((row) => row.resourceId),
+    );
+
+    results.push(
+      ...Array.from(categoryDocumentIds).map((resourceId) => ({ resourceId })),
+    );
   }
 
   // Deduplicate resource IDs
@@ -704,9 +1004,94 @@ export async function filterReadableResources(
     }
   }
 
+  let parentById: Map<string, string | null> | null = null;
+  let treeBestLevel: Map<string, number> | null = null;
+  let categoryDocumentBestLevel: Map<string, number> | null = null;
+
+  if (resourceType === ResourceType.DOCUMENT) {
+    const treeRows = await db
+      .select({ resourceId: acl.resourceId, permission: acl.permission })
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, ResourceType.DOCUMENT_TREE),
+          or(
+            and(eq(acl.userId, userId), isNull(acl.groupId)),
+            and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+          ),
+        ),
+      )
+      .all();
+
+    treeBestLevel = new Map<string, number>();
+    for (const row of treeRows) {
+      const level = PERMISSION_HIERARCHY[row.permission] || 0;
+      const previous = treeBestLevel.get(row.resourceId);
+      if (previous === undefined || level > previous) {
+        treeBestLevel.set(row.resourceId, level);
+      }
+    }
+
+    const docRows = await db
+      .select({ id: document.id, parentId: document.parentId })
+      .from(document)
+      .all();
+    parentById = new Map(docRows.map((row) => [row.id, row.parentId]));
+
+    const categoryRows = await db
+      .select({ resourceId: acl.resourceId, permission: acl.permission })
+      .from(acl)
+      .where(
+        and(
+          eq(acl.resourceType, ResourceType.CATEGORY),
+          or(
+            and(eq(acl.userId, userId), isNull(acl.groupId)),
+            and(isNull(acl.userId), inArray(acl.groupId, effectiveGroups)),
+          ),
+        ),
+      )
+      .all();
+
+    categoryDocumentBestLevel = new Map<string, number>();
+    for (const row of categoryRows) {
+      const level = PERMISSION_HIERARCHY[row.permission] || 0;
+      const categoryDocumentIds = await getDocumentIdsForCategoryRoots(spaceId, [
+        row.resourceId,
+      ]);
+      for (const documentId of categoryDocumentIds) {
+        const previous = categoryDocumentBestLevel.get(documentId);
+        if (previous === undefined || level > previous) {
+          categoryDocumentBestLevel.set(documentId, level);
+        }
+      }
+    }
+  }
+
   const readable = new Set<string>();
   for (const id of resourceIds) {
-    const level = bestLevel.get(id);
+    let level = bestLevel.get(id);
+
+    if (parentById && treeBestLevel) {
+      const seen = new Set<string>();
+      let current: string | null | undefined = id;
+      while (current && !seen.has(current)) {
+        seen.add(current);
+        const treeLevel = treeBestLevel.get(current);
+        if (treeLevel !== undefined && (level === undefined || treeLevel > level)) {
+          level = treeLevel;
+        }
+        current = parentById.get(current);
+      }
+    }
+
+    const categoryLevel = categoryDocumentBestLevel?.get(id);
+    if (
+      categoryLevel !== undefined &&
+      (level === undefined || categoryLevel > level)
+    ) {
+      level = categoryLevel;
+    }
+
     if (level === undefined || level >= PERMISSION_HIERARCHY.viewer) {
       readable.add(id);
     }

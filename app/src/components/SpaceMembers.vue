@@ -21,6 +21,8 @@ const showAddMember = ref(false);
 const newMemberId = ref("");
 const newMemberType = ref("user");
 const newMemberRole = ref("viewer");
+const newMemberScope = ref("space");
+const newMemberCategoryId = ref("");
 const addingMember = ref(false);
 const addMemberError = ref(null);
 const updatingMember = ref(null);
@@ -28,6 +30,7 @@ const removingMember = ref(null);
 const availableUsers = ref([]);
 const loadingAvailableUsers = ref(false);
 const usersMap = ref(new Map());
+const categories = ref([]);
 const loadingUsers = ref(false);
 const copiedUserId = ref(null);
 
@@ -38,8 +41,26 @@ async function fetchPermissions() {
   error.value = null;
 
   try {
-    const response = await api.permissions.list(currentSpace.value.id, "role");
-    permissions.value = response.permissions || [];
+    const [spaceResponse, categoryList] = await Promise.all([
+      api.permissions.list(currentSpace.value.id, "role"),
+      api.categories.get(currentSpace.value.id),
+    ]);
+
+    categories.value = categoryList || [];
+
+    const categoryResponses = await Promise.all(
+      categories.value.map((category) =>
+        api.permissions.list(currentSpace.value.id, "role", {
+          resourceType: "category",
+          resourceId: category.id,
+        }),
+      ),
+    );
+
+    permissions.value = [
+      ...(spaceResponse.permissions || []),
+      ...categoryResponses.flatMap((response) => response.permissions || []),
+    ];
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to fetch permissions";
     console.error("Failed to fetch permissions:", err);
@@ -109,6 +130,8 @@ watch(showAddMember, (isOpen) => {
     newMemberId.value = "";
     newMemberType.value = "user";
     newMemberRole.value = "viewer";
+    newMemberScope.value = "space";
+    newMemberCategoryId.value = "";
   }
 });
 
@@ -123,6 +146,11 @@ async function handleAddMember(e) {
     return;
   }
 
+  if (newMemberScope.value === "category" && !newMemberCategoryId.value) {
+    addMemberError.value = "Select a category";
+    return;
+  }
+
   addingMember.value = true;
   addMemberError.value = null;
 
@@ -134,12 +162,17 @@ async function handleAddMember(e) {
       ...(isGroup
         ? { groupId: newMemberId.value.trim() }
         : { userId: newMemberId.value.trim() }),
+      ...(newMemberScope.value === "category"
+        ? { resourceType: "category", resourceId: newMemberCategoryId.value }
+        : {}),
     });
 
     showAddMember.value = false;
     newMemberId.value = "";
     newMemberType.value = "user";
     newMemberRole.value = "viewer";
+    newMemberScope.value = "space";
+    newMemberCategoryId.value = "";
     await fetchPermissions();
   } catch (err) {
     addMemberError.value = err instanceof Error ? err.message : "Failed to add member";
@@ -164,6 +197,12 @@ async function handleRoleChange(perm, newRole) {
       ...(isGroup
         ? { groupId: perm.permission.groupId }
         : { userId: perm.permission.userId }),
+      ...(perm.permission.resourceType && perm.permission.resourceType !== "space"
+        ? {
+            resourceType: perm.permission.resourceType,
+            resourceId: perm.permission.resourceId,
+          }
+        : {}),
     });
     await fetchPermissions();
   } catch (err) {
@@ -193,6 +232,12 @@ async function handleRemoveMember(perm) {
       type: "role",
       roleOrFeature: perm.permission.permission,
       ...(isGroup ? { groupId: memberId } : { userId: memberId }),
+      ...(perm.permission.resourceType && perm.permission.resourceType !== "space"
+        ? {
+            resourceType: perm.permission.resourceType,
+            resourceId: perm.permission.resourceId,
+          }
+        : {}),
     });
     await fetchPermissions();
   } catch (err) {
@@ -302,6 +347,17 @@ function getMemberType(perm) {
   return perm.permission.userId ? "User" : "Group";
 }
 
+function getResourceLabel(perm) {
+  if (!perm.permission.resourceType || perm.permission.resourceType === "space") {
+    return "Entire space";
+  }
+  if (perm.permission.resourceType === "category") {
+    const category = categories.value.find((c) => c.id === perm.permission.resourceId);
+    return category ? `Category: ${category.name}` : "Category";
+  }
+  return `${perm.permission.resourceType}: ${perm.permission.resourceId}`;
+}
+
 function getMemberIcon(perm) {
   return perm.permission.userId ? "user" : "group";
 }
@@ -352,13 +408,14 @@ async function copyMemberId(memberId) {
           <tr>
             <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Member</th>
             <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Type</th>
+            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Access</th>
             <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Role</th>
             <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Added</th>
             <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-          <tr v-for="perm in rolePermissions" :key="`${perm.permission.userId || perm.permission.groupId}`" class="hover:bg-neutral-50">
+          <tr v-for="perm in rolePermissions" :key="`${perm.permission.resourceType || 'space'}-${perm.permission.resourceId || currentSpace?.id}-${perm.permission.userId || perm.permission.groupId}`" class="hover:bg-neutral-50">
             <td class="px-4 py-2.5">
               <div class="flex items-center gap-3">
                 <div :class="[getMemberBgColor(perm), 'flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center']">
@@ -383,6 +440,7 @@ async function copyMemberId(memberId) {
               </div>
             </td>
             <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">{{ getMemberType(perm) }}</td>
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">{{ getResourceLabel(perm) }}</td>
             <td class="px-4 py-2.5 whitespace-nowrap">
               <select
                 v-if="canEditMember(perm.permission.userId, perm)"
@@ -478,6 +536,37 @@ async function copyMemberId(memberId) {
         </div>
 
         <div>
+          <label for="member-scope" class="block text-size-medium font-medium text-neutral-900 mb-1">
+            Access
+          </label>
+          <select
+            id="member-scope"
+            v-model="newMemberScope"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="space">Entire space</option>
+            <option value="category">Category</option>
+          </select>
+        </div>
+
+        <div v-if="newMemberScope === 'category'">
+          <label for="member-category" class="block text-size-medium font-medium text-neutral-900 mb-1">
+            Category
+          </label>
+          <select
+            id="member-category"
+            v-model="newMemberCategoryId"
+            required
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select a category...</option>
+            <option v-for="category in categories" :key="category.id" :value="category.id">
+              {{ category.name }}
+            </option>
+          </select>
+        </div>
+
+        <div>
           <label for="member-role" class="block text-size-medium font-medium text-neutral-900 mb-1">
             Permission Level
           </label>
@@ -499,7 +588,7 @@ async function copyMemberId(memberId) {
         <div class="flex gap-3">
           <button
             type="button"
-            @click="showAddMember = false; addMemberError = null; newMemberId = ''; newMemberType = 'user'; newMemberRole = 'viewer';"
+            @click="showAddMember = false; addMemberError = null; newMemberId = ''; newMemberType = 'user'; newMemberRole = 'viewer'; newMemberScope = 'space'; newMemberCategoryId = '';"
             class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-neutral-100 rounded-md hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-500"
           >
             Cancel

@@ -80,22 +80,33 @@ export const POST: APIRoute = (context) =>
     const user = requireUser(context);
     const spaceId = requireParam(context.params, "spaceId");
 
-    const body = await parseJsonBody(context.request);
-    const { type, roleOrFeature, userId, groupId, action, resourceType, resourceId } =
-      body;
+    const body = (await parseJsonBody(context.request)) as Record<string, unknown>;
+    const type = typeof body.type === "string" ? body.type : undefined;
+    const roleOrFeature =
+      typeof body.roleOrFeature === "string" ? body.roleOrFeature : undefined;
+    const userId = typeof body.userId === "string" ? body.userId : undefined;
+    const groupId = typeof body.groupId === "string" ? body.groupId : undefined;
+    const action = typeof body.action === "string" ? body.action : undefined;
+    const resourceType =
+      typeof body.resourceType === "string" ? body.resourceType : undefined;
+    const resourceId = typeof body.resourceId === "string" ? body.resourceId : undefined;
 
     const targetResourceType = (resourceType as ResourceType) || ResourceType.SPACE;
 
     // Auth rules for role grants/revokes:
     //   - Granting owner requires owner.
     //   - Revoking any space-level role requires owner.
-    //   - Editors can grant viewer/editor at space or document level.
-    //   - Editors can revoke document-level permissions.
+    //   - Editors can grant viewer/editor at space, document, or document-tree level.
+    //   - Editors can revoke document-level and document-tree permissions.
     // Feature operations always require owner.
     if (type === "role") {
       if (action === "grant" && roleOrFeature === "owner") {
         await verifySpaceRole(spaceId, user.id, "owner");
-      } else if (action === "revoke" && targetResourceType !== ResourceType.DOCUMENT) {
+      } else if (
+        action === "revoke" &&
+        targetResourceType !== ResourceType.DOCUMENT &&
+        targetResourceType !== ResourceType.DOCUMENT_TREE
+      ) {
         await verifySpaceRole(spaceId, user.id, "owner");
       } else {
         await verifySpaceRole(spaceId, user.id, "editor");

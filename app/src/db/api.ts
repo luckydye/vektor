@@ -368,6 +368,51 @@ export async function verifyDocumentRole(
   }
 }
 
+export async function verifyCategoryRole(
+  spaceId: string,
+  categoryId: string,
+  userId: string | null,
+  requiredRole: string,
+): Promise<void> {
+  if (!userId) {
+    const hasPublicAccess = await hasPermission(
+      spaceId,
+      ResourceType.CATEGORY,
+      categoryId,
+      "",
+      requiredRole,
+      ["public"],
+    );
+    if (!hasPublicAccess) {
+      throw unauthorizedResponse();
+    }
+    return;
+  }
+
+  const userGroups = await getUserGroups(userId);
+  const hasCategoryRole = await hasPermission(
+    spaceId,
+    ResourceType.CATEGORY,
+    categoryId,
+    userId,
+    requiredRole,
+    userGroups,
+  );
+  if (hasCategoryRole) return;
+
+  const hasSpaceRole = await hasPermission(
+    spaceId,
+    ResourceType.SPACE,
+    spaceId,
+    userId,
+    requiredRole,
+    userGroups,
+  );
+  if (!hasSpaceRole) {
+    throw forbiddenResponse();
+  }
+}
+
 /**
  * Verify user has access to a specific feature, throws 403 if not.
  *

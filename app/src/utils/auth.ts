@@ -8,6 +8,7 @@ import {
   tryAuthenticateRequest,
   unauthorizedResponse,
   verifyDocumentRole,
+  verifyCategoryRole,
   verifySpaceRole,
   verifyTokenPermission,
 } from "#db/api.ts";
@@ -28,6 +29,8 @@ async function enforceUserRoleOnTarget(
 ): Promise<void> {
   if (target.type === ResourceType.DOCUMENT) {
     await verifyDocumentRole(spaceId, target.id, userId, requiredRole);
+  } else if (target.type === ResourceType.CATEGORY) {
+    await verifyCategoryRole(spaceId, target.id, userId, requiredRole);
   } else {
     await verifySpaceRole(spaceId, userId, requiredRole);
   }
@@ -91,7 +94,7 @@ export async function authenticateJobTokenOrSpaceRole(
   }
 
   const user = requireUser(context);
-  await verifySpaceRole(spaceId, user.id, requiredRole);
+  await enforceUserRoleOnTarget(spaceId, user.id, requiredRole, target);
   return { type: "user", user };
 }
 

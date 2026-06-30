@@ -943,6 +943,369 @@ describe("ACL API Tests - Access Control", () => {
 
     expect(response.status).toBe(200);
   });
+
+  it("should allow document tree access for descendants", async () => {
+    const treeUserData = await createTestUser("Document Tree User");
+    const treeUserId = treeUserData.userId;
+    const treeUserToken = treeUserData.token;
+    const treeEditorData = await createTestUser("Document Tree Editor");
+    const treeEditorId = treeEditorData.userId;
+    const treeEditorToken = treeEditorData.token;
+
+    const rootResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Tree Root",
+          properties: { title: "Tree Root" },
+        }),
+      },
+    );
+    const root = (await rootResponse.json()).document;
+
+    const childResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Tree Child",
+          properties: { title: "Tree Child" },
+          parentId: root.id,
+        }),
+      },
+    );
+    const child = (await childResponse.json()).document;
+
+    const grandchildResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Tree Grandchild",
+          properties: { title: "Tree Grandchild" },
+          parentId: child.id,
+        }),
+      },
+    );
+    const grandchild = (await grandchildResponse.json()).document;
+
+    const siblingResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Tree Sibling",
+          properties: { title: "Tree Sibling" },
+        }),
+      },
+    );
+    const sibling = (await siblingResponse.json()).document;
+
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: treeUserId,
+        resourceType: "document_tree",
+        resourceId: root.id,
+        action: "grant",
+      }),
+    });
+
+    for (const documentId of [root.id, child.id, grandchild.id]) {
+      const response = await apiRequest(
+        `/api/v1/spaces/${testSpaceId}/documents/${documentId}`,
+        treeUserToken,
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const siblingAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${sibling.id}`,
+      treeUserToken,
+    );
+    expect(siblingAccess.status).toBe(403);
+
+    const viewerWrite = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${child.id}`,
+      treeUserToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "# Viewer should not edit tree child" }),
+      },
+    );
+    expect(viewerWrite.status).toBe(403);
+
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: treeEditorId,
+        resourceType: "document_tree",
+        resourceId: root.id,
+        action: "grant",
+      }),
+    });
+
+    const editorWrite = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${grandchild.id}`,
+      treeEditorToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "# Editor can edit tree grandchild" }),
+      },
+    );
+    expect(editorWrite.status).toBe(200);
+
+    const childrenResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${root.id}/children`,
+      treeUserToken,
+    );
+    expect(childrenResponse.status).toBe(200);
+    const childrenData = await childrenResponse.json();
+    expect(childrenData.children.map((doc: any) => doc.id)).toContain(child.id);
+
+    const futureChildResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Future Tree Child",
+          properties: { title: "Future Tree Child" },
+          parentId: root.id,
+        }),
+      },
+    );
+    const futureChild = (await futureChildResponse.json()).document;
+
+    const futureAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${futureChild.id}`,
+      treeUserToken,
+    );
+    expect(futureAccess.status).toBe(200);
+
+    await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${child.id}`,
+      session1Token,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ parentId: null }),
+      },
+    );
+
+    const movedChildAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${child.id}`,
+      treeUserToken,
+    );
+    expect(movedChildAccess.status).toBe(403);
+
+    const movedGrandchildAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${grandchild.id}`,
+      treeUserToken,
+    );
+    expect(movedGrandchildAccess.status).toBe(403);
+  });
+
+  it("should allow category-specific access", async () => {
+    const categoryUserData = await createTestUser("Category ACL User");
+    const categoryUserId = categoryUserData.userId;
+    const categoryUserToken = categoryUserData.token;
+    const categoryEditorData = await createTestUser("Category ACL Editor");
+    const categoryEditorId = categoryEditorData.userId;
+    const categoryEditorToken = categoryEditorData.token;
+    const unique = Date.now();
+
+    const categoryResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Category ACL",
+          slug: `category-acl-${unique}`,
+        }),
+      },
+    );
+    const sharedCategory = (await categoryResponse.json()).category;
+
+    const otherCategoryResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Other Category ACL",
+          slug: `other-category-acl-${unique}`,
+        }),
+      },
+    );
+    const otherCategory = (await otherCategoryResponse.json()).category;
+
+    const documentResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Category ACL Document",
+          properties: {
+            title: "Category ACL Document",
+            category: sharedCategory.slug,
+          },
+        }),
+      },
+    );
+    const sharedDocument = (await documentResponse.json()).document;
+
+    const childDocumentResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Category ACL Child Document",
+          properties: {
+            title: "Category ACL Child Document",
+          },
+          parentId: sharedDocument.id,
+        }),
+      },
+    );
+    const childDocument = (await childDocumentResponse.json()).document;
+
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: categoryUserId,
+        resourceType: "category",
+        resourceId: sharedCategory.id,
+        action: "grant",
+      }),
+    });
+
+    const listResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories`,
+      categoryUserToken,
+    );
+    expect(listResponse.status).toBe(200);
+    const listData = await listResponse.json();
+    expect(listData.categories.map((category: any) => category.id)).toContain(
+      sharedCategory.id,
+    );
+    expect(listData.categories.map((category: any) => category.id)).not.toContain(
+      otherCategory.id,
+    );
+
+    const getResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${sharedCategory.id}`,
+      categoryUserToken,
+    );
+    expect(getResponse.status).toBe(200);
+
+    const documentAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${sharedDocument.id}`,
+      categoryUserToken,
+    );
+    expect(documentAccess.status).toBe(200);
+
+    const childDocumentAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${childDocument.id}`,
+      categoryUserToken,
+    );
+    expect(childDocumentAccess.status).toBe(200);
+
+    const categoryViewerDocumentWrite = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${childDocument.id}`,
+      categoryUserToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "# Viewer should not edit category child" }),
+      },
+    );
+    expect(categoryViewerDocumentWrite.status).toBe(403);
+
+    const categoryViewerCategoryWrite = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${sharedCategory.id}`,
+      categoryUserToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          name: "Category ACL viewer edit denied",
+          slug: sharedCategory.slug,
+        }),
+      },
+    );
+    expect(categoryViewerCategoryWrite.status).toBe(403);
+
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: categoryEditorId,
+        resourceType: "category",
+        resourceId: sharedCategory.id,
+        action: "grant",
+      }),
+    });
+
+    const categoryEditorDocumentWrite = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${childDocument.id}`,
+      categoryEditorToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content: "# Category editor can edit child" }),
+      },
+    );
+    expect(categoryEditorDocumentWrite.status).toBe(200);
+
+    const categoryEditorCategoryWrite = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${sharedCategory.id}`,
+      categoryEditorToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          name: sharedCategory.name,
+          slug: sharedCategory.slug,
+        }),
+      },
+    );
+    expect(categoryEditorCategoryWrite.status).toBe(200);
+
+    const otherCategoryAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${otherCategory.id}`,
+      categoryUserToken,
+    );
+    expect(otherCategoryAccess.status).toBe(403);
+
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: categoryUserId,
+        resourceType: "category",
+        resourceId: sharedCategory.id,
+        action: "revoke",
+      }),
+    });
+
+    const revokedDocumentAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${sharedDocument.id}`,
+      categoryUserToken,
+    );
+    expect(revokedDocumentAccess.status).toBe(403);
+  });
 });
 
 describe("ACL API Tests - Search Access Control", () => {
