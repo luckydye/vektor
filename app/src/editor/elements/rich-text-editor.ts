@@ -20,27 +20,19 @@ if (typeof customElements !== "undefined" && !customElements.get("rich-text-edit
       private editor: Editor | null = null;
       private lastValue = "";
 
-      static get observedAttributes() {
-        return ["value"];
-      }
-
       connectedCallback() {
-        this.lastValue = this.getAttribute("value") ?? "";
+        // Like <textarea>, read initial content from child text if the value
+        // property wasn't already set programmatically before connect.
+        if (!this.lastValue) {
+          this.lastValue = this.textContent?.trim() ?? "";
+        }
+        this.textContent = "";
         this.mountEditor();
       }
 
       disconnectedCallback() {
         this.editor?.destroy();
         this.editor = null;
-      }
-
-      attributeChangedCallback(name: string, _old: string, newValue: string) {
-        if (name === "value") {
-          const v = newValue ?? "";
-          if (!this.editor || v === this.lastValue) return;
-          this.lastValue = v;
-          this.editor.commands.setContent(messageMarkdownToHtml(v), { emitUpdate: false });
-        }
       }
 
       private mountEditor() {
@@ -96,8 +88,9 @@ if (typeof customElements !== "undefined" && !customElements.get("rich-text-edit
       }
 
       set value(v: string) {
-        if (!this.editor || v === this.lastValue) return;
+        if (v === this.lastValue) return;
         this.lastValue = v;
+        if (!this.editor) return;
         this.editor.commands.setContent(messageMarkdownToHtml(v), { emitUpdate: false });
       }
     },
