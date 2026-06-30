@@ -644,6 +644,18 @@ export async function searchDocuments(
     accessibleResults = accessibleResults.filter((r) => {
       const ua = normalizeTimestamp(r.updatedAt as string | number | Date);
       for (const df of dateFilters) {
+        if (df.value?.includes("/")) {
+          const [startStr, endStr] = df.value.split("/");
+          const rangeStart = startStr ? new Date(startStr) : null;
+          const rangeEnd = endStr ? new Date(endStr) : null;
+          if (rangeStart && ua < rangeStart) return false;
+          if (rangeEnd) {
+            const dayAfterEnd = new Date(rangeEnd);
+            dayAfterEnd.setDate(dayAfterEnd.getDate() + 1);
+            if (ua >= dayAfterEnd) return false;
+          }
+          continue;
+        }
         switch (df.value) {
           case "today":
             if (ua < todayStart) return false;

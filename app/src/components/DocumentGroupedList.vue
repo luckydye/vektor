@@ -11,7 +11,7 @@ import {
   searchIcon,
 } from "~/src/assets/icons.ts";
 import type { Category, DocumentWithProperties } from "../api/client.ts";
-import { formatDate } from "../utils/utils.ts";
+import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
 
 const props = defineProps<{
   items: DocumentWithProperties[];
@@ -101,16 +101,16 @@ const filtered = computed(() => {
   }
   if (dateRangeStart.value) {
     const start = dateRangeStart.value.getTime();
-    docs = docs.filter((d) => new Date(d.updatedAt).getTime() >= start);
+    docs = docs.filter((d) => normalizeTimestamp(d.updatedAt).getTime() >= start);
   }
   if (dateRangeEnd.value) {
     // include the full end day
     const end = new Date(dateRangeEnd.value);
     end.setDate(end.getDate() + 1);
-    docs = docs.filter((d) => new Date(d.updatedAt).getTime() < end.getTime());
+    docs = docs.filter((d) => normalizeTimestamp(d.updatedAt).getTime() < end.getTime());
   }
   return [...docs].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    (a, b) => normalizeTimestamp(b.updatedAt).getTime() - normalizeTimestamp(a.updatedAt).getTime(),
   );
 });
 
@@ -118,8 +118,8 @@ const filtered = computed(() => {
 
 const GROUP_ORDER = ["Today", "Yesterday", "Earlier this week", "Earlier this month", "Older"];
 
-function getTimeGroup(date: Date | string): string {
-  const d = new Date(date);
+function getTimeGroup(date: Date | string | number): string {
+  const d = normalizeTimestamp(date);
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterdayStart = new Date(todayStart);
