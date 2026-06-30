@@ -7,6 +7,7 @@ export interface ExcelExportConfig {
   sheetNameColumn: string;
   splitColumn: string;
   delimiter: string;
+  parseBoldHeadings: boolean;
 }
 
 const props = defineProps<{
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 const sheetNameColumn = ref(props.columns[0] ?? "");
 const splitColumn = ref(props.columns[props.columns.length - 1] ?? "");
 const delimiter = ref("---");
+const parseBoldHeadings = ref(true);
 
 watch(() => props.columns, (cols) => {
   if (!cols.includes(sheetNameColumn.value)) sheetNameColumn.value = cols[0] ?? "";
@@ -35,6 +37,7 @@ function submit() {
     sheetNameColumn: sheetNameColumn.value,
     splitColumn: splitColumn.value,
     delimiter: delimiter.value,
+    parseBoldHeadings: parseBoldHeadings.value,
   });
 }
 </script>
@@ -86,6 +89,15 @@ function submit() {
             placeholder="---"
             class="rounded-sm border border-neutral-200 bg-background px-2 py-1 text-size-small font-mono text-neutral-700 focus:outline-none focus:border-primary-400"
           />
+        </label>
+
+        <label class="flex items-center gap-2xs cursor-pointer select-none">
+          <input
+            v-model="parseBoldHeadings"
+            type="checkbox"
+            class="rounded-xs accent-primary-600"
+          />
+          <span class="text-size-small font-medium text-neutral-700">Parse <code class="font-mono bg-neutral-100 px-1 rounded-xs">**bold headings**</code> as columns</span>
         </label>
       </div>
 

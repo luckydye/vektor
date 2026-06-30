@@ -83,6 +83,37 @@ function downloadExcel() {
   showExportDialog.value = true;
 }
 
+function parseBoldSection(text: string): Record<string, string> | null {
+  // Match **Heading** followed by its content up to the next **Heading** or end
+  const regex = /\*\*([^*\n]+)\*\*\s*\n?([\s\S]*?)(?=\n\*\*[^*\n]+\*\*|$)/g;
+  const result: Record<string, string> = {};
+  let found = false;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    found = true;
+    result[match[1].trim()] = match[2].trim();
+  }
+  return found ? result : null;
+}
+
+function buildSubSheetRows(sections: string[], parseBold: boolean): string[][] {
+  if (!parseBold) return sections.map((s) => [s]);
+
+  const parsed = sections.map(parseBoldSection).filter((r): r is Record<string, string> => r !== null);
+  if (parsed.length === 0) return sections.map((s) => [s]);
+
+  // Union of all keys in order of first appearance
+  const keyOrder: string[] = [];
+  const keySet = new Set<string>();
+  for (const record of parsed) {
+    for (const k of Object.keys(record)) {
+      if (!keySet.has(k)) { keySet.add(k); keyOrder.push(k); }
+    }
+  }
+
+  return [keyOrder, ...parsed.map((r) => keyOrder.map((k) => r[k] ?? ""))];
+}
+
 function handleExportDownload(config: ExcelExportConfig) {
   showExportDialog.value = false;
   const tableColumns = columns.value;
@@ -113,7 +144,7 @@ function handleExportDownload(config: ExcelExportConfig) {
       ? content.split(del).map((s) => s.trim()).filter(Boolean)
       : [content];
 
-    sheets.push({ name: sheetName, rows: sections.map((s) => [s]) });
+    sheets.push({ name: sheetName, rows: buildSubSheetRows(sections, config.parseBoldHeadings) });
   }
 
   downloadExcelSheets(sheets, props.exportFileName ?? "data.xlsx");
