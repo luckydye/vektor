@@ -285,6 +285,27 @@ function themedStroke(stroke: FreehandStroke, defaultInkColor: string): Freehand
   };
 }
 
+function drawShapeOutline(
+  context: CanvasRenderingContext2D,
+  bounds: { x: number; y: number; width: number; height: number; type?: string },
+  transform: WorldTransform,
+  strokeStyle: string,
+) {
+  const expand = bounds.type === "section" ? 4 : 2;
+  const sx = bounds.x * transform.scale + transform.dx - expand;
+  const sy = bounds.y * transform.scale + transform.dy - expand;
+  const sw = bounds.width * transform.scale + expand * 2;
+  const sh = bounds.height * transform.scale + expand * 2;
+  const r = Math.max(0, 8 * transform.scale + expand);
+  context.save();
+  context.strokeStyle = strokeStyle;
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.roundRect(sx, sy, sw, sh, r);
+  context.stroke();
+  context.restore();
+}
+
 export function renderCanvasInk(params: {
   context: CanvasRenderingContext2D;
   dpr: number;
@@ -294,6 +315,8 @@ export function renderCanvasInk(params: {
   activeStroke: FreehandStroke | null;
   selectedStrokeIds: Set<string>;
   remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
+  selectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string }>;
+  remoteSelectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string; color: string }>;
   snapGuides: SnapGuide[];
   defaultInkColor: string;
 }) {
@@ -306,6 +329,8 @@ export function renderCanvasInk(params: {
     activeStroke,
     selectedStrokeIds,
     remoteSelectedStrokeIds = [],
+    selectedShapeBounds = [],
+    remoteSelectedShapeBounds = [],
     snapGuides,
     defaultInkColor,
   } = params;
@@ -345,6 +370,14 @@ export function renderCanvasInk(params: {
       drawFreehandOutline(context, stroke, transform, 4);
     }
     context.restore();
+  }
+
+  for (const bounds of selectedShapeBounds) {
+    drawShapeOutline(context, bounds, transform, "#2563eb");
+  }
+
+  for (const bounds of remoteSelectedShapeBounds) {
+    drawShapeOutline(context, bounds, transform, bounds.color);
   }
 
   drawSnapGuides(context, snapGuides, transform, screen, {

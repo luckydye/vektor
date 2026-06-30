@@ -1048,6 +1048,17 @@ function renderInk() {
     activeStroke: activeFreehandStroke,
     selectedStrokeIds: selectedStrokeIds.value,
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
+    selectedShapeBounds: [...selectedShapeIds.value]
+      .map((id) => shapesById.value.get(id))
+      .filter((s) => s != null),
+    remoteSelectedShapeBounds: remoteCanvasDomSelections.value.map((s) => ({
+      x: s.bounds.x,
+      y: s.bounds.y,
+      width: s.bounds.width,
+      height: s.bounds.height,
+      type: s.bounds.type,
+      color: s.cursorColor,
+    })),
     snapGuides: activeSnapGuides,
     defaultInkColor: defaultInkColor(),
   });
@@ -2348,11 +2359,16 @@ watch(
 
 watch(selectedShapeIds, () => {
   renderImages();
+  renderInk();
   updatePresence();
 });
 
 watch(selectedStrokeIds, () => {
   updatePresence();
+});
+
+watch(remoteCanvasDomSelections, () => {
+  renderInk();
 });
 
 watch(remoteCanvasStrokeSelections, () => {
@@ -2680,22 +2696,8 @@ onUnmounted(() => {
         class="canvas-world"
         :style="{
           transform: `translate(${transform.dx}px, ${transform.dy}px) scale(${transform.scale})`,
-          '--canvas-scale': transform.scale,
         }"
       >
-        <div
-          v-for="selection in remoteCanvasDomSelections"
-          :key="`${selection.clientId}:${selection.itemId}`"
-          class="canvas-remote-selection"
-          :style="{
-            left: `${selection.bounds.x}px`,
-            top: `${selection.bounds.y}px`,
-            width: `${selection.bounds.width}px`,
-            height: `${selection.bounds.height}px`,
-            '--presence-color': selection.cursorColor,
-          }"
-        >
-        </div>
         <article
           v-for="shape in domShapes"
           :key="shape.id"
@@ -3216,15 +3218,6 @@ onUnmounted(() => {
   will-change: transform;
 }
 
-.canvas-remote-selection {
-  position: absolute;
-  z-index: 4;
-  box-sizing: border-box;
-  border-radius: 8px;
-  outline: calc(2px / var(--canvas-scale, 1)) solid var(--presence-color);
-  outline-offset: calc(2px / var(--canvas-scale, 1));
-  pointer-events: none;
-}
 
 .canvas-context-menu {
   position: absolute;
@@ -3350,10 +3343,6 @@ onUnmounted(() => {
   content-visibility: auto;
 }
 
-.canvas-shape.selected {
-  outline: calc(2px / var(--canvas-scale, 1)) solid #2563eb;
-  outline-offset: calc(2px / var(--canvas-scale, 1));
-}
 
 .canvas-shape.text {
   min-width: 32px;
@@ -3410,9 +3399,6 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.canvas-shape.section.selected {
-  outline-offset: calc(4px / var(--canvas-scale, 1));
-}
 
 .canvas-shape.section .canvas-section-header,
 .canvas-shape.section .canvas-section-title,
