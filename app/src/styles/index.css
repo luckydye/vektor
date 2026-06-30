@@ -84,6 +84,6 @@ body {
 }
 
 * {
-  scrollbar-color: var(--color-neutral-500) transparent;
+  scrollbar-color: var(--color-neutral-200) transparent;
   scrollbar-width: thin;
 }
