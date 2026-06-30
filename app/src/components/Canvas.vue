@@ -71,7 +71,7 @@ import type {
 import { useCollaboration } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
-import CanvasTextEditor from "./CanvasTextEditor.vue";
+import "../canvas/elements/text-editor.ts";
 import { extensions } from "../utils/extensions.ts";
 import {
   filenameFromUrl,
@@ -2855,13 +2855,14 @@ onUnmounted(() => {
               </div>
             </div>
           </a>
-          <CanvasTextEditor
+          <canvas-text-editor
             v-else-if="shape.type !== 'section'"
-            :model-value="shape.text"
+            class="canvas-shape-textwrap"
+            :value="shape.text"
             :shape-id="shape.id"
-            @update:model-value="updateShapeText(shape, $event)"
-            @focus="selectOnlyShape(shape.id)"
-            @blur="handleTextBlur(shape, $event)"
+            @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
+            @editor-focus="selectOnlyShape(shape.id)"
+            @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
             @pointerdown.stop="shape.type === 'text' && startShapeDrag(shape, $event)"
           />
           <button
@@ -3645,18 +3646,57 @@ onUnmounted(() => {
   flex: 1 1 auto;
 }
 
+.canvas-shape-textwrap :deep(.canvas-shape-text) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  color: var(--canvas-text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.35;
+  outline: none;
+  overflow: hidden;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.canvas-shape-textwrap :deep(.canvas-shape-text p) {
+  margin: 0;
+}
+
+.canvas-shape-textwrap :deep(.canvas-shape-text ul) {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.25rem 0;
+}
+
+.canvas-shape-textwrap :deep(.canvas-shape-text ol) {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.25rem 0;
+}
+
+.canvas-shape-textwrap :deep(.canvas-shape-text li) {
+  display: list-item;
+  margin: 0.125rem 0;
+}
+
+.canvas-shape-textwrap :deep(.canvas-shape-text li > p) {
+  display: inline;
+}
+
 /* Text shapes auto-size to their content via TipTap's natural height. */
 .canvas-shape.text .canvas-shape-textwrap {
   display: block;
 }
 
 .canvas-shape.text :deep(.canvas-shape-text) {
-  box-sizing: border-box;
-  padding: 10px 12px;
-  font: inherit;
   font-size: 20px;
   font-weight: 650;
-  line-height: 1.35;
   cursor: move;
   white-space: pre-wrap;
   word-break: break-word;
