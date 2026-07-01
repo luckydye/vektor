@@ -254,7 +254,7 @@ Actions.register("ui:toggle:palatte", {
                     :class="index === selectedIndex ? 'text-primary-600' : 'text-neutral-400'"
                     v-html="result.type === 'document' ? documentIcon : boltIcon"
                   />
-                  <div class="flex-1 min-w-0 flex items-center gap-2">
+                  <div class="flex-1 min-w-0 flex flex-col py-1.5 gap-2">
                     <span class="text-size-medium truncate font-normal">
                       {{ result.type === "document"
                         ? (result.data.properties?.title || "Untitled Document")
@@ -262,13 +262,13 @@ Actions.register("ui:toggle:palatte", {
                     </span>
                     <span
                       v-if="result.type === 'document' && getLastVisited(result.data)"
-                      class="text-size-small text-neutral flex-none"
+                      class="text-size-small text-neutral flex-none opacity-50"
                     >
                       {{ formatRelativeTime(getLastVisited(result.data)) }}
                     </span>
                     <span
                       v-if="result.type === 'action' && result.data.description"
-                      class="text-size-small text-neutral truncate"
+                      class="text-size-small text-neutral truncate opacity-50"
                     >
                       {{ result.data.description }}
                     </span>
