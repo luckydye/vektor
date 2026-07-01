@@ -10,7 +10,8 @@ import {
   documentIcon,
 } from "~/src/assets/icons.ts";
 import type { Category, DocumentWithProperties } from "../api/client.ts";
-import { formatDate, normalizeTimestamp } from "../utils/utils.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { formatDate, normalizeTimestamp, spacePath } from "../utils/utils.ts";
 
 const props = defineProps<{
   items: DocumentWithProperties[];
@@ -18,6 +19,8 @@ const props = defineProps<{
   emptyText?: string;
   showToolbar?: boolean;
 }>();
+
+const { currentSpace } = useSpace();
 
 defineSlots<{
   "batch-actions"(props: { selectedIds: Set<string>; deselectAll: () => void }): unknown;
@@ -300,7 +303,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
 
             <!-- Link: doc icon + title + meta + badge + date -->
             <a
-              :href="doc.fileUrl ?? `/doc/${doc.slug}`"
+              :href="doc.fileUrl ?? spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
               :target="doc.fileUrl ? '_blank' : undefined"
               :rel="doc.fileUrl ? 'noopener noreferrer' : undefined"
               class="flex flex-1 items-center gap-3 px-3 py-2.5 min-w-0"

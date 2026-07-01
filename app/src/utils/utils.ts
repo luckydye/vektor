@@ -255,6 +255,16 @@ export function detectAppType(
 }
 
 /**
+ * Build a full space-scoped URL from a base-relative path (e.g. "/doc/foo").
+ * The router base is "/{spaceSlug}/", so anchor `href` attributes must include
+ * the space slug for middle-click / open-in-new-tab to resolve on the server.
+ */
+export function spacePath(spaceSlug: string | null | undefined, path: string): string {
+  if (!spaceSlug) return path;
+  return `/${spaceSlug}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/**
  * Strip all script tags from HTML content to prevent XSS attacks
  */
 export function stripScriptTags(html: string): string {

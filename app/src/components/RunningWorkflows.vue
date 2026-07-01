@@ -3,9 +3,12 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
-import { normalizeTimestamp } from "../utils/utils.ts";
+import { normalizeTimestamp, spacePath } from "../utils/utils.ts";
 import Pager from "./Pager.vue";
+
+const { currentSpace } = useSpace();
 
 type WorkflowRun = {
   runId: string;
@@ -69,8 +72,8 @@ onUnmounted(() => {
 });
 
 function docHref(run: WorkflowRun): string {
-  if (run.documentSlug) return `/doc/${run.documentSlug}`;
-  return "/";
+  if (run.documentSlug) return spacePath(currentSpace.value?.slug, `/doc/${run.documentSlug}`);
+  return spacePath(currentSpace.value?.slug, "/");
 }
 
 function isActive(run: WorkflowRun): boolean {

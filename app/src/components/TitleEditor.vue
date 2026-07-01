@@ -19,7 +19,11 @@
 import { nextTick, ref, watch } from "vue";
 import { starFilledIcon } from "~/src/assets/icons.ts";
 import { api } from "../api/client.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import { replaceBrowserUrl } from "../utils/browserHistory.ts";
+import { spacePath } from "../utils/utils.ts";
+
+const { currentSpace } = useSpace();
 
 const props = withDefaults(
   defineProps<{
@@ -97,7 +101,7 @@ async function updateTitle() {
       if (newSlug) {
         const currentPath = window.location.pathname;
         if (/\/doc\/[^/]+/.test(currentPath)) {
-          replaceBrowserUrl(`/doc/${newSlug}`);
+          replaceBrowserUrl(spacePath(currentSpace.value?.slug, `/doc/${newSlug}`));
         }
       }
     } catch (error) {

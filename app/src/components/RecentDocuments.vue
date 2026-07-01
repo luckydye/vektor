@@ -3,12 +3,16 @@ import "@atrium-ui/elements/track";
 import { computed } from "vue";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { spacePath } from "../utils/utils.ts";
 import DocumentTeaser from "./DocumentTeaser.vue";
 
 const props = defineProps<{
   spaceId: string;
   limit?: number;
 }>();
+
+const { currentSpace } = useSpace();
 
 const TEASER_TYPES = new Set(["document", "canvas", "database"]);
 const count = props.limit ?? 5;
@@ -51,7 +55,7 @@ const docs = computed(() => docsData.value ?? []);
 
       <!-- Trailing "view all" card -->
       <a
-        href="/search"
+        :href="spacePath(currentSpace?.slug, '/search')"
         class="group flex-none w-60 block pr-4"
       >
         <div class="aspect-video rounded-xl border-2 border-dashed border-neutral-200 flex items-center justify-center group-hover:border-neutral-300 transition-colors">

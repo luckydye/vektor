@@ -45,6 +45,7 @@
 import { computed } from "vue";
 import { chevronRightThinIcon } from "~/src/assets/icons.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { spacePath } from "../utils/utils.ts";
 
 const props = defineProps({
   doc: {
@@ -95,6 +96,6 @@ const isActive = computed(() => {
 });
 
 function getDocumentUrl(docSlug) {
-  return `/doc/${docSlug}`;
+  return spacePath(currentSpace.value?.slug, `/doc/${docSlug}`);
 }
 </script>

@@ -93,7 +93,10 @@ function handleDocumentClick(e: MouseEvent) {
   if (!path) return;
 
   e.preventDefault();
-  router.push(path);
+  // Anchors carry the full space-scoped URL (e.g. "/{spaceSlug}/doc/foo") so
+  // middle-click / open-in-new-tab resolve on the server. Strip the router base
+  // before pushing so the SPA matches the base-relative route records.
+  router.push(stripRouterBase(path, routerBase));
 }
 
 const instance = getCurrentInstance();

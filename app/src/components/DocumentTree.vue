@@ -14,7 +14,7 @@ import { useCategoryDocuments } from "../composeables/useCategoryDocuments.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
-import { getTextColor } from "../utils/utils.ts";
+import { getTextColor, spacePath } from "../utils/utils.ts";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();
@@ -383,7 +383,7 @@ defineExpose({ isEditMode, toggleEditMode });
             <!-- New Document Button (shown on hover, hidden in edit mode, editors only) -->
             <a
               v-if="!isEditMode && canEdit(currentSpace?.userRole)"
-              :href="`/new?category=${category.slug}`"
+              :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
               class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-all shrink-0 mr-2 flex items-center gap-1"
               title="New document in this category"
               @click.stop

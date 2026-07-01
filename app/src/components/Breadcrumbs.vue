@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useSpace } from "../composeables/useSpace.ts";
+import { spacePath } from "../utils/utils.ts";
 
 interface BreadcrumbItem {
   id: string;
@@ -26,6 +28,8 @@ const props = withDefaults(defineProps<Props>(), {
   category: null,
 });
 
+const { currentSpace } = useSpace();
+
 const showBreadcrumbs = computed(() => props.category || props.parents.length > 0);
 </script>
 
@@ -35,7 +39,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
       <!-- Category -->
       <li v-if="category" class="flex items-center gap-1.5">
         <a
-          :href="`/?category=${category.slug}`"
+          :href="spacePath(currentSpace?.slug, `/?category=${category.slug}`)"
           class="inline-flex items-center gap-1.5 hover:text-neutral-900 hover:underline transition-colors"
         >
           <span v-if="category.icon" class="text-base">{{ category.icon }}</span>
@@ -47,7 +51,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
       <!-- Parent Documents -->
       <li v-for="parent in parents" :key="parent.id" class="flex items-center gap-1.5">
         <a
-          :href="`/doc/${parent.slug}`"
+          :href="spacePath(currentSpace?.slug, `/doc/${parent.slug}`)"
           class="hover:text-neutral-900 hover:underline transition-colors truncate max-w-[200px] px-1"
           :title="parent.title"
         >

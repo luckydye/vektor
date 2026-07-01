@@ -17,6 +17,7 @@ import { type Space as ApiSpace, useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
 import { extensions } from "../utils/extensions.ts";
 import { t } from "../utils/lang.ts";
+import { spacePath } from "../utils/utils.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
 import DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
@@ -190,7 +191,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
               class="flex-1"
               :icon="homeIcon"
               :text="t('Home')"
-              href="/"
+              :href="spacePath(currentSpace?.slug, '/')"
               :is-active="activeRoute === 'home'"
           />
           <button
@@ -205,13 +206,13 @@ Actions.mapShortcut("meta-shift-f", "find:open");
             v-if="userCanAccessSettings"
             :icon="settingsIcon"
             :text="t('Settings')"
-            href="/settings"
+            :href="spacePath(currentSpace?.slug, '/settings')"
             :is-active="activeRoute === 'settings'"
         />
         <MenuLink
             :icon="searchIcon"
             :text="t('Find')"
-            href="/search"
+            :href="spacePath(currentSpace?.slug, '/search')"
             :is-active="activeRoute === 'search'"
         >
             <a-shortcut class="ml-6 flex-none @max-xs:hidden!" data-shortcut="cmd-shift-f"></a-shortcut>
@@ -225,7 +226,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
             :key="`${link.extensionId}-${link.route}`"
             :icon="link.icon || puzzleIcon"
             :text="link.title"
-            :href="`/x/${link.route}`"
+            :href="spacePath(currentSpace?.slug, `/x/${link.route}`)"
             :is-active="activeRoute === `x/${link.route}`"
         />
     </div>

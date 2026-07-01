@@ -5,6 +5,7 @@ import { api, type DocumentWithProperties } from "../api/client.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import docStyles from "../styles/document.css?inline";
+import { spacePath } from "../utils/utils.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -55,7 +56,7 @@ async function unpin() {
   <div class="overflow-hidden mb-10">
     <div class="flex items-center justify-between">
       <a
-        :href="doc ? `/doc/${doc.slug}` : undefined"
+        :href="doc ? spacePath(currentSpace?.slug, `/doc/${doc.slug}`) : undefined"
         class="flex items-center gap-2 group"
       >
         <div class="svg-icon w-3.5 h-3.5 text-amber-500 shrink-0" v-html="pinPushpinIcon" />
@@ -77,7 +78,7 @@ async function unpin() {
     <div class="relative overflow-hidden">
       <template v-if="doc && doc.type && doc.type !== 'document'">
         <a
-          :href="`/doc/${doc.slug}`"
+          :href="spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
           class="mt-3 flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 hover:bg-neutral-100 transition-colors"
         >
           <span class="text-size-medium font-medium text-neutral-800">{{ doc.properties?.title || 'Untitled' }}</span>

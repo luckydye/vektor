@@ -5,6 +5,10 @@ import { downloadExcelSheets, sanitizeSheetName } from "../utils/excelExport.ts"
 import type { ExcelSheet } from "../utils/excelExport.ts";
 import ExcelExportDialog from "./ExcelExportDialog.vue";
 import type { ExcelExportConfig } from "./ExcelExportDialog.vue";
+import { useSpace } from "../composeables/useSpace.ts";
+import { spacePath } from "../utils/utils.ts";
+
+const { currentSpace } = useSpace();
 
 const PAGE_SIZE = 10;
 const DEFAULT_COL_WIDTH = 200;
@@ -158,7 +162,7 @@ function documentHref(column: string, value: unknown): string | null {
   if (!isDocumentIdColumn(column)) return null;
   const text = cellText(value).trim();
   if (!text) return null;
-  return `/doc/${encodeURIComponent(text)}`;
+  return spacePath(currentSpace.value?.slug, `/doc/${encodeURIComponent(text)}`);
 }
 
 // Column resizing

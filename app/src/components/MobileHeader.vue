@@ -14,7 +14,7 @@
       </span>
 
       <a
-        href="/search"
+        :href="spacePath(currentSpace?.slug, '/search')"
         class="flex items-center justify-center w-9 h-9 rounded-lg transition-colors"
         :class="isSearchActive ? 'text-primary-600 bg-primary-50' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'"
       >
@@ -29,6 +29,8 @@
 import { computed } from "vue";
 import { menuIcon, searchMagnifierIcon } from "~/src/assets/icons.ts";
 import { Actions } from "../utils/actions.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { spacePath } from "../utils/utils.ts";
 
 const props = withDefaults(
   defineProps<{
@@ -40,6 +42,8 @@ const props = withDefaults(
     pathname: "",
   },
 );
+
+const { currentSpace } = useSpace();
 
 const isSearchActive = computed(() => {
   return props.pathname?.includes("/search") || false;

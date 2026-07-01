@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import type { DocumentWithProperties } from "../api/client.ts";
 import { withTransformParams } from "../files/transformUrl.ts";
-import { formatDate } from "../utils/utils.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { formatDate, spacePath } from "../utils/utils.ts";
 
 defineProps<{
   doc: DocumentWithProperties;
 }>();
+
+const { currentSpace } = useSpace();
 
 function teaserImageUrl(url: string): string {
   return withTransformParams(url, { w: 400, format: "webp" });
@@ -26,7 +29,7 @@ function docTags(doc: DocumentWithProperties): string[] {
 
 <template>
   <a
-    :href="doc.fileUrl ?? `/doc/${doc.slug}`"
+    :href="doc.fileUrl ?? spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
     :target="doc.fileUrl ? '_blank' : undefined"
     :rel="doc.fileUrl ? 'noopener noreferrer' : undefined"
     class="group flex-none w-60 block pr-4"

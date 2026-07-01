@@ -84,6 +84,8 @@ const handleVisibilityChange = () => {
   }
 };
 
+resetEditingState();
+
 const collaboration = useCollaboration({
   spaceId: props.spaceId,
   documentId,
@@ -95,7 +97,6 @@ const {
   editing,
   cancelCount,
   hasChanges,
-  resetEditingState,
   shouldMountEditor,
   canMountEditor,
   suggestionSavedCount,
@@ -355,7 +356,6 @@ watch(editing, (isEditing) => {
 onMounted(() => {
   extensions.setActiveCollaboration(collaboration.ydoc.value);
   extensions.setActiveDocumentId(documentId.value ?? null);
-  resetEditingState();
   isMounted.value = true;
 
   window.addEventListener(

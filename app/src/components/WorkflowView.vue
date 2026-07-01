@@ -12,9 +12,11 @@ import {
 import type { WorkflowNodeState, WorkflowRunStatus } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
+import { spacePath } from "../utils/utils.ts";
 import "@atrium-ui/elements/tabs";
 import DataTable from "./DataTable.vue";
 import Pager from "./Pager.vue";
@@ -23,6 +25,8 @@ const props = defineProps<{
   documentId: string;
   spaceId: string;
 }>();
+
+const { currentSpace } = useSpace();
 
 type RunSummary = {
   runId: string;
@@ -305,7 +309,7 @@ watch(outputDocumentId, async (id) => {
     return;
   }
   const doc = await api.document.get(props.spaceId, id);
-  outputDocumentHref.value = `/doc/${doc.slug}`;
+  outputDocumentHref.value = spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`);
   outputDocumentTitle.value =
     (doc as { properties?: { title?: string } }).properties?.title || doc.slug;
 });
@@ -332,7 +336,7 @@ async function toggleHistoryRun(runId: string) {
     const doc = await api.document.get(props.spaceId, docId);
     historyRunDocHrefs.value = new Map([
       ...historyRunDocHrefs.value,
-      [runId, `/doc/${doc.slug}`],
+      [runId, spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`)],
     ]);
     historyRunDocTitles.value = new Map([
       ...historyRunDocTitles.value,

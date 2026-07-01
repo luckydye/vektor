@@ -5,6 +5,10 @@ import { plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "../composeables/useDatabaseRows.ts";
 import { useToast } from "../composeables/useToast.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import { spacePath } from "../utils/utils.ts";
+
+const { currentSpace } = useSpace();
 
 const { error: toastError } = useToast();
 
@@ -244,7 +248,7 @@ const NAME_COL_WIDTH = 240;
               </div>
               <div v-else class="flex items-center gap-2 min-w-0">
                 <a
-                  :href="`/doc/${row.slug}`"
+                  :href="spacePath(currentSpace?.slug, `/doc/${row.slug}`)"
                   class="flex-1 truncate text-neutral-800 font-medium hover:text-primary-600 hover:underline transition-colors"
                 >
                   {{ row.properties.title || "Untitled" }}
