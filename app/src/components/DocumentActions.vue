@@ -335,7 +335,7 @@ watchEffect(() => {
 
         await api.document.archive(currentSpaceId.value, documentId.value);
 
-        router.push(`/${currentSpace.value.slug}`);
+        router.push("/");
       },
     });
   }
