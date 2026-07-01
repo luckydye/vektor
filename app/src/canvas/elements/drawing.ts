@@ -313,27 +313,11 @@ export function renderCanvasInk(params: {
   transform: WorldTransform;
   strokes: CanvasStroke[];
   activeStroke: FreehandStroke | null;
-  selectedStrokeIds: Set<string>;
-  remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
-  selectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string }>;
-  remoteSelectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string; color: string }>;
   snapGuides: SnapGuide[];
   defaultInkColor: string;
 }) {
-  const {
-    context,
-    dpr,
-    screen,
-    transform,
-    strokes,
-    activeStroke,
-    selectedStrokeIds,
-    remoteSelectedStrokeIds = [],
-    selectedShapeBounds = [],
-    remoteSelectedShapeBounds = [],
-    snapGuides,
-    defaultInkColor,
-  } = params;
+  const { context, dpr, screen, transform, strokes, activeStroke, snapGuides, defaultInkColor } =
+    params;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, screen.width, screen.height);
@@ -344,6 +328,35 @@ export function renderCanvasInk(params: {
   if (activeStroke) {
     drawFreehandStroke(context, themedStroke(activeStroke, defaultInkColor), transform);
   }
+
+  drawSnapGuides(context, snapGuides, transform, screen, { color: "#2563eb" });
+}
+
+export function renderCanvasSelections(params: {
+  context: CanvasRenderingContext2D;
+  dpr: number;
+  screen: ScreenSize;
+  transform: WorldTransform;
+  strokes: CanvasStroke[];
+  selectedStrokeIds: Set<string>;
+  remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
+  selectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string }>;
+  remoteSelectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string; color: string }>;
+}) {
+  const {
+    context,
+    dpr,
+    screen,
+    transform,
+    strokes,
+    selectedStrokeIds,
+    remoteSelectedStrokeIds = [],
+    selectedShapeBounds = [],
+    remoteSelectedShapeBounds = [],
+  } = params;
+
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, screen.width, screen.height);
 
   if (selectedStrokeIds.size > 0) {
     context.save();
@@ -379,8 +392,4 @@ export function renderCanvasInk(params: {
   for (const bounds of remoteSelectedShapeBounds) {
     drawShapeOutline(context, bounds, transform, bounds.color);
   }
-
-  drawSnapGuides(context, snapGuides, transform, screen, {
-    color: "#2563eb",
-  });
 }

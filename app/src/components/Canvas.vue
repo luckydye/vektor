@@ -33,6 +33,7 @@ import {
   hitTestCanvasStroke,
   PEN_COLORS,
   renderCanvasInk,
+  renderCanvasSelections,
   startCanvasDrawingStroke,
   strokeStyleFromUnknown,
   toCanvasStroke,
@@ -205,6 +206,7 @@ const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
 const imagesRef = ref<HTMLCanvasElement | null>(null);
+const selectionRef = ref<HTMLCanvasElement | null>(null);
 const imageCache = new Map<string, HTMLImageElement | "loading" | "error">();
 const shapes = shallowRef<CanvasShape[]>([]);
 const strokes = shallowRef<CanvasStroke[]>([]);
@@ -1046,6 +1048,24 @@ function renderInk() {
     transform: transform.value,
     strokes: strokes.value,
     activeStroke: activeFreehandStroke,
+    snapGuides: activeSnapGuides,
+    defaultInkColor: defaultInkColor(),
+  });
+
+  renderSelections();
+}
+
+function renderSelections() {
+  const canvas = selectionRef.value;
+  const context = canvas?.getContext("2d");
+  if (!canvas || !context) return;
+
+  renderCanvasSelections({
+    context,
+    dpr,
+    screen: screen.value,
+    transform: transform.value,
+    strokes: strokes.value,
     selectedStrokeIds: selectedStrokeIds.value,
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
     selectedShapeBounds: [...selectedShapeIds.value]
@@ -1059,8 +1079,6 @@ function renderInk() {
       type: s.bounds.type,
       color: s.cursorColor,
     })),
-    snapGuides: activeSnapGuides,
-    defaultInkColor: defaultInkColor(),
   });
 }
 
@@ -1092,6 +1110,13 @@ function resize() {
     images.height = Math.round(screen.value.height * dpr);
     images.style.width = `${screen.value.width}px`;
     images.style.height = `${screen.value.height}px`;
+  }
+  const selection = selectionRef.value;
+  if (selection) {
+    selection.width = Math.round(screen.value.width * dpr);
+    selection.height = Math.round(screen.value.height * dpr);
+    selection.style.width = `${screen.value.width}px`;
+    selection.style.height = `${screen.value.height}px`;
   }
   renderGrid();
   renderInk();
@@ -2359,20 +2384,21 @@ watch(
 
 watch(selectedShapeIds, () => {
   renderImages();
-  renderInk();
+  renderSelections();
   updatePresence();
 });
 
 watch(selectedStrokeIds, () => {
+  renderSelections();
   updatePresence();
 });
 
 watch(remoteCanvasDomSelections, () => {
-  renderInk();
+  renderSelections();
 });
 
 watch(remoteCanvasStrokeSelections, () => {
-  renderInk();
+  renderSelections();
 });
 
 watch(remoteCanvasImageSelections, () => {
@@ -2692,6 +2718,7 @@ onUnmounted(() => {
       <canvas ref="gridRef" class="canvas-grid"></canvas>
       <canvas ref="imagesRef" class="canvas-images"></canvas>
       <canvas ref="inkRef" class="canvas-ink"></canvas>
+      <canvas ref="selectionRef" class="canvas-selection"></canvas>
       <div
         class="canvas-world"
         :style="{
@@ -3325,7 +3352,8 @@ onUnmounted(() => {
 
 .canvas-grid,
 .canvas-images,
-.canvas-ink {
+.canvas-ink,
+.canvas-selection {
   position: absolute;
   inset: 0;
   display: block;
