@@ -1,5 +1,5 @@
 {
-  "name": "@vektor/api",
+  "name": "@vektorapp/api",
   "version": "0.1.0",
   "description": "Lightweight, read-only client for the Vektor API",
   "type": "module",
