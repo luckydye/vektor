@@ -202,16 +202,14 @@ watch(title, (t) => {
                             ? 'block pointer-events-none absolute top-0 right-0 left-0 z-20 md:right-(--inset-right) md:left-(--inset-left)'
                             : 'mb-xl pt-xs contents',
                 )">
-                    <div class="px-xs md:px-xl mt-4">
+                    <div class="px-xs md:px-xl mt-4 min-h-7">
                         <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
                         <Breadcrumbs v-else :category="docCategory" :parents="parentBreadcrumbs"
                             :currentTitle="title" />
                     </div>
 
-                    <div class="mt-4 mb-4">
-                        <HeaderImage v-if="!isCanvas && !isApp && !isWorkflow" :documentId="doc.id"
-                            :initialSrc="doc.properties?.headerImage ?? null" />
-                    </div>
+                    <HeaderImage v-if="!isCanvas && !isApp && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
+                        :initialSrc="doc.properties?.headerImage ?? null" />
 
                     <inset-view :class="twMerge(
                         'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
@@ -253,13 +251,13 @@ watch(title, (t) => {
                 <inset-view
                     v-if="!editing && !isCanvas"
                     :class="twMerge(
-                    'block flex min-h-7 items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
+                    'flex items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
                       isCanvas && 'pointer-events-auto',
                     )"
                 >
                     <div
-                    v-if="doc.updatedAt"
-                    class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500"
+                        v-if="doc.updatedAt"
+                        class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500"
                     >
                     <ClientOnly>
                         <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
