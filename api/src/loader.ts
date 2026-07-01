@@ -29,6 +29,12 @@ export interface VektorLoaderOptions {
   /** Restrict the initial document listing to these Vektor category slugs. */
   categorySlugs?: string[];
   /**
+   * Names of properties whose value is a JSON-encoded array of image URLs
+   * (e.g. a gallery). In "download" asset mode, each URL is downloaded like
+   * `headerImage` and the property is rewritten to a JSON array of local paths.
+   */
+  imageArrayProperties?: string[];
+  /**
    * Keep only documents whose properties match these values. Use `null` to mean
    * "property must be present with any value".
    */
@@ -43,6 +49,7 @@ interface NormalizedVektorLoaderOptions {
   assetMode: VektorLoaderAssetMode;
   categorySlugs?: string[];
   propertyFilters: Record<string, string | null>;
+  imageArrayProperties: string[];
   filter?: (document: Document) => boolean;
 }
 
@@ -57,8 +64,19 @@ function normalizeOptions(
     assetMode: options.assetMode ?? "download",
     categorySlugs: options.categorySlugs,
     propertyFilters: options.propertyFilters ?? {},
+    imageArrayProperties: options.imageArrayProperties ?? [],
     filter: options.filter,
   };
+}
+
+function parseImageUrlArray(value: string | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((url) => typeof url === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function matchesPropertyFilters(
@@ -294,7 +312,7 @@ export function vektorLoader(
           seen.add(slug);
 
           const rawHeaderImage = full.properties.headerImage ?? null;
-          const [rewrittenContent, headerImageResult] =
+          const [rewrittenContent, headerImageResult, rewrittenImageArrays] =
             options.assetMode === "download"
               ? await Promise.all([
                   content
@@ -303,13 +321,27 @@ export function vektorLoader(
                   rawHeaderImage
                     ? downloadImage(rawHeaderImage, client, assetsDir, urlCache, gate)
                     : null,
+                  Promise.all(
+                    options.imageArrayProperties.map(async (key) => {
+                      const urls = parseImageUrlArray(full.properties[key]);
+                      const downloaded = await Promise.all(
+                        urls.map((url) => downloadImage(url, client, assetsDir, urlCache, gate)),
+                      );
+                      return [key, downloaded.map((result, i) => result?.publicPath ?? urls[i])] as const;
+                    }),
+                  ),
                 ])
-              : [content, null];
+              : [content, null, []];
+
+          const properties = { ...full.properties };
+          for (const [key, urls] of rewrittenImageArrays) {
+            if (key in properties) properties[key] = JSON.stringify(urls);
+          }
 
           store.set({
             id: slug,
             digest: generateDigest({
-              v: 10,
+              v: 11,
               id: doc.id,
               updatedAt: full.updatedAt,
               currentRev: full.currentRev,
@@ -332,7 +364,7 @@ export function vektorLoader(
               updatedAt: full.updatedAt,
               currentRev: full.currentRev,
               publishedRev: full.publishedRev,
-              properties: full.properties,
+              properties,
             },
           });
         }),
