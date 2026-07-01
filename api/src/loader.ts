@@ -4,7 +4,72 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { extname, join } from "path";
 import sharp from "sharp";
 import { fileURLToPath } from "url";
-import type { VektorClient } from "./index.ts";
+import type { Document, VektorClient } from "./index.ts";
+
+export type VektorLoaderRevision = "published" | "current";
+export type VektorLoaderAssetMode = "download" | "remote";
+
+export interface VektorLoaderOptions {
+  /** Space to load. Defaults to the first space visible to the token. */
+  spaceId?: string;
+  /**
+   * Which document content to load.
+   *
+   * - "published" preserves the original loader behavior and skips unpublished documents.
+   * - "current" reads the current document body, including unpublished drafts.
+   */
+  revision?: VektorLoaderRevision;
+  /**
+   * How remote image URLs inside Vektor HTML should be handled.
+   *
+   * - "download" preserves the original loader behavior by caching <img> assets in public/vektor-assets.
+   * - "remote" leaves URLs untouched so the built site serves assets from Vektor.
+   */
+  assetMode?: VektorLoaderAssetMode;
+  /** Restrict the initial document listing to these Vektor category slugs. */
+  categorySlugs?: string[];
+  /**
+   * Keep only documents whose properties match these values. Use `null` to mean
+   * "property must be present with any value".
+   */
+  propertyFilters?: Record<string, string | null>;
+  /** Last-mile filter for custom document selection. */
+  filter?: (document: Document) => boolean;
+}
+
+interface NormalizedVektorLoaderOptions {
+  spaceId?: string;
+  revision: VektorLoaderRevision;
+  assetMode: VektorLoaderAssetMode;
+  categorySlugs?: string[];
+  propertyFilters: Record<string, string | null>;
+  filter?: (document: Document) => boolean;
+}
+
+function normalizeOptions(
+  spaceIdOrOptions?: string | VektorLoaderOptions,
+): NormalizedVektorLoaderOptions {
+  const options =
+    typeof spaceIdOrOptions === "string" ? { spaceId: spaceIdOrOptions } : (spaceIdOrOptions ?? {});
+  return {
+    spaceId: options.spaceId,
+    revision: options.revision ?? "published",
+    assetMode: options.assetMode ?? "download",
+    categorySlugs: options.categorySlugs,
+    propertyFilters: options.propertyFilters ?? {},
+    filter: options.filter,
+  };
+}
+
+function matchesPropertyFilters(
+  document: Pick<Document, "properties">,
+  filters: Record<string, string | null>,
+): boolean {
+  return Object.entries(filters).every(([key, value]) => {
+    if (!(key in document.properties)) return false;
+    return value === null || document.properties[key] === value;
+  });
+}
 
 function contentExt(url: string, contentType: string): string {
   return (
@@ -151,12 +216,16 @@ async function rewriteImages(
   );
 }
 
-export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
+export function vektorLoader(
+  client: VektorClient,
+  spaceIdOrOptions?: string | VektorLoaderOptions,
+): Loader {
+  const options = normalizeOptions(spaceIdOrOptions);
   return {
     name: "vektor-loader",
     async load({ store, meta, logger, generateDigest, config }) {
       const assetsDir = join(fileURLToPath(config.publicDir), "vektor-assets");
-      mkdirSync(assetsDir, { recursive: true });
+      if (options.assetMode === "download") mkdirSync(assetsDir, { recursive: true });
 
       // Funnels every network fetch (documents + images) through one cap so a
       // large space can't open hundreds of simultaneous connections.
@@ -169,6 +238,7 @@ export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
           urlCache.delete(url);
       }
 
+      let spaceId = options.spaceId;
       if (!spaceId) {
         const spaces = await client.listSpaces();
         if (spaces.length === 0) throw new Error("No spaces found for this token.");
@@ -183,27 +253,39 @@ export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
         const page = await client.listDocuments(spaceId, {
           limit: PAGE_SIZE,
           cursor,
+          categorySlugs: options.categorySlugs,
         });
         documents.push(...page.documents);
         if (!page.nextCursor || page.documents.length === 0) break;
         cursor = page.nextCursor;
       }
-      const published = documents.filter((doc) => doc.publishedRev !== null);
+      const selected = documents
+        .filter((doc) =>
+          options.revision === "published" ? doc.publishedRev !== null : true,
+        )
+        .filter((doc) => matchesPropertyFilters(doc, options.propertyFilters))
+        .filter((doc) => (options.filter ? options.filter(doc) : true));
+      const skipped = documents.length - selected.length;
       logger.info(
-        `Fetching ${published.length} published document(s) from Vektor (${documents.length - published.length} unpublished skipped)...`,
+        `Fetching ${selected.length} ${options.revision} document(s) from Vektor (${skipped} skipped)...`,
       );
 
       const seen = new Set<string>();
 
       await Promise.all(
-        published.map(async (doc) => {
+        selected.map(async (doc) => {
           let full;
-          let revision;
+          let content: string | null = null;
           try {
-            [full, revision] = await Promise.all([
-              gate.run(() => client.getDocument(spaceId, doc.id)),
-              gate.run(() => client.getRevision(spaceId, doc.id, doc.publishedRev!)),
-            ]);
+            full = await gate.run(() => client.getDocument(spaceId, doc.id));
+            if (options.revision === "published") {
+              const revision = await gate.run(() =>
+                client.getRevision(spaceId, doc.id, doc.publishedRev!),
+              );
+              content = revision.content;
+            } else {
+              content = full.content ?? null;
+            }
           } catch {
             logger.warn(`Skipping document ${doc.id} (${doc.slug}): not found`);
             return;
@@ -212,25 +294,44 @@ export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
           seen.add(slug);
 
           const rawHeaderImage = full.properties.headerImage ?? null;
-          const [content, headerImageResult] = await Promise.all([
-            revision.content
-              ? rewriteImages(revision.content, client, assetsDir, urlCache, gate)
-              : null,
-            rawHeaderImage
-              ? downloadImage(rawHeaderImage, client, assetsDir, urlCache, gate)
-              : null,
-          ]);
+          const [rewrittenContent, headerImageResult] =
+            options.assetMode === "download"
+              ? await Promise.all([
+                  content
+                    ? rewriteImages(content, client, assetsDir, urlCache, gate)
+                    : null,
+                  rawHeaderImage
+                    ? downloadImage(rawHeaderImage, client, assetsDir, urlCache, gate)
+                    : null,
+                ])
+              : [content, null];
 
           store.set({
             id: slug,
-            digest: generateDigest({ v: 9, id: doc.id, updatedAt: full.updatedAt }),
+            digest: generateDigest({
+              v: 10,
+              id: doc.id,
+              updatedAt: full.updatedAt,
+              currentRev: full.currentRev,
+              publishedRev: full.publishedRev,
+              revision: options.revision,
+              assetMode: options.assetMode,
+            }),
             data: {
               docId: full.id,
               parentId: full.parentId,
+              slug: full.slug,
+              type: full.type ?? null,
               title: full.properties.title ?? null,
-              headerImage: headerImageResult?.filename ?? null,
-              content,
+              headerImage:
+                options.assetMode === "download"
+                  ? (headerImageResult?.filename ?? null)
+                  : rawHeaderImage,
+              content: rewrittenContent,
+              createdAt: full.createdAt,
               updatedAt: full.updatedAt,
+              currentRev: full.currentRev,
+              publishedRev: full.publishedRev,
               properties: full.properties,
             },
           });
@@ -241,7 +342,13 @@ export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
         if (!seen.has(key)) store.delete(key);
       }
 
-      // Build referencedFiles after all downloads complete
+      if (options.assetMode === "remote") {
+        meta.set("urlCache", JSON.stringify([]));
+        logger.info(`Loaded ${selected.length} document(s).`);
+        return;
+      }
+
+      // Build referencedFiles after all downloads complete.
       const referencedFiles = new Set(urlCache.values());
 
       for (const file of readdirSync(assetsDir)) {
@@ -253,7 +360,7 @@ export function vektorLoader(client: VektorClient, spaceId?: string): Loader {
       }
 
       meta.set("urlCache", JSON.stringify([...urlCache]));
-      logger.info(`Loaded ${published.length} document(s).`);
+      logger.info(`Loaded ${selected.length} document(s).`);
     },
   };
 }

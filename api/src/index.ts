@@ -71,6 +71,7 @@ export interface ListDocumentsOptions {
   limit?: number;
   cursor?: string;
   type?: string;
+  categorySlugs?: string[];
   signal?: AbortSignal;
 }
 
@@ -245,18 +246,18 @@ export class VektorClient {
     options: { type?: string; signal?: AbortSignal } = {},
   ): Promise<Document | undefined> {
     const limit = 500;
-    let offset = 0;
+    let cursor: string | undefined;
     do {
       const page = await this.listDocuments(spaceId, {
         limit,
-        offset,
+        cursor,
         type: options.type,
         signal: options.signal,
       });
       const match = page.documents.find((document) => document.slug === slug);
       if (match) return this.getDocument(spaceId, match.id, options.signal);
-      offset += page.documents.length;
-      if (page.documents.length === 0 || offset >= page.total) return undefined;
+      if (!page.nextCursor || page.documents.length === 0) return undefined;
+      cursor = page.nextCursor;
     } while (true);
   }
 
