@@ -217,25 +217,53 @@ watch(title, (t) => {
                     </div>
                 </div>
 
-                <div :class="twMerge(
-                    isApp
-                        ? 'hidden'
-                        : isCanvas
-                            ? 'block pointer-events-none absolute top-0 right-0 left-0 z-20 md:right-(--inset-right) md:left-(--inset-left)'
-                            : 'mb-xl pt-xs contents',
-                )">
+                <!-- Document Header (no wrapper for normal docs so sticky title works) -->
+                <template v-if="isCanvas">
+                    <div class="block pointer-events-none absolute top-0 right-0 left-0 z-20 md:right-(--inset-right) md:left-(--inset-left)">
+                        <div class="px-xs md:px-xl mt-4 min-h-7">
+                            <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
+                            <Breadcrumbs v-else-if="!isDraft" :category="docCategory" :parents="parentBreadcrumbs"
+                                :currentTitle="title" />
+                        </div>
+
+                        <HeaderImage v-if="!isDraft && !isApp && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
+                            :initialSrc="doc.properties?.headerImage ?? null" />
+
+                        <inset-view :class="twMerge(
+                            'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
+                            'pointer-events-auto',
+                            'sticky top-0 z-10',
+                        )">
+                            <div class="flex items-start justify-between w-full">
+                                <TitleEditor :initialEditMode="isDraft" :title="title" :documentId="doc?.id"
+                                    :spaceId="currentSpace.id" :canEdit="userCanEdit" />
+                            </div>
+                            <DocumentActions :title="title" />
+                        </inset-view>
+
+                        <inset-view id="document-properties"
+                            :class="twMerge('block px-xs md:px-xl print:px-0 mb-l', 'pointer-events-auto')">
+                            <DocumentProperties :documentId="doc?.id" :documentType="documentType"
+                                :readonly="!userCanEdit"
+                                :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
+                                :initialCategory="null" />
+                        </inset-view>
+                    </div>
+                </template>
+
+                <template v-else-if="!isApp">
                     <div class="px-xs md:px-xl mt-4 min-h-7">
                         <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
                         <Breadcrumbs v-else-if="!isDraft" :category="docCategory" :parents="parentBreadcrumbs"
                             :currentTitle="title" />
                     </div>
 
-                    <HeaderImage v-if="!isDraft && !isCanvas && !isApp && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
+                    <HeaderImage v-if="!isDraft && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
                         :initialSrc="doc.properties?.headerImage ?? null" />
 
                     <inset-view :class="twMerge(
                         'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
-                        isCanvas ? 'pointer-events-auto' : 'bg-neutral-10',
+                        'bg-neutral-10',
                         'sticky top-0 z-10',
                     )">
                         <div class="flex items-start justify-between w-full">
@@ -246,13 +274,13 @@ watch(title, (t) => {
                     </inset-view>
 
                     <inset-view id="document-properties"
-                        :class="twMerge('block px-xs md:px-xl print:px-0 mb-l', isCanvas && 'pointer-events-auto')">
+                        :class="twMerge('block px-xs md:px-xl print:px-0 mb-l')">
                         <DocumentProperties :documentId="doc?.id" :documentType="documentType"
                             :readonly="!userCanEdit"
                             :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
                             :initialCategory="null" />
                     </inset-view>
-                </div>
+                </template>
 
                 <div :class="twMerge(
                     'max-w-none text-neutral-700 h-full overflow-x-auto',
