@@ -243,7 +243,7 @@ export function createViewportControls({
     if (e.ctrlKey || e.metaKey) {
       // ctrlKey without metaKey = trackpad pinch (browser-synthesised).
       // metaKey (or real ctrl+scroll) = mouse wheel zoom.
-      const speed = e.ctrlKey ? wheelZoomSpeed : pinchZoomSpeed;
+      const speed = e.ctrlKey && Math.abs(e.deltaY) >= 100 ? wheelZoomSpeed : pinchZoomSpeed;
       pendingZoom *= Math.exp(-e.deltaY * speed);
       pendingZoomX = pointer.x;
       pendingZoomY = pointer.y;
