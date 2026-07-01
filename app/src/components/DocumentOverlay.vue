@@ -115,12 +115,7 @@ function closeOverlay() {
 function navigateToDocument() {
   if (!currentState.value?.slug) return;
 
-  const pathParts = window.location.pathname.split("/").filter(Boolean);
-  const targetSpaceSlug = pathParts[0];
-
-  if (targetSpaceSlug && currentState.value.slug) {
-    router.push(`/${targetSpaceSlug}/doc/${currentState.value.slug}`);
-  }
+  router.push(`/doc/${currentState.value.slug}`);
 }
 
 function handleKeydown(event: KeyboardEvent) {

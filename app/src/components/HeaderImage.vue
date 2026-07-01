@@ -23,7 +23,7 @@ const showSkeleton = computed(() =>
 </script>
 
 <template>
-  <div v-if="src || showSkeleton" class="print:px-0 px-xs lg:px-xl mt-4">
+  <div v-if="src || showSkeleton" class="print:px-0 px-xs lg:px-xl">
     <div v-if="showSkeleton && !src" class="w-full h-[240px] rounded-lg animate-pulse bg-neutral-50" />
     <img
       v-if="src"
