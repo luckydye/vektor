@@ -8,8 +8,10 @@ import ClientOnly from "../ClientOnly.vue";
 import DatabaseView from "../DatabaseView.vue";
 import DocumentActions from "../DocumentActions.vue";
 import DocumentContent from "../DocumentContent.vue";
+import DocumentContextProvider from "../DocumentContextProvider.vue";
 import DocumentProperties from "../DocumentProperties.vue";
 import HeaderImage from "../HeaderImage.vue";
+import NewDocumentPicker from "../NewDocumentPicker.vue";
 import RestoreButton from "../RestoreButton.vue";
 import RevisionsSidebar from "../RevisionsSidebar.vue";
 import RevisionView from "../RevisionView.vue";
@@ -17,25 +19,27 @@ import TitleEditor from "../TitleEditor.vue";
 import WorkflowView from "../WorkflowView.vue";
 import { api } from "../../api/client.ts";
 import { useQuery } from "../../composeables/query.ts";
-import { useDocumentContext } from "../../composeables/useDocument.ts";
 import { useEditor } from "../../composeables/useEditor.ts";
 import { useSpace } from "../../composeables/useSpace.ts";
 import { canEdit } from "../../composeables/usePermissions.ts";
 import { readOnlyDocumentTypes } from "../../utils/documentTypes.ts";
 
-const props = defineProps<{ documentSlug: string }>();
+const props = defineProps<{
+    documentSlug?: string;
+    draftType?: string;
+    draftCategory?: string;
+}>();
 const router = useRouter();
 const ssrNow = inject<number>("ssr:now", Date.now());
 const now = ref(ssrNow);
 
 const { currentSpace } = useSpace();
-const {
-    canUseDocumentEditor,
-    documentContext,
-    resetDocumentContext,
-    setDocumentContext,
-} = useDocumentContext();
 const { editing, resetEditingState } = useEditor();
+
+const isDraft = computed(() => !props.documentSlug);
+const draftTypeParam = computed(() => props.draftType ?? "");
+const showPicker = computed(() => isDraft.value && !draftTypeParam.value);
+const draftCategory = computed(() => (isDraft.value ? props.draftCategory || undefined : undefined));
 
 const docQuery = useQuery({
     queryKey: computed(() => ["wiki_document_slug", currentSpace.value?.id, props.documentSlug]),
@@ -43,7 +47,7 @@ const docQuery = useQuery({
         if (!currentSpace.value?.id || !props.documentSlug) return null;
         return await api.document.get(currentSpace.value.id, props.documentSlug);
     },
-    enabled: computed(() => !!currentSpace.value?.id && !!props.documentSlug),
+    enabled: computed(() => !isDraft.value && !!currentSpace.value?.id && !!props.documentSlug),
 });
 
 const breadcrumbsQuery = useQuery({
@@ -52,7 +56,7 @@ const breadcrumbsQuery = useQuery({
         if (!currentSpace.value?.id || !docQuery.data.value?.id) return [];
         return await api.documentBreadcrumbs.get(currentSpace.value.id, docQuery.data.value.id);
     },
-    enabled: computed(() => !!currentSpace.value?.id && !!docQuery.data.value?.id),
+    enabled: computed(() => !isDraft.value && !!currentSpace.value?.id && !!docQuery.data.value?.id),
 });
 
 const categoriesQuery = useQuery({
@@ -61,7 +65,7 @@ const categoriesQuery = useQuery({
         if (!currentSpace.value?.id) return [];
         return await api.categories.get(currentSpace.value.id);
     },
-    enabled: computed(() => !!currentSpace.value?.id),
+    enabled: computed(() => !isDraft.value && !!currentSpace.value?.id),
 });
 
 const doc = computed(() => docQuery.data.value);
@@ -88,8 +92,9 @@ const docCategory = computed(() => {
     return null;
 });
 
-const title = computed(() => doc.value?.properties?.title || "Untitled Document");
-const documentType = computed(() => doc.value?.type ?? "document");
+const documentType = computed(() =>
+    isDraft.value ? (draftTypeParam.value || "document") : (doc.value?.type ?? "document"),
+);
 
 const isCanvas = computed(() => documentType.value === "canvas");
 const isApp = computed(() => documentType.value === "app");
@@ -103,50 +108,29 @@ const isPaddedDocument = computed(
 const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
 
 const isReadonly = computed(() =>
-    !!(
-        doc.value?.readonly ||
-        doc.value?.archived ||
-        isCanvas.value ||
-        isApp.value ||
-        isWorkflow.value ||
-        isDatabase.value ||
-        readOnlyDocumentTypes.includes(documentType.value)
-    ),
+    isDraft.value
+        ? false
+        : !!(
+              doc.value?.readonly ||
+              doc.value?.archived ||
+              isCanvas.value ||
+              isApp.value ||
+              isWorkflow.value ||
+              isDatabase.value ||
+              readOnlyDocumentTypes.includes(documentType.value)
+          ),
 );
 
-watch(
-    [doc, documentType, isReadonly, userCanEdit],
-    ([currentDoc, type, readonly, canEditDocument]) => {
-        if (!currentDoc) return;
-
-        setDocumentContext({
-            documentId: currentDoc.id,
-            documentType: type,
-            readonly,
-            publishedVersion: currentDoc.publishedRev,
-            userCanEdit: canEditDocument,
-        });
-
-        if (!canUseDocumentEditor.value && editing.value) {
-            resetEditingState();
-        }
-    },
-    { immediate: true },
+const title = computed(() =>
+    isDraft.value
+        ? documentType.value === "canvas" ? "Untitled Canvas" : "Untitled Document"
+        : (doc.value?.properties?.title || "Untitled Document"),
 );
-
-onUnmounted(() => {
-    resetEditingState();
-    if (
-        doc.value &&
-        documentContext.value.documentId === doc.value.id &&
-        documentContext.value.documentType === documentType.value
-    ) {
-        resetDocumentContext();
-    }
-});
 
 const defaultLayout = computed(() => (documentType.value === "document" ? "document" : "full"));
-const effectiveLayout = computed(() => doc.value?.properties?.layout || defaultLayout.value);
+const effectiveLayout = computed(() =>
+    isDraft.value ? defaultLayout.value : (doc.value?.properties?.layout || defaultLayout.value),
+);
 
 const updatedAtStr = computed(() => {
     if (!doc.value?.updatedAt) return "";
@@ -160,8 +144,38 @@ const updatedAtStr = computed(() => {
     return "just now";
 });
 
+const AUTO_CREATE_TYPES: Record<string, string> = {
+    database: "Untitled Database",
+    canvas: "Untitled Canvas",
+    workflow: "Untitled Workflow",
+};
+
+const redirecting = ref(false);
+
+async function maybeAutoCreateDraft() {
+    if (!isDraft.value) return;
+    const autoTitle = AUTO_CREATE_TYPES[documentType.value];
+    if (!autoTitle || !currentSpace.value) return;
+    if (!userCanEdit.value) {
+        router.push("/");
+        return;
+    }
+    redirecting.value = true;
+    const newDoc = await api.documents.post(currentSpace.value.id, {
+        type: documentType.value,
+        content: "",
+        properties: { title: autoTitle },
+    });
+    router.push(`/doc/${newDoc.slug}`);
+}
+
 onMounted(() => {
     now.value = Date.now();
+    void maybeAutoCreateDraft();
+});
+
+onUnmounted(() => {
+    resetEditingState();
 });
 
 watch(title, (t) => {
@@ -171,17 +185,25 @@ watch(title, (t) => {
 </script>
 
 <template>
-    <div v-if="doc && currentSpace">
-        <inset-view :key="doc.id"
+    <div v-if="currentSpace && (isDraft ? !redirecting : doc)">
+        <inset-view :key="doc?.id ?? 'draft'"
             :class="twMerge('block min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')">
-            <div :data-type="documentType" :data-updated-at="doc.updatedAt" :data-created-at="doc.createdAt"
+            <div :data-type="documentType" :data-updated-at="doc?.updatedAt" :data-created-at="doc?.createdAt"
                 :data-layout="effectiveLayout" :class="twMerge(
                     'relative mx-auto flex h-full w-full flex-col',
                     isCsv || isDatabase || effectiveLayout === 'full'
                         ? 'max-w-full'
                         : 'max-w-(--document-width)',
                 )">
-                <div v-if="doc.archived" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 md:mx-10">
+                <DocumentContextProvider
+                    :documentId="doc?.id"
+                    :documentType="documentType"
+                    :readonly="isReadonly"
+                    :publishedVersion="doc?.publishedRev ?? null"
+                    :userCanEdit="userCanEdit"
+                />
+
+                <div v-if="doc?.archived" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 md:mx-10">
                     <div class="flex items-start justify-between gap-3">
                         <div class="space-y-2">
                             <div class="text-yellow-600 font-semibold text-size-medium">
@@ -204,11 +226,11 @@ watch(title, (t) => {
                 )">
                     <div class="px-xs md:px-xl mt-4 min-h-7">
                         <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
-                        <Breadcrumbs v-else :category="docCategory" :parents="parentBreadcrumbs"
+                        <Breadcrumbs v-else-if="!isDraft" :category="docCategory" :parents="parentBreadcrumbs"
                             :currentTitle="title" />
                     </div>
 
-                    <HeaderImage v-if="!isCanvas && !isApp && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
+                    <HeaderImage v-if="!isDraft && !isCanvas && !isApp && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
                         :initialSrc="doc.properties?.headerImage ?? null" />
 
                     <inset-view :class="twMerge(
@@ -217,7 +239,7 @@ watch(title, (t) => {
                         'sticky top-0 z-10',
                     )">
                         <div class="flex items-start justify-between w-full">
-                            <TitleEditor :initialEditMode="false" :title="title" :documentId="doc.id"
+                            <TitleEditor :initialEditMode="isDraft" :title="title" :documentId="doc?.id"
                                 :spaceId="currentSpace.id" :canEdit="userCanEdit" />
                         </div>
                         <DocumentActions :title="title" />
@@ -225,38 +247,44 @@ watch(title, (t) => {
 
                     <inset-view id="document-properties"
                         :class="twMerge('block px-xs md:px-xl print:px-0 mb-l', isCanvas && 'pointer-events-auto')">
-                        <DocumentProperties :documentId="doc.id" :documentType="documentType" :readonly="!userCanEdit"
-                            :initialProperties="{ ...doc.properties, parentId: doc.parentId }"
+                        <DocumentProperties :documentId="doc?.id" :documentType="documentType"
+                            :readonly="!userCanEdit"
+                            :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
                             :initialCategory="null" />
                     </inset-view>
                 </div>
 
                 <div :class="twMerge(
-                    'max-w-none text-neutral-700',
+                    'max-w-none text-neutral-700 h-full overflow-x-auto',
                     isCsv || isDatabase
                         ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
                         : 'h-full overflow-x-auto',
                     isPaddedDocument && 'px-xs md:px-xl print:px-0',
                 )">
-                    <RevisionView :documentId="doc.id" :documentType="documentType" :spaceId="currentSpace.id" />
+                    <template v-if="isDraft">
+                        <NewDocumentPicker v-if="showPicker" />
+                        <DocumentContent :spaceId="currentSpace.id" :documentType="documentType" />
+                    </template>
+                    <template v-else>
+                        <RevisionView :documentId="doc.id" :documentType="documentType" :spaceId="currentSpace.id" />
 
-                    <AppView v-if="isApp" :html="doc.content || ''" />
-                    <WorkflowView v-else-if="isWorkflow" :documentId="doc.id" :spaceId="currentSpace.id" />
-                    <DatabaseView v-else-if="isDatabase" :databaseDocumentId="doc.id"
-                        :schemaJson="doc.properties._schema" />
-                    <DocumentContent v-else :spaceId="currentSpace.id" :documentId="doc.id" :initialHtml="doc.content"
-                        :documentType="documentType" :readonly="isReadonly" />
+                        <AppView v-if="isApp" :html="doc.content || ''" />
+                        <WorkflowView v-else-if="isWorkflow" :documentId="doc.id" :spaceId="currentSpace.id" />
+                        <DatabaseView v-else-if="isDatabase" :databaseDocumentId="doc.id" :schemaJson="doc.properties._schema" />
+                        <DocumentContent v-else :spaceId="currentSpace.id" :documentId="doc.id" :initialHtml="doc.content"
+                            :documentType="documentType" :readonly="isReadonly" />
+                    </template>
                 </div>
 
                 <inset-view
-                    v-if="!editing && !isCanvas"
+                    v-if="!isDraft && !editing && !isCanvas"
                     :class="twMerge(
                     'flex items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
                       isCanvas && 'pointer-events-auto',
                     )"
                 >
                     <div
-                        v-if="doc.updatedAt"
+                        v-if="doc?.updatedAt"
                         class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500"
                     >
                     <ClientOnly>
@@ -268,11 +296,11 @@ watch(title, (t) => {
         </inset-view>
     </div>
 
-    <div v-else-if="docQuery.isLoading.value" class="flex items-center justify-center h-64 text-neutral-400">
+    <div v-else-if="!isDraft && docQuery.isLoading.value" class="flex items-center justify-center h-64 text-neutral-400">
         Loading…
     </div>
 
-    <div v-else class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500">
+    <div v-else-if="!isDraft" class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500">
         <p class="text-2xl font-semibold text-neutral-800">404</p>
         <p>Document not found.</p>
         <a :href="`/${currentSpace?.slug ?? ''}/`" class="text-sm underline hover:text-neutral-800">Back to space</a>
@@ -280,7 +308,7 @@ watch(title, (t) => {
 
     <ClientOnly>
         <Teleport to="body">
-            <RevisionsSidebar v-if="doc" :documentId="doc.id" />
+            <RevisionsSidebar v-if="!isDraft && doc" :documentId="doc.id" />
         </Teleport>
     </ClientOnly>
 </template>

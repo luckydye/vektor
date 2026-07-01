@@ -12,7 +12,6 @@ import ToastContainer from "./ToastContainer.vue";
 import AIChatPanel from "./AIChatPanel.vue";
 import DocumentPageView from "./views/DocumentPageView.vue";
 import ExtensionRouteView from "./views/ExtensionRouteView.vue";
-import NewDocumentView from "./views/NewDocumentView.vue";
 import NotFoundView from "./views/NotFoundView.vue";
 import SpaceHomeView from "./views/SpaceHomeView.vue";
 import SpaceSearchView from "./views/SpaceSearchView.vue";
@@ -43,7 +42,14 @@ const router = createRouter({
   routes: [
     { path: "/", component: SpaceHomeView },
     { path: "/search", component: SpaceSearchView },
-    { path: "/new", component: NewDocumentView },
+    {
+      path: "/new",
+      component: DocumentPageView,
+      props: (route) => ({
+        draftType: (route.query.type as string) ?? "",
+        draftCategory: (route.query.category as string) ?? "",
+      }),
+    },
     { path: "/settings", component: SpaceSettingsView },
     {
       path: "/doc/:documentSlug(.*)",
