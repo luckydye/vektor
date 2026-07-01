@@ -1,6 +1,6 @@
 {
   "name": "@vektorapp/api",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Lightweight, read-only client for the Vektor API",
   "type": "module",
   "sideEffects": false,

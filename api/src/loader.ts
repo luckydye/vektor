@@ -368,7 +368,7 @@ export function vektorLoader(
           store.set({
             id: slug,
             digest: generateDigest({
-              v: 11,
+              v: 12,
               id: doc.id,
               updatedAt: full.updatedAt,
               currentRev: full.currentRev,
@@ -384,7 +384,7 @@ export function vektorLoader(
               title: full.properties.title ?? null,
               headerImage:
                 options.assetMode === "download"
-                  ? (headerImageResult?.filename ?? null)
+                  ? (headerImageResult?.publicPath ?? null)
                   : rawHeaderImage,
               content: rewrittenContent,
               createdAt: full.createdAt,
