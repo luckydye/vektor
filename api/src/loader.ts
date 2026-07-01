@@ -29,11 +29,14 @@ export interface VektorLoaderOptions {
   /** Restrict the initial document listing to these Vektor category slugs. */
   categorySlugs?: string[];
   /**
-   * Names of properties whose value is a JSON-encoded array of image URLs
-   * (e.g. a gallery). In "download" asset mode, each URL is downloaded like
-   * `headerImage` and the property is rewritten to a JSON array of local paths.
+   * Names of properties whose value is a JSON-encoded array of URLs (e.g. a
+   * gallery) or a JSON-encoded object mapping keys to URLs (e.g. a site-asset
+   * manifest with favicon/logo/video entries). In "download" asset mode,
+   * absolute URLs are downloaded like `headerImage` and the property is
+   * rewritten in place with local paths, preserving its array/object shape;
+   * relative/local values are left untouched.
    */
-  imageArrayProperties?: string[];
+  assetProperties?: string[];
   /**
    * Keep only documents whose properties match these values. Use `null` to mean
    * "property must be present with any value".
@@ -49,7 +52,7 @@ interface NormalizedVektorLoaderOptions {
   assetMode: VektorLoaderAssetMode;
   categorySlugs?: string[];
   propertyFilters: Record<string, string | null>;
-  imageArrayProperties: string[];
+  assetProperties: string[];
   filter?: (document: Document) => boolean;
 }
 
@@ -64,18 +67,29 @@ function normalizeOptions(
     assetMode: options.assetMode ?? "download",
     categorySlugs: options.categorySlugs,
     propertyFilters: options.propertyFilters ?? {},
-    imageArrayProperties: options.imageArrayProperties ?? [],
+    assetProperties: options.assetProperties ?? [],
     filter: options.filter,
   };
 }
 
-function parseImageUrlArray(value: string | undefined): string[] {
-  if (!value) return [];
+function isAbsoluteUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+/** Parses a property value as either a JSON array or object of URLs. Returns null if neither. */
+function parseAssetContainer(value: string | undefined): string[] | Record<string, string> | null {
+  if (!value) return null;
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((url) => typeof url === "string") : [];
+    if (Array.isArray(parsed)) return parsed.filter((v) => typeof v === "string");
+    if (parsed && typeof parsed === "object") {
+      return Object.fromEntries(
+        Object.entries(parsed).filter(([, v]) => typeof v === "string"),
+      ) as Record<string, string>;
+    }
+    return null;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -312,7 +326,7 @@ export function vektorLoader(
           seen.add(slug);
 
           const rawHeaderImage = full.properties.headerImage ?? null;
-          const [rewrittenContent, headerImageResult, rewrittenImageArrays] =
+          const [rewrittenContent, headerImageResult, rewrittenAssetProperties] =
             options.assetMode === "download"
               ? await Promise.all([
                   content
@@ -322,20 +336,33 @@ export function vektorLoader(
                     ? downloadImage(rawHeaderImage, client, assetsDir, urlCache, gate)
                     : null,
                   Promise.all(
-                    options.imageArrayProperties.map(async (key) => {
-                      const urls = parseImageUrlArray(full.properties[key]);
-                      const downloaded = await Promise.all(
-                        urls.map((url) => downloadImage(url, client, assetsDir, urlCache, gate)),
-                      );
-                      return [key, downloaded.map((result, i) => result?.publicPath ?? urls[i])] as const;
+                    options.assetProperties.map(async (key) => {
+                      const container = parseAssetContainer(full.properties[key]);
+                      if (!container) return null;
+                      const downloadIfAbsolute = async (url: string) => {
+                        if (!isAbsoluteUrl(url)) return url;
+                        const result = await downloadImage(url, client, assetsDir, urlCache, gate);
+                        return result?.publicPath ?? url;
+                      };
+                      const rewritten = Array.isArray(container)
+                        ? await Promise.all(container.map(downloadIfAbsolute))
+                        : Object.fromEntries(
+                            await Promise.all(
+                              Object.entries(container).map(async ([entryKey, url]) => [
+                                entryKey,
+                                await downloadIfAbsolute(url),
+                              ]),
+                            ),
+                          );
+                      return [key, rewritten] as const;
                     }),
                   ),
                 ])
               : [content, null, []];
 
           const properties = { ...full.properties };
-          for (const [key, urls] of rewrittenImageArrays) {
-            if (key in properties) properties[key] = JSON.stringify(urls);
+          for (const entry of rewrittenAssetProperties) {
+            if (entry && entry[0] in properties) properties[entry[0]] = JSON.stringify(entry[1]);
           }
 
           store.set({
