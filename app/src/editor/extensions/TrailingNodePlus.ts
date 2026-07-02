@@ -1,6 +1,6 @@
 import { type Editor, Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { addIcon, puzzleIcon } from "~/src/assets/icons.ts";
@@ -19,6 +19,10 @@ interface ContentItem {
   icon: string;
   command: (editor: Editor) => void;
 }
+
+type ColumnLayoutCommandChain = {
+  setColumnLayout(options: { columns: number }): { run(): boolean };
+};
 
 function createContentItems(spaceId: string, documentId?: string): ContentItem[] {
   const items: ContentItem[] = [
@@ -55,7 +59,9 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       description: "Insert a 2-column layout",
       icon: "⫴⫴",
       command: (editor) => {
-        editor.chain().focus().setColumnLayout({ columns: 2 }).run();
+        (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
+          .setColumnLayout({ columns: 2 })
+          .run();
       },
     },
     {
@@ -63,7 +69,9 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       description: "Insert a 3-column layout",
       icon: "⫴⫴⫴",
       command: (editor) => {
-        editor.chain().focus().setColumnLayout({ columns: 3 }).run();
+        (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
+          .setColumnLayout({ columns: 3 })
+          .run();
       },
     },
     {
@@ -71,7 +79,9 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       description: "Insert a 4-column layout",
       icon: "⫴⫴⫴⫴",
       command: (editor) => {
-        editor.chain().focus().setColumnLayout({ columns: 4 }).run();
+        (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
+          .setColumnLayout({ columns: 4 })
+          .run();
       },
     },
     {
@@ -477,59 +487,77 @@ export const TrailingNodePlus = Extension.create<TrailingNodePlusOptions>({
       }, 0);
     }
 
+    function syncTrailingButtonVisibility(view: EditorView) {
+      const button = view.dom.querySelector<HTMLElement>(".trailing-node-plus-button");
+      if (!button) return;
+
+      const { selection } = view.state;
+      const buttonRect = button.getBoundingClientRect();
+      const cursor = view.coordsAtPos(selection.from);
+      const cursorMiddle = (cursor.top + cursor.bottom) / 2;
+      const isSameRow =
+        cursorMiddle >= buttonRect.top && cursorMiddle <= buttonRect.bottom;
+
+      button.style.visibility = isSameRow ? "hidden" : "";
+      button.style.pointerEvents = isSameRow ? "none" : "";
+    }
+
     return [
       new Plugin({
         key: new PluginKey("trailingNodePlus"),
         props: {
           decorations(state) {
-            const { doc, selection } = state;
+            const { doc } = state;
             const decorations: Decoration[] = [];
 
             // Check if the document ends with an empty paragraph
             const lastNode = doc.lastChild;
-            const lastNodePos = doc.content.size - (lastNode?.nodeSize || 0);
 
-            // Only show button if:
+            // Render the button if:
             // 1. Last node is a paragraph
             // 2. It's empty
-            // 3. Selection is not in the last node
+            // Visibility is row-aware and is updated from the plugin view below.
             if (
               lastNode &&
               lastNode.type.name === "paragraph" &&
               lastNode.content.size === 0
             ) {
-              const isLastNodeFocused =
-                selection.from >= lastNodePos && selection.to <= doc.content.size;
-
-              if (!isLastNodeFocused) {
-                const widget = document.createElement("button");
-                widget.type = "button";
-                widget.className = "trailing-node-plus-button";
-                widget.contentEditable = "false";
-                widget.innerHTML = `
+              const widget = document.createElement("button");
+              widget.type = "button";
+              widget.className = "trailing-node-plus-button";
+              widget.contentEditable = "false";
+              widget.innerHTML = `
                   ${addIcon}
                   <span>Add content</span>
                 `;
 
-                widget.addEventListener("click", (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
+              widget.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
 
-                  const rect = widget.getBoundingClientRect();
-                  openPopup(rect);
-                });
+                const rect = widget.getBoundingClientRect();
+                openPopup(rect);
+              });
 
-                decorations.push(
-                  Decoration.widget(doc.content.size, widget, {
-                    side: 1,
-                    key: "trailing-plus-button",
-                  }),
-                );
-              }
+              decorations.push(
+                Decoration.widget(doc.content.size, widget, {
+                  side: 1,
+                  key: "trailing-plus-button",
+                }),
+              );
             }
 
             return DecorationSet.create(doc, decorations);
           },
+        },
+        view(view) {
+          queueMicrotask(() => syncTrailingButtonVisibility(view));
+
+          return {
+            update(updatedView) {
+              syncTrailingButtonVisibility(updatedView);
+            },
+          };
         },
       }),
       new Plugin({
