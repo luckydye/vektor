@@ -1,6 +1,21 @@
 <script setup lang="ts">
 import { getCurrentInstance, onMounted, onUnmounted, provide, ref, watch } from "vue";
-import { createMemoryHistory, createRouter, createWebHistory, RouterView } from "vue-router";
+import {
+  createMemoryHistory,
+  createRouter,
+  createWebHistory,
+  RouterView,
+} from "vue-router";
+import { useQueryClient } from "../composeables/query.ts";
+import { provideDocumentContext } from "../composeables/useDocument.ts";
+import { useRoute } from "../composeables/useRoute.ts";
+import { useSpace } from "../composeables/useSpace.ts";
+import shortcuts from "../config/shortcuts.json";
+import strings from "../config/strings.json";
+import { Actions } from "../utils/actions.js";
+import { extensions } from "../utils/extensions.ts";
+import { history } from "../utils/history.ts";
+import AIChatPanel from "./AIChatPanel.vue";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
 import ClientOnly from "./ClientOnly.vue";
 import CommandPalatte from "./CommandPalatte.vue";
@@ -9,22 +24,12 @@ import DocumentOverlay from "./DocumentOverlay.vue";
 import MobileHeader from "./MobileHeader.vue";
 import Sidebar from "./Sidebar.vue";
 import ToastContainer from "./ToastContainer.vue";
-import AIChatPanel from "./AIChatPanel.vue";
 import DocumentPageView from "./views/DocumentPageView.vue";
 import ExtensionRouteView from "./views/ExtensionRouteView.vue";
 import NotFoundView from "./views/NotFoundView.vue";
 import SpaceHomeView from "./views/SpaceHomeView.vue";
 import SpaceSearchView from "./views/SpaceSearchView.vue";
 import SpaceSettingsView from "./views/SpaceSettingsView.vue";
-import { useDocumentContext } from "../composeables/useDocument.ts";
-import { useQueryClient } from "../composeables/query.ts";
-import { useRoute } from "../composeables/useRoute.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import strings from "../config/strings.json";
-import { Actions } from "../utils/actions.js";
-import shortcuts from "../config/shortcuts.json";
-import { extensions } from "../utils/extensions.ts";
-import { history } from "../utils/history.ts";
 import "../utils/insets.ts";
 
 const props = defineProps<{
@@ -158,9 +163,10 @@ if (props.initialSpace && props.initialDocument) {
 
 const { pathname } = useRoute();
 const { currentSpaceId, currentSpace, spaceNotFound } = useSpace();
-const { documentContext } = useDocumentContext();
+const documentContext = provideDocumentContext();
 
-const lang = typeof document !== "undefined" ? document.documentElement.lang || "en" : "en";
+const lang =
+  typeof document !== "undefined" ? document.documentElement.lang || "en" : "en";
 globalThis._translations = strings;
 
 onMounted(async () => {

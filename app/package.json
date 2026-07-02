@@ -59,8 +59,5 @@
     "#files/*": "./src/files/*",
     "#utils/*": "./src/utils/*",
     "#provider/*": "./src/provider/*"
-  },
-  "devDependencies": {
-    "happy-dom": "^20.10.6"
   }
 }

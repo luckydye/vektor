@@ -1,4 +1,4 @@
-import { computed, type Ref, ref } from "vue";
+import { computed, type InjectionKey, inject, provide, type Ref, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api/client.ts";
 import { supportsDocumentEditor } from "../utils/documentTypes.ts";
@@ -19,13 +19,16 @@ export type DocumentContext = {
 
 export type DocumentContextInput = Partial<DocumentContext>;
 
-const documentContext = ref<DocumentContext>({
+const DEFAULT_DOCUMENT_CONTEXT: DocumentContext = {
   documentId: undefined,
   documentType: "document",
   readonly: false,
   publishedVersion: null,
   userCanEdit: false,
-});
+};
+
+const DOCUMENT_CONTEXT_KEY: InjectionKey<Ref<DocumentContext>> =
+  Symbol("document-context");
 
 function normalizeDocumentContext(input: DocumentContextInput): DocumentContext {
   return {
@@ -47,7 +50,28 @@ function sameDocumentContext(a: DocumentContext, b: DocumentContext): boolean {
   );
 }
 
+/**
+ * Create and provide a document context ref, scoped to the current Vue app
+ * instance. This mirrors the `space:activeId` provide/inject pattern used for
+ * the space ID, making it SSR-safe (no module-level shared state) and
+ * eliminating the need for a renderless DocumentContextProvider component.
+ */
+export function provideDocumentContext(
+  initial?: DocumentContextInput,
+): Ref<DocumentContext> {
+  const documentContext = ref<DocumentContext>(
+    initial ? normalizeDocumentContext(initial) : { ...DEFAULT_DOCUMENT_CONTEXT },
+  );
+  provide(DOCUMENT_CONTEXT_KEY, documentContext);
+  return documentContext;
+}
+
 export function useDocumentContext() {
+  const documentContext = inject(
+    DOCUMENT_CONTEXT_KEY,
+    ref<DocumentContext>({ ...DEFAULT_DOCUMENT_CONTEXT }),
+  );
+
   const canUseDocumentEditor = computed(
     () =>
       supportsDocumentEditor(documentContext.value.documentType) &&
@@ -78,13 +102,7 @@ export function useDocumentContext() {
   }
 
   function resetDocumentContext(): void {
-    documentContext.value = {
-      documentId: undefined,
-      documentType: "document",
-      readonly: false,
-      publishedVersion: null,
-      userCanEdit: false,
-    };
+    documentContext.value = { ...DEFAULT_DOCUMENT_CONTEXT };
   }
 
   return {

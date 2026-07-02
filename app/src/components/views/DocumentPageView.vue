@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import { twMerge } from "tailwind-merge";
+import { computed, inject, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
+import { useRouter } from "vue-router";
+import { api } from "../../api/client.ts";
+import { useQuery } from "../../composeables/query.ts";
+import { useDocumentContext } from "../../composeables/useDocument.ts";
+import { useEditor } from "../../composeables/useEditor.ts";
+import { canEdit } from "../../composeables/usePermissions.ts";
+import { useSpace } from "../../composeables/useSpace.ts";
+import { readOnlyDocumentTypes } from "../../utils/documentTypes.ts";
 import AppView from "../AppView.vue";
 import Breadcrumbs from "../Breadcrumbs.vue";
 import ClientOnly from "../ClientOnly.vue";
 import DatabaseView from "../DatabaseView.vue";
 import DocumentActions from "../DocumentActions.vue";
 import DocumentContent from "../DocumentContent.vue";
-import DocumentContextProvider from "../DocumentContextProvider.vue";
 import DocumentProperties from "../DocumentProperties.vue";
 import HeaderImage from "../HeaderImage.vue";
 import NewDocumentPicker from "../NewDocumentPicker.vue";
@@ -17,17 +23,11 @@ import RevisionsSidebar from "../RevisionsSidebar.vue";
 import RevisionView from "../RevisionView.vue";
 import TitleEditor from "../TitleEditor.vue";
 import WorkflowView from "../WorkflowView.vue";
-import { api } from "../../api/client.ts";
-import { useQuery } from "../../composeables/query.ts";
-import { useEditor } from "../../composeables/useEditor.ts";
-import { useSpace } from "../../composeables/useSpace.ts";
-import { canEdit } from "../../composeables/usePermissions.ts";
-import { readOnlyDocumentTypes } from "../../utils/documentTypes.ts";
 
 const props = defineProps<{
-    documentSlug?: string;
-    draftType?: string;
-    draftCategory?: string;
+  documentSlug?: string;
+  draftType?: string;
+  draftCategory?: string;
 }>();
 const router = useRouter();
 const ssrNow = inject<number>("ssr:now", Date.now());
@@ -35,65 +35,88 @@ const now = ref(ssrNow);
 
 const { currentSpace } = useSpace();
 const { editing, resetEditingState } = useEditor();
+const { canUseDocumentEditor, setDocumentContext, resetDocumentContext } =
+  useDocumentContext();
 
 const isDraft = computed(() => !props.documentSlug);
 const draftTypeParam = computed(() => props.draftType ?? "");
 const showPicker = computed(() => isDraft.value && !draftTypeParam.value);
-const draftCategory = computed(() => (isDraft.value ? props.draftCategory || undefined : undefined));
+const draftCategory = computed(() =>
+  isDraft.value ? props.draftCategory || undefined : undefined,
+);
 
 const docQuery = useQuery({
-    queryKey: computed(() => ["wiki_document_slug", currentSpace.value?.id, props.documentSlug]),
-    queryFn: async () => {
-        if (!currentSpace.value?.id || !props.documentSlug) return null;
-        return await api.document.get(currentSpace.value.id, props.documentSlug);
-    },
-    enabled: computed(() => !isDraft.value && !!currentSpace.value?.id && !!props.documentSlug),
+  queryKey: computed(() => [
+    "wiki_document_slug",
+    currentSpace.value?.id,
+    props.documentSlug,
+  ]),
+  queryFn: async () => {
+    if (!currentSpace.value?.id || !props.documentSlug) return null;
+    return await api.document.get(currentSpace.value.id, props.documentSlug);
+  },
+  enabled: computed(
+    () => !isDraft.value && !!currentSpace.value?.id && !!props.documentSlug,
+  ),
 });
 
 const breadcrumbsQuery = useQuery({
-    queryKey: computed(() => ["document_breadcrumbs", currentSpace.value?.id, docQuery.data.value?.id]),
-    queryFn: async () => {
-        if (!currentSpace.value?.id || !docQuery.data.value?.id) return [];
-        return await api.documentBreadcrumbs.get(currentSpace.value.id, docQuery.data.value.id);
-    },
-    enabled: computed(() => !isDraft.value && !!currentSpace.value?.id && !!docQuery.data.value?.id),
+  queryKey: computed(() => [
+    "document_breadcrumbs",
+    currentSpace.value?.id,
+    docQuery.data.value?.id,
+  ]),
+  queryFn: async () => {
+    if (!currentSpace.value?.id || !docQuery.data.value?.id) return [];
+    return await api.documentBreadcrumbs.get(
+      currentSpace.value.id,
+      docQuery.data.value.id,
+    );
+  },
+  enabled: computed(
+    () => !isDraft.value && !!currentSpace.value?.id && !!docQuery.data.value?.id,
+  ),
 });
 
 const categoriesQuery = useQuery({
-    queryKey: computed(() => ["categories", currentSpace.value?.id]),
-    queryFn: async () => {
-        if (!currentSpace.value?.id) return [];
-        return await api.categories.get(currentSpace.value.id);
-    },
-    enabled: computed(() => !isDraft.value && !!currentSpace.value?.id),
+  queryKey: computed(() => ["categories", currentSpace.value?.id]),
+  queryFn: async () => {
+    if (!currentSpace.value?.id) return [];
+    return await api.categories.get(currentSpace.value.id);
+  },
+  enabled: computed(() => !isDraft.value && !!currentSpace.value?.id),
 });
 
 const doc = computed(() => docQuery.data.value);
 
 // Redirect /doc/documentId → /doc/documentSlug once the document resolves.
-watch(doc, (d) => {
+watch(
+  doc,
+  (d) => {
     if (!d || props.documentSlug === d.slug) return;
     const fullPath = router.currentRoute.value.fullPath;
     router.replace(fullPath.replace(`/doc/${props.documentSlug}`, `/doc/${d.slug}`));
-}, { immediate: true });
+  },
+  { immediate: true },
+);
 const allBreadcrumbs = computed(() => breadcrumbsQuery.data.value ?? []);
 // exclude the current doc from breadcrumbs
 const parentBreadcrumbs = computed(() => allBreadcrumbs.value.slice(0, -1));
 
 const docCategory = computed(() => {
-    const categories = categoriesQuery.data.value;
-    if (!categories) return null;
-    // Walk the breadcrumb chain from root to current and use the first category found.
-    for (const crumb of allBreadcrumbs.value) {
-        if (crumb.categorySlug) {
-            return categories.find((c) => c.slug === crumb.categorySlug) ?? null;
-        }
+  const categories = categoriesQuery.data.value;
+  if (!categories) return null;
+  // Walk the breadcrumb chain from root to current and use the first category found.
+  for (const crumb of allBreadcrumbs.value) {
+    if (crumb.categorySlug) {
+      return categories.find((c) => c.slug === crumb.categorySlug) ?? null;
     }
-    return null;
+  }
+  return null;
 });
 
 const documentType = computed(() =>
-    isDraft.value ? (draftTypeParam.value || "document") : (doc.value?.type ?? "document"),
+  isDraft.value ? draftTypeParam.value || "document" : (doc.value?.type ?? "document"),
 );
 
 const isCanvas = computed(() => documentType.value === "canvas");
@@ -102,86 +125,120 @@ const isCsv = computed(() => documentType.value === "csv");
 const isWorkflow = computed(() => documentType.value === "workflow");
 const isDatabase = computed(() => documentType.value === "database");
 const isPaddedDocument = computed(
-    () => !isCanvas.value && !isApp.value && !isCsv.value && !isWorkflow.value && !isDatabase.value,
+  () =>
+    !isCanvas.value &&
+    !isApp.value &&
+    !isCsv.value &&
+    !isWorkflow.value &&
+    !isDatabase.value,
 );
 
 const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
 
 const isReadonly = computed(() =>
-    isDraft.value
-        ? false
-        : !!(
-              doc.value?.readonly ||
-              doc.value?.archived ||
-              isCanvas.value ||
-              isApp.value ||
-              isWorkflow.value ||
-              isDatabase.value ||
-              readOnlyDocumentTypes.includes(documentType.value)
-          ),
+  isDraft.value
+    ? false
+    : !!(
+        doc.value?.readonly ||
+        doc.value?.archived ||
+        isCanvas.value ||
+        isApp.value ||
+        isWorkflow.value ||
+        isDatabase.value ||
+        readOnlyDocumentTypes.includes(documentType.value)
+      ),
 );
 
 const title = computed(() =>
-    isDraft.value
-        ? documentType.value === "canvas" ? "Untitled Canvas" : "Untitled Document"
-        : (doc.value?.properties?.title || "Untitled Document"),
+  isDraft.value
+    ? documentType.value === "canvas"
+      ? "Untitled Canvas"
+      : "Untitled Document"
+    : doc.value?.properties?.title || "Untitled Document",
 );
 
-const defaultLayout = computed(() => (documentType.value === "document" ? "document" : "full"));
+const defaultLayout = computed(() =>
+  documentType.value === "document" ? "document" : "full",
+);
 const effectiveLayout = computed(() =>
-    isDraft.value ? defaultLayout.value : (doc.value?.properties?.layout || defaultLayout.value),
+  isDraft.value
+    ? defaultLayout.value
+    : doc.value?.properties?.layout || defaultLayout.value,
 );
 
 const updatedAtStr = computed(() => {
-    if (!doc.value?.updatedAt) return "";
-    const diffMs = now.value - new Date(doc.value.updatedAt).getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffMins >= 1 && diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
-    if (diffHours >= 1 && diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
-    if (diffDays >= 1) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
-    return "just now";
+  if (!doc.value?.updatedAt) return "";
+  const diffMs = now.value - new Date(doc.value.updatedAt).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins >= 1 && diffMins < 60)
+    return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+  if (diffHours >= 1 && diffHours < 24)
+    return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+  if (diffDays >= 1) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+  return "just now";
 });
 
 const AUTO_CREATE_TYPES: Record<string, string> = {
-    database: "Untitled Database",
-    canvas: "Untitled Canvas",
-    workflow: "Untitled Workflow",
+  database: "Untitled Database",
+  canvas: "Untitled Canvas",
+  workflow: "Untitled Workflow",
 };
 
 const redirecting = ref(false);
 
 async function maybeAutoCreateDraft() {
-    if (!isDraft.value) return;
-    const autoTitle = AUTO_CREATE_TYPES[documentType.value];
-    if (!autoTitle || !currentSpace.value) return;
-    if (!userCanEdit.value) {
-        router.push("/");
-        return;
-    }
-    redirecting.value = true;
-    const newDoc = await api.documents.post(currentSpace.value.id, {
-        type: documentType.value,
-        content: "",
-        properties: { title: autoTitle },
-    });
-    router.push(`/doc/${newDoc.slug}`);
+  if (!isDraft.value) return;
+  const autoTitle = AUTO_CREATE_TYPES[documentType.value];
+  if (!autoTitle || !currentSpace.value) return;
+  if (!userCanEdit.value) {
+    router.push("/");
+    return;
+  }
+  redirecting.value = true;
+  const newDoc = await api.documents.post(currentSpace.value.id, {
+    type: documentType.value,
+    content: "",
+    properties: { title: autoTitle },
+  });
+  router.push(`/doc/${newDoc.slug}`);
 }
 
 onMounted(() => {
-    now.value = Date.now();
-    void maybeAutoCreateDraft();
+  now.value = Date.now();
+  void maybeAutoCreateDraft();
 });
 
 onUnmounted(() => {
-    resetEditingState();
+  resetEditingState();
+  resetDocumentContext();
 });
 
-watch(title, (t) => {
+watch(
+  title,
+  (t) => {
     if (typeof document === "undefined") return;
     if (t) document.title = `${t} - ${currentSpace.value?.name ?? ""} - Wiki`;
-}, { immediate: true });
+  },
+  { immediate: true },
+);
+
+// Keep the shared document context in sync with the current document.
+// Runs during setup (SSR + client) so the context is correct before any child
+// component renders. Replaces the renderless DocumentContextProvider component.
+watchEffect(() => {
+  setDocumentContext({
+    documentId: doc.value?.id,
+    documentType: documentType.value,
+    readonly: isReadonly.value,
+    publishedVersion: doc.value?.publishedRev ?? null,
+    userCanEdit: userCanEdit.value,
+  });
+  if (!canUseDocumentEditor.value && editing.value) {
+    resetEditingState();
+  }
+});
 </script>
 
 <template>
@@ -195,13 +252,6 @@ watch(title, (t) => {
                         ? 'max-w-full'
                         : 'max-w-(--document-width)',
                 )">
-                <DocumentContextProvider
-                    :documentId="doc?.id"
-                    :documentType="documentType"
-                    :readonly="isReadonly"
-                    :publishedVersion="doc?.publishedRev ?? null"
-                    :userCanEdit="userCanEdit"
-                />
 
                 <div v-if="doc?.archived" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 md:mx-10">
                     <div class="flex items-start justify-between gap-3">

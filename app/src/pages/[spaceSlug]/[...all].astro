@@ -1,8 +1,12 @@
 ---
 import SpaceApp from "../../components/SpaceApp.vue";
-import BaseLayout from "../../layouts/BaseLayout.astro";
 import { getDocumentBySlug } from "../../db/documents.ts";
-import { requireSpaceViewer, resolveSpacePage, resolveUserSpaceRole } from "../../utils/spacePage.ts";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import {
+  requireSpaceViewer,
+  resolveSpacePage,
+  resolveUserSpaceRole,
+} from "../../utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);
 if (result.response) return result.response;
@@ -21,11 +25,19 @@ if (Astro.locals.session) {
 }
 
 const userRole = await resolveUserSpaceRole(Astro, space);
-const initialSpace = { ...space, userRole: userRole ?? undefined };
+// Serialize Date fields to ISO strings so the server-rendered HTML matches the
+// client props (Astro serializes props via JSON.stringify, which converts Date
+// objects to strings). Without this, data-updated-at / data-created-at
+// attributes differ between server and client, triggering hydration mismatches.
+const initialSpace = JSON.parse(
+  JSON.stringify({ ...space, userRole: userRole ?? undefined }),
+);
 
 const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
 const initialDocument = docSlugMatch
-  ? await getDocumentBySlug(space.id, docSlugMatch[1]) ?? undefined
+  ? JSON.parse(
+      JSON.stringify((await getDocumentBySlug(space.id, docSlugMatch[1])) ?? undefined),
+    )
   : undefined;
 ---
 
