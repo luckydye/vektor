@@ -33,6 +33,7 @@ const SHADOW_STYLES = `
     -webkit-font-variant-ligatures: none;
     font-variant-ligatures: none;
     font-feature-settings: "liga" 0;
+    overflow-wrap: var(--editor-overflow-wrap, break-word);
   }
   .ProseMirror-hideselection *::selection { background: transparent; }
   .ProseMirror-hideselection *::-moz-selection { background: transparent; }

@@ -72,6 +72,7 @@ import {
 } from "../canvas/elements/registry.ts";
 import { createTextShape, shouldRemoveTextShape } from "../canvas/elements/text.ts";
 import type {
+  CanvasSerializedShape,
   CanvasShape,
   CanvasShapeType,
   CanvasSnapshot,
@@ -328,6 +329,7 @@ let resizeObserver: ResizeObserver | null = null;
 let themeObserver: MutationObserver | null = null;
 let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+const textShapeSizes = shallowRef(new Map<string, { width: number; height: number }>());
 
 const remoteCanvasPresences = computed(() =>
   collaboration.presenceProfiles.value.filter(
@@ -358,7 +360,7 @@ const remoteCanvasSelections = computed(() =>
             presence.user.color ||
             getPresenceColor(presence.user.id),
           itemId,
-          bounds: shape,
+          bounds: shapeBounds(shape),
         },
       ];
     });
@@ -469,10 +471,11 @@ const selectionWorldBounds = computed(() => {
   for (const id of selectedShapeIds.value) {
     const shape = shapesById.value.get(id);
     if (!shape) continue;
-    minX = Math.min(minX, shape.x);
-    minY = Math.min(minY, shape.y);
-    maxX = Math.max(maxX, shape.x + shape.width);
-    maxY = Math.max(maxY, shape.y + shape.height);
+    const bounds = shapeBounds(shape);
+    minX = Math.min(minX, bounds.x);
+    minY = Math.min(minY, bounds.y);
+    maxX = Math.max(maxX, bounds.x + bounds.width);
+    maxY = Math.max(maxY, bounds.y + bounds.height);
   }
 
   for (const id of selectedStrokeIds.value) {
@@ -565,28 +568,105 @@ function toNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-// Text shapes lay themselves out with CSS (the box auto-sizes to its content),
-// but the resulting size still has to live in the shape data: section
-// containment, fit-to-content bounds, and remote clients all read it. A
-// ResizeObserver on each text shape element writes the layout size back.
+function textShapeFallbackSize(shape: CanvasShape) {
+  const minSize = minSizeForShape("text");
+  const lines = (shape.text || defaultTextForShape("text")).split(/\n/);
+  const longestLineLength = Math.max(1, ...lines.map((line) => line.length));
+  return {
+    width: Math.max(minSize.width, Math.ceil(longestLineLength * 8.5 + 26)),
+    height: Math.max(minSize.height, Math.ceil(lines.length * 20.25 + 22)),
+  };
+}
+
+function textShapeSize(shape: CanvasShape) {
+  return textShapeSizes.value.get(shape.id) ?? textShapeFallbackSize(shape);
+}
+
+function shapeBounds(shape: CanvasShape): CanvasShape {
+  if (shape.type !== "text") return shape;
+  return { ...shape, ...textShapeSize(shape) };
+}
+
+// Text shapes lay themselves out from their content. Width/height are local
+// measured bounds for canvas geometry, not persisted shape data.
 let textShapeObserver: ResizeObserver | null = null;
 const observedTextShapes = new Map<Element, string>();
 
+type RichTextEditorWithElement = HTMLElement & { el?: HTMLElement | null };
+
+function cssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function borderBoxExtra(element: HTMLElement) {
+  const style = getComputedStyle(element);
+  return {
+    width: cssPixels(style.borderLeftWidth) + cssPixels(style.borderRightWidth),
+    height: cssPixels(style.borderTopWidth) + cssPixels(style.borderBottomWidth),
+  };
+}
+
+function measureIntrinsicTextShapeSize(element: HTMLElement) {
+  const editorElement =
+    element.querySelector<RichTextEditorWithElement>("rich-text-editor");
+  const editorContent =
+    editorElement?.el ?? editorElement?.shadowRoot?.querySelector<HTMLElement>(".tiptap");
+  const shadowRoot = editorElement?.shadowRoot;
+  if (!editorContent || !shadowRoot) return null;
+
+  const clone = editorContent.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("contenteditable");
+  clone.removeAttribute("tabindex");
+  Object.assign(clone.style, {
+    position: "fixed",
+    left: "-100000px",
+    top: "-100000px",
+    visibility: "hidden",
+    pointerEvents: "none",
+    width: "max-content",
+    minWidth: "0",
+    maxWidth: "none",
+    height: "auto",
+    whiteSpace: "pre-wrap",
+    wordBreak: "normal",
+    overflowWrap: "normal",
+  });
+
+  shadowRoot.append(clone);
+  const contentWidth = Math.max(clone.scrollWidth, clone.offsetWidth);
+  const contentHeight = Math.max(clone.scrollHeight, clone.offsetHeight);
+  clone.remove();
+
+  const extra = borderBoxExtra(element);
+  return {
+    width: Math.ceil(contentWidth + extra.width),
+    height: Math.ceil(contentHeight + extra.height),
+  };
+}
+
 function syncTextShapeSize(id: string, element: HTMLElement) {
-  const shape = yShapes.get(id);
-  if (!shape) return;
+  if (!yShapes.has(id)) return;
 
   const minSize = minSizeForShape("text");
-  const width = Math.max(minSize.width, Math.ceil(element.offsetWidth));
-  const height = Math.max(minSize.height, Math.ceil(element.offsetHeight));
-  if (
-    toNumber(shape.get("width"), 0) === width &&
-    toNumber(shape.get("height"), 0) === height
-  ) {
+  const intrinsicSize = measureIntrinsicTextShapeSize(element);
+  const width = Math.max(
+    minSize.width,
+    intrinsicSize?.width ?? Math.ceil(element.offsetWidth),
+  );
+  const height = Math.max(
+    minSize.height,
+    intrinsicSize?.height ?? Math.ceil(element.offsetHeight),
+  );
+  const current = textShapeSizes.value.get(id);
+  if (current?.width === width && current?.height === height) {
     return;
   }
 
-  updateShape(id, { width, height });
+  const next = new Map(textShapeSizes.value);
+  next.set(id, { width, height });
+  textShapeSizes.value = next;
+  renderSelections();
 }
 
 function observeTextShapeSize(element: HTMLElement, shapeId: string) {
@@ -619,8 +699,14 @@ function syncTextShapeObservers() {
 
   for (const [element] of observedTextShapes) {
     if (!currentElements.has(element) || !element.isConnected) {
+      const shapeId = observedTextShapes.get(element);
       textShapeObserver?.unobserve(element);
       observedTextShapes.delete(element);
+      if (shapeId) {
+        const next = new Map(textShapeSizes.value);
+        next.delete(shapeId);
+        textShapeSizes.value = next;
+      }
     }
   }
 }
@@ -633,7 +719,10 @@ function resolveMediaSrc(src: string): string {
   return src.startsWith("/") ? `${window.location.origin}${src}` : src;
 }
 
-function toShape(id: string, source: Y.Map<unknown> | CanvasShape): CanvasShape {
+function toShape(
+  id: string,
+  source: Y.Map<unknown> | CanvasSerializedShape,
+): CanvasShape {
   const read = (key: keyof CanvasShape) =>
     source instanceof Y.Map ? source.get(key) : source[key];
 
@@ -716,13 +805,15 @@ function syncStrokesFromY() {
   renderInk();
 }
 
-function createShapeMap(shape: CanvasShape) {
+function createShapeMap(shape: CanvasSerializedShape) {
   const map = new Y.Map<unknown>();
   map.set("type", shape.type);
   map.set("x", shape.x);
   map.set("y", shape.y);
-  map.set("width", shape.width);
-  map.set("height", shape.height);
+  if (shape.type !== "text") {
+    map.set("width", shape.width);
+    map.set("height", shape.height);
+  }
   map.set("text", shape.text);
   map.set("color", shape.color);
   if (shape.src) map.set("src", resolveMediaSrc(shape.src));
@@ -732,10 +823,16 @@ function createShapeMap(shape: CanvasShape) {
   return map;
 }
 
+function serializeShape(shape: CanvasShape): CanvasSerializedShape {
+  if (shape.type !== "text") return { ...shape };
+  const { width: _width, height: _height, ...rest } = shape;
+  return rest;
+}
+
 function serializeSnapshot(): string {
   const snapshot: CanvasSnapshot = {
     version: 1,
-    shapes: shapes.value.map((shape) => ({ ...shape })),
+    shapes: shapes.value.map(serializeShape),
     strokes: strokes.value.map((stroke) => ({
       id: stroke.id,
       points: stroke.points.map(cloneFreehandPoint),
@@ -1092,7 +1189,8 @@ function renderSelections() {
     remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
     selectedShapeBounds: [...selectedShapeIds.value]
       .map((id) => shapesById.value.get(id))
-      .filter((s) => s != null),
+      .filter((s) => s != null)
+      .map(shapeBounds),
     remoteSelectedShapeBounds: remoteCanvasDomSelections.value.map((s) => ({
       x: s.bounds.x,
       y: s.bounds.y,
@@ -1327,11 +1425,13 @@ function handleTextBlur(shape: CanvasShape, value: string) {
 
 function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
   if (shape.id === section.id) return false;
+  const bounds = shapeBounds(shape);
+  const sectionBounds = shapeBounds(section);
   return (
-    shape.x >= section.x &&
-    shape.y >= section.y &&
-    shape.x + shape.width <= section.x + section.width &&
-    shape.y + shape.height <= section.y + section.height
+    bounds.x >= sectionBounds.x &&
+    bounds.y >= sectionBounds.y &&
+    bounds.x + bounds.width <= sectionBounds.x + sectionBounds.width &&
+    bounds.y + bounds.height <= sectionBounds.y + sectionBounds.height
   );
 }
 
@@ -1424,7 +1524,9 @@ function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
   const shape = yShapes.get(id);
   if (!shape) return;
   shape.set("updatedAt", Date.now());
+  const isTextShape = shape.get("type") === "text";
   for (const [key, value] of Object.entries(patch)) {
+    if (isTextShape && (key === "width" || key === "height")) continue;
     shape.set(key, value);
   }
 }
@@ -1587,12 +1689,7 @@ function applyMarqueeSelection(
 
   const shapeIds = new Set(state.additive ? state.baseShapeIds : []);
   for (const shape of shapes.value) {
-    const bounds: Rect = {
-      x: shape.x,
-      y: shape.y,
-      width: shape.width,
-      height: shape.height,
-    };
+    const bounds = shapeBounds(shape);
     const hit =
       shape.type === "section"
         ? rectContains(worldRect, bounds)
@@ -1724,10 +1821,11 @@ function movingGroupBounds(
   for (const moved of drag.shapes) {
     const shape = shapesById.value.get(moved.id);
     if (!shape) continue;
+    const bounds = shapeBounds(shape);
     minX = Math.min(minX, moved.x);
     minY = Math.min(minY, moved.y);
-    maxX = Math.max(maxX, moved.x + shape.width);
-    maxY = Math.max(maxY, moved.y + shape.height);
+    maxX = Math.max(maxX, moved.x + bounds.width);
+    maxY = Math.max(maxY, moved.y + bounds.height);
   }
   for (const stroke of drag.strokes) {
     for (const point of stroke.points) {
@@ -1771,19 +1869,9 @@ function snapDragOffset(
   const movingIds = new Set(drag.shapes.map((moved) => moved.id));
   const targets: SnapTarget[] = shapes.value
     .filter(
-      (shape) =>
-        !movingIds.has(shape.id) &&
-        rectsIntersect(near, {
-          x: shape.x,
-          y: shape.y,
-          width: shape.width,
-          height: shape.height,
-        }),
+      (shape) => !movingIds.has(shape.id) && rectsIntersect(near, shapeBounds(shape)),
     )
-    .map((shape) => ({
-      id: shape.id,
-      bounds: { x: shape.x, y: shape.y, width: shape.width, height: shape.height },
-    }));
+    .map((shape) => ({ id: shape.id, bounds: shapeBounds(shape) }));
 
   const guides = computeSnapGuides({
     camera: camera.value,
@@ -2046,10 +2134,13 @@ async function readSystemClipboard() {
   return result;
 }
 
-function collectSelection(): { shapes: CanvasShape[]; strokes: CanvasStrokeSnapshot[] } {
+function collectSelection(): {
+  shapes: CanvasSerializedShape[];
+  strokes: CanvasStrokeSnapshot[];
+} {
   const selShapes = shapes.value
     .filter((shape) => selectedShapeIds.value.has(shape.id))
-    .map((shape) => ({ ...shape }));
+    .map(serializeShape);
   const selStrokes = strokes.value
     .filter((stroke) => selectedStrokeIds.value.has(stroke.id))
     .map((stroke) => ({
@@ -2373,11 +2464,17 @@ function reservedSidebarWidth(): number {
 
 function fitView(maxZoom = 5) {
   const xs = [
-    ...shapes.value.flatMap((shape) => [shape.x, shape.x + shape.width]),
+    ...shapes.value.flatMap((shape) => {
+      const bounds = shapeBounds(shape);
+      return [bounds.x, bounds.x + bounds.width];
+    }),
     ...strokes.value.flatMap((stroke) => stroke.points.map((point) => point.x)),
   ];
   const ys = [
-    ...shapes.value.flatMap((shape) => [shape.y, shape.y + shape.height]),
+    ...shapes.value.flatMap((shape) => {
+      const bounds = shapeBounds(shape);
+      return [bounds.y, bounds.y + bounds.height];
+    }),
     ...strokes.value.flatMap((stroke) => stroke.points.map((point) => point.y)),
   ];
 
@@ -2497,6 +2594,7 @@ watch(
   () => {
     void nextTick(syncTextShapeObservers);
     renderImages();
+    renderSelections();
   },
   { flush: "post" },
 );
@@ -3493,6 +3591,8 @@ onUnmounted(() => {
 
 
 .canvas-shape.text {
+  width: max-content;
+  max-width: none;
   min-width: 32px;
   min-height: 40px;
   border-color: transparent;
@@ -3744,9 +3844,12 @@ onUnmounted(() => {
 /* Text shapes auto-size to their content via TipTap's natural height. */
 .canvas-shape.text .canvas-shape-textwrap {
   display: block;
+  width: max-content;
+  max-width: none;
   cursor: move;
   --editor-white-space: pre-wrap;
-  --editor-word-break: break-word;
+  --editor-word-break: normal;
+  --editor-overflow-wrap: normal;
 }
 
 .canvas-shape.note .canvas-shape-textwrap {

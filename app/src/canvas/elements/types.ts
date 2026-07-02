@@ -5,7 +5,14 @@ import type {
 } from "../../viewport/index.ts";
 
 export type CanvasTool = "select" | "draw" | "note" | "text" | "section";
-export type CanvasElementType = "note" | "text" | "image" | "video" | "file" | "document" | "link";
+export type CanvasElementType =
+  | "note"
+  | "text"
+  | "image"
+  | "video"
+  | "file"
+  | "document"
+  | "link";
 export type CanvasShapeType = CanvasElementType | "section";
 
 export type CanvasShape = {
@@ -23,9 +30,17 @@ export type CanvasShape = {
   updatedAt: number;
 };
 
+export type CanvasSerializedShape =
+  | CanvasShape
+  | (Omit<CanvasShape, "height" | "width"> & {
+      type: "text";
+      height?: number;
+      width?: number;
+    });
+
 export type CanvasSnapshot = {
   version: 1;
-  shapes: CanvasShape[];
+  shapes: CanvasSerializedShape[];
   strokes?: CanvasStrokeSnapshot[];
 };
 

@@ -1,4 +1,8 @@
-import type { CanvasShape, CanvasStrokeSnapshot } from "../canvas/elements/types.ts";
+import type {
+  CanvasSerializedShape,
+  CanvasShape,
+  CanvasStrokeSnapshot,
+} from "../canvas/elements/types.ts";
 import { htmlToMarkdown } from "./documentMarkdown.ts";
 import { messageMarkdownToHtml } from "./messageMarkdown.ts";
 
@@ -7,7 +11,7 @@ export const CANVAS_CLIPBOARD_MIME = "application/x-vektor-canvas";
 
 export type CanvasClipboard = {
   "vektor-canvas-clipboard": 1;
-  shapes: CanvasShape[];
+  shapes: CanvasSerializedShape[];
   strokes: CanvasStrokeSnapshot[];
 };
 
@@ -34,7 +38,7 @@ function escapeAttribute(value: string): string {
   return escapeHtml(value).replace(/'/g, "&#39;");
 }
 
-function shapeSortKey(shape: CanvasShape) {
+function shapeSortKey(shape: CanvasSerializedShape) {
   return `${String(Math.round(shape.y)).padStart(8, "0")}:${String(
     Math.round(shape.x),
   ).padStart(8, "0")}`;
@@ -47,7 +51,7 @@ function supportedShapes(payload: CanvasClipboard) {
 }
 
 export function createCanvasClipboard(selection: {
-  shapes: CanvasShape[];
+  shapes: CanvasSerializedShape[];
   strokes: CanvasStrokeSnapshot[];
 }): CanvasClipboard | null {
   if (selection.shapes.length === 0 && selection.strokes.length === 0) return null;
