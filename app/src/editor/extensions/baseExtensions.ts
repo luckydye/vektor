@@ -875,6 +875,14 @@ export const TaskList = Node.create({
         },
     };
   },
+  addInputRules() {
+    return [
+      wrappingInputRule({
+        find: /^\s*\[ \]$/,
+        type: this.type,
+      }),
+    ];
+  },
 });
 
 export const TaskItem = Node.create({
