@@ -62,7 +62,7 @@ img[width] {
 .image-wrapper.ProseMirror-selectednode img {
   outline: 2px solid var(--color-primary, #3b82f6);
   outline-offset: 2px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 /* Resize handle */
@@ -74,7 +74,7 @@ img[width] {
   height: 12px;
   background: #3b82f6;
   border: 2px solid white;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   cursor: nwse-resize;
   z-index: 10;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
@@ -101,7 +101,7 @@ html-block {
 code {
   background-color: var(--color-neutral-100);
   padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   font-family:
     ui-monospace, SFMono-Regular, "SF Mono", Monaco, Inconsolata, "Liberation Mono",
@@ -138,7 +138,7 @@ date-picker {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--color-neutral-200);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background-color: var(--color-neutral-50);
 }
 

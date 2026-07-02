@@ -101,7 +101,7 @@ a-shortcut {
   --background-color: rgba(0, 0, 0, 0);
   border: 1px solid transparent;
   color: var(--color-gray-400);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   padding: 1px 4px;
   display: flex;
   font-size: 0.75rem;

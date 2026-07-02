@@ -84,7 +84,7 @@ export abstract class ResizableNodeView implements NodeView {
       this.handle.style.height = "12px";
       this.handle.style.background = "#3b82f6";
       this.handle.style.border = "2px solid white";
-      this.handle.style.borderRadius = "var(--radius-xs)";
+      this.handle.style.borderRadius = "var(--radius-sm)";
       this.handle.style.cursor =
         this.resizeMode === "height" ? "ns-resize" : "nwse-resize";
       this.handle.style.zIndex = "10";

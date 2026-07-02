@@ -113,7 +113,7 @@ export const DatePicker = Node.create({
           .date-picker-input {
             padding: 0.25rem 0.5rem;
             border: 1px solid var(--color-neutral-300, #ccc);
-            border-radius: var(--radius-xs);
+            border-radius: var(--radius-sm);
             font-size: 0.875rem;
             cursor: pointer;
             background: var(--color-neutral-50, #fafafa);
@@ -128,7 +128,7 @@ export const DatePicker = Node.create({
           }
           date-picker {
             padding: 0.25rem 0.5rem;
-            border-radius: var(--radius-xs);
+            border-radius: var(--radius-sm);
             background: var(--color-neutral-100, #f5f5f5);
             font-size: 0.875rem;
             color: var(--color-neutral-700, #374151);

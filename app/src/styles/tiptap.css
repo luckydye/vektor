@@ -9,7 +9,7 @@
 }
 
 .tiptap .collaboration-carets__label {
-  border-radius: var(--radius-xs) var(--radius-xs) var(--radius-xs) 0;
+  border-radius: var(--radius-sm) var(--radius-sm) var(--radius-sm) 0;
   color: #0d0d0d;
   font-size: 12px;
   font-style: normal;
