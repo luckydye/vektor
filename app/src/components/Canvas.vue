@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRaw, toRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  shallowRef,
+  toRaw,
+  toRef,
+  watch,
+} from "vue";
 import * as Y from "yjs";
 import {
   canvasFitViewIcon,
@@ -73,6 +83,7 @@ import { useCollaboration } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import "../editor/elements/rich-text-editor.ts";
+import { useToast } from "../composeables/useToast.ts";
 import { extensions } from "../utils/extensions.ts";
 import {
   filenameFromUrl,
@@ -81,7 +92,6 @@ import {
   transformImageUrl,
 } from "../utils/imageUrlTransformers.ts";
 import { type TranslationKey, t } from "../utils/lang.ts";
-import { useToast } from "../composeables/useToast.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   CANVAS_CURSOR_COLOR_STORAGE_KEY,
@@ -2142,7 +2152,9 @@ async function addImageFromUrl(
     const blob = await response.blob();
     file = new File([blob], filenameFromUrl(originalUrl), { type: blob.type });
   } catch (err) {
-    toast.error(`Could not fetch image: ${err instanceof Error ? err.message : String(err)}`);
+    toast.error(
+      `Could not fetch image: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return;
   }
   await addMediaFile(file, at);
@@ -2191,7 +2203,9 @@ function handlePaste(event: ClipboardEvent) {
         activeTool.value = "select";
       }
       if (result.error) {
-        toast.error(result.error instanceof Error ? result.error.message : String(result.error));
+        toast.error(
+          result.error instanceof Error ? result.error.message : String(result.error),
+        );
       }
       saveState.value = "idle";
       dispatchSaveStatus();
@@ -2458,6 +2472,7 @@ watch(
 );
 
 onMounted(() => {
+  void import("../editor/document.ts");
   refreshCssVars();
   yShapes.observeDeep((_events, transaction) => {
     syncShapesFromY();

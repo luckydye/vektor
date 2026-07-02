@@ -76,6 +76,40 @@ function previewHtml(params: {
   return `<div class="content">${content}</div>`;
 }
 
+function shouldRenderDocumentView(params: {
+  status: DocumentPreviewStatus;
+  type: DocumentPreviewType | null;
+  content: string;
+}) {
+  if (params.status !== "loaded") return false;
+  if (params.type === "workflow" || params.type === "csv") return false;
+  if (params.type === "canvas" || isCanvasSnapshotContent(params.content)) return false;
+  return true;
+}
+
+function setDocumentViewHtml(
+  documentView: HTMLElement & { html?: string },
+  html: string,
+) {
+  if (customElements.get("document-view")) {
+    documentView.html = html;
+    return;
+  }
+
+  void import("../document.ts")
+    .then(() => customElements.whenDefined("document-view"))
+    .then(() => {
+      if (!documentView.isConnected) return;
+      if (Object.hasOwn(documentView, "html")) {
+        delete documentView.html;
+      }
+      documentView.html = html;
+    })
+    .catch((error) => {
+      console.error("Failed to load document-view", error);
+    });
+}
+
 // Job outputs are stored as { type: "text", value } or { type: "file", url } objects.
 function unwrapOutputValue(value: unknown): string | null {
   if (typeof value === "string") return value;
@@ -173,6 +207,9 @@ function workflowPreviewHtml(state: WorkflowPreviewState | null): string {
   }
   if (state.status === "error") {
     return `<p class="empty">${escapeHtml(state.message)}</p>`;
+  }
+  if (state.status !== "loaded") {
+    return `<p class="empty">No output</p>`;
   }
 
   const run = state.run;
@@ -332,6 +369,10 @@ if (
               color: var(--canvas-doc-content, #374151);
               cursor: move;
               scrollbar-width: thin;
+            }
+            .body document-view {
+              display: block;
+              min-width: 0;
             }
             .content {
               font-size: 13px;
@@ -502,9 +543,20 @@ if (
             </button>
           </div>
           <div class="body">
-            ${previewHtml({ status, type, content, workflow })}
+            ${
+              shouldRenderDocumentView({ status, type, content })
+                ? `<document-view></document-view>`
+                : previewHtml({ status, type, content, workflow })
+            }
           </div>
         `;
+
+        const documentView = this.shadow.querySelector<HTMLElement & { html?: string }>(
+          "document-view",
+        );
+        if (documentView) {
+          setDocumentViewHtml(documentView, content);
+        }
 
         const button = this.shadow.querySelector<HTMLButtonElement>(".open");
         button?.addEventListener("pointerdown", (event) => {
