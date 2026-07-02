@@ -103,8 +103,11 @@ function parseBoldSection(text: string): Record<string, string> | null {
 function buildSubSheetRows(sections: string[], parseBold: boolean): string[][] {
   if (!parseBold) return sections.map((s) => [s]);
 
-  const parsed = sections.map(parseBoldSection).filter((r): r is Record<string, string> => r !== null);
-  if (parsed.length === 0) return sections.map((s) => [s]);
+  // The 0th section is an intro/summary block (e.g. "Notiz"), not a record — skip it.
+  const recordSections = sections.slice(1);
+
+  const parsed = recordSections.map(parseBoldSection).filter((r): r is Record<string, string> => r !== null);
+  if (parsed.length === 0) return recordSections.map((s) => [s]);
 
   // Union of all keys in order of first appearance
   const keyOrder: string[] = [];
