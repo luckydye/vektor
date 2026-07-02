@@ -1,4 +1,4 @@
-import { type AnyExtension, Extension } from "@tiptap/core";
+import { Extension } from "@tiptap/core";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { Plugin } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
@@ -21,12 +21,6 @@ const colwidthAttribute = {
     };
   },
 };
-
-function withoutDefaultKeyboardShortcuts<T extends AnyExtension>(extension: T): T {
-  return extension.extend({
-    addKeyboardShortcuts: () => ({}),
-  }) as T;
-}
 
 function clearNativeSelection(view: EditorView) {
   const root = view.root;
@@ -70,44 +64,44 @@ export const TableEditing = Extension.create({
 
   addExtensions() {
     return [
-      withoutDefaultKeyboardShortcuts(
-        Table.configure({
-          resizable: true,
-        }),
-      ),
-      withoutDefaultKeyboardShortcuts(TableRow),
-      withoutDefaultKeyboardShortcuts(
-        TableHeader.extend({
-          addAttributes() {
-            return {
-              ...this.parent?.(),
-              colwidth: colwidthAttribute,
-            };
-          },
-        }),
-      ),
-      withoutDefaultKeyboardShortcuts(
-        TableCell.extend({
-          addAttributes() {
-            return {
-              ...this.parent?.(),
-              colwidth: colwidthAttribute,
-              backgroundColor: {
-                default: null,
-                parseHTML: (element) => element.style.backgroundColor || null,
-                renderHTML: (attributes) => {
-                  if (!attributes.backgroundColor) {
-                    return {};
-                  }
-                  return {
-                    style: `background-color: ${attributes.backgroundColor}`,
-                  };
-                },
+      Table.extend({
+        addKeyboardShortcuts: () => ({}),
+      }).configure({
+        resizable: true,
+      }),
+      TableRow.extend({
+        addKeyboardShortcuts: () => ({}),
+      }),
+      TableHeader.extend({
+        addAttributes(this: { parent?: () => Record<string, unknown> }) {
+          return {
+            ...this.parent?.(),
+            colwidth: colwidthAttribute,
+          };
+        },
+        addKeyboardShortcuts: () => ({}),
+      }),
+      TableCell.extend({
+        addAttributes(this: { parent?: () => Record<string, unknown> }) {
+          return {
+            ...this.parent?.(),
+            colwidth: colwidthAttribute,
+            backgroundColor: {
+              default: null,
+              parseHTML: (element: HTMLElement) => element.style.backgroundColor || null,
+              renderHTML: (attributes: { backgroundColor?: string }) => {
+                if (!attributes.backgroundColor) {
+                  return {};
+                }
+                return {
+                  style: `background-color: ${attributes.backgroundColor}`,
+                };
               },
-            };
-          },
-        }),
-      ),
+            },
+          };
+        },
+        addKeyboardShortcuts: () => ({}),
+      }),
       ExpressionCell,
     ];
   },

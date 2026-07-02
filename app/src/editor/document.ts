@@ -4,7 +4,7 @@ import "./elements/textarea.ts";
 import "./elements/expression.ts";
 import "./elements/file-attachment.ts";
 import "./elements/document-attachment.ts";
-import { Editor, Extension } from "@tiptap/core";
+import { type Editor, Extension } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { Dropcursor } from "@tiptap/extensions";
@@ -25,7 +25,11 @@ import {
 import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
 import { MentionSuggestons } from "./extensions/MentionSuggestons.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
-import { contentExtensions, type EditorContext } from "./extensions.ts";
+import {
+  createBaseEditor,
+  documentExtensions,
+  type EditorContext,
+} from "./extensions.ts";
 
 const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
   "document-presence",
@@ -381,7 +385,7 @@ function createEditor(
     passive: true,
   });
 
-  editor = new Editor({
+  editor = createBaseEditor({
     element: editorElement,
     enableCoreExtensions: true,
     onContentError: ({ error, disableCollaboration }) => {
@@ -397,7 +401,7 @@ function createEditor(
       cleanupBlockDropIndicator();
     },
     extensions: [
-      ...contentExtensions(context),
+      ...documentExtensions(context),
 
       TrailingNodePlus.configure({
         spaceId: context.spaceId ?? "",
@@ -414,8 +418,12 @@ function createEditor(
           dragHandleElement = element;
           return element;
         },
-        onNodeChange: ({ node, pos }) => {
+        onNodeChange: (options) => {
+          const { node } = options;
           if (!node) return;
+          const pos =
+            "pos" in options && typeof options.pos === "number" ? options.pos : -1;
+          if (pos < 0) return;
           const { doc } = editor.state;
           const isTrailingNode =
             node.type.name === "paragraph" &&
@@ -458,10 +466,14 @@ function createEditor(
   editor.view.dom.addEventListener("mouseleave", clearTrackedPointerPosition);
   editor.view.dom.addEventListener("dragover", handleEditorDragOver);
   editor.view.dom.addEventListener("drop", hideBlockDropIndicator);
-  dragHandleElement?.addEventListener("pointermove", handleTrackedPointerMove, {
+  const renderedDragHandleElement = dragHandleElement as HTMLElement | null;
+  renderedDragHandleElement?.addEventListener("pointermove", handleTrackedPointerMove, {
     passive: true,
   });
-  dragHandleElement?.addEventListener("pointerleave", clearTrackedPointerPosition);
+  renderedDragHandleElement?.addEventListener(
+    "pointerleave",
+    clearTrackedPointerPosition,
+  );
   window.addEventListener("dragend", hideBlockDropIndicator, { capture: true });
   editor.commands.setMeta("hideDragHandle", true);
 
@@ -501,13 +513,36 @@ export class DocumentView extends HTMLElement {
 
   set collaborationDocument(ydoc: Y.Doc | undefined) {
     if (ydoc instanceof Y.Doc) {
-      if (this.ydoc === ydoc) return;
+      if (this.ydoc === ydoc) {
+        this.queueMaybeStartEditor();
+        return;
+      }
       const hadEditor = !!this.tiptapEditor;
       if (hadEditor) {
         this.destroyEditor();
       }
       this.ydoc = ydoc;
       this.queueMaybeStartEditor();
+    }
+  }
+
+  setEditorEnabled(enabled: boolean, ydoc?: Y.Doc) {
+    if (ydoc instanceof Y.Doc) {
+      this.collaborationDocument = ydoc;
+    }
+
+    if (enabled) {
+      if (!this.hasEditorConfig()) {
+        this.setAttribute("editor", "");
+      }
+      this.queueMaybeStartEditor();
+      return;
+    }
+
+    if (this.hasEditorConfig()) {
+      this.removeAttribute("editor");
+    } else {
+      this.destroyEditor();
     }
   }
 
@@ -551,6 +586,12 @@ export class DocumentView extends HTMLElement {
     event.preventDefault();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = "copy";
+    }
+  };
+
+  private handleFileDragOverEvent = (event: Event) => {
+    if (event instanceof DragEvent) {
+      this.handleFileDragOver(event);
     }
   };
 
@@ -598,6 +639,12 @@ export class DocumentView extends HTMLElement {
     }
   };
 
+  private handleFileDropEvent = (event: Event) => {
+    if (event instanceof DragEvent) {
+      this.handleFileDrop(event);
+    }
+  };
+
   private ensureDocumentStyles(shadow: ShadowRoot) {
     let style = shadow.querySelector<HTMLStyleElement>("style[data-document-styles]");
     if (!style) {
@@ -639,11 +686,19 @@ export class DocumentView extends HTMLElement {
   }
 
   connectedCallback() {
+    this.upgradeProperty("collaborationDocument");
     const shadow = this.ensureShadowRoot();
     this.ensureDocumentStyles(shadow);
 
     this.attachListeners();
     this.queueMaybeStartEditor();
+  }
+
+  private upgradeProperty(name: "collaborationDocument") {
+    if (!Object.hasOwn(this, name)) return;
+    const value = this[name];
+    delete this[name];
+    this[name] = value;
   }
 
   attributeChangedCallback() {
@@ -787,16 +842,16 @@ export class DocumentView extends HTMLElement {
   }
 
   attachListeners() {
-    this.addEventListener("dragover", this.handleFileDragOver, {
+    this.addEventListener("dragover", this.handleFileDragOverEvent, {
       capture: true,
     });
-    this.addEventListener("drop", this.handleFileDrop, {
+    this.addEventListener("drop", this.handleFileDropEvent, {
       capture: true,
     });
-    this.root?.addEventListener("dragover", this.handleFileDragOver, {
+    this.root?.addEventListener("dragover", this.handleFileDragOverEvent, {
       capture: true,
     });
-    this.root?.addEventListener("drop", this.handleFileDrop, {
+    this.root?.addEventListener("drop", this.handleFileDropEvent, {
       capture: true,
     });
 

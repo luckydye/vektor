@@ -64,6 +64,7 @@ type DocumentViewElement = HTMLElement & {
   editorInstance?: Editor;
   collaborationDocument?: Y.Doc;
   destroyEditor?: () => void;
+  setEditorEnabled?: (enabled: boolean, ydoc?: Y.Doc) => void;
   renderReadHtml?: (html: string) => void;
   setPresenceProfiles?: (profiles: DocumentPresenceProfile[]) => void;
 };
@@ -222,12 +223,21 @@ watch(documentToolbar, (toolbar) => {
 });
 
 watch(
-  [documentViewEl, collaboration.ydoc, shouldMountEditor],
-  ([view, ydoc, isMountingEditor]) => {
-    if (view) {
-      if (isMountingEditor) {
-        view.collaborationDocument = ydoc;
-      }
+  [documentViewEl, collaboration.ydoc, shouldMountEditor, canMountEditor],
+  ([view, ydoc, shouldMount, canMount]) => {
+    if (!view) return;
+
+    const enabled = shouldMount && canMount;
+    if (view.setEditorEnabled) {
+      view.setEditorEnabled(enabled, ydoc);
+      return;
+    }
+
+    view.collaborationDocument = ydoc;
+    if (enabled) {
+      view.setAttribute("editor", "");
+    } else {
+      view.removeAttribute("editor");
     }
   },
   { immediate: true },
@@ -468,7 +478,6 @@ useSync(
             :class="editing ? 'h-full' : ''">
             <document-view ref="documentViewEl"
                 :html="renderedHtml"
-                :editor="shouldMountEditor && canMountEditor ? '' : undefined"
                 :space-id="props.spaceId" :document-id="documentId"
                 v-html="ssrDeclarativeShadowDom" />
         </div>

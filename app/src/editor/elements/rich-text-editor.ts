@@ -1,17 +1,29 @@
-import { Editor } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
+import { Placeholder } from "@tiptap/extensions";
 import {
-  Bold,
-  BulletList,
-  Document,
-  HardBreak,
-  Italic,
-  Link,
-  ListItem,
-  OrderedList,
-  Paragraph,
-  Text,
-} from "../extensions/baseExtensions.ts";
-import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "../../utils/messageMarkdown.ts";
+  messageMarkdownToHtml,
+  tiptapJsonToMarkdown,
+} from "../../utils/messageMarkdown.ts";
+import { createBaseEditor } from "../extensions.ts";
+
+export type RichTextEditorFormat = "bold" | "italic" | "bulletList" | "orderedList";
+
+type FormatCommandChain = {
+  toggleBold(): { run(): boolean };
+  toggleItalic(): { run(): boolean };
+  toggleBulletList(): { run(): boolean };
+  toggleOrderedList(): { run(): boolean };
+};
+
+export interface RichTextEditorElementApi extends HTMLElement {
+  value: string;
+  readonly el: HTMLElement | null;
+  focus(): void;
+  isActive(name: string): boolean;
+  toggleFormat(name: RichTextEditorFormat): void;
+  getSelectionContext(): { caret: number; beforeCaret: string } | null;
+  insertMention(start: number, end: number, title: string, id: string): void;
+}
 
 const SHADOW_STYLES = `
   /* ProseMirror baseline — replaces TipTap's document-head injection */
@@ -36,9 +48,18 @@ const SHADOW_STYLES = `
     overflow: hidden;
     -webkit-user-select: text;
     user-select: text;
+    min-height: var(--editor-min-height, 0);
     padding: var(--editor-padding, 0);
     white-space: var(--editor-white-space, normal);
     word-break: var(--editor-word-break, normal);
+  }
+
+  .tiptap p.is-editor-empty:first-child::before {
+    color: var(--editor-placeholder-color, var(--color-neutral-400, #9ca3af));
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
   }
 
   .tiptap p { margin: 0; }
@@ -48,14 +69,22 @@ const SHADOW_STYLES = `
   .tiptap li > p { display: inline; }
 `;
 
-if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" && !customElements.get("rich-text-editor")) {
+if (
+  typeof customElements !== "undefined" &&
+  typeof HTMLElement !== "undefined" &&
+  !customElements.get("rich-text-editor")
+) {
   customElements.define(
     "rich-text-editor",
-    class RichTextEditorElement extends HTMLElement {
+    class RichTextEditorElement extends HTMLElement implements RichTextEditorElementApi {
       private editor: Editor | null = null;
       private lastValue = "";
       private shadow: ShadowRoot;
       private _mount: HTMLDivElement;
+
+      static get observedAttributes() {
+        return ["placeholder"];
+      }
 
       constructor() {
         super();
@@ -66,6 +95,12 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
         this._mount = document.createElement("div");
         this._mount.style.cssText = "display:contents";
         this.shadow.appendChild(this._mount);
+      }
+
+      attributeChangedCallback(name: string) {
+        if (name === "placeholder") {
+          this.syncEditorAttributes();
+        }
       }
 
       connectedCallback() {
@@ -117,47 +152,88 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
         window.addEventListener("pointerup", onUp);
       };
 
+      private get placeholderText() {
+        return this.getAttribute("placeholder") ?? "";
+      }
+
+      private syncEditorAttributes() {
+        if (!this.editor) return;
+        this.editor.view.dom.setAttribute("data-placeholder", this.placeholderText);
+      }
+
       private mountEditor() {
-        this.editor = new Editor({
+        this.editor = createBaseEditor({
           element: this._mount,
           content: messageMarkdownToHtml(this.lastValue),
           injectCSS: false,
-          extensions: [
-            Document,
-            Paragraph,
-            Text,
-            HardBreak,
-            Bold,
-            Italic,
-            Link,
-            BulletList,
-            OrderedList,
-            ListItem,
-          ],
+          extensions: [Placeholder.configure({ placeholder: this.placeholderText })],
           editorProps: {
             attributes: {
+              "data-placeholder": this.placeholderText,
               spellcheck: "false",
+            },
+            handlePaste: (_view, event) => {
+              this.dispatchEvent(
+                new CustomEvent("editor-paste", {
+                  detail: event,
+                  bubbles: true,
+                  composed: true,
+                }),
+              );
+              return event.defaultPrevented;
             },
             handleDOMEvents: {
               // Stop keyboard events from bubbling out of the shadow so
               // canvas-level shortcuts (Delete, Escape, etc.) don't fire
               // while the user is typing.
               keydown: (_view, event) => {
+                this.dispatchEvent(
+                  new CustomEvent("editor-keydown", {
+                    detail: event,
+                    bubbles: true,
+                    composed: true,
+                  }),
+                );
+                event.stopPropagation();
+                return event.defaultPrevented;
+              },
+              keyup: (_view, event) => {
+                this.dispatchEvent(
+                  new CustomEvent("editor-keyup", {
+                    detail: event,
+                    bubbles: true,
+                    composed: true,
+                  }),
+                );
                 event.stopPropagation();
                 return false;
               },
-              keyup: (_view, event) => {
-                event.stopPropagation();
+              click: (_view, event) => {
+                this.dispatchEvent(
+                  new CustomEvent("editor-click", {
+                    detail: event,
+                    bubbles: true,
+                    composed: true,
+                  }),
+                );
                 return false;
               },
               focus: () => {
-                this.dispatchEvent(new CustomEvent("editor-focus", { bubbles: true, composed: true }));
+                this.dispatchEvent(
+                  new CustomEvent("editor-focus", { bubbles: true, composed: true }),
+                );
                 return false;
               },
               blur: () => {
-                const value = this.editor ? tiptapJsonToMarkdown(this.editor.getJSON()) : "";
+                const value = this.editor
+                  ? tiptapJsonToMarkdown(this.editor.getJSON())
+                  : "";
                 this.dispatchEvent(
-                  new CustomEvent("editor-blur", { detail: value, bubbles: true, composed: true }),
+                  new CustomEvent("editor-blur", {
+                    detail: value,
+                    bubbles: true,
+                    composed: true,
+                  }),
                 );
                 return false;
               },
@@ -167,7 +243,11 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
             const markdown = tiptapJsonToMarkdown(editor.getJSON());
             this.lastValue = markdown;
             this.dispatchEvent(
-              new CustomEvent("content-change", { detail: markdown, bubbles: true, composed: true }),
+              new CustomEvent("content-change", {
+                detail: markdown,
+                bubbles: true,
+                composed: true,
+              }),
             );
           },
         });
@@ -175,6 +255,48 @@ if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" 
 
       focus() {
         this.editor?.commands.focus();
+      }
+
+      isActive(name: string) {
+        return this.editor?.isActive(name) ?? false;
+      }
+
+      toggleFormat(name: RichTextEditorFormat) {
+        if (!this.editor) return;
+        const chain = this.editor.chain().focus() as unknown as FormatCommandChain;
+        if (name === "bold") chain.toggleBold().run();
+        if (name === "italic") chain.toggleItalic().run();
+        if (name === "bulletList") chain.toggleBulletList().run();
+        if (name === "orderedList") chain.toggleOrderedList().run();
+      }
+
+      getSelectionContext() {
+        if (!this.editor) return null;
+        const caret = this.editor.state.selection.from;
+        return {
+          caret,
+          beforeCaret: this.editor.state.doc.textBetween(0, caret, "\n", "\n"),
+        };
+      }
+
+      insertMention(start: number, end: number, title: string, id: string) {
+        this.editor
+          ?.chain()
+          .focus()
+          .insertContentAt({ from: start, to: end }, [
+            { type: "text", text: "@" },
+            {
+              type: "text",
+              text: title,
+              marks: [{ type: "link", attrs: { href: `doc:${id}` } }],
+            },
+            { type: "text", text: " " },
+          ])
+          .run();
+      }
+
+      get el() {
+        return this.editor?.view.dom ?? null;
       }
 
       get value(): string {

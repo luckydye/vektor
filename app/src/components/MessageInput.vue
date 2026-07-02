@@ -1,21 +1,11 @@
 <script setup lang="ts">
-import { Editor } from "@tiptap/core";
-import { Placeholder } from "@tiptap/extensions";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { closeSmallIcon, paperclipIcon, sendPlaneIcon } from "~/src/assets/icons.ts";
-import {
-  Bold,
-  BulletList,
-  Document,
-  HardBreak,
-  Italic,
-  Link,
-  ListItem,
-  OrderedList,
-  Paragraph,
-  Text,
-} from "../editor/extensions/baseExtensions.ts";
-import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "../utils/messageMarkdown.ts";
+import "../editor/elements/rich-text-editor.ts";
+import type {
+  RichTextEditorElementApi,
+  RichTextEditorFormat,
+} from "../editor/elements/rich-text-editor.ts";
 
 export type PendingAttachment = {
   id: string;
@@ -72,10 +62,9 @@ defineSlots<{
   below(): unknown;
 }>();
 
-const editorElementRef = ref<HTMLElement | null>(null);
+const editorElementRef = ref<RichTextEditorElementApi | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const pendingAttachments = ref<PendingAttachment[]>([]);
-let editor: Editor | null = null;
 let lastEmittedValue = props.modelValue;
 
 const canSubmit = computed(
@@ -85,15 +74,11 @@ const canSubmit = computed(
 );
 
 function focus() {
-  editor?.commands.focus();
+  editorElementRef.value?.focus();
 }
 
-function toggleFormat(name: "bold" | "italic" | "bulletList" | "orderedList") {
-  if (!editor) return;
-  if (name === "bold") editor.chain().focus().toggleBold().run();
-  if (name === "italic") editor.chain().focus().toggleItalic().run();
-  if (name === "bulletList") editor.chain().focus().toggleBulletList().run();
-  if (name === "orderedList") editor.chain().focus().toggleOrderedList().run();
+function toggleFormat(name: RichTextEditorFormat) {
+  editorElementRef.value?.toggleFormat(name);
 }
 
 // ── File management ───────────────────────────────────────────────────────────
@@ -181,7 +166,9 @@ function onKeydown(event: KeyboardEvent) {
 
   const isEnterNoShift = event.key === "Enter" && !event.shiftKey;
   const isCtrlEnter = event.key === "Enter" && event.ctrlKey;
-  const isInList = editor?.isActive("bulletList") || editor?.isActive("orderedList");
+  const isInList =
+    editorElementRef.value?.isActive("bulletList") ||
+    editorElementRef.value?.isActive("orderedList");
 
   if (
     (props.submitKey === "enter" && isEnterNoShift && !isInList) ||
@@ -195,82 +182,48 @@ function onKeydown(event: KeyboardEvent) {
 function onPaste(event: ClipboardEvent) {
   if (props.attachments && !props.disabled && event.clipboardData?.files?.length) {
     addFiles(event.clipboardData.files);
+    event.preventDefault();
   }
   emit("paste", event);
 }
 
+function onEditorKeydown(event: CustomEvent<KeyboardEvent>) {
+  onKeydown(event.detail);
+}
+
+function onEditorKeyup(event: CustomEvent<KeyboardEvent>) {
+  emit("keyup", event.detail);
+}
+
+function onEditorClick(event: CustomEvent<MouseEvent>) {
+  emit("click", event.detail);
+}
+
+function onEditorPaste(event: CustomEvent<ClipboardEvent>) {
+  onPaste(event.detail);
+}
+
+function onContentChange(event: CustomEvent<string>) {
+  const markdown = event.detail;
+  lastEmittedValue = markdown;
+  emit("update:modelValue", markdown);
+  emit("input", new InputEvent("input"));
+}
+
 onMounted(() => {
-  if (!editorElementRef.value) return;
-  editor = new Editor({
-    element: editorElementRef.value,
-    content: messageMarkdownToHtml(props.modelValue),
-    extensions: [
-      Document,
-      Paragraph,
-      Text,
-      HardBreak,
-      Bold,
-      Italic,
-      Link,
-      BulletList,
-      OrderedList,
-      ListItem.extend({
-        addKeyboardShortcuts() {
-          return {
-            Enter: () => this.editor.commands.splitListItem(this.name),
-          };
-        },
-      }),
-      Placeholder.configure({ placeholder: props.placeholder }),
-    ],
-    editorProps: {
-      attributes: {
-        class:
-          "message-editor flex-1 min-w-0 bg-transparent text-size-medium text-neutral-800 focus:outline-none leading-5",
-        "data-placeholder": props.placeholder,
-        style: `min-height: ${Math.max(1, props.rows) * 1.25}rem`,
-      },
-      handleKeyDown: (_view, event) => {
-        onKeydown(event);
-        return event.defaultPrevented;
-      },
-      handlePaste: (_view, event) => {
-        onPaste(event);
-        return props.attachments && !!event.clipboardData?.files?.length;
-      },
-      handleDOMEvents: {
-        click: (_view, event) => {
-          emit("click", event as MouseEvent);
-          return false;
-        },
-        keyup: (_view, event) => {
-          emit("keyup", event as KeyboardEvent);
-          return false;
-        },
-      },
-    },
-    onUpdate: ({ editor: currentEditor }) => {
-      const markdown = tiptapJsonToMarkdown(currentEditor.getJSON());
-      lastEmittedValue = markdown;
-      emit("update:modelValue", markdown);
-      emit("input", new InputEvent("input"));
-    },
-  });
   if (props.autofocus) nextTick(focus);
 });
 
 onUnmounted(() => {
-  editor?.destroy();
-  editor = null;
   for (const a of pendingAttachments.value) revokePreviewUrl(a.previewUrl);
 });
 
 watch(
   () => props.modelValue,
   (value) => {
-    if (!editor || value === lastEmittedValue) return;
+    if (!editorElementRef.value || value === lastEmittedValue) return;
     lastEmittedValue = value;
-    editor.commands.setContent(messageMarkdownToHtml(value), { emitUpdate: false });
+    editorElementRef.value.value = value;
   },
 );
 
@@ -280,30 +233,13 @@ defineExpose({
   removeAttachment,
   pendingAttachments,
   getSelectionContext() {
-    if (!editor) return null;
-    const caret = editor.state.selection.from;
-    return {
-      caret,
-      beforeCaret: editor.state.doc.textBetween(0, caret, "\n", "\n"),
-    };
+    return editorElementRef.value?.getSelectionContext() ?? null;
   },
   insertMention(start: number, end: number, title: string, id: string) {
-    editor
-      ?.chain()
-      .focus()
-      .insertContentAt({ from: start, to: end }, [
-        { type: "text", text: "@" },
-        {
-          type: "text",
-          text: title,
-          marks: [{ type: "link", attrs: { href: `doc:${id}` } }],
-        },
-        { type: "text", text: " " },
-      ])
-      .run();
+    editorElementRef.value?.insertMention(start, end, title, id);
   },
   get el() {
-    return editor?.view.dom ?? null;
+    return editorElementRef.value?.el ?? null;
   },
 });
 </script>
@@ -366,10 +302,18 @@ defineExpose({
 
       <slot name="left" />
 
-      <div
+      <rich-text-editor
         ref="editorElementRef"
+        :value="modelValue"
+        :placeholder="placeholder"
         :class="autoGrow ? 'max-h-40' : ''"
-        class="flex-1 min-w-0 overflow-y-auto"
+        class="flex-1 min-w-0 overflow-y-auto bg-transparent text-size-medium text-neutral-800 leading-5"
+        :style="{ '--editor-min-height': `${Math.max(1, rows) * 1.25}rem` }"
+        @content-change="onContentChange"
+        @editor-keydown="onEditorKeydown"
+        @editor-keyup="onEditorKeyup"
+        @editor-click="onEditorClick"
+        @editor-paste="onEditorPaste"
       />
 
       <slot name="actions">
@@ -394,34 +338,3 @@ defineExpose({
     <slot name="below" />
   </div>
 </template>
-
-<style scoped>
-:deep(.message-editor p.is-editor-empty:first-child::before) {
-  color: var(--color-neutral-400);
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  pointer-events: none;
-}
-
-:deep(.message-editor ul) {
-  list-style-type: disc !important;
-  margin: 0.25rem 0;
-  padding-left: 1.5rem !important;
-}
-
-:deep(.message-editor ol) {
-  list-style-type: decimal !important;
-  margin: 0.25rem 0;
-  padding-left: 1.5rem !important;
-}
-
-:deep(.message-editor li) {
-  display: list-item;
-  margin: 0.125rem 0;
-}
-
-:deep(.message-editor li > p) {
-  display: inline;
-}
-</style>

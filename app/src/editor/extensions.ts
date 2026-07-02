@@ -1,4 +1,5 @@
-import type { AnyExtension, Extensions } from "@tiptap/core";
+import { Editor, type EditorOptions, Extension, type Extensions } from "@tiptap/core";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   BackgroundColor,
   Bold,
@@ -43,42 +44,54 @@ export type EditorContext = {
   documentId?: string;
 };
 
-function withoutDefaultKeyboardShortcuts<T extends AnyExtension>(extension: T): T {
-  return extension.extend({
-    addKeyboardShortcuts: () => ({}),
-  }) as T;
+export type BaseEditorOptions = Partial<EditorOptions> & Pick<EditorOptions, "element">;
+
+function selectNearestParentNode(editor: Editor) {
+  const { state, view } = editor;
+  const { selection } = state;
+  const { $from, $to } = selection;
+  const startDepth =
+    selection instanceof NodeSelection ? $from.depth : $from.sharedDepth($to.pos);
+
+  for (let depth = startDepth; depth > 0; depth--) {
+    const node = $from.node(depth);
+    if (!NodeSelection.isSelectable(node)) continue;
+
+    const tr = state.tr.setSelection(
+      NodeSelection.create(state.doc, $from.before(depth)),
+    );
+    view.dispatch(tr.scrollIntoView());
+    return true;
+  }
+
+  const tr = state.tr.setSelection(
+    TextSelection.create(state.doc, 0, state.doc.content.size),
+  );
+  view.dispatch(tr.scrollIntoView());
+  return true;
 }
 
-export function contentExtensions(context: EditorContext = {}): Extensions {
-  const { spaceId = "", documentId } = context;
+const BaseSelectionShortcuts = Extension.create({
+  name: "baseSelectionShortcuts",
 
+  addKeyboardShortcuts() {
+    return {
+      "Mod-a": () => selectNearestParentNode(this.editor),
+    };
+  },
+});
+
+function baseEditorExtensions(): Extensions {
   return [
-    withoutDefaultKeyboardShortcuts(Document),
-    withoutDefaultKeyboardShortcuts(Paragraph),
-    withoutDefaultKeyboardShortcuts(Text),
-    withoutDefaultKeyboardShortcuts(Link),
-    withoutDefaultKeyboardShortcuts(Bold),
-    withoutDefaultKeyboardShortcuts(Italic),
-    withoutDefaultKeyboardShortcuts(Strike),
-    withoutDefaultKeyboardShortcuts(Underline),
-    withoutDefaultKeyboardShortcuts(Superscript),
-    withoutDefaultKeyboardShortcuts(Subscript),
-    withoutDefaultKeyboardShortcuts(TextStyle),
-    withoutDefaultKeyboardShortcuts(
-      TextAlign.configure({
-        types: ["heading", "paragraph"],
-      }),
-    ),
-    withoutDefaultKeyboardShortcuts(HardBreak),
-    withoutDefaultKeyboardShortcuts(BackgroundColor),
-    withoutDefaultKeyboardShortcuts(Color),
-    withoutDefaultKeyboardShortcuts(
-      Heading.configure({
-        levels: [1, 2, 3, 4],
-      }),
-    ),
-    withoutDefaultKeyboardShortcuts(BulletList),
-    withoutDefaultKeyboardShortcuts(OrderedList),
+    Document,
+    Paragraph,
+    Text,
+    Link,
+    Bold,
+    Italic,
+    HardBreak,
+    BulletList,
+    OrderedList,
     ListItem.extend({
       addKeyboardShortcuts() {
         return {
@@ -86,24 +99,48 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
         };
       },
     }),
-    withoutDefaultKeyboardShortcuts(
-      ImageUpload.configure({
-        spaceId: spaceId,
-        documentId: documentId,
-      }),
-    ),
-    withoutDefaultKeyboardShortcuts(
-      FileAttachment.configure({
-        spaceId: spaceId,
-        documentId: documentId,
-      }),
-    ),
-    withoutDefaultKeyboardShortcuts(
-      VideoUpload.configure({
-        spaceId: spaceId,
-        documentId: documentId,
-      }),
-    ),
+    BaseSelectionShortcuts,
+  ];
+}
+
+export function createBaseEditor(options: BaseEditorOptions): Editor {
+  const { extensions = [], ...editorOptions } = options;
+
+  return new Editor({
+    ...editorOptions,
+    extensions: [...baseEditorExtensions(), ...extensions],
+  });
+}
+
+export function documentExtensions(context: EditorContext = {}): Extensions {
+  const { spaceId = "", documentId } = context;
+
+  return [
+    Strike,
+    Underline,
+    Superscript,
+    Subscript,
+    TextStyle,
+    TextAlign.configure({
+      types: ["heading", "paragraph"],
+    }),
+    BackgroundColor,
+    Color,
+    Heading.configure({
+      levels: [1, 2, 3, 4],
+    }),
+    ImageUpload.configure({
+      spaceId: spaceId,
+      documentId: documentId,
+    }),
+    FileAttachment.configure({
+      spaceId: spaceId,
+      documentId: documentId,
+    }),
+    VideoUpload.configure({
+      spaceId: spaceId,
+      documentId: documentId,
+    }),
     TableEditing,
     TaskItem.configure({ nested: true }).extend({
       addKeyboardShortcuts() {
@@ -112,9 +149,9 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
         };
       },
     }),
-    withoutDefaultKeyboardShortcuts(TaskList),
-    withoutDefaultKeyboardShortcuts(Code),
-    withoutDefaultKeyboardShortcuts(CodeBlock),
+    TaskList,
+    Code,
+    CodeBlock,
 
     // custom extensions
     CommentAnchor,
@@ -128,4 +165,8 @@ export function contentExtensions(context: EditorContext = {}): Extensions {
     FigmaEmbed,
     Mentions,
   ];
+}
+
+export function contentExtensions(context: EditorContext = {}): Extensions {
+  return [...baseEditorExtensions(), ...documentExtensions(context)];
 }
