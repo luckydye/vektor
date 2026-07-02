@@ -4,6 +4,7 @@ import node from "@astrojs/node";
 import vue from "@astrojs/vue";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
+import pkg from "./package.json";
 
 // https://astro.build/config
 export default defineConfig({
@@ -28,6 +29,9 @@ export default defineConfig({
       },
     },
     envPrefix: "VEKTOR_",
+    define: {
+      'import.meta.env.VEKTOR_VERSION': `"${pkg.version}"`,
+    },
     server: {
       cors: {
         origin: "*",

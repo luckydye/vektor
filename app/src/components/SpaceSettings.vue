@@ -112,6 +112,10 @@
           </div>
         </div>
 
+        <div class="mt-12 opacity-20 text-right">
+            <span>Vektor v{{VEKTOR_VERSION}}</span>
+        </div>
+
       </div>
     </template>
 
@@ -511,7 +515,6 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
-import { closeXIcon } from "~/src/assets/icons.ts";
 import { config } from "../config.ts";
 import AgentSettings from "./AgentSettings.vue";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
@@ -519,6 +522,8 @@ import ExtensionSettings from "./ExtensionSettings.vue";
 import JobsSettings from "./JobsSettings.vue";
 import SettingsLayout from "./SettingsLayout.vue";
 import SpaceMembers from "./SpaceMembers.vue";
+
+const VEKTOR_VERSION = import.meta.env.VEKTOR_VERSION;
 
 const tabs = [
   { id: "general", label: "General" },

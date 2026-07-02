@@ -107,7 +107,7 @@ function getDocumentName(docId: string): string {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-size-title">Recent Activity</h2>
+      <h2 class="text-size-label">Recent Activity</h2>
     </div>
 
     <!-- Error state -->

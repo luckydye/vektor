@@ -1,6 +1,7 @@
 {
   "name": "@wiki/app",
   "version": "0.0.1",
+  "type": "module",
   "dependencies": {
     "@astrojs/node": "^11.0.0",
     "@astrojs/vue": "^7.0.0",
@@ -59,5 +60,7 @@
     "#utils/*": "./src/utils/*",
     "#provider/*": "./src/provider/*"
   },
-  "type": "module"
+  "devDependencies": {
+    "happy-dom": "^20.10.6"
+  }
 }

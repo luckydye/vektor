@@ -171,7 +171,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 <template>
   <nav class="@container flex flex-col gap-3xs">
     <CreateSpaceDialog v-model:show="showCreateDialog" @create="handleCreateSpace" />
-    
+
     <!-- Space Selector -->
     <div class="px-5xs py-5xs flex-none sticky top-0 bg-background z-10 border-b border-neutral-100 rounded-t-md">
       <SpaceSelector
@@ -232,7 +232,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
     </div>
 
     <!-- Document Tree -->
-    <div class="@max-xs:invisible px-5xs py-m">
+    <div class="@max-xs:hidden px-5xs py-m">
       <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
         <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">{{ t('Categories') }}</h3>
         <button

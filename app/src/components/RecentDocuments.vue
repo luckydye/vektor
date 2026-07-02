@@ -30,7 +30,7 @@ const docs = computed(() => docsData.value ?? []);
 
 <template>
   <div>
-    <h2 class="text-size-title mb-4">Recently Modified</h2>
+    <h2 class="text-size-label mb-4">Recently Modified</h2>
 
     <div class="h-60">
     <!-- Skeleton -->

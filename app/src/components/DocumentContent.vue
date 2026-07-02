@@ -491,7 +491,7 @@ useSync(
         v-if="editing && canMountEditor"
         class="fixed inset-x-0 bottom-0 z-10 mx-auto block max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs lg:px-xl pb-4 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none md:left-(--inset-left) md:right-(--inset-right)"
     ></document-statusbar>
-        
+
     <document-toolbar ref="documentToolbar"
         :data-comments-enabled="supportsComments(documentType) ? '' : undefined"></document-toolbar>
 </template>

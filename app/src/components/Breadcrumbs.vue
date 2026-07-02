@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useSpace } from "../composeables/useSpace.ts";
 import { spacePath } from "../utils/utils.ts";
 
@@ -31,13 +31,26 @@ const props = withDefaults(defineProps<Props>(), {
 const { currentSpace } = useSpace();
 
 const showBreadcrumbs = computed(() => props.category || props.parents.length > 0);
+
+const olRef = ref<HTMLOListElement | null>(null);
+
+function scrollToEnd() {
+  const el = olRef.value;
+  if (el) el.scrollLeft = el.scrollWidth;
+}
+
+onMounted(scrollToEnd);
+watch(
+  () => [props.category, props.parents, props.currentTitle],
+  () => nextTick(scrollToEnd),
+);
 </script>
 
 <template>
-  <nav v-if="showBreadcrumbs" aria-label="Breadcrumb" class="breadcrumbs text-size-medium text-neutral-600">
-    <ol class="flex items-center gap-1 flex-wrap">
+  <nav v-if="showBreadcrumbs" aria-label="Breadcrumb" class="breadcrumbs text-size-medium text-neutral-600 min-w-0">
+    <ol ref="olRef" class="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <!-- Category -->
-      <li v-if="category" class="flex items-center gap-1.5">
+      <li v-if="category" class="flex items-center gap-1.5 shrink-0">
         <a
           :href="spacePath(currentSpace?.slug, `/?category=${category.slug}`)"
           class="inline-flex items-center gap-1.5 hover:text-neutral-900 hover:underline transition-colors"
@@ -49,7 +62,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
       </li>
 
       <!-- Parent Documents -->
-      <li v-for="parent in parents" :key="parent.id" class="flex items-center gap-1.5">
+      <li v-for="parent in parents" :key="parent.id" class="flex items-center gap-1.5 shrink-0">
         <a
           :href="spacePath(currentSpace?.slug, `/doc/${parent.slug}`)"
           class="hover:text-neutral-900 hover:underline transition-colors truncate max-w-[200px] px-1"
@@ -61,7 +74,7 @@ const showBreadcrumbs = computed(() => props.category || props.parents.length > 
       </li>
 
       <!-- Current Document -->
-      <li class="px-1">
+      <li class="px-1 shrink-0">
         <span class="text-neutral-900 font-medium truncate max-w-[200px] block" :title="currentTitle">
           {{ currentTitle }}
         </span>
