@@ -32,7 +32,7 @@
         <!-- L-shaped connector for the last item -->
         <div
           v-else
-          class="absolute left-0 top-0 h-[14px] w-[0.535rem] border-l border-b border-neutral-400"
+          class="absolute left-0 top-0 h-[0.975rem] w-[0.52rem] border-l border-b border-neutral-400"
         ></div>
         <DocumentTreeItem :doc="child" :all-docs="allDocs"
           :active-doc-id="activeDocId" :expanded-items="expandedItems" @toggle="$emit('toggle', $event)" />

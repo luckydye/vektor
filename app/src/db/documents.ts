@@ -965,7 +965,7 @@ export async function listAllDocumentsByCategories(
     })
     .from(document)
     .where(nonArchivedDocumentCondition)
-    .orderBy(desc(document.updatedAt))
+    .orderBy(desc(document.updatedAt), desc(document.id))
     .all();
 
   if (viewer) {
