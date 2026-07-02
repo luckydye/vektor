@@ -1,3 +1,399 @@
+import type { CanvasShape, CanvasStrokeSnapshot } from "../canvas/elements/types.ts";
+import { htmlToMarkdown } from "./documentMarkdown.ts";
+import { messageMarkdownToHtml } from "./messageMarkdown.ts";
+
+export const CANVAS_CLIPBOARD_MARKER = "vektor-canvas-clipboard";
+export const CANVAS_CLIPBOARD_MIME = "application/x-vektor-canvas";
+
+export type CanvasClipboard = {
+  "vektor-canvas-clipboard": 1;
+  shapes: CanvasShape[];
+  strokes: CanvasStrokeSnapshot[];
+};
+
+type DocumentClipboardUnit =
+  | { type: "text"; html: string }
+  | { type: "image"; src: string; alt: string; width: number; height: number }
+  | { type: "video"; src: string; alt: string; width: number; height: number }
+  | { type: "file"; src: string; filename: string };
+
+const MEDIA_MIN_SIZE = { width: 80, height: 60 };
+const TEXT_SIZE = { width: 280, height: 88 };
+const FILE_SIZE = { width: 220, height: 150 };
+const PASTE_GAP = 18;
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value).replace(/'/g, "&#39;");
+}
+
+function shapeSortKey(shape: CanvasShape) {
+  return `${String(Math.round(shape.y)).padStart(8, "0")}:${String(
+    Math.round(shape.x),
+  ).padStart(8, "0")}`;
+}
+
+function supportedShapes(payload: CanvasClipboard) {
+  return [...payload.shapes].sort((a, b) =>
+    shapeSortKey(a).localeCompare(shapeSortKey(b)),
+  );
+}
+
+export function createCanvasClipboard(selection: {
+  shapes: CanvasShape[];
+  strokes: CanvasStrokeSnapshot[];
+}): CanvasClipboard | null {
+  if (selection.shapes.length === 0 && selection.strokes.length === 0) return null;
+  return {
+    [CANVAS_CLIPBOARD_MARKER]: 1,
+    shapes: selection.shapes,
+    strokes: selection.strokes,
+  };
+}
+
+export function serializeCanvasClipboard(payload: CanvasClipboard): string {
+  return JSON.stringify(payload);
+}
+
+export function parseCanvasClipboardJson(
+  text: string | null | undefined,
+): CanvasClipboard | null {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as Partial<CanvasClipboard>;
+    if (parsed?.[CANVAS_CLIPBOARD_MARKER] !== 1) return null;
+    if (!Array.isArray(parsed.shapes) || !Array.isArray(parsed.strokes)) return null;
+    return parsed as CanvasClipboard;
+  } catch {
+    return null;
+  }
+}
+
+export function parseCanvasClipboardHtml(
+  html: string | null | undefined,
+): CanvasClipboard | null {
+  if (!html || typeof DOMParser === "undefined") return null;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const marker = doc.querySelector<HTMLElement>("[data-vektor-canvas-clipboard]");
+  return parseCanvasClipboardJson(marker?.dataset.vektorCanvasClipboard);
+}
+
+export function canvasClipboardFromDataTransfer(
+  data: DataTransfer | null | undefined,
+): CanvasClipboard | null {
+  if (!data) return null;
+  return (
+    parseCanvasClipboardJson(data.getData(CANVAS_CLIPBOARD_MIME)) ??
+    parseCanvasClipboardHtml(data.getData("text/html")) ??
+    parseCanvasClipboardJson(data.getData("text/plain"))
+  );
+}
+
+export function canvasClipboardToPlainText(payload: CanvasClipboard): string {
+  const lines: string[] = [];
+  for (const shape of supportedShapes(payload)) {
+    if (
+      (shape.type === "text" || shape.type === "note" || shape.type === "section") &&
+      shape.text.trim()
+    ) {
+      lines.push(shape.text.trim());
+    } else if (
+      shape.type === "image" ||
+      shape.type === "video" ||
+      shape.type === "file"
+    ) {
+      lines.push(shape.alt || shape.src || shape.type);
+    } else if (shape.type === "link" && shape.src) {
+      lines.push(shape.text || shape.src);
+    } else if (shape.type === "document" && shape.text.trim()) {
+      lines.push(shape.text.trim());
+    }
+  }
+  return lines.join("\n\n");
+}
+
+export function canvasClipboardToDocumentHtml(
+  payload: CanvasClipboard,
+  options: { includeMetadata?: boolean } = {},
+): string {
+  const html: string[] = [];
+
+  if (options.includeMetadata !== false) {
+    html.push(
+      `<div data-vektor-canvas-clipboard="${escapeAttribute(
+        serializeCanvasClipboard(payload),
+      )}" style="display:none"></div>`,
+    );
+  }
+
+  for (const shape of supportedShapes(payload)) {
+    if (shape.type === "text" || shape.type === "note") {
+      const rendered = messageMarkdownToHtml(shape.text || "");
+      if (rendered.trim()) html.push(rendered);
+      continue;
+    }
+
+    if (shape.type === "section") {
+      const text = shape.text.trim();
+      if (text) html.push(`<h2>${escapeHtml(text)}</h2>`);
+      continue;
+    }
+
+    if (shape.type === "image" && shape.src) {
+      html.push(
+        `<img src="${escapeAttribute(shape.src)}" alt="${escapeAttribute(
+          shape.alt ?? "",
+        )}" width="${Math.round(shape.width)}" height="${Math.round(shape.height)}">`,
+      );
+      continue;
+    }
+
+    if (shape.type === "video" && shape.src) {
+      html.push(
+        `<video src="${escapeAttribute(shape.src)}" controls width="${Math.round(
+          shape.width,
+        )}" height="${Math.round(shape.height)}"></video>`,
+      );
+      continue;
+    }
+
+    if (shape.type === "file" && shape.src) {
+      html.push(
+        `<file-attachment src="${escapeAttribute(shape.src)}" filename="${escapeAttribute(
+          shape.alt || shape.text || "file",
+        )}"></file-attachment>`,
+      );
+      continue;
+    }
+
+    if (shape.type === "link" && shape.src) {
+      const label = shape.text || shape.src;
+      html.push(
+        `<p><a href="${escapeAttribute(shape.src)}">${escapeHtml(label)}</a></p>`,
+      );
+      continue;
+    }
+
+    if (shape.type === "document" && shape.text.trim()) {
+      html.push(`<p>${escapeHtml(shape.text.trim())}</p>`);
+    }
+  }
+
+  return html.join("\n");
+}
+
+function parseNumber(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseStyleSize(style: string, property: "width" | "height"): number | null {
+  const match = new RegExp(`${property}\\s*:\\s*([0-9.]+)px`, "i").exec(style);
+  return parseNumber(match?.[1]);
+}
+
+function mediaSize(element: Element, fallback: { width: number; height: number }) {
+  const style = element.getAttribute("style") ?? "";
+  const width =
+    parseNumber(element.getAttribute("width")) ?? parseStyleSize(style, "width");
+  const height =
+    parseNumber(element.getAttribute("height")) ?? parseStyleSize(style, "height");
+  const resolvedWidth = width ?? fallback.width;
+  const resolvedHeight = height ?? fallback.height;
+  const scale = Math.min(
+    1,
+    480 / Math.max(1, resolvedWidth),
+    360 / Math.max(1, resolvedHeight),
+  );
+  return {
+    width: Math.max(MEDIA_MIN_SIZE.width, Math.round(resolvedWidth * scale)),
+    height: Math.max(MEDIA_MIN_SIZE.height, Math.round(resolvedHeight * scale)),
+  };
+}
+
+function absoluteUrl(src: string): string {
+  if (!src || typeof window === "undefined") return src;
+  if (/^(?:data:|blob:|https?:|\/)/i.test(src)) {
+    try {
+      return new URL(src, window.location.origin).href;
+    } catch {
+      return src;
+    }
+  }
+  try {
+    return new URL(src, window.location.href).href;
+  } catch {
+    return src;
+  }
+}
+
+function collectDocumentUnits(nodes: Iterable<Node>, units: DocumentClipboardUnit[]) {
+  for (const node of nodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.textContent?.trim()) {
+        units.push({ type: "text", html: escapeHtml(node.textContent) });
+      }
+      continue;
+    }
+    if (!(node instanceof Element)) continue;
+
+    if (node.matches("[data-vektor-canvas-clipboard]")) continue;
+
+    if (node.matches("img[src]")) {
+      const size = mediaSize(node, { width: 240, height: 150 });
+      units.push({
+        type: "image",
+        src: absoluteUrl(node.getAttribute("src") ?? ""),
+        alt: node.getAttribute("alt") ?? "",
+        ...size,
+      });
+      continue;
+    }
+
+    if (node.matches("video[src]")) {
+      const size = mediaSize(node, { width: 240, height: 150 });
+      units.push({
+        type: "video",
+        src: absoluteUrl(node.getAttribute("src") ?? ""),
+        alt: node.getAttribute("aria-label") ?? "",
+        ...size,
+      });
+      continue;
+    }
+
+    if (node.matches("file-attachment[src]")) {
+      units.push({
+        type: "file",
+        src: absoluteUrl(node.getAttribute("src") ?? ""),
+        filename: node.getAttribute("filename") ?? "file",
+      });
+      continue;
+    }
+
+    if (node.querySelector("img[src], video[src], file-attachment[src]")) {
+      collectDocumentUnits(node.childNodes, units);
+      continue;
+    }
+
+    if (node.textContent?.trim()) {
+      units.push({ type: "text", html: node.outerHTML });
+    }
+  }
+}
+
+function flushTextShape(
+  htmlParts: string[],
+  shapes: CanvasShape[],
+  at: { x: number; y: number },
+  cursorY: { value: number },
+) {
+  if (htmlParts.length === 0) return;
+  const markdown = htmlToMarkdown(htmlParts.join("\n")).trim();
+  htmlParts.length = 0;
+  if (!markdown) return;
+
+  shapes.push({
+    id: `shape-${crypto.randomUUID()}`,
+    type: "text",
+    x: Math.round(at.x),
+    y: Math.round(cursorY.value),
+    width: TEXT_SIZE.width,
+    height: TEXT_SIZE.height,
+    text: markdown,
+    color: "#ffffff",
+    updatedAt: Date.now(),
+  });
+  cursorY.value += TEXT_SIZE.height + PASTE_GAP;
+}
+
+export function documentClipboardToCanvasShapes(params: {
+  html?: string | null;
+  text?: string | null;
+  at: { x: number; y: number };
+}): CanvasShape[] {
+  const shapes: CanvasShape[] = [];
+  const cursorY = { value: params.at.y };
+  const htmlParts: string[] = [];
+
+  if (params.html?.trim() && typeof DOMParser !== "undefined") {
+    const doc = new DOMParser().parseFromString(params.html, "text/html");
+    doc.querySelectorAll("[data-vektor-canvas-clipboard]").forEach((node) => {
+      node.remove();
+    });
+
+    const units: DocumentClipboardUnit[] = [];
+    collectDocumentUnits(doc.body.childNodes, units);
+
+    for (const unit of units) {
+      if (unit.type === "text") {
+        htmlParts.push(unit.html);
+        continue;
+      }
+
+      flushTextShape(htmlParts, shapes, params.at, cursorY);
+
+      if (unit.type === "image" || unit.type === "video") {
+        shapes.push({
+          id: `shape-${crypto.randomUUID()}`,
+          type: unit.type,
+          x: Math.round(params.at.x),
+          y: Math.round(cursorY.value),
+          width: unit.width,
+          height: unit.height,
+          text: "",
+          color: unit.type === "video" ? "#000000" : "transparent",
+          src: unit.src,
+          alt: unit.alt,
+          updatedAt: Date.now(),
+        });
+        cursorY.value += unit.height + PASTE_GAP;
+        continue;
+      }
+
+      shapes.push({
+        id: `shape-${crypto.randomUUID()}`,
+        type: "file",
+        x: Math.round(params.at.x),
+        y: Math.round(cursorY.value),
+        width: FILE_SIZE.width,
+        height: FILE_SIZE.height,
+        text: "",
+        color: "transparent",
+        src: unit.src,
+        alt: unit.filename,
+        updatedAt: Date.now(),
+      });
+      cursorY.value += FILE_SIZE.height + PASTE_GAP;
+    }
+  }
+
+  flushTextShape(htmlParts, shapes, params.at, cursorY);
+
+  if (shapes.length === 0 && params.text?.trim()) {
+    shapes.push({
+      id: `shape-${crypto.randomUUID()}`,
+      type: "text",
+      x: Math.round(params.at.x),
+      y: Math.round(params.at.y),
+      width: TEXT_SIZE.width,
+      height: TEXT_SIZE.height,
+      text: params.text.trim(),
+      color: "#ffffff",
+      updatedAt: Date.now(),
+    });
+  }
+
+  return shapes;
+}
+
 /**
  * Parses Figma clipboard HTML (fig-kiwi binary format).
  *
@@ -208,7 +604,7 @@ function decodeBinarySchema(schemaBytes: Uint8Array): TypeDef[] {
 // Kiwi message decoder
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: Figma kiwi payloads are decoded from a dynamic binary schema.
 type KiwiValue = any;
 
 function decodeMessage(
@@ -432,7 +828,11 @@ async function decodeFigmaKiwi(html: string): Promise<{
     const k = nodeGuidKey(n);
     return k !== null && selectedGuids.has(k);
   });
-  const selectedMap = new Map(selected.map((n) => [nodeGuidKey(n)!, n]));
+  const selectedMap = new Map<string, KiwiValue>();
+  for (const node of selected) {
+    const key = nodeGuidKey(node);
+    if (key) selectedMap.set(key, node);
+  }
 
   // Blob pool — each blob is a struct { bytes: byte[] }. VECTOR nodes index
   // into this pool via vectorData.vectorNetworkBlob.
@@ -515,7 +915,7 @@ function traceLoops(vn: VectorNetwork): number[][] {
   const adj = new Map<number, { segIdx: number; to: number }[]>();
   segments.forEach((s, i) => {
     if (!adj.has(s.start)) adj.set(s.start, []);
-    adj.get(s.start)!.push({ segIdx: i, to: s.end });
+    adj.get(s.start)?.push({ segIdx: i, to: s.end });
   });
 
   const loops: number[][] = [];
@@ -569,7 +969,7 @@ function vectorNetworkToPath(
     const pts = loop.map((vi) => vertices[vi]);
 
     // If any segment in this loop carries tangents, emit exact béziers/lines.
-    const anyCurve = loop.some((vi, i) => {
+    const anyCurve = loop.some((_vi, i) => {
       const a = loop[i];
       const b = loop[(i + 1) % n];
       return hasTangent(segByPair.get(`${a}>${b}`));
@@ -583,11 +983,11 @@ function vectorNetworkToPath(
         const a = vertices[aIdx];
         const b = vertices[bIdx];
         const seg = segByPair.get(`${aIdx}>${bIdx}`);
-        if (hasTangent(seg)) {
+        if (hasTangent(seg) && seg) {
           // Tangents are relative to their vertices; orient to travel a→b.
-          const forward = seg!.start === aIdx;
-          const ts = forward ? seg!.tanStart : seg!.tanEnd;
-          const te = forward ? seg!.tanEnd : seg!.tanStart;
+          const forward = seg.start === aIdx;
+          const ts = forward ? seg.tanStart : seg.tanEnd;
+          const te = forward ? seg.tanEnd : seg.tanStart;
           const c1x = a.x + ts.x;
           const c1y = a.y + ts.y;
           const c2x = b.x + te.x;
@@ -597,7 +997,7 @@ function vectorNetworkToPath(
           d += `L${fmt(b.x)} ${fmt(b.y)}`;
         }
       }
-      parts.push(d + "Z");
+      parts.push(`${d}Z`);
       continue;
     }
 
@@ -639,7 +1039,7 @@ function vectorNetworkToPath(
       }
       d += `L${fmt(nx.t1.x)} ${fmt(nx.t1.y)}`;
     }
-    parts.push(d + "Z");
+    parts.push(`${d}Z`);
   }
   return parts.join(" ");
 }
@@ -740,20 +1140,27 @@ function buildRenderContext(decoded: {
   // Build parent → sorted-children from ALL changes (not just selected).
   // Selected nodes are only the roots of what was copied; their descendants
   // live in allChanges but are not in selectedGuids.
-  const nodeOrder = new Map(allChanges.map((n, i) => [nodeGuidKey(n)!, i]));
+  const nodeOrder = new Map<string, number>();
+  allChanges.forEach((node, index) => {
+    const key = nodeGuidKey(node);
+    if (key) nodeOrder.set(key, index);
+  });
   const childrenOf = new Map<string, KiwiValue[]>();
   for (const n of allChanges) {
     const pi = n.parentIndex as KiwiValue | undefined;
     if (!pi?.guid) continue;
     const pk = `${(pi.guid as KiwiValue).sessionID}:${(pi.guid as KiwiValue).localID}`;
     if (!childrenOf.has(pk)) childrenOf.set(pk, []);
-    childrenOf.get(pk)!.push(n);
+    childrenOf.get(pk)?.push(n);
   }
   for (const kids of childrenOf.values()) {
-    kids.sort(
-      (a, b) =>
-        (nodeOrder.get(nodeGuidKey(a)!) ?? 0) - (nodeOrder.get(nodeGuidKey(b)!) ?? 0),
-    );
+    kids.sort((a, b) => {
+      const aKey = nodeGuidKey(a);
+      const bKey = nodeGuidKey(b);
+      return (
+        (aKey ? (nodeOrder.get(aKey) ?? 0) : 0) - (bKey ? (nodeOrder.get(bKey) ?? 0) : 0)
+      );
+    });
   }
   const nodeByKey = new Map<string, KiwiValue>(
     allChanges.flatMap((n) => {
@@ -981,7 +1388,9 @@ function renderRoot(
   const height = s.y as number;
   const x = t.m02 as number;
   const y = t.m12 as number;
-  if (!isFinite(x) || !isFinite(y) || width <= 0 || height <= 0) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || width <= 0 || height <= 0) {
+    return null;
+  }
 
   const counter = { n: 0 };
   // Offset by the root's own world translation so its <g> sits at (0,0).
@@ -1049,13 +1458,15 @@ export async function figmaClipboardToSVG(html: string): Promise<string | null> 
       y = t.m12 as number;
     const w = s.x as number,
       h = s.y as number;
-    if (!isFinite(x) || !isFinite(y) || w <= 0 || h <= 0) continue;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || w <= 0 || h <= 0) {
+      continue;
+    }
     minX = Math.min(minX, x);
     minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + w);
     maxY = Math.max(maxY, y + h);
   }
-  if (!isFinite(minX)) return null;
+  if (!Number.isFinite(minX)) return null;
 
   const vw = Math.round(maxX - minX);
   const vh = Math.round(maxY - minY);

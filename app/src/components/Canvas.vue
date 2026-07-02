@@ -84,6 +84,18 @@ import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import "../editor/elements/rich-text-editor.ts";
 import { useToast } from "../composeables/useToast.ts";
+import {
+  CANVAS_CLIPBOARD_MIME,
+  type CanvasClipboard,
+  canvasClipboardFromDataTransfer,
+  canvasClipboardToDocumentHtml,
+  canvasClipboardToPlainText,
+  createCanvasClipboard,
+  documentClipboardToCanvasShapes,
+  parseCanvasClipboardHtml,
+  parseCanvasClipboardJson,
+  serializeCanvasClipboard,
+} from "../utils/clipboard.ts";
 import { extensions } from "../utils/extensions.ts";
 import {
   filenameFromUrl,
@@ -1970,29 +1982,69 @@ async function pasteFromContextMenu() {
   contextMenuPos.value = null;
   contextMenuInsertWorld = null;
 
-  const text = await navigator.clipboard.readText().catch(() => null);
-  if (text !== null) {
-    const payload = parseCanvasClipboard(text);
-    if (payload) {
-      pasteCanvasClipboard(payload, insertAt);
-      return;
+  const clipboard = await readSystemClipboard();
+  const payload =
+    parseCanvasClipboardJson(clipboard.canvasJson) ??
+    parseCanvasClipboardHtml(clipboard.html) ??
+    parseCanvasClipboardJson(clipboard.text);
+  if (payload) {
+    pasteCanvasClipboard(payload, insertAt);
+    return;
+  }
+
+  if (clipboard.html.trim()) {
+    const inserted = pasteDocumentClipboardShapes(
+      documentClipboardToCanvasShapes({
+        html: clipboard.html,
+        text: clipboard.text,
+        at: insertAt,
+      }),
+    );
+    if (inserted) return;
+  }
+
+  if (clipboard.text.trim()) {
+    pasteDocumentClipboardShapes(
+      documentClipboardToCanvasShapes({ text: clipboard.text, at: insertAt }),
+    );
+  }
+}
+
+async function readSystemClipboard() {
+  const result = { canvasJson: "", html: "", text: "" };
+
+  if (navigator.clipboard?.read) {
+    const items = await navigator.clipboard.read().catch(() => []);
+    for (const item of items) {
+      for (const type of item.types) {
+        if (type === CANVAS_CLIPBOARD_MIME && !result.canvasJson) {
+          result.canvasJson = await item
+            .getType(type)
+            .then((blob) => blob.text())
+            .catch(() => "");
+        }
+        if (type === "text/html" && !result.html) {
+          result.html = await item
+            .getType(type)
+            .then((blob) => blob.text())
+            .catch(() => "");
+        }
+        if (type === "text/plain" && !result.text) {
+          result.text = await item
+            .getType(type)
+            .then((blob) => blob.text())
+            .catch(() => "");
+        }
+      }
     }
   }
 
-  const internal = parseCanvasClipboard(internalClipboard);
-  if (internal) pasteCanvasClipboard(internal, insertAt);
-}
+  if (!result.text) {
+    result.text = (await navigator.clipboard?.readText().catch(() => "")) ?? "";
+  }
 
-// Portable clipboard payload — written to the system clipboard as JSON so a
-// copy in one tab/browser can be pasted into another. Kept as an in-memory
-// fallback for non-secure contexts where the Clipboard API is unavailable.
-const CANVAS_CLIPBOARD_MARKER = "vektor-canvas-clipboard";
-type CanvasClipboard = {
-  "vektor-canvas-clipboard": 1;
-  shapes: CanvasShape[];
-  strokes: CanvasStrokeSnapshot[];
-};
-let internalClipboard: string | null = null;
+  return result;
+}
 
 function collectSelection(): { shapes: CanvasShape[]; strokes: CanvasStrokeSnapshot[] } {
   const selShapes = shapes.value
@@ -2009,14 +2061,8 @@ function collectSelection(): { shapes: CanvasShape[]; strokes: CanvasStrokeSnaps
   return { shapes: selShapes, strokes: selStrokes };
 }
 
-/** Serializes the current selection to a portable JSON string, or null if nothing is selected. */
-function serializeSelection(): string | null {
-  const selection = collectSelection();
-  if (selection.shapes.length === 0 && selection.strokes.length === 0) return null;
-  return JSON.stringify({
-    [CANVAS_CLIPBOARD_MARKER]: 1,
-    ...selection,
-  } satisfies CanvasClipboard);
+function selectedCanvasClipboard(): CanvasClipboard | null {
+  return createCanvasClipboard(collectSelection());
 }
 
 /** True when the user has a real text selection (let the browser copy that instead). */
@@ -2027,52 +2073,74 @@ function hasActiveTextSelection(target: EventTarget | null): boolean {
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
 }
 
-// Native clipboard events: synchronous, no permission prompt, and the JSON
-// lands in the system clipboard so it pastes across tabs and browsers.
+// Native clipboard events are synchronous and land in the system clipboard, so
+// copies work across documents, canvases, tabs, and spaces.
 function handleCopy(event: ClipboardEvent) {
   if (hasActiveTextSelection(event.target)) return;
-  const json = serializeSelection();
-  if (!json) return;
+  const payload = selectedCanvasClipboard();
+  if (!payload) return;
+  const json = serializeCanvasClipboard(payload);
   event.preventDefault();
-  event.clipboardData?.setData("text/plain", json);
-  internalClipboard = json;
+  event.clipboardData?.setData(CANVAS_CLIPBOARD_MIME, json);
+  event.clipboardData?.setData(
+    "text/html",
+    canvasClipboardToDocumentHtml(payload, { includeMetadata: true }),
+  );
+  event.clipboardData?.setData("text/plain", canvasClipboardToPlainText(payload));
 }
 
 function handleCut(event: ClipboardEvent) {
   if (hasActiveTextSelection(event.target)) return;
-  const json = serializeSelection();
-  if (!json) return;
+  const payload = selectedCanvasClipboard();
+  if (!payload) return;
+  const json = serializeCanvasClipboard(payload);
   event.preventDefault();
-  event.clipboardData?.setData("text/plain", json);
-  internalClipboard = json;
+  event.clipboardData?.setData(CANVAS_CLIPBOARD_MIME, json);
+  event.clipboardData?.setData(
+    "text/html",
+    canvasClipboardToDocumentHtml(payload, { includeMetadata: true }),
+  );
+  event.clipboardData?.setData("text/plain", canvasClipboardToPlainText(payload));
   deleteSelectedShape();
 }
 
 function copySelectionToClipboard() {
-  const json = serializeSelection();
-  if (!json) return;
-  internalClipboard = json;
-  navigator.clipboard?.writeText(json).catch(() => {});
+  const payload = selectedCanvasClipboard();
+  if (!payload) return;
+  const html = canvasClipboardToDocumentHtml(payload, { includeMetadata: true });
+  const text = canvasClipboardToPlainText(payload);
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    navigator.clipboard
+      .write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ])
+      .catch(() => navigator.clipboard?.writeText(text).catch(() => {}));
+    return;
+  }
+  navigator.clipboard?.writeText(text).catch(() => {});
 }
 
 function cutSelectionToClipboard() {
-  const json = serializeSelection();
-  if (!json) return;
-  internalClipboard = json;
-  navigator.clipboard?.writeText(json).catch(() => {});
-  deleteSelectedShape();
-}
-
-function parseCanvasClipboard(text: string | null | undefined): CanvasClipboard | null {
-  if (!text) return null;
-  try {
-    const parsed = JSON.parse(text) as Partial<CanvasClipboard>;
-    if (parsed?.[CANVAS_CLIPBOARD_MARKER] !== 1) return null;
-    if (!Array.isArray(parsed.shapes) || !Array.isArray(parsed.strokes)) return null;
-    return parsed as CanvasClipboard;
-  } catch {
-    return null;
+  const payload = selectedCanvasClipboard();
+  if (!payload) return;
+  const html = canvasClipboardToDocumentHtml(payload, { includeMetadata: true });
+  const text = canvasClipboardToPlainText(payload);
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    navigator.clipboard
+      .write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ])
+      .catch(() => navigator.clipboard?.writeText(text).catch(() => {}));
+  } else {
+    navigator.clipboard?.writeText(text).catch(() => {});
   }
+  deleteSelectedShape();
 }
 
 /**
@@ -2138,6 +2206,30 @@ function pasteCanvasClipboard(
   renderInk();
 }
 
+function pasteDocumentClipboardShapes(nextShapes: CanvasShape[]): boolean {
+  if (nextShapes.length === 0) return false;
+  const pastedShapeIds = new Set<string>();
+
+  ydoc.transact(() => {
+    for (const shape of nextShapes) {
+      pastedShapeIds.add(shape.id);
+      yShapes.set(
+        shape.id,
+        createShapeMap({
+          ...shape,
+          updatedAt: Date.now(),
+        }),
+      );
+    }
+  });
+
+  selectedShapeIds.value = pastedShapeIds;
+  selectedStrokeIds.value = new Set();
+  activeTool.value = "select";
+  renderImages();
+  return true;
+}
+
 async function addImageFromUrl(
   fetchUrl: string,
   originalUrl: string,
@@ -2164,13 +2256,14 @@ function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select")) return;
 
-  // The system clipboard is authoritative — it reflects the *latest* copy from
-  // anywhere. Check it before the in-memory fallback so copying something new
-  // (an image, other text) overrides a previously-copied canvas element.
+  // The system clipboard is authoritative; it reflects the latest copy from
+  // anywhere, including other tabs and spaces.
   const text = event.clipboardData?.getData("text/plain") ?? "";
+  const html = event.clipboardData?.getData("text/html") ?? "";
 
-  // 1. Our own canvas elements (portable JSON in the clipboard text).
-  const payload = parseCanvasClipboard(text);
+  // 1. Our own canvas elements. Prefer custom/html metadata, but keep parsing
+  // legacy text/plain JSON from older copies.
+  const payload = canvasClipboardFromDataTransfer(event.clipboardData);
   if (payload) {
     event.preventDefault();
     pasteCanvasClipboard(payload, insertionPointFromEvent());
@@ -2189,7 +2282,6 @@ function handlePaste(event: ClipboardEvent) {
 
   // 3. Figma selection — HTML blob with figmeta + kiwi binary scene data. Must
   //    run before the plain-text bail below because Figma also populates text/plain.
-  const html = event.clipboardData?.getData("text/html") ?? "";
   if (isFigmaClipboardHtml(html)) {
     event.preventDefault();
     saveState.value = "saving";
@@ -2241,18 +2333,31 @@ function handlePaste(event: ClipboardEvent) {
     }
   }
 
-  // 6. The clipboard holds some other real content (plain text, etc.) that
-  //    isn't ours — leave it to the browser, don't paste a stale element.
-  if (text.trim().length > 0) return;
-
-  // 6. The system clipboard gave us nothing usable (e.g. a non-secure context
-  //    where clipboardData is unavailable). Fall back to the last canvas copy
-  //    held in memory.
-  const internal = parseCanvasClipboard(internalClipboard);
-  if (internal) {
-    event.preventDefault();
-    pasteCanvasClipboard(internal, insertionPointFromEvent());
+  // 6. Rich document/web HTML — map supported nodes to canvas shapes.
+  if (html.trim()) {
+    const inserted = pasteDocumentClipboardShapes(
+      documentClipboardToCanvasShapes({
+        html,
+        text,
+        at: insertionPointFromEvent(),
+      }),
+    );
+    if (inserted) {
+      event.preventDefault();
+      return;
+    }
   }
+
+  // 7. Plain text — create a text shape on the canvas.
+  if (text.trim().length > 0) {
+    event.preventDefault();
+    pasteDocumentClipboardShapes(
+      documentClipboardToCanvasShapes({ text, at: insertionPointFromEvent() }),
+    );
+    return;
+  }
+
+  // 8. The system clipboard gave us nothing usable.
 }
 
 // The canvas renders full-bleed behind the fixed navigation sidebar, so the

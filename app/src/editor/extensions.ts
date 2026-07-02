@@ -1,5 +1,9 @@
 import { Editor, type EditorOptions, Extension, type Extensions } from "@tiptap/core";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import {
+  canvasClipboardFromDataTransfer,
+  canvasClipboardToDocumentHtml,
+} from "../utils/clipboard.ts";
 import {
   BackgroundColor,
   Bold,
@@ -81,6 +85,35 @@ const BaseSelectionShortcuts = Extension.create({
   },
 });
 
+const CanvasClipboardPaste = Extension.create({
+  name: "canvasClipboardPaste",
+
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+
+    return [
+      new Plugin({
+        key: new PluginKey("canvasClipboardPaste"),
+        props: {
+          handlePaste(_view, event) {
+            const payload = canvasClipboardFromDataTransfer(event.clipboardData);
+            if (!payload) return false;
+
+            const html = canvasClipboardToDocumentHtml(payload, {
+              includeMetadata: false,
+            });
+            if (!html.trim()) return false;
+
+            event.preventDefault();
+            editor.chain().focus().insertContent(html).run();
+            return true;
+          },
+        },
+      }),
+    ];
+  },
+});
+
 function baseEditorExtensions(): Extensions {
   return [
     Document,
@@ -141,6 +174,7 @@ export function documentExtensions(context: EditorContext = {}): Extensions {
       spaceId: spaceId,
       documentId: documentId,
     }),
+    CanvasClipboardPaste,
     TableEditing,
     TaskItem.configure({ nested: true }).extend({
       addKeyboardShortcuts() {
