@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useExtensions } from "../../composeables/useExtensions.ts";
+import { useSpace } from "../../composeables/useSpace.ts";
 import ExtensionView from "../ExtensionView.vue";
 import PinnedDocument from "../PinnedDocument.vue";
 import RecentDocuments from "../RecentDocuments.vue";
-import SpaceActivity from "../SpaceActivity.vue";
-import { useExtensions } from "../../composeables/useExtensions.ts";
-import { useSpace } from "../../composeables/useSpace.ts";
+import SpaceActivityFeed from "../SpaceActivityFeed.vue";
 
 const { currentSpace } = useSpace();
 const { extensions } = useExtensions();
@@ -43,8 +43,8 @@ const homeTopViews = computed(() =>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3xl mb-20">
-        <SpaceActivity :spaceId="currentSpace.id" :limit="15" />
+      <div class="mb-20">
+        <SpaceActivityFeed :spaceId="currentSpace.id" :limit="15" />
       </div>
     </inset-view>
   </div>

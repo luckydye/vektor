@@ -1,6 +1,6 @@
 /**
  * Shared helpers for rendering audit-log / activity entries.
- * Used by SpaceActivity.vue and RevisionsSidebar.vue.
+ * Used by activity feed components and RevisionsSidebar.vue.
  */
 
 import {

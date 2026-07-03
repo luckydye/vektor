@@ -18,8 +18,8 @@ import { Actions } from "../utils/actions.ts";
 import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import { t } from "../utils/lang.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
-import ActivityFeed from "./ActivityFeed.vue";
 import DockedPanel from "./DockedPanel.vue";
+import DocumentActivityFeed from "./DocumentActivityFeed.vue";
 import Pager from "./Pager.vue";
 import "@atrium-ui/elements/popover";
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
@@ -81,7 +81,7 @@ const sortedEntries = computed(() =>
 const revisionsByNumber = computed(() => new Map(revisions.value.map((r) => [r.rev, r])));
 
 // ---------------------------------------------------------------------------
-// User / document resolvers passed to ActivityFeed
+// User resolver passed to DocumentActivityFeed
 // ---------------------------------------------------------------------------
 
 function getUserName(userId?: string | null): string {
@@ -289,7 +289,7 @@ useSync(
 </script>
 
 <template>
-  <DockedPanel id="revisions" title="Document History" default-side="right" :default-width="420">
+  <DockedPanel id="revisions" title="Document Activity" default-side="right" :default-width="420">
     <div class="relative flex flex-col h-full">
 
       <!-- Error State -->
@@ -320,7 +320,7 @@ useSync(
       <!-- Activity Feed -->
       <wiki-scroll v-else class="flex-1 overflow-y-auto" data-scroll-container>
         <div class="py-2 px-2">
-          <ActivityFeed
+          <DocumentActivityFeed
             :entries="sortedEntries"
             :get-user-name="getUserName"
             :get-user="getUser"
@@ -388,7 +388,7 @@ useSync(
                 class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded-sm border border-amber-200 text-amber-600 bg-amber-50"
               >{{ revisionStatusOf(entry) === "applied" ? "Applied" : "Suggestion" }}</span>
             </template>
-          </ActivityFeed>
+          </DocumentActivityFeed>
         </div>
       </wiki-scroll>
 
