@@ -11,6 +11,7 @@ src/cli/category.ts     category ls/create/edit/rm
 src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)
+src/cli/mcp.ts          MCP stdio server
 src/cli/resolve.ts      resolveHost(), resolveSpaceId()
 ```
 
@@ -62,6 +63,23 @@ The CLI authenticates with a Bearer token from `VEKTOR_ACCESS_TOKEN`. Never crea
 ```typescript
 const token = config().CLI_ACCESS_TOKEN;
 const headers = token ? { Authorization: `Bearer ${token}` } : {};
+```
+
+## MCP
+
+`vektor mcp` runs the MCP server over stdio. MCP clients should launch the CLI directly instead of connecting to a Vektor HTTP endpoint:
+
+```json
+{
+  "vektor": {
+    "command": "vektor",
+    "args": ["--space", "space_id", "mcp"],
+    "env": {
+      "VEKTOR_HOST": "http://localhost:8080",
+      "VEKTOR_ACCESS_TOKEN": "at_..."
+    }
+  }
+}
 ```
 
 ## Global Flags

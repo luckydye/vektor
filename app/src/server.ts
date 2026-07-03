@@ -516,7 +516,7 @@ async function runAstroHandler(
 
 // Serve the API directly from Hono so it can operate without the Astro
 // frontend. The API adapter reads the raw Node request body itself so JSON,
-// multipart, binary uploads, MCP, and CalDAV requests keep their original bytes.
+// multipart, binary uploads, and CalDAV requests keep their original bytes.
 app.use("*", apiRouter);
 
 // The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API

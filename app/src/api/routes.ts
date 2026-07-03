@@ -41,7 +41,6 @@ import * as jobsRun from "./routes/v1/spaces/[spaceId]/jobs/run.ts";
 import * as jobRuns from "./routes/v1/spaces/[spaceId]/jobs/runs.ts";
 import * as jobSchedule from "./routes/v1/spaces/[spaceId]/jobs/schedules/[scheduleId].ts";
 import * as jobSchedules from "./routes/v1/spaces/[spaceId]/jobs/schedules/index.ts";
-import * as mcp from "./routes/v1/spaces/[spaceId]/mcp.ts";
 import * as members from "./routes/v1/spaces/[spaceId]/members.ts";
 import * as permissions from "./routes/v1/spaces/[spaceId]/permissions/index.ts";
 import * as permissionsMe from "./routes/v1/spaces/[spaceId]/permissions/me.ts";
@@ -92,7 +91,6 @@ export const apiRoutes: ApiRoute[] = [
   { pattern: "/api/v1/spaces/[spaceId]", module: space },
   { pattern: "/api/v1/spaces/[spaceId]/audit-logs", module: spaceAuditLogs },
   { pattern: "/api/v1/spaces/[spaceId]/members", module: members },
-  { pattern: "/api/v1/spaces/[spaceId]/mcp", module: mcp },
   { pattern: "/api/v1/spaces/[spaceId]/properties", module: properties },
 
   { pattern: "/api/v1/spaces/[spaceId]/access-tokens", module: accessTokens },

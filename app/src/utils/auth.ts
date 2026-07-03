@@ -41,8 +41,8 @@ async function enforceUserRoleOnTarget(
  *  - an HMAC job token (`X-Job-Token`) — a server-minted credential that
  *    carries the initiating user's id. When a user id is present the token is
  *    NOT trusted blindly: it is scoped to exactly what that user may do on the
- *    target (a token minted at space-viewer level — e.g. by the MCP endpoint —
- *    must not become a skeleton key for documents the user cannot access).
+ *    target (a token minted at space-viewer level must not become a skeleton
+ *    key for documents the user cannot access).
  *    A user-less token (`userId === null`) is a system/background credential
  *    and remains fully trusted within its space;
  *  - a space access token (`Authorization: Bearer at_...`) — a long-lived

@@ -30,7 +30,8 @@ type McpTool = {
 export type VektorMcpConfig = {
   apiUrl: string;
   spaceId: string;
-  jobToken: string;
+  jobToken?: string;
+  accessToken?: string;
   documentId?: string;
   connectedProviders?: string[];
 };
@@ -166,7 +167,11 @@ async function apiRequest(
   init: RequestInit = {},
 ): Promise<unknown> {
   const headers = new Headers(init.headers);
-  headers.set("X-Job-Token", config.jobToken);
+  if (config.jobToken) {
+    headers.set("X-Job-Token", config.jobToken);
+  } else if (config.accessToken) {
+    headers.set("Authorization", `Bearer ${config.accessToken}`);
+  }
   headers.set("X-Space-Id", config.spaceId);
   headers.set("X-Requested-With", "XMLHttpRequest");
   if (!headers.has("Origin")) {

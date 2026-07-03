@@ -6,6 +6,7 @@
  * Usage:
  *   vektor login
  *   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
+ *   vektor mcp
  *   vektor agent [prompt...] [--doc <slug|id>] [--once]
  *   vektor workflow run <docId> [--input key=value ...] [--json]
  *   vektor workflow logs <runId>
@@ -41,6 +42,7 @@ import {
 } from "./src/cli/document.ts";
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
 import { commandLogin } from "./src/cli/login.ts";
+import { commandMcp } from "./src/cli/mcp.ts";
 import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
 import { commandUploadFile } from "./src/cli/upload.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
@@ -93,6 +95,7 @@ Usage:
 Commands:
   vektor login
   vektor serve [--port <port>] [--host <host>] [--no-auth] [--in-memory] [--email-auth]
+  vektor mcp
   vektor agent [prompt...] [--doc <slug|id>] [--once]
   vektor workflow run <docId> [--input key=value ...] [--json]
   vektor workflow logs <runId>
@@ -113,7 +116,7 @@ Commands:
 Env vars:
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
   VEKTOR_SPACE_ID       Space to use (default: first space on server)
-  VEKTOR_ACCESS_TOKEN   API token (required if auth is enabled)
+  VEKTOR_ACCESS_TOKEN   API token (required if auth is enabled; used by vektor mcp)
 `);
 }
 
@@ -151,6 +154,11 @@ async function main(): Promise<void> {
     if ("email-auth" in flags) process.env.VEKTOR_EMAIL_AUTH = "1";
     if ("in-memory" in flags) process.env.VEKTOR_IN_MEMORY_DB = "1";
     await import("./src/server.ts");
+    return;
+  }
+
+  if (command === "mcp") {
+    await commandMcp();
     return;
   }
 
@@ -346,7 +354,7 @@ async function main(): Promise<void> {
   }
 
   throw new Error(
-    `Unknown command: ${command}\n\nTry: serve, workflow, extension, cat, upload, write, set, ls, query, category`,
+    `Unknown command: ${command}\n\nTry: serve, mcp, workflow, extension, cat, upload, write, set, ls, query, category`,
   );
 }
 
