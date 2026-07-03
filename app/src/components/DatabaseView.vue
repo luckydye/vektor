@@ -4,8 +4,12 @@ import { nextTick, ref, watch } from "vue";
 import { plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "../composeables/useDatabaseRows.ts";
-import { useToast } from "../composeables/useToast.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { useToast } from "../composeables/useToast.ts";
+import {
+  type DocumentPropertyValue,
+  propertyValueToText,
+} from "../utils/documentProperties.ts";
 import { spacePath } from "../utils/utils.ts";
 
 const { currentSpace } = useSpace();
@@ -124,8 +128,13 @@ async function confirmDeleteRow(rowId: string) {
   }
 }
 
-function cellValue(row: Record<string, string>, col: string): string {
-  return row[col] ?? "";
+function cellValue(row: Record<string, DocumentPropertyValue>, col: string): string {
+  const value = row[col];
+  return value ? propertyValueToText(value) : "";
+}
+
+function rowTitle(row: Record<string, DocumentPropertyValue>): string {
+  return cellValue(row, "title") || "Untitled";
 }
 
 const DEFAULT_COL_WIDTH = 180;
@@ -251,12 +260,12 @@ const NAME_COL_WIDTH = 240;
                   :href="spacePath(currentSpace?.slug, `/doc/${row.slug}`)"
                   class="flex-1 truncate text-neutral-800 font-medium hover:text-primary-600 hover:underline transition-colors"
                 >
-                  {{ row.properties.title || "Untitled" }}
+                  {{ rowTitle(row.properties) }}
                 </a>
                 <button
                   class="opacity-0 group-hover:opacity-100 shrink-0 text-neutral-400 hover:text-neutral-700 transition-all"
                   title="Edit name"
-                  @click="startEdit(row.id, 'title', row.properties.title || '')"
+                  @click="startEdit(row.id, 'title', rowTitle(row.properties))"
                 >
                   <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" />
@@ -373,4 +382,3 @@ const NAME_COL_WIDTH = 240;
     </div>
   </Teleport>
 </template>
-

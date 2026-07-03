@@ -426,10 +426,12 @@ watch(documentData, (doc) => {
     renderedHtml.value = doc.content;
   }
   maybeStartAutoEditMode();
+  const layout = Array.isArray(doc.properties?.layout)
+    ? doc.properties.layout[0]
+    : doc.properties?.layout;
   const full =
-    doc.properties?.layout === "full" ||
-    (!doc.properties?.layout &&
-      (documentType.value === "csv" || documentType.value === "canvas"));
+    layout === "full" ||
+    (!layout && (documentType.value === "csv" || documentType.value === "canvas"));
   const container = document.querySelector<HTMLElement>("[data-layout]");
   container?.classList.toggle("max-w-full", full);
   container?.classList.toggle("max-w-(--document-width)", !full);
@@ -479,6 +481,7 @@ useSync(
             <document-view ref="documentViewEl"
                 :html="renderedHtml"
                 :space-id="props.spaceId" :document-id="documentId"
+                data-allow-mismatch="children"
                 v-html="ssrDeclarativeShadowDom" />
         </div>
 
@@ -498,7 +501,7 @@ useSync(
 
     <document-statusbar
         v-if="editing && canMountEditor"
-        class="fixed inset-x-0 bottom-0 z-10 mx-auto block max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs lg:px-xl pb-4 pt-20 bg-linear-to-b from-transparent to-neutral-10 pointer-events-none md:left-(--inset-left) md:right-(--inset-right)"
+        class="fixed inset-x-0 bottom-0 z-10 mx-auto block max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs lg:px-xl pb-4 pointer-events-none md:left-(--inset-left) md:right-(--inset-right)"
     ></document-statusbar>
 
     <document-toolbar ref="documentToolbar"

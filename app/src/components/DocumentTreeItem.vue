@@ -15,7 +15,7 @@
           ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'
       ]">
-        <span>{{ doc.properties.title || 'Untitled' }}</span>
+        <span>{{ docTitle(doc) }}</span>
         <span v-if="doc.mentionCount && doc.mentionCount > 0" class="ml-2 px-1.5 py-0.5 text-size-small rounded-full bg-blue-500 text-white font-medium">
           {{ doc.mentionCount }}
         </span>
@@ -45,6 +45,11 @@
 import { computed } from "vue";
 import { chevronRightThinIcon } from "~/src/assets/icons.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import {
+  propertyValueIncludes,
+  propertyValueToScalar,
+  propertyValueToText,
+} from "../utils/documentProperties.ts";
 import { spacePath } from "../utils/utils.ts";
 
 const props = defineProps({
@@ -70,8 +75,14 @@ defineEmits(["toggle"]);
 
 const { currentSpace } = useSpace();
 
+function docTitle(doc) {
+  const title = doc.properties?.title;
+  return title ? propertyValueToText(title) : "Untitled";
+}
+
 const children = computed(() => {
   const docCategory = props.doc.properties.category || props.doc.properties.collection;
+  const docCategorySlug = propertyValueToScalar(docCategory);
 
   return props.allDocs.filter((d) => {
     if (d.parentId !== props.doc.id) return false;
@@ -79,7 +90,11 @@ const children = computed(() => {
     const childCategory = d.properties.category || d.properties.collection;
 
     // Include child if it has no explicit category (inherits) or same category as parent
-    return !childCategory || childCategory === docCategory;
+    return (
+      !childCategory ||
+      !docCategorySlug ||
+      propertyValueIncludes(childCategory, docCategorySlug)
+    );
   });
 });
 

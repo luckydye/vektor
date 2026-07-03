@@ -180,7 +180,7 @@ onUnmounted(() => {
         <!-- Sidebar -->
         <div ref="sidebarRef" :style="{
             width: `${displayWidth}px`,
-            '--color-background': 'var(--color-neutral-50)'
+            '--color-background': 'var(--color-neutral-10)'
         }" :class="[
             '@container sidebar p-1.5 flex',
             'fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
@@ -198,7 +198,7 @@ onUnmounted(() => {
                 )" />
             </button>
             
-            <div class="before:backdrop-surface-blur flex flex-col bg-background/90 rounded-lg relative overflow-hidden border border-neutral-100 w-full h-full">
+            <div class="before:backdrop-surface-blur flex flex-col bg-background/90 rounded-lg relative overflow-hidden border border-neutral-200 w-full h-full">
                 <!-- Navigation -->
                 <wiki-scroll name="navigation" class="z-1 flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]">
                     <Navigation />

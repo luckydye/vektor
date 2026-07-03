@@ -8,6 +8,7 @@ import { useDocumentContext } from "../../composeables/useDocument.ts";
 import { useEditor } from "../../composeables/useEditor.ts";
 import { canEdit } from "../../composeables/usePermissions.ts";
 import { useSpace } from "../../composeables/useSpace.ts";
+import { optionalPropertyValueToText } from "../../utils/documentProperties.ts";
 import { readOnlyDocumentTypes } from "../../utils/documentTypes.ts";
 import AppView from "../AppView.vue";
 import Breadcrumbs from "../Breadcrumbs.vue";
@@ -276,8 +277,8 @@ watchEffect(() => {
                                 :currentTitle="title" />
                         </div>
 
-                        <HeaderImage v-if="!isDraft && !isApp && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
-                            :initialSrc="doc.properties?.headerImage ?? null" />
+                        <HeaderImage v-if="!isDraft && !isApp && !isWorkflow && !isCanvas" class="mt-4 mb-4" :documentId="doc.id"
+                            :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)" />
 
                         <inset-view :class="twMerge(
                             'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
@@ -309,7 +310,7 @@ watchEffect(() => {
                     </div>
 
                     <HeaderImage v-if="!isDraft && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
-                        :initialSrc="doc.properties?.headerImage ?? null" />
+                        :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)" />
 
                     <inset-view :class="twMerge(
                         'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
@@ -348,7 +349,7 @@ watchEffect(() => {
 
                         <AppView v-if="isApp" :html="doc.content || ''" />
                         <WorkflowView v-else-if="isWorkflow" :documentId="doc.id" :spaceId="currentSpace.id" />
-                        <DatabaseView v-else-if="isDatabase" :databaseDocumentId="doc.id" :schemaJson="doc.properties._schema" />
+                        <DatabaseView v-else-if="isDatabase" :databaseDocumentId="doc.id" :schemaJson="optionalPropertyValueToText(doc.properties._schema) ?? undefined" />
                         <DocumentContent v-else :spaceId="currentSpace.id" :documentId="doc.id" :initialHtml="doc.content"
                             :documentType="documentType" :readonly="isReadonly" />
                     </template>

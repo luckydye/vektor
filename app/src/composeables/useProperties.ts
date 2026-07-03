@@ -54,7 +54,7 @@ export function useProperties() {
     mutationFn: async (params: {
       documentId: string;
       name: string;
-      value: string | null | undefined;
+      value: string | string[] | null | undefined;
       type?: string | null;
     }) => {
       if (!spaceId.value) {
@@ -97,7 +97,7 @@ export function useProperties() {
   async function updateProperty(
     documentId: string,
     name: string,
-    value: string | null | undefined,
+    value: string | string[] | null | undefined,
     type?: string | null,
   ) {
     await updatePropertyMutation.mutateAsync({ documentId, name, value, type });

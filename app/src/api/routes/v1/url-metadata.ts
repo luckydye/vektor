@@ -9,6 +9,7 @@ import {
 } from "#db/api.ts";
 import { getDocumentBySlug } from "#db/documents.ts";
 import { getSpaceBySlug } from "#db/spaces.ts";
+import { propertyValueToText } from "#utils/documentProperties.ts";
 import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
 
 export interface LinkMetadata {
@@ -185,7 +186,9 @@ async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
         return img ? resolveUrl(img, base) : null;
       })(),
       video: (() => {
-        const vid = extractMetaContent(html, "og:video") || extractMetaContent(html, "og:video:url");
+        const vid =
+          extractMetaContent(html, "og:video") ||
+          extractMetaContent(html, "og:video:url");
         return vid ? resolveUrl(vid, base) : null;
       })(),
       siteName: extractMetaContent(html, "og:site_name"),
@@ -300,7 +303,9 @@ export const GET: APIRoute = (context) =>
 
         const metadata: LinkMetadata = {
           url,
-          title: doc.properties?.title || doc.slug,
+          title: doc.properties?.title
+            ? propertyValueToText(doc.properties.title)
+            : doc.slug,
           description: doc.content ? extractDescriptionFromContent(doc.content) : null,
           image: null,
           video: null,

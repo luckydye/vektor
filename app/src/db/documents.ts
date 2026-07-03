@@ -1,7 +1,13 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { extractFileTextFromBuffer } from "../files/extractText.ts";
 import { getFileStorage } from "../files/storage.ts";
+import {
+  type DocumentPropertyValue,
+  parseStoredPropertyValue,
+  propertyValueToScalar,
+  propertyValueToText,
+  serializePropertyValue,
+} from "../utils/documentProperties.ts";
 import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import { slugify } from "../utils/utils.ts";
@@ -18,15 +24,12 @@ import { extractMentionsFromHtml } from "./mentions.ts";
 import { createRevision, decompressHtml } from "./revisions.ts";
 import { document, file as fileTable, property, revision } from "./schema/space.ts";
 import {
-  buildDocumentSearchText,
   type DocumentWithProperties,
-  type FileRow,
   fileRowToDocument,
-  nonArchivedColumnCondition,
   nonArchivedDocumentCondition,
-  serializeEmbedding,
   updateDocumentEmbedding,
 } from "./search.ts";
+
 export type {
   DocumentWithProperties,
   FileRow,
@@ -34,6 +37,7 @@ export type {
   SearchResult,
 } from "./search.ts";
 export { rebuildSearchIndex, searchDocuments } from "./search.ts";
+
 import { sendSyncEvent } from "./ws.ts";
 
 const archivedDocumentCondition = sql`
@@ -84,7 +88,12 @@ async function generateUniqueSlug(
   return slug;
 }
 
-type PropertyInit = string | { value: string; type?: string | null };
+export type PropertyInit =
+  | string
+  | string[]
+  | number
+  | boolean
+  | { value: unknown; type?: string | null };
 
 export async function createDocument(
   spaceId: string,
@@ -123,15 +132,20 @@ export async function createDocument(
   });
 
   const properties = initialProperties || {};
+  const storedProperties: Record<string, DocumentPropertyValue> = {};
 
   for (const [key, raw] of Object.entries(properties)) {
-    const propValue = typeof raw === "object" && raw !== null ? raw.value : raw;
-    const propType = typeof raw === "object" && raw !== null ? (raw.type ?? null) : null;
+    const isWrappedValue =
+      typeof raw === "object" && raw !== null && !Array.isArray(raw) && "value" in raw;
+    const propValue = isWrappedValue ? raw.value : raw;
+    const propType = isWrappedValue ? (raw.type ?? null) : null;
+    const storedValue = serializePropertyValue(propValue);
+    storedProperties[key] = parseStoredPropertyValue(storedValue);
     await db.insert(property).values({
       id: createId("property"),
       documentId: id,
       key,
-      value: propValue,
+      value: storedValue,
       type: propType,
       createdAt: now,
       updatedAt: now,
@@ -165,7 +179,7 @@ export async function createDocument(
     content,
     currentRev: draftOnly ? 0 : 1,
     publishedRev: null,
-    properties,
+    properties: storedProperties,
     createdAt: documentCreatedAt,
     updatedAt: documentUpdatedAt,
     createdBy: createdBy,
@@ -188,9 +202,9 @@ export async function getDocument(
 
   const props = await db.select().from(property).where(eq(property.documentId, id)).all();
 
-  const properties: Record<string, string> = {};
+  const properties: Record<string, DocumentPropertyValue> = {};
   for (const prop of props) {
-    properties[prop.key] = prop.value;
+    properties[prop.key] = parseStoredPropertyValue(prop.value);
   }
 
   return {
@@ -227,9 +241,9 @@ export async function getDocumentBySlug(
     .where(eq(property.documentId, doc.id))
     .all();
 
-  const properties: Record<string, string> = {};
+  const properties: Record<string, DocumentPropertyValue> = {};
   for (const prop of props) {
-    properties[prop.key] = prop.value;
+    properties[prop.key] = parseStoredPropertyValue(prop.value);
   }
 
   return {
@@ -558,12 +572,11 @@ export async function listDocuments(
       : [];
 
   // Group properties by document ID
-  const propsByDocId = new Map<string, Record<string, string>>();
+  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
   for (const prop of allProps) {
-    if (!propsByDocId.has(prop.documentId)) {
-      propsByDocId.set(prop.documentId, {});
-    }
-    propsByDocId.get(prop.documentId)![prop.key] = prop.value;
+    const docProps = propsByDocId.get(prop.documentId) ?? {};
+    docProps[prop.key] = parseStoredPropertyValue(prop.value);
+    propsByDocId.set(prop.documentId, docProps);
   }
 
   // Build results
@@ -650,12 +663,11 @@ export async function listArchivedDocuments(
 
   const allProps = await db.select().from(property).all();
 
-  const propsByDocId = new Map<string, Record<string, string>>();
+  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
   for (const prop of allProps) {
-    if (!propsByDocId.has(prop.documentId)) {
-      propsByDocId.set(prop.documentId, {});
-    }
-    propsByDocId.get(prop.documentId)![prop.key] = prop.value;
+    const docProps = propsByDocId.get(prop.documentId) ?? {};
+    docProps[prop.key] = parseStoredPropertyValue(prop.value);
+    propsByDocId.set(prop.documentId, docProps);
   }
 
   const results: DocumentWithProperties[] = docs.map((doc) => ({
@@ -684,12 +696,13 @@ export async function updateDocumentProperty(
   spaceId: string,
   documentId: string,
   key: string,
-  value: string,
+  value: DocumentPropertyValue,
   type?: string | null,
   userId?: string,
 ) {
   const db = await getSpaceDb(spaceId);
   const now = new Date();
+  const storedValue = serializePropertyValue(value);
 
   // Read existing value for audit log (indexed lookup, very fast)
   const existing = await db
@@ -698,13 +711,13 @@ export async function updateDocumentProperty(
     .where(and(eq(property.documentId, documentId), eq(property.key, key)))
     .get();
 
-  const previousValue = existing?.value;
+  const previousValue = existing ? parseStoredPropertyValue(existing.value) : undefined;
 
   const payload: { slug?: string } = {};
 
   if (existing) {
     const updateData: { value: string; updatedAt: Date; type?: string | null } = {
-      value,
+      value: storedValue,
       updatedAt: now,
     };
     if (type !== undefined) updateData.type = type;
@@ -714,7 +727,7 @@ export async function updateDocumentProperty(
       id: createId("property"),
       documentId,
       key,
-      value,
+      value: storedValue,
       type: type || null,
       createdAt: now,
       updatedAt: now,
@@ -729,12 +742,12 @@ export async function updateDocumentProperty(
     details: {
       propertyKey: key,
       propertyType: type || undefined,
-      previousValue,
-      newValue: value,
+      previousValue: previousValue ? propertyValueToText(previousValue) : undefined,
+      newValue: propertyValueToText(value),
     },
   });
 
-  if (key === "title" && value) {
+  if (key === "title" && typeof value === "string" && value) {
     const newSlug = await generateUniqueSlug(spaceId, value, documentId);
     await db
       .update(document)
@@ -814,7 +827,7 @@ export async function deleteDocumentProperty(
       details: {
         propertyKey: key,
         propertyType: existing.type || undefined,
-        previousValue: existing.value,
+        previousValue: propertyValueToText(parseStoredPropertyValue(existing.value)),
       },
     });
   }
@@ -828,7 +841,7 @@ export async function deleteDocumentProperty(
     documentId,
     propertyKey: key,
     propertyType: existing?.type ?? null,
-    previousValue: existing?.value ?? null,
+    previousValue: existing ? parseStoredPropertyValue(existing.value) : null,
   };
   const treeRelevantProperty = ["title", "category", "collection"].includes(key);
 
@@ -883,7 +896,7 @@ export function invalidateMentionCache(documentId: string) {
  * Results are cached in memory to avoid recomputing on every request
  */
 async function countMentionsForUser(
-  db: BunSQLiteDatabase,
+  db: Awaited<ReturnType<typeof getSpaceDb>>,
   documentId: string,
   userEmail: string,
 ): Promise<number> {
@@ -980,13 +993,12 @@ export async function listAllDocumentsByCategories(
   }
 
   const allProps = await db.select().from(property).all();
-  const propsByDocId = new Map<string, Record<string, string>>();
+  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
 
   for (const prop of allProps) {
-    if (!propsByDocId.has(prop.documentId)) {
-      propsByDocId.set(prop.documentId, {});
-    }
-    propsByDocId.get(prop.documentId)![prop.key] = prop.value;
+    const docProps = propsByDocId.get(prop.documentId) ?? {};
+    docProps[prop.key] = parseStoredPropertyValue(prop.value);
+    propsByDocId.set(prop.documentId, docProps);
   }
 
   const typeFilteredResults: DocumentWithProperties[] = docs.map((doc) => ({
@@ -1019,10 +1031,11 @@ export async function listAllDocumentsByCategories(
   }
 
   for (const doc of typeFilteredResults) {
-    const category = doc.properties.category || doc.properties.collection;
-    if (!category) continue;
-    if (directDocIdsBySlug.has(category)) {
-      directDocIdsBySlug.get(category)!.add(doc.id);
+    const categoryValues = [doc.properties.category, doc.properties.collection].flatMap(
+      (value) => (Array.isArray(value) ? value : value ? [value] : []),
+    );
+    for (const category of categoryValues) {
+      directDocIdsBySlug.get(category)?.add(doc.id);
     }
   }
 
@@ -1033,7 +1046,8 @@ export async function listAllDocumentsByCategories(
     const stack = Array.from(collected);
 
     while (stack.length > 0) {
-      const parentId = stack.pop()!;
+      const parentId = stack.pop();
+      if (!parentId) continue;
       const childIds = childrenByParentId.get(parentId) || [];
       for (const childId of childIds) {
         if (collected.has(childId)) continue;
@@ -1149,10 +1163,11 @@ export async function getDocumentChildren(
           .all()
       : [];
 
-  const propsByDocId = new Map<string, Record<string, string>>();
+  const propsByDocId = new Map<string, Record<string, DocumentPropertyValue>>();
   for (const prop of allProps) {
-    if (!propsByDocId.has(prop.documentId)) propsByDocId.set(prop.documentId, {});
-    propsByDocId.get(prop.documentId)![prop.key] = prop.value;
+    const docProps = propsByDocId.get(prop.documentId) ?? {};
+    docProps[prop.key] = parseStoredPropertyValue(prop.value);
+    propsByDocId.set(prop.documentId, docProps);
   }
 
   return docs.map((doc) => ({
@@ -1194,7 +1209,12 @@ export async function getAllPropertiesWithValues(
         values: new Set(),
       };
     }
-    propertyMap[prop.key].values.add(prop.value);
+    const propValue = parseStoredPropertyValue(prop.value);
+    const values = Array.isArray(propValue) ? propValue : [propValue];
+    for (const value of values) {
+      if (!value) continue;
+      propertyMap[prop.key].values.add(value);
+    }
     if (prop.type && !propertyMap[prop.key].type) {
       propertyMap[prop.key].type = prop.type;
     }
@@ -1264,11 +1284,22 @@ export async function getDocumentBreadcrumbs(
     const props = await db
       .select()
       .from(property)
-      .where(and(eq(property.documentId, doc.id), inArray(property.key, ["title", "category"])))
+      .where(
+        and(
+          eq(property.documentId, doc.id),
+          inArray(property.key, ["title", "category"]),
+        ),
+      )
       .all();
 
-    const title = props.find((p) => p.key === "title")?.value || "Untitled";
-    const categorySlug = props.find((p) => p.key === "category")?.value;
+    const titleValue = props.find((p) => p.key === "title")?.value;
+    const categoryValue = props.find((p) => p.key === "category")?.value;
+    const title = titleValue
+      ? propertyValueToText(parseStoredPropertyValue(titleValue))
+      : "Untitled";
+    const categorySlug = categoryValue
+      ? propertyValueToScalar(parseStoredPropertyValue(categoryValue))
+      : undefined;
 
     breadcrumbs.unshift({
       id: doc.id,

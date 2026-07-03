@@ -9,12 +9,12 @@ import {
 } from "~/src/assets/icons.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
 import { Actions } from "../utils/actions.ts";
+import { propertyValueToText } from "../utils/documentProperties.ts";
 import { history } from "../utils/history.ts";
 import { formatRelativeTime } from "../utils/utils.ts";
 
 const router = useRouter();
 const { documents } = useDocuments();
-
 
 const isOpen = ref(false);
 const searchQuery = ref("");
@@ -22,6 +22,11 @@ const selectedIndex = ref(0);
 const searchInput = ref(null);
 const resultsContainer = ref(null);
 const historyEntries = ref([]);
+
+const documentTitle = (doc) => {
+  const title = doc.properties?.title;
+  return title ? propertyValueToText(title) : "Untitled Document";
+};
 
 const getLastVisited = (doc) => {
   const url = `/doc/${doc.slug}`;
@@ -36,7 +41,10 @@ const filteredResults = computed(() => {
   let docs = documents.value;
   if (query) {
     docs = docs.filter((doc) => {
-      const title = doc.properties?.title?.toLowerCase() || "untitled";
+      const titleValue = doc.properties?.title;
+      const title = titleValue
+        ? propertyValueToText(titleValue).toLowerCase()
+        : "untitled";
       const slug = doc.slug?.toLowerCase() || "";
       return title.includes(query) || slug.includes(query);
     });
@@ -137,7 +145,7 @@ const scrollToSelected = () => {
 const navigateToDocument = async (doc) => {
   if (doc?.slug) {
     const url = `/doc/${doc.slug}`;
-    const title = doc.properties?.title || "Untitled Document";
+    const title = documentTitle(doc);
     try {
       await history.log(url, title);
     } catch (error) {
@@ -257,7 +265,7 @@ Actions.register("ui:toggle:palatte", {
                   <div class="flex-1 min-w-0 flex flex-col py-1.5 gap-2">
                     <span class="text-size-medium truncate font-normal">
                       {{ result.type === "document"
-                        ? (result.data.properties?.title || "Untitled Document")
+                        ? documentTitle(result.data)
                         : (result.data.title || result.id) }}
                     </span>
                     <span

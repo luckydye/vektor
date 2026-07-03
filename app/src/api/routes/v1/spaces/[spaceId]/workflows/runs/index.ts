@@ -22,6 +22,7 @@ import { executeWorkflowScript } from "#jobs/workflowScript.ts";
 import { appLogger } from "#observability/logger.ts";
 import { activeTraceHeaders } from "#observability/otel.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
+import { propertyValueToText } from "#utils/documentProperties.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
@@ -101,7 +102,9 @@ export const GET: APIRoute = (context) =>
           runId,
           documentId: run.documentId,
           documentSlug: doc?.slug ?? null,
-          documentTitle: doc?.properties.title ?? run.documentId,
+          documentTitle: doc?.properties.title
+            ? propertyValueToText(doc.properties.title)
+            : run.documentId,
           status: run.status,
           createdAt: run.createdAt.toISOString(),
           startedAt: startedAt?.toISOString() ?? null,

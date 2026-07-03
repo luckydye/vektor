@@ -31,6 +31,7 @@ import type { Comment } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { useComments } from "../composeables/useComments.ts";
 import docStyles from "../styles/document.css?inline";
+import { propertyValueToText } from "../utils/documentProperties.ts";
 import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
 
 interface OverlayState {
@@ -66,8 +67,9 @@ async function openOverlay(spaceId: string, documentId: string) {
 
   try {
     const doc = await api.document.get(spaceId, documentId);
+    const title = doc.properties?.title;
     documentData.value = {
-      title: doc.properties?.title || "Untitled Document",
+      title: title ? propertyValueToText(title) : "Untitled Document",
       content: doc.content || "",
       slug: doc.slug,
       updatedAt: doc.updatedAt,

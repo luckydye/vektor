@@ -62,7 +62,7 @@ export interface Document {
 }
 
 export interface DocumentWithProperties extends Document {
-  properties: Record<string, string>;
+  properties: Record<string, string | string[]>;
   mentionCount?: number;
 }
 
@@ -356,10 +356,11 @@ export interface PropertyInfo {
 
 export type DocumentPropertyPatchValue =
   | string
+  | string[]
   | number
   | boolean
   | null
-  | { value: string | number | boolean | null; type?: string | null };
+  | { value: string | string[] | number | boolean | null; type?: string | null };
 
 // Property filter for advanced search
 // Use value: null to filter for documents that have the property (any value)
@@ -373,7 +374,7 @@ export interface SearchResult {
   id: string;
   slug: string;
   content: string;
-  properties: Record<string, string>;
+  properties: Record<string, string | string[]>;
   createdAt: string;
   updatedAt: string;
   userId: string;
@@ -430,7 +431,11 @@ export interface AIChatSession {
     role: "system" | "user" | "assistant" | "tool";
     content?: string | null;
     thinking?: string | null;
-    tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
+    tool_calls?: Array<{
+      id: string;
+      type: string;
+      function: { name: string; arguments: string };
+    }>;
     tool_call_id?: string;
   }>;
   shellSnapshot?: string | null;
@@ -1057,7 +1062,11 @@ export class ApiClient {
     /**
      * Update document content via JSON body (used for code/workflow documents)
      */
-    putCode: async (spaceId: string, documentId: string, content: string): Promise<void> => {
+    putCode: async (
+      spaceId: string,
+      documentId: string,
+      content: string,
+    ): Promise<void> => {
       await this.apiPut<unknown>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/documents/${documentId}`,
@@ -1190,7 +1199,12 @@ export class ApiClient {
   documentBreadcrumbs = {
     get: async (spaceId: string, documentId: string) => {
       const response = await this.apiGet<{
-        breadcrumbs: Array<{ id: string; slug: string; title: string; categorySlug?: string }>;
+        breadcrumbs: Array<{
+          id: string;
+          slug: string;
+          title: string;
+          categorySlug?: string;
+        }>;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents/${documentId}/breadcrumbs`);
       return response.breadcrumbs;
     },
@@ -1972,7 +1986,10 @@ export class ApiClient {
         { credentials: "same-origin" },
       );
       if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+      if (!response.ok)
+        throw new Error(
+          `API request failed: ${response.status} ${await response.text()}`,
+        );
       const { session } = (await response.json()) as { session: AIChatSession };
       return session;
     },
@@ -2018,7 +2035,10 @@ export class ApiClient {
         `${this.baseUrl}/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}/diff?rev=${encodeURIComponent(rev)}`,
         { credentials: "same-origin" },
       );
-      if (!response.ok) throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+      if (!response.ok)
+        throw new Error(
+          `API request failed: ${response.status} ${await response.text()}`,
+        );
       return response.text();
     },
   };

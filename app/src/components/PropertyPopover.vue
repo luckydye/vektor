@@ -6,13 +6,13 @@ import "@atrium-ui/elements/blur";
 import { plusIcon } from "~/src/assets/icons.ts";
 import type { SelectMenuItem } from "./SelectMenu.vue";
 
-export type PropertyType = "text" | "select" | "date" | "user";
+export type PropertyType = "text" | "select" | "multi-select" | "date" | "user";
 
 export interface Property {
   id: string;
   name: string;
   type: PropertyType;
-  value?: string;
+  value?: string | string[];
 }
 
 export interface SpaceProperty {
@@ -39,7 +39,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   "update:isOpen": [value: boolean];
-  create: [property: { name: string; type: string; value?: string }];
+  create: [property: { name: string; type: string; value?: string | string[] }];
   update: [property: Property];
   delete: [propertyId: string];
   close: [];

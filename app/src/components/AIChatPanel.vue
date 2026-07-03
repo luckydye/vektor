@@ -27,6 +27,7 @@ import {
 import { useDockedWindows } from "../composeables/useDockedWindows.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
+import { propertyValueToText } from "../utils/documentProperties.ts";
 import { t } from "../utils/lang.ts";
 import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
@@ -165,7 +166,8 @@ function buildMessageWithAttachments(
 }
 
 function getDocumentTitle(doc: DocumentWithProperties): string {
-  return doc.properties?.title?.trim() || doc.slug;
+  const title = doc.properties?.title;
+  return (title ? propertyValueToText(title).trim() : "") || doc.slug;
 }
 
 function closeMentionSuggestions() {

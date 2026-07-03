@@ -14,6 +14,7 @@ import { useCategoryDocuments } from "../composeables/useCategoryDocuments.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useRoute } from "../composeables/useRoute.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { propertyValueIncludes } from "../utils/documentProperties.ts";
 import { getTextColor, spacePath } from "../utils/utils.ts";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
@@ -71,11 +72,18 @@ const categoriesWithDocs = computed(() => {
     // Root docs are docs that belong to this category and whose parent is not in this
     // category's doc list (so they can't be rendered as a nested child).
     const rootDocs = categoryDocs.filter((doc) => {
-      const docCategory = doc.properties?.category || doc.properties?.collection;
+      const docCategory = doc.properties?.category;
+      const docCollection = doc.properties?.collection;
 
       // A doc with an explicit different category belongs only to that category's tree,
       // never as a root (or child) here — it was included only for descendant traversal.
-      if (docCategory && docCategory !== category.slug) return false;
+      if (
+        (docCategory || docCollection) &&
+        !propertyValueIncludes(docCategory, category.slug) &&
+        !propertyValueIncludes(docCollection, category.slug)
+      ) {
+        return false;
+      }
 
       if (!doc.parentId) return true;
 
@@ -255,7 +263,6 @@ function toggleItem(itemId) {
   }
   saveExpandedItems(expandedItems.value);
 }
-
 
 async function handleDocumentParentChange(event) {
   const { documentId, newParentId } = event.detail;

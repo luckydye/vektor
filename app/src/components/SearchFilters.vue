@@ -36,7 +36,8 @@ const activeDateRange = computed(() => {
 
 const dateRangeLabel = computed(() => {
   if (!activeDateRange.value) return null;
-  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const fmt = (d: Date) =>
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   return `${fmt(activeDateRange.value.start)} – ${fmt(activeDateRange.value.end)}`;
 });
 
@@ -53,7 +54,10 @@ function onCalendarChange(e: Event) {
 
 function clearDateFilter(e: MouseEvent) {
   e.stopPropagation();
-  emit("update:modelValue", props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY));
+  emit(
+    "update:modelValue",
+    props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY),
+  );
   emit("search");
 }
 
@@ -82,8 +86,8 @@ const TYPE_STYLES: Record<string, string> = {
   document: "bg-neutral-100 text-neutral-600",
 };
 
-const activePropertyFilters = computed(
-  () => props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY && f.key !== "type"),
+const activePropertyFilters = computed(() =>
+  props.modelValue.filter((f) => f.key !== DATE_FILTER_KEY && f.key !== "type"),
 );
 
 const hasActiveFilter = (key: string, value: string | null) =>
@@ -126,12 +130,17 @@ const clearAll = () => {
 
 const hasAnyFilters = computed(() => props.modelValue.length > 0);
 
-const chipBase = "flex items-center gap-1 py-1 px-3xs text-interactive rounded-lg border transition-colors text-size-small";
-const chipInactive = "bg-background border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:bg-primary-10";
-const chipActive = "bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100";
+const chipBase =
+  "flex items-center gap-1 py-1 px-3xs text-interactive rounded-lg border transition-colors text-size-small";
+const chipInactive =
+  "bg-background border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:bg-primary-10";
+const chipActive =
+  "bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100";
 
-const popoverPanel = "w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100";
-const popoverInner = "bg-background border border-neutral-100 rounded-lg origin-top-left scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 overflow-hidden";
+const popoverPanel =
+  "w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100";
+const popoverInner =
+  "bg-background border border-neutral-100 rounded-lg origin-top-left scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 overflow-hidden";
 </script>
 
 <template>

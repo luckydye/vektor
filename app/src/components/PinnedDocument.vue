@@ -5,6 +5,7 @@ import { api, type DocumentWithProperties } from "../api/client.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import docStyles from "../styles/document.css?inline";
+import { propertyValueToText } from "../utils/documentProperties.ts";
 import { spacePath } from "../utils/utils.ts";
 
 const props = defineProps<{
@@ -50,6 +51,11 @@ async function unpin() {
   await api.space.patch(currentSpace.value.id, { preferences: { pinnedDocumentId: "" } });
   window.location.reload();
 }
+
+function docTitle(document: DocumentWithProperties): string {
+  const title = document.properties?.title;
+  return title ? propertyValueToText(title) : "Untitled";
+}
 </script>
 
 <template>
@@ -62,7 +68,7 @@ async function unpin() {
         <div class="svg-icon w-3.5 h-3.5 text-amber-500 shrink-0" v-html="pinPushpinIcon" />
         <span class="text-size-small font-semibold text-amber-600 uppercase tracking-wide">Pinned</span>
         <span v-if="doc" class="text-size-medium font-semibold text-neutral-800 group-hover:text-blue-600 transition-colors">
-          {{ doc.properties?.title || 'Untitled' }}
+          {{ docTitle(doc) }}
         </span>
         <span v-else class="h-4 w-40 bg-amber-100 animate-pulse rounded-sm"></span>
       </a>
@@ -81,7 +87,7 @@ async function unpin() {
           :href="spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
           class="mt-3 flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 hover:bg-neutral-100 transition-colors"
         >
-          <span class="text-size-medium font-medium text-neutral-800">{{ doc.properties?.title || 'Untitled' }}</span>
+          <span class="text-size-medium font-medium text-neutral-800">{{ docTitle(doc) }}</span>
           <span class="ml-auto text-size-small text-neutral-400 capitalize">{{ doc.type }}</span>
         </a>
       </template>

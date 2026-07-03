@@ -1,6 +1,10 @@
 import { type Ref, ref } from "vue";
 import "../../editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "../../api/ApiClient.ts";
+import {
+  type DocumentPropertyValue,
+  propertyValueToText,
+} from "../../utils/documentProperties.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 export const DOCUMENT_ID_MIME = "application/x-vektor-document-id";
@@ -37,10 +41,11 @@ export const documentLinkElement: CanvasElementDefinition = {
 };
 
 export function documentLabel(doc: {
-  properties?: { title?: string | null } | null;
+  properties?: { title?: DocumentPropertyValue | null } | null;
 }): string {
   const title = doc.properties?.title;
-  return title?.trim() ? title.trim() : "Untitled";
+  const text = title ? propertyValueToText(title).trim() : "";
+  return text || "Untitled";
 }
 
 export function createDocumentLinkShape(

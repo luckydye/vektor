@@ -22,27 +22,19 @@ import { useCategories } from "../composeables/useCategories.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useMembers } from "../composeables/useMembers.ts";
 import { useProperties } from "../composeables/useProperties.ts";
+import {
+  isHiddenDocumentPropertyKey,
+  propertyValueToScalar,
+} from "../utils/documentProperties.ts";
 import { getTextColor } from "../utils/utils.ts";
 
 const props = defineProps<{
   documentId?: string;
   documentType?: string;
   readonly?: boolean;
-  initialProperties: Record<string, string | null | undefined> | undefined;
+  initialProperties: Record<string, string | string[] | null | undefined> | undefined;
   initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
 }>();
-
-// Reserved/internal properties that are managed through dedicated UI
-// (title editor, layout/category chips, header image action) and must not
-// appear in the editable properties list.
-const HIDDEN_PROPERTY_KEYS = [
-  "title",
-  "category",
-  "layout",
-  "gridtype",
-  "parentid",
-  "headerimage",
-];
 
 // Backdrop grid options for canvas documents, mirroring the layout picker.
 const GRID_TYPE_OPTIONS = [
@@ -81,11 +73,11 @@ const handleUpdateProperty = async (property: Property & { search: string }) => 
     value = property.search;
   }
 
-  await updateProperty(requireDocumentId(), property.id, value);
+  await updateProperty(requireDocumentId(), property.id, value, property.type);
 };
 
-const handleDeleteProperty = (propertyId: string) => {
-  deleteProperty(requireDocumentId(), propertyId);
+const handleDeleteProperty = async (property: Property) => {
+  await deleteProperty(requireDocumentId(), property.id);
 };
 
 const isCreatePopoverOpen = ref(false);
@@ -94,11 +86,15 @@ const toggleCreatePopover = () => {
   isCreatePopoverOpen.value = !isCreatePopoverOpen.value;
 };
 
-const handleCreate = async (property: { name: string; type: string; value?: string }) => {
+const handleCreate = async (property: {
+  name: string;
+  type: string;
+  value?: string | string[];
+}) => {
   await updateProperty(
     requireDocumentId(),
     property.name,
-    property.value || "",
+    property.type === "multi-select" ? [] : property.value || "",
     property.type,
   );
   isCreatePopoverOpen.value = false;
@@ -125,7 +121,7 @@ const getCategoryIcon = (categorySlug: string | undefined) => {
 
 const getPropertyLabel = (property: Property) => {
   if (property.name?.toLowerCase() === "category") {
-    const categorySlug = property.value;
+    const categorySlug = propertyValueToScalar(property.value);
     if (!categorySlug) return "Category";
 
     const category =
@@ -139,26 +135,31 @@ const getPropertyLabel = (property: Property) => {
   }
 
   if (property.name?.toLowerCase() === "layout") {
-    if (!property.value) return "Layout";
-    return property.value === "full" ? "Full Width" : "Document";
+    const value = propertyValueToScalar(property.value);
+    if (!value) return "Layout";
+    return value === "full" ? "Full Width" : "Document";
   }
 
   if (property.name?.toLowerCase() === "gridtype") {
-    const option = GRID_TYPE_OPTIONS.find((o) => o.id === property.value);
+    const option = GRID_TYPE_OPTIONS.find(
+      (o) => o.id === propertyValueToScalar(property.value),
+    );
     return option?.label ?? "Dots";
   }
 
-  if (property.type === "user" && property.value) {
-    const member = members.value.find((m) => m.userId === property.value);
+  const value = propertyValueToScalar(property.value);
+
+  if (property.type === "user" && value) {
+    const member = members.value.find((m) => m.userId === value);
     if (member?.user) {
-      return member.user.name || member.user.email || property.value;
+      return member.user.name || member.user.email || value;
     }
-    return property.value;
+    return value;
   }
 
-  if (property.type === "date" && property.value) {
+  if (property.type === "date" && value) {
     // Format date as readable string (e.g., "Jan 15, 2024")
-    const date = new Date(property.value);
+    const date = new Date(value);
     if (!Number.isNaN(date.getTime())) {
       return date.toLocaleDateString("en-US", {
         month: "short",
@@ -166,21 +167,41 @@ const getPropertyLabel = (property: Property) => {
         year: "numeric",
       });
     }
-    return property.value;
+    return value;
   }
 
-  return property.value || property.name;
+  if (Array.isArray(property.value)) {
+    return property.value.length > 0 ? property.value.join(", ") : property.name;
+  }
+
+  return value || property.name;
+};
+
+const getPropertyValueLabels = (property: Property): string[] => {
+  if (!Array.isArray(property.value)) return [];
+
+  return property.value.map((value) =>
+    getPropertyLabel({
+      ...property,
+      value,
+    }),
+  );
 };
 
 const getPropertyIcon = (property: Property) => {
   if (property.id?.toLowerCase() === "category") {
-    return getCategoryIcon(property.value) || undefined;
+    return getCategoryIcon(propertyValueToScalar(property.value)) || undefined;
   }
   if (property.id?.toLowerCase() === "layout") {
-    return property.value === "full" ? layoutFullIcon : layoutDocumentIcon;
+    return propertyValueToScalar(property.value) === "full"
+      ? layoutFullIcon
+      : layoutDocumentIcon;
   }
   if (property.id?.toLowerCase() === "gridtype") {
-    return GRID_TYPE_OPTIONS.find((o) => o.id === property.value)?.icon ?? gridDotsIcon;
+    return (
+      GRID_TYPE_OPTIONS.find((o) => o.id === propertyValueToScalar(property.value))
+        ?.icon ?? gridDotsIcon
+    );
   }
   if (property.type === "user") {
     return peopleIcon;
@@ -250,7 +271,7 @@ const properties = computed((): Property[] => {
     id: "category",
     name: "category",
     type: "select",
-    value: documentProperties.value.category,
+    value: propertyValueToScalar(documentProperties.value.category),
   } as Property);
 
   if (isDocumentType.value) {
@@ -258,7 +279,7 @@ const properties = computed((): Property[] => {
       id: "layout",
       name: "layout",
       type: "select",
-      value: documentProperties.value.layout || "document",
+      value: propertyValueToScalar(documentProperties.value.layout) || "document",
     } as Property);
   }
 
@@ -267,13 +288,13 @@ const properties = computed((): Property[] => {
       id: "gridtype",
       name: "gridtype",
       type: "select",
-      value: documentProperties.value.gridtype || "dots",
+      value: propertyValueToScalar(documentProperties.value.gridtype) || "dots",
     } as Property);
   }
 
   const otherProps = Object.entries(documentProperties.value)
     .map(([key, value]): Property | null => {
-      if (HIDDEN_PROPERTY_KEYS.includes(key?.toLowerCase()) || key?.startsWith("_")) {
+      if (isHiddenDocumentPropertyKey(key)) {
         return null;
       }
       const spaceProperty = spaceProperties.value?.find((sp) => sp.name === key);
@@ -293,6 +314,7 @@ const properties = computed((): Property[] => {
 
 const propertyTypes = [
   { id: "text", label: "Text", icon: plusIcon },
+  { id: "multi-select", label: "Multi Select", icon: plusIcon },
   { id: "date", label: "Date", icon: plusIcon },
   { id: "user", label: "User", icon: peopleIcon },
 ];
@@ -300,7 +322,7 @@ const propertyTypes = [
 const availableNewProperties = computed(() => {
   return (
     spaceProperties.value.filter((sp) => {
-      if (HIDDEN_PROPERTY_KEYS.includes(sp.name?.toLowerCase())) return false;
+      if (isHiddenDocumentPropertyKey(sp.name)) return false;
       return !(sp.name in documentProperties.value);
     }) || []
   );
@@ -314,10 +336,12 @@ const availableNewProperties = computed(() => {
         v-for="(property) in properties"
         :key="property.id"
         :label="getPropertyLabel(property)"
+        :value-labels="getPropertyValueLabels(property)"
         :icon="getPropertyIcon(property)"
         :variant="getPropertyVariant(property)"
         :readonly="readonly"
         :property="property as any"
+        :allow-multiple="property.type === 'multi-select' || Array.isArray(property.value)"
         :property-values="getPropertyValues"
         v-bind="readonly ? {} : { onUpdate: handleUpdateProperty, onDelete: handleDeleteProperty }"
       />

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { DocumentWithProperties } from "../api/client.ts";
-import { withTransformParams } from "../files/transformUrl.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { withTransformParams } from "../files/transformUrl.ts";
+import { propertyValueToText } from "../utils/documentProperties.ts";
 import { formatDate, spacePath } from "../utils/utils.ts";
 
 defineProps<{
@@ -14,8 +15,15 @@ function teaserImageUrl(url: string): string {
   return withTransformParams(url, { w: 400, format: "webp" });
 }
 
+function docHeaderImage(doc: DocumentWithProperties): string | null {
+  const headerImage = doc.properties?.headerImage;
+  if (Array.isArray(headerImage)) return headerImage[0] ?? null;
+  return headerImage ?? null;
+}
+
 function docTitle(doc: DocumentWithProperties) {
-  return doc.properties?.title || doc.properties?.name || "Untitled";
+  const title = doc.properties?.title ?? doc.properties?.name;
+  return title ? propertyValueToText(title) : "Untitled";
 }
 
 function docTags(doc: DocumentWithProperties): string[] {
@@ -23,7 +31,7 @@ function docTags(doc: DocumentWithProperties): string[] {
   const excluded = new Set(["title", "name", "headerImage"]);
   return Object.entries(doc.properties)
     .filter(([k, v]) => !excluded.has(k) && v)
-    .map(([, v]) => String(v));
+    .flatMap(([, v]) => (Array.isArray(v) ? v : [propertyValueToText(v)]));
 }
 </script>
 
@@ -37,8 +45,8 @@ function docTags(doc: DocumentWithProperties): string[] {
     <!-- Thumbnail -->
     <div class="relative aspect-video rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center">
       <img
-        v-if="doc.properties?.headerImage"
-        :src="teaserImageUrl(doc.properties.headerImage)"
+        v-if="docHeaderImage(doc)"
+        :src="teaserImageUrl(docHeaderImage(doc)!)"
         class="absolute inset-0 w-full h-full object-cover"
         alt=""
       />

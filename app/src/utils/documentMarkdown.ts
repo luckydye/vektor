@@ -1,5 +1,6 @@
 import * as html5parser from "html5parser";
 import type { DocumentWithProperties } from "../db/documents.ts";
+import { optionalPropertyValueToText } from "./documentProperties.ts";
 
 type TagNode = html5parser.ITag;
 type TextNode = html5parser.IText;
@@ -231,11 +232,11 @@ export function documentToMarkdown(
 slug: ${document.slug}
 createdAt: ${document.createdAt.valueOf()}
 updatedAt: ${document.updatedAt.valueOf()}
-title: ${document.properties.title}
-status: ${document.properties.status}
+title: ${optionalPropertyValueToText(document.properties.title) ?? ""}
+status: ${optionalPropertyValueToText(document.properties.status) ?? ""}
 archived: ${document.archived}
-tags: [${document.properties.tags}]
-category: ${document.properties.category}
+tags: [${optionalPropertyValueToText(document.properties.tags) ?? ""}]
+category: ${optionalPropertyValueToText(document.properties.category) ?? ""}
 children: [${children}]
 ---
 

@@ -14,6 +14,7 @@ import { api } from "../api/client.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { replaceBrowserUrl } from "../utils/browserHistory.ts";
+import { propertyValueToText } from "../utils/documentProperties.ts";
 import { downloadExcelRows, parseCsvRows } from "../utils/excelExport.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import { spacePath } from "../utils/utils.ts";
@@ -206,9 +207,7 @@ watch(
     const ext = await api.extensions.getById(props.spaceId, sourceExtId);
     if (selectedRunSourceExtensionId.value !== sourceExtId) return;
     const firstRoute = ext.routes?.[0];
-    sourceExtensionHref.value = firstRoute
-      ? `/x/${firstRoute.path}`
-      : null;
+    sourceExtensionHref.value = firstRoute ? `/x/${firstRoute.path}` : null;
   },
   { immediate: true },
 );
@@ -310,8 +309,9 @@ watch(outputDocumentId, async (id) => {
   }
   const doc = await api.document.get(props.spaceId, id);
   outputDocumentHref.value = spacePath(currentSpace.value?.slug, `/doc/${doc.slug}`);
-  outputDocumentTitle.value =
-    (doc as { properties?: { title?: string } }).properties?.title || doc.slug;
+  outputDocumentTitle.value = doc.properties?.title
+    ? propertyValueToText(doc.properties.title)
+    : doc.slug;
 });
 
 // Run history expansion — lazy load per run
@@ -340,7 +340,10 @@ async function toggleHistoryRun(runId: string) {
     ]);
     historyRunDocTitles.value = new Map([
       ...historyRunDocTitles.value,
-      [runId, (doc as { properties?: { title?: string } }).properties?.title || doc.slug],
+      [
+        runId,
+        doc.properties?.title ? propertyValueToText(doc.properties.title) : doc.slug,
+      ],
     ]);
   }
 }

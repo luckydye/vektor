@@ -299,6 +299,23 @@ describe("API Tests - Documents", () => {
     testDocumentId = data.document.id;
   });
 
+  it("should derive slug from wrapped title property", async () => {
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        content: "# Wrapped Title Document\n\nThis is the content.",
+        properties: {
+          title: { value: "Wrapped Title Document", type: "text" },
+        },
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const data = await response.json();
+    expect(data.document.slug).toBe("wrapped-title-document");
+    expect(data.document.properties.title).toBe("Wrapped Title Document");
+  });
+
   it("should list documents", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`);
     expect(response.status).toBe(200);
@@ -666,6 +683,38 @@ describe("API Tests - Document Properties", () => {
     );
     const docData = await docResponse.json();
     expect(docData.document.properties.author).toBe("Updated Author");
+  });
+
+  it("should round-trip multi-value document properties", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          properties: {
+            tags: { value: ["draft", "review"] },
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${propertyTestDocId}`,
+    );
+    const docData = await docResponse.json();
+    expect(docData.document.properties.tags).toEqual(["draft", "review"]);
+
+    const propertiesResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/properties`,
+    );
+    const propertiesData = await propertiesResponse.json();
+    const tagsProperty = propertiesData.properties.find(
+      (property: { name: string }) => property.name === "tags",
+    );
+    expect(tagsProperty.values).toContain("draft");
+    expect(tagsProperty.values).toContain("review");
   });
 
   it("should delete a document property", async () => {

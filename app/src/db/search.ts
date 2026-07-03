@@ -1,5 +1,10 @@
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { config } from "../config.ts";
+import {
+  type DocumentPropertyValue,
+  parseStoredPropertyValue,
+  propertyValueToText,
+} from "../utils/documentProperties.ts";
 import { normalizeTimestamp } from "../utils/utils.ts";
 import { listAccessibleResources, ResourceType } from "./acl.ts";
 import { getSpaceDb } from "./db.ts";
@@ -36,7 +41,7 @@ export interface DocumentWithProperties {
   content?: string;
   currentRev: number;
   publishedRev: number | null;
-  properties: Record<string, string>;
+  properties: Record<string, DocumentPropertyValue>;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -175,12 +180,13 @@ async function remoteEmbedding(text: string): Promise<number[]> {
 
 export function buildDocumentSearchText(
   content: string,
-  properties: Record<string, string>,
+  properties: Record<string, DocumentPropertyValue>,
   fileText?: string,
 ): string {
-  const title = properties.title?.trim() ?? "";
+  const titleValue = properties.title;
+  const title = titleValue ? propertyValueToText(titleValue).trim() : "";
   const propertyText = Object.entries(properties)
-    .map(([key, value]) => `${key}: ${value}`)
+    .map(([key, value]) => `${key}: ${propertyValueToText(value)}`)
     .join("\n");
 
   return [title, title, propertyText, content, fileText].filter(Boolean).join("\n\n");
@@ -441,7 +447,7 @@ export async function searchDocuments(
   const propertyFilters = filters.filter((f) => f.key !== "type" && f.key !== "_date");
 
   const matchesFilters = (
-    properties: Record<string, string>,
+    properties: Record<string, DocumentPropertyValue>,
     docType: string | null,
   ): boolean => {
     for (const filter of typeFilters) {
@@ -456,13 +462,18 @@ export async function searchDocuments(
     for (const filter of propertyFilters) {
       const propValue = properties[filter.key];
       if (filter.value === null) {
-        if (propValue === undefined || propValue === "") {
+        if (
+          propValue === undefined ||
+          propValue === "" ||
+          (Array.isArray(propValue) && propValue.length === 0)
+        ) {
           return false;
         }
       } else {
+        const values = Array.isArray(propValue) ? propValue : [propValue];
         if (
           propValue === undefined ||
-          propValue.toLowerCase() !== filter.value.toLowerCase()
+          !values.some((value) => value.toLowerCase() === filter.value?.toLowerCase())
         ) {
           return false;
         }
@@ -693,9 +704,9 @@ export async function searchDocuments(
         .where(eq(property.documentId, row.id))
         .all();
 
-      const properties: Record<string, string> = {};
+      const properties: Record<string, DocumentPropertyValue> = {};
       for (const prop of props) {
-        properties[prop.key] = prop.value;
+        properties[prop.key] = parseStoredPropertyValue(prop.value);
       }
 
       if (matchesFilters(properties, row.type)) {
@@ -732,9 +743,9 @@ export async function searchDocuments(
       .where(eq(property.documentId, row.id))
       .all();
 
-    const properties: Record<string, string> = {};
+    const properties: Record<string, DocumentPropertyValue> = {};
     for (const prop of props) {
-      properties[prop.key] = prop.value;
+      properties[prop.key] = parseStoredPropertyValue(prop.value);
     }
 
     const doc = await db.select().from(document).where(eq(document.id, row.id)).get();

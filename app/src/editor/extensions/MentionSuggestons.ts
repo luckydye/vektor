@@ -3,6 +3,7 @@ import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import type { DocumentWithProperties, SpaceMember } from "~/src/api/ApiClient.ts";
 import { documentIcon } from "~/src/assets/icons.ts";
+import { propertyValueToText } from "~/src/utils/documentProperties.ts";
 import { Mentions } from "./Mentions.ts";
 
 type MentionItem = {
@@ -90,13 +91,17 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
           const docs: MentionItem[] = state.cachedDocs
             .filter((doc: DocumentWithProperties) => {
               if (state.documentId && doc.id === state.documentId) return false;
-              const title = doc.properties?.title || "";
+              const title = doc.properties?.title
+                ? propertyValueToText(doc.properties.title)
+                : "";
               return title.toLowerCase().includes(q);
             })
             .slice(0, 5)
             .map((doc: DocumentWithProperties) => ({
               id: doc.id,
-              label: doc.properties?.title || "Untitled",
+              label: doc.properties?.title
+                ? propertyValueToText(doc.properties.title)
+                : "Untitled",
               slug: doc.slug,
               type: "document" as const,
             }));

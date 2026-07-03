@@ -54,8 +54,10 @@ import { getLiveDocumentContent } from "#utils/yjsRooms.ts";
 type PropertyPatchValue =
   | null
   | string
+  | string[]
   | number
   | boolean
+  | Array<string | number | boolean | null>
   | {
       value: unknown;
       type?: string | null;
@@ -116,7 +118,11 @@ async function handlePropertiesPatch(
       spaceId,
       documentId,
       propertyKey,
-      String(nextValue),
+      Array.isArray(nextValue)
+        ? nextValue
+            .filter((value) => value !== null && value !== undefined)
+            .map((value) => String(value))
+        : String(nextValue),
       nextType,
       userId,
     );

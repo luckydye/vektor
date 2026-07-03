@@ -11,6 +11,10 @@ import {
 } from "~/src/assets/icons.ts";
 import type { Category, DocumentWithProperties } from "../api/client.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import {
+  propertyValueToScalar,
+  propertyValueToText,
+} from "../utils/documentProperties.ts";
 import { formatDate, normalizeTimestamp, spacePath } from "../utils/utils.ts";
 
 const props = defineProps<{
@@ -27,7 +31,9 @@ defineSlots<{
   "row-actions"(props: { doc: DocumentWithProperties }): unknown;
 }>();
 
-onMounted(() => { import("~/src/editor/elements/page-target.ts"); });
+onMounted(() => {
+  import("~/src/editor/elements/page-target.ts");
+});
 
 // ── Category lookup ──────────────────────────────────────────────────────────
 
@@ -44,7 +50,8 @@ const dateRangeEnd = ref<Date | null>(null);
 
 const dateRangeLabel = computed(() => {
   if (!dateRangeStart.value && !dateRangeEnd.value) return null;
-  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const fmt = (d: Date) =>
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   if (dateRangeStart.value && dateRangeEnd.value) {
     return `${fmt(dateRangeStart.value)} – ${fmt(dateRangeEnd.value)}`;
   }
@@ -53,7 +60,11 @@ const dateRangeLabel = computed(() => {
 
 function onCalendarChange(e: Event) {
   const value = (e.target as HTMLElement & { value?: string }).value ?? "";
-  if (!value) { dateRangeStart.value = null; dateRangeEnd.value = null; return; }
+  if (!value) {
+    dateRangeStart.value = null;
+    dateRangeEnd.value = null;
+    return;
+  }
   const [start, end] = value.split("/");
   dateRangeStart.value = start ? new Date(start) : null;
   dateRangeEnd.value = end ? new Date(end) : null;
@@ -77,13 +88,21 @@ const filtered = computed(() => {
     docs = docs.filter((d) => normalizeTimestamp(d.updatedAt).getTime() < end.getTime());
   }
   return [...docs].sort(
-    (a, b) => normalizeTimestamp(b.updatedAt).getTime() - normalizeTimestamp(a.updatedAt).getTime(),
+    (a, b) =>
+      normalizeTimestamp(b.updatedAt).getTime() -
+      normalizeTimestamp(a.updatedAt).getTime(),
   );
 });
 
 // ── Time grouping ────────────────────────────────────────────────────────────
 
-const GROUP_ORDER = ["Today", "Yesterday", "Earlier this week", "Earlier this month", "Older"];
+const GROUP_ORDER = [
+  "Today",
+  "Yesterday",
+  "Earlier this week",
+  "Earlier this month",
+  "Older",
+];
 
 function getTimeGroup(date: Date | string | number): string {
   const d = normalizeTimestamp(date);
@@ -168,11 +187,13 @@ function toggleCollapse(label: string) {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function docTitle(doc: DocumentWithProperties) {
-  return doc.properties?.title || doc.properties?.name || "Untitled";
+  const title = doc.properties?.title ?? doc.properties?.name;
+  return title ? propertyValueToText(title) : "Untitled";
 }
 
 function docCategoryName(doc: DocumentWithProperties): string | null {
-  const slug = doc.properties?.category;
+  const category = doc.properties?.category;
+  const slug = propertyValueToScalar(category) ?? "";
   if (!slug) return null;
   return categoryBySlug.value.get(slug)?.name ?? slug;
 }
@@ -319,10 +340,10 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
               </div>
 
               <span
-                v-if="doc.properties?.category"
+                v-if="docCategoryName(doc)"
                 class="shrink-0 px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 text-[11px] font-medium"
               >
-                {{ doc.properties.category }}
+                {{ docCategoryName(doc) }}
               </span>
 
               <span class="shrink-0 text-[11px] text-neutral-400 tabular-nums w-20 text-right">

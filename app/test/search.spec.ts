@@ -367,6 +367,40 @@ describe("Search Property Filters", () => {
     }
   });
 
+  it("should filter documents by array property value", async () => {
+    const createResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
+      method: "POST",
+      body: JSON.stringify({
+        slug: "multi-status",
+        content: "# Multi Status\n\nDocument with multiple workflow states.",
+        properties: {
+          title: "Multi Status",
+          status: { type: "multi-select", value: ["Draft", "Review"] },
+        },
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    testDocIds.push(created.document.id);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const filters = JSON.stringify([{ key: "status", value: "Review" }]);
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?filters=${encodeURIComponent(filters)}`,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const result = data.results.find(
+      (item: { slug: string }) => item.slug === "multi-status",
+    );
+
+    expect(result).toBeDefined();
+    expect(result.properties.status).toEqual(["Draft", "Review"]);
+  });
+
   it("should filter documents by property existence", async () => {
     // Filter for documents that have the "category" property (any value)
     const filters = JSON.stringify([{ key: "category", value: null }]);

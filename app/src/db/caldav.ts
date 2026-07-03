@@ -1,6 +1,7 @@
 import type { APIContext } from "astro";
 import { eq } from "drizzle-orm";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "../noAuth.ts";
+import { propertyValueToText } from "../utils/documentProperties.ts";
 import { validateAccessToken } from "./accessTokens.ts";
 import { verifySpaceAccess, verifySpaceRole } from "./api.ts";
 import { getAuthDb } from "./db.ts";
@@ -221,12 +222,18 @@ function defaultEndISO(startISO: string): string {
  * Serialize a wiki document to iCal VCALENDAR format.
  */
 export function documentToICal(doc: DocumentWithProperties): string | null {
-  const title = (doc.properties.title || doc.slug).replace(/[\\;,]/g, "\\$&");
+  const titleValue = doc.properties.title;
+  const title = (titleValue ? propertyValueToText(titleValue) : doc.slug).replace(
+    /[\\;,]/g,
+    "\\$&",
+  );
 
   if (!doc.properties.eventStart) return null;
 
-  const startISO = doc.properties.eventStart;
-  const endISO = doc.properties.eventEnd ?? defaultEndISO(startISO);
+  const startISO = propertyValueToText(doc.properties.eventStart);
+  const endISO = doc.properties.eventEnd
+    ? propertyValueToText(doc.properties.eventEnd)
+    : defaultEndISO(startISO);
   const dtstamp = formatICalDateTime(doc.updatedAt);
 
   const lines = [

@@ -13,6 +13,7 @@ import {
   getDocumentChildren,
   listAllDocumentsByCategories,
   listDocuments,
+  type PropertyInit,
 } from "#db/documents.ts";
 import {
   authenticateJobTokenOrSpaceRole,
@@ -24,6 +25,22 @@ import {
   getMimeType,
   toHtmlIfMarkdown,
 } from "#utils/documentContent.ts";
+import { propertyValueToText } from "#utils/documentProperties.ts";
+
+function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
+  if (value === undefined) return undefined;
+
+  if (Array.isArray(value)) {
+    return propertyValueToText(value.map((item) => String(item)));
+  }
+
+  if (typeof value === "object" && value !== null && "value" in value) {
+    return propertyInitToSlugText(value.value as PropertyInit | undefined);
+  }
+
+  if (value === null) return undefined;
+  return String(value);
+}
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -125,7 +142,7 @@ export const POST: APIRoute = (context) =>
 
     const contentType = getMimeType(context.request.headers.get("Content-Type"));
     let content: string;
-    let properties: Record<string, unknown> | undefined;
+    let properties: Record<string, PropertyInit> | undefined;
     let parentId: string | undefined;
     let type: string | undefined;
     let slugHint: string | undefined;
@@ -133,26 +150,30 @@ export const POST: APIRoute = (context) =>
     let updatedAt: Date | undefined;
 
     if (contentType === "application/json") {
-      const body = await parseJsonBody(context.request);
-      const {
-        content: jsonContent,
-        properties: jsonProperties,
-        parentId: jsonParentId,
-        type: jsonType,
-        slug: jsonSlug,
-        createdAt: jsonCreatedAt,
-        updatedAt: jsonUpdatedAt,
-        contentType: jsonBodyContentType,
-      } = body;
+      const body = (await parseJsonBody(context.request)) as Record<string, unknown>;
+      const jsonContent = body.content;
+      const jsonProperties = body.properties;
+      const jsonParentId = body.parentId;
+      const jsonType = body.type;
+      const jsonSlug = body.slug;
+      const jsonCreatedAt = body.createdAt;
+      const jsonUpdatedAt = body.updatedAt;
+      const jsonBodyContentType =
+        typeof body.contentType === "string" ? body.contentType : undefined;
 
       if (!jsonContent || typeof jsonContent !== "string") {
         throw badRequestResponse("Content is required and must be a string");
       }
 
       content = jsonContent;
-      properties = jsonProperties;
-      parentId = jsonParentId;
-      type = jsonType;
+      properties =
+        typeof jsonProperties === "object" &&
+        jsonProperties !== null &&
+        !Array.isArray(jsonProperties)
+          ? (jsonProperties as Record<string, PropertyInit>)
+          : undefined;
+      parentId = typeof jsonParentId === "string" ? jsonParentId : undefined;
+      type = typeof jsonType === "string" ? jsonType : undefined;
       if (jsonSlug && typeof jsonSlug === "string") slugHint = jsonSlug;
       if (jsonCreatedAt && typeof jsonCreatedAt === "string")
         createdAt = new Date(jsonCreatedAt);
@@ -183,7 +204,8 @@ export const POST: APIRoute = (context) =>
       throw badRequestResponse("Content is required and must be a string");
     }
 
-    const slugBase = slugHint || (properties?.title as string | undefined) || "untitled";
+    const titleValue = properties?.title;
+    const slugBase = slugHint || propertyInitToSlugText(titleValue) || "untitled";
 
     // createDocument now handles slug uniqueness internally
     const document = await createDocument(

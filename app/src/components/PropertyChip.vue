@@ -13,25 +13,34 @@ const inputElement = ref();
 
 const props = defineProps<{
   label?: string;
+  valueLabels?: string[];
   icon?: string;
   variant?: "default" | "special";
   readonly?: boolean;
   property?: Property | null;
+  allowMultiple?: boolean;
   propertyValues?: (property: Property) => Promise<SelectMenuItem[]>;
 }>();
 
 const emit = defineEmits<{
   update: [property: Property & { search: string }];
-  delete: [propertyId: string];
+  delete: [property: Property];
 }>();
 
 const valueOptions = ref<SelectMenuItem[]>([]);
 
 const isEditPopoverOpen = ref(false);
 const propertyName = ref(props.property?.name || "");
-const selectedValue = ref(props.property?.value);
+const selectedValue = ref<string | string[] | undefined>(props.property?.value);
 const searchInput = ref("");
 const dateValue = ref("");
+
+const selectedValues = computed(() => {
+  if (Array.isArray(selectedValue.value)) return selectedValue.value;
+  return selectedValue.value ? [selectedValue.value] : [];
+});
+
+const valueLabels = computed(() => props.valueLabels ?? []);
 
 const handleClick = async () => {
   if (props.readonly || !props.property) return;
@@ -41,7 +50,11 @@ const handleClick = async () => {
     selectedValue.value = props.property.value;
 
     // For date properties, set the date value
-    if (props.property.type === "date" && props.property.value) {
+    if (
+      props.property.type === "date" &&
+      props.property.value &&
+      !Array.isArray(props.property.value)
+    ) {
       dateValue.value = props.property.value;
     }
 
@@ -71,11 +84,30 @@ const filteredValueOptions = computed(() => {
 
 const handleValueSelect = (item: SelectMenuItem) => {
   if (props.property) {
-    selectedValue.value = item.id;
+    const itemValue = item.id === "__new__" ? searchInput.value.trim() : item.id;
+    if (!itemValue) return;
+
+    if (props.allowMultiple) {
+      const nextValue = selectedValues.value.includes(itemValue)
+        ? selectedValues.value.filter((value) => value !== itemValue)
+        : [...selectedValues.value, itemValue];
+
+      selectedValue.value = nextValue;
+      emit("update", {
+        ...props.property,
+        name: propertyName.value,
+        value: nextValue,
+        search: searchInput.value,
+      });
+      searchInput.value = "";
+      return;
+    }
+
+    selectedValue.value = itemValue;
     emit("update", {
       ...props.property,
       name: propertyName.value,
-      value: item.id,
+      value: itemValue,
       search: searchInput.value,
     });
     handleExit();
@@ -97,7 +129,7 @@ const handleDateChange = (event: Event) => {
 
 const handleDelete = () => {
   if (props.property) {
-    emit("delete", props.property.id);
+    emit("delete", props.property);
     handleExit();
   }
 };
@@ -141,13 +173,23 @@ onMounted(() => {
         />
         <div v-if="!icon" class="w-[18px] h-[18px] rounded-sm flex items-center justify-center bg-primary-500" />
         <span
-            :class="twMerge(
-              'max-w-[150px] text-ellipsis overflow-hidden whitespace-nowrap capitalize',
-              variant === 'special' && 'text-primary-700',
-              variant === 'default' && 'text-primary-600'
-            )"
+          v-if="valueLabels.length === 0"
+          :class="twMerge(
+            'max-w-[150px] text-ellipsis overflow-hidden whitespace-nowrap capitalize',
+            variant === 'special' && 'text-primary-700',
+            variant === 'default' && 'text-primary-600'
+          )"
         >
           {{ label }}
+        </span>
+        <span v-else class="flex items-center gap-4xs min-w-0 max-w-[260px] overflow-hidden">
+          <span
+            v-for="valueLabel in valueLabels"
+            :key="valueLabel"
+            class="max-w-[110px] text-ellipsis overflow-hidden whitespace-nowrap capitalize rounded-md bg-primary-50 px-4xs text-primary-600"
+          >
+            {{ valueLabel }}
+          </span>
         </span>
     </button>
 
