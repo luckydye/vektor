@@ -8,6 +8,7 @@ export interface ExcelExportConfig {
   splitColumn: string;
   delimiter: string;
   parseBoldHeadings: boolean;
+  summaryColumnCount: number;
 }
 
 const props = defineProps<{
@@ -24,6 +25,7 @@ const sheetNameColumn = ref(props.columns[0] ?? "");
 const splitColumn = ref(props.columns[props.columns.length - 1] ?? "");
 const delimiter = ref("---");
 const parseBoldHeadings = ref(true);
+const summaryColumnCount = ref(Math.min(5, props.columns.length));
 
 watch(() => props.columns, (cols) => {
   if (!cols.includes(sheetNameColumn.value)) sheetNameColumn.value = cols[0] ?? "";
@@ -38,6 +40,7 @@ function submit() {
     splitColumn: splitColumn.value,
     delimiter: delimiter.value,
     parseBoldHeadings: parseBoldHeadings.value,
+    summaryColumnCount: summaryColumnCount.value,
   });
 }
 </script>
@@ -98,6 +101,18 @@ function submit() {
             class="rounded-xs accent-primary-600"
           />
           <span class="text-size-small font-medium text-neutral-700">Parse <code class="font-mono bg-neutral-100 px-1 rounded-xs">**bold headings**</code> as columns</span>
+        </label>
+
+        <label class="flex flex-col gap-4xs">
+          <span class="text-size-small font-medium text-neutral-700">Summary columns</span>
+          <span class="text-size-small text-neutral-400">Number of leading columns included in the summary block above the split rows</span>
+          <input
+            v-model.number="summaryColumnCount"
+            type="number"
+            min="0"
+            :max="columns.length"
+            class="rounded-sm border border-neutral-200 bg-background px-2 py-1 text-size-small text-neutral-700 focus:outline-none focus:border-primary-400"
+          />
         </label>
       </div>
 

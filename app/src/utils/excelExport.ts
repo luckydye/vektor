@@ -87,6 +87,16 @@ function columnName(index: number): string {
   return name;
 }
 
+export type ExcelCell = string | { text: string; bold?: boolean };
+
+function cellValue(cell: ExcelCell): string {
+  return typeof cell === "string" ? cell : cell.text;
+}
+
+function cellBold(cell: ExcelCell): boolean {
+  return typeof cell === "object" && cell.bold === true;
+}
+
 function normalizedCellText(value: string): string {
   return String(value).slice(0, MAX_EXCEL_CELL_LENGTH);
 }
@@ -97,23 +107,23 @@ function visibleTextLength(value: string): number {
     .reduce((longest, line) => Math.max(longest, line.length), 0);
 }
 
-function columnWidths(rows: string[][]): number[] {
+function columnWidths(rows: ExcelCell[][]): number[] {
   const columnCount = Math.max(...rows.map((row) => row.length), 1);
   return Array.from({ length: columnCount }, (_, columnIndex) => {
     const longest = rows.reduce((maxLength, row) => {
       const cell = row[columnIndex] ?? "";
-      return Math.max(maxLength, visibleTextLength(normalizedCellText(cell)));
+      return Math.max(maxLength, visibleTextLength(normalizedCellText(cellValue(cell))));
     }, 0);
 
     return Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, longest + 2));
   });
 }
 
-function rowHeight(row: string[], widths: number[]): number {
+function rowHeight(row: ExcelCell[], widths: number[]): number {
   const estimatedLines = Math.max(
     1,
     ...row.map((cell, columnIndex) => {
-      const text = normalizedCellText(cell);
+      const text = normalizedCellText(cellValue(cell));
       const explicitLines = text.split(/\r\n|\r|\n/);
       const width = Math.max(widths[columnIndex] ?? MAX_COLUMN_WIDTH, 1);
       return explicitLines.reduce(
@@ -128,7 +138,7 @@ function rowHeight(row: string[], widths: number[]): number {
   return Math.max(DEFAULT_ROW_HEIGHT, Math.min(MAX_ROW_HEIGHT, estimatedHeight));
 }
 
-function worksheetXml(rows: string[][]): string {
+function worksheetXml(rows: ExcelCell[][]): string {
   const widths = columnWidths(rows);
   const colsXml = widths
     .map(
@@ -142,8 +152,9 @@ function worksheetXml(rows: string[][]): string {
       const cells = row
         .map((cell, columnIndex) => {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
-          const text = escapeXml(normalizedCellText(cell));
-          return `<c r="${ref}" t="inlineStr" s="1"><is><t xml:space="preserve">${text}</t></is></c>`;
+          const text = escapeXml(normalizedCellText(cellValue(cell)));
+          const style = cellBold(cell) ? "2" : "1";
+          return `<c r="${ref}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${text}</t></is></c>`;
         })
         .join("");
 
@@ -282,7 +293,7 @@ function createZip(entries: ZipEntry[]): Uint8Array {
 
 export interface ExcelSheet {
   name: string;
-  rows: string[][];
+  rows: ExcelCell[][];
 }
 
 export function sanitizeSheetName(name: string): string {
@@ -348,13 +359,19 @@ ${sheetRelationships}
       name: "xl/styles.xml",
       data: textData(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fonts count="2">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
   <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
   <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="2">
+  <cellXfs count="3">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1">
       <alignment vertical="top" wrapText="1"/>
     </xf>
   </cellXfs>
@@ -370,7 +387,7 @@ ${sheetRelationships}
   return createZip(entries);
 }
 
-export function downloadExcelRows(rows: string[][], fileName: string): void {
+export function downloadExcelRows(rows: ExcelCell[][], fileName: string): void {
   downloadExcelSheets([{ name: "Data", rows }], fileName);
 }
 

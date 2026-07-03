@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
 import { downloadExcelSheets, sanitizeSheetName } from "../utils/excelExport.ts";
-import type { ExcelSheet } from "../utils/excelExport.ts";
+import type { ExcelCell, ExcelSheet } from "../utils/excelExport.ts";
 import ExcelExportDialog from "./ExcelExportDialog.vue";
 import type { ExcelExportConfig } from "./ExcelExportDialog.vue";
 import { useSpace } from "../composeables/useSpace.ts";
@@ -100,7 +100,7 @@ function parseBoldSection(text: string): Record<string, string> | null {
   return found ? result : null;
 }
 
-function buildSubSheetRows(sections: string[], parseBold: boolean): string[][] {
+function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][] {
   if (!parseBold) return sections.map((s) => [s]);
 
   // The 0th section is an intro/summary block (e.g. "Notiz"), not a record — skip it.
@@ -118,7 +118,8 @@ function buildSubSheetRows(sections: string[], parseBold: boolean): string[][] {
     }
   }
 
-  return [keyOrder, ...parsed.map((r) => keyOrder.map((k) => r[k] ?? ""))];
+  const headerRow: ExcelCell[] = keyOrder.map((k) => ({ text: k, bold: true }));
+  return [headerRow, ...parsed.map((r) => keyOrder.map((k) => r[k] ?? ""))];
 }
 
 function handleExportDownload(config: ExcelExportConfig) {
@@ -151,8 +152,11 @@ function handleExportDownload(config: ExcelExportConfig) {
       ? content.split(del).map((s) => s.trim()).filter(Boolean)
       : [content];
 
-    const summaryCols = tableColumns.slice(0, 4);
-    const summaryRows = summaryCols.map((col) => [col, cellText(row[col])]);
+    const summaryCols = tableColumns.slice(0, config.summaryColumnCount);
+    const summaryRows: ExcelCell[][] = summaryCols.map((col) => [
+      { text: col, bold: true },
+      cellText(row[col]),
+    ]);
     const subRows = buildSubSheetRows(sections, config.parseBoldHeadings);
 
     sheets.push({ name: sheetName, rows: [...summaryRows, [], ...subRows] });
