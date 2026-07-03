@@ -151,7 +151,11 @@ function handleExportDownload(config: ExcelExportConfig) {
       ? content.split(del).map((s) => s.trim()).filter(Boolean)
       : [content];
 
-    sheets.push({ name: sheetName, rows: buildSubSheetRows(sections, config.parseBoldHeadings) });
+    const summaryCols = tableColumns.slice(0, 4);
+    const summaryRows = summaryCols.map((col) => [col, cellText(row[col])]);
+    const subRows = buildSubSheetRows(sections, config.parseBoldHeadings);
+
+    sheets.push({ name: sheetName, rows: [...summaryRows, [], ...subRows] });
   }
 
   downloadExcelSheets(sheets, props.exportFileName ?? "data.xlsx");
