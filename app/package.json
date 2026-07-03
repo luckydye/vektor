@@ -2,6 +2,12 @@
   "name": "@wiki/app",
   "version": "0.0.1",
   "type": "module",
+  "scripts": {
+    "figma:parse": "figma connect parse --config figma.config.json",
+    "figma:preview": "figma connect preview --config figma.config.json",
+    "figma:publish:dry-run": "figma connect publish --config figma.config.json --dry-run",
+    "figma:publish": "figma connect publish --config figma.config.json"
+  },
   "dependencies": {
     "@astrojs/node": "^11.0.0",
     "@astrojs/vue": "^7.0.0",
@@ -59,5 +65,8 @@
     "#files/*": "./src/files/*",
     "#utils/*": "./src/utils/*",
     "#provider/*": "./src/provider/*"
+  },
+  "devDependencies": {
+    "@figma/code-connect": "^1.4.8"
   }
 }

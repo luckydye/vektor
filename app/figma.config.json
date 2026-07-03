@@ -1,0 +1,15 @@
+{
+  "codeConnect": {
+    "include": [
+      "src/components/**/*.figma.ts"
+    ],
+    "exclude": [
+      "dist/**",
+      ".astro/**",
+      "node_modules/**"
+    ],
+    "parser": "html",
+    "label": "Vue",
+    "language": "html"
+  }
+}
