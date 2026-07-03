@@ -17,6 +17,7 @@ export interface Props {
 const { title = "Wiki", meta, brandColor, spaceId } = Astro.props;
 const lang = Astro.preferredLocale || "en";
 const publicEnv = Astro.locals.publicEnv;
+const isDev = import.meta.env.DEV;
 
 let dynamicStyles = "";
 if (brandColor) {
@@ -30,14 +31,20 @@ if (brandColor) {
     :root[data-theme="light"] body { --color-primary: ${brandColor}; ${paletteCss.light} }
   `;
 }
+
+let faviconFilename = {
+  light: "favicon_light",
+  dark: "favicon_dark",
+  dev: "favicon_dev",
+};
 ---
 
 <!doctype html>
 <html lang={lang}>
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/png" href="/favicon_light.png" media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/png" href="/favicon_dark.png" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" href={`/${faviconFilename[isDev ? "dev" : 'light']}.png`} media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/png" href={`/${faviconFilename[isDev ? "dev" : 'dark']}.png`} media="(prefers-color-scheme: light)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title}</title>
     <script type="application/json" id="env" set:html={JSON.stringify(publicEnv)}></script>

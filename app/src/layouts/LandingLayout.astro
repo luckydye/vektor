@@ -7,14 +7,21 @@ export interface Props {
 
 const { title = "Vektor" } = Astro.props;
 const publicEnv = Astro.locals.publicEnv;
+const isDev = import.meta.env.DEV;
+
+let faviconFilename = {
+  light: "favicon_light",
+  dark: "favicon_dark",
+  dev: "favicon_dev",
+};
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/png" href="/favicon_light.png" media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/png" href="/favicon_dark.png" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" href={`/${faviconFilename[isDev ? "dev" : 'light']}.png`} media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/png" href={`/${faviconFilename[isDev ? "dev" : 'dark']}.png`} media="(prefers-color-scheme: light)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
