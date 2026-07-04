@@ -30,6 +30,7 @@ type RawShape = {
   src?: unknown;
   alt?: unknown;
   docId?: unknown;
+  variant?: unknown;
   updatedAt?: unknown;
 };
 
@@ -57,6 +58,7 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   if (typeof shape.src === "string") map.set("src", shape.src);
   if (typeof shape.alt === "string") map.set("alt", shape.alt);
   if (typeof shape.docId === "string") map.set("docId", shape.docId);
+  if (typeof shape.variant === "string") map.set("variant", shape.variant);
   map.set("updatedAt", typeof shape.updatedAt === "number" ? shape.updatedAt : 0);
   target.set(shape.id, map);
 }

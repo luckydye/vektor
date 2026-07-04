@@ -4,10 +4,11 @@ import type {
   FreehandStrokeStyle,
 } from "../../viewport/index.ts";
 
-export type CanvasTool = "select" | "draw" | "note" | "text" | "section";
+export type CanvasTool = "select" | "draw" | "note" | "text" | "section" | "shape";
 export type CanvasElementType =
   | "note"
   | "text"
+  | "shape"
   | "image"
   | "video"
   | "file"
@@ -27,6 +28,9 @@ export type CanvasShape = {
   src?: string;
   alt?: string;
   docId?: string;
+  // Which entry of the shape library a "shape" element was placed from
+  // (e.g. "rectangle", "circle"); unset for every other element type.
+  variant?: string;
   updatedAt: number;
 };
 

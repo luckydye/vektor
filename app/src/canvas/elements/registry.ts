@@ -3,6 +3,7 @@ import { fileElement } from "./files.ts";
 import { linkElement } from "./link.ts";
 import { imageElement, videoElement } from "./media.ts";
 import { noteElement } from "./note.ts";
+import { shapeElement } from "./shape.ts";
 import { textElement } from "./text.ts";
 import type {
   CanvasElementDefinition,
@@ -14,6 +15,7 @@ import type {
 const elementDefinitions = [
   noteElement,
   textElement,
+  shapeElement,
   imageElement,
   videoElement,
   fileElement,
