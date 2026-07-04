@@ -89,8 +89,38 @@ img[width] {
   background: #1d4ed8;
 }
 
-.ProseMirror-yjs-selection {
-  background: var(--color-primary-200, #3b82f6);
+.document-presence-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.document-presence-selection {
+  position: fixed;
+  border-radius: 2px;
+}
+
+.document-presence-caret {
+  position: fixed;
+  width: 0;
+  border-left: 1px solid #0d0d0d;
+  border-right: 1px solid #0d0d0d;
+}
+
+.document-presence-label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  border-radius: var(--radius-sm) var(--radius-sm) var(--radius-sm) 0;
+  color: #0d0d0d;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: normal;
+  padding: 0.1rem 0.3rem;
+  user-select: none;
+  white-space: nowrap;
 }
 
 /* HTML Block styles */

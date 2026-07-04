@@ -4,12 +4,11 @@ import "./elements/textarea.ts";
 import "./elements/expression.ts";
 import "./elements/file-attachment.ts";
 import "./elements/document-attachment.ts";
-import { type Editor, Extension } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { Dropcursor } from "@tiptap/extensions";
-import { type EditorState, Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import type { EditorState } from "@tiptap/pm/state";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
 import * as Y from "yjs";
 import {
@@ -31,9 +30,6 @@ import {
   type EditorContext,
 } from "./extensions.ts";
 
-const documentPresencePluginKey = new PluginKey<DocumentPresenceProfile[]>(
-  "document-presence",
-);
 type ProsemirrorMapping = Parameters<typeof relativePositionToAbsolutePosition>[3];
 
 function dragHasFiles(transfer: DataTransfer | null) {
@@ -72,89 +68,17 @@ function absolutePresencePosition(state: EditorState, position: unknown) {
   return Math.max(0, Math.min(position, maxPos));
 }
 
-function createPresenceWidget(profile: DocumentPresenceProfile, color: string) {
-  const caret = document.createElement("span");
-  caret.className = "collaboration-carets__caret";
-  caret.style.borderColor = color;
+function resolvePresencePosition(
+  state: EditorState,
+  ydoc: Y.Doc,
+  relativePosition: unknown,
+  absolutePosition: unknown,
+) {
+  if (relativePosition) {
+    return relativePresencePositionToAbsolute(state, ydoc, relativePosition);
+  }
 
-  const label = document.createElement("span");
-  label.className = "collaboration-carets__label";
-  label.style.backgroundColor = color;
-  label.textContent = profile.user.name || "User";
-  caret.append(label);
-
-  return caret;
-}
-
-function createDocumentPresenceExtension(ydoc: Y.Doc) {
-  return Extension.create({
-    name: "documentPresence",
-
-    addProseMirrorPlugins() {
-      return [
-        new Plugin<DocumentPresenceProfile[]>({
-          key: documentPresencePluginKey,
-          state: {
-            init: () => [],
-            apply(transaction, value) {
-              const next = transaction.getMeta(documentPresencePluginKey);
-              return Array.isArray(next) ? next : value;
-            },
-          },
-          props: {
-            decorations(state) {
-              const profiles = documentPresencePluginKey.getState(state) ?? [];
-              const decorations: Decoration[] = [];
-
-              for (const profile of profiles) {
-                if (profile.state?.kind !== "editor" || !profile.state.selection) {
-                  continue;
-                }
-
-                const selection = profile.state.selection;
-                const anchor =
-                  relativePresencePositionToAbsolute(state, ydoc, selection.anchor) ??
-                  absolutePresencePosition(state, selection.absoluteAnchor);
-                const head =
-                  relativePresencePositionToAbsolute(state, ydoc, selection.head) ??
-                  absolutePresencePosition(state, selection.absoluteHead);
-                if (anchor === null || head === null) continue;
-
-                const maxPos = Math.max(state.doc.content.size - 1, 0);
-                const from = Math.max(0, Math.min(anchor, head, maxPos));
-                const to = Math.max(0, Math.min(Math.max(anchor, head), maxPos));
-                const color = colorForPresenceProfile(profile);
-
-                if (from !== to) {
-                  decorations.push(
-                    Decoration.inline(
-                      from,
-                      to,
-                      {
-                        class: "ProseMirror-yjs-selection",
-                        style: `background-color: ${color}70;`,
-                      },
-                      { inclusiveStart: false, inclusiveEnd: true },
-                    ),
-                  );
-                }
-
-                decorations.push(
-                  Decoration.widget(
-                    Math.max(0, Math.min(head, maxPos)),
-                    () => createPresenceWidget(profile, color),
-                    { side: 10, key: `presence:${profile.clientId}` },
-                  ),
-                );
-              }
-
-              return DecorationSet.create(state.doc, decorations);
-            },
-          },
-        }),
-      ];
-    },
-  });
+  return absolutePresencePosition(state, absolutePosition);
 }
 
 function createEditor(
@@ -454,8 +378,6 @@ function createEditor(
       Collaboration.configure({
         document: ydoc,
       }),
-
-      createDocumentPresenceExtension(ydoc),
     ],
   });
 
@@ -486,6 +408,9 @@ export class DocumentView extends HTMLElement {
   private ydoc?: Y.Doc;
   private _html = "";
   private presenceProfiles: DocumentPresenceProfile[] = [];
+  private presenceOverlay?: HTMLDivElement;
+  private presenceRenderFrame: number | null = null;
+  private presenceLayoutListenersAttached = false;
 
   set html(value: string) {
     this._html = value;
@@ -548,11 +473,7 @@ export class DocumentView extends HTMLElement {
 
   setPresenceProfiles(profiles: DocumentPresenceProfile[]) {
     this.presenceProfiles = profiles;
-    if (!this.tiptapEditor) return;
-
-    this.tiptapEditor.view.dispatch(
-      this.tiptapEditor.state.tr.setMeta(documentPresencePluginKey, profiles),
-    );
+    this.schedulePresenceOverlayRender();
   }
 
   renderReadHtml(html: string) {
@@ -685,11 +606,155 @@ export class DocumentView extends HTMLElement {
     return shadow;
   }
 
+  private ensurePresenceOverlay(shadow: ShadowRoot) {
+    if (this.presenceOverlay?.isConnected) return this.presenceOverlay;
+
+    const overlay = document.createElement("div");
+    overlay.className = "document-presence-overlay";
+    shadow.append(overlay);
+    this.presenceOverlay = overlay;
+    return overlay;
+  }
+
+  private clearPresenceOverlay() {
+    if (this.presenceRenderFrame !== null) {
+      cancelAnimationFrame(this.presenceRenderFrame);
+      this.presenceRenderFrame = null;
+    }
+    this.presenceOverlay?.replaceChildren();
+  }
+
+  private schedulePresenceOverlayRender = () => {
+    if (this.presenceRenderFrame !== null) return;
+    this.presenceRenderFrame = requestAnimationFrame(() => {
+      this.presenceRenderFrame = null;
+      this.renderPresenceOverlay();
+    });
+  };
+
+  private createPresenceCaret(
+    profile: DocumentPresenceProfile,
+    color: string,
+    rect: { left: number; top: number; bottom: number },
+  ) {
+    const caret = document.createElement("div");
+    caret.className = "document-presence-caret";
+    caret.style.left = `${rect.left}px`;
+    caret.style.top = `${rect.top}px`;
+    caret.style.height = `${Math.max(rect.bottom - rect.top, 12)}px`;
+    caret.style.borderColor = color;
+
+    const label = document.createElement("div");
+    label.className = "document-presence-label";
+    label.style.backgroundColor = color;
+    label.textContent = profile.user.name || "User";
+    caret.append(label);
+
+    return caret;
+  }
+
+  private createPresenceSelectionRect(color: string, rect: DOMRect) {
+    const selection = document.createElement("div");
+    selection.className = "document-presence-selection";
+    selection.style.left = `${rect.left}px`;
+    selection.style.top = `${rect.top}px`;
+    selection.style.width = `${rect.width}px`;
+    selection.style.height = `${rect.height}px`;
+    selection.style.backgroundColor = `${color}70`;
+    return selection;
+  }
+
+  private presenceSelectionRects(from: number, to: number) {
+    const view = this.tiptapEditor?.view;
+    if (!view) return [];
+
+    try {
+      const start = view.domAtPos(from);
+      const end = view.domAtPos(to);
+      const range = document.createRange();
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset);
+      return Array.from(range.getClientRects()).filter(
+        (rect) => rect.width > 0 && rect.height > 0,
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  private renderPresenceOverlay() {
+    const editor = this.tiptapEditor;
+    const ydoc = this.collaborationDocument;
+    const shadow = this.root;
+    if (!editor || !ydoc || !shadow) {
+      this.clearPresenceOverlay();
+      return;
+    }
+
+    const overlay = this.ensurePresenceOverlay(shadow);
+    overlay.replaceChildren();
+
+    for (const profile of this.presenceProfiles) {
+      if (
+        profile.state?.kind !== "editor" ||
+        profile.state.focused !== true ||
+        !profile.state.selection
+      ) {
+        continue;
+      }
+
+      const selection = profile.state.selection;
+      const anchor = resolvePresencePosition(
+        editor.state,
+        ydoc,
+        selection.anchor,
+        selection.absoluteAnchor,
+      );
+      const head = resolvePresencePosition(
+        editor.state,
+        ydoc,
+        selection.head,
+        selection.absoluteHead,
+      );
+      if (anchor === null || head === null) continue;
+
+      const maxPos = Math.max(editor.state.doc.content.size - 1, 0);
+      const from = Math.max(0, Math.min(anchor, head, maxPos));
+      const to = Math.max(0, Math.min(Math.max(anchor, head), maxPos));
+      const color = colorForPresenceProfile(profile);
+
+      const selectionRects = from === to ? [] : this.presenceSelectionRects(from, to);
+      for (const rect of selectionRects) {
+        overlay.append(this.createPresenceSelectionRect(color, rect));
+      }
+
+      const caretRect =
+        selectionRects[0] ??
+        editor.view.coordsAtPos(Math.max(0, Math.min(from === to ? head : from, maxPos)));
+      overlay.append(this.createPresenceCaret(profile, color, caretRect));
+    }
+  }
+
+  private attachPresenceLayoutListeners() {
+    if (this.presenceLayoutListenersAttached) return;
+    this.presenceLayoutListenersAttached = true;
+    window.addEventListener("scroll", this.schedulePresenceOverlayRender, true);
+    window.addEventListener("resize", this.schedulePresenceOverlayRender);
+  }
+
+  private detachPresenceLayoutListeners() {
+    if (!this.presenceLayoutListenersAttached) return;
+    this.presenceLayoutListenersAttached = false;
+    window.removeEventListener("scroll", this.schedulePresenceOverlayRender, true);
+    window.removeEventListener("resize", this.schedulePresenceOverlayRender);
+  }
+
   connectedCallback() {
     this.upgradeProperty("collaborationDocument");
     const shadow = this.ensureShadowRoot();
     this.ensureDocumentStyles(shadow);
 
+    this.attachPresenceLayoutListeners();
     this.attachListeners();
     this.queueMaybeStartEditor();
   }
@@ -799,6 +864,7 @@ export class DocumentView extends HTMLElement {
 
     const handleUpdate = () => {
       window.dispatchEvent(new Event("editor-update"));
+      this.schedulePresenceOverlayRender();
     };
 
     this.tiptapEditor.on("selectionUpdate", handleUpdate);
@@ -822,6 +888,7 @@ export class DocumentView extends HTMLElement {
     const finishLayoutChange = this.preserveScrollPositionDuringLayoutChange();
     const editor = this.tiptapEditor;
     this.tiptapEditor = undefined;
+    this.clearPresenceOverlay();
     editor.destroy();
     this.dispatchEvent(
       new CustomEvent("editor-destroyed", {
@@ -834,6 +901,8 @@ export class DocumentView extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.detachPresenceLayoutListeners();
+    this.clearPresenceOverlay();
     this.destroyEditor();
   }
 
