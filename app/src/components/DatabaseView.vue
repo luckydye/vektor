@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/popover";
 import { nextTick, ref, watch } from "vue";
-import { plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
+import { fileSpreadsheetIcon, plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
+import { useDatabaseCsvImport } from "../composeables/useDatabaseCsvImport.ts";
 import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
 import { useDatabaseRows } from "../composeables/useDatabaseRows.ts";
 import { useSpace } from "../composeables/useSpace.ts";
@@ -27,9 +28,11 @@ const {
   isLoading,
   setSchemaStr,
   addRow,
+  refreshRows,
   updateRowProperty,
   deleteRow,
   addColumn,
+  addColumns,
   deleteColumn,
 } = useDatabaseRows(props.databaseDocumentId);
 
@@ -70,7 +73,7 @@ function onCellKeydown(e: KeyboardEvent) {
 const newColumnName = ref("");
 const newColumnType = ref<DatabaseColumn["type"]>("text");
 const newColumnInputRef = ref<HTMLInputElement | null>(null);
-const addColumnTriggerRef = ref<HTMLElement | null>(null);
+const addColumnTriggerRef = ref<(HTMLElement & { hide?: () => void }) | null>(null);
 
 function onAddColumnTrigger() {
   newColumnName.value = "";
@@ -82,12 +85,12 @@ async function commitAddColumn() {
   const name = newColumnName.value.trim();
   if (!name) return;
   await addColumn({ name, type: newColumnType.value, label: name });
-  (addColumnTriggerRef.value as any)?.hide?.();
+  addColumnTriggerRef.value?.hide?.();
 }
 
 function onAddColKeydown(e: KeyboardEvent) {
   if (e.key === "Enter") commitAddColumn();
-  if (e.key === "Escape") (addColumnTriggerRef.value as any)?.hide?.();
+  if (e.key === "Escape") addColumnTriggerRef.value?.hide?.();
 }
 
 // Per-column delete confirmation
@@ -139,13 +142,53 @@ function rowTitle(row: Record<string, DocumentPropertyValue>): string {
 
 const DEFAULT_COL_WIDTH = 180;
 const NAME_COL_WIDTH = 240;
+
+// CSV import
+const csvInputRef = ref<HTMLInputElement | null>(null);
+const { isImportingCsv, importCsvFile } = useDatabaseCsvImport({
+  derivedColumns,
+  addColumns,
+  addRow,
+  refreshRows,
+});
+
+function openCsvPicker() {
+  if (isImportingCsv.value) return;
+  csvInputRef.value?.click();
+}
+
+async function onCsvFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  await importCsvFile(file);
+}
 </script>
 
 <template>
   <div class="relative flex flex-col h-full min-h-0 overflow-hidden px-xs lg:px-xl">
     <!-- Toolbar -->
-    <div class="flex items-center px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0">
+    <div class="flex items-center justify-between gap-3 px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0">
       <span class="text-size-small text-neutral-500">{{ rows.length }} rows</span>
+      <div class="flex items-center gap-1.5">
+        <input
+          ref="csvInputRef"
+          type="file"
+          accept=".csv,text/csv"
+          class="hidden"
+          @change="onCsvFileChange"
+        />
+        <button
+          class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-size-small text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+          title="Import CSV"
+          :disabled="isImportingCsv"
+          @click="openCsvPicker"
+        >
+          <div class="svg-icon w-3.5 h-3.5" v-html="fileSpreadsheetIcon" />
+          Import CSV
+        </button>
+      </div>
     </div>
 
     <!-- Table -->
@@ -323,7 +366,7 @@ const NAME_COL_WIDTH = 240;
               :colspan="derivedColumns.length + 2"
               class="px-4 py-8 text-center text-size-small text-neutral-400"
             >
-              No rows yet. Click "Add row" to get started.
+              No rows yet. Click "New row" or import a CSV to get started.
             </td>
           </tr>
         </tbody>
@@ -334,7 +377,7 @@ const NAME_COL_WIDTH = 240;
     <div class="border-t border-neutral-100 px-3 py-2 shrink-0">
       <button
         class="inline-flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-700 transition-colors"
-        @click="addRow"
+        @click="() => addRow()"
       >
         <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
         New row

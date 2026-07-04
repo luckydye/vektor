@@ -386,7 +386,7 @@ watchEffect(() => {
                 >
                     <div
                         v-if="doc?.updatedAt"
-                        class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500"
+                        class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500 mb-12"
                     >
                     <ClientOnly>
                         <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>

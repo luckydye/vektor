@@ -18,7 +18,7 @@ const icons = {
         <div
           v-for="toast in toasts"
           :key="toast.id"
-          class="flex items-center gap-2.5 px-4 py-2.5 rounded-lg shadow-large text-size-small font-medium pointer-events-auto"
+          class="relative overflow-hidden flex items-center gap-2.5 px-4 py-2.5 rounded-lg shadow-large text-size-small font-medium pointer-events-auto min-w-64"
           :class="{
             'bg-red-600 text-white': toast.type === 'error',
             'bg-neutral-900 text-white': toast.type === 'info',
@@ -26,7 +26,16 @@ const icons = {
           }"
         >
           <div class="svg-icon w-4 h-4 shrink-0" v-html="icons[toast.type]" />
-          {{ toast.message }}
+          <span class="relative z-10">{{ toast.message }}</span>
+          <div
+            v-if="toast.progress !== undefined"
+            class="absolute inset-x-0 bottom-0 h-1 bg-white/15"
+          >
+            <div
+              class="h-full bg-white/55 transition-all duration-200 ease-out"
+              :style="{ width: `${Math.max(0, Math.min(1, toast.progress)) * 100}%` }"
+            />
+          </div>
         </div>
       </TransitionGroup>
     </div>

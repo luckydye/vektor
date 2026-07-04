@@ -1,5 +1,6 @@
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
+import type { DocumentPropertyValue } from "../utils/documentProperties.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
@@ -13,6 +14,15 @@ export interface DatabaseColumn {
 
 export interface DatabaseSchema {
   columns: DatabaseColumn[];
+}
+
+interface AddRowOptions {
+  invalidate?: boolean;
+}
+
+interface AddRowMutationVariables {
+  properties?: Record<string, DocumentPropertyValue>;
+  invalidate: boolean;
 }
 
 function parseSchema(raw: string | undefined): DatabaseSchema {
@@ -29,11 +39,7 @@ export function useDatabaseRows(databaseDocumentId: string) {
   const queryClient = useQueryClient();
   const queryKey = computed(() => ["database_rows", spaceId.value, databaseDocumentId]);
 
-  const {
-    data,
-    isPending: isLoading,
-    refetch: refresh,
-  } = useQuery({
+  const { data, isPending: isLoading } = useQuery({
     queryKey,
     queryFn: async () => {
       if (!spaceId.value) throw new Error("No space ID");
@@ -67,17 +73,20 @@ export function useDatabaseRows(databaseDocumentId: string) {
   });
 
   const addRowMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ properties }: AddRowMutationVariables) => {
       if (!spaceId.value) throw new Error("No space ID");
+      const title = properties?.title ? properties.title : "Untitled";
       return await api.documents.post(spaceId.value, {
         content: "<p></p>",
         type: "record",
         parentId: databaseDocumentId,
-        properties: { title: "Untitled" },
+        properties: { ...properties, title },
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKey.value });
+    onSuccess: (_data, variables) => {
+      if (variables.invalidate) {
+        queryClient.invalidateQueries({ queryKey: queryKey.value });
+      }
     },
   });
 
@@ -113,8 +122,18 @@ export function useDatabaseRows(databaseDocumentId: string) {
     },
   });
 
-  async function addRow() {
-    return await addRowMutation.mutateAsync();
+  function refreshRows() {
+    queryClient.invalidateQueries({ queryKey: queryKey.value });
+  }
+
+  async function addRow(
+    properties?: Record<string, DocumentPropertyValue>,
+    options?: AddRowOptions,
+  ) {
+    return await addRowMutation.mutateAsync({
+      properties,
+      invalidate: options?.invalidate ?? true,
+    });
   }
 
   async function updateRowProperty(rowId: string, name: string, value: string) {
@@ -126,9 +145,21 @@ export function useDatabaseRows(databaseDocumentId: string) {
   }
 
   async function addColumn(column: DatabaseColumn) {
-    const current = schema.value;
+    const currentColumns = derivedColumns.value;
     const updated: DatabaseSchema = {
-      columns: [...current.columns, column],
+      columns: [...currentColumns, column],
+    };
+    await updateSchemaMutation.mutateAsync(updated);
+  }
+
+  async function addColumns(columns: DatabaseColumn[]) {
+    if (columns.length === 0) return;
+    const currentColumns = derivedColumns.value;
+    const existing = new Set(currentColumns.map((column) => column.name));
+    const appended = columns.filter((column) => !existing.has(column.name));
+    if (appended.length === 0) return;
+    const updated: DatabaseSchema = {
+      columns: [...currentColumns, ...appended],
     };
     await updateSchemaMutation.mutateAsync(updated);
   }
@@ -151,9 +182,11 @@ export function useDatabaseRows(databaseDocumentId: string) {
     isLoading,
     setSchemaStr,
     addRow,
+    refreshRows,
     updateRowProperty,
     deleteRow,
     addColumn,
+    addColumns,
     deleteColumn,
   };
 }
