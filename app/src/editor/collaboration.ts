@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 import * as Y from "yjs";
+import type { CanvasTool } from "../canvas/elements/types.ts";
 
 type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;
 
@@ -13,6 +14,16 @@ export type DocumentPresenceState = {
     absoluteAnchor?: number;
     absoluteHead?: number;
   } | null;
+};
+
+export type CanvasPresenceState = {
+  kind: "canvas";
+  pointer: { x: number; y: number } | null;
+  cursorColor?: string;
+  view: { x: number; y: number; scale: number };
+  selectionIds: string[];
+  focusedNodeId: string | null;
+  activeTool: CanvasTool | null;
 };
 
 export type DocumentPresenceProfile = {

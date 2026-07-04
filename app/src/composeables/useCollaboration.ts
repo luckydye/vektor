@@ -4,6 +4,7 @@ import {
   onUnmounted,
   provide,
   type Ref,
+  type ShallowRef,
   shallowRef,
   watch,
 } from "vue";
@@ -32,33 +33,74 @@ export type CollaborationSession<TPresenceState = unknown> = ReturnType<
 >;
 export const CollaborationKey: InjectionKey<CollaborationSession> =
   Symbol("Collaboration");
+const activeCollaboration = shallowRef<CollaborationSession | null>(null);
+
+const CLIENT_ID_STORAGE_KEY = "vektor:collaboration-client-id";
+
+function createClientId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `collaboration:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function getBrowserClientId() {
+  if (typeof window === "undefined") {
+    return createClientId();
+  }
+
+  try {
+    const existing = window.sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing) return existing;
+
+    const next = createClientId();
+    window.sessionStorage.setItem(CLIENT_ID_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return createClientId();
+  }
+}
+
+const browserClientId = getBrowserClientId();
 
 export function provideCollaboration<TPresenceState>(
   collaboration: CollaborationSession<TPresenceState>,
 ) {
   provide(CollaborationKey, collaboration as CollaborationSession);
+  activeCollaboration.value = collaboration as CollaborationSession;
+  onUnmounted(() => {
+    if (activeCollaboration.value === collaboration) {
+      activeCollaboration.value = null;
+    }
+  });
 }
 
 export function injectCollaboration() {
   return inject(CollaborationKey);
 }
 
+export function useActiveCollaboration(): ShallowRef<CollaborationSession | null> {
+  const injected = inject(CollaborationKey, null);
+  return injected
+    ? (shallowRef(injected) as ShallowRef<CollaborationSession | null>)
+    : activeCollaboration;
+}
+
 export function useCollaboration<TPresenceState>(options: {
   spaceId: string;
   documentId: Ref<string | undefined>;
   presenceRoomId?: Ref<string | undefined>;
-  currentPresenceState?: () => TPresenceState;
 }) {
-  const { spaceId, documentId, currentPresenceState } = options;
+  const { spaceId, documentId } = options;
   const presenceRoomId = options.presenceRoomId ?? documentId;
   const user = useUserProfile();
   const ydoc = shallowRef(new Y.Doc());
+  const localPresenceState = shallowRef<TPresenceState | null>(null);
   const presenceProfiles = shallowRef<CollaborationPresenceProfile<TPresenceState>[]>([]);
+  const roomPresenceProfiles = shallowRef<CollaborationPresenceProfile<TPresenceState>[]>(
+    [],
+  );
 
-  const clientId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `collaboration:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const clientId = browserClientId;
 
   const remotePresences = new Map<string, PresenceEnvelope<TPresenceState>>();
 
@@ -108,13 +150,42 @@ export function useCollaboration<TPresenceState>(options: {
     }));
   }
 
-  function updatePresence() {
-    if (!presenceHandle || !currentPresenceState) return;
-    const state = currentPresenceState();
-    const serialized = JSON.stringify(state);
+  function syncRoomPresenceProfiles() {
+    const localUser = user.value;
+    roomPresenceProfiles.value = [
+      ...(presenceHandle && localUser
+        ? [
+            {
+              clientId,
+              user: {
+                id: localUser.id,
+                name: localUser.name,
+                image: localUser.image,
+                color: getPresenceColor(localUser.id),
+              },
+              state: localPresenceState.value,
+            } satisfies CollaborationPresenceProfile<TPresenceState>,
+          ]
+        : []),
+      ...presenceProfiles.value,
+    ];
+  }
+
+  function setPresenceState(state: TPresenceState | null) {
+    localPresenceState.value = state;
+    syncRoomPresenceProfiles();
+  }
+
+  function updatePresence(state?: TPresenceState | null) {
+    if (state !== undefined) {
+      setPresenceState(state);
+    }
+    if (!presenceHandle || localPresenceState.value === null) return;
+    const serialized = JSON.stringify(localPresenceState.value);
     if (serialized === lastPresenceState) return;
     lastPresenceState = serialized;
-    presenceHandle.update(state);
+    presenceHandle.update(localPresenceState.value);
+    syncRoomPresenceProfiles();
   }
 
   function clearPresence() {
@@ -124,12 +195,17 @@ export function useCollaboration<TPresenceState>(options: {
     lastPresenceState = "";
     remotePresences.clear();
     syncPresenceProfiles();
+    syncRoomPresenceProfiles();
+  }
+
+  function isRemotePresence(presence: PresenceEnvelope<TPresenceState>) {
+    return presence.clientId !== clientId;
   }
 
   async function setupPresence() {
     presenceRequested = true;
     const roomId = presenceRoomId.value;
-    if (!roomId || !user.value || !currentPresenceState || presenceHandle) {
+    if (!roomId || !user.value || localPresenceState.value === null || presenceHandle) {
       return;
     }
 
@@ -147,23 +223,26 @@ export function useCollaboration<TPresenceState>(options: {
         if (event.type === "presence-snapshot") {
           remotePresences.clear();
           for (const presence of event.presences) {
-            if (presence.clientId !== clientId) {
+            if (isRemotePresence(presence)) {
               remotePresences.set(presence.clientId, presence);
             }
           }
         } else if (event.type === "presence-update") {
-          if (event.presence.clientId !== clientId) {
+          if (isRemotePresence(event.presence)) {
             remotePresences.set(event.presence.clientId, event.presence);
+          } else {
+            remotePresences.delete(event.presence.clientId);
           }
         } else {
           remotePresences.delete(event.clientId);
         }
         syncPresenceProfiles();
+        syncRoomPresenceProfiles();
       },
-      currentPresenceState(),
+      localPresenceState.value,
     );
-    const initialState = currentPresenceState();
-    lastPresenceState = JSON.stringify(initialState);
+    lastPresenceState = JSON.stringify(localPresenceState.value);
+    syncRoomPresenceProfiles();
   }
 
   function leave() {
@@ -184,17 +263,29 @@ export function useCollaboration<TPresenceState>(options: {
     leave();
   });
 
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", clearPresence);
+    window.addEventListener("beforeunload", clearPresence);
+  }
+
   onUnmounted(() => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("pagehide", clearPresence);
+      window.removeEventListener("beforeunload", clearPresence);
+    }
     leave();
   });
 
   return {
     ydoc,
+    localPresenceState,
     presenceProfiles,
+    roomPresenceProfiles,
     joinUntilReady,
     leave,
     setupPresence,
     clearPresence,
+    setPresenceState,
     updatePresence,
   };
 }

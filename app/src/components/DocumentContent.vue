@@ -6,6 +6,7 @@ import * as Y from "yjs";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
 import {
+  type CollaborationPresenceProfile,
   provideCollaboration,
   useCollaboration,
 } from "../composeables/useCollaboration.ts";
@@ -14,7 +15,12 @@ import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import { useSync } from "../composeables/useSync.ts";
 import { setActiveEditor } from "../editor/activeEditor.ts";
-import { type DocumentPresenceProfile, findYSyncState } from "../editor/collaboration.ts";
+import {
+  type CanvasPresenceState,
+  type DocumentPresenceProfile,
+  type DocumentPresenceState,
+  findYSyncState,
+} from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
 import { Actions } from "../utils/actions.ts";
 import { supportsComments, supportsDocumentEditor } from "../utils/documentTypes.ts";
@@ -25,13 +31,14 @@ import {
 } from "../utils/formattingActions.ts";
 import { realtimeTopics } from "../utils/realtime.ts";
 import Canvas from "./Canvas.vue";
-// biome-ignore lint/style/useImportType: used as a runtime component in the template.
 import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "../editor/elements/table-view.ts";
 import "../editor/elements/toolbar.ts";
 import "../components/document-statusbar.ts";
 import { twMerge } from "tailwind-merge";
+
+type DocumentContentPresenceState = DocumentPresenceState | CanvasPresenceState;
 
 const props = withDefaults(
   defineProps<{
@@ -77,7 +84,6 @@ type DocumentToolbarElement = HTMLElement & {
 const documentViewEl = shallowRef<DocumentViewElement | null>(null);
 const documentToolbar = shallowRef<DocumentToolbarElement | null>(null);
 const editor = shallowRef<Editor>();
-type DocumentPresenceState = NonNullable<DocumentPresenceProfile["state"]>;
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
@@ -87,10 +93,9 @@ const handleVisibilityChange = () => {
 
 resetEditingState();
 
-const collaboration = useCollaboration({
+const collaboration = useCollaboration<DocumentContentPresenceState>({
   spaceId: props.spaceId,
   documentId,
-  currentPresenceState,
 });
 provideCollaboration(collaboration);
 
@@ -116,6 +121,13 @@ const { handleInlineSuggestionAccept, handleInlineSuggestionDecline } =
     isEditing: editing,
     editor,
   });
+
+const canvasPresenceProfiles = computed(() =>
+  collaboration.presenceProfiles.value.filter(
+    (profile): profile is CollaborationPresenceProfile<CanvasPresenceState> =>
+      profile.state?.kind === "canvas",
+  ),
+);
 
 function currentPresenceState(): DocumentPresenceState {
   const currentEditor = editor.value;
@@ -147,6 +159,81 @@ function currentPresenceState(): DocumentPresenceState {
   }
 }
 
+let leaveEditorPresenceSubscriptions: (() => void) | null = null;
+
+function setupDocumentPresence() {
+  if (!documentId.value || !supportsRichTextDocument.value) {
+    collaboration.clearPresence();
+    return;
+  }
+
+  collaboration.setPresenceState(currentPresenceState());
+  void collaboration.setupPresence();
+}
+
+function handleCanvasPresence(states: CanvasPresenceState[]) {
+  const [state] = states;
+  if (!state) {
+    collaboration.clearPresence();
+    return;
+  }
+
+  void collaboration.joinUntilReady();
+  collaboration.setPresenceState(state);
+  void collaboration.setupPresence();
+  collaboration.updatePresence(state);
+}
+
+function clearEditorPresenceSubscriptions() {
+  leaveEditorPresenceSubscriptions?.();
+  leaveEditorPresenceSubscriptions = null;
+}
+
+function setCurrentEditor(nextEditor: Editor | undefined) {
+  if (editor.value === nextEditor) return;
+
+  clearEditorPresenceSubscriptions();
+  editor.value = nextEditor;
+  if (documentToolbar.value) {
+    documentToolbar.value.editor = nextEditor;
+  }
+  setActiveEditor(nextEditor ?? null);
+
+  if (!nextEditor) {
+    collaboration.updatePresence(currentPresenceState());
+    return;
+  }
+
+  const updatePresence = () => {
+    collaboration.updatePresence(currentPresenceState());
+  };
+
+  const trackLocalChange = ({
+    transaction,
+  }: {
+    transaction: { docChanged: boolean; getMeta: (key: string) => unknown };
+  }) => {
+    if (transaction.docChanged && !transaction.getMeta("y-sync$")) {
+      hasChanges.value = true;
+    }
+  };
+
+  nextEditor.on("selectionUpdate", updatePresence);
+  nextEditor.on("focus", updatePresence);
+  nextEditor.on("blur", updatePresence);
+  nextEditor.on("transaction", updatePresence);
+  nextEditor.on("update", trackLocalChange as Parameters<typeof nextEditor.on>[1]);
+  updatePresence();
+
+  leaveEditorPresenceSubscriptions = () => {
+    nextEditor.off("selectionUpdate", updatePresence);
+    nextEditor.off("focus", updatePresence);
+    nextEditor.off("blur", updatePresence);
+    nextEditor.off("transaction", updatePresence);
+    nextEditor.off("update", trackLocalChange as Parameters<typeof nextEditor.on>[1]);
+  };
+}
+
 watch(cancelCount, async () => {
   if (typeof documentData.value?.content === "string") {
     renderedHtml.value = documentData.value.content;
@@ -163,57 +250,13 @@ watch(suggestionSavedCount, () => {
 watch(
   [collaboration.presenceProfiles, editor],
   ([profiles]) => {
-    documentViewEl.value?.setPresenceProfiles?.(profiles);
+    const editorProfiles = profiles.filter(
+      (profile): profile is CollaborationPresenceProfile<DocumentPresenceState> =>
+        profile.state?.kind === "editor",
+    );
+    documentViewEl.value?.setPresenceProfiles?.(editorProfiles);
   },
   { immediate: true },
-);
-
-watch(editor, (currentEditor) => {
-  if (documentToolbar.value) {
-    documentToolbar.value.editor = currentEditor;
-  }
-  setActiveEditor(currentEditor ?? null);
-});
-
-watch(
-  editor,
-  (currentEditor, _previousEditor, onCleanup) => {
-    if (!currentEditor) return;
-
-    const updatePresence = () => {
-      collaboration.updatePresence();
-    };
-
-    const trackLocalChange = ({
-      transaction,
-    }: {
-      transaction: { docChanged: boolean; getMeta: (key: string) => unknown };
-    }) => {
-      if (transaction.docChanged && !transaction.getMeta("y-sync$")) {
-        hasChanges.value = true;
-      }
-    };
-
-    currentEditor.on("selectionUpdate", updatePresence);
-    currentEditor.on("focus", updatePresence);
-    currentEditor.on("blur", updatePresence);
-    currentEditor.on("transaction", updatePresence);
-    currentEditor.on(
-      "update",
-      trackLocalChange as Parameters<typeof currentEditor.on>[1],
-    );
-    onCleanup(() => {
-      currentEditor.off("selectionUpdate", updatePresence);
-      currentEditor.off("focus", updatePresence);
-      currentEditor.off("blur", updatePresence);
-      currentEditor.off("transaction", updatePresence);
-      currentEditor.off(
-        "update",
-        trackLocalChange as Parameters<typeof currentEditor.on>[1],
-      );
-    });
-  },
-  { flush: "post" },
 );
 
 watch(documentToolbar, (toolbar) => {
@@ -246,16 +289,16 @@ watch(
 watch(
   documentViewEl,
   (view, _previousView, onCleanup) => {
-    editor.value = view?.editorInstance;
+    setCurrentEditor(view?.editorInstance);
     if (!view) return;
 
     const handleEditorReady = (event: Event) => {
-      editor.value = (event as CustomEvent<{ editor: Editor }>).detail.editor;
+      setCurrentEditor((event as CustomEvent<{ editor: Editor }>).detail.editor);
     };
     const handleEditorDestroyed = (event: Event) => {
       const destroyedEditor = (event as CustomEvent<{ editor: Editor }>).detail.editor;
       if (editor.value === destroyedEditor) {
-        editor.value = undefined;
+        setCurrentEditor(undefined);
       }
     };
 
@@ -267,19 +310,6 @@ watch(
     });
   },
   { immediate: true },
-);
-
-watch(
-  [editing, editor],
-  ([isEditing, currentEditor]) => {
-    if (isEditing && currentEditor) {
-      void collaboration.setupPresence();
-      return;
-    }
-
-    collaboration.clearPresence();
-  },
-  { flush: "post" },
 );
 
 let toolbarActionsRegistered = false;
@@ -379,12 +409,14 @@ onMounted(() => {
 
   window.addEventListener("visibilitychange", handleVisibilityChange);
 
+  setupDocumentPresence();
   maybeStartAutoEditMode();
 });
 
 onUnmounted(() => {
   extensions.setActiveCollaboration(null);
   extensions.setActiveDocumentId(null);
+  setCurrentEditor(undefined);
   collaboration.clearPresence();
   unregisterEditorActions();
   unregisterToolbarActions();
@@ -486,7 +518,13 @@ useSync(
         </div>
 
         <div v-if="isMounted && documentType === 'canvas'" class="h-screen">
-            <Canvas :documentId="documentId" :spaceId="props.spaceId" />
+            <Canvas
+                :documentId="documentId"
+                :spaceId="props.spaceId"
+                :ydoc="collaboration.ydoc.value"
+                :presenceProfiles="canvasPresenceProfiles"
+                @presence="handleCanvasPresence"
+            />
         </div>
 
         <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>

@@ -7,7 +7,6 @@ import {
   ref,
   shallowRef,
   toRaw,
-  toRef,
   watch,
 } from "vue";
 import * as Y from "yjs";
@@ -80,9 +79,10 @@ import type {
   CanvasStrokeSnapshot,
   CanvasTool,
 } from "../canvas/elements/types.ts";
-import { useCollaboration } from "../composeables/useCollaboration.ts";
+import type { CollaborationPresenceProfile } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
+import type { CanvasPresenceState } from "../editor/collaboration.ts";
 import "../editor/elements/rich-text-editor.ts";
 import { useToast } from "../composeables/useToast.ts";
 import {
@@ -97,7 +97,6 @@ import {
   parseCanvasClipboardJson,
   serializeCanvasClipboard,
 } from "../utils/clipboard.ts";
-import { extensions } from "../utils/extensions.ts";
 import {
   filenameFromUrl,
   IMAGE_RESIZE_TIERS,
@@ -135,17 +134,13 @@ import {
 const props = defineProps<{
   spaceId: string;
   documentId?: string;
+  ydoc: Y.Doc;
+  presenceProfiles?: CollaborationPresenceProfile<CanvasPresenceState>[];
 }>();
 
-type CanvasPresenceState = {
-  kind: "canvas";
-  pointer: { x: number; y: number } | null;
-  cursorColor?: string;
-  view: { x: number; y: number; scale: number };
-  selectionIds: string[];
-  focusedNodeId: string | null;
-  activeTool: CanvasTool | null;
-};
+const emit = defineEmits<{
+  presence: [states: CanvasPresenceState[]];
+}>();
 
 type DragState =
   | {
@@ -270,19 +265,7 @@ const { document: documentData, saveDocument } = useDocument(props.documentId, "
 // metadata. The persisted canvas reference remains id-only.
 const { documents } = useDocuments();
 
-const canvasDocumentId = toRef(props, "documentId");
-const fallbackPresenceRoomId =
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `canvas:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-const presenceRoomId = computed(() => props.documentId ?? fallbackPresenceRoomId);
-const collaboration = useCollaboration<CanvasPresenceState>({
-  spaceId: props.spaceId,
-  documentId: canvasDocumentId,
-  presenceRoomId,
-  currentPresenceState: presenceState,
-});
-const ydoc = collaboration.ydoc.value;
+const ydoc = props.ydoc;
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
 const documentLinks = createDocumentLinkController({
@@ -331,16 +314,10 @@ let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 const textShapeSizes = shallowRef(new Map<string, { width: number; height: number }>());
 
-const remoteCanvasPresences = computed(() =>
-  collaboration.presenceProfiles.value.filter(
-    (presence) => presence.state?.kind === "canvas",
-  ),
-);
+const remoteCanvasPresences = computed(() => props.presenceProfiles ?? []);
 
 const remoteCanvasPointerPresences = computed(() =>
-  collaboration.presenceProfiles.value.filter(
-    (presence) => presence.state?.kind === "canvas" && presence.state.pointer,
-  ),
+  remoteCanvasPresences.value.filter((presence) => presence.state?.pointer),
 );
 
 const remoteCanvasSelections = computed(() =>
@@ -1264,11 +1241,7 @@ function presenceState(): CanvasPresenceState {
 }
 
 function updatePresence() {
-  collaboration.updatePresence();
-}
-
-function setupPresence() {
-  void collaboration.setupPresence();
+  emit("presence", [presenceState()]);
 }
 
 function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
@@ -2576,19 +2549,6 @@ function handleKeydown(event: KeyboardEvent) {
   if (key === "f") fitView();
 }
 
-// The Yjs room is the single source of truth: the server seeds the doc from
-// persisted content (see yjsRooms.ts) and sends it on join. The client never
-// seeds its own doc — independently-seeded docs assign different Yjs item ids
-// to the same shapes, so merges conflict and peers' edits never render. We
-// only join; content arrives via the room and renders through the observers.
-watch(
-  () => props.documentId,
-  () => {
-    void collaboration.joinUntilReady();
-  },
-  { immediate: true },
-);
-
 watch(
   shapes,
   () => {
@@ -2742,9 +2702,7 @@ onMounted(() => {
   );
   window.addEventListener("storage", handleStorageChange);
 
-  extensions.setActiveCollaboration(ydoc);
-  extensions.setActiveDocumentId(props.documentId ?? null);
-  setupPresence();
+  updatePresence();
   isReady = true;
   if (savePrunedInvalidShapesWhenReady) {
     savePrunedInvalidShapesWhenReady = false;
@@ -2764,17 +2722,14 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  extensions.setActiveCollaboration(null);
-  extensions.setActiveDocumentId(null);
   viewportControls?.dispose();
   resizeObserver?.disconnect();
   textShapeObserver?.disconnect();
   observedTextShapes.clear();
   themeObserver?.disconnect();
   colorSchemeMedia?.removeEventListener("change", updateThemeMode);
-  collaboration.leave();
+  emit("presence", []);
   undoManager.destroy();
-  ydoc.destroy();
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("pointermove", handlePointerMove);
   window.removeEventListener("pointerup", handlePointerUp);

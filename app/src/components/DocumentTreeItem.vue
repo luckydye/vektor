@@ -27,7 +27,7 @@
         <!-- continuous vertical rail for non-last items; extends through the space-y-1 gap -->
         <div
           v-if="index < children.length - 1"
-          class="absolute left-0 top-0 bottom-[-0.25rem] w-px bg-neutral-400"
+          class="absolute left-0 top-0 bottom-[-0.25rem] w-0 border-l border-neutral-400"
         ></div>
         <!-- L-shaped connector for the last item -->
         <div
