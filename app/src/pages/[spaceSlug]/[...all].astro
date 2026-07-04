@@ -2,6 +2,7 @@
 import SpaceApp from "../../components/SpaceApp.vue";
 import { getDocumentBySlug } from "../../db/documents.ts";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "../../utils/sidebarState.ts";
 import {
   requireSpaceViewer,
   resolveSpacePage,
@@ -39,6 +40,9 @@ const initialDocument = docSlugMatch
       JSON.stringify((await getDocumentBySlug(space.id, docSlugMatch[1])) ?? undefined),
     )
   : undefined;
+const initialSidebarWidth = parseSidebarWidth(
+  Astro.cookies.get(SIDEBAR_WIDTH_KEY)?.value,
+);
 ---
 
 <BaseLayout
@@ -51,5 +55,6 @@ const initialDocument = docSlugMatch
     url={Astro.url.pathname}
     initialSpace={initialSpace}
     initialDocument={initialDocument}
+    initialSidebarWidth={initialSidebarWidth}
   />
 </BaseLayout>

@@ -15,6 +15,7 @@ import strings from "../config/strings.json";
 import { Actions } from "../utils/actions.js";
 import { extensions } from "../utils/extensions.ts";
 import { history } from "../utils/history.ts";
+import { parseSidebarWidth } from "../utils/sidebarState.ts";
 import AIChatPanel from "./AIChatPanel.vue";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
 import ClientOnly from "./ClientOnly.vue";
@@ -32,10 +33,16 @@ import SpaceSearchView from "./views/SpaceSearchView.vue";
 import SpaceSettingsView from "./views/SpaceSettingsView.vue";
 import "../utils/insets.ts";
 
+type InitialSpace = Record<string, unknown> & {
+  id?: string;
+  slug?: string;
+};
+
 const props = defineProps<{
   url?: string;
-  initialSpace?: Record<string, any>;
-  initialDocument?: Record<string, any>;
+  initialSpace?: InitialSpace;
+  initialDocument?: Record<string, unknown>;
+  initialSidebarWidth?: number;
 }>();
 
 const isServer = typeof window === "undefined";
@@ -169,6 +176,12 @@ const lang =
   typeof document !== "undefined" ? document.documentElement.lang || "en" : "en";
 globalThis._translations = strings;
 
+const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
+const initialLayoutStyle = {
+  "--sidebar-width": `${initialSidebarWidth}px`,
+  "--inset-left": `${initialSidebarWidth}px`,
+};
+
 onMounted(async () => {
   document.addEventListener("click", handleDocumentClick);
 
@@ -213,7 +226,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div id="root" class="mx-auto relative origin-top">
+  <div id="root" class="mx-auto relative origin-top" :style="initialLayoutStyle">
     <div class="main-content min-h-screen h-full transition-all md:transition-none relative">
       <MobileHeader
         :spaceName="currentSpace?.name ?? ''"
@@ -230,7 +243,7 @@ onUnmounted(() => {
       <RouterView v-else />
     </div>
 
-    <Sidebar />
+    <Sidebar :initialWidth="initialSidebarWidth" />
   </div>
 
   <ClientOnly>

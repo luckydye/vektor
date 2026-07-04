@@ -28,8 +28,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { menuIcon, searchMagnifierIcon } from "~/src/assets/icons.ts";
-import { Actions } from "../utils/actions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
+import { Actions } from "../utils/actions.ts";
 import { spacePath } from "../utils/utils.ts";
 
 const props = withDefaults(
@@ -50,6 +50,6 @@ const isSearchActive = computed(() => {
 });
 
 const handleMenuClick = () => {
-  Actions.run("sidebar:toggle");
+  Actions.run("sidebar:toggle-mobile");
 };
 </script>

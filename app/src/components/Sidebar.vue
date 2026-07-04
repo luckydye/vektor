@@ -3,6 +3,14 @@ import { twMerge } from "tailwind-merge";
 import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Actions } from "../utils/actions.ts";
 import { t } from "../utils/lang.ts";
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  parseSidebarWidth,
+  SIDEBAR_WIDTH_KEY,
+  writeSidebarWidthCookie,
+} from "../utils/sidebarState.ts";
 import { Icon } from "./index.ts";
 import Navigation from "./Navigation.vue";
 import UserProfile from "./UserProfile.vue";
@@ -12,20 +20,26 @@ const props = withDefaults(
     defaultWidth?: number;
     minWidth?: number;
     maxWidth?: number;
+    initialWidth?: number;
   }>(),
   {
-    defaultWidth: 280,
-    minWidth: 76,
-    maxWidth: 500,
+    defaultWidth: DEFAULT_SIDEBAR_WIDTH,
+    minWidth: MIN_SIDEBAR_WIDTH,
+    maxWidth: MAX_SIDEBAR_WIDTH,
   },
 );
 
 const sidebarRef = ref<HTMLElement | null>(null);
-const currentWidth = ref();
+const initialSidebarWidth = parseSidebarWidth(props.initialWidth, props.defaultWidth);
+const currentWidth = ref(initialSidebarWidth);
 const isResizing = ref(false);
 const hasDragged = ref(false);
-const displayWidth = ref();
+const displayWidth = ref(initialSidebarWidth);
 const isMobileOpen = ref(false);
+let resizeStartX = 0;
+let resizeStartY = 0;
+let resizeStartWidth = 0;
+const resizeDragThreshold = 4;
 
 const closeMobile = () => {
   isMobileOpen.value = false;
@@ -46,7 +60,11 @@ const toggleCollapse = () => {
 const startResize = (e: MouseEvent) => {
   isResizing.value = true;
   hasDragged.value = false;
+  resizeStartX = e.clientX;
+  resizeStartY = e.clientY;
+  resizeStartWidth = currentWidth.value;
   e.preventDefault();
+  e.stopPropagation();
 
   document.addEventListener("mousemove", handleResize);
   document.addEventListener("mouseup", stopResize);
@@ -60,12 +78,24 @@ function dispatchSidebarResize() {
   );
 }
 
+function persistSidebarWidth(width: number) {
+  const parsedWidth = parseSidebarWidth(width, props.defaultWidth);
+  localStorage.setItem(SIDEBAR_WIDTH_KEY, parsedWidth.toString());
+  writeSidebarWidthCookie(parsedWidth);
+}
+
 const handleResize = (e: MouseEvent) => {
   if (!isResizing.value || !sidebarRef.value) return;
-  hasDragged.value = true;
 
-  const rect = sidebarRef.value.getBoundingClientRect();
-  let newWidth = e.clientX - rect.left;
+  const deltaX = e.clientX - resizeStartX;
+  const deltaY = e.clientY - resizeStartY;
+  if (!hasDragged.value) {
+    const distance = Math.hypot(deltaX, deltaY);
+    if (distance < resizeDragThreshold) return;
+    hasDragged.value = true;
+  }
+
+  let newWidth = resizeStartWidth + deltaX;
 
   // Snap to default width or min width within 10px threshold
   const snapThreshold = 15;
@@ -114,7 +144,7 @@ const stopResize = () => {
   currentWidth.value = clampedWidth;
   displayWidth.value = clampedWidth;
 
-  localStorage.setItem("sidebar-width", currentWidth.value.toString());
+  persistSidebarWidth(currentWidth.value);
   dispatchSidebarResize();
 };
 
@@ -128,15 +158,15 @@ onMounted(() => {
         currentWidth.value === props.minWidth ? props.defaultWidth : props.minWidth;
       currentWidth.value = targetWidth;
       displayWidth.value = targetWidth;
-      localStorage.setItem("sidebar-width", targetWidth.toString());
+      persistSidebarWidth(targetWidth);
       dispatchSidebarResize();
       nextTick(() => window.dispatchEvent(new Event("resize")));
     },
   });
 
-  Actions.register("sidebar:toggle", {
-    title: t("Toggle Sidebar"),
-    description: t("Open or close the sidebar menu"),
+  Actions.register("sidebar:toggle-mobile", {
+    title: t("Toggle Mobile Sidebar"),
+    description: t("Open or close the mobile sidebar menu"),
     group: "navigation",
     run: async () => {
       isMobileOpen.value = !isMobileOpen.value;
@@ -149,16 +179,14 @@ onMounted(() => {
     },
   });
 
-  let initialWidth = props.defaultWidth || props.minWidth;
-  const savedWidth = localStorage.getItem("sidebar-width");
+  let initialWidth = initialSidebarWidth;
+  const savedWidth = localStorage.getItem(SIDEBAR_WIDTH_KEY);
   if (savedWidth) {
-    const width = parseInt(savedWidth, 10);
-    if (width >= props.minWidth && width <= props.maxWidth) {
-      initialWidth = width;
-    }
+    initialWidth = parseSidebarWidth(savedWidth, initialWidth);
   }
   currentWidth.value = initialWidth;
   displayWidth.value = initialWidth;
+  persistSidebarWidth(initialWidth);
 
   // Publish the resolved width so subscribers (page insets, toolbar, docked
   // panels) sync to the actual component state on mount.
@@ -167,7 +195,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.body.style.overflow = "";
-  Actions.unregister("sidebar:toggle");
+  Actions.unregister("ui:toggle:sidebar");
+  Actions.unregister("sidebar:toggle-mobile");
 });
 </script>
 
