@@ -171,6 +171,7 @@ if (props.initialSpace && props.initialDocument) {
 const { pathname } = useRoute();
 const { currentSpaceId, currentSpace, spaceNotFound } = useSpace();
 const documentContext = provideDocumentContext();
+const isMobileSidebarOpen = ref(false);
 
 const lang =
   typeof document !== "undefined" ? document.documentElement.lang || "en" : "en";
@@ -227,7 +228,12 @@ onUnmounted(() => {
 
 <template>
   <div id="root" class="mx-auto relative origin-top" :style="initialLayoutStyle">
-    <div class="main-content min-h-screen h-full transition-all md:transition-none relative">
+    <div
+      :class="[
+        'main-content min-h-screen h-full transition-transform md:transition-none relative',
+        isMobileSidebarOpen ? 'translate-x-(--sidebar-width) md:translate-x-0' : '',
+      ]"
+    >
       <MobileHeader
         :spaceName="currentSpace?.name ?? ''"
         :pathname="pathname"
@@ -243,7 +249,10 @@ onUnmounted(() => {
       <RouterView v-else />
     </div>
 
-    <Sidebar :initialWidth="initialSidebarWidth" />
+    <Sidebar
+      :initialWidth="initialSidebarWidth"
+      @mobile-open-change="isMobileSidebarOpen = $event"
+    />
   </div>
 
   <ClientOnly>

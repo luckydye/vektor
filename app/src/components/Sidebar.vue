@@ -29,6 +29,10 @@ const props = withDefaults(
   },
 );
 
+const emit = defineEmits<{
+  "mobile-open-change": [open: boolean];
+}>();
+
 const sidebarRef = ref<HTMLElement | null>(null);
 const initialSidebarWidth = parseSidebarWidth(props.initialWidth, props.defaultWidth);
 const currentWidth = ref(initialSidebarWidth);
@@ -41,10 +45,13 @@ let resizeStartY = 0;
 let resizeStartWidth = 0;
 const resizeDragThreshold = 4;
 
-const closeMobile = () => {
-  isMobileOpen.value = false;
-  document.body.style.overflow = "";
+const setMobileOpen = (open: boolean) => {
+  isMobileOpen.value = open;
+  document.body.style.overflow = open ? "hidden" : "";
+  emit("mobile-open-change", open);
 };
+
+const closeMobile = () => setMobileOpen(false);
 
 const handleSidebarClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement;
@@ -169,13 +176,7 @@ onMounted(() => {
     description: t("Open or close the mobile sidebar menu"),
     group: "navigation",
     run: async () => {
-      isMobileOpen.value = !isMobileOpen.value;
-
-      if (isMobileOpen.value) {
-        document.body.style.overflow = "hidden";
-      } else {
-        document.body.style.overflow = "";
-      }
+      setMobileOpen(!isMobileOpen.value);
     },
   });
 
@@ -195,6 +196,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.body.style.overflow = "";
+  emit("mobile-open-change", false);
   Actions.unregister("ui:toggle:sidebar");
   Actions.unregister("sidebar:toggle-mobile");
 });
@@ -202,10 +204,6 @@ onUnmounted(() => {
 
 <template>
     <div>
-        <!-- Backdrop Overlay for Mobile -->
-        <div v-if="isMobileOpen" @click="closeMobile"
-            class="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity"></div>
-
         <!-- Sidebar -->
         <div ref="sidebarRef" :style="{
             width: `${displayWidth}px`,
