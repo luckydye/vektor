@@ -26,7 +26,7 @@ export type CanvasShape = {
   color: string;
   src?: string;
   alt?: string;
-  docId?: string;
+  docAddress?: string;
   updatedAt: number;
 };
 

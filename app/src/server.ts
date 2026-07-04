@@ -475,7 +475,8 @@ function isApiPath(pathname: string): boolean {
   return (
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
-    pathname === "/.well-known/caldav"
+    pathname === "/.well-known/caldav" ||
+    pathname === "/.well-known/vektor"
   );
 }
 

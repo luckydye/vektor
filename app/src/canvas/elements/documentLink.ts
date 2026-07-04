@@ -2,12 +2,21 @@ import { type Ref, ref } from "vue";
 import "../../editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "../../api/ApiClient.ts";
 import {
+  type ParsedVektorDocumentAddress,
+  parseVektorDocumentAddress,
+  type VektorDocumentAddress,
+} from "../../utils/documentAddress.ts";
+import {
   type DocumentPropertyValue,
   propertyValueToText,
 } from "../../utils/documentProperties.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
-export const DOCUMENT_ID_MIME = "application/x-vektor-document-id";
+export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
+
+export type DocumentLinkReference = {
+  address: VektorDocumentAddress;
+};
 
 export type DocumentPreviewState = {
   status: "loading" | "loaded" | "error";
@@ -25,7 +34,11 @@ type LoadedDocumentPreviewSource = DocumentPreviewSource & {
 
 export type DocumentLinkControllerOptions = {
   documents: Ref<DocumentPreviewSource[]>;
-  fetchDocument: (documentId: string) => Promise<LoadedDocumentPreviewSource>;
+  currentOrigin: string;
+  currentSpaceId: string;
+  fetchDocument: (
+    ref: ParsedVektorDocumentAddress,
+  ) => Promise<LoadedDocumentPreviewSource>;
   insertShape: (shape: CanvasShape) => void;
   selectShape: (shapeId: string) => void;
   afterInsert?: () => void;
@@ -37,7 +50,7 @@ export const documentLinkElement: CanvasElementDefinition = {
   defaultColor: "var(--canvas-doc-bg)",
   defaultSize: { width: 380, height: 280 },
   minSize: { width: 280, height: 180 },
-  isValid: (shape) => Boolean(shape.docId),
+  isValid: (shape) => Boolean(parseVektorDocumentAddress(shape.docAddress)),
 };
 
 export function documentLabel(doc: {
@@ -49,12 +62,13 @@ export function documentLabel(doc: {
 }
 
 export function createDocumentLinkShape(
-  documentId: string,
+  ref: string | DocumentLinkReference,
   at: { x: number; y: number },
   doc?: Pick<DocumentWithProperties, "properties">,
 ): CanvasShape | null {
-  const linkedDocumentId = documentId.trim();
-  if (!linkedDocumentId) return null;
+  const reference = normalizeDocumentReference(ref);
+  const parsed = parseVektorDocumentAddress(reference?.address);
+  if (!parsed) return null;
 
   return {
     id: `shape-${crypto.randomUUID()}`,
@@ -65,7 +79,8 @@ export function createDocumentLinkShape(
     height: documentLinkElement.defaultSize.height,
     text: doc ? documentLabel(doc) : documentLinkElement.defaultText,
     color: documentLinkElement.defaultColor,
-    docId: linkedDocumentId,
+    docAddress: parsed.address,
+    src: parsed.href,
     updatedAt: Date.now(),
   };
 }
@@ -84,7 +99,18 @@ export function initialDocumentPreview(
 }
 
 export function documentIdForShape(shape: CanvasShape): string | undefined {
-  return shape.docId;
+  return parseVektorDocumentAddress(shape.docAddress)?.documentId;
+}
+
+export function documentSpaceIdForShape(
+  shape: CanvasShape,
+  fallbackSpaceId: string,
+): string | undefined {
+  return parseVektorDocumentAddress(shape.docAddress)?.spaceId || fallbackSpaceId;
+}
+
+export function documentHrefForShape(shape: CanvasShape): string | undefined {
+  return parseVektorDocumentAddress(shape.docAddress)?.href ?? shape.src;
 }
 
 export function documentShapeTitle(
@@ -94,31 +120,55 @@ export function documentShapeTitle(
   return preview?.title || shape.text || "Untitled";
 }
 
-export function droppedDocumentId(
-  transfer: DataTransfer | null,
-  knownDocuments: Array<Pick<DocumentWithProperties, "id">>,
-): string | null {
-  if (!transfer) return null;
-  const typed = transfer.getData(DOCUMENT_ID_MIME).trim();
-  if (typed) return typed;
+export function normalizeDocumentReference(
+  ref: string | DocumentLinkReference | null | undefined,
+): DocumentLinkReference | null {
+  if (typeof ref === "string") {
+    const trimmed = ref.trim();
+    if (!trimmed) return null;
+    if (parseVektorDocumentAddress(trimmed)) return { address: trimmed };
+    return null;
+  }
 
-  const plain = transfer.getData("text/plain").trim();
-  if (!plain) return null;
-  return knownDocuments.some((doc) => doc.id === plain) ? plain : null;
+  const address = ref?.address?.trim();
+  if (address && parseVektorDocumentAddress(address)) return { address };
+  return null;
+}
+
+export function documentReferenceKey(ref: DocumentLinkReference): string {
+  return ref.address;
+}
+
+export function droppedDocumentReference(
+  transfer: DataTransfer | null,
+): DocumentLinkReference | null {
+  if (!transfer) return null;
+
+  const structured = transfer.getData(DOCUMENT_LINK_MIME).trim();
+  if (!structured) return null;
+
+  try {
+    const parsed = JSON.parse(structured) as Partial<DocumentLinkReference>;
+    const ref = normalizeDocumentReference({
+      address: typeof parsed.address === "string" ? parsed.address : "",
+    });
+    if (ref) return ref;
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function dragHasDocumentLink(transfer: DataTransfer | null): boolean {
-  return Boolean(
-    transfer?.types.includes(DOCUMENT_ID_MIME) || transfer?.types.includes("text/plain"),
-  );
+  return Boolean(transfer?.types.includes(DOCUMENT_LINK_MIME));
 }
 
 export function createDocumentLinkController(options: DocumentLinkControllerOptions) {
   const previews = ref(new Map<string, DocumentPreviewState>());
 
-  function setPreview(documentId: string, preview: DocumentPreviewState) {
+  function setPreview(key: string, preview: DocumentPreviewState) {
     const next = new Map(previews.value);
-    next.set(documentId, preview);
+    next.set(key, preview);
     previews.value = next;
   }
 
@@ -127,27 +177,38 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
   }
 
   function cachedPreview(shape: CanvasShape): DocumentPreviewState | undefined {
-    const documentId = documentIdForShape(shape);
-    return documentId ? previews.value.get(documentId) : undefined;
+    const ref = referenceForShape(shape);
+    return ref ? previews.value.get(documentReferenceKey(ref)) : undefined;
   }
 
-  async function loadPreview(documentId: string) {
-    const existing = previews.value.get(documentId);
+  function referenceForShape(shape: CanvasShape): DocumentLinkReference | null {
+    return normalizeDocumentReference(shape.docAddress);
+  }
+
+  async function loadPreview(refInput: string | DocumentLinkReference) {
+    const ref = normalizeDocumentReference(refInput);
+    if (!ref) return;
+
+    const parsed = parseVektorDocumentAddress(ref.address);
+    if (!parsed) return;
+
+    const key = documentReferenceKey(ref);
+    const existing = previews.value.get(key);
     if (existing?.status === "loading" || existing?.status === "loaded") return;
 
-    setPreview(documentId, initialPreview(documentId));
+    setPreview(key, initialPreview(parsed.documentId));
 
     try {
-      const doc = await options.fetchDocument(documentId);
-      setPreview(documentId, {
+      const doc = await options.fetchDocument(parsed);
+      setPreview(key, {
         status: "loaded",
-        title: initialDocumentPreview(documentId, [doc]).title,
+        title: initialDocumentPreview(parsed.documentId, [doc]).title,
         type: doc.type,
         content: typeof doc.content === "string" ? doc.content : "",
       });
     } catch (error) {
-      const fallback = previews.value.get(documentId) ?? initialPreview(documentId);
-      setPreview(documentId, {
+      const fallback = previews.value.get(key) ?? initialPreview(parsed.documentId);
+      setPreview(key, {
         ...fallback,
         status: "error",
         error: error instanceof Error ? error.message : String(error),
@@ -171,15 +232,26 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     return cachedPreview(shape)?.content ?? "";
   }
 
-  // Places a card on the canvas that links to another document by stable id.
-  function insertDocumentLink(documentId: string, at: { x: number; y: number }): boolean {
-    const doc = options.documents.value.find((entry) => entry.id === documentId.trim());
-    const shape = createDocumentLinkShape(documentId, at, doc);
+  // Places a card on the canvas that links to another document by address.
+  function insertDocumentLink(
+    refInput: string | DocumentLinkReference,
+    at: { x: number; y: number },
+    docOverride?: Pick<DocumentWithProperties, "properties">,
+  ): boolean {
+    const ref = normalizeDocumentReference(refInput);
+    if (!ref) return false;
+    const parsed = parseVektorDocumentAddress(ref.address);
+    if (!parsed) return false;
+    const doc =
+      docOverride ??
+      options.documents.value.find((entry) => entry.id === parsed.documentId);
+    const shape = createDocumentLinkShape(ref, at, doc);
     if (!shape) return false;
 
     options.insertShape(shape);
     options.selectShape(shape.id);
-    if (shape.docId) void loadPreview(shape.docId);
+    const shapeRef = referenceForShape(shape);
+    if (shapeRef) void loadPreview(shapeRef);
     options.afterInsert?.();
     return true;
   }
@@ -190,6 +262,9 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     initialPreview,
     loadPreview,
     documentIdForShape,
+    documentHrefForShape,
+    documentSpaceIdForShape: (shape: CanvasShape) =>
+      documentSpaceIdForShape(shape, options.currentSpaceId),
     shapeTitle,
     shapeStatus,
     shapeType,

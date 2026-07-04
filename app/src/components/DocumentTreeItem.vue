@@ -1,5 +1,8 @@
 <template>
-  <page-target :data-document-id="doc.id"
+  <page-target
+    :data-document-id="doc.id"
+    :data-space-id="currentSpace?.id"
+    :data-document-url="getDocumentUrl(doc.slug)"
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50 pl-[0.535rem]">
     <div class="flex items-center gap-1">
       <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"

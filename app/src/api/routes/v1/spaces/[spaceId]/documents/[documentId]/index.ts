@@ -41,6 +41,7 @@ import {
   getRevisionMetadata,
 } from "#db/revisions.ts";
 import { document as documentTable } from "#db/schema/space.ts";
+import { getSpace, getSpaceBySlug } from "#db/spaces.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
@@ -69,6 +70,18 @@ type DocumentPatchBody = {
   publishedRev?: number | null;
   readonly?: boolean;
 };
+
+function withCors(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 async function handlePropertiesPatch(
   spaceId: string,
@@ -212,7 +225,7 @@ async function handleReadonlyPatch(
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
+    const rawSpaceId = requireParam(context.params, "spaceId");
     const rawId = requireParam(context.params, "documentId");
     const revParam = context.url.searchParams.get("rev");
     const draft = context.url.searchParams.get("draft") === "true";
@@ -220,8 +233,14 @@ export const GET: APIRoute = (context) =>
     // collaboration room (if open), so partial edits reference the same state.
     const live = context.url.searchParams.get("live") === "true";
 
+    const space = (await getSpace(rawSpaceId)) ?? (await getSpaceBySlug(rawSpaceId));
+    if (!space) {
+      throw notFoundResponse("Space");
+    }
+    const spaceId = space.id;
+
     // Resolve slug → ID: try by ID first, fall back to slug so client-side
-    // routing can pass the URL slug directly instead of needing a separate lookup.
+    // routing and cross-host callers can pass URL slugs directly.
     let id = rawId;
     const preCheck = await getDocument(spaceId, rawId);
     if (!preCheck) {
@@ -276,12 +295,14 @@ export const GET: APIRoute = (context) =>
         throw notFoundResponse("Revision");
       }
 
-      return jsonResponse({
-        revision: {
-          ...metadata,
-          content,
-        },
-      });
+      return withCors(
+        jsonResponse({
+          revision: {
+            ...metadata,
+            content,
+          },
+        }),
+      );
     }
 
     let document = await getDocument(spaceId, id);
@@ -311,13 +332,24 @@ export const GET: APIRoute = (context) =>
 
     const accept = context.request.headers.get("Accept") ?? "";
     if (accept.includes("text/markdown") || accept.includes("text/plain")) {
-      return new Response(htmlToMarkdown(document.content ?? ""), {
-        status: 200,
-        headers: { "Content-Type": "text/markdown; charset=utf-8" },
-      });
+      return withCors(
+        new Response(htmlToMarkdown(document.content ?? ""), {
+          status: 200,
+          headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        }),
+      );
     }
 
-    return jsonResponse({ document });
+    return withCors(
+      jsonResponse({
+        document,
+        space: {
+          id: space.id,
+          slug: space.slug,
+          name: space.name,
+        },
+      }),
+    );
   }, "Failed to get document");
 
 export const PUT: APIRoute = (context) =>

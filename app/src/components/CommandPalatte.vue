@@ -8,13 +8,15 @@ import {
   searchMagnifierIcon,
 } from "~/src/assets/icons.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import { Actions } from "../utils/actions.ts";
 import { propertyValueToText } from "../utils/documentProperties.ts";
 import { history } from "../utils/history.ts";
-import { formatRelativeTime } from "../utils/utils.ts";
+import { formatRelativeTime, spacePath } from "../utils/utils.ts";
 
 const router = useRouter();
 const { documents } = useDocuments();
+const { currentSpace } = useSpace();
 
 const isOpen = ref(false);
 const searchQuery = ref("");
@@ -243,7 +245,11 @@ Actions.register("ui:toggle:palatte", {
               <!-- Item -->
               <component
                 :is="result.type === 'document' ? 'page-target' : 'div'"
-                v-bind="result.type === 'document' ? { 'data-document-id': result.data.id } : {}"
+                v-bind="result.type === 'document' ? {
+                  'data-document-id': result.data.id,
+                  'data-space-id': currentSpace?.id,
+                  'data-document-url': spacePath(currentSpace?.slug, `/doc/${result.data.slug}`),
+                } : {}"
                 class="block px-1 [&[data-dragging]]:opacity-50"
                 @document-drag-start="closePalette"
               >

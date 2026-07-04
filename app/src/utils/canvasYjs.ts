@@ -29,7 +29,9 @@ type RawShape = {
   color?: unknown;
   src?: unknown;
   alt?: unknown;
+  docAddress?: unknown;
   docId?: unknown;
+  docSpaceId?: unknown;
   updatedAt?: unknown;
 };
 
@@ -56,7 +58,9 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   map.set("color", typeof shape.color === "string" ? shape.color : "#fef3c7");
   if (typeof shape.src === "string") map.set("src", shape.src);
   if (typeof shape.alt === "string") map.set("alt", shape.alt);
+  if (typeof shape.docAddress === "string") map.set("docAddress", shape.docAddress);
   if (typeof shape.docId === "string") map.set("docId", shape.docId);
+  if (typeof shape.docSpaceId === "string") map.set("docSpaceId", shape.docSpaceId);
   map.set("updatedAt", typeof shape.updatedAt === "number" ? shape.updatedAt : 0);
   target.set(shape.id, map);
 }
