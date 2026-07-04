@@ -36,11 +36,69 @@ export const CollaborationKey: InjectionKey<CollaborationSession> =
 const activeCollaboration = shallowRef<CollaborationSession | null>(null);
 
 const CLIENT_ID_STORAGE_KEY = "vektor:collaboration-client-id";
+const CLIENT_ID_LEASE_PREFIX = "vektor:collaboration-client-lease:";
+const CLIENT_ID_LEASE_MS = 8_000;
+const CLIENT_ID_HEARTBEAT_MS = 4_000;
+
+const pageInstanceId = createClientId();
 
 function createClientId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `collaboration:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function clientIdLeaseKey(clientId: string) {
+  return `${CLIENT_ID_LEASE_PREFIX}${clientId}`;
+}
+
+function hasActiveClientIdLease(clientId: string) {
+  try {
+    const raw = window.localStorage.getItem(clientIdLeaseKey(clientId));
+    if (!raw) return false;
+    const lease = JSON.parse(raw) as { owner?: string; updatedAt?: number };
+    return (
+      lease.owner !== pageInstanceId &&
+      typeof lease.updatedAt === "number" &&
+      Date.now() - lease.updatedAt < CLIENT_ID_LEASE_MS
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writeClientIdLease(clientId: string) {
+  try {
+    window.localStorage.setItem(
+      clientIdLeaseKey(clientId),
+      JSON.stringify({ owner: pageInstanceId, updatedAt: Date.now() }),
+    );
+  } catch {
+    // Best effort only. Presence still works; duplicate-window detection may not.
+  }
+}
+
+function releaseClientIdLease(clientId: string) {
+  try {
+    const raw = window.localStorage.getItem(clientIdLeaseKey(clientId));
+    if (!raw) return;
+    const lease = JSON.parse(raw) as { owner?: string };
+    if (lease.owner === pageInstanceId) {
+      window.localStorage.removeItem(clientIdLeaseKey(clientId));
+    }
+  } catch {
+    // Best effort only.
+  }
+}
+
+function startClientIdHeartbeat(clientId: string) {
+  writeClientIdLease(clientId);
+  setInterval(() => {
+    writeClientIdLease(clientId);
+  }, CLIENT_ID_HEARTBEAT_MS);
+
+  window.addEventListener("pagehide", () => releaseClientIdLease(clientId));
+  window.addEventListener("beforeunload", () => releaseClientIdLease(clientId));
 }
 
 function getBrowserClientId() {
@@ -50,10 +108,14 @@ function getBrowserClientId() {
 
   try {
     const existing = window.sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
-    if (existing) return existing;
+    if (existing && !hasActiveClientIdLease(existing)) {
+      startClientIdHeartbeat(existing);
+      return existing;
+    }
 
     const next = createClientId();
     window.sessionStorage.setItem(CLIENT_ID_STORAGE_KEY, next);
+    startClientIdHeartbeat(next);
     return next;
   } catch {
     return createClientId();
