@@ -2,16 +2,60 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { boltIcon, fileTextIcon, imageIcon, tableRowIcon } from "~/src/assets/icons.ts";
+import canvasPreview from "../assets/new-document-picker/canvas-preview.svg?raw";
+import databasePreview from "../assets/new-document-picker/database-preview.svg?raw";
+import documentPreview from "../assets/new-document-picker/document-preview.svg?raw";
+import starterIllustration from "../assets/new-document-picker/starter.svg?raw";
+import workflowPreview from "../assets/new-document-picker/workflow-preview.svg?raw";
 
 const router = useRouter();
 const visible = ref(true);
+
+type DocumentType = "document" | "canvas" | "workflow" | "database";
+
+const documentOptions: Array<{
+  type: DocumentType;
+  title: string;
+  description: string;
+  icon: string;
+  illustration: string;
+}> = [
+  {
+    type: "document",
+    title: "Doc",
+    description: "Write, organize, and collaborate in a structured document.",
+    icon: fileTextIcon,
+    illustration: documentPreview,
+  },
+  {
+    type: "canvas",
+    title: "Canvas",
+    description: "Visualize ideas and connect things on a flexible canvas.",
+    icon: imageIcon,
+    illustration: canvasPreview,
+  },
+  {
+    type: "workflow",
+    title: "Workflow",
+    description: "Map steps and automate processes with ease.",
+    icon: boltIcon,
+    illustration: workflowPreview,
+  },
+  {
+    type: "database",
+    title: "Database",
+    description: "Organize and manage data in structured tables.",
+    icon: tableRowIcon,
+    illustration: databasePreview,
+  },
+];
 
 function focusEditor() {
   const editorEl = document.querySelector("document-view") as HTMLElement | null;
   editorEl?.focus();
 }
 
-function selectType(type: string) {
+function selectType(type: DocumentType) {
   if (type === "document") {
     visible.value = false;
     focusEditor();
@@ -41,41 +85,57 @@ onUnmounted(() => {
   <Transition name="picker-fade">
     <div
       v-if="visible"
-      class="flex items-center justify-center z-10 pointer-events-none absolute top-1/2 left-0 right-0"
+      class="relative z-10 flex justify-center px-xs pt-6 pb-8 pointer-events-none"
       aria-label="Select document type"
     >
-      <div class="flex gap-3 pointer-events-auto">
-        <button
-          @click="selectType('document')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
-        >
-          <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="fileTextIcon" />
-          <span>Doc</span>
-        </button>
+      <div
+        class="new-document-picker pointer-events-auto w-full max-w-[1120px] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100"
+      >
+        <div class="flex flex-col items-center text-center mb-8">
+          <div
+            class="starter-illustration mb-5"
+            aria-hidden="true"
+            v-html="starterIllustration"
+          />
+          <h2 class="text-[28px] leading-tight font-semibold text-neutral-900">
+            Create your first content
+          </h2>
+          <p class="mt-2 text-size-large text-neutral-500">
+            Choose a format to get started. You can always switch later.
+          </p>
+        </div>
 
-        <button
-          @click="selectType('canvas')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
-        >
-          <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="imageIcon" />
-          <span>Canvas</span>
-        </button>
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
+          <button
+            v-for="option in documentOptions"
+            :key="option.type"
+            type="button"
+            class="group picker-card grid min-h-[154px] grid-cols-[minmax(0,1fr)_minmax(170px,230px)] gap-5 rounded-lg border border-neutral-200 bg-neutral-10 p-5 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 max-sm:grid-cols-1 max-sm:p-4"
+            @click="selectType(option.type)"
+          >
+            <span class="flex min-w-0 items-start gap-4">
+              <span
+                class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 transition-colors group-hover:bg-emerald-100"
+              >
+                <span class="svg-icon h-6 w-6" v-html="option.icon" />
+              </span>
+              <span class="min-w-0 pt-1">
+                <span class="block text-[21px] leading-7 font-semibold text-neutral-900">
+                  {{ option.title }}
+                </span>
+                <span class="mt-1 block max-w-[240px] text-size-medium leading-6 text-neutral-500">
+                  {{ option.description }}
+                </span>
+              </span>
+            </span>
 
-        <button
-          @click="selectType('workflow')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
-        >
-          <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="boltIcon" />
-          <span>Workflow</span>
-        </button>
-
-        <button
-          @click="selectType('database')"
-          class="flex items-center gap-2.5 px-5 py-3 rounded-xl border border-neutral-200 bg-neutral-10 text-neutral-700 text-size-medium font-medium hover:bg-neutral-50 hover:border-neutral-300 transition-colors cursor-pointer select-none shadow-xs"
-        >
-          <div class="svg-icon w-[18px] h-[18px] text-neutral-500 shrink-0" v-html="tableRowIcon" />
-          <span>Database</span>
-        </button>
+            <span
+              class="picker-preview"
+              aria-hidden="true"
+              v-html="option.illustration"
+            />
+          </button>
+        </div>
       </div>
     </div>
   </Transition>
@@ -90,5 +150,38 @@ onUnmounted(() => {
 .picker-fade-enter-from,
 .picker-fade-leave-to {
   opacity: 0;
+}
+
+.starter-illustration {
+  width: 120px;
+  height: 72px;
+}
+
+.starter-illustration :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.picker-card {
+  cursor: pointer;
+}
+
+.picker-preview {
+  display: block;
+  min-height: 116px;
+  overflow: hidden;
+}
+
+.picker-preview :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-width: 640px) {
+  .picker-preview {
+    display: none;
+  }
 }
 </style>

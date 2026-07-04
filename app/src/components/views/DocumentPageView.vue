@@ -181,35 +181,57 @@ const updatedAtStr = computed(() => {
   return "just now";
 });
 
-const AUTO_CREATE_TYPES: Record<string, string> = {
-  database: "Untitled Database",
-  canvas: "Untitled Canvas",
-  workflow: "Untitled Workflow",
+const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
+  database: { title: "Untitled Database", content: "<p></p>" },
+  canvas: {
+    title: "Untitled Canvas",
+    content: JSON.stringify({ version: 1, shapes: [], strokes: [] }),
+  },
+  workflow: { title: "Untitled Workflow", content: "<p></p>" },
 };
 
 const redirecting = ref(false);
 
 async function maybeAutoCreateDraft() {
+  if (import.meta.env.SSR) return;
   if (!isDraft.value) return;
-  const autoTitle = AUTO_CREATE_TYPES[documentType.value];
-  if (!autoTitle || !currentSpace.value) return;
+  if (redirecting.value) return;
+  const autoCreate = AUTO_CREATE_TYPES[documentType.value];
+  if (!autoCreate || !currentSpace.value) return;
   if (!userCanEdit.value) {
     router.push("/");
     return;
   }
   redirecting.value = true;
-  const newDoc = await api.documents.post(currentSpace.value.id, {
-    type: documentType.value,
-    content: "",
-    properties: { title: autoTitle },
-  });
-  router.push(`/doc/${newDoc.slug}`);
+  try {
+    const newDoc = await api.documents.post(currentSpace.value.id, {
+      type: documentType.value,
+      content: autoCreate.content,
+      properties: {
+        title: autoCreate.title,
+        ...(draftCategory.value ? { category: draftCategory.value } : {}),
+      },
+    });
+    router.push(`/doc/${newDoc.slug}`);
+  } catch (error) {
+    redirecting.value = false;
+    throw error;
+  }
 }
 
 onMounted(() => {
   now.value = Date.now();
-  void maybeAutoCreateDraft();
 });
+
+watch(
+  [isDraft, documentType, currentSpace, userCanEdit, draftCategory],
+  () => {
+    void maybeAutoCreateDraft().catch((error) => {
+      console.error("Failed to create draft document", error);
+    });
+  },
+  { immediate: true },
+);
 
 onUnmounted(() => {
   resetEditingState();

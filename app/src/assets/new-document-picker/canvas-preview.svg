@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="230" height="116" viewBox="0 0 230 116" fill="none" aria-hidden="true" focusable="false">
+  <rect x=".5" y=".5" width="229" height="115" rx="7.5" fill="#FBFBFB" stroke="#E5E7EB"/>
+  <path d="M1 1h228v114H1V1Z" fill="url(#canvasPreviewDots)"/>
+  <path d="M82 38c30 0 30 34 56 34M77 59c0 20 24 20 42 20M171 73v21" stroke="#B9E7DE" stroke-width="2" stroke-linecap="round"/>
+  <rect x="36" y="20" width="64" height="42" rx="7" fill="white" fill-opacity=".9" stroke="#99F6E4" stroke-width="2"/>
+  <rect x="48" y="32" width="39" height="5" rx="2.5" fill="#14B8A6" opacity=".25"/>
+  <rect x="48" y="45" width="28" height="5" rx="2.5" fill="#14B8A6" opacity=".18"/>
+  <rect x="142" y="50" width="74" height="44" rx="7" fill="white" fill-opacity=".9" stroke="#C7D2FE" stroke-width="2"/>
+  <rect x="154" y="62" width="47" height="5" rx="2.5" fill="#6366F1" opacity=".25"/>
+  <rect x="154" y="75" width="34" height="5" rx="2.5" fill="#6366F1" opacity=".18"/>
+  <rect x="58" y="76" width="68" height="34" rx="7" fill="white" fill-opacity=".9" stroke="#FDE68A" stroke-width="2"/>
+  <rect x="70" y="87" width="39" height="5" rx="2.5" fill="#F59E0B" opacity=".25"/>
+  <rect x="70" y="99" width="28" height="5" rx="2.5" fill="#F59E0B" opacity=".18"/>
+  <rect x="178" y="80" width="38" height="30" rx="7" fill="white" fill-opacity=".9" stroke="#CBD5E1" stroke-width="2"/>
+  <path d="M188 101 194 95l4 4 3-3 5 5" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="190" cy="91" r="2" fill="#64748B"/>
+  <defs>
+    <pattern id="canvasPreviewDots" width="14" height="14" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#0F172A" opacity=".07"/>
+    </pattern>
+  </defs>
+</svg>

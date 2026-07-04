@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="230" height="116" viewBox="0 0 230 116" fill="none" aria-hidden="true" focusable="false">
+  <rect x=".5" y=".5" width="229" height="115" rx="7.5" fill="#FBFBFB" stroke="#E5E7EB"/>
+  <path d="M1 1h228v114H1V1Z" fill="url(#workflowPreviewDots)"/>
+  <path d="M115 34v27M67 90V70h48M163 90V70h-48" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round"/>
+  <rect x="73" y="14" width="84" height="34" rx="7" fill="white" fill-opacity=".9" stroke="#CCFBF1" stroke-width="2"/>
+  <path d="M109 24v14l11-7-11-7Z" fill="#5EEAD4"/>
+  <rect x="94" y="29" width="38" height="5" rx="2.5" fill="#14B8A6" opacity=".25"/>
+  <rect x="99" y="55" width="32" height="32" rx="5" fill="#D8F3F0" transform="rotate(45 115 71)"/>
+  <rect x="111" y="67" width="8" height="8" rx="2" fill="#67C7DC" transform="rotate(45 115 71)"/>
+  <rect x="15" y="80" width="74" height="32" rx="7" fill="white" fill-opacity=".9" stroke="#A7F3D0" stroke-width="2"/>
+  <rect x="28" y="90" width="39" height="5" rx="2.5" fill="#14B8A6" opacity=".25"/>
+  <rect x="28" y="102" width="48" height="5" rx="2.5" fill="#14B8A6" opacity=".18"/>
+  <rect x="141" y="80" width="74" height="32" rx="7" fill="white" fill-opacity=".9" stroke="#DDD6FE" stroke-width="2"/>
+  <rect x="154" y="90" width="39" height="5" rx="2.5" fill="#8B5CF6" opacity=".25"/>
+  <rect x="154" y="102" width="48" height="5" rx="2.5" fill="#8B5CF6" opacity=".18"/>
+  <defs>
+    <pattern id="workflowPreviewDots" width="14" height="14" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#0F172A" opacity=".07"/>
+    </pattern>
+  </defs>
+</svg>
