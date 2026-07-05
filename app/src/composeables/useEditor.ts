@@ -39,6 +39,7 @@ type UseEditorOptions = {
   readonly: Ref<boolean>;
   getEditorHtml: () => string | null;
   collaboration: CollaborationSession;
+  onSessionStarted?: () => void;
 };
 
 type EditorState = {
@@ -76,7 +77,14 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     };
   }
 
-  const { documentId, documentType, readonly, getEditorHtml, collaboration } = options;
+  const {
+    documentId,
+    documentType,
+    readonly,
+    getEditorHtml,
+    collaboration,
+    onSessionStarted,
+  } = options;
 
   const suggestionSavedCount = ref(0);
   const canMountEditor = computed(
@@ -174,6 +182,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     if (!editing.value || session !== editorSession) return;
 
     shouldMountEditor.value = true;
+    onSessionStarted?.();
   }
 
   function stopEditorSession() {

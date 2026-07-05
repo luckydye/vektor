@@ -23,6 +23,7 @@ export type DocumentPreviewState = {
   title: string;
   type?: string | null;
   content: string;
+  readonly?: boolean;
   error?: string;
 };
 
@@ -30,6 +31,7 @@ type DocumentPreviewSource = Pick<DocumentWithProperties, "id" | "properties" | 
 
 type LoadedDocumentPreviewSource = DocumentPreviewSource & {
   content?: unknown;
+  readonly?: boolean;
 };
 
 export type DocumentLinkControllerOptions = {
@@ -111,6 +113,17 @@ export function documentSpaceIdForShape(
 
 export function documentHrefForShape(shape: CanvasShape): string | undefined {
   return parseVektorDocumentAddress(shape.docAddress)?.href ?? shape.src;
+}
+
+// Only plain rich-text documents can be edited inline on the canvas. Other
+// types (canvas, csv, workflow) render specialized previews, and readonly
+// documents reject writes server-side.
+export function previewSupportsInlineEditing(
+  preview: DocumentPreviewState | undefined,
+): boolean {
+  if (preview?.status !== "loaded") return false;
+  if (preview.readonly) return false;
+  return (preview.type ?? "document") === "document";
 }
 
 export function documentShapeTitle(
@@ -205,6 +218,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
         title: initialDocumentPreview(parsed.documentId, [doc]).title,
         type: doc.type,
         content: typeof doc.content === "string" ? doc.content : "",
+        readonly: Boolean(doc.readonly),
       });
     } catch (error) {
       const fallback = previews.value.get(key) ?? initialPreview(parsed.documentId);
@@ -230,6 +244,18 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
 
   function shapeContent(shape: CanvasShape): string {
     return cachedPreview(shape)?.content ?? "";
+  }
+
+  // Refresh the cached preview after an inline editing session so the
+  // read-only card reflects what the editor last showed instead of the
+  // content fetched before the edit.
+  function setPreviewContent(refInput: string | DocumentLinkReference, content: string) {
+    const ref = normalizeDocumentReference(refInput);
+    if (!ref) return;
+    const key = documentReferenceKey(ref);
+    const existing = previews.value.get(key);
+    if (existing?.status !== "loaded") return;
+    setPreview(key, { ...existing, content });
   }
 
   // Places a card on the canvas that links to another document by address.
@@ -269,6 +295,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     shapeStatus,
     shapeType,
     shapeContent,
+    setPreviewContent,
     insertDocumentLink,
   };
 }

@@ -16,6 +16,7 @@ import {
   type DocumentLinkReference,
   dragHasDocumentLink,
   droppedDocumentReference as getDroppedDocumentReference,
+  previewSupportsInlineEditing,
 } from "#canvas/elements/documentLink.ts";
 import {
   addCanvasDrawingPoint,
@@ -75,6 +76,7 @@ import type {
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
@@ -146,6 +148,7 @@ import {
   type WorldRect,
   worldViewportBounds,
 } from "#viewport/index.ts";
+import CanvasDocumentEditor from "./CanvasDocumentEditor.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -283,7 +286,20 @@ const { document: documentData, saveDocument } = useDocument(props.documentId, "
 // Used to resolve dropped/inserted same-space document ids to best-effort local
 // title/type metadata before the full preview loads.
 const { documents } = useDocuments();
-const { spaces } = useSpace();
+const { spaces, currentSpace } = useSpace();
+const userCanEditDocuments = computed(() => canEdit(currentSpace.value?.userRole));
+// The one embedded document card currently in inline-edit mode. Only this
+// card mounts a collaborative editor; every other embed stays a static
+// preview so we never join Yjs/presence rooms for idle embeds.
+const editingDocumentShape = ref<{
+  shapeId: string;
+  documentId: string;
+  address: string;
+  toggleTaskIndex: number | null;
+} | null>(null);
+const embeddedDocumentEditor = shallowRef<InstanceType<
+  typeof CanvasDocumentEditor
+> | null>(null);
 
 const ydoc = props.ydoc;
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
@@ -1620,6 +1636,91 @@ function onDocumentShapeOpen(shape: CanvasShape, event: Event) {
   );
 }
 
+function setEmbeddedDocumentEditorRef(instance: unknown) {
+  embeddedDocumentEditor.value = instance as InstanceType<
+    typeof CanvasDocumentEditor
+  > | null;
+}
+
+function canEditEmbeddedDocument(shape: CanvasShape): boolean {
+  if (!userCanEditDocuments.value) return false;
+  if (!documentLinks.documentIdForShape(shape)) return false;
+  // Inline editing joins the local collaboration room with the current
+  // space's permissions, so it only applies to documents of this space on
+  // this instance; remote and cross-space embeds stay read-only previews.
+  if (isRemoteDocumentShape(shape)) return false;
+  if (documentLinks.documentSpaceIdForShape(shape) !== props.spaceId) return false;
+  return previewSupportsInlineEditing(documentLinks.cachedPreview(shape));
+}
+
+// Ordinal of the checkbox the click landed on within the read-only card, or
+// null when the click wasn't on a task checkbox. Used to replay the toggle in
+// the editor that the click is about to mount. The preview renders checkboxes
+// as non-interactive static HTML (the click actually lands on the card host),
+// so we hit-test the click point against the checkbox rects rather than the
+// event path.
+function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
+  const host = event.currentTarget as HTMLElement | null;
+  const view = host?.shadowRoot?.querySelector("document-view") as HTMLElement | null;
+  const root = view?.shadowRoot;
+  if (!root) return null;
+
+  const checkboxes = Array.from(
+    root.querySelectorAll<HTMLElement>('input[type="checkbox"]'),
+  );
+  const pad = 4;
+  const index = checkboxes.findIndex((checkbox) => {
+    const rect = checkbox.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left - pad &&
+      event.clientX <= rect.right + pad &&
+      event.clientY >= rect.top - pad &&
+      event.clientY <= rect.bottom + pad
+    );
+  });
+  return index >= 0 ? index : null;
+}
+
+// A plain click on a document card enters inline edit mode; modifier clicks
+// (shift/ctrl/meta) stay reserved for multi-select, and a click that ends a
+// drag is ignored via the dragMoved guard in startEmbeddedDocumentEdit.
+function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
+  if (event.button !== 0) return;
+  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  startEmbeddedDocumentEdit(shape, clickedTaskCheckboxIndex(event));
+}
+
+function startEmbeddedDocumentEdit(
+  shape: CanvasShape,
+  toggleTaskIndex: number | null = null,
+) {
+  if (dragMoved) return;
+  if (editingDocumentShape.value?.shapeId === shape.id) return;
+  const documentId = documentLinks.documentIdForShape(shape);
+  const address = documentAddressForShape(shape);
+  if (!documentId || !address || !canEditEmbeddedDocument(shape)) return;
+  if (editingDocumentShape.value?.shapeId !== shape.id) {
+    stopEmbeddedDocumentEdit();
+  }
+  selectOnlyShape(shape.id);
+  editingDocumentShape.value = {
+    shapeId: shape.id,
+    documentId,
+    address,
+    toggleTaskIndex,
+  };
+}
+
+function stopEmbeddedDocumentEdit() {
+  const editing = editingDocumentShape.value;
+  if (!editing) return;
+  const html = embeddedDocumentEditor.value?.getHtml();
+  if (typeof html === "string") {
+    documentLinks.setPreviewContent(editing.address, html);
+  }
+  editingDocumentShape.value = null;
+}
+
 function onFileShapeClick(event: MouseEvent) {
   if (!dragMoved) return;
   event.preventDefault();
@@ -2451,7 +2552,7 @@ function selectedCanvasClipboard(): CanvasClipboard | null {
 /** True when the user has a real text selection (let the browser copy that instead). */
 function hasActiveTextSelection(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
-  if (el?.closest("textarea, input, select")) return true;
+  if (el?.closest("textarea, input, select, document-view")) return true;
   const selection = window.getSelection?.();
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
 }
@@ -2637,7 +2738,7 @@ async function addImageFromUrl(
 
 function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
-  if (target?.closest("textarea, input, select")) return;
+  if (target?.closest("textarea, input, select, document-view")) return;
 
   // The system clipboard is authoritative; it reflects the latest copy from
   // anywhere, including other tabs and spaces.
@@ -2841,7 +2942,9 @@ function redo() {
 
 function handleKeydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
-  if (target?.closest("textarea, input, select")) return;
+  // document-view hosts the embedded document editor; shadow-DOM events
+  // retarget to the host element, so closest() must match the host itself.
+  if (target?.closest("textarea, input, select, document-view")) return;
 
   const key = event.key.toLowerCase();
   if ((event.metaKey || event.ctrlKey) && key === "s") {
@@ -2891,6 +2994,28 @@ watch(selectedShapeIds, () => {
   renderImages();
   renderSelections();
   updatePresence();
+});
+
+// Inline document editing ends as soon as the card leaves the (single)
+// selection — clicking the canvas, selecting another shape, or deleting the
+// card all funnel through here and tear the editor (and its presence) down.
+watch(selectedShapeIds, (ids) => {
+  const editing = editingDocumentShape.value;
+  if (!editing) return;
+  if (ids.size !== 1 || !ids.has(editing.shapeId)) {
+    stopEmbeddedDocumentEdit();
+  }
+});
+
+watch(activeTool, (tool) => {
+  if (tool !== "select") stopEmbeddedDocumentEdit();
+});
+
+watch(shapes, () => {
+  const editing = editingDocumentShape.value;
+  if (editing && !shapesById.value.has(editing.shapeId)) {
+    stopEmbeddedDocumentEdit();
+  }
 });
 
 watch(selectedStrokeIds, () => {
@@ -3359,6 +3484,17 @@ onUnmounted(() => {
             @pointerdown.stop="startShapeDrag(shape, $event)"
             @click.capture="onFileShapeClick"
           ></file-attachment>
+          <CanvasDocumentEditor
+            v-else-if="shape.type === 'document' && editingDocumentShape?.shapeId === shape.id"
+            :ref="setEmbeddedDocumentEditorRef"
+            class="canvas-shape-document-editor"
+            :space-id="props.spaceId"
+            :document-id="editingDocumentShape.documentId"
+            :title="documentLinks.shapeTitle(shape)"
+            :toggle-task-index="editingDocumentShape.toggleTaskIndex"
+            @drag-start="startShapeDrag(shape, $event)"
+            @exit="stopEmbeddedDocumentEdit"
+          />
           <document-attachment
             v-else-if="shape.type === 'document'"
             class="canvas-shape-document"
@@ -3370,6 +3506,7 @@ onUnmounted(() => {
             :document-id="isRemoteDocumentShape(shape) ? '' : documentLinks.documentIdForShape(shape) || ''"
             @pointerdown.stop="startShapeDrag(shape, $event)"
             @wheel.stop
+            @click="onDocumentShapeClick(shape, $event)"
             @open-document="onDocumentShapeOpen(shape, $event)"
           ></document-attachment>
           <a
@@ -4107,6 +4244,11 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   cursor: move;
+}
+
+.canvas-shape-document-editor {
+  width: 100%;
+  height: 100%;
 }
 
 .canvas-shape.link {

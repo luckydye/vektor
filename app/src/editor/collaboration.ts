@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
+import { getRelativeSelection } from "y-prosemirror";
 import * as Y from "yjs";
 import type { CanvasTool } from "#canvas/elements/types.ts";
 
@@ -80,6 +81,46 @@ export function findYSyncState(
   }
 
   return null;
+}
+
+/**
+ * Snapshot of the local user's editor presence (focus + selection as Yjs
+ * relative positions) for broadcasting to the document's presence room.
+ */
+export function currentEditorPresenceState(
+  editor: Editor | null | undefined,
+): DocumentPresenceState {
+  if (!editor) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  const syncState = findYSyncState(editor);
+  if (!syncState?.binding) {
+    return { kind: "editor", focused: false, selection: null };
+  }
+
+  try {
+    const focused = editor.isFocused || editor.view.hasFocus();
+    const selection = editor.state.selection;
+    // findYSyncState only surfaces the binding's mapping, but at runtime the
+    // plugin state holds the full y-prosemirror binding.
+    const { anchor, head } = getRelativeSelection(
+      syncState.binding as Parameters<typeof getRelativeSelection>[0],
+      editor.state,
+    );
+    return {
+      kind: "editor",
+      focused,
+      selection: {
+        anchor: Y.relativePositionToJSON(anchor),
+        head: Y.relativePositionToJSON(head),
+        absoluteAnchor: selection.anchor,
+        absoluteHead: selection.head,
+      },
+    };
+  } catch {
+    return { kind: "editor", focused: false, selection: null };
+  }
 }
 
 export function getPresenceColor(seed: string) {

@@ -653,7 +653,10 @@ export class DocumentView extends HTMLElement {
     return caret;
   }
 
-  private createPresenceSelectionRect(color: string, rect: DOMRect) {
+  private createPresenceSelectionRect(
+    color: string,
+    rect: { left: number; top: number; width: number; height: number },
+  ) {
     const selection = document.createElement("div");
     selection.className = "document-presence-selection";
     selection.style.left = `${rect.left}px`;
@@ -694,6 +697,26 @@ export class DocumentView extends HTMLElement {
     const overlay = this.ensurePresenceOverlay(shadow);
     overlay.replaceChildren();
 
+    // Viewport rects from the editor view are mapped into the overlay's own
+    // coordinate space. Dividing by the effective scale keeps positions
+    // correct when an ancestor is CSS-transformed (e.g. the zoomed canvas
+    // world around an embedded document editor).
+    const overlayRect = overlay.getBoundingClientRect();
+    const overlayScale =
+      overlay.offsetWidth > 0 ? overlayRect.width / overlay.offsetWidth : 1;
+    const toOverlayRect = (rect: {
+      left: number;
+      top: number;
+      bottom: number;
+      width?: number;
+    }) => ({
+      left: (rect.left - overlayRect.left) / overlayScale,
+      top: (rect.top - overlayRect.top) / overlayScale,
+      bottom: (rect.bottom - overlayRect.top) / overlayScale,
+      width: (rect.width ?? 0) / overlayScale,
+      height: (rect.bottom - rect.top) / overlayScale,
+    });
+
     for (const profile of this.presenceProfiles) {
       if (
         profile.state?.kind !== "editor" ||
@@ -725,13 +748,13 @@ export class DocumentView extends HTMLElement {
 
       const selectionRects = from === to ? [] : this.presenceSelectionRects(from, to);
       for (const rect of selectionRects) {
-        overlay.append(this.createPresenceSelectionRect(color, rect));
+        overlay.append(this.createPresenceSelectionRect(color, toOverlayRect(rect)));
       }
 
       const caretRect =
         selectionRects[0] ??
         editor.view.coordsAtPos(Math.max(0, Math.min(from === to ? head : from, maxPos)));
-      overlay.append(this.createPresenceCaret(profile, color, caretRect));
+      overlay.append(this.createPresenceCaret(profile, color, toOverlayRect(caretRect)));
     }
   }
 

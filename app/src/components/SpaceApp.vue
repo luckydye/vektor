@@ -101,6 +101,10 @@ function internalPathFromUrl(href: string): string | null {
 }
 
 function handleDocumentClick(e: MouseEvent) {
+  // Let the browser handle modifier-clicks (new tab/window) and middle-click
+  // (new tab) instead of hijacking them into an SPA navigation.
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
   const anchor = (e.target as Element).closest("a");
   if (!anchor) return;
   if (anchor.getAttribute("target") === "_blank") return;

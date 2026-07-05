@@ -12,6 +12,8 @@
 
 :host {
   display: block;
+  /* Containing block for the presence overlay. */
+  position: relative;
 }
 
 .tiptap > *:not(table),
@@ -89,20 +91,23 @@ img[width] {
   background: #1d4ed8;
 }
 
+/* Positioned relative to the host (not the viewport) so carets stay correct
+   inside transformed containers like the scaled canvas world, and track the
+   content when it scrolls or the camera moves. */
 .document-presence-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 60;
 }
 
 .document-presence-selection {
-  position: fixed;
+  position: absolute;
   border-radius: 2px;
 }
 
 .document-presence-caret {
-  position: fixed;
+  position: absolute;
   width: 0;
   border-left: 1px solid #0d0d0d;
   border-right: 1px solid #0d0d0d;
