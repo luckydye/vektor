@@ -18,6 +18,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { createCategory, listCategories, reorderCategories } from "#db/categories.ts";
+import { getSpace } from "#db/spaces.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 
 async function visibleCategoryIds(context: Parameters<APIRoute>[0], spaceId: string) {
@@ -96,6 +97,14 @@ async function visibleCategoryIds(context: Parameters<APIRoute>[0], spaceId: str
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.params, "spaceId");
+    const space = await getSpace(spaceId);
+    if (!space) {
+      return new Response("Space not found", {
+        status: 404,
+        statusText: "Space not found",
+      });
+    }
+
     const visibleIds = await visibleCategoryIds(context, spaceId);
 
     const categories = await listCategories(spaceId);

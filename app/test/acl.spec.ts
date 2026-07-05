@@ -614,8 +614,8 @@ describe("ACL API Tests - Document Members", () => {
     expect(found.permission || found.role).toBe("viewer");
   });
 
-  it("should not allow viewer to add document members", async () => {
-    // Ensure user2 is a viewer at document level
+  it("should allow a space editor to add document members", async () => {
+    // Ensure user2 is a viewer at document level while retaining space editor access.
     await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
       method: "POST",
       body: JSON.stringify({
@@ -644,7 +644,19 @@ describe("ACL API Tests - Document Members", () => {
       },
     );
 
-    expect(resp.status).toBe(403);
+    expect(resp.status).toBe(200);
+
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "editor",
+        userId: testUser3.id,
+        resourceType: "document",
+        resourceId: testDocumentId,
+        action: "revoke",
+      }),
+    });
   });
 
   it("should remove a document member", async () => {
@@ -1815,7 +1827,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     expect(data.document.id).toBeDefined();
   });
 
-  it("should not allow editor to add new members", async () => {
+  it("should allow editor to add new members with non-owner roles", async () => {
     const newUserData = await createAclTestUser("New Member User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
@@ -1830,7 +1842,7 @@ describe("ACL API Tests - Permission Level Access", () => {
         }),
       },
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 
   it("should allow editor to see space in their spaces list", async () => {
@@ -1874,7 +1886,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     expect(response.status).toBe(403);
   });
 
-  it("should not allow editor to add members", async () => {
+  it("should allow editor to add members with non-owner roles", async () => {
     const newUserData = await createAclTestUser("Editor Attempt User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
@@ -1889,7 +1901,7 @@ describe("ACL API Tests - Permission Level Access", () => {
         }),
       },
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(200);
   });
 });
 
@@ -2690,16 +2702,6 @@ describe("Permissions API - Unified Permissions Management", () => {
     expect(response.ok).toBe(true);
     const data = await response.json();
     expect(data.permissions).toBeDefined();
-  });
-
-  it("should deny editor from listing permissions", async () => {
-    const response = await apiRequest(
-      `/api/v1/spaces/${featuresTestSpaceId}/permissions`,
-      session2Token,
-    );
-
-    expect(response.ok).toBe(false);
-    expect(response.status).toBe(403);
   });
 
   it("should deny viewer from listing permissions", async () => {

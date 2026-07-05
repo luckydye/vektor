@@ -153,11 +153,8 @@ async function handlePublishedRevisionPatch(
   documentId: string,
   userId: string,
   publishedRev: number | null,
-  currentRev: number,
 ) {
-  // Always publish the current (latest) revision — ignore any specific revision
-  // number the client may have sent.
-  const revToPublish = publishedRev === null ? null : currentRev;
+  const revToPublish = publishedRev === null ? null : publishedRev;
 
   const db = await getSpaceDb(spaceId);
   await db
@@ -184,8 +181,8 @@ async function handlePublishedRevisionPatch(
   }
 
   const revisionContent = await getRevisionContent(spaceId, documentId, revToPublish);
-  if (!revisionContent) {
-    return;
+  if (!revisionContent || revisionContent === null) {
+    throw notFoundResponse("Revision");
   }
 
   // Publishing a revision also loads it into the draft, so the editor (which
@@ -479,13 +476,7 @@ export const PUT: APIRoute = (context) =>
         message: "Document updated",
       });
       if (publish === true) {
-        await handlePublishedRevisionPatch(
-          spaceId,
-          id,
-          userId,
-          revision.rev,
-          revision.rev,
-        );
+        await handlePublishedRevisionPatch(spaceId, id, userId, revision.rev);
       }
     }
 
@@ -574,13 +565,11 @@ export const PATCH: APIRoute = (context) =>
     }
 
     if (publishedRev !== undefined) {
-      await handlePublishedRevisionPatch(
-        spaceId,
-        id,
-        userId,
-        publishedRev,
-        existingDoc.currentRev,
-      );
+      if (publishedRev !== null && typeof publishedRev !== "number") {
+        throw badRequestResponse("Published revision must be a number or null");
+      }
+
+      await handlePublishedRevisionPatch(spaceId, id, userId, publishedRev);
     }
 
     if (readonly !== undefined) {

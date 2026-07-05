@@ -101,6 +101,14 @@ export function useDocumentContext() {
     };
   }
 
+  function markDocumentUnpublished(): void {
+    if (documentContext.value.publishedVersion == null) return;
+    documentContext.value = {
+      ...documentContext.value,
+      publishedVersion: null,
+    };
+  }
+
   function resetDocumentContext(): void {
     documentContext.value = { ...DEFAULT_DOCUMENT_CONTEXT };
   }
@@ -111,6 +119,7 @@ export function useDocumentContext() {
     hasPublishedVersion,
     setDocumentContext,
     markDocumentPublished,
+    markDocumentUnpublished,
     resetDocumentContext,
   };
 }

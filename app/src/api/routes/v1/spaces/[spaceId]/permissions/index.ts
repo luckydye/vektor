@@ -34,10 +34,7 @@ export const GET: APIRoute = (context) =>
       ResourceType.SPACE;
     const resourceId = context.url.searchParams.get("resourceId") || spaceId;
 
-    // Editors can list role permissions at any resource level.
-    // Feature permission listing is owner-only.
-    const requiredRole = typeFilter === "feature" ? "owner" : "editor";
-    await verifySpaceRole(spaceId, user.id, requiredRole);
+    await verifySpaceRole(spaceId, user.id, "editor");
 
     const permissions: Array<{ type: string; permission: unknown }> = [];
 

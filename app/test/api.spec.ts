@@ -1860,6 +1860,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
 
 describe("API Tests - Audit Logs", () => {
   let auditTestDocId: string;
+  let auditSavedRev: number;
 
   it("should create a document for audit log testing", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
@@ -1902,13 +1903,18 @@ describe("API Tests - Audit Logs", () => {
   });
 
   it("should track save events in audit logs", async () => {
-    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}`, {
-      method: "POST",
-      body: JSON.stringify({
-        html: "<p>Updated content for audit</p>",
-        message: "Test save for audit",
-      }),
-    });
+    const saveResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          html: "<p>Updated content for audit</p>",
+          message: "Test save for audit",
+        }),
+      },
+    );
+    const saveData = await saveResponse.json();
+    auditSavedRev = saveData.revision.rev;
 
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
@@ -1924,7 +1930,7 @@ describe("API Tests - Audit Logs", () => {
   it("should track publish events in audit logs", async () => {
     await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}`, {
       method: "PATCH",
-      body: JSON.stringify({ publishedRev: 2 }),
+      body: JSON.stringify({ publishedRev: auditSavedRev }),
     });
 
     const response = await apiRequest(
@@ -1935,7 +1941,7 @@ describe("API Tests - Audit Logs", () => {
     const publishLog = data.auditLogs.find((log: any) => log.event === "publish");
 
     expect(publishLog).toBeDefined();
-    expect(publishLog.revisionId).toBe(2);
+    expect(publishLog.revisionId).toBe(auditSavedRev);
     expect(publishLog.userId).toBe(LOCAL_USER_ID);
   });
 

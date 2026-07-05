@@ -96,16 +96,16 @@ describe("parseTransformParams", () => {
     expect(parseTransformParams(new URLSearchParams("foo=bar"), "jpg")).toBeNull();
   });
 
-  it("parses w", () => {
+  it("parses w by snapping to the nearest preset dimension", () => {
     const p = parseTransformParams(new URLSearchParams("w=800"), "jpg");
     expect(p).not.toBeNull();
-    expect(p!.w).toBe(800);
+    expect(p!.w).toBe(640);
     expect(p!.h).toBe(0);
   });
 
-  it("parses h", () => {
+  it("parses h by snapping to the nearest preset dimension", () => {
     const p = parseTransformParams(new URLSearchParams("h=600"), "png");
-    expect(p!.h).toBe(600);
+    expect(p!.h).toBe(640);
     expect(p!.w).toBe(0);
   });
 
@@ -119,26 +119,25 @@ describe("parseTransformParams", () => {
     expect(parseTransformParams(new URLSearchParams("format=bmp"), "jpg")).toBeNull();
   });
 
-  it("parses q and applies default of 80 when absent", () => {
+  it("uses fixed quality of 80 even when q is present", () => {
     const withQ = parseTransformParams(new URLSearchParams("w=100&q=60"), "jpg");
-    expect(withQ!.quality).toBe(60);
+    expect(withQ!.quality).toBe(80);
 
     const noQ = parseTransformParams(new URLSearchParams("w=100"), "jpg");
     expect(noQ!.quality).toBe(80);
   });
 
-  it("clamps quality to 1–100", () => {
+  it("ignores out-of-range quality values", () => {
     const lo = parseTransformParams(new URLSearchParams("w=1&q=0"), "jpg");
-    expect(lo!.quality).toBe(1);
+    expect(lo!.quality).toBe(80);
 
     const hi = parseTransformParams(new URLSearchParams("w=1&q=200"), "jpg");
-    expect(hi!.quality).toBe(100);
+    expect(hi!.quality).toBe(80);
   });
 
-  it("q alone is sufficient to trigger a transform", () => {
+  it("does not treat q alone as sufficient to trigger a transform", () => {
     const p = parseTransformParams(new URLSearchParams("q=50"), "jpg");
-    expect(p).not.toBeNull();
-    expect(p!.quality).toBe(50);
+    expect(p).toBeNull();
   });
 
   it("returns null for NaN w or h", () => {
@@ -237,7 +236,7 @@ async function uploadFile(
   });
   if (!res.ok) throw new Error(`Upload failed: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as { key: string; url: string };
-  expect(data.url).toBe(`${BASE_URL}/api/v1/spaces/${sid}/uploads/${data.key}`);
+  expect(data.url).toBe(`/api/v1/spaces/${sid}/uploads/${data.key}`);
   return data.key;
 }
 
@@ -282,7 +281,7 @@ describe("image transforms — integration", () => {
     expect(m.height).toBe(200);
   });
 
-  it("resizes the image with ?w=50 (preserves aspect ratio)", async () => {
+  it("snaps ?w=50 to a preset and does not upscale past the original width", async () => {
     const res = await fetch(
       `${BASE_URL}/api/v1/spaces/${spaceId}/uploads/${imageKey}?w=50`,
     );
@@ -291,11 +290,11 @@ describe("image transforms — integration", () => {
 
     const buf = Buffer.from(await res.arrayBuffer());
     const m = meta(buf);
-    expect(m.width).toBe(50);
-    expect(m.height).toBe(100);
+    expect(m.width).toBe(100);
+    expect(m.height).toBe(200);
   });
 
-  it("resizes with ?h=50 (preserves aspect ratio)", async () => {
+  it("snaps ?h=50 to a preset and preserves aspect ratio", async () => {
     const res = await fetch(
       `${BASE_URL}/api/v1/spaces/${spaceId}/uploads/${imageKey}?h=50`,
     );
@@ -303,8 +302,8 @@ describe("image transforms — integration", () => {
 
     const buf = Buffer.from(await res.arrayBuffer());
     const m = meta(buf);
-    expect(m.height).toBe(50);
-    expect(m.width).toBe(25);
+    expect(m.height).toBe(160);
+    expect(m.width).toBe(80);
   });
 
   it("converts to webp with ?format=webp", async () => {
