@@ -95,7 +95,7 @@ describe("CalDAV API", () => {
     expect(calendars.length).toBeGreaterThan(0);
     const testCalendar = calendars.find((c) => c.url.includes(testSpaceId));
     expect(testCalendar).toBeDefined();
-    expect(testCalendar!.displayName).toBe("CalDAV Test Space");
+    expect(testCalendar?.displayName).toBe("CalDAV Test Space");
   });
 
   it("should fetch events from a specific calendar", async () => {

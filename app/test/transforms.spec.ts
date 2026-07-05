@@ -99,19 +99,19 @@ describe("parseTransformParams", () => {
   it("parses w by snapping to the nearest preset dimension", () => {
     const p = parseTransformParams(new URLSearchParams("w=800"), "jpg");
     expect(p).not.toBeNull();
-    expect(p!.w).toBe(640);
-    expect(p!.h).toBe(0);
+    expect(p?.w).toBe(640);
+    expect(p?.h).toBe(0);
   });
 
   it("parses h by snapping to the nearest preset dimension", () => {
     const p = parseTransformParams(new URLSearchParams("h=600"), "png");
-    expect(p!.h).toBe(640);
-    expect(p!.w).toBe(0);
+    expect(p?.h).toBe(640);
+    expect(p?.w).toBe(0);
   });
 
   it("parses format", () => {
     const p = parseTransformParams(new URLSearchParams("format=webp"), "jpg");
-    expect(p!.format).toBe("webp");
+    expect(p?.format).toBe("webp");
   });
 
   it("rejects unknown format values and returns null (no other params)", () => {
@@ -121,18 +121,18 @@ describe("parseTransformParams", () => {
 
   it("uses fixed quality of 80 even when q is present", () => {
     const withQ = parseTransformParams(new URLSearchParams("w=100&q=60"), "jpg");
-    expect(withQ!.quality).toBe(80);
+    expect(withQ?.quality).toBe(80);
 
     const noQ = parseTransformParams(new URLSearchParams("w=100"), "jpg");
-    expect(noQ!.quality).toBe(80);
+    expect(noQ?.quality).toBe(80);
   });
 
   it("ignores out-of-range quality values", () => {
     const lo = parseTransformParams(new URLSearchParams("w=1&q=0"), "jpg");
-    expect(lo!.quality).toBe(80);
+    expect(lo?.quality).toBe(80);
 
     const hi = parseTransformParams(new URLSearchParams("w=1&q=200"), "jpg");
-    expect(hi!.quality).toBe(80);
+    expect(hi?.quality).toBe(80);
   });
 
   it("does not treat q alone as sufficient to trigger a transform", () => {

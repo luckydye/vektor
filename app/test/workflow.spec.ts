@@ -145,7 +145,7 @@ beforeAll(async () => {
     },
     stdout: "pipe",
     stderr: "pipe",
-    cwd: import.meta.dir + "/..",
+    cwd: `${import.meta.dir}/..`,
   });
   // Collect server output so we can surface it on failure
   (async () => {

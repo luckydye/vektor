@@ -207,7 +207,7 @@ describe("Document edit operations", () => {
     ws.addEventListener("message", (event) => {
       const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
       for (let i = 0; i < pendingChecks.length; i++) {
-        if (pendingChecks[i]!(frame)) {
+        if (pendingChecks[i]?.(frame)) {
           pendingChecks.splice(i, 1);
           return;
         }
@@ -263,8 +263,8 @@ describe("Document edit operations", () => {
     expect(presence.state.kind).toBe("editor");
     expect(presence.state.selection).not.toBeNull();
     // The positions must be valid Yjs relative positions in the shared doc.
-    const anchor = Y.createRelativePositionFromJSON(presence.state.selection!.anchor);
-    const head = Y.createRelativePositionFromJSON(presence.state.selection!.head);
+    const anchor = Y.createRelativePositionFromJSON(presence.state.selection?.anchor);
+    const head = Y.createRelativePositionFromJSON(presence.state.selection?.head);
     expect(
       Y.createAbsolutePositionFromRelativePosition(anchor, clientDoc),
     ).not.toBeNull();
