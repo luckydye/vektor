@@ -72,7 +72,9 @@ import {
 } from "../canvas/elements/registry.ts";
 import {
   type CanvasShapeLibraryItem,
+  drawShapeElement,
   getShapeLibraryItem,
+  hitTestShapeElement,
   SHAPE_LIBRARY,
 } from "../canvas/elements/shape.ts";
 import { createTextShape, shouldRemoveTextShape } from "../canvas/elements/text.ts";
@@ -405,21 +407,25 @@ const selectedShape = computed(() => {
   return shapesById.value.get(id) ?? null;
 });
 
-// Non-GIF image shapes render on the images canvas — no DOM article needed.
-// All other shapes stay in the DOM permanently; content-visibility:auto in CSS
-// tells the browser to skip painting off-screen articles without JS involvement.
+// Non-GIF images and geometric shapes paint on the images canvas layer — no
+// DOM article needed. All other shapes stay in the DOM permanently;
+// content-visibility:auto in CSS tells the browser to skip painting off-screen
+// articles without JS involvement.
+function isCanvasPaintedShape(shape: CanvasShape) {
+  return shape.type === "shape" || (shape.type === "image" && !isGifSrc(shape.src ?? ""));
+}
+
 const domShapes = computed(() =>
-  shapes.value.filter((shape) => shape.type !== "image" || isGifSrc(shape.src ?? "")),
+  shapes.value.filter((shape) => !isCanvasPaintedShape(shape)),
 );
 
-// Canvas-rendered image shapes within the current viewport. Used only by
-// renderImages() to avoid drawImage calls for off-screen images.
-const visibleImageShapes = computed(() => {
+// Canvas-painted shapes within the current viewport. Used only by
+// renderImages() to avoid draw calls for off-screen shapes.
+const visiblePaintedShapes = computed(() => {
   const vr = worldViewportBounds(camera.value, screen.value, FIT_REFERENCE, 400);
   return shapes.value.filter(
     (shape) =>
-      shape.type === "image" &&
-      !isGifSrc(shape.src ?? "") &&
+      isCanvasPaintedShape(shape) &&
       rectsIntersect(vr, {
         x: shape.x,
         y: shape.y,
@@ -963,6 +969,7 @@ function worldToScreen(point: { x: number; y: number }) {
 let cssGridMajor = "rgba(15, 23, 42, 0.13)";
 let cssGridMinor = "rgba(15, 23, 42, 0.07)";
 let cssInkColor = FREEHAND_STYLE.color;
+let cssShapeBorder = "rgba(15, 23, 42, 0.14)";
 
 function canvasCssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -974,6 +981,7 @@ function refreshCssVars() {
   cssGridMajor = canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)");
   cssGridMinor = canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)");
   cssInkColor = canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
+  cssShapeBorder = canvasCssVar("--canvas-shape-border", "rgba(15, 23, 42, 0.14)");
 }
 
 function resolveDarkMode() {
@@ -993,6 +1001,7 @@ function renderThemeChanged() {
   refreshCssVars();
   renderGrid();
   renderInk();
+  renderImages();
 }
 
 function applyGridType(value: unknown) {
@@ -1065,7 +1074,13 @@ function renderImages() {
   ctx.clearRect(0, 0, screen.value.width, screen.value.height);
 
   const t = transform.value;
-  for (const shape of visibleImageShapes.value) {
+  for (const shape of visiblePaintedShapes.value) {
+    if (shape.type === "shape") {
+      // Geometric shapes are vector-painted; their selection outlines render
+      // on the selection canvas like every other non-image shape.
+      drawShapeElement(ctx, shape, t, cssShapeBorder);
+      continue;
+    }
     if (shape.type !== "image" || !shape.src || isGifSrc(shape.src)) continue;
     const sx = shape.x * t.scale + t.dx;
     const sy = shape.y * t.scale + t.dy;
@@ -1387,8 +1402,8 @@ function addShape(
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
-  // A freshly placed geometric shape stays selected for move/resize instead of
-  // dropping into text editing; its text is reachable with another click.
+  // Geometric shapes are canvas-painted with no DOM element to focus; they
+  // stay selected for immediate move/resize instead.
   if (type === "shape") return;
   nextTick(() => {
     const selector =
@@ -1623,9 +1638,7 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   dragMoved = false;
   dragState = buildShapeDragState(event);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  // Text and geometric shapes drag by their body, which doubles as the text
-  // editor — leave the default so a plain click can still focus it.
-  if (shape.type !== "text" && shape.type !== "shape") {
+  if (shape.type !== "text") {
     event.preventDefault();
   }
 }
@@ -1712,11 +1725,16 @@ function applyMarqueeSelection(
   renderInk();
 }
 
-// Hit-tests canvas-rendered (non-GIF) image shapes in reverse paint order.
-function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | null {
+// Hit-tests canvas-painted shapes (non-GIF images and geometric shapes) in
+// reverse paint order.
+function hitTestPaintedShape(worldPoint: { x: number; y: number }): CanvasShape | null {
   for (let i = shapes.value.length - 1; i >= 0; i--) {
     const shape = shapes.value[i];
-    if (shape.type !== "image" || isGifSrc(shape.src ?? "")) continue;
+    if (!isCanvasPaintedShape(shape)) continue;
+    if (shape.type === "shape") {
+      if (hitTestShapeElement(shape, worldPoint)) return shape;
+      continue;
+    }
     if (isPointInRect(worldPoint, shape)) return shape;
   }
   return null;
@@ -1762,12 +1780,12 @@ function handleViewportPointerDown(event: PointerEvent) {
     const additive = event.shiftKey;
     const worldPoint = screenToWorld(point);
 
-    const hitImage = hitTestImageShape(worldPoint);
-    if (hitImage) {
+    const hitShape = hitTestPaintedShape(worldPoint);
+    if (hitShape) {
       if (additive) {
-        toggleShapeSelection(hitImage.id);
-      } else if (!selectedShapeIds.value.has(hitImage.id)) {
-        selectOnlyShape(hitImage.id);
+        toggleShapeSelection(hitShape.id);
+      } else if (!selectedShapeIds.value.has(hitShape.id)) {
+        selectOnlyShape(hitShape.id);
       }
       dragMoved = false;
       dragState = buildShapeDragState(event);
@@ -2976,7 +2994,6 @@ onUnmounted(() => {
           class="canvas-shape"
           :class="[
             shape.type,
-            shape.type === 'shape' && shape.variant ? `variant-${shape.variant}` : '',
             { selected: selectedShapeIds.has(shape.id) },
           ]"
           :style="{
@@ -3138,7 +3155,7 @@ onUnmounted(() => {
             @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
             @editor-focus="selectOnlyShape(shape.id)"
             @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
-            @pointerdown.stop="(shape.type === 'text' || shape.type === 'shape') && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
+            @pointerdown.stop="shape.type === 'text' && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
           />
           <button
             v-if="shape.type !== 'text' && selectedShape?.id === shape.id"
@@ -3150,12 +3167,12 @@ onUnmounted(() => {
         </article>
       </div>
 
-      <!-- Resize handle for canvas-rendered image shapes (lives in screen space, not world div) -->
+      <!-- Resize handle for canvas-painted shapes (lives in screen space, not world div) -->
       <button
-        v-if="selectedShape && selectedShape.type === 'image' && !isGifSrc(selectedShape.src ?? '')"
+        v-if="selectedShape && isCanvasPaintedShape(selectedShape)"
         type="button"
         class="canvas-resize-handle canvas-image-resize-handle"
-        :aria-label="`${t('Resize')} image`"
+        :aria-label="`${t('Resize')} ${selectedShape.type}`"
         :style="{
           left: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).x - 18}px`,
           top: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).y - 18}px`,
@@ -3960,21 +3977,6 @@ onUnmounted(() => {
 
 .canvas-shape.note .canvas-shape-textwrap {
   color: #111827;
-}
-
-.canvas-shape.shape {
-  justify-content: center;
-}
-
-.canvas-shape.shape.variant-circle {
-  border-radius: 50%;
-}
-
-.canvas-shape.shape .canvas-shape-textwrap {
-  flex: 0 0 auto;
-  color: #111827;
-  text-align: center;
-  cursor: move;
 }
 
 .canvas-image-resize-handle {
