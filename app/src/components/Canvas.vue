@@ -72,9 +72,8 @@ import {
 } from "../canvas/elements/registry.ts";
 import {
   type CanvasShapeLibraryItem,
-  drawShapeElement,
+  createShapeStroke,
   getShapeLibraryItem,
-  hitTestShapeElement,
   SHAPE_LIBRARY,
 } from "../canvas/elements/shape.ts";
 import { createTextShape, shouldRemoveTextShape } from "../canvas/elements/text.ts";
@@ -407,25 +406,21 @@ const selectedShape = computed(() => {
   return shapesById.value.get(id) ?? null;
 });
 
-// Non-GIF images and geometric shapes paint on the images canvas layer — no
-// DOM article needed. All other shapes stay in the DOM permanently;
-// content-visibility:auto in CSS tells the browser to skip painting off-screen
-// articles without JS involvement.
-function isCanvasPaintedShape(shape: CanvasShape) {
-  return shape.type === "shape" || (shape.type === "image" && !isGifSrc(shape.src ?? ""));
-}
-
+// Non-GIF image shapes render on the images canvas — no DOM article needed.
+// All other shapes stay in the DOM permanently; content-visibility:auto in CSS
+// tells the browser to skip painting off-screen articles without JS involvement.
 const domShapes = computed(() =>
-  shapes.value.filter((shape) => !isCanvasPaintedShape(shape)),
+  shapes.value.filter((shape) => shape.type !== "image" || isGifSrc(shape.src ?? "")),
 );
 
-// Canvas-painted shapes within the current viewport. Used only by
-// renderImages() to avoid draw calls for off-screen shapes.
-const visiblePaintedShapes = computed(() => {
+// Canvas-rendered image shapes within the current viewport. Used only by
+// renderImages() to avoid drawImage calls for off-screen images.
+const visibleImageShapes = computed(() => {
   const vr = worldViewportBounds(camera.value, screen.value, FIT_REFERENCE, 400);
   return shapes.value.filter(
     (shape) =>
-      isCanvasPaintedShape(shape) &&
+      shape.type === "image" &&
+      !isGifSrc(shape.src ?? "") &&
       rectsIntersect(vr, {
         x: shape.x,
         y: shape.y,
@@ -969,7 +964,6 @@ function worldToScreen(point: { x: number; y: number }) {
 let cssGridMajor = "rgba(15, 23, 42, 0.13)";
 let cssGridMinor = "rgba(15, 23, 42, 0.07)";
 let cssInkColor = FREEHAND_STYLE.color;
-let cssShapeBorder = "rgba(15, 23, 42, 0.14)";
 
 function canvasCssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -981,7 +975,6 @@ function refreshCssVars() {
   cssGridMajor = canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)");
   cssGridMinor = canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)");
   cssInkColor = canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
-  cssShapeBorder = canvasCssVar("--canvas-shape-border", "rgba(15, 23, 42, 0.14)");
 }
 
 function resolveDarkMode() {
@@ -1001,7 +994,6 @@ function renderThemeChanged() {
   refreshCssVars();
   renderGrid();
   renderInk();
-  renderImages();
 }
 
 function applyGridType(value: unknown) {
@@ -1074,13 +1066,7 @@ function renderImages() {
   ctx.clearRect(0, 0, screen.value.width, screen.value.height);
 
   const t = transform.value;
-  for (const shape of visiblePaintedShapes.value) {
-    if (shape.type === "shape") {
-      // Geometric shapes are vector-painted; their selection outlines render
-      // on the selection canvas like every other non-image shape.
-      drawShapeElement(ctx, shape, t, cssShapeBorder);
-      continue;
-    }
+  for (const shape of visibleImageShapes.value) {
     if (shape.type !== "image" || !shape.src || isGifSrc(shape.src)) continue;
     const sx = shape.x * t.scale + t.dx;
     const sy = shape.y * t.scale + t.dy;
@@ -1377,34 +1363,36 @@ function onFileShapeClick(event: MouseEvent) {
   event.stopPropagation();
 }
 
-function addShape(
-  type: "note" | "text" | "section" | "shape",
-  at: { x: number; y: number },
-) {
-  const libraryItem = getShapeLibraryItem(activeShapeId.value) ?? SHAPE_LIBRARY[0];
+// Stamps the active shape-library item at `at` as a regular freehand stroke,
+// so it lives on the ink layer with the same selection, move, recolor, and
+// undo behavior as drawn strokes.
+function placeShapeStroke(at: { x: number; y: number }) {
+  const item = getShapeLibraryItem(activeShapeId.value) ?? SHAPE_LIBRARY[0];
+  const stroke = createShapeStroke(item, at, penColor.value);
+  yStrokes.set(stroke.id, createStrokeMap(stroke));
+  selectStroke(stroke.id, false);
+  activeTool.value = "select";
+}
+
+function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
   const shape =
     type === "note"
       ? createNoteShape(at, noteColor.value)
       : type === "text"
         ? createTextShape(at)
-        : type === "shape"
-          ? libraryItem.create(at)
-          : {
-              id: `shape-${crypto.randomUUID()}`,
-              type: "section",
-              x: Math.round(at.x),
-              y: Math.round(at.y),
-              ...defaultSizeForShape(type),
-              text: defaultTextForShape(type),
-              color: defaultColorForShape(type),
-              updatedAt: Date.now(),
-            };
+        : {
+            id: `shape-${crypto.randomUUID()}`,
+            type: "section",
+            x: Math.round(at.x),
+            y: Math.round(at.y),
+            ...defaultSizeForShape(type),
+            text: defaultTextForShape(type),
+            color: defaultColorForShape(type),
+            updatedAt: Date.now(),
+          };
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
-  // Geometric shapes are canvas-painted with no DOM element to focus; they
-  // stay selected for immediate move/resize instead.
-  if (type === "shape") return;
   nextTick(() => {
     const selector =
       type === "section"
@@ -1490,9 +1478,8 @@ function translateStroke(id: string, points: FreehandPoint[], dx: number, dy: nu
 
 function setNoteColor(color: string) {
   noteColor.value = color;
-  const selected = selectedShape.value;
-  if (selected?.type === "note" || selected?.type === "shape") {
-    updateShape(selected.id, { color });
+  if (selectedShape.value?.type === "note") {
+    updateShape(selectedShape.value.id, { color });
   }
 }
 
@@ -1725,16 +1712,11 @@ function applyMarqueeSelection(
   renderInk();
 }
 
-// Hit-tests canvas-painted shapes (non-GIF images and geometric shapes) in
-// reverse paint order.
-function hitTestPaintedShape(worldPoint: { x: number; y: number }): CanvasShape | null {
+// Hit-tests canvas-rendered (non-GIF) image shapes in reverse paint order.
+function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | null {
   for (let i = shapes.value.length - 1; i >= 0; i--) {
     const shape = shapes.value[i];
-    if (!isCanvasPaintedShape(shape)) continue;
-    if (shape.type === "shape") {
-      if (hitTestShapeElement(shape, worldPoint)) return shape;
-      continue;
-    }
+    if (shape.type !== "image" || isGifSrc(shape.src ?? "")) continue;
     if (isPointInRect(worldPoint, shape)) return shape;
   }
   return null;
@@ -1780,12 +1762,12 @@ function handleViewportPointerDown(event: PointerEvent) {
     const additive = event.shiftKey;
     const worldPoint = screenToWorld(point);
 
-    const hitShape = hitTestPaintedShape(worldPoint);
-    if (hitShape) {
+    const hitImage = hitTestImageShape(worldPoint);
+    if (hitImage) {
       if (additive) {
-        toggleShapeSelection(hitShape.id);
-      } else if (!selectedShapeIds.value.has(hitShape.id)) {
-        selectOnlyShape(hitShape.id);
+        toggleShapeSelection(hitImage.id);
+      } else if (!selectedShapeIds.value.has(hitImage.id)) {
+        selectOnlyShape(hitImage.id);
       }
       dragMoved = false;
       dragState = buildShapeDragState(event);
@@ -1819,11 +1801,16 @@ function handleViewportPointerDown(event: PointerEvent) {
     return;
   }
 
+  if (activeTool.value === "shape") {
+    placeShapeStroke(screenToWorld(point));
+    event.preventDefault();
+    return;
+  }
+
   if (
     activeTool.value === "note" ||
     activeTool.value === "text" ||
-    activeTool.value === "section" ||
-    activeTool.value === "shape"
+    activeTool.value === "section"
   ) {
     addShape(activeTool.value, screenToWorld(point));
   }
@@ -2807,9 +2794,9 @@ onUnmounted(() => {
       v-if="
         activeTool === 'draw' ||
         activeTool === 'note' ||
+        activeTool === 'shape' ||
         selectedStrokeIds.size > 0 ||
-        selectedShape?.type === 'note' ||
-        selectedShape?.type === 'shape'
+        selectedShape?.type === 'note'
       "
       class="canvas-sub-toolbar"
       @pointerdown.stop
@@ -2842,7 +2829,7 @@ onUnmounted(() => {
         class="canvas-divider"
       ></span>
       <span
-        v-if="activeTool === 'note' || selectedShape?.type === 'note' || selectedShape?.type === 'shape'"
+        v-if="activeTool === 'note' || selectedShape?.type === 'note'"
         class="canvas-note-colors"
         :aria-label="t('Note color')"
       >
@@ -2851,7 +2838,7 @@ onUnmounted(() => {
           :key="color"
           type="button"
           class="canvas-color-swatch"
-          :class="{ active: (selectedShape?.type === 'note' || selectedShape?.type === 'shape' ? selectedShape.color : noteColor) === color }"
+          :class="{ active: (selectedShape?.type === 'note' ? selectedShape.color : noteColor) === color }"
           :style="{ background: color }"
           :aria-label="`${t('Set note color')} ${color}`"
           @click="setNoteColor(color)"
@@ -2859,13 +2846,13 @@ onUnmounted(() => {
       </span>
       <span
         v-if="
-          (activeTool === 'draw' || selectedStrokeIds.size > 0) &&
-          (activeTool === 'note' || selectedShape?.type === 'note' || selectedShape?.type === 'shape')
+          (activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0) &&
+          (activeTool === 'note' || selectedShape?.type === 'note')
         "
         class="canvas-divider"
       ></span>
       <span
-        v-if="activeTool === 'draw' || selectedStrokeIds.size > 0"
+        v-if="activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0"
         class="canvas-note-colors"
         :aria-label="t('Pen color')"
       >
@@ -3167,12 +3154,12 @@ onUnmounted(() => {
         </article>
       </div>
 
-      <!-- Resize handle for canvas-painted shapes (lives in screen space, not world div) -->
+      <!-- Resize handle for canvas-rendered image shapes (lives in screen space, not world div) -->
       <button
-        v-if="selectedShape && isCanvasPaintedShape(selectedShape)"
+        v-if="selectedShape && selectedShape.type === 'image' && !isGifSrc(selectedShape.src ?? '')"
         type="button"
         class="canvas-resize-handle canvas-image-resize-handle"
-        :aria-label="`${t('Resize')} ${selectedShape.type}`"
+        :aria-label="`${t('Resize')} image`"
         :style="{
           left: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).x - 18}px`,
           top: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).y - 18}px`,

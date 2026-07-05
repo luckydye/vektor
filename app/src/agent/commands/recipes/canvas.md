@@ -4,8 +4,7 @@ keywords: canvas, note, shape, sticky, stroke, board
 ---
 
 Canvas documents are JSON: {version, shapes: [...], strokes: [...]}.
-Each shape: {id, type: "note"|"text"|"image"|"section"|"shape", x, y, width, height, text, color}.
-"shape" is a geometric primitive; add "variant": "rectangle" or "circle" to pick its form.
+Each shape: {id, type: "note"|"text"|"image"|"section", x, y, width, height, text, color}.
 1. Read the canvas to see existing shapes and pick a free x/y spot:
    Call `get_current_document`, or `read_document` with a document ID.
 2. Add a note (id must be unique — use a suffix like the current timestamp):
