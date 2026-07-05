@@ -9,6 +9,8 @@ import {
 } from "#db/api.ts";
 import { getDocumentBySlug } from "#db/documents.ts";
 import { getSpaceBySlug } from "#db/spaces.ts";
+import { createVektorDocumentAddress } from "#utils/documentAddress.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
 
@@ -22,6 +24,16 @@ export interface LinkMetadata {
   favicon: string | null;
   updatedAt: string | null;
   fetchedAt: number;
+  vektorDocument?: {
+    address: string;
+    documentId: string;
+    documentSlug: string;
+    spaceId: string;
+    spaceSlug: string;
+    spaceName: string;
+    type: string;
+    content: string;
+  };
 }
 
 interface CacheEntry {
@@ -201,6 +213,157 @@ async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function safeDecodeURIComponent(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+export function remoteDocumentPathParts(
+  url: URL,
+): { spaceSlug: string; documentSlug: string } | null {
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  if (pathParts.length < 3 || pathParts[1] !== "doc") return null;
+  const spaceSlug = safeDecodeURIComponent(pathParts[0]);
+  const documentSlug = safeDecodeURIComponent(pathParts.slice(2).join("/"));
+  if (!spaceSlug || !documentSlug) return null;
+  return {
+    spaceSlug,
+    documentSlug,
+  };
+}
+
+function documentApiUrlFromTemplate(
+  template: string,
+  targetOrigin: string,
+  parts: { spaceSlug: string; documentSlug: string },
+): URL | null {
+  const endpoint = template || "/api/v1/spaces/{spaceId}/documents/{documentId}";
+  if (!endpoint.startsWith("/")) return null;
+  return new URL(
+    endpoint
+      .replace("{spaceId}", encodeURIComponent(parts.spaceSlug))
+      .replace("{documentId}", encodeURIComponent(parts.documentSlug)),
+    targetOrigin,
+  );
+}
+
+function textFromUnknownProperty(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  try {
+    return propertyValueToText(value as never).trim();
+  } catch {
+    return String(value).trim();
+  }
+}
+
+async function fetchJsonWithTimeout(url: string): Promise<unknown> {
+  const target = await validateExternalUrl(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch(target, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; VektorBot/1.0)",
+      },
+      redirect: "error",
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchRemoteVektorMetadata(url: string): Promise<LinkMetadata | null> {
+  let target: URL;
+  try {
+    target = await validateExternalUrl(url);
+  } catch {
+    return null;
+  }
+
+  const discovery = await fetchJsonWithTimeout(
+    new URL("/.well-known/vektor", target.origin).toString(),
+  );
+  if (!isRecord(discovery) || discovery.service !== "vektor") return null;
+
+  const documentParts = remoteDocumentPathParts(target);
+  if (!documentParts) return null;
+
+  const endpoint =
+    typeof discovery.documentEndpoint === "string" ? discovery.documentEndpoint : "";
+  const documentApiUrl = documentApiUrlFromTemplate(
+    endpoint,
+    target.origin,
+    documentParts,
+  );
+  if (!documentApiUrl) return null;
+
+  const apiResult = await fetchJsonWithTimeout(documentApiUrl.toString());
+  if (!isRecord(apiResult)) return null;
+
+  const space = isRecord(apiResult.space) ? apiResult.space : null;
+  const document = isRecord(apiResult.document) ? apiResult.document : null;
+  if (!document) return null;
+  const properties = isRecord(document.properties) ? document.properties : null;
+  const titleText = textFromUnknownProperty(properties?.title);
+  const title = titleText || documentParts.documentSlug;
+  const content =
+    typeof document.content === "string"
+      ? sanitizeVektorDocumentPreviewHtml(document.content)
+      : "";
+  const type = typeof document.type === "string" ? document.type : "document";
+  const updatedAt = typeof document.updatedAt === "string" ? document.updatedAt : null;
+  const spaceId = typeof space?.id === "string" ? space.id : documentParts.spaceSlug;
+  const spaceSlug =
+    typeof space?.slug === "string" ? space.slug : documentParts.spaceSlug;
+  const spaceName = typeof space?.name === "string" ? space.name : null;
+  const documentId = typeof document?.id === "string" ? document.id : "";
+  const documentSlug =
+    typeof document?.slug === "string" ? document.slug : documentParts.documentSlug;
+
+  if (!spaceId || !spaceSlug || !documentId || !documentSlug) return null;
+  const address = createVektorDocumentAddress({
+    origin: target.origin,
+    spaceId,
+    documentId,
+    href: target.toString(),
+  });
+
+  return {
+    url: target.toString(),
+    title,
+    description: extractDescriptionFromContent(content),
+    image: null,
+    video: null,
+    siteName: spaceName,
+    favicon: null,
+    updatedAt,
+    fetchedAt: Date.now(),
+    vektorDocument: {
+      address,
+      documentId,
+      documentSlug,
+      spaceId,
+      spaceSlug,
+      spaceName: spaceName ?? spaceSlug,
+      type,
+      content,
+    },
+  };
+}
+
 function extractDescriptionFromContent(content: string): string | null {
   const textContent = content
     .replace(/<[^>]+>/g, " ")
@@ -325,6 +488,12 @@ export const GET: APIRoute = (context) =>
       const cached = getCachedMetadata(cacheKey);
       if (cached) {
         return jsonResponse(cached);
+      }
+
+      const vektorMetadata = await fetchRemoteVektorMetadata(url);
+      if (vektorMetadata) {
+        setCachedMetadata(cacheKey, vektorMetadata, INTERNAL_CACHE_TTL_MS);
+        return jsonResponse(vektorMetadata);
       }
 
       const metadata = await fetchExternalMetadata(url);

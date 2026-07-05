@@ -30,6 +30,7 @@ import {
 import type { Comment } from "../api/ApiClient.ts";
 import { api } from "../api/client.ts";
 import { useComments } from "../composeables/useComments.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import docStyles from "../styles/document.css?inline";
 import { propertyValueToText } from "../utils/documentProperties.ts";
 import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
@@ -52,6 +53,7 @@ const documentData = ref<{
 } | null>(null);
 const currentState = ref<OverlayState | null>(null);
 const contentContainer = ref<HTMLElement | null>(null);
+const { currentSpaceId, spaces } = useSpace();
 
 const { comments, submitComment } = useComments({
   spaceId: computed(() => currentState.value?.spaceId),
@@ -116,6 +118,16 @@ function closeOverlay() {
 
 function navigateToDocument() {
   if (!currentState.value?.slug) return;
+
+  if (currentState.value.spaceId !== currentSpaceId.value) {
+    const targetSpace = spaces.value?.find(
+      (space) => space.id === currentState.value?.spaceId,
+    );
+    if (targetSpace) {
+      window.location.href = `/${targetSpace.slug}/doc/${currentState.value.slug}`;
+      return;
+    }
+  }
 
   router.push(`/doc/${currentState.value.slug}`);
 }

@@ -15,6 +15,7 @@ import {
   canvasNoteIcon,
   canvasSectionIcon,
   canvasSelectIcon,
+  canvasShapeIcon,
   canvasTextIcon,
   clipboardDocumentIcon,
   copyIcon,
@@ -27,8 +28,9 @@ import {
 import { api } from "../api/client.ts";
 import {
   createDocumentLinkController,
+  type DocumentLinkReference,
   dragHasDocumentLink,
-  droppedDocumentId as getDroppedDocumentId,
+  droppedDocumentReference as getDroppedDocumentReference,
   previewSupportsInlineEditing,
 } from "../canvas/elements/documentLink.ts";
 import {
@@ -70,6 +72,12 @@ import {
   isValidCanvasShape,
   minSizeForShape,
 } from "../canvas/elements/registry.ts";
+import {
+  type CanvasShapeLibraryItem,
+  createShapeStroke,
+  getShapeLibraryItem,
+  SHAPE_LIBRARY,
+} from "../canvas/elements/shape.ts";
 import { createTextShape, shouldRemoveTextShape } from "../canvas/elements/text.ts";
 import type {
   CanvasSerializedShape,
@@ -87,6 +95,7 @@ import { canEdit } from "../composeables/usePermissions.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import type { CanvasPresenceState } from "../editor/collaboration.ts";
 import "../editor/elements/rich-text-editor.ts";
+import "@atrium-ui/elements/popover";
 import { useToast } from "../composeables/useToast.ts";
 import {
   CANVAS_CLIPBOARD_MIME,
@@ -100,6 +109,12 @@ import {
   parseCanvasClipboardJson,
   serializeCanvasClipboard,
 } from "../utils/clipboard.ts";
+import {
+  createVektorDocumentAddress,
+  type ParsedVektorDocumentAddress,
+  parseVektorDocumentAddress,
+} from "../utils/documentAddress.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "../utils/documentHtmlSanitizer.ts";
 import {
   filenameFromUrl,
   IMAGE_RESIZE_TIERS,
@@ -249,6 +264,9 @@ const SNAP_PROXIMITY_PX = 320;
 // hand during panning and a resting cursor otherwise.
 const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
+// Library entry the shape tool places next; the toolbar popover changes it.
+const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
+const shapePopoverRef = ref<(HTMLElement & { hide: () => void }) | null>(null);
 const noteColor = ref<string>(NOTE_COLORS[0]);
 const penColor = ref<string>(PEN_COLORS[0]);
 const cursorColor = ref<string>(readCanvasCursorColor());
@@ -265,16 +283,19 @@ let localPointer: { x: number; y: number } | null = null;
 const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
 const { document: documentData, saveDocument } = useDocument(props.documentId, "canvas");
-// Used to resolve a dropped/inserted document id to best-effort local title/type
-// metadata. The persisted canvas reference remains id-only.
+// Used to resolve dropped/inserted same-space document ids to best-effort local
+// title/type metadata before the full preview loads.
 const { documents } = useDocuments();
-
-const { currentSpace } = useSpace();
+const { spaces, currentSpace } = useSpace();
 const userCanEditDocuments = computed(() => canEdit(currentSpace.value?.userRole));
 // The one embedded document card currently in inline-edit mode. Only this
 // card mounts a collaborative editor; every other embed stays a static
 // preview so we never join Yjs/presence rooms for idle embeds.
-const editingDocumentShape = ref<{ shapeId: string; documentId: string } | null>(null);
+const editingDocumentShape = ref<{
+  shapeId: string;
+  documentId: string;
+  address: string;
+} | null>(null);
 const embeddedDocumentEditor = shallowRef<InstanceType<
   typeof CanvasDocumentEditor
 > | null>(null);
@@ -284,7 +305,15 @@ const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
 const documentLinks = createDocumentLinkController({
   documents,
-  fetchDocument: (documentId) => api.document.get(props.spaceId, documentId),
+  currentOrigin:
+    typeof window === "undefined" ? "http://localhost" : window.location.origin,
+  currentSpaceId: props.spaceId,
+  fetchDocument: async (ref) => {
+    if (isRemoteDocumentAddress(ref.address)) {
+      return fetchRemoteDocumentByAddress(ref);
+    }
+    return api.document.get(ref.spaceId, ref.documentId);
+  },
   insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
   selectShape: (shapeId) => selectOnlyShape(shapeId),
   afterInsert: () => {
@@ -305,6 +334,243 @@ function getDomainFromUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+function isRemoteDocumentUrl(url: string | undefined): url is string {
+  if (!url || typeof window === "undefined") return false;
+  try {
+    return new URL(url, window.location.origin).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function isRemoteDocumentShape(shape: CanvasShape): boolean {
+  return (
+    shape.type === "document" && isRemoteDocumentAddress(documentAddressForShape(shape))
+  );
+}
+
+function isRemoteDocumentAddress(address: string | undefined): address is string {
+  const origin = parseVektorDocumentAddress(address)?.origin;
+  return Boolean(
+    origin && typeof window !== "undefined" && origin !== window.location.origin,
+  );
+}
+
+function documentAddressForShape(shape: CanvasShape): string | undefined {
+  return parseVektorDocumentAddress(shape.docAddress)?.address;
+}
+
+function legacyDocumentAddress(input: {
+  docAddress?: unknown;
+  docId?: unknown;
+  docSpaceId?: unknown;
+  src?: string;
+}): string | undefined {
+  if (typeof input.docAddress === "string") {
+    const parsed = parseVektorDocumentAddress(input.docAddress);
+    if (parsed) return parsed.address;
+  }
+  if (typeof input.docId !== "string" || typeof window === "undefined") return undefined;
+  const href = input.src;
+  let origin = window.location.origin;
+  if (href) {
+    try {
+      origin = new URL(href, window.location.origin).origin;
+    } catch {
+      origin = window.location.origin;
+    }
+  }
+  return createVektorDocumentAddress({
+    origin,
+    spaceId: typeof input.docSpaceId === "string" ? input.docSpaceId : props.spaceId,
+    documentId: input.docId,
+    href,
+  });
+}
+
+async function fetchRemoteDocumentByAddress(ref: ParsedVektorDocumentAddress) {
+  const response = await fetch(
+    `${ref.origin}/api/v1/spaces/${encodeURIComponent(ref.spaceId)}/documents/${encodeURIComponent(ref.documentId)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch remote document: ${response.status}`);
+  }
+  const data = (await response.json()) as { document?: unknown };
+  const document = data.document as
+    | {
+        id?: unknown;
+        slug?: unknown;
+        properties?: unknown;
+        type?: unknown;
+        content?: unknown;
+      }
+    | undefined;
+  if (!document || typeof document.id !== "string") {
+    throw new Error("Invalid remote document response");
+  }
+  const properties =
+    document.properties && typeof document.properties === "object"
+      ? (document.properties as Record<string, string | string[]>)
+      : {};
+  return {
+    id: document.id,
+    properties,
+    type: typeof document.type === "string" ? document.type : "document",
+    content:
+      typeof document.content === "string"
+        ? sanitizeVektorDocumentPreviewHtml(document.content)
+        : "",
+  };
+}
+
+function documentUrlPartsFromUrl(
+  rawUrl: string,
+): { documentId: string; spaceId?: string; spaceSlug?: string; url: string } | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  let url: URL;
+  try {
+    url = new URL(trimmed, window.location.origin);
+  } catch {
+    return null;
+  }
+
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  if (pathParts.length < 2) return null;
+
+  let spaceId: string | undefined;
+  let spaceSlug: string | undefined;
+  let documentPath = "";
+
+  if (pathParts[0] === "doc" && pathParts[1]) {
+    spaceId = props.spaceId;
+    documentPath = pathParts.slice(1).join("/");
+  } else if (pathParts[1] === "doc" && pathParts[2]) {
+    spaceSlug = pathParts[0];
+    documentPath = pathParts.slice(2).join("/");
+  }
+
+  if ((!spaceId && !spaceSlug) || !documentPath) return null;
+  let documentId: string;
+  try {
+    documentId = decodeURIComponent(documentPath);
+  } catch {
+    return null;
+  }
+
+  return {
+    documentId,
+    ...(spaceId ? { spaceId } : {}),
+    ...(spaceSlug ? { spaceSlug } : {}),
+    url: url.href,
+  };
+}
+
+async function documentReferenceFromUrl(
+  rawUrl: string,
+): Promise<DocumentLinkReference | null> {
+  const parts = documentUrlPartsFromUrl(rawUrl);
+  if (!parts) return null;
+  if (parts.spaceId) {
+    return {
+      address: createVektorDocumentAddress({
+        origin: new URL(parts.url).origin,
+        spaceId: parts.spaceId,
+        documentId: parts.documentId,
+        href: parts.url,
+      }),
+    };
+  }
+
+  if (isRemoteDocumentUrl(parts.url)) return null;
+
+  const availableSpaces = spaces.value ?? (await api.spaces.get());
+  const space = availableSpaces.find((entry) => entry.slug === parts.spaceSlug);
+  if (!space) return null;
+
+  return {
+    address: createVektorDocumentAddress({
+      origin: window.location.origin,
+      spaceId: space.id,
+      documentId: parts.documentId,
+      href: parts.url,
+    }),
+  };
+}
+
+function insertLinkShape(url: string, at: { x: number; y: number }) {
+  const shape = createLinkShape(url, at);
+  yShapes.set(shape.id, createShapeMap(shape));
+  selectOnlyShape(shape.id);
+  activeTool.value = "select";
+  void linkPreviews.loadPreview(url);
+  saveImmediately();
+}
+
+async function insertDocumentLinkFromReference(
+  ref: DocumentLinkReference,
+  at: { x: number; y: number },
+  options: { fallbackToLink?: boolean } = {},
+) {
+  try {
+    const parsed = parseVektorDocumentAddress(ref.address);
+    if (!parsed) throw new Error("Invalid document address");
+    const doc = isRemoteDocumentAddress(ref.address)
+      ? await fetchRemoteDocumentByAddress(parsed)
+      : await api.document.get(parsed.spaceId, parsed.documentId);
+    documentLinks.insertDocumentLink(
+      {
+        address: createVektorDocumentAddress({
+          origin: parsed.origin,
+          spaceId: parsed.spaceId,
+          documentId: doc.id,
+          href: parsed.href,
+        }),
+      },
+      at,
+      doc,
+    );
+  } catch (err) {
+    const href = parseVektorDocumentAddress(ref.address)?.href;
+    if (options.fallbackToLink && href) {
+      insertLinkShape(href, at);
+      return;
+    }
+    toast.error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function insertDocumentLinkFromUrl(url: string, at: { x: number; y: number }) {
+  const ref = await documentReferenceFromUrl(url);
+  if (!ref) {
+    const metadata = await api.linkPreview.get(url).catch(() => null);
+    const remoteDocument = metadata?.vektorDocument;
+    if (metadata && remoteDocument) {
+      documentLinks.insertDocumentLink(
+        {
+          address:
+            remoteDocument.address ??
+            createVektorDocumentAddress({
+              origin: new URL(metadata.url || url).origin,
+              spaceId: remoteDocument.spaceId,
+              documentId: remoteDocument.documentId,
+              href: metadata.url || url,
+            }),
+        },
+        at,
+        {
+          properties: { title: metadata.title ?? remoteDocument.documentSlug },
+        },
+      );
+      return;
+    }
+    insertLinkShape(url, at);
+    return;
+  }
+  await insertDocumentLinkFromReference(ref, at, { fallbackToLink: true });
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -714,13 +980,14 @@ function toShape(
   id: string,
   source: Y.Map<unknown> | CanvasSerializedShape,
 ): CanvasShape {
-  const read = (key: keyof CanvasShape) =>
-    source instanceof Y.Map ? source.get(key) : source[key];
+  const read = (key: string) => (source instanceof Y.Map ? source.get(key) : source[key]);
 
   const typeValue = read("type");
   const type: CanvasShapeType = isCanvasShapeType(typeValue) ? typeValue : "note";
   const defaultSize = defaultSizeForShape(type);
   const minSize = minSizeForShape(type);
+  const src =
+    typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined;
   return {
     id,
     type,
@@ -733,10 +1000,14 @@ function toShape(
       typeof read("color") === "string"
         ? String(read("color"))
         : defaultColorForShape(type),
-    src:
-      typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined,
+    src,
     alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
-    docId: typeof read("docId") === "string" ? String(read("docId")) : undefined,
+    docAddress: legacyDocumentAddress({
+      docAddress: read("docAddress"),
+      docId: read("docId"),
+      docSpaceId: read("docSpaceId"),
+      src,
+    }),
     updatedAt: toNumber(read("updatedAt"), Date.now()),
   };
 }
@@ -809,7 +1080,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
   map.set("color", shape.color);
   if (shape.src) map.set("src", resolveMediaSrc(shape.src));
   if (shape.alt) map.set("alt", shape.alt);
-  if (shape.docId) map.set("docId", shape.docId);
+  if (shape.docAddress) map.set("docAddress", shape.docAddress);
   map.set("updatedAt", shape.updatedAt);
   return map;
 }
@@ -1351,9 +1622,15 @@ function onDocumentShapeOpen(shape: CanvasShape, event: Event) {
       : null;
   const documentId = requestedDocumentId ?? documentLinks.documentIdForShape(shape);
   if (!documentId) return;
+  const href = documentLinks.documentHrefForShape(shape);
+  if (isRemoteDocumentShape(shape) && href) {
+    window.open(href, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const spaceId = documentLinks.documentSpaceIdForShape(shape) || props.spaceId;
   window.dispatchEvent(
     new CustomEvent("view-document", {
-      detail: { spaceId: props.spaceId, documentId },
+      detail: { spaceId, documentId },
     }),
   );
 }
@@ -1367,18 +1644,24 @@ function setEmbeddedDocumentEditorRef(instance: unknown) {
 function canEditEmbeddedDocument(shape: CanvasShape): boolean {
   if (!userCanEditDocuments.value) return false;
   if (!documentLinks.documentIdForShape(shape)) return false;
+  // Inline editing joins the local collaboration room with the current
+  // space's permissions, so it only applies to documents of this space on
+  // this instance; remote and cross-space embeds stay read-only previews.
+  if (isRemoteDocumentShape(shape)) return false;
+  if (documentLinks.documentSpaceIdForShape(shape) !== props.spaceId) return false;
   return previewSupportsInlineEditing(documentLinks.cachedPreview(shape));
 }
 
 function startEmbeddedDocumentEdit(shape: CanvasShape) {
   if (dragMoved) return;
   const documentId = documentLinks.documentIdForShape(shape);
-  if (!documentId || !canEditEmbeddedDocument(shape)) return;
+  const address = documentAddressForShape(shape);
+  if (!documentId || !address || !canEditEmbeddedDocument(shape)) return;
   if (editingDocumentShape.value?.shapeId !== shape.id) {
     stopEmbeddedDocumentEdit();
   }
   selectOnlyShape(shape.id);
-  editingDocumentShape.value = { shapeId: shape.id, documentId };
+  editingDocumentShape.value = { shapeId: shape.id, documentId, address };
 }
 
 function stopEmbeddedDocumentEdit() {
@@ -1386,7 +1669,7 @@ function stopEmbeddedDocumentEdit() {
   if (!editing) return;
   const html = embeddedDocumentEditor.value?.getHtml();
   if (typeof html === "string") {
-    documentLinks.setPreviewContent(editing.documentId, html);
+    documentLinks.setPreviewContent(editing.address, html);
   }
   editingDocumentShape.value = null;
 }
@@ -1395,6 +1678,17 @@ function onFileShapeClick(event: MouseEvent) {
   if (!dragMoved) return;
   event.preventDefault();
   event.stopPropagation();
+}
+
+// Stamps the active shape-library item at `at` as a regular freehand stroke,
+// so it lives on the ink layer with the same selection, move, recolor, and
+// undo behavior as drawn strokes.
+function placeShapeStroke(at: { x: number; y: number }) {
+  const item = getShapeLibraryItem(activeShapeId.value) ?? SHAPE_LIBRARY[0];
+  const stroke = createShapeStroke(item, at, penColor.value);
+  yStrokes.set(stroke.id, createStrokeMap(stroke));
+  selectStroke(stroke.id, false);
+  activeTool.value = "select";
 }
 
 function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
@@ -1504,6 +1798,12 @@ function setNoteColor(color: string) {
   if (selectedShape.value?.type === "note") {
     updateShape(selectedShape.value.id, { color });
   }
+}
+
+function pickShapeLibraryItem(item: CanvasShapeLibraryItem) {
+  activeShapeId.value = item.id;
+  activeTool.value = "shape";
+  shapePopoverRef.value?.hide();
 }
 
 function setPenColor(color: string) {
@@ -1818,6 +2118,12 @@ function handleViewportPointerDown(event: PointerEvent) {
     return;
   }
 
+  if (activeTool.value === "shape") {
+    placeShapeStroke(screenToWorld(point));
+    event.preventDefault();
+    return;
+  }
+
   if (
     activeTool.value === "note" ||
     activeTool.value === "text" ||
@@ -2061,10 +2367,10 @@ function handleDrop(event: DragEvent) {
   }
 
   // A document dragged from the sidebar or command palette becomes a link card.
-  const droppedId = getDroppedDocumentId(event.dataTransfer, documents.value);
+  const droppedRef = getDroppedDocumentReference(event.dataTransfer);
   if (
-    droppedId &&
-    documentLinks.insertDocumentLink(droppedId, insertionPointFromEvent(event))
+    droppedRef &&
+    documentLinks.insertDocumentLink(droppedRef, insertionPointFromEvent(event))
   ) {
     event.preventDefault();
   }
@@ -2100,6 +2406,26 @@ async function pasteFromContextMenu() {
     return;
   }
 
+  const trimmedText = clipboard.text.trim();
+  const documentRef =
+    /^https?:\/\//i.test(trimmedText) || trimmedText.startsWith("/")
+      ? documentUrlPartsFromUrl(trimmedText)
+      : null;
+  if (documentRef) {
+    void insertDocumentLinkFromUrl(trimmedText, insertAt);
+    return;
+  }
+
+  if (/^https?:\/\//i.test(trimmedText)) {
+    try {
+      new URL(trimmedText);
+      insertLinkShape(trimmedText, insertAt);
+      return;
+    } catch {
+      // not a valid URL, fall through
+    }
+  }
+
   if (clipboard.html.trim()) {
     const inserted = pasteDocumentClipboardShapes(
       documentClipboardToCanvasShapes({
@@ -2111,7 +2437,7 @@ async function pasteFromContextMenu() {
     if (inserted) return;
   }
 
-  if (clipboard.text.trim()) {
+  if (trimmedText) {
     pasteDocumentClipboardShapes(
       documentClipboardToCanvasShapes({ text: clipboard.text, at: insertAt }),
     );
@@ -2416,35 +2742,43 @@ function handlePaste(event: ClipboardEvent) {
     return;
   }
 
-  // 4. Plain-text URL that resolves to an image — fetch and insert as a
-  //    canvas image shape. Must run before the non-empty text bail below
-  //    because an image URL is "real" text we still want to consume.
-  const imageUrl = transformImageUrl(text.trim());
-  if (imageUrl) {
+  const trimmedUrl = text.trim();
+
+  // 4. Internal Vektor document URL — resolve the target space/document and
+  //    insert the same document attachment card used for sidebar drops.
+  const documentRef =
+    /^https?:\/\//i.test(trimmedUrl) || trimmedUrl.startsWith("/")
+      ? documentUrlPartsFromUrl(trimmedUrl)
+      : null;
+  if (documentRef) {
     event.preventDefault();
-    void addImageFromUrl(imageUrl, text.trim(), insertionPointFromEvent());
+    void insertDocumentLinkFromUrl(trimmedUrl, insertionPointFromEvent());
     return;
   }
 
-  // 5. Plain-text HTTP(S) URL — insert as a link preview card.
-  const trimmedUrl = text.trim();
+  // 5. Plain-text URL that resolves to an image — fetch and insert as a
+  //    canvas image shape. Must run before the non-empty text bail below
+  //    because an image URL is "real" text we still want to consume.
+  const imageUrl = transformImageUrl(trimmedUrl);
+  if (imageUrl) {
+    event.preventDefault();
+    void addImageFromUrl(imageUrl, trimmedUrl, insertionPointFromEvent());
+    return;
+  }
+
+  // 6. Plain-text HTTP(S) URL — insert as a link preview card.
   if (/^https?:\/\//i.test(trimmedUrl)) {
     try {
       new URL(trimmedUrl);
       event.preventDefault();
-      const shape = createLinkShape(trimmedUrl, insertionPointFromEvent());
-      yShapes.set(shape.id, createShapeMap(shape));
-      selectOnlyShape(shape.id);
-      activeTool.value = "select";
-      void linkPreviews.loadPreview(trimmedUrl);
-      saveImmediately();
+      insertLinkShape(trimmedUrl, insertionPointFromEvent());
       return;
     } catch {
       // not a valid URL, fall through
     }
   }
 
-  // 6. Rich document/web HTML — map supported nodes to canvas shapes.
+  // 7. Rich document/web HTML — map supported nodes to canvas shapes.
   if (html.trim()) {
     const inserted = pasteDocumentClipboardShapes(
       documentClipboardToCanvasShapes({
@@ -2459,7 +2793,7 @@ function handlePaste(event: ClipboardEvent) {
     }
   }
 
-  // 7. Plain text — create a text shape on the canvas.
+  // 8. Plain text — create a text shape on the canvas.
   if (text.trim().length > 0) {
     event.preventDefault();
     pasteDocumentClipboardShapes(
@@ -2595,6 +2929,7 @@ function handleKeydown(event: KeyboardEvent) {
   if (key === "n") activeTool.value = "note";
   if (key === "t") activeTool.value = "text";
   if (key === "s") activeTool.value = "section";
+  if (key === "r") activeTool.value = "shape";
   if (key === "f") fitView();
 }
 
@@ -2665,13 +3000,15 @@ watch(
       .filter((shape) => shape.type === "document")
       .map((shape) => ({
         shapeId: shape.id,
-        docId: shape.docId ?? null,
+        address: documentAddressForShape(shape) ?? null,
         resolvedDocId: documentLinks.documentIdForShape(shape) ?? null,
       })),
   (documentRefs) => {
     for (const ref of documentRefs) {
       if (ref.resolvedDocId) {
-        void documentLinks.loadPreview(ref.resolvedDocId);
+        void documentLinks.loadPreview({
+          address: ref.address ?? "",
+        });
       }
     }
   },
@@ -2828,6 +3165,7 @@ onUnmounted(() => {
       v-if="
         activeTool === 'draw' ||
         activeTool === 'note' ||
+        activeTool === 'shape' ||
         selectedStrokeIds.size > 0 ||
         selectedShape?.type === 'note'
       "
@@ -2879,13 +3217,13 @@ onUnmounted(() => {
       </span>
       <span
         v-if="
-          (activeTool === 'draw' || selectedStrokeIds.size > 0) &&
+          (activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0) &&
           (activeTool === 'note' || selectedShape?.type === 'note')
         "
         class="canvas-divider"
       ></span>
       <span
-        v-if="activeTool === 'draw' || selectedStrokeIds.size > 0"
+        v-if="activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0"
         class="canvas-note-colors"
         :aria-label="t('Pen color')"
       >
@@ -2915,6 +3253,45 @@ onUnmounted(() => {
       >
         <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="tool.icon" />
       </button>
+      <a-popover-trigger ref="shapePopoverRef" class="canvas-shape-trigger">
+        <button
+          slot="trigger"
+          type="button"
+          class="canvas-tool"
+          :class="{ active: activeTool === 'shape' }"
+          :aria-label="t('Shape')"
+          :aria-pressed="activeTool === 'shape'"
+          :data-tooltip="`${t('Shape')} · R`"
+        >
+          <div
+            class="svg-icon canvas-tool-icon"
+            aria-hidden="true"
+            v-html="canvasShapeIcon"
+          />
+        </button>
+        <a-popover placements="top">
+          <div class="canvas-shape-popover" @pointerdown.stop>
+            <div class="canvas-shape-popover-panel">
+              <button
+                v-for="item in SHAPE_LIBRARY"
+                :key="item.id"
+                type="button"
+                class="canvas-shape-option"
+                :class="{ active: activeTool === 'shape' && activeShapeId === item.id }"
+                :aria-label="t(item.label)"
+                @click="pickShapeLibraryItem(item)"
+              >
+                <div
+                  class="svg-icon canvas-shape-option-icon"
+                  aria-hidden="true"
+                  v-html="item.icon"
+                />
+                <span class="canvas-shape-option-label">{{ t(item.label) }}</span>
+              </button>
+            </div>
+          </div>
+        </a-popover>
+      </a-popover-trigger>
       <span class="canvas-divider"></span>
       <button
         type="button"
@@ -3077,8 +3454,8 @@ onUnmounted(() => {
             :type="documentLinks.shapeType(shape)"
             :status="documentLinks.shapeStatus(shape)"
             :content="documentLinks.shapeContent(shape)"
-            :space-id="props.spaceId"
-            :document-id="documentLinks.documentIdForShape(shape) || ''"
+            :space-id="documentLinks.documentSpaceIdForShape(shape) || props.spaceId"
+            :document-id="isRemoteDocumentShape(shape) ? '' : documentLinks.documentIdForShape(shape) || ''"
             @pointerdown.stop="startShapeDrag(shape, $event)"
             @wheel.stop
             @dblclick="startEmbeddedDocumentEdit(shape)"
@@ -3480,6 +3857,84 @@ onUnmounted(() => {
   width: 1px;
   height: 24px;
   background: var(--canvas-divider-color);
+}
+
+.canvas-shape-trigger {
+  display: inline-flex;
+}
+
+/* The popover content is portaled to the document root, outside .canvas-root,
+   so it cannot use the --canvas-* variables and carries its own colors. */
+.canvas-shape-popover {
+  width: max-content;
+  padding-bottom: 8px;
+  transition: opacity 0.12s ease;
+}
+
+.canvas-shape-popover-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 6px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-shape-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 7px 10px;
+  color: #374151;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.canvas-shape-option:hover {
+  background: #f3f4f6;
+}
+
+.canvas-shape-option.active {
+  border-color: #bfdbfe;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.canvas-shape-option-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .canvas-shape-popover-panel {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(24, 24, 27, 0.94);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  }
+
+  .canvas-shape-option {
+    color: #d1d5db;
+  }
+
+  .canvas-shape-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .canvas-shape-option.active {
+    border-color: rgba(96, 165, 250, 0.48);
+    background: rgba(37, 99, 235, 0.26);
+    color: #bfdbfe;
+  }
 }
 
 .canvas-selection-overlay {
