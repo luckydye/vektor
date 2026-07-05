@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { twMerge } from "tailwind-merge";
 import { nextTick, onMounted, onUnmounted, ref } from "vue";
-import { Actions } from "../utils/actions.ts";
-import { t } from "../utils/lang.ts";
+import { Actions } from "#utils/actions.ts";
+import { t } from "#utils/lang.ts";
 import {
   DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,
@@ -10,7 +10,7 @@ import {
   parseSidebarWidth,
   SIDEBAR_WIDTH_KEY,
   writeSidebarWidthCookie,
-} from "../utils/sidebarState.ts";
+} from "#utils/sidebarState.ts";
 import { Icon } from "./index.ts";
 import Navigation from "./Navigation.vue";
 import UserProfile from "./UserProfile.vue";

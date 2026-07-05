@@ -131,8 +131,8 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useExtensions } from "../composeables/useExtensions.ts";
-import { config } from "../config.ts";
+import { useExtensions } from "#composeables/useExtensions.ts";
+import { config } from "#config";
 import SwitchToggle from "./SwitchToggle.vue";
 
 const uploadAllowed = computed(() => {

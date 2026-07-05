@@ -2,11 +2,11 @@
 import { computed, ref, watch } from "vue";
 import "@atrium-ui/elements/tabs";
 import { Icon } from "~/src/components/index.ts";
-import { api } from "../api/client.ts";
-import { isOwner } from "../composeables/usePermissions.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { getUserInitials } from "../utils/utils.ts";
+import { api } from "#api/client.ts";
+import { isOwner } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { getUserInitials } from "#utils/utils.ts";
 
 const props = defineProps<{
   show: boolean;

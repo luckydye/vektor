@@ -13,7 +13,7 @@ import type { APIRoute } from "astro";
 import { createAccessToken, grantTokenAccess } from "#db/accessTokens.ts";
 import { ResourceType } from "#db/acl.ts";
 import { badRequestResponse, parseJsonBody, withApiErrorHandling } from "#db/api.ts";
-import { pendingCliCodes } from "../cli.ts";
+import { pendingCliCodes } from "#api/routes/v1/auth/cli.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(async () => {

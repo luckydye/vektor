@@ -3,12 +3,12 @@ import type { Editor } from "@tiptap/core";
 import type { Mark, Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { plusSmallIcon } from "~/src/assets/icons.ts";
-import type { Comment as ApiComment } from "../api/ApiClient.ts";
-import { useComments } from "../composeables/useComments.ts";
+import type { Comment as ApiComment } from "#api/ApiClient.ts";
+import { useComments } from "#composeables/useComments.ts";
 import {
   isInlineAnchorReference,
   resolveReferenceSelector,
-} from "../utils/commentReference.ts";
+} from "#utils/commentReference.ts";
 import type { Comment as CommentThreadType } from "./CommentThread.vue";
 import CommentThread from "./CommentThread.vue";
 

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import type { ExcelCell, ExcelSheet } from "../utils/excelExport.ts";
-import { downloadExcelSheets, sanitizeSheetName } from "../utils/excelExport.ts";
-import { spacePath } from "../utils/utils.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import type { ExcelCell, ExcelSheet } from "#utils/excelExport.ts";
+import { downloadExcelSheets, sanitizeSheetName } from "#utils/excelExport.ts";
+import { spacePath } from "#utils/utils.ts";
 import type { ExcelExportConfig } from "./ExcelExportDialog.vue";
 import ExcelExportDialog from "./ExcelExportDialog.vue";
 

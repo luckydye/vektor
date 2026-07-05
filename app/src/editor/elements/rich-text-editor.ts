@@ -3,8 +3,8 @@ import { Placeholder } from "@tiptap/extensions";
 import {
   messageMarkdownToHtml,
   tiptapJsonToMarkdown,
-} from "../../utils/messageMarkdown.ts";
-import { createBaseEditor } from "../extensions.ts";
+} from "#utils/messageMarkdown.ts";
+import { createBaseEditor } from "#editor/extensions.ts";
 
 export type RichTextEditorFormat = "bold" | "italic" | "bulletList" | "orderedList";
 

@@ -1,4 +1,4 @@
-import type * as NativeExec from "../../native/exec/index.d.ts";
+import type * as NativeExec from "#native/exec/index.d.ts";
 
 export type NativeExecAddon = typeof NativeExec;
 

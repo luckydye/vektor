@@ -18,15 +18,15 @@ import {
   PropertyPopover,
 } from "~/src/components/index.ts";
 
-import { useCategories } from "../composeables/useCategories.ts";
-import { useDocument } from "../composeables/useDocument.ts";
-import { useMembers } from "../composeables/useMembers.ts";
-import { useProperties } from "../composeables/useProperties.ts";
+import { useCategories } from "#composeables/useCategories.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { useMembers } from "#composeables/useMembers.ts";
+import { useProperties } from "#composeables/useProperties.ts";
 import {
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
-} from "../utils/documentProperties.ts";
-import { getTextColor } from "../utils/utils.ts";
+} from "#utils/documentProperties.ts";
+import { getTextColor } from "#utils/utils.ts";
 
 const props = defineProps<{
   documentId?: string;

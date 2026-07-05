@@ -1,4 +1,4 @@
-import { config } from "../config.ts";
+import { config } from "#config";
 
 interface FeatureFlags {
   /** Enable canvas/whiteboard document type using tldraw */

@@ -129,8 +129,8 @@
 import { onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { folderLargeIcon } from "~/src/assets/icons.ts";
-import { api } from "../api/client.ts";
-import { slugify } from "../utils/utils.ts";
+import { api } from "#api/client.ts";
+import { slugify } from "#utils/utils.ts";
 
 const router = useRouter();
 const showPrompt = ref(false);

@@ -25,13 +25,13 @@ import {
   trashIcon,
   undoArrowIcon,
 } from "~/src/assets/icons.ts";
-import { api } from "../api/client.ts";
+import { api } from "#api/client.ts";
 import {
   createDocumentLinkController,
   type DocumentLinkReference,
   dragHasDocumentLink,
   droppedDocumentReference as getDroppedDocumentReference,
-} from "../canvas/elements/documentLink.ts";
+} from "#canvas/elements/documentLink.ts";
 import {
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
@@ -48,21 +48,21 @@ import {
   startCanvasDrawingStroke,
   strokeStyleFromUnknown,
   toCanvasStroke,
-} from "../canvas/elements/drawing.ts";
-import { isFigmaClipboardHtml, pasteFigmaClipboard } from "../canvas/elements/figma.ts";
+} from "#canvas/elements/drawing.ts";
+import { isFigmaClipboardHtml, pasteFigmaClipboard } from "#canvas/elements/figma.ts";
 import {
   canvasFilesFromDataTransfer,
   createUploadedFileShape,
   dragHasCanvasFiles,
-} from "../canvas/elements/files.ts";
-import { createLinkPreviewController, createLinkShape } from "../canvas/elements/link.ts";
+} from "#canvas/elements/files.ts";
+import { createLinkPreviewController, createLinkShape } from "#canvas/elements/link.ts";
 import {
   createUploadedMediaShape,
   isMediaElementType,
   mediaFilesFromDataTransfer,
   uploadMediaFile,
-} from "../canvas/elements/media.ts";
-import { createNoteShape, NOTE_COLORS } from "../canvas/elements/note.ts";
+} from "#canvas/elements/media.ts";
+import { createNoteShape, NOTE_COLORS } from "#canvas/elements/note.ts";
 import {
   defaultColorForShape,
   defaultSizeForShape,
@@ -70,14 +70,14 @@ import {
   isCanvasShapeType,
   isValidCanvasShape,
   minSizeForShape,
-} from "../canvas/elements/registry.ts";
+} from "#canvas/elements/registry.ts";
 import {
   type CanvasShapeLibraryItem,
   createShapeStroke,
   getShapeLibraryItem,
   SHAPE_LIBRARY,
-} from "../canvas/elements/shape.ts";
-import { createTextShape, shouldRemoveTextShape } from "../canvas/elements/text.ts";
+} from "#canvas/elements/shape.ts";
+import { createTextShape, shouldRemoveTextShape } from "#canvas/elements/text.ts";
 import type {
   CanvasSerializedShape,
   CanvasShape,
@@ -86,15 +86,15 @@ import type {
   CanvasStroke,
   CanvasStrokeSnapshot,
   CanvasTool,
-} from "../canvas/elements/types.ts";
-import type { CollaborationPresenceProfile } from "../composeables/useCollaboration.ts";
-import { useDocument } from "../composeables/useDocument.ts";
-import { useDocuments } from "../composeables/useDocuments.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import type { CanvasPresenceState } from "../editor/collaboration.ts";
-import "../editor/elements/rich-text-editor.ts";
+} from "#canvas/elements/types.ts";
+import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import "#editor/elements/rich-text-editor.ts";
 import "@atrium-ui/elements/popover";
-import { useToast } from "../composeables/useToast.ts";
+import { useToast } from "#composeables/useToast.ts";
 import {
   CANVAS_CLIPBOARD_MIME,
   type CanvasClipboard,
@@ -106,25 +106,25 @@ import {
   parseCanvasClipboardHtml,
   parseCanvasClipboardJson,
   serializeCanvasClipboard,
-} from "../utils/clipboard.ts";
+} from "#utils/clipboard.ts";
 import {
   createVektorDocumentAddress,
   type ParsedVektorDocumentAddress,
   parseVektorDocumentAddress,
-} from "../utils/documentAddress.ts";
-import { sanitizeVektorDocumentPreviewHtml } from "../utils/documentHtmlSanitizer.ts";
+} from "#utils/documentAddress.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
 import {
   filenameFromUrl,
   IMAGE_RESIZE_TIERS,
   resizeImageUrl,
   transformImageUrl,
-} from "../utils/imageUrlTransformers.ts";
-import { type TranslationKey, t } from "../utils/lang.ts";
+} from "#utils/imageUrlTransformers.ts";
+import { type TranslationKey, t } from "#utils/lang.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   CANVAS_CURSOR_COLOR_STORAGE_KEY,
   readCanvasCursorColor,
-} from "../utils/userPreferences.ts";
+} from "#utils/userPreferences.ts";
 import {
   buildTransform,
   computeSnapGuides,
@@ -145,7 +145,7 @@ import {
   worldToScreen as viewportWorldToScreen,
   type WorldRect,
   worldViewportBounds,
-} from "../viewport/index.ts";
+} from "#viewport/index.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -2965,7 +2965,7 @@ watch(
 );
 
 onMounted(() => {
-  void import("../editor/document.ts");
+  void import("#editor/document.ts");
   refreshCssVars();
   yShapes.observeDeep((_events, transaction) => {
     syncShapesFromY();

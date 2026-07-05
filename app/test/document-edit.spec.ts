@@ -6,7 +6,7 @@ import {
   wsDecodeYjsUpdate,
   wsEncode,
   wsEncodeYjsUpdate,
-} from "../src/utils/realtime.ts";
+} from "#utils/realtime.ts";
 import {
   createApiRequest,
   startTestServer,

@@ -6,9 +6,9 @@ import {
   commandCategoryEdit,
   commandCategoryLs,
   commandCategoryRm,
-} from "../src/cli/category.ts";
-import { commandCreate, commandSet } from "../src/cli/document.ts";
-import { commandUploadFile, toAbsoluteUrl } from "../src/cli/upload.ts";
+} from "#cli/category.ts";
+import { commandCreate, commandSet } from "#cli/document.ts";
+import { commandUploadFile, toAbsoluteUrl } from "#cli/upload.ts";
 
 const HOST = "https://vektor.example.com";
 const SPACE_ID = "space-test-1";

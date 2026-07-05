@@ -5,8 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
-import { config } from "../config.ts";
-import type { ChatMessage } from "../provider/types.ts";
+import { config } from "#config";
+import type { ChatMessage } from "#provider/types.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 const useColor = process.stdout.isTTY === true;

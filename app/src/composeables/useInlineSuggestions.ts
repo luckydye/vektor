@@ -1,8 +1,8 @@
 import type { Editor } from "@tiptap/core";
 import { applyPatch, parsePatch } from "diff";
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
-import { api } from "../api/client.ts";
-import { prettyPrintHtml } from "../utils/prettyHtml.ts";
+import { api } from "#api/client.ts";
+import { prettyPrintHtml } from "#utils/prettyHtml.ts";
 import { useRevisions } from "./useRevisions.ts";
 
 export function useInlineSuggestions(options: {

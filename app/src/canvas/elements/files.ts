@@ -1,4 +1,4 @@
-import "../../editor/elements/file-attachment.ts";
+import "#editor/elements/file-attachment.ts";
 import { isMediaFile, uploadMediaFile } from "./media.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 

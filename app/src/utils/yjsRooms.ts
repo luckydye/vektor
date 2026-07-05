@@ -12,7 +12,7 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#utils/realtime.ts";
-import { contentExtensions } from "../editor/extensions.ts";
+import { contentExtensions } from "#editor/extensions.ts";
 import { parseCanvasContent, seedCanvasDoc } from "./canvasYjs.ts";
 import { stripScriptTags } from "./utils.ts";
 

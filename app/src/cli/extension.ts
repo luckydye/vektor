@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
-import { createZipBuffer, kebabToTitle, type ZipEntry } from "../utils/zip.ts";
+import { createZipBuffer, kebabToTitle, type ZipEntry } from "#utils/zip.ts";
 
 // Default location for extensions, relative to cwd (i.e. the repo root).
 const EXTENSIONS_DIR = "extensions";

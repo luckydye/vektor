@@ -1,4 +1,4 @@
-import type { ChatStreamEvent } from "../types.ts";
+import type { ChatStreamEvent } from "#components/ai-chat/types.ts";
 
 export async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,

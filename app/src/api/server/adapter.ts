@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { auth } from "#auth";
-import { config, getPublicEnv, isTrustProxyEnabled } from "../../config.ts";
-import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "../../noAuth.ts";
+import { config, getPublicEnv, isTrustProxyEnabled } from "#config";
+import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
 import type { ApiContext } from "./types.ts";
 
 /**

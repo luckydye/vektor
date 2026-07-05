@@ -24,7 +24,7 @@ import {
   type Sampler,
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
-import { config } from "../config.ts";
+import { config } from "#config";
 
 const INSTRUMENTATION_SCOPE = "wiki.observability";
 const DEFAULT_OTLP_HTTP_ENDPOINT = "http://127.0.0.1:4318";

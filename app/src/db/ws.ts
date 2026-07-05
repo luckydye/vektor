@@ -3,7 +3,7 @@ import {
   type RealtimeTopic,
   type RealtimeTopicEvent,
   toRealtimeTopicEvent,
-} from "../utils/realtime.ts";
+} from "#utils/realtime.ts";
 
 export interface RealtimeEventEnvelope {
   spaceId: string;

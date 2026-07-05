@@ -1,13 +1,13 @@
 import type { Editor } from "@tiptap/core";
 import type * as Y from "yjs";
-import { api, type ExtensionRoute } from "../api/client.ts";
-import { getActiveEditor } from "../editor/activeEditor.ts";
+import { api, type ExtensionRoute } from "#api/client.ts";
+import { getActiveEditor } from "#editor/activeEditor.ts";
 import {
   registerSuggestionProvider,
   type SuggestionItem,
   type SuggestionProvider,
   unregisterSuggestionProvider,
-} from "../editor/extensions/ExtensionSuggestions.ts";
+} from "#editor/extensions/ExtensionSuggestions.ts";
 import { type ActionOptions, Actions } from "./actions.ts";
 
 export type { SuggestionItem, SuggestionProvider };

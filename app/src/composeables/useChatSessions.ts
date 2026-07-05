@@ -1,4 +1,4 @@
-import { type AIChatMessage, type AIChatSession, api } from "../api/client.ts";
+import { type AIChatMessage, type AIChatSession, api } from "#api/client.ts";
 
 export type UIMessage = AIChatMessage;
 export type ChatSession = AIChatSession;

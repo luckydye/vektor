@@ -3,7 +3,7 @@
 // explicit open button.
 
 import { chevronRightThinIcon, documentIcon, tableRowIcon } from "~/src/assets/icons.ts";
-import type { WorkflowRunStatus } from "../../api/ApiClient.ts";
+import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;
@@ -96,7 +96,7 @@ function setDocumentViewHtml(
     return;
   }
 
-  void import("../document.ts")
+  void import("#editor/document.ts")
     .then(() => customElements.whenDefined("document-view"))
     .then(() => {
       if (!documentView.isConnected) return;
@@ -605,7 +605,7 @@ if (
 
       async loadWorkflowPreview(spaceId: string, documentId: string, key: string) {
         try {
-          const { api } = await import("../../api/client.ts");
+          const { api } = await import("#api/client.ts");
           const latest = await api.workflows.getLatestRun(spaceId, documentId);
           if (this.workflowPreviewKey !== key) return;
           if (!latest) {

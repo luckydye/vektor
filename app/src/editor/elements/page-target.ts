@@ -1,7 +1,7 @@
 import {
   createVektorDocumentAddress,
   parseVektorDocumentAddress,
-} from "../../utils/documentAddress.ts";
+} from "#utils/documentAddress.ts";
 
 const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
 

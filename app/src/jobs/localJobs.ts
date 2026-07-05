@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { Extension, ExtensionManifest, JobDefinition } from "../db/extensions.ts";
-import { createZipBuffer, kebabToTitle, type ZipEntry } from "../utils/zip.ts";
+import type { Extension, ExtensionManifest, JobDefinition } from "#db/extensions.ts";
+import { createZipBuffer, kebabToTitle, type ZipEntry } from "#utils/zip.ts";
 
 const JOBS_DIR = join(process.cwd(), "jobs");
 const EXTENSION_ID = "local-jobs";

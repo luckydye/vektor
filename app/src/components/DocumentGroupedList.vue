@@ -9,13 +9,13 @@ import {
   closeXIcon,
   documentIcon,
 } from "~/src/assets/icons.ts";
-import type { Category, DocumentWithProperties } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import type { Category, DocumentWithProperties } from "#api/client.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import {
   propertyValueToScalar,
   propertyValueToText,
-} from "../utils/documentProperties.ts";
-import { formatDate, normalizeTimestamp, spacePath } from "../utils/utils.ts";
+} from "#utils/documentProperties.ts";
+import { formatDate, normalizeTimestamp, spacePath } from "#utils/utils.ts";
 
 const props = defineProps<{
   items: DocumentWithProperties[];

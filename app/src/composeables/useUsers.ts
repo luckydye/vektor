@@ -1,5 +1,5 @@
 import { computed, type MaybeRef, toValue } from "vue";
-import { api } from "../api/client.ts";
+import { api } from "#api/client.ts";
 import { useQuery } from "./query.ts";
 
 export function useUser(id: MaybeRef<string | undefined>) {

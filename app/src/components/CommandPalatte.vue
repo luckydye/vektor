@@ -7,12 +7,12 @@ import {
   documentIcon,
   searchMagnifierIcon,
 } from "~/src/assets/icons.ts";
-import { useDocuments } from "../composeables/useDocuments.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { Actions } from "../utils/actions.ts";
-import { propertyValueToText } from "../utils/documentProperties.ts";
-import { history } from "../utils/history.ts";
-import { formatRelativeTime, spacePath } from "../utils/utils.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { Actions } from "#utils/actions.ts";
+import { propertyValueToText } from "#utils/documentProperties.ts";
+import { history } from "#utils/history.ts";
+import { formatRelativeTime, spacePath } from "#utils/utils.ts";
 
 const router = useRouter();
 const { documents } = useDocuments();

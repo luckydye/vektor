@@ -47,7 +47,7 @@ export function transformImageUrl(raw: string): string | null {
   return null;
 }
 
-import { withTransformParams } from "../files/transformUrl.ts";
+import { withTransformParams } from "#files/transformUrl.ts";
 
 // Must be a subset of ALLOWED_DIMENSIONS in files/transforms.ts.
 export const IMAGE_RESIZE_TIERS = [320, 1280] as const;

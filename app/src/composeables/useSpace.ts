@@ -1,5 +1,5 @@
 import { computed, inject, type Ref, ref } from "vue";
-import { api, type Space } from "../api/client.ts";
+import { api, type Space } from "#api/client.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 
 export function useSpace() {

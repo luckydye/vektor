@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { canAccessSettings } from "../../composeables/usePermissions.ts";
-import { useSpace } from "../../composeables/useSpace.ts";
-import NoAccess from "../NoAccess.vue";
-import SpaceSettings from "../SpaceSettings.vue";
+import { canAccessSettings } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import NoAccess from "#components/NoAccess.vue";
+import SpaceSettings from "#components/SpaceSettings.vue";
 
 const { currentSpace } = useSpace();
 const isOwner = computed(() => canAccessSettings(currentSpace.value?.userRole));

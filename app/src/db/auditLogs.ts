@@ -1,5 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
 import type { getSpaceDb } from "./db.ts";
 import { type AuditLog, auditLog } from "./schema.ts";
 import { sendSyncEvent } from "./ws.ts";

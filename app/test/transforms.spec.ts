@@ -10,12 +10,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { getNativeImage } from "../src/files/native.ts";
+import { getNativeImage } from "#files/native.ts";
 import {
   parseTransformParams,
   transformCachePath,
   withTransformParams,
-} from "../src/files/transforms.ts";
+} from "#files/transforms.ts";
 import {
   createApiRequest,
   startTestServer,

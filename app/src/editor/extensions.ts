@@ -3,7 +3,7 @@ import { NodeSelection, Plugin, PluginKey, TextSelection } from "@tiptap/pm/stat
 import {
   canvasClipboardFromDataTransfer,
   canvasClipboardToDocumentHtml,
-} from "../utils/clipboard.ts";
+} from "#utils/clipboard.ts";
 import {
   BackgroundColor,
   Bold,

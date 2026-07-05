@@ -1,14 +1,14 @@
 ---
-import SpaceApp from "../../components/SpaceApp.vue";
-import { verifyDocumentRole, verifySpaceRole } from "../../db/api.ts";
-import { getDocumentBySlug } from "../../db/documents.ts";
-import BaseLayout from "../../layouts/BaseLayout.astro";
-import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "../../utils/sidebarState.ts";
+import SpaceApp from "#components/SpaceApp.vue";
+import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
+import { getDocumentBySlug } from "#db/documents.ts";
+import BaseLayout from "#layouts/BaseLayout.astro";
+import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 import {
   requireSpaceViewer,
   resolveSpacePage,
   resolveUserSpaceRole,
-} from "../../utils/spacePage.ts";
+} from "#utils/spacePage.ts";
 
 const result = await resolveSpacePage(Astro);
 if (result.response) return result.response;

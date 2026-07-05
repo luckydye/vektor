@@ -1,7 +1,7 @@
 import { ref } from "vue";
-import { getSession } from "../composeables/auth-client.ts";
-import { config } from "../config.ts";
-import { LOCAL_USER } from "../noAuth.ts";
+import { getSession } from "#composeables/auth-client.ts";
+import { config } from "#config";
+import { LOCAL_USER } from "#noAuth";
 
 type UserProfile = {
   id: string;

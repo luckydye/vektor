@@ -1,11 +1,11 @@
-import { config } from "../config.ts";
+import { config } from "#config";
 import {
   createParseErrorResponse,
   handleMcpRequest,
   type JsonRpcRequest,
   type JsonRpcResponse,
   type VektorMcpConfig,
-} from "../utils/vektorMcp.ts";
+} from "#utils/vektorMcp.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 function writeResponse(response: JsonRpcResponse | null): void {

@@ -2,9 +2,9 @@
 import { computed, onUnmounted, ref } from "vue";
 import { closeIcon } from "~/src/assets/icons.ts";
 import { ButtonSecondary } from "~/src/components/index.ts";
-import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { Actions } from "../utils/actions.ts";
-import { t } from "../utils/lang.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { Actions } from "#utils/actions.ts";
+import { t } from "#utils/lang.ts";
 
 const show = ref(false);
 const user = useUserProfile();

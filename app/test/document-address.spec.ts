@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { remoteDocumentPathParts } from "../src/api/routes/v1/url-metadata.ts";
+import { remoteDocumentPathParts } from "#api/routes/v1/url-metadata.ts";
 import {
   createVektorDocumentAddress,
   parseVektorDocumentAddress,
-} from "../src/utils/documentAddress.ts";
+} from "#utils/documentAddress.ts";
 
 describe("Vektor document addresses", () => {
   it("returns null for malformed percent-encoding", () => {

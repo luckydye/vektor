@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useDocument } from "../composeables/useDocument.ts";
-import { uploadingDocumentId } from "../composeables/useHeaderImage.ts";
-import { withTransformParams } from "../files/transformUrl.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { uploadingDocumentId } from "#composeables/useHeaderImage.ts";
+import { withTransformParams } from "#files/transformUrl.ts";
 
 const props = defineProps<{ documentId: string; initialSrc?: string | null }>();
 

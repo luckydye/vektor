@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { defineAsyncComponent, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { clockIcon } from "~/src/assets/icons.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { replaceBrowserUrl } from "../utils/browserHistory.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import DiffView from "./DiffView.vue";
 
 const props = defineProps<{

@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
-import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { createAuditLog } from "./auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "./db.ts";
 import { user } from "./schema/auth.ts";

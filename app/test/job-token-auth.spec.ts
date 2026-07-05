@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createJobToken } from "../src/jobs/jobToken.ts";
+import { createJobToken } from "#jobs/jobToken.ts";
 import {
   createApiRequest,
   startTestServer,

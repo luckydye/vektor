@@ -2,7 +2,7 @@ import type {
   FreehandPoint,
   FreehandStroke,
   FreehandStrokeStyle,
-} from "../../viewport/index.ts";
+} from "#viewport/index.ts";
 
 export type CanvasTool = "select" | "draw" | "note" | "text" | "section" | "shape";
 export type CanvasElementType =

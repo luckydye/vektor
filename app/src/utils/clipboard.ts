@@ -2,7 +2,7 @@ import type {
   CanvasSerializedShape,
   CanvasShape,
   CanvasStrokeSnapshot,
-} from "../canvas/elements/types.ts";
+} from "#canvas/elements/types.ts";
 import { htmlToMarkdown } from "./documentMarkdown.ts";
 import { messageMarkdownToHtml } from "./messageMarkdown.ts";
 

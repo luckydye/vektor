@@ -4,9 +4,9 @@ import {
   hasPermission,
   listUserPermissions,
   ResourceType,
-} from "../db/acl.ts";
-import { getSpaceBySlug, type Space } from "../db/spaces.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
+} from "#db/acl.ts";
+import { getSpaceBySlug, type Space } from "#db/spaces.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 
 type SpacePageResult =
   | { space: Space; response?: undefined }

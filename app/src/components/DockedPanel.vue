@@ -10,8 +10,8 @@ import {
 import {
   type DockedWindowState,
   useDockedWindows,
-} from "../composeables/useDockedWindows.ts";
-import { getInsets, type Insets, onInsets } from "../utils/insets.ts";
+} from "#composeables/useDockedWindows.ts";
+import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
 
 const props = defineProps<{
   id: string;

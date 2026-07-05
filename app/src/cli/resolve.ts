@@ -1,4 +1,4 @@
-import { config } from "../config.ts";
+import { config } from "#config";
 
 const DEFAULT_HOST = "http://localhost:8080";
 

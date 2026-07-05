@@ -1,5 +1,5 @@
 import { defineCommand } from "just-bash";
-import { SsrfError, safeFetch } from "../../utils/ssrf.ts";
+import { SsrfError, safeFetch } from "#utils/ssrf.ts";
 
 export const curlCommand = defineCommand("curl", async (args, ctx) => {
   let silent = false;

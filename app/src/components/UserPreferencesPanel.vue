@@ -7,13 +7,13 @@ import {
   api,
   type OAuthIntegrationConnection,
   type OAuthIntegrationProvider,
-} from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+} from "#api/client.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import {
   DEFAULT_CANVAS_CURSOR_COLOR,
   readCanvasCursorColor,
   saveCanvasCursorColor,
-} from "../utils/userPreferences.ts";
+} from "#utils/userPreferences.ts";
 import SettingsLayout from "./SettingsLayout.vue";
 
 type ThemePreference = "system" | "light" | "dark";

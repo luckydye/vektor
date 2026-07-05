@@ -11,13 +11,13 @@ import {
   settingsIcon,
 } from "~/src/assets/icons.ts";
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
-import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
-import { useRoute } from "../composeables/useRoute.ts";
-import { type Space as ApiSpace, useSpace } from "../composeables/useSpace.ts";
-import { Actions } from "../utils/actions.ts";
-import { extensions } from "../utils/extensions.ts";
-import { t } from "../utils/lang.ts";
-import { spacePath } from "../utils/utils.ts";
+import { canAccessSettings, canEdit } from "#composeables/usePermissions.ts";
+import { useRoute } from "#composeables/useRoute.ts";
+import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
+import { Actions } from "#utils/actions.ts";
+import { extensions } from "#utils/extensions.ts";
+import { t } from "#utils/lang.ts";
+import { spacePath } from "#utils/utils.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
 import DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";

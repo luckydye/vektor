@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { extractMentionsFromHtml, getUniqueMentionedEmails } from "../src/db/mentions.ts";
+import { extractMentionsFromHtml, getUniqueMentionedEmails } from "#db/mentions.ts";
 
 describe("Mention extraction", () => {
   it("extracts mentions from HTML with user-mention elements", () => {

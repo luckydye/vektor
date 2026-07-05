@@ -100,8 +100,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { type AIConfigMeta, api } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import { type AIConfigMeta, api } from "#api/client.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
 

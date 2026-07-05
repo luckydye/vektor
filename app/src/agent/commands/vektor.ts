@@ -1,7 +1,7 @@
 import { defineCommand } from "just-bash";
-import { type EditOperation, parseJsonPath } from "../../utils/documentEdit.ts";
-import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
-import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
+import { type EditOperation, parseJsonPath } from "#utils/documentEdit.ts";
+import type { VektorMcpConfig } from "#utils/vektorMcp.ts";
+import { callTool as callVektorTool } from "#utils/vektorMcp.ts";
 
 function formatVektorValue(value: unknown, json: boolean): string {
   if (json || typeof value === "string") {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   renderMessageMarkdown,
   tiptapJsonToMarkdown,
-} from "../src/utils/messageMarkdown.ts";
+} from "#utils/messageMarkdown.ts";
 
 describe("message markdown", () => {
   test("serializes minimal Tiptap formatting as markdown", () => {

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { config } from "../config.ts";
-import { getLocalExtension, getLocalExtensionPackage } from "../jobs/localJobs.ts";
+import { config } from "#config";
+import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts";
 import {
   type ExtensionManifest,
   type ExtensionRoute,
@@ -9,7 +9,7 @@ import {
   extractManifest,
   type JobDefinition,
   type JobIOField,
-} from "../utils/extensionManifest.ts";
+} from "#utils/extensionManifest.ts";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
 

@@ -7,12 +7,12 @@ import {
   searchMagnifierIcon,
   spinnerIcon,
 } from "~/src/assets/icons.ts";
-import { api, type PropertyFilter } from "../api/client.ts";
-import { useInfiniteQuery } from "../composeables/query.ts";
-import { usePagedList } from "../composeables/usePagedList.ts";
-import { canEdit } from "../composeables/usePermissions.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { replaceBrowserUrl } from "../utils/browserHistory.ts";
+import { api, type PropertyFilter } from "#api/client.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
+import { usePagedList } from "#composeables/usePagedList.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
 import Pager from "./Pager.vue";
 import SearchFilters from "./SearchFilters.vue";

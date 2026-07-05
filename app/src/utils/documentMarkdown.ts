@@ -1,5 +1,5 @@
 import * as html5parser from "html5parser";
-import type { DocumentWithProperties } from "../db/documents.ts";
+import type { DocumentWithProperties } from "#db/documents.ts";
 import { optionalPropertyValueToText } from "./documentProperties.ts";
 
 type TagNode = html5parser.ITag;

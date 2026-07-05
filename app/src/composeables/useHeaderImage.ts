@@ -1,5 +1,5 @@
 import { computed, ref } from "vue";
-import { api } from "../api/client.ts";
+import { api } from "#api/client.ts";
 import { useProperties } from "./useProperties.ts";
 import { useSpace } from "./useSpace.ts";
 

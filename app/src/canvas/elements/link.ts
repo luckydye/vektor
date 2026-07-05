@@ -1,6 +1,6 @@
 import { ref } from "vue";
-import { api } from "../../api/client.ts";
-import type { LinkMetadata } from "../../api/routes/v1/url-metadata.ts";
+import { api } from "#api/client.ts";
+import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 export const linkElement: CanvasElementDefinition = {

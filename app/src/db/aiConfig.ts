@@ -1,5 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
-import type { AIProvider } from "../provider/types.ts";
+import type { AIProvider } from "#provider/types.ts";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import { preference, spaceSecret } from "./schema/space.ts";

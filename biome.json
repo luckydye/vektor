@@ -8,7 +8,20 @@
   "linter": {
     "rules": {
       "style": {
-        "noDefaultExport": "error"
+        "noDefaultExport": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "patterns": [
+              {
+                "group": [
+                  "../**"
+                ],
+                "message": "Relative parent imports (\"../\") are not allowed. Use an alias or an absolute/root-relative import instead."
+              }
+            ]
+          }
+        }
       },
       "nursery": {
         "useSortedClasses": {

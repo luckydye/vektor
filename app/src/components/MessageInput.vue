@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { closeSmallIcon, paperclipIcon, sendPlaneIcon } from "~/src/assets/icons.ts";
-import "../editor/elements/rich-text-editor.ts";
+import "#editor/elements/rich-text-editor.ts";
 import type {
   RichTextEditorElementApi,
   RichTextEditorFormat,
-} from "../editor/elements/rich-text-editor.ts";
+} from "#editor/elements/rich-text-editor.ts";
 
 export type PendingAttachment = {
   id: string;

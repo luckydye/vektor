@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { config } from "../config.ts";
+import { config } from "#config";
 
 type EncryptedValue = {
   ciphertext: string;

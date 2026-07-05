@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { AuditLog } from "../api/client.ts";
-import { checkCircleOutlineIcon, editOutlineIcon, plusIcon } from "../assets/icons.ts";
+import type { AuditLog } from "#api/client.ts";
+import { checkCircleOutlineIcon, editOutlineIcon, plusIcon } from "#assets/icons.ts";
 import {
   formatActivityTime,
   formatPropertyKey,
   getAuditEventLabel,
   hasPropertyChange,
-} from "../utils/auditActivity.ts";
-import { normalizeTimestamp } from "../utils/utils.ts";
+} from "#utils/auditActivity.ts";
+import { normalizeTimestamp } from "#utils/utils.ts";
 
 interface UserLike {
   name?: string;

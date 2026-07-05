@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 import * as Y from "yjs";
-import type { CanvasTool } from "../canvas/elements/types.ts";
+import type { CanvasTool } from "#canvas/elements/types.ts";
 
 type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;
 

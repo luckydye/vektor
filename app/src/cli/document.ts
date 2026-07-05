@@ -15,7 +15,7 @@
  *   document search <query>                    full-text search, prints matching docs
  */
 
-import { config } from "../config.ts";
+import { config } from "#config";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 function apiUrl(host: string, path: string): string {

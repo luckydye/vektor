@@ -1,4 +1,4 @@
-import { api } from "../../api/client.ts";
+import { api } from "#api/client.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 const mediaMinSize = { width: 80, height: 60 };

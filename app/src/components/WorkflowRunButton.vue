@@ -5,8 +5,8 @@ import {
   playCircleFilledIcon,
   spinnerQuarterIcon,
 } from "~/src/assets/icons.ts";
-import { api } from "../api/client.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { api } from "#api/client.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
 
 const props = defineProps<{
   documentId: string;

@@ -4,8 +4,8 @@ import Avatar from "./Avatar.vue";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
-import { authClient } from "../composeables/auth-client.ts";
-import { useUserProfile } from "../composeables/useUserProfile.ts";
+import { authClient } from "#composeables/auth-client.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 
 const profileUser = useUserProfile();
 const isMounted = ref(false);

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { isInMemoryDb } from "../inMemoryDb.ts";
+import { isInMemoryDb } from "#inMemoryDb";
 import {
   applySpaceDbPragmas,
   initSpaceDbSchema,

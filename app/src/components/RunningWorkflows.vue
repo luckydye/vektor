@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
-import { api } from "../api/client.ts";
-import { usePagedList } from "../composeables/usePagedList.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
-import { normalizeTimestamp, spacePath } from "../utils/utils.ts";
+import { api } from "#api/client.ts";
+import { usePagedList } from "#composeables/usePagedList.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
+import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import Pager from "./Pager.vue";
 
 const { currentSpace } = useSpace();

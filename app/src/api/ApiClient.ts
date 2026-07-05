@@ -16,7 +16,7 @@ import {
   wsDecodeYjsUpdate,
   wsEncode,
   wsEncodeYjsUpdate,
-} from "../utils/realtime.ts";
+} from "#utils/realtime.ts";
 
 export interface User {
   id: string;

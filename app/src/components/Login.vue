@@ -7,7 +7,7 @@ import {
   FormField,
   Input,
 } from "~/src/components/index.ts";
-import { authClient } from "../composeables/auth-client.ts";
+import { authClient } from "#composeables/auth-client.ts";
 
 const conf = config();
 const showPasswordLogin = conf.AUTH_LOGIN !== "false";

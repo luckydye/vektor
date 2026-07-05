@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
-import { appLogger } from "../observability/logger.ts";
+import { appLogger } from "#observability/logger.ts";
 import { getSpaceDb } from "./db.ts";
 import { type JobRun, type JobRunInsert, jobRun } from "./schema/space.ts";
 

@@ -1,11 +1,11 @@
 import { eq, sql } from "drizzle-orm";
-import { config } from "../config.ts";
+import { config } from "#config";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToText,
-} from "../utils/documentProperties.ts";
-import { normalizeTimestamp } from "../utils/utils.ts";
+} from "#utils/documentProperties.ts";
+import { normalizeTimestamp } from "#utils/utils.ts";
 import { listAccessibleResources, ResourceType } from "./acl.ts";
 import { getSpaceDb } from "./db.ts";
 import { document, file as fileTable, property } from "./schema/space.ts";

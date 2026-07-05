@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
-import { notFoundResponse } from "../db/api.ts";
+import { notFoundResponse } from "#db/api.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";

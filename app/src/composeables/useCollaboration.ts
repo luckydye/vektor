@@ -9,8 +9,8 @@ import {
   watch,
 } from "vue";
 import * as Y from "yjs";
-import type { PresenceEnvelope, PresenceUser } from "../utils/realtime.ts";
-import { joinPresenceRoom, joinYjsRoom } from "../utils/sync.ts";
+import type { PresenceEnvelope, PresenceUser } from "#utils/realtime.ts";
+import { joinPresenceRoom, joinYjsRoom } from "#utils/sync.ts";
 import { useUserProfile } from "./useUserProfile.ts";
 
 export type CollaborationPresenceProfile<TState> = {

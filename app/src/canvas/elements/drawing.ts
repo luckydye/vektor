@@ -1,6 +1,6 @@
 import * as Y from "yjs";
-import { canvasPenIcon, pencilIcon } from "../../assets/icons.ts";
-import type { TranslationKey } from "../../utils/lang.ts";
+import { canvasPenIcon, pencilIcon } from "#assets/icons.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 import {
   buildFreehandStroke,
   createFreehandStrokeBuilder,
@@ -15,7 +15,7 @@ import {
   type ScreenSize,
   type SnapGuide,
   type WorldTransform,
-} from "../../viewport/index.ts";
+} from "#viewport/index.ts";
 import type { CanvasStroke, CanvasStrokeSnapshot } from "./types.ts";
 
 export type DrawStrokeMode = "pencil" | "pen";

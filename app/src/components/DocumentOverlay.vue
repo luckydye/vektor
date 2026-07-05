@@ -27,13 +27,13 @@ import {
   documentIcon,
   warningTriangleIcon,
 } from "~/src/assets/icons.ts";
-import type { Comment } from "../api/ApiClient.ts";
-import { api } from "../api/client.ts";
-import { useComments } from "../composeables/useComments.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import docStyles from "../styles/document.css?inline";
-import { propertyValueToText } from "../utils/documentProperties.ts";
-import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
+import type { Comment } from "#api/ApiClient.ts";
+import { api } from "#api/client.ts";
+import { useComments } from "#composeables/useComments.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import docStyles from "#styles/document.css?inline";
+import { propertyValueToText } from "#utils/documentProperties.ts";
+import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 
 interface OverlayState {
   documentId: string;

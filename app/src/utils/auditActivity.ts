@@ -17,7 +17,7 @@ import {
   trashCanIcon,
   unlockIcon,
 } from "~/src/assets/icons.ts";
-import type { AuditLog } from "../api/client.ts";
+import type { AuditLog } from "#api/client.ts";
 import { normalizeTimestamp } from "./utils.ts";
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, toRef } from "vue";
-import { useUser } from "../composeables/useUsers.ts";
+import { useUser } from "#composeables/useUsers.ts";
 
 interface Props {
   user?: {

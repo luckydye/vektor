@@ -1,6 +1,6 @@
 import { defineCommand } from "just-bash";
-import type { VektorMcpConfig } from "../../utils/vektorMcp.ts";
-import { callTool as callVektorTool } from "../../utils/vektorMcp.ts";
+import type { VektorMcpConfig } from "#utils/vektorMcp.ts";
+import { callTool as callVektorTool } from "#utils/vektorMcp.ts";
 
 async function gitlabApiRequest(
   mcpConfigRef: { current: VektorMcpConfig },

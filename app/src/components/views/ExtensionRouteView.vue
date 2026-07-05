@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { useExtensions } from "../../composeables/useExtensions.ts";
-import { useSpace } from "../../composeables/useSpace.ts";
-import ExtensionView from "../ExtensionView.vue";
+import { useExtensions } from "#composeables/useExtensions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import ExtensionView from "#components/ExtensionView.vue";
 
 const { currentSpace } = useSpace();
 const { extensions } = useExtensions();

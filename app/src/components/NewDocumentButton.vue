@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Icon } from "~/src/components/index.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 const router = useRouter();
 const isCreating = ref(false);

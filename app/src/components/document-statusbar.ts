@@ -1,5 +1,5 @@
 import { html, render } from "lit-html";
-import { Actions } from "../utils/actions.ts";
+import { Actions } from "#utils/actions.ts";
 
 if (
   typeof customElements !== "undefined" &&

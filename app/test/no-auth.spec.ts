@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { Feature, hasFeature } from "../src/db/acl.ts";
-import { createSpace } from "../src/db/spaces.ts";
-import { LOCAL_USER_ID } from "../src/noAuth.ts";
+import { Feature, hasFeature } from "#db/acl.ts";
+import { createSpace } from "#db/spaces.ts";
+import { LOCAL_USER_ID } from "#noAuth";
 
 const DATA_DIR = "./data";
 

@@ -2,16 +2,16 @@
 import "@atrium-ui/elements/popover";
 import { nextTick, ref, watch } from "vue";
 import { fileSpreadsheetIcon, plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
-import { useDatabaseCsvImport } from "../composeables/useDatabaseCsvImport.ts";
-import type { DatabaseColumn } from "../composeables/useDatabaseRows.ts";
-import { useDatabaseRows } from "../composeables/useDatabaseRows.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { useToast } from "../composeables/useToast.ts";
+import { useDatabaseCsvImport } from "#composeables/useDatabaseCsvImport.ts";
+import type { DatabaseColumn } from "#composeables/useDatabaseRows.ts";
+import { useDatabaseRows } from "#composeables/useDatabaseRows.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import {
   type DocumentPropertyValue,
   propertyValueToText,
-} from "../utils/documentProperties.ts";
-import { spacePath } from "../utils/utils.ts";
+} from "#utils/documentProperties.ts";
+import { spacePath } from "#utils/utils.ts";
 
 const { currentSpace } = useSpace();
 

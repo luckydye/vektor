@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import path, { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { isInMemoryDb } from "../inMemoryDb.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
-import { slugify } from "../utils/utils.ts";
+import { isInMemoryDb } from "#inMemoryDb";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+import { slugify } from "#utils/utils.ts";
 import {
   countSpaceMembers,
   getUserGroups,

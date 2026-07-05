@@ -2,11 +2,11 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { boltIcon, fileTextIcon, imageIcon, tableRowIcon } from "~/src/assets/icons.ts";
-import canvasPreview from "../assets/new-document-picker/canvas-preview.svg?raw";
-import databasePreview from "../assets/new-document-picker/database-preview.svg?raw";
-import documentPreview from "../assets/new-document-picker/document-preview.svg?raw";
-import starterIllustration from "../assets/new-document-picker/starter.svg?raw";
-import workflowPreview from "../assets/new-document-picker/workflow-preview.svg?raw";
+import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
+import databasePreview from "#assets/new-document-picker/database-preview.svg?raw";
+import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
+import starterIllustration from "#assets/new-document-picker/starter.svg?raw";
+import workflowPreview from "#assets/new-document-picker/workflow-preview.svg?raw";
 
 const router = useRouter();
 const visible = ref(true);

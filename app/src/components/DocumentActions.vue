@@ -8,15 +8,15 @@ import {
   ContextMenuItem,
   Icon,
 } from "~/src/components/index.ts";
-import { api } from "../api/client.ts";
-import { useDockedWindows } from "../composeables/useDockedWindows.ts";
-import { useDocumentContext } from "../composeables/useDocument.ts";
-import { useEditor } from "../composeables/useEditor.ts";
-import { useHeaderImage } from "../composeables/useHeaderImage.ts";
-import { canEdit } from "../composeables/usePermissions.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { type ActionOptions, Actions } from "../utils/actions.ts";
-import { t } from "../utils/lang.ts";
+import { api } from "#api/client.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
+import { useDocumentContext } from "#composeables/useDocument.ts";
+import { useEditor } from "#composeables/useEditor.ts";
+import { useHeaderImage } from "#composeables/useHeaderImage.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { type ActionOptions, Actions } from "#utils/actions.ts";
+import { t } from "#utils/lang.ts";
 import Contributors from "./Contributors.vue";
 import DocumentShareDialog from "./DocumentShareDialog.vue";
 import HeaderImageDialog from "./HeaderImageDialog.vue";
