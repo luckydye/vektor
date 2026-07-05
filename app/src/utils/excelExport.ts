@@ -13,18 +13,22 @@ type ZipEntry = {
 };
 
 function escapeXml(value: string): string {
-  return value
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return (
+    value
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: strips XML-invalid control chars
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+  );
 }
 
 export function excelFileName(fileName: string): string {
   const baseName = fileName
     .replace(/\.[^.]+$/, "")
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: strips filesystem-invalid control chars
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
     .trim();
   return `${baseName || "data"}.xlsx`;
