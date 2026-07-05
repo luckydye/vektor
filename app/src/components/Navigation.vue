@@ -34,12 +34,7 @@ interface UiSpace {
 const router = useRouter();
 const { pathname } = useRoute();
 
-const {
-  currentSpace,
-  spaces,
-  createSpace,
-  isLoading: spaceIsLoading,
-} = useSpace();
+const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
 
 const showCreateDialog = ref(false);
 const documentTree = ref<InstanceType<typeof DocumentTree> | null>(null);
@@ -56,7 +51,10 @@ const activeRoute = computed(() => {
     activeRoute = match ? `x/${match[1]}` : "";
   } else if (pathname.value.includes("/settings")) {
     activeRoute = "settings";
-  } else if (pathname.value === "/" || pathname.value.split("/").filter(Boolean).length === 0) {
+  } else if (
+    pathname.value === "/" ||
+    pathname.value.split("/").filter(Boolean).length === 0
+  ) {
     activeRoute = "home";
   }
 

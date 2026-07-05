@@ -15,7 +15,11 @@ import {
 import { deleteCategory, getCategory, updateCategory } from "#db/categories.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 
-async function verifyCategoryRead(context: Parameters<APIRoute>[0], spaceId: string, id: string) {
+async function verifyCategoryRead(
+  context: Parameters<APIRoute>[0],
+  spaceId: string,
+  id: string,
+) {
   if (context.request.headers.get("X-Job-Token")) {
     await authenticateSpaceAccess(context, spaceId, "viewer");
     return;

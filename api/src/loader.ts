@@ -60,7 +60,9 @@ function normalizeOptions(
   spaceIdOrOptions?: string | VektorLoaderOptions,
 ): NormalizedVektorLoaderOptions {
   const options =
-    typeof spaceIdOrOptions === "string" ? { spaceId: spaceIdOrOptions } : (spaceIdOrOptions ?? {});
+    typeof spaceIdOrOptions === "string"
+      ? { spaceId: spaceIdOrOptions }
+      : (spaceIdOrOptions ?? {});
   return {
     spaceId: options.spaceId,
     revision: options.revision ?? "published",
@@ -77,7 +79,9 @@ function isAbsoluteUrl(value: string): boolean {
 }
 
 /** Parses a property value as either a JSON array or object of URLs. Returns null if neither. */
-function parseAssetContainer(value: string | undefined): string[] | Record<string, string> | null {
+function parseAssetContainer(
+  value: string | undefined,
+): string[] | Record<string, string> | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value);
@@ -341,7 +345,13 @@ export function vektorLoader(
                       if (!container) return null;
                       const downloadIfAbsolute = async (url: string) => {
                         if (!isAbsoluteUrl(url)) return url;
-                        const result = await downloadImage(url, client, assetsDir, urlCache, gate);
+                        const result = await downloadImage(
+                          url,
+                          client,
+                          assetsDir,
+                          urlCache,
+                          gate,
+                        );
                         return result?.publicPath ?? url;
                       };
                       const rewritten = Array.isArray(container)
@@ -362,7 +372,8 @@ export function vektorLoader(
 
           const properties = { ...full.properties };
           for (const entry of rewrittenAssetProperties) {
-            if (entry && entry[0] in properties) properties[entry[0]] = JSON.stringify(entry[1]);
+            if (entry && entry[0] in properties)
+              properties[entry[0]] = JSON.stringify(entry[1]);
           }
 
           store.set({

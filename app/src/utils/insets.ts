@@ -101,7 +101,11 @@ export function bindInsets(el: HTMLElement): () => void {
 
 // <inset-view> custom element — replace `<div data-inset>` with this tag.
 // Self-subscribes when connected to the DOM; no external initInsets() call needed.
-if (typeof customElements !== "undefined" && typeof HTMLElement !== "undefined" && !customElements.get("inset-view")) {
+if (
+  typeof customElements !== "undefined" &&
+  typeof HTMLElement !== "undefined" &&
+  !customElements.get("inset-view")
+) {
   customElements.define(
     "inset-view",
     class InsetView extends HTMLElement {

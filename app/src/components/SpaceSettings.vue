@@ -741,8 +741,15 @@ function formatDate(date: string | Date): string {
   });
 }
 
-function resourceLabel(resource: { resourceType: string; resourceId: string; permission: string }): string {
-  if (resource.resourceType === "feature" && resource.resourceId === "manage_extensions") {
+function resourceLabel(resource: {
+  resourceType: string;
+  resourceId: string;
+  permission: string;
+}): string {
+  if (
+    resource.resourceType === "feature" &&
+    resource.resourceId === "manage_extensions"
+  ) {
     return "Extensions (install/update)";
   }
   if (resource.resourceType === "feature") {

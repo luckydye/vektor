@@ -316,8 +316,16 @@ export function renderCanvasInk(params: {
   snapGuides: SnapGuide[];
   defaultInkColor: string;
 }) {
-  const { context, dpr, screen, transform, strokes, activeStroke, snapGuides, defaultInkColor } =
-    params;
+  const {
+    context,
+    dpr,
+    screen,
+    transform,
+    strokes,
+    activeStroke,
+    snapGuides,
+    defaultInkColor,
+  } = params;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, screen.width, screen.height);
@@ -340,8 +348,21 @@ export function renderCanvasSelections(params: {
   strokes: CanvasStroke[];
   selectedStrokeIds: Set<string>;
   remoteSelectedStrokeIds?: Array<{ ids: Set<string>; color: string }>;
-  selectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string }>;
-  remoteSelectedShapeBounds?: Array<{ x: number; y: number; width: number; height: number; type?: string; color: string }>;
+  selectedShapeBounds?: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    type?: string;
+  }>;
+  remoteSelectedShapeBounds?: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    type?: string;
+    color: string;
+  }>;
 }) {
   const {
     context,

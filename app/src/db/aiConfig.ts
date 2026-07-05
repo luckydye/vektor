@@ -144,15 +144,17 @@ export async function deleteAIConfig(spaceId: string): Promise<void> {
   await db.delete(spaceSecret).where(eq(spaceSecret.name, AI_API_KEY_SECRET));
 }
 
-export type AIConfigMeta = {
-  configured: false;
-} | {
-  configured: true;
-  provider: string;
-  model: string;
-  baseUrl?: string;
-  hasApiKey: boolean;
-};
+export type AIConfigMeta =
+  | {
+      configured: false;
+    }
+  | {
+      configured: true;
+      provider: string;
+      model: string;
+      baseUrl?: string;
+      hasApiKey: boolean;
+    };
 
 export async function getAIConfigMeta(spaceId: string): Promise<AIConfigMeta> {
   const db = await getSpaceDb(spaceId);

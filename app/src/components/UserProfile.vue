@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { cogIcon, mailIcon, signOutIcon, archiveBoxIcon } from "~/src/assets/icons.ts";
+import { archiveBoxIcon, cogIcon, mailIcon, signOutIcon } from "~/src/assets/icons.ts";
 import Avatar from "./Avatar.vue";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@atrium-ui/elements/popover";
@@ -9,8 +9,10 @@ import { useUserProfile } from "../composeables/useUserProfile.ts";
 
 const profileUser = useUserProfile();
 const isMounted = ref(false);
-onMounted(() => { isMounted.value = true; });
-const user = computed(() => isMounted.value ? profileUser.value : undefined);
+onMounted(() => {
+  isMounted.value = true;
+});
+const user = computed(() => (isMounted.value ? profileUser.value : undefined));
 const isPreferencesOpen = ref(false);
 
 const openPreferences = () => {

@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { config } from "../config.ts";
 import { getLocalExtension, getLocalExtensionPackage } from "../jobs/localJobs.ts";
 import {
   type ExtensionManifest,
@@ -9,7 +10,6 @@ import {
   type JobDefinition,
   type JobIOField,
 } from "../utils/extensionManifest.ts";
-import { config } from "../config.ts";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
 
@@ -348,7 +348,11 @@ export async function findExtensionForRoute(
   return null;
 }
 
-export const ALL_EXTENSION_SOURCES: ExtensionSource[] = ["upload", "marketplace", "system"];
+export const ALL_EXTENSION_SOURCES: ExtensionSource[] = [
+  "upload",
+  "marketplace",
+  "system",
+];
 
 /**
  * Returns the set of extension sources the server will accept, as configured

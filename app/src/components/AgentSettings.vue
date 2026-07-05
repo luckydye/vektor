@@ -158,7 +158,10 @@ async function handleSave() {
       body = { provider: "ollama", model, baseUrl };
     } else {
       // Keep existing key if blank and one already exists
-      const existingKeyOk = !apiKey && meta.value?.configured && (meta.value as { hasApiKey: boolean }).hasApiKey;
+      const existingKeyOk =
+        !apiKey &&
+        meta.value?.configured &&
+        (meta.value as { hasApiKey: boolean }).hasApiKey;
       if (!existingKeyOk && !apiKey) {
         saveError.value = "API key is required";
         return;
@@ -195,5 +198,11 @@ async function handleDelete() {
   }
 }
 
-watch(() => currentSpace.value?.id, (id) => { if (id) load(); }, { immediate: true });
+watch(
+  () => currentSpace.value?.id,
+  (id) => {
+    if (id) load();
+  },
+  { immediate: true },
+);
 </script>

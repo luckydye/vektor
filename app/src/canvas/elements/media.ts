@@ -93,7 +93,12 @@ export async function uploadMediaFile(
   file: File,
   options: { spaceId: string; documentId?: string },
 ): Promise<string> {
-  const result = await api.uploads.post(options.spaceId, file, file.name || "upload", options.documentId);
+  const result = await api.uploads.post(
+    options.spaceId,
+    file,
+    file.name || "upload",
+    options.documentId,
+  );
   const url = result.url;
   return url.startsWith("/") ? `${window.location.origin}${url}` : url;
 }

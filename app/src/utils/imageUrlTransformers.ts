@@ -84,6 +84,10 @@ export function filenameFromUrl(raw: string): string {
     format && /^(jpe?g|png|webp|tiff?|avif|gif)$/i.test(format)
       ? format.replace("jpeg", "jpg")
       : "jpg";
-  const ts = new Date().toISOString().replace(/T/, "-").replace(/:/g, "-").replace(/\.\d+Z$/, "");
+  const ts = new Date()
+    .toISOString()
+    .replace(/T/, "-")
+    .replace(/:/g, "-")
+    .replace(/\.\d+Z$/, "");
   return `url-image-${ts}.${ext}`;
 }

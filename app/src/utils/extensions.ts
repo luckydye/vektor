@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import * as Y from "yjs";
+import type * as Y from "yjs";
 import { api, type ExtensionRoute } from "../api/client.ts";
 import { getActiveEditor } from "../editor/activeEditor.ts";
 import {
@@ -71,7 +71,6 @@ export type ExtensionContext = {
    */
   collaboration: { ydoc: Y.Doc; clientId: number } | null;
 };
-
 
 export type ExtensionSource = "upload" | "marketplace" | "system";
 
@@ -204,7 +203,10 @@ export class Extensions {
    * Fetch extension list from API
    */
   async fetchExtensions(spaceId: string): Promise<ExtensionInfo[]> {
-    let result: { extensions: ExtensionInfo[]; errors: import("../api/ApiClient.ts").ExtensionManifestError[] };
+    let result: {
+      extensions: ExtensionInfo[];
+      errors: import("../api/ApiClient.ts").ExtensionManifestError[];
+    };
     try {
       result = await api.extensions.get(spaceId);
     } catch (err) {
@@ -214,7 +216,9 @@ export class Extensions {
     }
 
     for (const err of result.errors) {
-      console.warn(`Extension '${err.id}' could not be loaded from manifest: ${err.error}`);
+      console.warn(
+        `Extension '${err.id}' could not be loaded from manifest: ${err.error}`,
+      );
     }
 
     return result.extensions;
@@ -608,7 +612,6 @@ export class Extensions {
 
 // Singleton instance
 export const extensions = new Extensions();
-
 
 const HTMLElement = globalThis.HTMLElement || class {};
 

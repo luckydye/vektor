@@ -178,7 +178,11 @@ export class QueryClient {
     return entry;
   }
 
-  setQueryData<T>(queryKey: QueryKeyInput, updater: QueryDataUpdater<T>, options?: { stale?: boolean }): void {
+  setQueryData<T>(
+    queryKey: QueryKeyInput,
+    updater: QueryDataUpdater<T>,
+    options?: { stale?: boolean },
+  ): void {
     const entry = this.getEntry<T>(queryKey);
     const nextData =
       typeof updater === "function"

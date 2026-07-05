@@ -537,7 +537,12 @@ function sampleFreehandPath(
   if (!path.start) return [];
 
   const cached = sampleCache.get(path);
-  if (cached && cached.scale === transform.scale && cached.dx === transform.dx && cached.dy === transform.dy) {
+  if (
+    cached &&
+    cached.scale === transform.scale &&
+    cached.dx === transform.dx &&
+    cached.dy === transform.dy
+  ) {
     return cached.samples;
   }
 
@@ -582,7 +587,12 @@ function sampleFreehandPath(
     fromWidth = toWidth;
   }
 
-  sampleCache.set(path, { scale: transform.scale, dx: transform.dx, dy: transform.dy, samples });
+  sampleCache.set(path, {
+    scale: transform.scale,
+    dx: transform.dx,
+    dy: transform.dy,
+    samples,
+  });
   return samples;
 }
 

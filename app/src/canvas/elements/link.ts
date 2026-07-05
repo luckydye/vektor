@@ -12,10 +12,7 @@ export const linkElement: CanvasElementDefinition = {
   isValid: (shape) => Boolean(shape.src),
 };
 
-export function createLinkShape(
-  url: string,
-  at: { x: number; y: number },
-): CanvasShape {
+export function createLinkShape(url: string, at: { x: number; y: number }): CanvasShape {
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "link",

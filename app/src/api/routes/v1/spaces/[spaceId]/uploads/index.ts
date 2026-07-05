@@ -10,8 +10,8 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getSpaceDb } from "#db/db.ts";
-import { updateDocumentEmbedding } from "#db/search.ts";
 import { file as fileTable } from "#db/schema/space.ts";
+import { updateDocumentEmbedding } from "#db/search.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";

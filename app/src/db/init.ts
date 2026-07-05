@@ -115,7 +115,12 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
   const extensionSQL = generateCreateTableSQL(spaceSchema.extension);
   await spaceDb.run(sql.raw(extensionSQL));
   await ensureColumnExists(spaceDb, "extension", "enabled", "INTEGER NOT NULL DEFAULT 1");
-  await ensureColumnExists(spaceDb, "extension", "source", "TEXT NOT NULL DEFAULT 'upload'");
+  await ensureColumnExists(
+    spaceDb,
+    "extension",
+    "source",
+    "TEXT NOT NULL DEFAULT 'upload'",
+  );
   await ensureColumnExists(spaceDb, "extension", "source_ref", "TEXT");
   await ensureColumnExists(spaceDb, "extension", "source_publisher", "TEXT");
   await spaceDb.run(sql.raw("DROP TABLE IF EXISTS extension_storage"));

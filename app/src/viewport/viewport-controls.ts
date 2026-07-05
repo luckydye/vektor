@@ -216,7 +216,13 @@ export function createViewportControls({
 
     let result = camera;
     if (pendingDx !== 0 || pendingDy !== 0) {
-      result = panCameraByScreenDelta({ camera: result, screen, fit, dxPx: pendingDx, dyPx: pendingDy });
+      result = panCameraByScreenDelta({
+        camera: result,
+        screen,
+        fit,
+        dxPx: pendingDx,
+        dyPx: pendingDy,
+      });
       pendingDx = 0;
       pendingDy = 0;
     }
@@ -243,7 +249,8 @@ export function createViewportControls({
     if (e.ctrlKey || e.metaKey) {
       // ctrlKey without metaKey = trackpad pinch (browser-synthesised).
       // metaKey (or real ctrl+scroll) = mouse wheel zoom.
-      const speed = e.ctrlKey && Math.abs(e.deltaY) >= 100 ? wheelZoomSpeed : pinchZoomSpeed;
+      const speed =
+        e.ctrlKey && Math.abs(e.deltaY) >= 100 ? wheelZoomSpeed : pinchZoomSpeed;
       pendingZoom *= Math.exp(-e.deltaY * speed);
       pendingZoomX = pointer.x;
       pendingZoomY = pointer.y;

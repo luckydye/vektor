@@ -131,14 +131,17 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { config } from "../config.ts";
 import { useExtensions } from "../composeables/useExtensions.ts";
+import { config } from "../config.ts";
 import SwitchToggle from "./SwitchToggle.vue";
 
 const uploadAllowed = computed(() => {
   const raw = config().EXTENSION_ALLOWED_SOURCES;
   if (!raw) return true;
-  return raw.split(",").map((s) => s.trim()).includes("upload");
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .includes("upload");
 });
 
 const {

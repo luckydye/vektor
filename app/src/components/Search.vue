@@ -7,10 +7,7 @@ import {
   searchMagnifierIcon,
   spinnerIcon,
 } from "~/src/assets/icons.ts";
-import {
-  api,
-  type PropertyFilter,
-} from "../api/client.ts";
+import { api, type PropertyFilter } from "../api/client.ts";
 import { useInfiniteQuery } from "../composeables/query.ts";
 import { usePagedList } from "../composeables/usePagedList.ts";
 import { canEdit } from "../composeables/usePermissions.ts";
@@ -115,7 +112,6 @@ const allDocuments = computed(() => {
   if (!documentsData.value) return [];
   return documentsData.value.pages.flatMap((page) => page.documents);
 });
-
 
 // Watch for scroll to load more
 const handleScroll = () => {

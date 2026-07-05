@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
-import { downloadExcelSheets, sanitizeSheetName } from "../utils/excelExport.ts";
-import type { ExcelCell, ExcelSheet } from "../utils/excelExport.ts";
-import ExcelExportDialog from "./ExcelExportDialog.vue";
-import type { ExcelExportConfig } from "./ExcelExportDialog.vue";
 import { useSpace } from "../composeables/useSpace.ts";
+import type { ExcelCell, ExcelSheet } from "../utils/excelExport.ts";
+import { downloadExcelSheets, sanitizeSheetName } from "../utils/excelExport.ts";
 import { spacePath } from "../utils/utils.ts";
+import type { ExcelExportConfig } from "./ExcelExportDialog.vue";
+import ExcelExportDialog from "./ExcelExportDialog.vue";
 
 const { currentSpace } = useSpace();
 
@@ -106,7 +106,9 @@ function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][
   // The 0th section is an intro/summary block (e.g. "Notiz"), not a record — skip it.
   const recordSections = sections.slice(1);
 
-  const parsed = recordSections.map(parseBoldSection).filter((r): r is Record<string, string> => r !== null);
+  const parsed = recordSections
+    .map(parseBoldSection)
+    .filter((r): r is Record<string, string> => r !== null);
   if (parsed.length === 0) return recordSections.map((s) => [s]);
 
   // Union of all keys in order of first appearance
@@ -114,7 +116,10 @@ function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][
   const keySet = new Set<string>();
   for (const record of parsed) {
     for (const k of Object.keys(record)) {
-      if (!keySet.has(k)) { keySet.add(k); keyOrder.push(k); }
+      if (!keySet.has(k)) {
+        keySet.add(k);
+        keyOrder.push(k);
+      }
     }
   }
 
@@ -137,7 +142,8 @@ function handleExportDownload(config: ExcelExportConfig) {
   for (let i = 0; i < filtered.value.length; i++) {
     const row = filtered.value[i];
 
-    let baseName = sanitizeSheetName(cellText(row[config.sheetNameColumn]).trim()) || `Row ${i + 1}`;
+    let baseName =
+      sanitizeSheetName(cellText(row[config.sheetNameColumn]).trim()) || `Row ${i + 1}`;
     if (baseName.length > 28) baseName = baseName.slice(0, 28);
     let sheetName = baseName;
     let n = 2;
@@ -149,7 +155,10 @@ function handleExportDownload(config: ExcelExportConfig) {
     const content = cellText(row[config.splitColumn]);
     const del = config.delimiter.trim();
     const sections = del
-      ? content.split(del).map((s) => s.trim()).filter(Boolean)
+      ? content
+          .split(del)
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [content];
 
     const summaryCols = tableColumns.slice(0, config.summaryColumnCount);

@@ -72,7 +72,8 @@ onUnmounted(() => {
 });
 
 function docHref(run: WorkflowRun): string {
-  if (run.documentSlug) return spacePath(currentSpace.value?.slug, `/doc/${run.documentSlug}`);
+  if (run.documentSlug)
+    return spacePath(currentSpace.value?.slug, `/doc/${run.documentSlug}`);
   return spacePath(currentSpace.value?.slug, "/");
 }
 

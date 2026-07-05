@@ -308,15 +308,24 @@ function buildXlsx(sheets: ExcelSheet[]): Uint8Array {
   const stylesRelId = `rId${sheets.length + 1}`;
 
   const contentTypeOverrides = sheets
-    .map((_, i) => `  <Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
+    .map(
+      (_, i) =>
+        `  <Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    )
     .join("\n");
 
   const sheetElements = sheets
-    .map((s, i) => `    <sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
+    .map(
+      (s, i) =>
+        `    <sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`,
+    )
     .join("\n");
 
   const sheetRelationships = sheets
-    .map((_, i) => `  <Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`)
+    .map(
+      (_, i) =>
+        `  <Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`,
+    )
     .join("\n");
 
   const entries: ZipEntry[] = [

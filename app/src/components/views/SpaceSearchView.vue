@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import Search from "../Search.vue";
 import { useSpace } from "../../composeables/useSpace.ts";
+import Search from "../Search.vue";
 
 const { currentSpace } = useSpace();
 </script>

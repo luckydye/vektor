@@ -32,7 +32,11 @@ export function useInlineSuggestions(options: {
 
     const patches = await Promise.all(
       openSuggestions.value.map(async (suggestion) => {
-        const patch = await api.documentDiff.get(spaceId.value, documentId.value, suggestion.rev);
+        const patch = await api.documentDiff.get(
+          spaceId.value,
+          documentId.value,
+          suggestion.rev,
+        );
         return [suggestion.rev, patch] as const;
       }),
     );

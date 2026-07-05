@@ -67,8 +67,12 @@ export function parseTransformParams(
   const hRaw = searchParams.get("h");
   const formatRaw = searchParams.get("format");
 
-  const w = wRaw ? snapToPreset(Math.max(0, Math.floor(Number(wRaw))), ALLOWED_DIMENSIONS) : 0;
-  const h = hRaw ? snapToPreset(Math.max(0, Math.floor(Number(hRaw))), ALLOWED_DIMENSIONS) : 0;
+  const w = wRaw
+    ? snapToPreset(Math.max(0, Math.floor(Number(wRaw))), ALLOWED_DIMENSIONS)
+    : 0;
+  const h = hRaw
+    ? snapToPreset(Math.max(0, Math.floor(Number(hRaw))), ALLOWED_DIMENSIONS)
+    : 0;
   const format =
     formatRaw && OUTPUT_FORMATS.has(formatRaw)
       ? (formatRaw as TransformParams["format"])

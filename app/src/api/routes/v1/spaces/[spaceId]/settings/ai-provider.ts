@@ -1,9 +1,5 @@
 import type { APIRoute } from "astro";
-import {
-  deleteAIConfig,
-  getAIConfigMeta,
-  setAIConfig,
-} from "#db/aiConfig.ts";
+import { deleteAIConfig, getAIConfigMeta, setAIConfig } from "#db/aiConfig.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -52,14 +48,26 @@ export const PUT: APIRoute = (context) =>
       if (typeof body.baseUrl !== "string" || !body.baseUrl.trim()) {
         throw badRequestResponse("baseUrl is required for ollama provider");
       }
-      await setAIConfig(spaceId, { provider: "ollama", model, baseUrl: body.baseUrl.trim().replace(/\/$/, "") }, user.id);
+      await setAIConfig(
+        spaceId,
+        { provider: "ollama", model, baseUrl: body.baseUrl.trim().replace(/\/$/, "") },
+        user.id,
+      );
     } else if (provider === "anthropic" || provider === "openrouter") {
       if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
-        throw badRequestResponse("apiKey is required for anthropic and openrouter providers");
+        throw badRequestResponse(
+          "apiKey is required for anthropic and openrouter providers",
+        );
       }
-      await setAIConfig(spaceId, { provider, model, apiKey: body.apiKey.trim() }, user.id);
+      await setAIConfig(
+        spaceId,
+        { provider, model, apiKey: body.apiKey.trim() },
+        user.id,
+      );
     } else {
-      throw badRequestResponse(`Unknown provider "${provider}". Valid values: anthropic, openrouter, ollama`);
+      throw badRequestResponse(
+        `Unknown provider "${provider}". Valid values: anthropic, openrouter, ollama`,
+      );
     }
 
     const meta = await getAIConfigMeta(spaceId);

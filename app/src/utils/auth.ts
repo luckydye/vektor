@@ -7,8 +7,8 @@ import {
   requireUser,
   tryAuthenticateRequest,
   unauthorizedResponse,
-  verifyDocumentRole,
   verifyCategoryRole,
+  verifyDocumentRole,
   verifySpaceRole,
   verifyTokenPermission,
 } from "#db/api.ts";

@@ -18,7 +18,9 @@ const TMP = "/tmp/vektor-cli-spec";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mockFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+function mockFetch(
+  handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
+) {
   return spyOn(globalThis, "fetch").mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) =>
       Promise.resolve(handler(String(input), init)),
@@ -315,7 +317,9 @@ describe("commandCreate (vektor write --slug <slug>)", () => {
     );
 
     expect(body.updatedAt).toBe("2024-01-15T10:00:00.000Z");
-    expect((body.properties as Record<string, string> | undefined)?.modified).toBeUndefined();
+    expect(
+      (body.properties as Record<string, string> | undefined)?.modified,
+    ).toBeUndefined();
   });
 
   test("--created sets createdAt in the request body", async () => {
@@ -334,7 +338,9 @@ describe("commandCreate (vektor write --slug <slug>)", () => {
     );
 
     expect(body.createdAt).toBe("2023-06-01T00:00:00.000Z");
-    expect((body.properties as Record<string, string> | undefined)?.created).toBeUndefined();
+    expect(
+      (body.properties as Record<string, string> | undefined)?.created,
+    ).toBeUndefined();
   });
 
   test("--created overrides frontmatter created", async () => {
