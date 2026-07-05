@@ -44,6 +44,7 @@ const {
   canUseDocumentEditor,
   hasPublishedVersion,
   markDocumentPublished,
+  markDocumentUnpublished,
 } = useDocumentContext();
 
 const userCanEdit = computed(() => documentContext.value.userCanEdit);
@@ -336,6 +337,38 @@ watchEffect(() => {
         await api.document.archive(currentSpaceId.value, documentId.value);
 
         router.push("/");
+      },
+    });
+  }
+});
+
+watchEffect(() => {
+  Actions.unregister("document:unpublish");
+
+  if (userCanManageDocument.value && documentId.value && hasPublishedVersion.value) {
+    Actions.register("document:unpublish", {
+      title: t("Unpublish"),
+      icon: () => "eye",
+      description: t("Remove the published version of this document"),
+      group: "document:danger",
+      order: 30,
+      run: async () => {
+        if (!confirm("Are you sure you want to unpublish this document?")) {
+          return;
+        }
+
+        if (!currentSpaceId.value) {
+          throw new Error("No space selected");
+        }
+        if (!documentId.value) {
+          return;
+        }
+
+        await api.document.patch(currentSpaceId.value, documentId.value, {
+          publishedRev: null,
+        });
+
+        markDocumentUnpublished();
       },
     });
   }

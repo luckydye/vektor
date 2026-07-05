@@ -4,26 +4,25 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { getAuthDb } from "../src/db/db.ts";
 import { user as userTable } from "../src/db/schema/auth.ts";
+import {
+  createPageRequest,
+  createSessionApiRequest,
+  createTestUser as createSharedTestUser,
+  startTestServer,
+  type TestServerProcess,
+  testBaseUrl,
+  waitForServer,
+} from "./helpers/server.ts";
 
 const PORT = 7485;
 const DATA_DIR = "./data";
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = testBaseUrl(PORT);
+const apiRequest = createSessionApiRequest(BASE_URL);
+const pageRequest = createPageRequest(BASE_URL);
+const createTestUser = (name: string) =>
+  createSharedTestUser(BASE_URL, name, "test-frontend-acl");
 
-let serverProcess: ReturnType<typeof Bun.spawn>;
-
-async function waitForServer(timeoutMs = 25_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
-      if (res.status < 500) return;
-    } catch {
-      // not ready yet
-    }
-    await Bun.sleep(200);
-  }
-  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
-}
+let serverProcess: TestServerProcess;
 
 let testUser2: { id: string; email: string; name: string };
 let testUser3: { id: string; email: string; name: string };
@@ -36,50 +35,6 @@ let testDocumentId: string;
 let testDocumentSlug: string;
 let privateDocumentId: string;
 let privateDocumentSlug: string;
-
-async function createTestUser(name: string) {
-  const testEmail = `test-frontend-acl-${Date.now()}-${Math.random()}@example.com`;
-  const testPassword = "TestPassword123!";
-
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: testEmail,
-      password: testPassword,
-      name,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const token = data.token;
-
-  const cookies = response.headers.get("set-cookie");
-  let sessionCookie = "";
-  if (cookies) {
-    const match = cookies.match(/vektor\.session_token=([^;]+)/);
-    if (match) {
-      sessionCookie = match[1];
-    }
-  }
-
-  if (!sessionCookie) {
-    sessionCookie = `${token}.${Buffer.from(token).toString("base64")}`;
-  }
-
-  return {
-    userId: data.user.id,
-    token: sessionCookie,
-    email: testEmail,
-    name: data.user.name,
-  };
-}
 
 async function assignUserToGroup(userId: string, groups: string[]): Promise<void> {
   const authDb = getAuthDb();
@@ -106,50 +61,12 @@ async function assignUserToGroup(userId: string, groups: string[]): Promise<void
   console.log(`Verified user ${userId} groups in DB: ${verifyUser?.groups}`);
 }
 
-async function apiRequest(
-  path: string,
-  sessionToken: string,
-  options: RequestInit = {},
-): Promise<Response> {
-  const headers = new Headers(options.headers);
-  if (sessionToken) {
-    headers.set("Cookie", `vektor.session_token=${sessionToken}`);
-  }
-  headers.set("Content-Type", "application/json");
-
-  return fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
-}
-
-async function pageRequest(path: string, sessionToken: string): Promise<Response> {
-  const headers = new Headers();
-  if (sessionToken) {
-    headers.set("Cookie", `vektor.session_token=${sessionToken}`);
-  }
-
-  return fetch(`${BASE_URL}${path}`, {
-    headers,
-    redirect: "manual",
-  });
-}
-
 beforeAll(async () => {
-  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
-    env: {
-      ...process.env,
-      VEKTOR_EMAIL_AUTH: "1",
-      AUTH_SECRET: process.env.AUTH_SECRET ?? "frontend-acl-test-secret-do-not-use",
-      HOST: "127.0.0.1",
-      NODE_ENV: "test",
-      VEKTOR_OTEL_ENABLED: "0",
-    },
-    stdout: "ignore",
-    stderr: "ignore",
-    cwd: import.meta.dir + "/..",
+  serverProcess = startTestServer(PORT, {
+    VEKTOR_EMAIL_AUTH: "1",
+    AUTH_SECRET: process.env.AUTH_SECRET ?? "frontend-acl-test-secret-do-not-use",
   });
-  await waitForServer();
+  await waitForServer(BASE_URL, 25_000, 200);
 
   try {
     // Create three test users

@@ -1,5 +1,6 @@
 ---
 import SpaceApp from "../../components/SpaceApp.vue";
+import { verifyDocumentRole, verifySpaceRole } from "../../db/api.ts";
 import { getDocumentBySlug } from "../../db/documents.ts";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "../../utils/sidebarState.ts";
@@ -13,8 +14,57 @@ const result = await resolveSpacePage(Astro);
 if (result.response) return result.response;
 const { space } = result;
 
-const accessDenied = await requireSpaceViewer(Astro, space);
-if (accessDenied) return accessDenied;
+const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
+const settingsPath =
+  Astro.url.pathname === `/${space.slug}/settings` ||
+  Astro.url.pathname.startsWith(`/${space.slug}/settings/`);
+
+if (settingsPath) {
+  if (!Astro.locals.session) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/login" },
+    });
+  }
+
+  try {
+    await verifySpaceRole(space.id, Astro.locals.user?.id ?? "", "owner");
+  } catch (error) {
+    if (error instanceof Response) return error;
+    throw error;
+  }
+}
+
+const initialDocument = docSlugMatch
+  ? JSON.parse(
+      JSON.stringify((await getDocumentBySlug(space.id, docSlugMatch[1])) ?? undefined),
+    )
+  : undefined;
+
+let hasDirectDocumentAccess = false;
+if (initialDocument) {
+  try {
+    await verifyDocumentRole(
+      space.id,
+      initialDocument.id,
+      Astro.locals.user?.id ?? null,
+      "viewer",
+    );
+    hasDirectDocumentAccess = true;
+  } catch (error) {
+    if (!Astro.locals.session && error instanceof Response) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "/login" },
+      });
+    }
+  }
+}
+
+if (!hasDirectDocumentAccess) {
+  const accessDenied = await requireSpaceViewer(Astro, space);
+  if (accessDenied) return accessDenied;
+}
 
 if (Astro.locals.session) {
   Astro.cookies.set("lastVisitedSpace", space.slug, {
@@ -34,12 +84,6 @@ const initialSpace = JSON.parse(
   JSON.stringify({ ...space, userRole: userRole ?? undefined }),
 );
 
-const docSlugMatch = Astro.url.pathname.match(/\/doc\/(.+)$/);
-const initialDocument = docSlugMatch
-  ? JSON.parse(
-      JSON.stringify((await getDocumentBySlug(space.id, docSlugMatch[1])) ?? undefined),
-    )
-  : undefined;
 const initialSidebarWidth = parseSidebarWidth(
   Astro.cookies.get(SIDEBAR_WIDTH_KEY)?.value,
 );

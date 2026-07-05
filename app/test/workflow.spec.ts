@@ -15,9 +15,11 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { createApiRequest, testBaseUrl, waitForServer } from "./helpers/server.ts";
 
 const PORT = 7476;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = testBaseUrl(PORT);
+const apiRequest = createApiRequest(BASE_URL);
 
 const EXTENSION_ZIP = join(
   import.meta.dir,
@@ -60,24 +62,8 @@ let workflowDocId: string;
 // Server lifecycle + helpers
 // ---------------------------------------------------------------------------
 
-async function waitForServer(timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
-      if (res.status < 500) return;
-    } catch {
-      // not ready yet – keep polling
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
-}
-
 async function apiJson<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await apiRequest(path, options);
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`${options.method ?? "GET"} ${path} → ${res.status}: ${body}`);
@@ -173,7 +159,7 @@ beforeAll(async () => {
     }
   })();
 
-  await waitForServer();
+  await waitForServer(BASE_URL);
 
   // Create the test space
   const spaceRes = await apiJson<{ space: { id: string } }>("/api/v1/spaces", {

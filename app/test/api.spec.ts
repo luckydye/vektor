@@ -1,53 +1,32 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createJobToken } from "../src/jobs/jobToken.ts";
-import { LOCAL_USER, LOCAL_USER_ID } from "../src/noAuth.ts";
+import { LOCAL_USER_ID } from "../src/noAuth.ts";
 import { createZipBuffer } from "../src/utils/zip.ts";
+import {
+  createApiRequest,
+  startTestServer,
+  type TestServerProcess,
+  testBaseUrl,
+  waitForServer,
+} from "./helpers/server.ts";
 
 process.env.AUTH_SECRET ??= "api-test-secret-do-not-use-in-production";
 
 const PORT = 7482;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = testBaseUrl(PORT);
+const apiRequest = createApiRequest(BASE_URL);
 
-let serverProcess: ReturnType<typeof Bun.spawn>;
+let serverProcess: TestServerProcess;
 let testSpaceId: string;
 
-async function waitForServer(timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
-      if (res.status < 500) return;
-    } catch {
-      // not ready yet
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
-}
-
-async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  return fetch(`${BASE_URL}${path}`, { ...options, headers });
-}
-
 beforeAll(async () => {
-  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
-    env: {
-      ...process.env,
-      VEKTOR_NO_AUTH: "1",
-      VEKTOR_IN_MEMORY_DB: "1",
-      VEKTOR_API_ONLY: "1",
-      AUTH_SECRET: process.env.AUTH_SECRET ?? "api-test-secret-do-not-use-in-production",
-      HOST: "127.0.0.1",
-      NODE_ENV: "test",
-      VEKTOR_OTEL_ENABLED: "0",
-    },
-    stdout: "ignore",
-    stderr: "ignore",
-    cwd: import.meta.dir + "/..",
+  serverProcess = startTestServer(PORT, {
+    VEKTOR_NO_AUTH: "1",
+    VEKTOR_IN_MEMORY_DB: "1",
+    VEKTOR_API_ONLY: "1",
+    AUTH_SECRET: process.env.AUTH_SECRET ?? "api-test-secret-do-not-use-in-production",
   });
-  await waitForServer();
+  await waitForServer(BASE_URL);
 });
 
 afterAll(() => {
@@ -1881,6 +1860,7 @@ describe("API Tests - Fuzz Testing / Edge Cases", () => {
 
 describe("API Tests - Audit Logs", () => {
   let auditTestDocId: string;
+  let auditSavedRev: number;
 
   it("should create a document for audit log testing", async () => {
     const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
@@ -1923,13 +1903,18 @@ describe("API Tests - Audit Logs", () => {
   });
 
   it("should track save events in audit logs", async () => {
-    await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}`, {
-      method: "POST",
-      body: JSON.stringify({
-        html: "<p>Updated content for audit</p>",
-        message: "Test save for audit",
-      }),
-    });
+    const saveResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          html: "<p>Updated content for audit</p>",
+          message: "Test save for audit",
+        }),
+      },
+    );
+    const saveData = await saveResponse.json();
+    auditSavedRev = saveData.revision.rev;
 
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}/audit-logs`,
@@ -1945,7 +1930,7 @@ describe("API Tests - Audit Logs", () => {
   it("should track publish events in audit logs", async () => {
     await apiRequest(`/api/v1/spaces/${testSpaceId}/documents/${auditTestDocId}`, {
       method: "PATCH",
-      body: JSON.stringify({ publishedRev: 2 }),
+      body: JSON.stringify({ publishedRev: auditSavedRev }),
     });
 
     const response = await apiRequest(
@@ -1956,7 +1941,7 @@ describe("API Tests - Audit Logs", () => {
     const publishLog = data.auditLogs.find((log: any) => log.event === "publish");
 
     expect(publishLog).toBeDefined();
-    expect(publishLog.revisionId).toBe(2);
+    expect(publishLog.revisionId).toBe(auditSavedRev);
     expect(publishLog.userId).toBe(LOCAL_USER_ID);
   });
 

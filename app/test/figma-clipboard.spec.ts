@@ -1,10 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  figmaClipboardToFrames,
-  figmaClipboardToSVG,
-} from "../src/utils/figma-clipboard.ts";
+import { figmaClipboardToFrames, figmaClipboardToSVG } from "../src/utils/clipboard.ts";
 
 const html = readFileSync(join(import.meta.dir, "fixtures/figma-clipboard.html"), "utf8");
 const svgHtml = readFileSync(
