@@ -1,7 +1,7 @@
-import type { WorkflowVmEvent } from "../../native/exec/index.d.ts";
-import { getExtension, getExtensionPackage } from "../db/extensions.ts";
-import { getNativeExec } from "../exec/native.ts";
-import { otelMetrics, withSpan } from "../observability/otel.ts";
+import { getExtension, getExtensionPackage } from "#db/extensions.ts";
+import { getNativeExec } from "#exec/native.ts";
+import type { WorkflowVmEvent } from "#native/exec/index.d.ts";
+import { otelMetrics, withSpan } from "#observability/otel.ts";
 import {
   addNode,
   appendNodeLog,

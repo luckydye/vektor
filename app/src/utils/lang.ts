@@ -1,4 +1,4 @@
-import type en from "../assets/lang/en.json";
+import type en from "#assets/lang/en.json";
 
 const FALLBACK_LANG = "en";
 

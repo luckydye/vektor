@@ -2,18 +2,18 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
-import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import {
   api,
   type OAuthIntegrationConnection,
   type OAuthIntegrationProvider,
-} from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+} from "#api/client.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import {
   DEFAULT_CANVAS_CURSOR_COLOR,
   readCanvasCursorColor,
   saveCanvasCursorColor,
-} from "../utils/userPreferences.ts";
+} from "#utils/userPreferences.ts";
+import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import SettingsLayout from "./SettingsLayout.vue";
 
 type ThemePreference = "system" | "light" | "dark";

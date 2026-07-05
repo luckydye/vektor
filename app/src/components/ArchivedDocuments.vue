@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { api } from "#api/client.ts";
+import { useQuery } from "#composeables/query.ts";
 import { spinnerIcon, trashIcon } from "~/src/assets/icons.ts";
-import { api } from "../api/client.ts";
-import { useQuery } from "../composeables/query.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
 
 const props = defineProps<{
   spaceId: string;
 }>();
 
-const { data: docs, isPending: isLoading, error, refetch } = useQuery({
+const {
+  data: docs,
+  isPending: isLoading,
+  error,
+  refetch,
+} = useQuery({
   queryKey: computed(() => ["archived_docs", props.spaceId]),
   queryFn: () =>
     api.documents.archived(props.spaceId, { limit: 500 }).then((r) => r.documents),
@@ -53,7 +58,12 @@ async function handleBatchRestore(ids: Set<string>, deselectAll: () => void) {
 
 async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
   const count = ids.size;
-  if (!confirm(`Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+  if (
+    !confirm(
+      `Permanently delete ${count} document${count !== 1 ? "s" : ""}? This cannot be undone.`,
+    )
+  )
+    return;
   try {
     for (const id of ids) await api.document.delete(props.spaceId, id);
     deselectAll();

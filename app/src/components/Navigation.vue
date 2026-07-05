@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
 import { useRouter } from "vue-router";
+import { canAccessSettings, canEdit } from "#composeables/usePermissions.ts";
+import { useRoute } from "#composeables/useRoute.ts";
+import { type Space as ApiSpace, useSpace } from "#composeables/useSpace.ts";
+import { Actions } from "#utils/actions.ts";
+import { extensions } from "#utils/extensions.ts";
+import { t } from "#utils/lang.ts";
+import { spacePath } from "#utils/utils.ts";
 import {
   boltIcon,
   checkThinIcon,
@@ -11,13 +18,6 @@ import {
   settingsIcon,
 } from "~/src/assets/icons.ts";
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
-import { canAccessSettings, canEdit } from "../composeables/usePermissions.ts";
-import { useRoute } from "../composeables/useRoute.ts";
-import { type Space as ApiSpace, useSpace } from "../composeables/useSpace.ts";
-import { Actions } from "../utils/actions.ts";
-import { extensions } from "../utils/extensions.ts";
-import { t } from "../utils/lang.ts";
-import { spacePath } from "../utils/utils.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
 import DocumentTree from "./DocumentTree.vue";
 import NewDocumentButton from "./NewDocumentButton.vue";
@@ -34,12 +34,7 @@ interface UiSpace {
 const router = useRouter();
 const { pathname } = useRoute();
 
-const {
-  currentSpace,
-  spaces,
-  createSpace,
-  isLoading: spaceIsLoading,
-} = useSpace();
+const { currentSpace, spaces, createSpace, isLoading: spaceIsLoading } = useSpace();
 
 const showCreateDialog = ref(false);
 const documentTree = ref<InstanceType<typeof DocumentTree> | null>(null);
@@ -56,7 +51,10 @@ const activeRoute = computed(() => {
     activeRoute = match ? `x/${match[1]}` : "";
   } else if (pathname.value.includes("/settings")) {
     activeRoute = "settings";
-  } else if (pathname.value === "/" || pathname.value.split("/").filter(Boolean).length === 0) {
+  } else if (
+    pathname.value === "/" ||
+    pathname.value.split("/").filter(Boolean).length === 0
+  ) {
     activeRoute = "home";
   }
 

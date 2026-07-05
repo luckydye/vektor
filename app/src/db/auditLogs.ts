@@ -1,5 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
 import type { getSpaceDb } from "./db.ts";
 import { type AuditLog, auditLog } from "./schema.ts";
 import { sendSyncEvent } from "./ws.ts";
@@ -10,6 +10,7 @@ import { sendSyncEvent } from "./ws.ts";
  * Document lifecycle events:
  * - create: Document is created
  * - save: Document content is saved
+ * - suggest: Document content is saved as a suggested (non-current) revision
  * - publish: Document revision is published
  * - unpublish: Document is unpublished
  * - restore: Old revision is restored
@@ -32,6 +33,7 @@ import { sendSyncEvent } from "./ws.ts";
 export type AuditEvent =
   | "view"
   | "save"
+  | "suggest"
   | "publish"
   | "unpublish"
   | "restore"
@@ -100,6 +102,10 @@ export interface AuditDetails {
   permission?: string;
   propertyKey?: string;
   propertyType?: string;
+  /** Revision number this save/suggestion was based on. */
+  parentRev?: number | null;
+  /** Suggestion status at the time of the "suggest" event. */
+  status?: "open" | "applied" | "dismissed" | null;
 }
 
 export interface CreateAuditLogParams {

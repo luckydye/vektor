@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { figmaClipboardToFrames, figmaClipboardToSVG } from "../src/utils/clipboard.ts";
+import { figmaClipboardToFrames, figmaClipboardToSVG } from "#utils/clipboard.ts";
 
 const html = readFileSync(join(import.meta.dir, "fixtures/figma-clipboard.html"), "utf8");
 const svgHtml = readFileSync(
@@ -55,10 +55,10 @@ describe("figmaClipboardToFrames (HTML-entity-encoded clipboard)", () => {
     // instead of literal <!-- comment markers — as produced by some clipboard implementations.
     const frames = await figmaClipboardToFrames(complexHtml);
     expect(frames).not.toBeNull();
-    expect(frames!.length).toBe(1);
-    expect(frames![0].name).toBe("iPhone 16 Pro - 1");
-    expect(frames![0].width).toBe(402);
-    expect(frames![0].height).toBe(874);
+    expect(frames?.length).toBe(1);
+    expect(frames?.[0].name).toBe("iPhone 16 Pro - 1");
+    expect(frames?.[0].width).toBe(402);
+    expect(frames?.[0].height).toBe(874);
   });
 
   it("renders INSTANCE nodes via their master SYMBOL children", async () => {

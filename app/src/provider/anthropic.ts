@@ -22,7 +22,7 @@ export function toAnthropicMessages(messages: ChatMessage[]): {
 
     if (msg.role === "tool") {
       const toolResults: unknown[] = [];
-      while (i < messages.length && messages[i]!.role === "tool") {
+      while (i < messages.length && messages[i]?.role === "tool") {
         const m = messages[i]!;
         toolResults.push({
           type: "tool_result",
@@ -94,7 +94,7 @@ export function toAnthropicRequestBody(
     }
     if (msg.role === "tool") {
       const toolResults: unknown[] = [];
-      while (i < messages.length && messages[i]!.role === "tool") {
+      while (i < messages.length && messages[i]?.role === "tool") {
         const m = messages[i]!;
         toolResults.push({
           type: "tool_result",

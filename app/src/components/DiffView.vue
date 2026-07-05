@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { parsePatch } from "diff";
 import { computed } from "vue";
-import { type DiffLine, type DiffRow, hunkLinesToRows } from "../utils/diffRows.ts";
+import { type DiffLine, type DiffRow, hunkLinesToRows } from "#utils/diffRows.ts";
 
 interface DiffHunk {
   header: string;

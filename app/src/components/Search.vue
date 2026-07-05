@@ -1,5 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { api, type PropertyFilter } from "#api/client.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
+import { usePagedList } from "#composeables/usePagedList.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import {
   closeCircleFilledIcon,
   closeXIcon,
@@ -7,15 +13,6 @@ import {
   searchMagnifierIcon,
   spinnerIcon,
 } from "~/src/assets/icons.ts";
-import {
-  api,
-  type PropertyFilter,
-} from "../api/client.ts";
-import { useInfiniteQuery } from "../composeables/query.ts";
-import { usePagedList } from "../composeables/usePagedList.ts";
-import { canEdit } from "../composeables/usePermissions.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { replaceBrowserUrl } from "../utils/browserHistory.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
 import Pager from "./Pager.vue";
 import SearchFilters from "./SearchFilters.vue";
@@ -115,7 +112,6 @@ const allDocuments = computed(() => {
   if (!documentsData.value) return [];
   return documentsData.value.pages.flatMap((page) => page.documents);
 });
-
 
 // Watch for scroll to load more
 const handleScroll = () => {

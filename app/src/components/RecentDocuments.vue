@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import "@atrium-ui/elements/track";
 import { computed } from "vue";
-import { api } from "../api/client.ts";
-import { useQuery } from "../composeables/query.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { spacePath } from "../utils/utils.ts";
+import { api } from "#api/client.ts";
+import { useQuery } from "#composeables/query.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { spacePath } from "#utils/utils.ts";
 import DocumentTeaser from "./DocumentTeaser.vue";
 
 const props = defineProps<{

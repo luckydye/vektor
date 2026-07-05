@@ -1,5 +1,13 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
+import { api } from "#api/client.ts";
+import { useCategories } from "#composeables/useCategories.ts";
+import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useRoute } from "#composeables/useRoute.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueIncludes } from "#utils/documentProperties.ts";
+import { getTextColor, spacePath } from "#utils/utils.ts";
 import {
   checkThinIcon,
   chevronRightThinIcon,
@@ -8,14 +16,6 @@ import {
   plusSmallIcon,
   trashCanIcon,
 } from "~/src/assets/icons.ts";
-import { api } from "../api/client.ts";
-import { useCategories } from "../composeables/useCategories.ts";
-import { useCategoryDocuments } from "../composeables/useCategoryDocuments.ts";
-import { canEdit } from "../composeables/usePermissions.ts";
-import { useRoute } from "../composeables/useRoute.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { propertyValueIncludes } from "../utils/documentProperties.ts";
-import { getTextColor, spacePath } from "../utils/utils.ts";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();

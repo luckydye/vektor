@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { sanitizeVektorDocumentPreviewHtml } from "../src/utils/documentHtmlSanitizer.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
 
 describe("sanitizeVektorDocumentPreviewHtml", () => {
   it("removes executable markup from remote document previews", () => {

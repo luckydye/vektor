@@ -17,7 +17,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-} from "../src/composeables/query.ts";
+} from "#composeables/query.ts";
 
 const wait = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 

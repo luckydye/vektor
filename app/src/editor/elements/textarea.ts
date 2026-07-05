@@ -106,11 +106,9 @@ customElements.define(
         </div>
       `;
 
-      if (!this.shadowRoot) {
-        this.attachShadow({ mode: "open" });
-      }
+      const root = this.shadowRoot ?? this.attachShadow({ mode: "open" });
 
-      render(template, this.shadowRoot);
+      render(template, root);
     }
 
     handleTextareaInput = (e: Event) => {

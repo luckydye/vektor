@@ -1,4 +1,4 @@
-import { config } from "../config.ts";
+import { config } from "#config";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 function authHeaders(token: string | undefined): Record<string, string> {

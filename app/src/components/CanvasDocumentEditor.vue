@@ -6,13 +6,13 @@
 import type { Editor } from "@tiptap/core";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import type * as Y from "yjs";
-import { documentIcon } from "~/src/assets/icons.ts";
-import { useCollaboration } from "../composeables/useCollaboration.ts";
+import { useCollaboration } from "#composeables/useCollaboration.ts";
 import {
   currentEditorPresenceState,
   type DocumentPresenceProfile,
   type DocumentPresenceState,
-} from "../editor/collaboration.ts";
+} from "#editor/collaboration.ts";
+import { documentIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -145,7 +145,7 @@ onMounted(async () => {
   try {
     // document-view is loaded lazily so the canvas chunk stays lean; Canvas
     // prefetches it on mount, making this await effectively instant.
-    await import("../editor/document.ts");
+    await import("#editor/document.ts");
     await customElements.whenDefined("document-view");
     await collaboration.joinUntilReady();
     if (disposed) return;

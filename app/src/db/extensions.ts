@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { getLocalExtension, getLocalExtensionPackage } from "../jobs/localJobs.ts";
+import { config } from "#config";
+import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts";
 import {
   type ExtensionManifest,
   type ExtensionRoute,
@@ -8,8 +9,7 @@ import {
   extractManifest,
   type JobDefinition,
   type JobIOField,
-} from "../utils/extensionManifest.ts";
-import { config } from "../config.ts";
+} from "#utils/extensionManifest.ts";
 import { getSpaceDb } from "./db.ts";
 import { extension } from "./schema/space.ts";
 
@@ -322,9 +322,12 @@ export async function deleteExtension(
 ): Promise<boolean> {
   const db = await getSpaceDb(spaceId);
 
-  const result = await db.delete(extension).where(eq(extension.id, extensionId));
+  const result = await db
+    .delete(extension)
+    .where(eq(extension.id, extensionId))
+    .returning({ id: extension.id });
 
-  return result.rowsAffected > 0;
+  return result.length > 0;
 }
 
 /**
@@ -348,7 +351,11 @@ export async function findExtensionForRoute(
   return null;
 }
 
-export const ALL_EXTENSION_SOURCES: ExtensionSource[] = ["upload", "marketplace", "system"];
+export const ALL_EXTENSION_SOURCES: ExtensionSource[] = [
+  "upload",
+  "marketplace",
+  "system",
+];
 
 /**
  * Returns the set of extension sources the server will accept, as configured

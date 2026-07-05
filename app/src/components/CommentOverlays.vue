@@ -4,7 +4,7 @@ import {
   isInlineAnchorReference,
   isPositionReference,
   resolveReferenceSelector,
-} from "../utils/commentReference.ts";
+} from "#utils/commentReference.ts";
 
 export interface Comment {
   id: string;

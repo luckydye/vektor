@@ -1,11 +1,11 @@
-import { config } from "../config.ts";
+import { config } from "#config";
 import {
   createParseErrorResponse,
   handleMcpRequest,
   type JsonRpcRequest,
   type JsonRpcResponse,
   type VektorMcpConfig,
-} from "../utils/vektorMcp.ts";
+} from "#utils/vektorMcp.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 function writeResponse(response: JsonRpcResponse | null): void {
@@ -43,8 +43,7 @@ export async function commandMcp(): Promise<void> {
   let buffer = "";
 
   for await (const chunk of process.stdin) {
-    buffer +=
-      typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+    buffer += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
 
     let newlineIndex = buffer.indexOf("\n");
     while (newlineIndex >= 0) {

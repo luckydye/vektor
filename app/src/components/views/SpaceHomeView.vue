@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { useExtensions } from "../../composeables/useExtensions.ts";
-import { useSpace } from "../../composeables/useSpace.ts";
-import ExtensionView from "../ExtensionView.vue";
-import PinnedDocument from "../PinnedDocument.vue";
-import RecentDocuments from "../RecentDocuments.vue";
-import SpaceActivityFeed from "../SpaceActivityFeed.vue";
+import ExtensionView from "#components/ExtensionView.vue";
+import PinnedDocument from "#components/PinnedDocument.vue";
+import RecentDocuments from "#components/RecentDocuments.vue";
+import SpaceActivityFeed from "#components/SpaceActivityFeed.vue";
+import { useExtensions } from "#composeables/useExtensions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
 const { extensions } = useExtensions();

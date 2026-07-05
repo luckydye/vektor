@@ -1,11 +1,11 @@
 import { computed, type Ref, ref } from "vue";
-import type { Comment } from "../api/ApiClient.ts";
-import { api } from "../api/client.ts";
+import type { Comment } from "#api/ApiClient.ts";
+import { api } from "#api/client.ts";
 import {
   isPositionReference,
   resolveReferenceSelector,
-} from "../utils/commentReference.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+} from "#utils/commentReference.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSync } from "./useSync.ts";
 

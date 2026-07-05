@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { useActiveCollaboration } from "../composeables/useCollaboration.ts";
-import { useContributors } from "../composeables/useContributors.ts";
+import { useActiveCollaboration } from "#composeables/useCollaboration.ts";
+import { useContributors } from "#composeables/useContributors.ts";
 import Avatar from "./Avatar.vue";
 import "@atrium-ui/elements/popover";
 

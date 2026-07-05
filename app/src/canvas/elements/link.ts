@@ -1,6 +1,6 @@
 import { ref } from "vue";
-import { api } from "../../api/client.ts";
-import type { LinkMetadata } from "../../api/routes/v1/url-metadata.ts";
+import { api } from "#api/client.ts";
+import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 export const linkElement: CanvasElementDefinition = {
@@ -12,10 +12,7 @@ export const linkElement: CanvasElementDefinition = {
   isValid: (shape) => Boolean(shape.src),
 };
 
-export function createLinkShape(
-  url: string,
-  at: { x: number; y: number },
-): CanvasShape {
+export function createLinkShape(url: string, at: { x: number; y: number }): CanvasShape {
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "link",

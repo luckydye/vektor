@@ -172,7 +172,7 @@ export async function listTokenResources(
   resourceType?: ResourceType,
 ) {
   const tokenUserId = getTokenUserId(tokenId);
-  return listUserPermissions(spaceId, tokenUserId, resourceType);
+  return listUserPermissions(spaceId, tokenUserId, undefined, resourceType);
 }
 
 /**

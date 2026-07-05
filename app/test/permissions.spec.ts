@@ -10,7 +10,7 @@ import {
   hasFeature,
   hasPermission,
   isOwner,
-} from "../src/composeables/usePermissions.ts";
+} from "#composeables/usePermissions.ts";
 
 describe("Permission Utilities", () => {
   describe("hasPermission", () => {

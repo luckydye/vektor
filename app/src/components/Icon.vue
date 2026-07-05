@@ -48,7 +48,7 @@ import {
   undoIcon,
   uploadIcon,
   webhookIcon,
-} from "../assets/icons.ts";
+} from "#assets/icons.ts";
 
 const icons = {
   placeholder: homeIcon,

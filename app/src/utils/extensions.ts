@@ -1,13 +1,16 @@
 import type { Editor } from "@tiptap/core";
-import * as Y from "yjs";
-import { api, type ExtensionRoute } from "../api/client.ts";
-import { getActiveEditor } from "../editor/activeEditor.ts";
+import type * as Y from "yjs";
+import { api, type ExtensionInfo, type ExtensionRoute } from "#api/client.ts";
+
+export type { ExtensionInfo };
+
+import { getActiveEditor } from "#editor/activeEditor.ts";
 import {
   registerSuggestionProvider,
   type SuggestionItem,
   type SuggestionProvider,
   unregisterSuggestionProvider,
-} from "../editor/extensions/ExtensionSuggestions.ts";
+} from "#editor/extensions/ExtensionSuggestions.ts";
 import { type ActionOptions, Actions } from "./actions.ts";
 
 export type { SuggestionItem, SuggestionProvider };
@@ -32,7 +35,7 @@ export type { SuggestionItem, SuggestionProvider };
  * }
  * ```
  */
-export type ViewRenderFn = (container: HTMLElement) => void | (() => void);
+export type ViewRenderFn = (container: HTMLElement) => undefined | (() => void);
 
 export type VektorGlobal = Omit<ExtensionContext, "extensionId"> & {
   /** All loaded extensions in the current space */
@@ -72,34 +75,6 @@ export type ExtensionContext = {
   collaboration: { ydoc: Y.Doc; clientId: number } | null;
 };
 
-
-export type ExtensionSource = "upload" | "marketplace" | "system";
-
-export type ExtensionInfo = {
-  id: string;
-  name: string;
-  version: string;
-  description?: string;
-  enabled: boolean;
-  source: ExtensionSource;
-  sourceRef: string | null;
-  sourcePublisher: string | null;
-  entries: {
-    frontend?: string;
-    view?: string;
-  };
-  routes?: ExtensionRoute[];
-  jobs?: Array<{
-    id: string;
-    name: string;
-    inputs?: Record<string, { type: string; required?: boolean }>;
-    outputs?: Record<string, { type: string; required?: boolean }>;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-};
-
 type LoadedExtension = {
   info: ExtensionInfo;
   module: ExtensionModule | null;
@@ -114,9 +89,9 @@ function getExtensionAssetUrl(
   spaceId: string,
   extensionId: string,
   assetPath: string,
-  version: string,
+  version: string | Date,
 ): string {
-  return `/api/v1/spaces/${spaceId}/extensions/${extensionId}/assets/${assetPath}?v=${encodeURIComponent(version)}`;
+  return `/api/v1/spaces/${spaceId}/extensions/${extensionId}/assets/${assetPath}?v=${encodeURIComponent(String(version))}`;
 }
 
 type ExtensionModule = {
@@ -204,7 +179,10 @@ export class Extensions {
    * Fetch extension list from API
    */
   async fetchExtensions(spaceId: string): Promise<ExtensionInfo[]> {
-    let result: { extensions: ExtensionInfo[]; errors: import("../api/ApiClient.ts").ExtensionManifestError[] };
+    let result: {
+      extensions: ExtensionInfo[];
+      errors: import("../api/ApiClient.ts").ExtensionManifestError[];
+    };
     try {
       result = await api.extensions.get(spaceId);
     } catch (err) {
@@ -214,7 +192,9 @@ export class Extensions {
     }
 
     for (const err of result.errors) {
-      console.warn(`Extension '${err.id}' could not be loaded from manifest: ${err.error}`);
+      console.warn(
+        `Extension '${err.id}' could not be loaded from manifest: ${err.error}`,
+      );
     }
 
     return result.extensions;
@@ -608,7 +588,6 @@ export class Extensions {
 
 // Singleton instance
 export const extensions = new Extensions();
-
 
 const HTMLElement = globalThis.HTMLElement || class {};
 

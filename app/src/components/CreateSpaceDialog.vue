@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { slugify } from "#utils/utils.ts";
 import { checkIcon, closeIcon } from "~/src/assets/icons.ts";
 import { ButtonPrimary, ButtonSecondary, Input } from "~/src/components/index.ts";
-import { slugify } from "../utils/utils.ts";
 
 interface Props {
   show?: boolean;

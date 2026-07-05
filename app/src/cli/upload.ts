@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import { basename } from "node:path";
-import { config } from "../config.ts";
+import { config } from "#config";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 type UploadResult = {

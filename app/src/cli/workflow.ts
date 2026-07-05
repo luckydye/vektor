@@ -16,7 +16,7 @@
  *   vektor workflow abc123 --json
  */
 
-import { config } from "../config.ts";
+import { config } from "#config";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 type NodeState = {

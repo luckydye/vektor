@@ -4,7 +4,7 @@ import {
   DEFAULT_VEKTOR_URL,
   type Document,
   VektorApiError,
-} from "../src/index.ts";
+} from "#index";
 
 const listedDocument: Document = {
   id: "doc 1",

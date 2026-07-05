@@ -46,14 +46,14 @@
 
 <script setup>
 import { computed } from "vue";
-import { chevronRightThinIcon } from "~/src/assets/icons.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import {
   propertyValueIncludes,
   propertyValueToScalar,
   propertyValueToText,
-} from "../utils/documentProperties.ts";
-import { spacePath } from "../utils/utils.ts";
+} from "#utils/documentProperties.ts";
+import { spacePath } from "#utils/utils.ts";
+import { chevronRightThinIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps({
   doc: {

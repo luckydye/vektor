@@ -1,4 +1,4 @@
-import type * as NativeImage from "../../native/image/generated/index.d.ts";
+import type * as NativeImage from "#native/image/generated/index.d.ts";
 
 export type NativeAddon = typeof NativeImage;
 

@@ -176,7 +176,7 @@ async function main(): Promise<void> {
     const [subcommand, ...subArgs] = rest;
 
     if (subcommand === "logs") {
-      const { positional, flags } = parseFlags(subArgs);
+      const { positional } = parseFlags(subArgs);
       if (!positional[0]) throw new Error("workflow logs requires a <runId>");
       await commandLogs(positional[0]);
       return;

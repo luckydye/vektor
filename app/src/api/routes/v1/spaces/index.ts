@@ -37,11 +37,16 @@ export const POST: APIRoute = (context) =>
       const body = await parseJsonBody(context.request);
       const { name, slug, preferences } = body;
 
-      if (!name || !slug) {
+      if (!name || typeof name !== "string" || !slug || typeof slug !== "string") {
         throw badRequestResponse("Name and slug are required");
       }
 
-      const space = await createSpace(user.id, name, slug, preferences);
+      const space = await createSpace(
+        user.id,
+        name,
+        slug,
+        preferences as Record<string, string> | undefined,
+      );
       return createdResponse({ space });
     },
     {

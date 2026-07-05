@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { arrowLeftIcon, lockIcon } from "~/src/assets/icons.ts";
 import { ButtonPrimary } from "~/src/components/index.ts";
-import { useTranslations } from "../composeables/useTranslations.ts";
+import { t } from "#utils/lang.ts";
 
 function goBack() {
   history.back();
 }
-
-const t = useTranslations();
 </script>
 
 <template>
@@ -18,7 +16,7 @@ const t = useTranslations();
       </div>
 
       <h1 class="text-size-display font-bold text-neutral-900 mb-4">
-        {{t("access_denied")}}
+        {{t("Access Denied")}}
       </h1>
 
       <p class="text-size-title text-neutral-900 mb-8">

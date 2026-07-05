@@ -254,8 +254,9 @@ export async function deleteOAuthIntegrationForUser(
     .delete(oauthIntegration)
     .where(
       and(eq(oauthIntegration.userId, userId), eq(oauthIntegration.provider, provider)),
-    );
-  return result.rowsAffected > 0;
+    )
+    .returning({ id: oauthIntegration.id });
+  return result.length > 0;
 }
 
 export async function createOAuthIntegrationState(

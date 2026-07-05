@@ -104,9 +104,9 @@ export const POST: APIRoute = (context) =>
       documentId,
       content,
       user.id,
-      parentId || null,
-      type,
-      reference,
+      typeof parentId === "string" ? parentId : null,
+      typeof type === "string" ? type : undefined,
+      typeof reference === "string" ? reference : undefined,
     );
 
     sendSyncEvent(spaceId, {

@@ -6,16 +6,15 @@ import {
   createWebHistory,
   RouterView,
 } from "vue-router";
-import { useQueryClient } from "../composeables/query.ts";
-import { provideDocumentContext } from "../composeables/useDocument.ts";
-import { useRoute } from "../composeables/useRoute.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import shortcuts from "../config/shortcuts.json";
-import strings from "../config/strings.json";
-import { Actions } from "../utils/actions.js";
-import { extensions } from "../utils/extensions.ts";
-import { history } from "../utils/history.ts";
-import { parseSidebarWidth } from "../utils/sidebarState.ts";
+import { useQueryClient } from "#composeables/query.ts";
+import { provideDocumentContext } from "#composeables/useDocument.ts";
+import { useRoute } from "#composeables/useRoute.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import shortcuts from "#config/shortcuts.json";
+import { Actions } from "#utils/actions.js";
+import { extensions } from "#utils/extensions.ts";
+import { history } from "#utils/history.ts";
+import { parseSidebarWidth } from "#utils/sidebarState.ts";
 import AIChatPanel from "./AIChatPanel.vue";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
 import ClientOnly from "./ClientOnly.vue";
@@ -31,7 +30,7 @@ import NotFoundView from "./views/NotFoundView.vue";
 import SpaceHomeView from "./views/SpaceHomeView.vue";
 import SpaceSearchView from "./views/SpaceSearchView.vue";
 import SpaceSettingsView from "./views/SpaceSettingsView.vue";
-import "../utils/insets.ts";
+import "#utils/insets.ts";
 
 type InitialSpace = Record<string, unknown> & {
   id?: string;
@@ -173,10 +172,6 @@ const { currentSpaceId, currentSpace, spaceNotFound } = useSpace();
 const documentContext = provideDocumentContext();
 const isMobileSidebarOpen = ref(false);
 
-const lang =
-  typeof document !== "undefined" ? document.documentElement.lang || "en" : "en";
-globalThis._translations = strings;
-
 const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
 const initialLayoutStyle = {
   "--sidebar-width": `${initialSidebarWidth}px`,
@@ -187,21 +182,19 @@ onMounted(async () => {
   document.addEventListener("click", handleDocumentClick);
 
   await Promise.all([
-    import("../editor/elements/textarea.ts"),
-    import("../editor/elements/expression.ts"),
-    import("../editor/document.ts"),
-    import("../editor/elements/figma-embed.ts"),
-    import("../editor/elements/html-block.ts"),
-    import("../editor/elements/ticket-link.ts"),
-    import("../editor/elements/user-mention.ts"),
-    import("../editor/elements/scroll.ts"),
-    import("../editor/elements/page-target.ts"),
-    import("../editor/elements/category-target.ts"),
-    import("../editor/elements/drawer.ts"),
-    import("../editor/elements/shortcut.ts"),
-    import("./document-statusbar.ts"),
-    import("../editor/elements/table-view.ts"),
-    import("../editor/elements/cake.ts"),
+    import("#editor/elements/textarea.ts"),
+    import("#editor/elements/expression.ts"),
+    import("#editor/document.ts"),
+    import("#editor/elements/figma-embed.ts"),
+    import("#editor/elements/html-block.ts"),
+    import("#editor/elements/ticket-link.ts"),
+    import("#editor/elements/user-mention.ts"),
+    import("#editor/elements/scroll.ts"),
+    import("#editor/elements/page-target.ts"),
+    import("#editor/elements/category-target.ts"),
+    import("#editor/elements/drawer.ts"),
+    import("#editor/elements/shortcut.ts"),
+    import("#editor/elements/cake.ts"),
   ]);
 
   navigator.serviceWorker.register("/sw.js").catch(console.error);

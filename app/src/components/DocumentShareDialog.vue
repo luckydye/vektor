@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import "@atrium-ui/elements/tabs";
+import { api } from "#api/client.ts";
+import { isOwner } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { getUserInitials } from "#utils/utils.ts";
 import { Icon } from "~/src/components/index.ts";
-import { api } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { isOwner } from "../composeables/usePermissions.ts";
-import { useUserProfile } from "../composeables/useUserProfile.ts";
-import { getUserInitials } from "../utils/utils.ts";
 
 const props = defineProps<{
   show: boolean;
@@ -19,7 +19,9 @@ const emit = defineEmits<{ "update:show": [value: boolean] }>();
 const { currentSpaceId, currentSpace } = useSpace();
 const user = useUserProfile();
 
-type ATabsEl = HTMLElement & { selectTabByIndex: (index: number, focus?: boolean) => void };
+type ATabsEl = HTMLElement & {
+  selectTabByIndex: (index: number, focus?: boolean) => void;
+};
 const tabsEl = ref<ATabsEl | null>(null);
 
 type Scope = "document" | "category" | "space";
@@ -104,10 +106,14 @@ async function load() {
       ...(docPerms.permissions || []),
       ...(docTreePerms.permissions || []),
     ].filter((p: any) => p.type === "role");
-    spacePermissions.value = (spacePerms.permissions || []).filter((p: any) => p.type === "role");
+    spacePermissions.value = (spacePerms.permissions || []).filter(
+      (p: any) => p.type === "role",
+    );
 
     const map = new Map<string, any>();
-    (users || []).forEach((u: any) => map.set(u.id, u));
+    (users || []).forEach((u: any) => {
+      map.set(u.id, u);
+    });
     usersMap.value = map;
     await loadCategoryPermissions();
   } catch (err) {
@@ -168,7 +174,7 @@ async function handleInvite(e: Event) {
           }
         : scope.value === "category"
           ? { resourceType: "category", resourceId: selectedCategoryId.value }
-        : {}),
+          : {}),
     });
     newMemberId.value = "";
     await load();
@@ -197,7 +203,12 @@ async function removeDocPerm(perm: any) {
 }
 
 async function removeCategoryPerm(perm: any) {
-  if (!currentSpaceId.value || !selectedCategoryId.value || !confirm("Remove this person's category access?")) return;
+  if (
+    !currentSpaceId.value ||
+    !selectedCategoryId.value ||
+    !confirm("Remove this person's category access?")
+  )
+    return;
   try {
     await api.permissions.revoke(currentSpaceId.value, {
       type: "role",
@@ -282,7 +293,11 @@ function isSelf(perm: any) {
 function canRemoveSpaceMember(perm: any) {
   if (!userIsOwner.value) return false;
   if (isSelf(perm)) return false;
-  if (perm.permission.permission === "owner" && currentSpace.value?.userId === perm.permission.userId) return false;
+  if (
+    perm.permission.permission === "owner" &&
+    currentSpace.value?.userId === perm.permission.userId
+  )
+    return false;
   return true;
 }
 </script>

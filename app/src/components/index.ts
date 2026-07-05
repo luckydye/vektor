@@ -9,6 +9,6 @@ export { default as Icon } from "./Icon.vue";
 export { default as Input } from "./Input.vue";
 export { default as MenuLink } from "./MenuLink.vue";
 export { default as PropertyChip } from "./PropertyChip.vue";
-export type { Property, PropertyType, SpaceProperty } from "./PropertyPopover.vue";
 export { default as PropertyPopover } from "./PropertyPopover.vue";
+export type { Property, PropertyType, SpaceProperty } from "./property.ts";
 export { default as SpaceSelector } from "./SpaceSelector.vue";

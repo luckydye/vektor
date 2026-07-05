@@ -25,7 +25,7 @@ async function uploadVideo(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  const { api } = await import("../../api/client.ts");
+  const { api } = await import("#api/client.ts");
   return api.uploads.post(spaceId, file, file.name, documentId).then((r) => r.url);
 }
 

@@ -13,18 +13,22 @@ type ZipEntry = {
 };
 
 function escapeXml(value: string): string {
-  return value
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return (
+    value
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: strips XML-invalid control chars
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+  );
 }
 
 export function excelFileName(fileName: string): string {
   const baseName = fileName
     .replace(/\.[^.]+$/, "")
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: strips filesystem-invalid control chars
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
     .trim();
   return `${baseName || "data"}.xlsx`;
@@ -180,7 +184,7 @@ function worksheetXml(rows: ExcelCell[][]): string {
 </worksheet>`;
 }
 
-function textData(value: string): Uint8Array {
+function textData(value: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(value);
 }
 
@@ -202,19 +206,19 @@ function crc32(data: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function uint16(value: number): Uint8Array {
+function uint16(value: number): Uint8Array<ArrayBuffer> {
   const data = new Uint8Array(2);
   new DataView(data.buffer).setUint16(0, value, true);
   return data;
 }
 
-function uint32(value: number): Uint8Array {
+function uint32(value: number): Uint8Array<ArrayBuffer> {
   const data = new Uint8Array(4);
   new DataView(data.buffer).setUint32(0, value, true);
   return data;
 }
 
-function concat(parts: Uint8Array[]): Uint8Array {
+function concat(parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const length = parts.reduce((total, part) => total + part.length, 0);
   const data = new Uint8Array(length);
   let offset = 0;
@@ -225,7 +229,7 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return data;
 }
 
-function createZip(entries: ZipEntry[]): Uint8Array {
+function createZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
   const fileParts: Uint8Array[] = [];
   const centralParts: Uint8Array[] = [];
   let offset = 0;
@@ -304,19 +308,28 @@ export function sanitizeSheetName(name: string): string {
     .slice(0, 31);
 }
 
-function buildXlsx(sheets: ExcelSheet[]): Uint8Array {
+function buildXlsx(sheets: ExcelSheet[]): Uint8Array<ArrayBuffer> {
   const stylesRelId = `rId${sheets.length + 1}`;
 
   const contentTypeOverrides = sheets
-    .map((_, i) => `  <Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
+    .map(
+      (_, i) =>
+        `  <Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    )
     .join("\n");
 
   const sheetElements = sheets
-    .map((s, i) => `    <sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
+    .map(
+      (s, i) =>
+        `    <sheet name="${escapeXml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`,
+    )
     .join("\n");
 
   const sheetRelationships = sheets
-    .map((_, i) => `  <Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`)
+    .map(
+      (_, i) =>
+        `  <Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`,
+    )
     .join("\n");
 
   const entries: ZipEntry[] = [

@@ -138,7 +138,7 @@ export const GET: APIRoute = (context) =>
 
         const stream = Readable.toWeb(
           createReadStream(filePath, { start, end }),
-        ) as ReadableStream;
+        ) as unknown as ReadableStream;
         return new Response(stream, {
           status: 206,
           headers: {
@@ -149,7 +149,9 @@ export const GET: APIRoute = (context) =>
         });
       }
 
-      const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream;
+      const stream = Readable.toWeb(
+        createReadStream(filePath),
+      ) as unknown as ReadableStream;
       return new Response(stream, {
         status: 200,
         headers: {

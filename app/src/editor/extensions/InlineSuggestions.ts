@@ -3,9 +3,9 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { parsePatch } from "diff";
-import { type DiffLine, type DiffRow, hunkLinesToRows } from "../../utils/diffRows.ts";
-import { prettyPrintHtml } from "../../utils/prettyHtml.ts";
-import { stripScriptTags } from "../../utils/utils.ts";
+import { type DiffLine, type DiffRow, hunkLinesToRows } from "#utils/diffRows.ts";
+import { prettyPrintHtml } from "#utils/prettyHtml.ts";
+import { stripScriptTags } from "#utils/utils.ts";
 
 export interface InlineSuggestion {
   rev: number;

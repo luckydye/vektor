@@ -3,9 +3,9 @@ import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { config, getLocalOrigin } from "../config.ts";
-import { extractFile } from "../db/extensions.ts";
-import { activeTraceHeaders } from "../observability/otel.ts";
+import { config, getLocalOrigin } from "#config";
+import { extractFile } from "#db/extensions.ts";
+import { activeTraceHeaders } from "#observability/otel.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildSandboxWrapper } from "./sandboxRuntime.ts";
 

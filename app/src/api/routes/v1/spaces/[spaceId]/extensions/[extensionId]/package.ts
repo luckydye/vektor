@@ -27,7 +27,7 @@ export const GET: APIRoute = (context) =>
       return notFoundResponse("Extension");
     }
 
-    return new Response(pkg, {
+    return new Response(pkg as unknown as BodyInit, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${extensionId}.zip"`,

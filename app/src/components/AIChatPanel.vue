@@ -2,6 +2,23 @@
 defineOptions({ inheritAttrs: false });
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import type { DocumentWithProperties } from "#api/ApiClient.ts";
+import { api } from "#api/client.ts";
+import {
+  type ChatSession,
+  deleteSession,
+  getSession,
+  getSessionsForSpace,
+  saveSession,
+  type UIMessage,
+} from "#composeables/useChatSessions.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { Actions } from "#utils/actions.ts";
+import { propertyValueToText } from "#utils/documentProperties.ts";
+import { t } from "#utils/lang.ts";
+import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
+import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   clockIcon,
   copyOutlineIcon,
@@ -14,23 +31,6 @@ import {
   thinkingIcon,
   trashSmallIcon,
 } from "~/src/assets/icons.ts";
-import type { DocumentWithProperties } from "../api/ApiClient.ts";
-import { api } from "../api/client.ts";
-import {
-  type ChatSession,
-  deleteSession,
-  getSession,
-  getSessionsForSpace,
-  saveSession,
-  type UIMessage,
-} from "../composeables/useChatSessions.ts";
-import { useDockedWindows } from "../composeables/useDockedWindows.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { Actions } from "../utils/actions.ts";
-import { propertyValueToText } from "../utils/documentProperties.ts";
-import { t } from "../utils/lang.ts";
-import { renderMessageMarkdown } from "../utils/messageMarkdown.ts";
-import { normalizeTimestamp } from "../utils/utils.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
@@ -1452,7 +1452,7 @@ details[open] .details-chevron { transform: rotate(90deg); }
   overflow-x: auto;
   margin: 0.5rem 0;
 }
-.markdown-content :deep(pre) :deep(code) { background: transparent; color: inherit; padding: 0; }
+.markdown-content :deep(pre code) { background: transparent; color: inherit; padding: 0; }
 .markdown-content :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
 .markdown-content :deep(blockquote) { border-left: 3px solid var(--color-neutral-200); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-neutral-500); }
 .markdown-content :deep(strong) { font-weight: 600; }

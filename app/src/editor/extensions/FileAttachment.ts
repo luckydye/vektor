@@ -61,7 +61,7 @@ async function uploadFile(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  const { api } = await import("../../api/client.ts");
+  const { api } = await import("#api/client.ts");
   const result = await api.uploads.post(spaceId, file, file.name, documentId);
   return result.url;
 }

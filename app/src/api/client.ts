@@ -1,4 +1,4 @@
-import { config } from "../config.ts";
+import { config } from "#config";
 import { ApiClient } from "./ApiClient.ts";
 
 function isLoopbackHost(hostname: string): boolean {

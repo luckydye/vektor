@@ -3244,7 +3244,7 @@ describe("ACL API Tests - Markdown content negotiation", () => {
     expect(response.headers.get("Content-Type")).toContain("text/markdown");
     const content = await response.text();
     expect(content).toContain("Test Markdown Export");
-    expect(content).toContain("slug: " + testDocSlug);
+    expect(content).toContain(`slug: ${testDocSlug}`);
   });
 
   it("should allow space member with viewer role to access document as markdown", async () => {

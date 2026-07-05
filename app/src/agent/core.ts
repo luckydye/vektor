@@ -1,20 +1,20 @@
 import { Bash } from "just-bash";
-import { getAIProvider } from "../db/aiConfig.ts";
-import { callAnthropic } from "../provider/anthropic.ts";
-import { callOllama } from "../provider/ollama.ts";
-import { callOpenRouter } from "../provider/openrouter.ts";
-import type { AIProvider, ChatMessage } from "../provider/types.ts";
+import { getAIProvider } from "#db/aiConfig.ts";
+import { callAnthropic } from "#provider/anthropic.ts";
+import { callOllama } from "#provider/ollama.ts";
+import { callOpenRouter } from "#provider/openrouter.ts";
+import type { AIProvider, ChatMessage } from "#provider/types.ts";
 import {
   callTool as callVektorTool,
   listTools as listVektorTools,
   type VektorMcpConfig,
-} from "../utils/vektorMcp.ts";
+} from "#utils/vektorMcp.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { gitlabCommand } from "./commands/gitlab.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
 import { jsExecCommand } from "./commands/jsExec.ts";
-import systemPromptRaw from "./commands/recipes/system-prompt.md" with { type: "text" };
+import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: "text" };
 import { getRecipe, recipesCommand } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
@@ -117,13 +117,14 @@ export async function callModel(options: {
   onText?: (text: string) => void | Promise<void>;
   onThinking?: (text: string) => void | Promise<void>;
 }): Promise<{ message: ChatMessage; finishReason: string }> {
-  if (options.provider.provider === "anthropic") {
-    return callAnthropic(options);
+  const provider = options.provider;
+  if (provider.provider === "anthropic") {
+    return callAnthropic({ ...options, provider });
   }
-  if (options.provider.provider === "ollama") {
-    return callOllama(options);
+  if (provider.provider === "ollama") {
+    return callOllama({ ...options, provider });
   }
-  return callOpenRouter(options);
+  return callOpenRouter({ ...options, provider });
 }
 
 function shellQuote(value: string): string {

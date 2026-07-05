@@ -30,7 +30,7 @@ export default defineConfig({
     },
     envPrefix: "VEKTOR_",
     define: {
-      'import.meta.env.VEKTOR_VERSION': `"${pkg.version}"`,
+      "import.meta.env.VEKTOR_VERSION": `"${pkg.version}"`,
     },
     server: {
       cors: {

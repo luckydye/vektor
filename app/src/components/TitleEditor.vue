@@ -17,11 +17,11 @@
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import { api } from "#api/client.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { replaceBrowserUrl } from "#utils/browserHistory.ts";
+import { spacePath } from "#utils/utils.ts";
 import { starFilledIcon } from "~/src/assets/icons.ts";
-import { api } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { replaceBrowserUrl } from "../utils/browserHistory.ts";
-import { spacePath } from "../utils/utils.ts";
 
 const { currentSpace } = useSpace();
 

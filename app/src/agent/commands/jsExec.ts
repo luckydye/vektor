@@ -1,5 +1,5 @@
 import { decodeBytesToUtf8, defineCommand } from "just-bash";
-import { getNativeExec } from "../../exec/native.ts";
+import { getNativeExec } from "#exec/native.ts";
 
 export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
   const usage =

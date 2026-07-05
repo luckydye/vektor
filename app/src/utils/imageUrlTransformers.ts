@@ -47,7 +47,7 @@ export function transformImageUrl(raw: string): string | null {
   return null;
 }
 
-import { withTransformParams } from "../files/transformUrl.ts";
+import { withTransformParams } from "#files/transformUrl.ts";
 
 // Must be a subset of ALLOWED_DIMENSIONS in files/transforms.ts.
 export const IMAGE_RESIZE_TIERS = [320, 1280] as const;
@@ -84,6 +84,10 @@ export function filenameFromUrl(raw: string): string {
     format && /^(jpe?g|png|webp|tiff?|avif|gif)$/i.test(format)
       ? format.replace("jpeg", "jpg")
       : "jpg";
-  const ts = new Date().toISOString().replace(/T/, "-").replace(/:/g, "-").replace(/\.\d+Z$/, "");
+  const ts = new Date()
+    .toISOString()
+    .replace(/T/, "-")
+    .replace(/:/g, "-")
+    .replace(/\.\d+Z$/, "");
   return `url-image-${ts}.${ext}`;
 }

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
-import { notFoundResponse } from "../db/api.ts";
+import { notFoundResponse } from "#db/api.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
@@ -121,36 +121,36 @@ export async function createRevision(
     lastIsRecent &&
     !lastIsPublished &&
     status === null &&
-    (lastRevision!.status ?? null) === null
+    (lastRevision?.status ?? null) === null
   ) {
     const compressed = compressHtml(html);
-    const updatedMessage = options.message ?? lastRevision!.message;
+    const updatedMessage = options.message ?? lastRevision?.message;
     await db
       .update(revision)
       .set({ snapshot: compressed, checksum, message: updatedMessage })
-      .where(eq(revision.id, lastRevision!.id));
+      .where(eq(revision.id, lastRevision?.id));
 
     await createAuditLog(db, {
       spaceId,
       docId: documentId,
-      revisionId: lastRevision!.rev,
+      revisionId: lastRevision?.rev,
       userId,
       event: "save",
       details: { message: options.message || "Revision updated" },
     });
 
     return {
-      id: lastRevision!.id,
-      documentId: lastRevision!.documentId,
-      rev: lastRevision!.rev,
-      slug: lastRevision!.slug,
+      id: lastRevision?.id,
+      documentId: lastRevision?.documentId,
+      rev: lastRevision?.rev,
+      slug: lastRevision?.slug,
       snapshot: compressed,
       checksum,
-      parentRev: lastRevision!.parentRev,
+      parentRev: lastRevision?.parentRev,
       status: null,
       message: updatedMessage,
-      createdAt: new Date(lastRevision!.createdAt),
-      createdBy: lastRevision!.createdBy,
+      createdAt: new Date(lastRevision?.createdAt),
+      createdBy: lastRevision?.createdBy,
     };
   }
 

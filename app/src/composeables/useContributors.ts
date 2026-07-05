@@ -1,5 +1,5 @@
 import { type Ref, ref, watchEffect } from "vue";
-import { api, type DocumentContributor } from "../api/client.ts";
+import { api, type DocumentContributor } from "#api/client.ts";
 import { useSpace } from "./useSpace.ts";
 
 export function useContributors(documentId?: string) {

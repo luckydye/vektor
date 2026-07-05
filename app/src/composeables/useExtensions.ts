@@ -5,8 +5,8 @@ import {
   type ExtensionManifestError,
   type ExtensionRoute,
   type ExtensionRouteMenuItem,
-} from "../api/client.ts";
-import { extensions } from "../utils/extensions.ts";
+} from "#api/client.ts";
+import { extensions } from "#utils/extensions.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 

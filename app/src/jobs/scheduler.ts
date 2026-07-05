@@ -3,16 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
-import { getLocalOrigin } from "../config.ts";
-import { extractFile } from "../db/extensions.ts";
+import { getLocalOrigin } from "#config";
+import { extractFile } from "#db/extensions.ts";
 import {
   classifyJobError,
   type JobRunTrigger,
   recordJobRunFinished,
   recordJobRunQueued,
   recordJobRunStarted,
-} from "../db/jobRuns.ts";
-import { activeTraceHeaders, otelMetrics, withSpan } from "../observability/otel.ts";
+} from "#db/jobRuns.ts";
+import { activeTraceHeaders, otelMetrics, withSpan } from "#observability/otel.ts";
 import { buildJobWrapper } from "./jobRuntime.ts";
 import { createJobToken } from "./jobToken.ts";
 import type { Sandbox } from "./sandbox.ts";

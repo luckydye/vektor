@@ -4,10 +4,10 @@ import {
   DOCUMENT_LINK_MIME,
   documentReferenceKey,
   droppedDocumentReference,
-} from "../src/canvas/elements/documentLink.ts";
-import { canvasFilesFromDataTransfer } from "../src/canvas/elements/files.ts";
-import { mediaFilesFromDataTransfer } from "../src/canvas/elements/media.ts";
-import { createVektorDocumentAddress } from "../src/utils/documentAddress.ts";
+} from "#canvas/elements/documentLink.ts";
+import { canvasFilesFromDataTransfer } from "#canvas/elements/files.ts";
+import { mediaFilesFromDataTransfer } from "#canvas/elements/media.ts";
+import { createVektorDocumentAddress } from "#utils/documentAddress.ts";
 
 function transferWithFileAndItem(file: File): DataTransfer {
   return {

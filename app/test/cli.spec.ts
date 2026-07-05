@@ -6,9 +6,9 @@ import {
   commandCategoryEdit,
   commandCategoryLs,
   commandCategoryRm,
-} from "../src/cli/category.ts";
-import { commandCreate, commandSet } from "../src/cli/document.ts";
-import { commandUploadFile, toAbsoluteUrl } from "../src/cli/upload.ts";
+} from "#cli/category.ts";
+import { commandCreate, commandSet } from "#cli/document.ts";
+import { commandUploadFile, toAbsoluteUrl } from "#cli/upload.ts";
 
 const HOST = "https://vektor.example.com";
 const SPACE_ID = "space-test-1";
@@ -18,29 +18,27 @@ const TMP = "/tmp/vektor-cli-spec";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mockFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+function mockFetch(
+  handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
+) {
   return spyOn(globalThis, "fetch").mockImplementation(
     (input: RequestInfo | URL, init?: RequestInit) =>
       Promise.resolve(handler(String(input), init)),
   );
 }
 
-function captureStdout(fn: () => Promise<void>): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    const written: string[] = [];
-    const spy = spyOn(process.stdout, "write").mockImplementation((chunk) => {
-      written.push(String(chunk));
-      return true;
-    });
-    try {
-      await fn();
-      resolve(written.join(""));
-    } catch (err) {
-      reject(err);
-    } finally {
-      spy.mockRestore();
-    }
+async function captureStdout(fn: () => Promise<void>): Promise<string> {
+  const written: string[] = [];
+  const spy = spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    written.push(String(chunk));
+    return true;
   });
+  try {
+    await fn();
+    return written.join("");
+  } finally {
+    spy.mockRestore();
+  }
 }
 
 function makeTempFile(name: string, content = "hello"): string {
@@ -315,7 +313,9 @@ describe("commandCreate (vektor write --slug <slug>)", () => {
     );
 
     expect(body.updatedAt).toBe("2024-01-15T10:00:00.000Z");
-    expect((body.properties as Record<string, string> | undefined)?.modified).toBeUndefined();
+    expect(
+      (body.properties as Record<string, string> | undefined)?.modified,
+    ).toBeUndefined();
   });
 
   test("--created sets createdAt in the request body", async () => {
@@ -334,7 +334,9 @@ describe("commandCreate (vektor write --slug <slug>)", () => {
     );
 
     expect(body.createdAt).toBe("2023-06-01T00:00:00.000Z");
-    expect((body.properties as Record<string, string> | undefined)?.created).toBeUndefined();
+    expect(
+      (body.properties as Record<string, string> | undefined)?.created,
+    ).toBeUndefined();
   });
 
   test("--created overrides frontmatter created", async () => {

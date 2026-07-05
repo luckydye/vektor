@@ -1,3 +1,4 @@
+import type { JSONContent } from "@tiptap/core";
 import { getSchema } from "@tiptap/core";
 import { generateHTML, generateJSON } from "@tiptap/html";
 import { Node } from "@tiptap/pm/model";
@@ -5,6 +6,7 @@ import type { WebSocket } from "ws";
 import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument, updateDocument } from "#db/documents.ts";
+import { contentExtensions } from "#editor/extensions.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -12,7 +14,6 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#utils/realtime.ts";
-import { contentExtensions } from "../editor/extensions.ts";
 import { parseCanvasContent, seedCanvasDoc } from "./canvasYjs.ts";
 import { stripScriptTags } from "./utils.ts";
 
@@ -84,7 +85,7 @@ function toCleanHtml(
 ): string {
   const json = yDocToProsemirrorJSON(doc, "default") as {
     type: string;
-    content?: unknown[];
+    content?: JSONContent[];
   };
   return (json.content ?? [])
     .map((node) =>
@@ -182,7 +183,7 @@ function normalizeHtmlContent(
     const extensions = contentExtensions({ spaceId, documentId });
     const json = generateJSON(content, extensions) as {
       type: string;
-      content?: unknown[];
+      content?: JSONContent[];
     };
     return (json.content ?? [])
       .map((node) =>

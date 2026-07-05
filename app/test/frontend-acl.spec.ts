@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { getAuthDb } from "../src/db/db.ts";
-import { user as userTable } from "../src/db/schema/auth.ts";
+import { getAuthDb } from "#db/db.ts";
+import { user as userTable } from "#db/schema/auth.ts";
 import {
   createPageRequest,
   createSessionApiRequest,

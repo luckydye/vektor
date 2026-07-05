@@ -89,7 +89,11 @@ export const POST: APIRoute = (context) =>
     const isExtensionsCapability = permission === "extensions";
 
     if (!isExtensionsCapability) {
-      if (!resourceType || !Object.values(ResourceType).includes(resourceType)) {
+      if (
+        !resourceType ||
+        typeof resourceType !== "string" ||
+        !Object.values(ResourceType).includes(resourceType as ResourceType)
+      ) {
         throw badRequestResponse(
           `Resource type must be one of: ${Object.values(ResourceType).join(", ")}`,
         );
@@ -132,8 +136,10 @@ export const POST: APIRoute = (context) =>
       await grantTokenAccess({
         tokenId: result.id,
         spaceId,
-        resourceType,
-        resourceId,
+        // Validated above: resourceType/resourceId are required and checked
+        // when !isExtensionsCapability.
+        resourceType: resourceType as ResourceType,
+        resourceId: resourceId as string,
         permission,
       });
     }

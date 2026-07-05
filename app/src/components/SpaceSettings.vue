@@ -491,7 +491,7 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
-import { config } from "../config.ts";
+import { config } from "#config";
 import AgentSettings from "./AgentSettings.vue";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";
@@ -522,8 +522,8 @@ function setTab(id: string) {
   window.location.hash = id;
 }
 
-import { type AccessToken, api, type SpaceSecret } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import { type AccessToken, api, type SpaceSecret } from "#api/client.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 
 const emit = defineEmits(["saved"]);
 
@@ -741,8 +741,15 @@ function formatDate(date: string | Date): string {
   });
 }
 
-function resourceLabel(resource: { resourceType: string; resourceId: string; permission: string }): string {
-  if (resource.resourceType === "feature" && resource.resourceId === "manage_extensions") {
+function resourceLabel(resource: {
+  resourceType: string;
+  resourceId: string;
+  permission: string;
+}): string {
+  if (
+    resource.resourceType === "feature" &&
+    resource.resourceId === "manage_extensions"
+  ) {
     return "Extensions (install/update)";
   }
   if (resource.resourceType === "feature") {

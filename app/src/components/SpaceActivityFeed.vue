@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { type AuditLog, api } from "../api/client.ts";
-import { chevronRightThinIcon, documentIcon } from "../assets/icons.ts";
-import { useQuery } from "../composeables/query.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import { type AuditLog, api } from "#api/client.ts";
+import { chevronRightThinIcon, documentIcon } from "#assets/icons.ts";
+import { useQuery } from "#composeables/query.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import {
   formatActivityTime,
   formatPropertyKey,
   getAuditEventLabel,
   hasPropertyChange,
-} from "../utils/auditActivity.ts";
-import { normalizeTimestamp, spacePath } from "../utils/utils.ts";
+} from "#utils/auditActivity.ts";
+import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 
 interface User {
   id: string;

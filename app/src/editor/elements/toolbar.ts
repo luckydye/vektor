@@ -42,7 +42,7 @@ import {
   textColorIcon,
   trashIcon,
   underlineIcon,
-} from "../../assets/icons.ts";
+} from "#assets/icons.ts";
 
 const TEXT_COLOR_PRESETS = [
   { label: "Charcoal", value: "#111827" },

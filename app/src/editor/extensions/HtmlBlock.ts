@@ -129,7 +129,7 @@ export const HtmlBlock = Node.create({
           </style>
 
           <div class="html-block-wrapper">
-            <div class="w-full" @keydown=${(e) => e.stopPropagation()} @paste=${(e) => e.stopPropagation()}>
+            <div class="w-full" @keydown=${(e: Event) => e.stopPropagation()} @paste=${(e: Event) => e.stopPropagation()}>
               <ai-textarea
                 .value=${htmlString}
                 @change=${updateHtml}

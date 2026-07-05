@@ -3,9 +3,10 @@ import { NodeSelection, Plugin, PluginKey, TextSelection } from "@tiptap/pm/stat
 import {
   canvasClipboardFromDataTransfer,
   canvasClipboardToDocumentHtml,
-} from "../utils/clipboard.ts";
+} from "#utils/clipboard.ts";
 import {
   BackgroundColor,
+  Blockquote,
   Bold,
   BulletList,
   Code,
@@ -14,6 +15,7 @@ import {
   Document,
   HardBreak,
   Heading,
+  HorizontalRule,
   Italic,
   Link,
   ListItem,
@@ -186,6 +188,8 @@ export function documentExtensions(context: EditorContext = {}): Extensions {
     TaskList,
     Code,
     CodeBlock,
+    Blockquote,
+    HorizontalRule,
 
     // custom extensions
     CommentAnchor,

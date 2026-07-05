@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
-import { useDockedWindows } from "../composeables/useDockedWindows.ts";
-import { setDockInsets } from "../utils/insets.ts";
+import { useDockedWindows } from "#composeables/useDockedWindows.ts";
+import { setDockInsets } from "#utils/insets.ts";
 
 const { leftWindows, rightWindows } = useDockedWindows();
 

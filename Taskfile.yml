@@ -97,10 +97,27 @@ tasks:
 
   check:
     desc: Typecheck the project.
+    deps: [check:tsc, check:biome]
+
+  check:tsc:
+    internal: true
     dir: ./app
     cmds:
-      - ../node_modules/.bin/tsgo --noEmit
-      - bunx biome check
+      - |
+        TSC_OUT=$(../node_modules/.bin/tsgo --noEmit --pretty false 2>&1 | awk '
+          /^[^[:space:]].*\([0-9]+,[0-9]+\): / { skip = ($0 ~ /node_modules/) ? 1 : 0 }
+          !skip { print }
+        ')
+        echo "== tsc =="
+        printf '%s\n' "$TSC_OUT"
+        [ -z "$TSC_OUT" ]
+
+  check:biome:
+    internal: true
+    dir: ./app
+    cmds:
+      - echo "== biome =="
+      - bunx biome check --diagnostic-level=error
 
   test:
     dir: ./app

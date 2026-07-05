@@ -1,7 +1,7 @@
 import type { ComputedRef } from "vue";
 import { ref } from "vue";
-import type { DocumentPropertyValue } from "../utils/documentProperties.ts";
-import { parseCsvRows } from "../utils/excelExport.ts";
+import type { DocumentPropertyValue } from "#utils/documentProperties.ts";
+import { parseCsvRows } from "#utils/excelExport.ts";
 import type { DatabaseColumn } from "./useDatabaseRows.ts";
 import { useToast } from "./useToast.ts";
 

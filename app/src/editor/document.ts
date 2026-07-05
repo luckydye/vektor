@@ -1,5 +1,5 @@
-import { editing } from "../composeables/useEditor.ts";
-import docStyles from "../styles/document.css?inline";
+import { editing } from "#composeables/useEditor.ts";
+import docStyles from "./css/document.css?inline";
 import "./elements/textarea.ts";
 import "./elements/expression.ts";
 import "./elements/file-attachment.ts";

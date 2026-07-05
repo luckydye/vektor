@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { useSpace } from "../composeables/useSpace.ts";
-import { spacePath } from "../utils/utils.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { spacePath } from "#utils/utils.ts";
 
 interface BreadcrumbItem {
   id: string;

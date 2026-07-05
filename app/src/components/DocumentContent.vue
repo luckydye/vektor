@@ -2,39 +2,39 @@
 import type { Editor } from "@tiptap/core";
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import type * as Y from "yjs";
-import { api } from "../api/client.ts";
-import { useQuery } from "../composeables/query.ts";
+import { api } from "#api/client.ts";
+import { useQuery } from "#composeables/query.ts";
 import {
   type CollaborationPresenceProfile,
   provideCollaboration,
   useCollaboration,
-} from "../composeables/useCollaboration.ts";
-import { resetEditingState, useEditor } from "../composeables/useEditor.ts";
-import { useInlineSuggestions } from "../composeables/useInlineSuggestions.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import { useSync } from "../composeables/useSync.ts";
-import { setActiveEditor } from "../editor/activeEditor.ts";
+} from "#composeables/useCollaboration.ts";
+import { resetEditingState, useEditor } from "#composeables/useEditor.ts";
+import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useSync } from "#composeables/useSync.ts";
+import { setActiveEditor } from "#editor/activeEditor.ts";
 import {
   type CanvasPresenceState,
   currentEditorPresenceState,
   type DocumentPresenceProfile,
   type DocumentPresenceState,
-} from "../editor/collaboration.ts";
-import docStyles from "../styles/document.css?inline";
-import { Actions } from "../utils/actions.ts";
-import { supportsComments, supportsDocumentEditor } from "../utils/documentTypes.ts";
-import { extensions } from "../utils/extensions.ts";
+} from "#editor/collaboration.ts";
+import docStyles from "#editor/css/document.css?inline";
+import { Actions } from "#utils/actions.ts";
+import { supportsComments, supportsDocumentEditor } from "#utils/documentTypes.ts";
+import { extensions } from "#utils/extensions.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
-} from "../utils/formattingActions.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+} from "#utils/formattingActions.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
 import Canvas from "./Canvas.vue";
 import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
-import "../editor/elements/table-view.ts";
-import "../editor/elements/toolbar.ts";
-import "../components/document-statusbar.ts";
+import "#editor/elements/table-view.ts";
+import "#editor/elements/toolbar.ts";
+import "#components/document-statusbar.ts";
 import { twMerge } from "tailwind-merge";
 
 type DocumentContentPresenceState = DocumentPresenceState | CanvasPresenceState;

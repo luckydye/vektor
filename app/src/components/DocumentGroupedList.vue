@@ -2,6 +2,10 @@
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
+import type { Category, DocumentWithProperties } from "#api/client.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueToScalar, propertyValueToText } from "#utils/documentProperties.ts";
+import { formatDate, normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import {
   calendarIcon,
   chevronDownIcon,
@@ -9,13 +13,6 @@ import {
   closeXIcon,
   documentIcon,
 } from "~/src/assets/icons.ts";
-import type { Category, DocumentWithProperties } from "../api/client.ts";
-import { useSpace } from "../composeables/useSpace.ts";
-import {
-  propertyValueToScalar,
-  propertyValueToText,
-} from "../utils/documentProperties.ts";
-import { formatDate, normalizeTimestamp, spacePath } from "../utils/utils.ts";
 
 const props = defineProps<{
   items: DocumentWithProperties[];
@@ -127,7 +124,7 @@ const groups = computed(() => {
   for (const doc of filtered.value) {
     const g = getTimeGroup(doc.updatedAt);
     if (!map.has(g)) map.set(g, []);
-    map.get(g)!.push(doc);
+    map.get(g)?.push(doc);
   }
   return GROUP_ORDER.filter((g) => map.has(g)).map((g) => ({
     label: g,

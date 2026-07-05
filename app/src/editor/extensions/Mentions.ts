@@ -1,6 +1,4 @@
-import Mention from "@tiptap/extension-mention";
-
-export type MentionOptions = Record<string, never>;
+import Mention, { type MentionOptions } from "@tiptap/extension-mention";
 
 export const Mentions = Mention.extend<MentionOptions>({
   parseHTML() {
@@ -31,7 +29,7 @@ export const Mentions = Mention.extend<MentionOptions>({
 
   addOptions() {
     return {
-      ...this.parent?.(),
+      ...this.parent!(),
       HTMLAttributes: {
         class: "mention",
       },

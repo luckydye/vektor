@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
 import { closeIcon } from "~/src/assets/icons.ts";
+import { ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
 
 export interface ExcelExportConfig {
   sheetNameColumn: string;
@@ -27,10 +27,14 @@ const delimiter = ref("---");
 const parseBoldHeadings = ref(true);
 const summaryColumnCount = ref(Math.min(5, props.columns.length));
 
-watch(() => props.columns, (cols) => {
-  if (!cols.includes(sheetNameColumn.value)) sheetNameColumn.value = cols[0] ?? "";
-  if (!cols.includes(splitColumn.value)) splitColumn.value = cols[cols.length - 1] ?? "";
-});
+watch(
+  () => props.columns,
+  (cols) => {
+    if (!cols.includes(sheetNameColumn.value)) sheetNameColumn.value = cols[0] ?? "";
+    if (!cols.includes(splitColumn.value))
+      splitColumn.value = cols[cols.length - 1] ?? "";
+  },
+);
 
 const sheetCount = computed(() => props.rowCount);
 

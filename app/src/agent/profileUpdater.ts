@@ -1,6 +1,6 @@
-import { getAIProvider } from "../db/aiConfig.ts";
-import { getUserProfile, setUserProfile } from "../db/userProfiles.ts";
-import { appLogger } from "../observability/logger.ts";
+import { getAIProvider } from "#db/aiConfig.ts";
+import { getUserProfile, setUserProfile } from "#db/userProfiles.ts";
+import { appLogger } from "#observability/logger.ts";
 import { callModel } from "./core.ts";
 
 /** How long after the last completed turn before the profile is regenerated. */

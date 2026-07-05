@@ -1,15 +1,16 @@
 import type { APIRoute } from "astro";
-import {
-  badRequestResponse,
-  requireUser,
-  withApiErrorHandling,
-} from "#db/api.ts";
+import { badRequestResponse, requireUser, withApiErrorHandling } from "#db/api.ts";
 import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
 
 // Only relay content types that the canvas link-preview card can meaningfully display.
 const ALLOWED_CONTENT_TYPE_PREFIXES = ["video/", "audio/"];
 
-const HEADERS_TO_FORWARD = ["content-type", "content-length", "content-range", "accept-ranges"];
+const HEADERS_TO_FORWARD = [
+  "content-type",
+  "content-length",
+  "content-range",
+  "accept-ranges",
+];
 
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -35,14 +36,17 @@ export const GET: APIRoute = (context) =>
       "User-Agent": "Mozilla/5.0 (compatible; WikiBot/1.0)",
     };
     const range = context.request.headers.get("range");
-    if (range) upstreamHeaders["Range"] = range;
+    if (range) upstreamHeaders.Range = range;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
 
     let upstream: Response;
     try {
-      upstream = await fetch(url, { signal: controller.signal, headers: upstreamHeaders });
+      upstream = await fetch(url, {
+        signal: controller.signal,
+        headers: upstreamHeaders,
+      });
     } finally {
       clearTimeout(timeout);
     }

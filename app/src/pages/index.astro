@@ -1,16 +1,16 @@
 ---
-import FirstSpacePrompt from "../components/FirstSpacePrompt.vue";
-import { config } from "../config.ts";
-import { getUserGroups, hasPermission, ResourceType } from "../db/acl.ts";
-import { getSpaceBySlug, listUserSpaces } from "../db/spaces.ts";
-import BaseLayout from "../layouts/BaseLayout.astro";
+import FirstSpacePrompt from "#components/FirstSpacePrompt.vue";
+import { config } from "#config";
+import { getUserGroups, hasPermission, ResourceType } from "#db/acl.ts";
+import { getSpaceBySlug, listUserSpaces } from "#db/spaces.ts";
+import BaseLayout from "#layouts/BaseLayout.astro";
 
 if (!Astro.locals.session) {
   return Astro.redirect("/login");
 }
 
 const appConfig = config();
-const userId = Astro.locals.user!.id;
+const userId = Astro.locals.user?.id;
 
 const defaultSpace = appConfig.DEFAULT_SPACE
   ? await getSpaceBySlug(appConfig.DEFAULT_SPACE)

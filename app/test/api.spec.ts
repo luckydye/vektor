@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createJobToken } from "../src/jobs/jobToken.ts";
-import { LOCAL_USER_ID } from "../src/noAuth.ts";
-import { createZipBuffer } from "../src/utils/zip.ts";
+import { createJobToken } from "#jobs/jobToken.ts";
+import { LOCAL_USER_ID } from "#noAuth";
+import { createZipBuffer } from "#utils/zip.ts";
 import {
   createApiRequest,
   startTestServer,

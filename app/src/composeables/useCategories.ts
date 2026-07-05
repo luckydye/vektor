@@ -1,5 +1,5 @@
 import { computed } from "vue";
-import { api, type Category } from "../api/client.ts";
+import { api, type Category } from "#api/client.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 

@@ -1,8 +1,8 @@
 import { computed, type InjectionKey, inject, provide, type Ref, ref } from "vue";
 import { useRouter } from "vue-router";
-import { api } from "../api/client.ts";
-import { supportsDocumentEditor } from "../utils/documentTypes.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
+import { api } from "#api/client.ts";
+import { supportsDocumentEditor } from "#utils/documentTypes.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";

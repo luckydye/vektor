@@ -4,7 +4,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { keymap } from "@codemirror/view";
 import { basicSetup, EditorView } from "codemirror";
 import { onMounted, onUnmounted, ref } from "vue";
-import { api } from "../api/client.ts";
+import { api } from "#api/client.ts";
 
 const props = defineProps<{
   documentId: string;

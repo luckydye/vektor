@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { authClient } from "#composeables/auth-client.ts";
 import { config } from "#config";
 import {
   ButtonPrimary,
@@ -7,7 +8,6 @@ import {
   FormField,
   Input,
 } from "~/src/components/index.ts";
-import { authClient } from "../composeables/auth-client.ts";
 
 const conf = config();
 const showPasswordLogin = conf.AUTH_LOGIN !== "false";

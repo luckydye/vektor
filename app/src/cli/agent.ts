@@ -5,8 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
-import { config } from "../config.ts";
-import type { ChatMessage } from "../provider/types.ts";
+import { config } from "#config";
+import type { ChatMessage } from "#provider/types.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 const useColor = process.stdout.isTTY === true;
@@ -84,9 +84,9 @@ function renderUpdate(update: Record<string, unknown>): void {
       const shown = lines.slice(0, 12);
       const prefix = status === "failed" ? c.red("  ⎿ ") : c.dim("  ⎿ ");
       process.stdout.write(
-        shown
+        `${shown
           .map((line) => prefix + (line.length > 200 ? `${line.slice(0, 200)}…` : line))
-          .join("\n") + "\n",
+          .join("\n")}\n`,
       );
       if (lines.length > shown.length) {
         process.stdout.write(c.dim(`  ⎿ … ${lines.length - shown.length} more lines\n`));

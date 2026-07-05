@@ -149,9 +149,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { api, type JobRun, type JobSchedule } from "../api/client.ts";
-import { usePagedList } from "../composeables/usePagedList.ts";
-import { useSpace } from "../composeables/useSpace.ts";
+import { api, type JobRun, type JobSchedule } from "#api/client.ts";
+import { usePagedList } from "#composeables/usePagedList.ts";
+import { useSpace } from "#composeables/useSpace.ts";
 import Pager from "./Pager.vue";
 
 const { currentSpace } = useSpace();
@@ -186,7 +186,7 @@ const {
 } = usePagedList({
   queryKey: computed(() => ["job_runs", currentSpace.value?.id]),
   fetcher: ({ limit, offset }) =>
-    api.jobs.listRuns(currentSpace.value!.id, { limit, offset }).then((r) => ({
+    api.jobs.listRuns(currentSpace.value?.id, { limit, offset }).then((r) => ({
       items: r.runs,
       total: r.total,
     })),

@@ -1,5 +1,5 @@
-import { computed, inject, ref, type Ref } from "vue";
-import { api, type Space } from "../api/client.ts";
+import { computed, inject, type Ref, ref } from "vue";
+import { api, type Space } from "#api/client.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 
 export function useSpace() {
@@ -14,13 +14,17 @@ export function useSpace() {
   const currentSpace = computed<Space | null>(() => {
     if (!spaces.value) return null;
     if (activeSpaceId.value) {
-      return spaces.value.find((s: Space) => s.id === activeSpaceId.value) ?? spaces.value[0] ?? null;
+      return (
+        spaces.value.find((s: Space) => s.id === activeSpaceId.value) ??
+        spaces.value[0] ??
+        null
+      );
     }
     return spaces.value[0] ?? null;
   });
 
-  const spaceNotFound = computed(() =>
-    !isPending.value && spaces.value !== undefined && currentSpace.value === null,
+  const spaceNotFound = computed(
+    () => !isPending.value && spaces.value !== undefined && currentSpace.value === null,
   );
 
   const createSpaceMutation = useMutation({

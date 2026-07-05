@@ -1,15 +1,15 @@
 import { type Ref, ref } from "vue";
-import "../../editor/elements/document-attachment.ts";
-import type { DocumentWithProperties } from "../../api/ApiClient.ts";
+import "#editor/elements/document-attachment.ts";
+import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import {
   type ParsedVektorDocumentAddress,
   parseVektorDocumentAddress,
   type VektorDocumentAddress,
-} from "../../utils/documentAddress.ts";
+} from "#utils/documentAddress.ts";
 import {
   type DocumentPropertyValue,
   propertyValueToText,
-} from "../../utils/documentProperties.ts";
+} from "#utils/documentProperties.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";

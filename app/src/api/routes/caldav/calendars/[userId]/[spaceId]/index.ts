@@ -16,6 +16,7 @@ import { listDocuments } from "#db/documents.ts";
 export const ALL: APIRoute = async (context) => {
   if (context.request.method === "OPTIONS") return optionsPreflight();
   const { userId, spaceId } = context.params;
+  if (!spaceId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
   if (caldavUser instanceof Response) return caldavUser;
 

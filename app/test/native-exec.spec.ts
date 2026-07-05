@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getNativeExec } from "../src/exec/native.ts";
+import { getNativeExec } from "#exec/native.ts";
 
 describe("native JavaScript runtime", () => {
   it("evaluates js-exec code with process globals", () => {

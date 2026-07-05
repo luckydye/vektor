@@ -1,5 +1,5 @@
-import { getExtension, getExtensionPackage } from "../db/extensions.ts";
-import { otelMetrics, withSpan } from "../observability/otel.ts";
+import { getExtension, getExtensionPackage } from "#db/extensions.ts";
+import { otelMetrics, withSpan } from "#observability/otel.ts";
 import {
   appendNodeLog,
   finalizeRun,

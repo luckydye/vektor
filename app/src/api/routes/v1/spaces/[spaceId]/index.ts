@@ -72,7 +72,7 @@ export const PATCH: APIRoute = (context) =>
         spaceId,
         hasName ? name : space.name,
         hasSlug ? slug : space.slug,
-        hasPreferences ? preferences : undefined,
+        hasPreferences ? (preferences as Record<string, string>) : undefined,
       );
 
       return jsonResponse(updated);

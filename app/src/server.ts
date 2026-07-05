@@ -531,7 +531,7 @@ if (!apiOnly) {
   if (import.meta.env.DEV) {
     app.use("*", createFileSystemClientAssetMiddleware("dist/client"));
   } else {
-    const { embeddedClientAssets } = await import("../generated/client-assets.ts");
+    const { embeddedClientAssets } = await import("#generated/client-assets.ts");
     app.use("*", createEmbeddedClientAssetMiddleware(embeddedClientAssets));
   }
 
@@ -546,7 +546,7 @@ if (!apiOnly) {
       },
     });
   } else {
-    const { handler } = await import("../dist/server/entry.mjs");
+    const { handler } = await import("#dist/server/entry.mjs");
     astroHandler = handler as AstroMiddleware;
   }
 } else {

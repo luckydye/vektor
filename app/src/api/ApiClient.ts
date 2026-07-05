@@ -16,7 +16,7 @@ import {
   wsDecodeYjsUpdate,
   wsEncode,
   wsEncodeYjsUpdate,
-} from "../utils/realtime.ts";
+} from "#utils/realtime.ts";
 
 export interface User {
   id: string;
@@ -2271,7 +2271,10 @@ export class ApiClient {
    * socket is open; while connecting or reconnecting the state is replayed by
    * resyncRealtimeConnection on the next open, so sending here would double up.
    */
-  private sendRealtimeState(connection: RealtimeConnection, data: Uint8Array): void {
+  private sendRealtimeState(
+    connection: RealtimeConnection,
+    data: Uint8Array<ArrayBuffer>,
+  ): void {
     if (connection.socket.readyState === WebSocket.OPEN) {
       connection.socket.send(data);
     }
@@ -2282,7 +2285,10 @@ export class ApiClient {
    * state. Best-effort: sent immediately when open, otherwise once the socket
    * opens. Guards against "WebSocket is already in CLOSING or CLOSED state".
    */
-  private sendRealtimeEphemeral(connection: RealtimeConnection, data: Uint8Array): void {
+  private sendRealtimeEphemeral(
+    connection: RealtimeConnection,
+    data: Uint8Array<ArrayBuffer>,
+  ): void {
     if (connection.socket.readyState === WebSocket.OPEN) {
       connection.socket.send(data);
       return;
@@ -2453,7 +2459,7 @@ export class ApiClient {
       room,
       callback,
     };
-    connection.presenceSubscriptions.add(subscription);
+    connection.presenceSubscriptions.add(subscription as PresenceSubscription<unknown>);
 
     const presenceKey = `${room}:${clientId}`;
     const joinPayload: PresenceJoinPayload<TState> = {
@@ -2487,7 +2493,9 @@ export class ApiClient {
     };
 
     const leave = () => {
-      connection.presenceSubscriptions.delete(subscription);
+      connection.presenceSubscriptions.delete(
+        subscription as PresenceSubscription<unknown>,
+      );
       connection.presenceJoinPayloads.delete(presenceKey);
       this.sendRealtimeState(
         connection,

@@ -195,4 +195,10 @@ export function getLocalOrigin(): string {
   return `http://127.0.0.1:${port}`;
 }
 
+declare global {
+  // Exposed for ad-hoc inspection from the browser/server console.
+  // biome-ignore lint: globalThis augmentation requires var
+  var config: typeof import("./config.ts").config;
+}
+
 globalThis.config = config;

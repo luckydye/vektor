@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { LOCAL_USER_ID } from "../src/noAuth.ts";
+import { LOCAL_USER_ID } from "#noAuth";
 import {
   createApiRequest,
   startTestServer,

@@ -7,9 +7,7 @@ import {
   badRequestResponse,
   errorResponse,
   parseJsonBody,
-  requireUser,
   unauthorizedResponse,
-  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";
@@ -745,7 +743,7 @@ export const POST: APIRoute = (context) =>
             userId !== null && persistedSession && lastHistoryRole !== "user"
               ? history
               : null,
-          userProfile,
+          userProfile: userProfile ?? undefined,
           connectedProviders,
           apiUrl: getLocalOrigin(),
           spaceId,

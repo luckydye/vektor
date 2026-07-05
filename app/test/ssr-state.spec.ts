@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { useUserProfile } from "../src/composeables/useUserProfile.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 
 describe("SSR state isolation", () => {
   it("does not share user profile refs between server renders", () => {

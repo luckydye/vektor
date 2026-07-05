@@ -51,6 +51,8 @@
   "Toggle code block": "Toggle code block",
   "Horizontal Rule": "Horizontal Rule",
   "Insert horizontal divider line": "Insert horizontal divider line",
+  "Hard Break": "Hard Break",
+  "Insert a hard line break": "Insert a hard line break",
   "Insert Link": "Insert Link",
   "Add or edit a hyperlink": "Add or edit a hyperlink",
   "Remove Link": "Remove Link",
@@ -156,5 +158,6 @@
   "Paste": "Paste",
   "Home": "Home",
   "Settings": "Settings",
-  "Find Documents": "Find Documents"
+  "Find Documents": "Find Documents",
+  "Access Denied": "Access Denied"
 }

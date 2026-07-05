@@ -1,16 +1,16 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { extractFileTextFromBuffer } from "../files/extractText.ts";
-import { getFileStorage } from "../files/storage.ts";
+import { extractFileTextFromBuffer } from "#files/extractText.ts";
+import { getFileStorage } from "#files/storage.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToScalar,
   propertyValueToText,
   serializePropertyValue,
-} from "../utils/documentProperties.ts";
-import { readOnlyDocumentTypes } from "../utils/documentTypes.ts";
-import { realtimeTopics } from "../utils/realtime.ts";
-import { slugify } from "../utils/utils.ts";
+} from "#utils/documentProperties.ts";
+import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
+import { slugify } from "#utils/utils.ts";
 import {
   filterReadableResources,
   grantPermission,

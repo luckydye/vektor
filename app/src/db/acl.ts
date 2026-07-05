@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
-import { isNoAuthMode, LOCAL_USER_ID } from "../noAuth.ts";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { createAuditLog } from "./auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "./db.ts";
 import { user } from "./schema/auth.ts";
@@ -167,7 +167,10 @@ export async function grantPermission(
     });
   }
 
-  if (resourceType === ResourceType.DOCUMENT || resourceType === ResourceType.DOCUMENT_TREE) {
+  if (
+    resourceType === ResourceType.DOCUMENT ||
+    resourceType === ResourceType.DOCUMENT_TREE
+  ) {
     await createAuditLog(db, {
       spaceId,
       docId: resourceId,
@@ -211,7 +214,10 @@ export async function revokePermission(
 
   await db.delete(acl).where(and(...conditions));
 
-  if (resourceType === ResourceType.DOCUMENT || resourceType === ResourceType.DOCUMENT_TREE) {
+  if (
+    resourceType === ResourceType.DOCUMENT ||
+    resourceType === ResourceType.DOCUMENT_TREE
+  ) {
     await createAuditLog(db, {
       spaceId,
       docId: resourceId,
@@ -435,7 +441,10 @@ async function getDocumentCategoryResourceIds(
   documentId: string,
 ): Promise<string[]> {
   const db = await getSpaceDb(spaceId);
-  const documentIds = [documentId, ...(await getDocumentAncestorIds(spaceId, documentId))];
+  const documentIds = [
+    documentId,
+    ...(await getDocumentAncestorIds(spaceId, documentId)),
+  ];
   const categoryProperties = await db
     .select({ value: property.value })
     .from(property)
@@ -478,7 +487,12 @@ async function getDocumentIdsForCategoryRoots(
   const directRows = await db
     .select({ documentId: property.documentId })
     .from(property)
-    .where(and(inArray(property.key, ["category", "collection"]), inArray(property.value, slugs)))
+    .where(
+      and(
+        inArray(property.key, ["category", "collection"]),
+        inArray(property.value, slugs),
+      ),
+    )
     .all();
 
   const rootIds = directRows.map((row) => row.documentId);
@@ -1085,10 +1099,7 @@ export async function filterReadableResources(
     }
 
     const categoryLevel = categoryDocumentBestLevel?.get(id);
-    if (
-      categoryLevel !== undefined &&
-      (level === undefined || categoryLevel > level)
-    ) {
+    if (categoryLevel !== undefined && (level === undefined || categoryLevel > level)) {
       level = categoryLevel;
     }
 
