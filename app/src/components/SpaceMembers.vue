@@ -19,6 +19,7 @@ const error = ref(null);
 const isLoading = ref(false);
 const showAddMember = ref(false);
 const newMemberId = ref("");
+const newMemberEmail = ref("");
 const newMemberType = ref("user");
 const newMemberRole = ref("viewer");
 const newMemberScope = ref("space");
@@ -27,8 +28,6 @@ const addingMember = ref(false);
 const addMemberError = ref(null);
 const updatingMember = ref(null);
 const removingMember = ref(null);
-const availableUsers = ref([]);
-const loadingAvailableUsers = ref(false);
 const usersMap = ref(new Map());
 const categories = ref([]);
 const loadingUsers = ref(false);
@@ -89,29 +88,6 @@ async function fetchUsers() {
   }
 }
 
-async function fetchAvailableUsers() {
-  if (!currentSpace.value) return;
-  loadingAvailableUsers.value = true;
-  try {
-    const users = await api.users.candidates(currentSpace.value.id);
-    if (!users) {
-      throw new Error("Failed to fetch users");
-    }
-
-    const memberUserIds = new Set(
-      permissions.value
-        .filter((p) => p.type === "role" && p.permission.userId)
-        .map((p) => p.permission.userId),
-    );
-    availableUsers.value = users.filter((u) => !memberUserIds.has(u.id));
-  } catch (err) {
-    console.error("Failed to fetch available users:", err);
-    addMemberError.value = "Failed to load available users";
-  } finally {
-    loadingAvailableUsers.value = false;
-  }
-}
-
 watch(
   () => currentSpace.value?.id,
   () => {
@@ -125,9 +101,9 @@ watch(
 
 watch(showAddMember, (isOpen) => {
   if (isOpen) {
-    fetchAvailableUsers();
     addMemberError.value = null;
     newMemberId.value = "";
+    newMemberEmail.value = "";
     newMemberType.value = "user";
     newMemberRole.value = "viewer";
     newMemberScope.value = "space";
@@ -142,7 +118,13 @@ const rolePermissions = computed(() => {
 async function handleAddMember(e) {
   e.preventDefault();
 
-  if (!currentSpace.value?.id || !newMemberId.value) {
+  if (!currentSpace.value?.id) {
+    return;
+  }
+
+  const isGroup = newMemberType.value === "group";
+
+  if (isGroup ? !newMemberId.value.trim() : !newMemberEmail.value.trim()) {
     return;
   }
 
@@ -155,13 +137,12 @@ async function handleAddMember(e) {
   addMemberError.value = null;
 
   try {
-    const isGroup = newMemberType.value === "group";
     await api.permissions.grant(currentSpace.value.id, {
       type: "role",
       roleOrFeature: newMemberRole.value,
       ...(isGroup
         ? { groupId: newMemberId.value.trim() }
-        : { userId: newMemberId.value.trim() }),
+        : { email: newMemberEmail.value.trim() }),
       ...(newMemberScope.value === "category"
         ? { resourceType: "category", resourceId: newMemberCategoryId.value }
         : {}),
@@ -169,11 +150,12 @@ async function handleAddMember(e) {
 
     showAddMember.value = false;
     newMemberId.value = "";
+    newMemberEmail.value = "";
     newMemberType.value = "user";
     newMemberRole.value = "viewer";
     newMemberScope.value = "space";
     newMemberCategoryId.value = "";
-    await fetchPermissions();
+    await Promise.all([fetchPermissions(), fetchUsers()]);
   } catch (err) {
     addMemberError.value = err instanceof Error ? err.message : "Failed to add member";
     console.error("Failed to add member:", err);
@@ -506,21 +488,17 @@ async function copyMemberId(memberId) {
 
         <div>
           <label for="member-id" class="block text-size-medium font-medium text-neutral-900 mb-1">
-            {{ newMemberType === "user" ? "User" : "Group ID" }}
+            {{ newMemberType === "user" ? "Email" : "Group ID" }}
           </label>
-          <select
+          <input
             v-if="newMemberType === 'user'"
             id="member-id"
-            v-model="newMemberId"
+            v-model="newMemberEmail"
+            type="email"
             required
+            placeholder="person@example.com"
             class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            :disabled="loadingAvailableUsers"
-          >
-            <option value="">Select a user...</option>
-            <option v-for="u in availableUsers" :key="u.id" :value="u.id">
-              {{ u.name || u.email }} ({{ u.email }})
-            </option>
-          </select>
+          />
           <input
             v-else
             id="member-id"
@@ -530,7 +508,10 @@ async function copyMemberId(memberId) {
             placeholder="e.g., admins, developers"
             class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <p v-if="newMemberType === 'group'" class="mt-1 text-size-small text-neutral-500">
+          <p v-if="newMemberType === 'user'" class="mt-1 text-size-small text-neutral-500">
+            Enter the email of an existing account. They'll be added to the space immediately.
+          </p>
+          <p v-else class="mt-1 text-size-small text-neutral-500">
             The group name from your OAuth provider's wiki_groups field
           </p>
         </div>
@@ -588,7 +569,7 @@ async function copyMemberId(memberId) {
         <div class="flex gap-3">
           <button
             type="button"
-            @click="showAddMember = false; addMemberError = null; newMemberId = ''; newMemberType = 'user'; newMemberRole = 'viewer'; newMemberScope = 'space'; newMemberCategoryId = '';"
+            @click="showAddMember = false; addMemberError = null; newMemberId = ''; newMemberEmail = ''; newMemberType = 'user'; newMemberRole = 'viewer'; newMemberScope = 'space'; newMemberCategoryId = '';"
             class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-neutral-100 rounded-md hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-500"
           >
             Cancel

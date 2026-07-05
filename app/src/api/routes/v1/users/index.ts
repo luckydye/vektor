@@ -7,27 +7,20 @@ import {
   notFoundResponse,
   requireUser,
   verifySpaceAccess,
-  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getAuthDb } from "#db/db.ts";
 import { user } from "#db/schema/auth.ts";
-import { listUserSpaces } from "#db/spaces.ts";
 
 /**
  * GET /api/v1/users
  *
  * Returns minimal public profiles. To prevent a full user-directory dump and
  * PII (email) leak to any logged-in account, callers must scope the request:
- *   - `?id=<userId>`                    → single minimal profile (id, name, image)
- *   - `?spaceId=<id>`                   → members of a space the caller belongs to
- *   - `?spaceId=<id>&scope=candidates`  → directory for adding members; restricted
- *                                         to space OWNERS (includes email so an
- *                                         owner can disambiguate users to invite).
- *                                         Scoped to users the caller already
- *                                         shares a space with — never a
- *                                         cross-tenant dump.
- * A bare listing of all users is no longer permitted.
+ *   - `?id=<userId>`     → single minimal profile (id, name, image)
+ *   - `?spaceId=<id>`    → members of a space the caller belongs to
+ * A bare listing of all users is not permitted. Inviting people is done by
+ * email via the permissions endpoint, so no user-directory endpoint is needed.
  */
 export const GET: APIRoute = (context) =>
   withApiErrorHandling(async () => {
@@ -57,36 +50,6 @@ export const GET: APIRoute = (context) =>
     }
 
     if (spaceId) {
-      // Owner-only directory for inviting new members. Includes email so the
-      // owner can tell users apart; gated behind ownership of this space.
-      if (context.url.searchParams.get("scope") === "candidates") {
-        await verifySpaceRole(spaceId, caller.id, "owner");
-        // Restrict to users the caller can already "see" — members of any
-        // space the caller is also a member of. Without this, a fresh owner
-        // of a single space could dump the entire cross-tenant user
-        // directory (with verified emails) by querying ?scope=candidates.
-        const callerSpaces = await listUserSpaces(caller.id);
-        const visibleUserIds = new Set<string>([caller.id]);
-        for (const s of callerSpaces) {
-          for (const id of await getSpaceMemberIds(s.id)) {
-            visibleUserIds.add(id);
-          }
-        }
-        if (visibleUserIds.size === 0) {
-          return jsonResponse([]);
-        }
-        const candidates = await db
-          .select({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            image: user.image,
-          })
-          .from(user)
-          .where(inArray(user.id, [...visibleUserIds]));
-        return jsonResponse(candidates);
-      }
-
       // Only members of the space may enumerate its members.
       await verifySpaceAccess(spaceId, caller.id);
 
