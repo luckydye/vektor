@@ -1,3 +1,4 @@
+import type { JSONContent } from "@tiptap/core";
 import { getSchema } from "@tiptap/core";
 import { generateHTML, generateJSON } from "@tiptap/html";
 import { Node } from "@tiptap/pm/model";
@@ -84,7 +85,7 @@ function toCleanHtml(
 ): string {
   const json = yDocToProsemirrorJSON(doc, "default") as {
     type: string;
-    content?: unknown[];
+    content?: JSONContent[];
   };
   return (json.content ?? [])
     .map((node) =>
@@ -182,7 +183,7 @@ function normalizeHtmlContent(
     const extensions = contentExtensions({ spaceId, documentId });
     const json = generateJSON(content, extensions) as {
       type: string;
-      content?: unknown[];
+      content?: JSONContent[];
     };
     return (json.content ?? [])
       .map((node) =>

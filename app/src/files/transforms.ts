@@ -189,7 +189,9 @@ export async function serveTransformed(
   try {
     const cachedStat = await stat(cachePath);
     if (cachedStat.isFile()) {
-      const stream = Readable.toWeb(createReadStream(cachePath)) as ReadableStream;
+      const stream = Readable.toWeb(
+        createReadStream(cachePath),
+      ) as unknown as ReadableStream;
       return new Response(stream, {
         status: 200,
         headers: responseHeaders(cachedStat.size),

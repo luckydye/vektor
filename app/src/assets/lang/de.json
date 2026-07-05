@@ -51,6 +51,8 @@
   "Toggle code block": "Codeblock umschalten",
   "Horizontal Rule": "Horizontale Linie",
   "Insert horizontal divider line": "Horizontale Trennlinie einfügen",
+  "Hard Break": "Harter Umbruch",
+  "Insert a hard line break": "Harten Zeilenumbruch einfügen",
   "Insert Link": "Link einfügen",
   "Add or edit a hyperlink": "Hyperlink hinzufügen oder bearbeiten",
   "Remove Link": "Link entfernen",
@@ -156,5 +158,6 @@
   "Paste": "Einfügen",
   "Home": "Startseite",
   "Settings": "Einstellungen",
-  "Find Documents": "Dokumente suchen"
+  "Find Documents": "Dokumente suchen",
+  "Access Denied": "Zugriff verweigert"
 }

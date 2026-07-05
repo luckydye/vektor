@@ -1,17 +1,12 @@
 import { dirname, posix } from "node:path";
 import { unzipSync, type Zippable, zipSync } from "fflate";
-import { defineCommand } from "just-bash";
+import { defineCommand, type IFileSystem } from "just-bash";
 
 async function addPathToZip(
   files: Zippable,
   sourcePath: string,
   archivePath: string,
-  fs: Parameters<typeof defineCommand>[1] extends (
-    args: string[],
-    ctx: infer Ctx,
-  ) => Promise<unknown>
-    ? Ctx["fs"]
-    : never,
+  fs: IFileSystem,
 ) {
   const stat = await fs.stat(sourcePath);
   if (stat.isDirectory) {

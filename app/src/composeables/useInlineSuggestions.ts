@@ -26,16 +26,18 @@ export function useInlineSuggestions(options: {
   let inlineSuggestionSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function loadSuggestionPatches() {
-    if (!spaceId.value || !documentId.value) return;
+    const currentSpaceId = spaceId.value;
+    const currentDocumentId = documentId.value;
+    if (!currentSpaceId || !currentDocumentId) return;
 
     await fetchHistory();
 
     const patches = await Promise.all(
       openSuggestions.value.map(async (suggestion) => {
         const patch = await api.documentDiff.get(
-          spaceId.value,
-          documentId.value,
-          suggestion.rev,
+          currentSpaceId,
+          currentDocumentId,
+          String(suggestion.rev),
         );
         return [suggestion.rev, patch] as const;
       }),
@@ -55,12 +57,14 @@ export function useInlineSuggestions(options: {
     const oldHeader = file.oldHeader ? `\t${file.oldHeader}` : "";
     const newHeader = file.newHeader ? `\t${file.newHeader}` : "";
 
+    const hunkHeader = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
+
     return [
       `Index: ${file.index || documentId.value || "document"}`,
       "===================================================================",
       `--- ${file.oldFileName}${oldHeader}`,
       `+++ ${file.newFileName}${newHeader}`,
-      hunk.content,
+      hunkHeader,
       ...hunk.lines,
       "",
     ].join("\n");

@@ -1,6 +1,9 @@
 import type { Editor } from "@tiptap/core";
 import type * as Y from "yjs";
-import { api, type ExtensionRoute } from "#api/client.ts";
+import { api, type ExtensionInfo, type ExtensionRoute } from "#api/client.ts";
+
+export type { ExtensionInfo };
+
 import { getActiveEditor } from "#editor/activeEditor.ts";
 import {
   registerSuggestionProvider,
@@ -72,33 +75,6 @@ export type ExtensionContext = {
   collaboration: { ydoc: Y.Doc; clientId: number } | null;
 };
 
-export type ExtensionSource = "upload" | "marketplace" | "system";
-
-export type ExtensionInfo = {
-  id: string;
-  name: string;
-  version: string;
-  description?: string;
-  enabled: boolean;
-  source: ExtensionSource;
-  sourceRef: string | null;
-  sourcePublisher: string | null;
-  entries: {
-    frontend?: string;
-    view?: string;
-  };
-  routes?: ExtensionRoute[];
-  jobs?: Array<{
-    id: string;
-    name: string;
-    inputs?: Record<string, { type: string; required?: boolean }>;
-    outputs?: Record<string, { type: string; required?: boolean }>;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-};
-
 type LoadedExtension = {
   info: ExtensionInfo;
   module: ExtensionModule | null;
@@ -113,9 +89,9 @@ function getExtensionAssetUrl(
   spaceId: string,
   extensionId: string,
   assetPath: string,
-  version: string,
+  version: string | Date,
 ): string {
-  return `/api/v1/spaces/${spaceId}/extensions/${extensionId}/assets/${assetPath}?v=${encodeURIComponent(version)}`;
+  return `/api/v1/spaces/${spaceId}/extensions/${extensionId}/assets/${assetPath}?v=${encodeURIComponent(String(version))}`;
 }
 
 type ExtensionModule = {

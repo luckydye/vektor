@@ -140,8 +140,11 @@ export async function getSpaceSecretValue(
 
 export async function deleteSpaceSecret(spaceId: string, name: string): Promise<boolean> {
   const db = await getSpaceDb(spaceId);
-  const result = await db.delete(spaceSecret).where(eq(spaceSecret.name, name));
-  return result.rowsAffected > 0;
+  const result = await db
+    .delete(spaceSecret)
+    .where(eq(spaceSecret.name, name))
+    .returning({ id: spaceSecret.id });
+  return result.length > 0;
 }
 
 export async function userCanReadSpaceSecret(

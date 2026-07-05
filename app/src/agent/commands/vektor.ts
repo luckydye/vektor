@@ -1,4 +1,4 @@
-import { defineCommand } from "just-bash";
+import { decodeBytesToUtf8, defineCommand } from "just-bash";
 import { type EditOperation, parseJsonPath } from "#utils/documentEdit.ts";
 import type { VektorMcpConfig } from "#utils/vektorMcp.ts";
 import { callTool as callVektorTool } from "#utils/vektorMcp.ts";
@@ -210,7 +210,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
           }
           content = Buffer.from(await _ctx.fs.readFileBuffer(filePath)).toString("utf-8");
         } else {
-          content = _ctx.stdin;
+          content = decodeBytesToUtf8(_ctx.stdin);
         }
 
         if (!content.trim()) {
@@ -274,7 +274,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
           }
           content = Buffer.from(await _ctx.fs.readFileBuffer(filePath)).toString("utf-8");
         } else {
-          content = _ctx.stdin;
+          content = decodeBytesToUtf8(_ctx.stdin);
         }
 
         if (!content.trim()) {
@@ -359,7 +359,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
             if (!(await _ctx.fs.exists(filePath))) return null;
             return Buffer.from(await _ctx.fs.readFileBuffer(filePath)).toString("utf-8");
           }
-          return _ctx.stdin;
+          return decodeBytesToUtf8(_ctx.stdin);
         };
 
         let operation: EditOperation;

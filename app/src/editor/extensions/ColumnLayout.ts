@@ -5,6 +5,14 @@ export interface ColumnLayoutOptions {
   columns: number;
 }
 
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    columnLayout: {
+      setColumnLayout: (options: { columns: number }) => ReturnType;
+    };
+  }
+}
+
 export const ColumnLayout = Node.create<ColumnLayoutOptions>({
   name: "columnLayout",
   group: "block",

@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync } from "node:fs";
 import path, { join } from "node:path";
 import { sql } from "drizzle-orm";
-import { type BunSQLiteDatabase, drizzle } from "drizzle-orm/bun-sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+
+type BunSQLiteDatabase = ReturnType<typeof drizzle>;
 
 import * as authSchema from "./schema/auth.ts";
 import * as spaceSchema from "./schema/space.ts";

@@ -2,7 +2,7 @@
 import { twMerge } from "tailwind-merge";
 import { computed, onMounted, ref } from "vue";
 import Icon from "./Icon.vue";
-import type { Property } from "./PropertyPopover.vue";
+import type { Property } from "./property.ts";
 import type { SelectMenuItem } from "./SelectMenu.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";

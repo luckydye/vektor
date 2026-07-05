@@ -183,7 +183,7 @@ export const MentionSuggestons = Mentions.extend<MentionOptions>({
                 return true;
               case "Enter":
                 event.preventDefault();
-                selectItem(lastProps, selectedIndex);
+                if (lastProps) selectItem(lastProps, selectedIndex);
                 return true;
               default:
                 return false;

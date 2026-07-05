@@ -90,5 +90,5 @@ export const GET: APIRoute = (context) =>
       headers["Content-Security-Policy"] = csp;
     }
 
-    return new Response(fileData, { status: 200, headers });
+    return new Response(fileData as unknown as BodyInit, { status: 200, headers });
   }, "Failed to serve asset");

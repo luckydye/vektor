@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { genericOAuth } from "better-auth/plugins";
+import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import { config } from "./config.ts";
 import { GROUP_NAME_PATTERN } from "./db/acl.ts";
 import { getAuthDb } from "./db/db.ts";
@@ -47,6 +48,36 @@ function sanitizeOAuthGroups(raw: unknown): string {
     groups = groups.filter((g) => OAUTH_ALLOWED_GROUPS.includes(g));
   }
   return JSON.stringify([...new Set(groups)]);
+}
+
+function getOAuthConfig(): GenericOAuthConfig[] {
+  if (
+    !appConfig.OAUTH_PROVIDER_ID ||
+    !appConfig.OAUTH_CLIENT_ID ||
+    !appConfig.OAUTH_CLIENT_SECRET
+  ) {
+    return [];
+  }
+  return [
+    {
+      redirectURI: appConfig.OAUTH_REDIRECT_URI,
+      providerId: appConfig.OAUTH_PROVIDER_ID,
+      clientId: appConfig.OAUTH_CLIENT_ID,
+      clientSecret: appConfig.OAUTH_CLIENT_SECRET,
+      scopes: appConfig.OAUTH_SCOPES?.split(","),
+      authorizationUrl: appConfig.OAUTH_AUTHORIZATION_URL,
+      tokenUrl: appConfig.OAUTH_TOKEN_URL,
+      userInfoUrl: appConfig.OAUTH_USERINFO_URL,
+      mapProfileToUser: async (profile) => ({
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        image: profile.image,
+        emailVerified: profile.emailVerified || false,
+        groups: sanitizeOAuthGroups(profile.wiki_groups),
+      }),
+    },
+  ];
 }
 
 export const auth = betterAuth({
@@ -99,28 +130,7 @@ export const auth = betterAuth({
 
   plugins: [
     genericOAuth({
-      config: [
-        {
-          redirectURI: appConfig.OAUTH_REDIRECT_URI,
-          providerId: appConfig.OAUTH_PROVIDER_ID,
-          clientId: appConfig.OAUTH_CLIENT_ID,
-          clientSecret: appConfig.OAUTH_CLIENT_SECRET,
-          scopes: appConfig.OAUTH_SCOPES?.split(","),
-          authorizationUrl: appConfig.OAUTH_AUTHORIZATION_URL,
-          tokenUrl: appConfig.OAUTH_TOKEN_URL,
-          userInfoUrl: appConfig.OAUTH_USERINFO_URL,
-          mapProfileToUser: async (profile) => {
-            return {
-              id: profile.id,
-              email: profile.email,
-              name: profile.name,
-              image: profile.image,
-              emailVerified: profile.emailVerified || false,
-              groups: sanitizeOAuthGroups(profile.wiki_groups),
-            };
-          },
-        },
-      ],
+      config: getOAuthConfig(),
     }),
   ],
 });

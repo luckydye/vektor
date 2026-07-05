@@ -322,9 +322,12 @@ export async function deleteExtension(
 ): Promise<boolean> {
   const db = await getSpaceDb(spaceId);
 
-  const result = await db.delete(extension).where(eq(extension.id, extensionId));
+  const result = await db
+    .delete(extension)
+    .where(eq(extension.id, extensionId))
+    .returning({ id: extension.id });
 
-  return result.rowsAffected > 0;
+  return result.length > 0;
 }
 
 /**

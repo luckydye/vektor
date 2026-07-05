@@ -14,18 +14,20 @@ customElements.define(
       return ["data-shortcut"];
     }
 
+    private root: ShadowRoot;
+
     attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
       this.ariaLabel = `Shortcut: ${this.shortcut}`;
-      render(this.render(), this.shadowRoot);
+      render(this.render(), this.root);
     }
 
     connectedCallback() {
-      render(this.render(), this.shadowRoot);
+      render(this.render(), this.root);
     }
 
     constructor() {
       super();
-      this.attachShadow({ mode: "open" });
+      this.root = this.attachShadow({ mode: "open" });
     }
 
     render() {

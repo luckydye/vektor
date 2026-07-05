@@ -16,6 +16,99 @@ import {
   wrapInList as pmWrapInList,
 } from "@tiptap/pm/schema-list";
 import type { EditorState } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    paragraph: {
+      setParagraph: () => ReturnType;
+    };
+    hardBreak: {
+      setHardBreak: () => ReturnType;
+    };
+    bold: {
+      setBold: () => ReturnType;
+      toggleBold: () => ReturnType;
+      unsetBold: () => ReturnType;
+    };
+    italic: {
+      setItalic: () => ReturnType;
+      toggleItalic: () => ReturnType;
+      unsetItalic: () => ReturnType;
+    };
+    strike: {
+      setStrike: () => ReturnType;
+      toggleStrike: () => ReturnType;
+      unsetStrike: () => ReturnType;
+    };
+    underline: {
+      setUnderline: () => ReturnType;
+      toggleUnderline: () => ReturnType;
+      unsetUnderline: () => ReturnType;
+    };
+    code: {
+      setCode: () => ReturnType;
+      toggleCode: () => ReturnType;
+      unsetCode: () => ReturnType;
+    };
+    subscript: {
+      setSubscript: () => ReturnType;
+      toggleSubscript: () => ReturnType;
+      unsetSubscript: () => ReturnType;
+    };
+    superscript: {
+      setSuperscript: () => ReturnType;
+      toggleSuperscript: () => ReturnType;
+      unsetSuperscript: () => ReturnType;
+    };
+    textStyle: {
+      removeEmptyTextStyle: () => ReturnType;
+    };
+    color: {
+      setColor: (color: string) => ReturnType;
+      unsetColor: () => ReturnType;
+    };
+    backgroundColor: {
+      setBackgroundColor: (color: string) => ReturnType;
+      unsetBackgroundColor: () => ReturnType;
+    };
+    heading: {
+      setHeading: (attrs: { level: number }) => ReturnType;
+      toggleHeading: (attrs: { level: number }) => ReturnType;
+      unsetHeading: () => ReturnType;
+    };
+    textAlign: {
+      setTextAlign: (alignment: string) => ReturnType;
+      unsetTextAlign: () => ReturnType;
+    };
+    codeBlock: {
+      setCodeBlock: (attrs?: { language?: string }) => ReturnType;
+      toggleCodeBlock: (attrs?: { language?: string }) => ReturnType;
+    };
+    link: {
+      setLink: (attrs: { href: string; target?: string; rel?: string }) => ReturnType;
+      toggleLink: (attrs: { href: string; target?: string; rel?: string }) => ReturnType;
+      unsetLink: () => ReturnType;
+    };
+    bulletList: {
+      toggleBulletList: () => ReturnType;
+    };
+    orderedList: {
+      toggleOrderedList: () => ReturnType;
+    };
+    taskList: {
+      toggleTaskList: () => ReturnType;
+    };
+    blockquote: {
+      setBlockquote: () => ReturnType;
+      toggleBlockquote: () => ReturnType;
+      unsetBlockquote: () => ReturnType;
+    };
+    horizontalRule: {
+      setHorizontalRule: () => ReturnType;
+    };
+  }
+}
 
 // ---- Nodes ----
 
@@ -615,6 +708,95 @@ export const CodeBlock = Node.create({
   },
 });
 
+// ---- Blockquote ----
+
+export const Blockquote = Node.create({
+  name: "blockquote",
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
+  content: "block+",
+  group: "block",
+  defining: true,
+  parseHTML() {
+    return [{ tag: "blockquote" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "blockquote",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
+  },
+  addCommands() {
+    return {
+      setBlockquote:
+        () =>
+        ({ commands }) =>
+          commands.wrapIn(this.name),
+      toggleBlockquote:
+        () =>
+        ({ commands }) =>
+          commands.toggleWrap(this.name),
+      unsetBlockquote:
+        () =>
+        ({ commands }) =>
+          commands.lift(this.name),
+    };
+  },
+  addInputRules() {
+    return [
+      wrappingInputRule({
+        find: /^\s*>\s$/,
+        type: this.type,
+      }),
+    ];
+  },
+});
+
+// ---- HorizontalRule ----
+
+export const HorizontalRule = Node.create({
+  name: "horizontalRule",
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
+  group: "block",
+  parseHTML() {
+    return [{ tag: "hr" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["hr", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)];
+  },
+  addCommands() {
+    return {
+      setHorizontalRule:
+        () =>
+        ({ chain }) =>
+          chain()
+            .insertContent({ type: this.name })
+            .command(({ tr, dispatch }) => {
+              if (dispatch) {
+                const { $to } = tr.selection;
+                const posAfter = $to.end();
+                if ($to.nodeAfter) {
+                  tr.setSelection(TextSelection.create(tr.doc, $to.pos));
+                } else {
+                  const node = $to.parent.type.contentMatch.defaultType?.create();
+                  if (node) {
+                    tr.insert(posAfter, node);
+                    tr.setSelection(TextSelection.create(tr.doc, posAfter + 1));
+                  }
+                }
+                tr.scrollIntoView();
+              }
+              return true;
+            })
+            .run(),
+    };
+  },
+});
+
 // ---- Link ----
 
 const URL_RE =
@@ -818,23 +1000,26 @@ export const ListItem = Node.create({
   addCommands() {
     return {
       liftListItem:
-        (typeOrName: string) =>
+        (typeOrName: string | NodeType) =>
         ({ state, dispatch }) => {
-          const type = state.schema.nodes[typeOrName];
+          const type =
+            typeof typeOrName === "string" ? state.schema.nodes[typeOrName] : typeOrName;
           if (!type) return false;
           return pmLiftListItem(type)(state, dispatch);
         },
       sinkListItem:
-        (typeOrName: string) =>
+        (typeOrName: string | NodeType) =>
         ({ state, dispatch }) => {
-          const type = state.schema.nodes[typeOrName];
+          const type =
+            typeof typeOrName === "string" ? state.schema.nodes[typeOrName] : typeOrName;
           if (!type) return false;
           return pmSinkListItem(type)(state, dispatch);
         },
       splitListItem:
-        (typeOrName: string) =>
+        (typeOrName: string | NodeType) =>
         ({ state, dispatch }) => {
-          const type = state.schema.nodes[typeOrName];
+          const type =
+            typeof typeOrName === "string" ? state.schema.nodes[typeOrName] : typeOrName;
           if (!type) return false;
           return pmSplitListItem(type)(state, dispatch);
         },

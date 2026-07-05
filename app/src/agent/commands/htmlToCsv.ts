@@ -1,5 +1,5 @@
 import * as html5parser from "html5parser";
-import { defineCommand } from "just-bash";
+import { decodeBytesToUtf8, defineCommand } from "just-bash";
 
 type HtmlTagNode = html5parser.ITag;
 type HtmlNode = html5parser.INode;
@@ -35,10 +35,11 @@ function normalizeHtmlText(value: string): string {
 
 function findFirstTag(nodes: HtmlNode[], name: string): HtmlTagNode | null {
   for (const node of nodes) {
-    if (isTag(node, name)) {
+    if (!isTag(node)) continue;
+    if (node.name.toLowerCase() === name) {
       return node;
     }
-    if (isTag(node) && node.body) {
+    if (node.body) {
       const nested = findFirstTag(node.body, name);
       if (nested) {
         return nested;
@@ -103,11 +104,11 @@ async function readInput(
   }
 
   const inputPath = positional[0] ? ctx.fs.resolvePath(ctx.cwd, positional[0]) : null;
-  const bytes = inputPath
-    ? await ctx.fs.readFileBuffer(inputPath)
-    : new TextEncoder().encode(ctx.stdin);
+  const html = inputPath
+    ? Buffer.from(await ctx.fs.readFileBuffer(inputPath)).toString("utf-8")
+    : decodeBytesToUtf8(ctx.stdin);
 
-  return { html: Buffer.from(bytes).toString("utf-8"), outputFile };
+  return { html, outputFile };
 }
 
 async function writeOutput(

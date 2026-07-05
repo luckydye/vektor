@@ -19,6 +19,7 @@ export const OPTIONS: APIRoute = () => optionsPreflight();
 
 export const GET: APIRoute = async (context) => {
   const { userId, spaceId, eventId } = context.params;
+  if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
   if (caldavUser instanceof Response) return caldavUser;
 
@@ -37,6 +38,7 @@ export const GET: APIRoute = async (context) => {
 
 export const PUT: APIRoute = async (context) => {
   const { userId, spaceId, eventId } = context.params;
+  if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, {
     userId,
     spaceId,

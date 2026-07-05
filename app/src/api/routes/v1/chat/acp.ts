@@ -743,7 +743,7 @@ export const POST: APIRoute = (context) =>
             userId !== null && persistedSession && lastHistoryRole !== "user"
               ? history
               : null,
-          userProfile,
+          userProfile: userProfile ?? undefined,
           connectedProviders,
           apiUrl: getLocalOrigin(),
           spaceId,

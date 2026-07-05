@@ -4,7 +4,13 @@
     ".astro/types.d.ts",
     "**/*"
   ],
-  "exclude": ["dist"],
+  "exclude": [
+    "dist",
+    "test",
+    "generated",
+    "generated/**",
+    "src/viewport/vector-tile.ts"
+  ],
   "compilerOptions": {
     "jsx": "preserve",
     "jsxImportSource": "vue",

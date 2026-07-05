@@ -122,7 +122,7 @@ export type WsMsgType = (typeof WsMsgType)[keyof typeof WsMsgType];
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-export function wsEncode(type: WsMsgType, payload: object): Uint8Array {
+export function wsEncode(type: WsMsgType, payload: object): Uint8Array<ArrayBuffer> {
   const json = enc.encode(JSON.stringify(payload));
   const frame = new Uint8Array(1 + json.length);
   frame[0] = type;
@@ -130,7 +130,10 @@ export function wsEncode(type: WsMsgType, payload: object): Uint8Array {
   return frame;
 }
 
-export function wsEncodeYjsUpdate(documentId: string, update: Uint8Array): Uint8Array {
+export function wsEncodeYjsUpdate(
+  documentId: string,
+  update: Uint8Array,
+): Uint8Array<ArrayBuffer> {
   const idBytes = enc.encode(documentId);
   const frame = new Uint8Array(1 + 4 + idBytes.length + update.length);
   frame[0] = WsMsgType.YjsUpdate;

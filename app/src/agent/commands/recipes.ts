@@ -1,15 +1,19 @@
 import { defineCommand } from "just-bash";
 
-import appDocRaw from "./recipes/app-doc.md" with { type: "text" };
-import canvasRaw from "./recipes/canvas.md" with { type: "text" };
-import createDocRaw from "./recipes/create-doc.md" with { type: "text" };
-import editJsonRaw from "./recipes/edit-json.md" with { type: "text" };
-import editTextRaw from "./recipes/edit-text.md" with { type: "text" };
-import extensionRaw from "./recipes/extension.md" with { type: "text" };
-import findDocsRaw from "./recipes/find-docs.md" with { type: "text" };
-import largeOutputRaw from "./recipes/large-output.md" with { type: "text" };
-import uploadRaw from "./recipes/upload.md" with { type: "text" };
-import workflowRaw from "./recipes/workflow.md" with { type: "text" };
+// Plain-text recipe bodies, embedded via Bun's `with { type: "text" }`.
+// Kept as `.txt` rather than `.md` because Astro's ambient `*.md` module
+// type treats markdown as page content (default export `AstroComponentFactory`),
+// which would conflict with the plain string these imports need.
+import appDocRaw from "./recipes/app-doc.txt" with { type: "text" };
+import canvasRaw from "./recipes/canvas.txt" with { type: "text" };
+import createDocRaw from "./recipes/create-doc.txt" with { type: "text" };
+import editJsonRaw from "./recipes/edit-json.txt" with { type: "text" };
+import editTextRaw from "./recipes/edit-text.txt" with { type: "text" };
+import extensionRaw from "./recipes/extension.txt" with { type: "text" };
+import findDocsRaw from "./recipes/find-docs.txt" with { type: "text" };
+import largeOutputRaw from "./recipes/large-output.txt" with { type: "text" };
+import uploadRaw from "./recipes/upload.txt" with { type: "text" };
+import workflowRaw from "./recipes/workflow.txt" with { type: "text" };
 
 export type Recipe = {
   title: string;

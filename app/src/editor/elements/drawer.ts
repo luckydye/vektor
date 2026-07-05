@@ -9,7 +9,10 @@ export class DrawerTrack extends Track {
   public override traits: Trait[] = [
     {
       id: "drawer",
-      input(track: DrawerTrack, _inputState: InputState) {
+      input(baseTrack: Track, _inputState: InputState) {
+        // This trait is only ever installed on a DrawerTrack instance (see
+        // `traits` above), so the base `Track` param is always one in practice.
+        const track = baseTrack as unknown as DrawerTrack;
         const openThresholdFixed = window.innerHeight / 2;
         const openThreshold = window.innerHeight - openThresholdFixed;
 
@@ -76,7 +79,10 @@ export class DrawerTrack extends Track {
     return !!this.contentheight;
   }
 
-  override onPointerUpOrCancel = (pointerEvent: PointerEvent) => {
+  // `onPointerUpOrCancel` is private on the base Track class, so it can't be
+  // declared here with `override`. It's still a plain instance field at
+  // runtime, so the constructor below assigns this handler over it directly.
+  handlePointerUpOrCancel = (pointerEvent: PointerEvent) => {
     if (pointerEvent.type === "pointercancel") {
       return;
     }
@@ -90,7 +96,9 @@ export class DrawerTrack extends Track {
 
     if (this.grabbing) {
       this.grabbing = false;
-      this.inputState.release.value = true;
+      // `inputState` is private on the base Track class; there's no
+      // protected/public accessor exposed for subclasses to release it.
+      (this as unknown as { inputState: InputState }).inputState.release.value = true;
 
       pointerEvent.preventDefault();
       pointerEvent.stopPropagation();
@@ -99,6 +107,10 @@ export class DrawerTrack extends Track {
 
   constructor() {
     super();
+
+    (
+      this as unknown as { onPointerUpOrCancel: (e: PointerEvent) => void }
+    ).onPointerUpOrCancel = this.handlePointerUpOrCancel;
 
     this.addEventListener("pointerdown", (e) => {
       if (this.isOpen) {

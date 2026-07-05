@@ -184,7 +184,7 @@ function worksheetXml(rows: ExcelCell[][]): string {
 </worksheet>`;
 }
 
-function textData(value: string): Uint8Array {
+function textData(value: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(value);
 }
 
@@ -206,19 +206,19 @@ function crc32(data: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function uint16(value: number): Uint8Array {
+function uint16(value: number): Uint8Array<ArrayBuffer> {
   const data = new Uint8Array(2);
   new DataView(data.buffer).setUint16(0, value, true);
   return data;
 }
 
-function uint32(value: number): Uint8Array {
+function uint32(value: number): Uint8Array<ArrayBuffer> {
   const data = new Uint8Array(4);
   new DataView(data.buffer).setUint32(0, value, true);
   return data;
 }
 
-function concat(parts: Uint8Array[]): Uint8Array {
+function concat(parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const length = parts.reduce((total, part) => total + part.length, 0);
   const data = new Uint8Array(length);
   let offset = 0;
@@ -229,7 +229,7 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return data;
 }
 
-function createZip(entries: ZipEntry[]): Uint8Array {
+function createZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
   const fileParts: Uint8Array[] = [];
   const centralParts: Uint8Array[] = [];
   let offset = 0;
@@ -308,7 +308,7 @@ export function sanitizeSheetName(name: string): string {
     .slice(0, 31);
 }
 
-function buildXlsx(sheets: ExcelSheet[]): Uint8Array {
+function buildXlsx(sheets: ExcelSheet[]): Uint8Array<ArrayBuffer> {
   const stylesRelId = `rId${sheets.length + 1}`;
 
   const contentTypeOverrides = sheets

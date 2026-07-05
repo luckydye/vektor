@@ -142,7 +142,7 @@ export async function buildApiContext(
   const request = new Request(url, {
     method: req.method,
     headers,
-    body,
+    body: body as unknown as BodyInit | undefined,
     signal: controller.signal,
   });
 

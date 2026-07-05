@@ -11,10 +11,11 @@ if (
     class StatusbarElement extends HTMLElement {
       private unsubscribeActionsRegister: (() => void) | null = null;
       private unsubscribeActionsUnregister: (() => void) | null = null;
+      private root: ShadowRoot;
 
       constructor() {
         super();
-        this.attachShadow({ mode: "open" });
+        this.root = this.attachShadow({ mode: "open" });
       }
 
       connectedCallback() {
@@ -43,7 +44,7 @@ if (
       };
 
       private paint = () => {
-        render(this.render(), this.shadowRoot);
+        render(this.render(), this.root);
       };
 
       private render() {

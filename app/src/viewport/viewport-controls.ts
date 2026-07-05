@@ -268,23 +268,23 @@ export function createViewportControls({
     e.preventDefault();
   }
 
-  target.addEventListener("pointerdown", beginTouchPointer, {
+  target.addEventListener("pointerdown", beginTouchPointer as EventListener, {
     capture: true,
     passive: false,
   });
-  target.addEventListener("pointermove", moveTouchPointer, {
+  target.addEventListener("pointermove", moveTouchPointer as EventListener, {
     capture: true,
     passive: false,
   });
-  target.addEventListener("pointerup", endTouchPointer, {
+  target.addEventListener("pointerup", endTouchPointer as EventListener, {
     capture: true,
     passive: false,
   });
-  target.addEventListener("pointercancel", endTouchPointer, {
+  target.addEventListener("pointercancel", endTouchPointer as EventListener, {
     capture: true,
     passive: false,
   });
-  target.addEventListener("wheel", handleViewportWheel, {
+  target.addEventListener("wheel", handleViewportWheel as EventListener, {
     capture: true,
     passive: false,
   });
@@ -298,11 +298,21 @@ export function createViewportControls({
 
   return {
     dispose() {
-      target.removeEventListener("pointerdown", beginTouchPointer, { capture: true });
-      target.removeEventListener("pointermove", moveTouchPointer, { capture: true });
-      target.removeEventListener("pointerup", endTouchPointer, { capture: true });
-      target.removeEventListener("pointercancel", endTouchPointer, { capture: true });
-      target.removeEventListener("wheel", handleViewportWheel, { capture: true });
+      target.removeEventListener("pointerdown", beginTouchPointer as EventListener, {
+        capture: true,
+      });
+      target.removeEventListener("pointermove", moveTouchPointer as EventListener, {
+        capture: true,
+      });
+      target.removeEventListener("pointerup", endTouchPointer as EventListener, {
+        capture: true,
+      });
+      target.removeEventListener("pointercancel", endTouchPointer as EventListener, {
+        capture: true,
+      });
+      target.removeEventListener("wheel", handleViewportWheel as EventListener, {
+        capture: true,
+      });
       target.removeEventListener("gesturestart", preventNativeViewportGesture);
       target.removeEventListener("gesturechange", preventNativeViewportGesture);
       target.removeEventListener("gestureend", preventNativeViewportGesture);
