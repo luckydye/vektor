@@ -1,34 +1,22 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createJobToken } from "../src/jobs/jobToken.ts";
+import {
+  createApiRequest,
+  startTestServer,
+  type TestServerProcess,
+  testBaseUrl,
+  waitForServer,
+} from "./helpers/server.ts";
 
 process.env.AUTH_SECRET ??= "job-token-test-secret-do-not-use-in-production";
 
 const PORT = 7481;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = testBaseUrl(PORT);
+const apiRequest = createApiRequest(BASE_URL);
 
-let serverProcess: ReturnType<typeof Bun.spawn>;
+let serverProcess: TestServerProcess;
 let testSpaceId: string;
 let testDocumentId: string;
-
-async function waitForServer(timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
-      if (res.status < 500) return;
-    } catch {
-      // not ready yet
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
-}
-
-async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  return fetch(`${BASE_URL}${path}`, { ...options, headers });
-}
 
 function jobRequest(
   path: string,
@@ -42,22 +30,13 @@ function jobRequest(
 }
 
 beforeAll(async () => {
-  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
-    env: {
-      ...process.env,
-      VEKTOR_NO_AUTH: "1",
-      VEKTOR_IN_MEMORY_DB: "1",
-      VEKTOR_API_ONLY: "1",
-      HOST: "127.0.0.1",
-      NODE_ENV: "test",
-      VEKTOR_OTEL_ENABLED: "0",
-    },
-    stdout: "ignore",
-    stderr: "ignore",
-    cwd: import.meta.dir + "/..",
+  serverProcess = startTestServer(PORT, {
+    VEKTOR_NO_AUTH: "1",
+    VEKTOR_IN_MEMORY_DB: "1",
+    VEKTOR_API_ONLY: "1",
   });
 
-  await waitForServer();
+  await waitForServer(BASE_URL);
 
   const spaceResponse = await apiRequest("/api/v1/spaces", {
     method: "POST",

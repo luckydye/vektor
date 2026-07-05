@@ -1,33 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { CalDAVSource } from "./caldav/caldav-client.ts";
+import {
+  createApiRequest,
+  startTestServer,
+  type TestServerProcess,
+  testBaseUrl,
+  waitForServer,
+} from "./helpers/server.ts";
 
 const PORT = 7483;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = testBaseUrl(PORT);
+const apiRequest = createApiRequest(BASE_URL);
 
 const LOCAL_USER_EMAIL = "local@localhost";
 
 let testSpaceId: string;
-let serverProcess: ReturnType<typeof Bun.spawn>;
-
-async function waitForServer(timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
-      if (res.status < 500) return;
-    } catch {
-      // not ready yet
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
-}
-
-async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  return fetch(`${BASE_URL}${path}`, { ...options, headers });
-}
+let serverProcess: TestServerProcess;
 
 function createCalDAVSource() {
   return new CalDAVSource("test-caldav", "Test Calendar", "#FF6E68", {
@@ -38,22 +26,13 @@ function createCalDAVSource() {
 }
 
 beforeAll(async () => {
-  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
-    env: {
-      ...process.env,
-      VEKTOR_IN_MEMORY_DB: "1",
-      VEKTOR_API_ONLY: "1",
-      VEKTOR_NO_AUTH: "1",
-      HOST: "127.0.0.1",
-      NODE_ENV: "test",
-      VEKTOR_OTEL_ENABLED: "0",
-    },
-    stdout: "ignore",
-    stderr: "ignore",
-    cwd: import.meta.dir + "/..",
+  serverProcess = startTestServer(PORT, {
+    VEKTOR_IN_MEMORY_DB: "1",
+    VEKTOR_API_ONLY: "1",
+    VEKTOR_NO_AUTH: "1",
   });
 
-  await waitForServer();
+  await waitForServer(BASE_URL);
 
   const spaceResp = await apiRequest("/api/v1/spaces", {
     method: "POST",

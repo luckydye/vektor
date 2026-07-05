@@ -16,6 +16,13 @@ import {
   transformCachePath,
   withTransformParams,
 } from "../src/files/transforms.ts";
+import {
+  createApiRequest,
+  startTestServer,
+  type TestServerProcess,
+  testBaseUrl,
+  waitForServer,
+} from "./helpers/server.ts";
 
 const native = getNativeImage();
 if (!native) {
@@ -197,32 +204,17 @@ describe("transformCachePath", () => {
 // ---------------------------------------------------------------------------
 
 const PORT = 7483;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = testBaseUrl(PORT);
+const apiRequest = createApiRequest(BASE_URL);
 
-let serverProcess: ReturnType<typeof Bun.spawn>;
+let serverProcess: TestServerProcess;
 let spaceId: string;
 
 /** A 100 × 200 solid-red PNG generated at test startup. */
 let testPngBuffer: Buffer;
 
-async function waitForServer(timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
-      if (res.status < 500) return;
-    } catch {
-      // not ready yet
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
-}
-
 async function apiJson<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await apiRequest(path, options);
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`${options.method ?? "GET"} ${path} → ${res.status}: ${body}`);
@@ -253,22 +245,13 @@ beforeAll(async () => {
   // Generate test image: 100 wide × 200 tall, solid red
   testPngBuffer = Buffer.from(native.encodeSolid(100, 200, 200, 50, 50, "png", 80));
 
-  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
-    env: {
-      ...process.env,
-      VEKTOR_NO_AUTH: "1",
-      VEKTOR_IN_MEMORY_DB: "1",
-      VEKTOR_API_ONLY: "1",
-      HOST: "127.0.0.1",
-      NODE_ENV: "test",
-      VEKTOR_OTEL_ENABLED: "0",
-    },
-    stdout: "ignore",
-    stderr: "ignore",
-    cwd: import.meta.dir + "/..",
+  serverProcess = startTestServer(PORT, {
+    VEKTOR_NO_AUTH: "1",
+    VEKTOR_IN_MEMORY_DB: "1",
+    VEKTOR_API_ONLY: "1",
   });
 
-  await waitForServer();
+  await waitForServer(BASE_URL);
 
   const { space } = await apiJson<{ space: { id: string } }>("/api/v1/spaces", {
     method: "POST",

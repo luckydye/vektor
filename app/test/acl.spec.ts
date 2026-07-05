@@ -1,23 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {
+  createSessionApiRequest,
+  createTestUser,
+  startTestServer,
+  type TestServerProcess,
+  testBaseUrl,
+  waitForServer,
+} from "./helpers/server.ts";
 
 const PORT = 7484;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BASE_URL = testBaseUrl(PORT);
+const apiRequest = createSessionApiRequest(BASE_URL);
+const createAclTestUser = (name: string) => createTestUser(BASE_URL, name, "test-acl");
 
-let serverProcess: ReturnType<typeof Bun.spawn>;
-
-async function waitForServer(timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/v1/spaces`);
-      if (res.status < 500) return;
-    } catch {
-      // not ready yet
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error(`Server did not become ready within ${timeoutMs}ms`);
-}
+let serverProcess: TestServerProcess;
 
 let testUser1: { id: string; email: string; name: string };
 let testUser2: { id: string; email: string; name: string };
@@ -30,87 +26,17 @@ let testDocumentId: string;
 let featuresTestSpaceId: string;
 let featuresTestDocumentId: string;
 
-async function createTestUser(name: string) {
-  const testEmail = `test-acl-${Date.now()}-${Math.random()}@example.com`;
-  const testPassword = "TestPassword123!";
-
-  const response = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: testEmail,
-      password: testPassword,
-      name,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create test user: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const token = data.token;
-
-  const cookies = response.headers.get("set-cookie");
-  let sessionCookie = "";
-  if (cookies) {
-    const match = cookies.match(/vektor\.session_token=([^;]+)/);
-    if (match) {
-      sessionCookie = match[1];
-    }
-  }
-
-  if (!sessionCookie) {
-    sessionCookie = `${token}.${Buffer.from(token).toString("base64")}`;
-  }
-
-  return {
-    userId: data.user.id,
-    token: sessionCookie,
-    email: testEmail,
-    name: data.user.name,
-  };
-}
-
-async function apiRequest(
-  path: string,
-  sessionToken: string,
-  options: RequestInit = {},
-): Promise<Response> {
-  const headers = new Headers(options.headers);
-  if (sessionToken) {
-    headers.set("Cookie", `vektor.session_token=${sessionToken}`);
-  }
-  headers.set("Content-Type", "application/json");
-
-  return fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
-}
-
 beforeAll(async () => {
-  serverProcess = Bun.spawn(["bun", "./src/server.ts", "--port", String(PORT)], {
-    env: {
-      ...process.env,
-      VEKTOR_IN_MEMORY_DB: "1",
-      VEKTOR_EMAIL_AUTH: "1",
-      AUTH_SECRET: process.env.AUTH_SECRET ?? "acl-test-secret-do-not-use-in-production",
-      HOST: "127.0.0.1",
-      NODE_ENV: "test",
-      VEKTOR_OTEL_ENABLED: "0",
-    },
-    stdout: "ignore",
-    stderr: "ignore",
-    cwd: import.meta.dir + "/..",
+  serverProcess = startTestServer(PORT, {
+    VEKTOR_IN_MEMORY_DB: "1",
+    VEKTOR_EMAIL_AUTH: "1",
+    AUTH_SECRET: process.env.AUTH_SECRET ?? "acl-test-secret-do-not-use-in-production",
   });
-  await waitForServer();
+  await waitForServer(BASE_URL);
 
   try {
     // Create three test users
-    const user1Data = await createTestUser("Test User 1");
+    const user1Data = await createAclTestUser("Test User 1");
     testUser1 = {
       id: user1Data.userId,
       email: user1Data.email,
@@ -118,7 +44,7 @@ beforeAll(async () => {
     };
     session1Token = user1Data.token;
 
-    const user2Data = await createTestUser("Test User 2");
+    const user2Data = await createAclTestUser("Test User 2");
     testUser2 = {
       id: user2Data.userId,
       email: user2Data.email,
@@ -126,7 +52,7 @@ beforeAll(async () => {
     };
     session2Token = user2Data.token;
 
-    const user3Data = await createTestUser("Test User 3");
+    const user3Data = await createAclTestUser("Test User 3");
     testUser3 = {
       id: user3Data.userId,
       email: user3Data.email,
@@ -365,7 +291,7 @@ describe("ACL API Tests - Space Members", () => {
 
   it("should allow user with view permission to see previously created documents", async () => {
     // Create a new standalone user for this test
-    const newUserData = await createTestUser("Standalone Viewer");
+    const newUserData = await createAclTestUser("Standalone Viewer");
     const newUserId = newUserData.userId;
     const newUserToken = newUserData.token;
 
@@ -827,7 +753,7 @@ describe("ACL API Tests - Permission Inheritance", () => {
 describe("ACL API Tests - Access Control", () => {
   it("should deny access to non-member", async () => {
     // Create a new user not in the space
-    const nonMemberData = await createTestUser("Non Member");
+    const nonMemberData = await createAclTestUser("Non Member");
     const nonMemberToken = nonMemberData.token;
 
     const response = await apiRequest(
@@ -945,10 +871,10 @@ describe("ACL API Tests - Access Control", () => {
   });
 
   it("should allow document tree access for descendants", async () => {
-    const treeUserData = await createTestUser("Document Tree User");
+    const treeUserData = await createAclTestUser("Document Tree User");
     const treeUserId = treeUserData.userId;
     const treeUserToken = treeUserData.token;
-    const treeEditorData = await createTestUser("Document Tree Editor");
+    const treeEditorData = await createAclTestUser("Document Tree Editor");
     const treeEditorId = treeEditorData.userId;
     const treeEditorToken = treeEditorData.token;
 
@@ -1115,10 +1041,10 @@ describe("ACL API Tests - Access Control", () => {
   });
 
   it("should allow category-specific access", async () => {
-    const categoryUserData = await createTestUser("Category ACL User");
+    const categoryUserData = await createAclTestUser("Category ACL User");
     const categoryUserId = categoryUserData.userId;
     const categoryUserToken = categoryUserData.token;
-    const categoryEditorData = await createTestUser("Category ACL Editor");
+    const categoryEditorData = await createAclTestUser("Category ACL Editor");
     const categoryEditorId = categoryEditorData.userId;
     const categoryEditorToken = categoryEditorData.token;
     const unique = Date.now();
@@ -1337,7 +1263,7 @@ describe("ACL API Tests - Search Access Control", () => {
 
   it("should deny search to non-members", async () => {
     // Create a user not in the space
-    const nonMemberData = await createTestUser("Search Non Member");
+    const nonMemberData = await createAclTestUser("Search Non Member");
     const nonMemberToken = nonMemberData.token;
 
     const response = await apiRequest(
@@ -1677,7 +1603,7 @@ describe("ACL API Tests - Document Children Access Control", () => {
   });
 
   it("should deny non-member access to document children", async () => {
-    const nonMemberData = await createTestUser("Children Non Member");
+    const nonMemberData = await createAclTestUser("Children Non Member");
     const nonMemberToken = nonMemberData.token;
 
     const response = await apiRequest(
@@ -1711,7 +1637,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     testSpaceForLevels = spaceData.space.id;
 
     // Create viewer user
-    const viewerData = await createTestUser("Viewer User");
+    const viewerData = await createAclTestUser("Viewer User");
     viewerUser = {
       id: viewerData.userId,
       email: viewerData.email,
@@ -1720,7 +1646,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     viewerToken = viewerData.token;
 
     // Create editor user
-    const editorData = await createTestUser("Editor User");
+    const editorData = await createAclTestUser("Editor User");
     editorUser = {
       id: editorData.userId,
       email: editorData.email,
@@ -1729,7 +1655,7 @@ describe("ACL API Tests - Permission Level Access", () => {
     editorToken = editorData.token;
 
     // Create editor user with owner-level access for testing
-    const adminData = await createTestUser("Editor User");
+    const adminData = await createAclTestUser("Editor User");
     adminUser = {
       id: adminData.userId,
       email: adminData.email,
@@ -1890,7 +1816,7 @@ describe("ACL API Tests - Permission Level Access", () => {
   });
 
   it("should not allow editor to add new members", async () => {
-    const newUserData = await createTestUser("New Member User");
+    const newUserData = await createAclTestUser("New Member User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
       adminToken,
@@ -1931,7 +1857,7 @@ describe("ACL API Tests - Permission Level Access", () => {
   });
 
   it("should not allow viewer to add members", async () => {
-    const newUserData = await createTestUser("Viewer Attempt User");
+    const newUserData = await createAclTestUser("Viewer Attempt User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
       viewerToken,
@@ -1949,7 +1875,7 @@ describe("ACL API Tests - Permission Level Access", () => {
   });
 
   it("should not allow editor to add members", async () => {
-    const newUserData = await createTestUser("Editor Attempt User");
+    const newUserData = await createAclTestUser("Editor Attempt User");
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceForLevels}/permissions`,
       editorToken,
@@ -1979,10 +1905,10 @@ describe("ACL API Tests - Markdown content negotiation", () => {
 
   beforeAll(async () => {
     // Create isolated users for markdown tests
-    const ownerData = await createTestUser("MD Owner");
+    const ownerData = await createAclTestUser("MD Owner");
     mdOwnerToken = ownerData.token;
 
-    const viewerData = await createTestUser("MD Viewer");
+    const viewerData = await createAclTestUser("MD Viewer");
     mdViewerUser = {
       id: viewerData.userId,
       email: viewerData.email,
@@ -1990,7 +1916,7 @@ describe("ACL API Tests - Markdown content negotiation", () => {
     };
     mdViewerToken = viewerData.token;
 
-    const nonMemberData = await createTestUser("MD Non-Member");
+    const nonMemberData = await createAclTestUser("MD Non-Member");
     mdNonMemberUser = {
       id: nonMemberData.userId,
       email: nonMemberData.email,
@@ -2202,7 +2128,7 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
 
   beforeAll(async () => {
     // Create test space with owner
-    const ownerData = await createTestUser("Public Test Owner");
+    const ownerData = await createAclTestUser("Public Test Owner");
     ownerUser = {
       id: ownerData.userId,
       token: ownerData.token,
@@ -2278,7 +2204,7 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
 
   it("should allow owner to add members despite public access", async () => {
     // Create a new user to add
-    const newUser = await createTestUser("New Member");
+    const newUser = await createAclTestUser("New Member");
 
     // Owner should be able to add members (requires owner permission)
     const response = await apiRequest(
@@ -2416,10 +2342,9 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
   });
 
   it("should allow unauthenticated users to access the search page in a public space", async () => {
-    const response = await fetch(
-      `${BASE_URL}/${publicTestSpaceSlug}/search`,
-      { redirect: "manual" },
-    );
+    const response = await fetch(`${BASE_URL}/${publicTestSpaceSlug}/search`, {
+      redirect: "manual",
+    });
     expect(response.status).toBe(200);
   });
 
@@ -3259,10 +3184,10 @@ describe("ACL API Tests - Markdown content negotiation", () => {
   let testDocSlug: string;
 
   beforeAll(async () => {
-    const ownerData = await createTestUser("MD Owner");
+    const ownerData = await createAclTestUser("MD Owner");
     mdOwnerToken = ownerData.token;
 
-    const viewerData = await createTestUser("MD Viewer");
+    const viewerData = await createAclTestUser("MD Viewer");
     mdViewerUser = {
       id: viewerData.userId,
       email: viewerData.email,
@@ -3270,7 +3195,7 @@ describe("ACL API Tests - Markdown content negotiation", () => {
     };
     mdViewerToken = viewerData.token;
 
-    const nonMemberData = await createTestUser("MD Non-Member");
+    const nonMemberData = await createAclTestUser("MD Non-Member");
     mdNonMemberUser = {
       id: nonMemberData.userId,
       email: nonMemberData.email,
@@ -3454,7 +3379,7 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
   let publicTestDocSlug: string;
 
   beforeAll(async () => {
-    const ownerData = await createTestUser("Public Test Owner");
+    const ownerData = await createAclTestUser("Public Test Owner");
     ownerUser = { id: ownerData.userId, token: ownerData.token };
 
     const spaceSlug = `public-test-${Date.now()}`;
@@ -3514,7 +3439,7 @@ describe("ACL API Tests - Public Access with Owner Override", () => {
   });
 
   it("should allow owner to add members despite public access", async () => {
-    const newUser = await createTestUser("New Member");
+    const newUser = await createAclTestUser("New Member");
     const response = await apiRequest(
       `/api/v1/spaces/${publicTestSpaceId}/permissions`,
       ownerUser.token,
