@@ -643,15 +643,6 @@ export class ApiClient {
       );
     },
     /**
-     * List candidate users to add to a space. Owner-only; includes email.
-     */
-    candidates: async (spaceId: string) => {
-      return await this.apiGet<User[]>(
-        this.baseUrl,
-        `/api/v1/users?spaceId=${encodeURIComponent(spaceId)}&scope=candidates`,
-      );
-    },
-    /**
      * Get a user by ID
      */
     getById: async (id: string) => {

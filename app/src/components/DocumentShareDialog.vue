@@ -34,11 +34,10 @@ const categoryPermissions = ref<any[]>([]);
 const spacePermissions = ref<any[]>([]);
 const categories = ref<any[]>([]);
 const selectedCategoryId = ref("");
-const availableUsers = ref<any[]>([]);
 const usersMap = ref(new Map<string, any>());
 const isLoading = ref(false);
 
-const newMemberId = ref("");
+const newMemberEmail = ref("");
 const newMemberRole = ref("viewer");
 const addingMember = ref(false);
 const addMemberError = ref<string | null>(null);
@@ -61,7 +60,7 @@ const roleOptions = computed(() =>
 function onTabSelected(e: Event) {
   const { index } = (e as CustomEvent<{ index: number }>).detail;
   scope.value = index === 0 ? "document" : index === 1 ? "category" : "space";
-  newMemberId.value = "";
+  newMemberEmail.value = "";
   addMemberError.value = null;
 }
 
@@ -123,21 +122,12 @@ async function load() {
   }
 }
 
-async function fetchCandidates() {
-  if (!currentSpaceId.value) return;
-  try {
-    availableUsers.value = (await api.users.candidates(currentSpaceId.value)) || [];
-  } catch {
-    availableUsers.value = [];
-  }
-}
-
 watch(
   () => props.show,
   async (open) => {
     if (open) {
       scope.value = "document";
-      newMemberId.value = "";
+      newMemberEmail.value = "";
       newMemberRole.value = "viewer";
       includeChildPages.value = false;
       selectedCategoryId.value = "";
@@ -145,14 +135,13 @@ watch(
       await customElements.whenDefined("a-tabs");
       tabsEl.value?.selectTabByIndex(0, false);
       load();
-      fetchCandidates();
     }
   },
 );
 
 async function handleInvite(e: Event) {
   e.preventDefault();
-  if (!currentSpaceId.value || !newMemberId.value) return;
+  if (!currentSpaceId.value || !newMemberEmail.value.trim()) return;
   if (scope.value === "category" && !selectedCategoryId.value) {
     addMemberError.value = "Select a category";
     return;
@@ -164,7 +153,7 @@ async function handleInvite(e: Event) {
     await api.permissions.grant(currentSpaceId.value, {
       type: "role",
       roleOrFeature: newMemberRole.value,
-      userId: newMemberId.value.trim(),
+      email: newMemberEmail.value.trim(),
       ...(scope.value === "document"
         ? {
             resourceType: (includeChildPages.value
@@ -176,9 +165,8 @@ async function handleInvite(e: Event) {
           ? { resourceType: "category", resourceId: selectedCategoryId.value }
           : {}),
     });
-    newMemberId.value = "";
+    newMemberEmail.value = "";
     await load();
-    await fetchCandidates();
   } catch (err) {
     addMemberError.value = err instanceof Error ? err.message : "Failed to invite";
   } finally {
@@ -345,16 +333,13 @@ function canRemoveSpaceMember(perm: any) {
 
             <form @submit.prevent="handleInvite">
               <div class="flex flex-wrap gap-2 items-center">
-                <select
-                  v-model="newMemberId"
+                <input
+                  v-model="newMemberEmail"
+                  type="email"
                   required
+                  placeholder="person@example.com"
                   class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
-                >
-                  <option value="">Select a person…</option>
-                  <option v-for="u in availableUsers" :key="u.id" :value="u.id">
-                    {{ u.name || u.email }}
-                  </option>
-                </select>
+                />
                 <select
                   v-model="newMemberRole"
                   class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
@@ -369,7 +354,7 @@ function canRemoveSpaceMember(perm: any) {
                   />
                   <span>Include child pages</span>
                 </label>
-                <button type="submit" :disabled="addingMember || !newMemberId" class="button-primary px-3xs">
+                <button type="submit" :disabled="addingMember || !newMemberEmail.trim()" class="button-primary px-3xs">
                   {{ addingMember ? "…" : "Invite" }}
                 </button>
               </div>
@@ -438,23 +423,20 @@ function canRemoveSpaceMember(perm: any) {
 
             <form @submit.prevent="handleInvite">
               <div class="flex flex-wrap gap-2 items-center">
-                <select
-                  v-model="newMemberId"
+                <input
+                  v-model="newMemberEmail"
+                  type="email"
                   required
+                  placeholder="person@example.com"
                   class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
-                >
-                  <option value="">Select a person...</option>
-                  <option v-for="u in availableUsers" :key="u.id" :value="u.id">
-                    {{ u.name || u.email }}
-                  </option>
-                </select>
+                />
                 <select
                   v-model="newMemberRole"
                   class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
                 >
                   <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
-                <button type="submit" :disabled="addingMember || !newMemberId || !selectedCategoryId" class="button-primary px-3xs">
+                <button type="submit" :disabled="addingMember || !newMemberEmail.trim() || !selectedCategoryId" class="button-primary px-3xs">
                   {{ addingMember ? "..." : "Invite" }}
                 </button>
               </div>
@@ -507,23 +489,20 @@ function canRemoveSpaceMember(perm: any) {
 
             <form @submit.prevent="handleInvite">
               <div class="flex gap-2 items-center">
-                <select
-                  v-model="newMemberId"
+                <input
+                  v-model="newMemberEmail"
+                  type="email"
                   required
+                  placeholder="person@example.com"
                   class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
-                >
-                  <option value="">Select a person…</option>
-                  <option v-for="u in availableUsers" :key="u.id" :value="u.id">
-                    {{ u.name || u.email }}
-                  </option>
-                </select>
+                />
                 <select
                   v-model="newMemberRole"
                   class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
                 >
                   <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
-                <button type="submit" :disabled="addingMember || !newMemberId" class="button-primary px-3xs">
+                <button type="submit" :disabled="addingMember || !newMemberEmail.trim()" class="button-primary px-3xs">
                   {{ addingMember ? "…" : "Invite" }}
                 </button>
               </div>
