@@ -31,6 +31,7 @@
 - Freehand drawing with pen, marker, and highlight stroke styles
 - Shapes: text boxes, sticky notes (with color options), sections, links
 - Embedded document links with content previews
+- Inline editing of embedded documents (double-click a card to edit it collaboratively in place)
 - Select, move, resize, and rotate shapes
 - Alignment snapping guides
 - Copy, paste, and duplicate shapes

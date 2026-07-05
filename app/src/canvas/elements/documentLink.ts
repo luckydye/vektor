@@ -14,6 +14,7 @@ export type DocumentPreviewState = {
   title: string;
   type?: string | null;
   content: string;
+  readonly?: boolean;
   error?: string;
 };
 
@@ -21,6 +22,7 @@ type DocumentPreviewSource = Pick<DocumentWithProperties, "id" | "properties" | 
 
 type LoadedDocumentPreviewSource = DocumentPreviewSource & {
   content?: unknown;
+  readonly?: boolean;
 };
 
 export type DocumentLinkControllerOptions = {
@@ -87,6 +89,17 @@ export function documentIdForShape(shape: CanvasShape): string | undefined {
   return shape.docId;
 }
 
+// Only plain rich-text documents can be edited inline on the canvas. Other
+// types (canvas, csv, workflow) render specialized previews, and readonly
+// documents reject writes server-side.
+export function previewSupportsInlineEditing(
+  preview: DocumentPreviewState | undefined,
+): boolean {
+  if (preview?.status !== "loaded") return false;
+  if (preview.readonly) return false;
+  return (preview.type ?? "document") === "document";
+}
+
 export function documentShapeTitle(
   shape: CanvasShape,
   preview?: DocumentPreviewState,
@@ -144,6 +157,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
         title: initialDocumentPreview(documentId, [doc]).title,
         type: doc.type,
         content: typeof doc.content === "string" ? doc.content : "",
+        readonly: Boolean(doc.readonly),
       });
     } catch (error) {
       const fallback = previews.value.get(documentId) ?? initialPreview(documentId);
@@ -171,6 +185,15 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     return cachedPreview(shape)?.content ?? "";
   }
 
+  // Refresh the cached preview after an inline editing session so the
+  // read-only card reflects what the editor last showed instead of the
+  // content fetched before the edit.
+  function setPreviewContent(documentId: string, content: string) {
+    const existing = previews.value.get(documentId);
+    if (existing?.status !== "loaded") return;
+    setPreview(documentId, { ...existing, content });
+  }
+
   // Places a card on the canvas that links to another document by stable id.
   function insertDocumentLink(documentId: string, at: { x: number; y: number }): boolean {
     const doc = options.documents.value.find((entry) => entry.id === documentId.trim());
@@ -194,6 +217,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     shapeStatus,
     shapeType,
     shapeContent,
+    setPreviewContent,
     insertDocumentLink,
   };
 }

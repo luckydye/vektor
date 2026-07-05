@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { Editor } from "@tiptap/core";
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import { getRelativeSelection } from "y-prosemirror";
-import * as Y from "yjs";
+import type * as Y from "yjs";
 import { api } from "../api/client.ts";
 import { useQuery } from "../composeables/query.ts";
 import {
@@ -17,9 +16,9 @@ import { useSync } from "../composeables/useSync.ts";
 import { setActiveEditor } from "../editor/activeEditor.ts";
 import {
   type CanvasPresenceState,
+  currentEditorPresenceState,
   type DocumentPresenceProfile,
   type DocumentPresenceState,
-  findYSyncState,
 } from "../editor/collaboration.ts";
 import docStyles from "../styles/document.css?inline";
 import { Actions } from "../utils/actions.ts";
@@ -130,33 +129,7 @@ const canvasPresenceProfiles = computed(() =>
 );
 
 function currentPresenceState(): DocumentPresenceState {
-  const currentEditor = editor.value;
-  if (!currentEditor) {
-    return { kind: "editor", focused: false, selection: null };
-  }
-
-  const syncState = findYSyncState(currentEditor);
-  if (!syncState?.binding) {
-    return { kind: "editor", focused: false, selection: null };
-  }
-
-  try {
-    const focused = currentEditor.isFocused || currentEditor.view.hasFocus();
-    const selection = currentEditor.state.selection;
-    const { anchor, head } = getRelativeSelection(syncState.binding, currentEditor.state);
-    return {
-      kind: "editor",
-      focused,
-      selection: {
-        anchor: Y.relativePositionToJSON(anchor),
-        head: Y.relativePositionToJSON(head),
-        absoluteAnchor: selection.anchor,
-        absoluteHead: selection.head,
-      },
-    };
-  } catch {
-    return { kind: "editor", focused: false, selection: null };
-  }
+  return currentEditorPresenceState(editor.value);
 }
 
 let leaveEditorPresenceSubscriptions: (() => void) | null = null;
