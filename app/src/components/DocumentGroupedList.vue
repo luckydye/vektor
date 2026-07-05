@@ -305,6 +305,8 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
             v-for="(doc, idx) in group.docs"
             :key="doc.id"
             :data-document-id="doc.id"
+            :data-space-id="currentSpace?.id"
+            :data-document-url="spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
             class="relative flex items-center group/row hover:bg-neutral-50 [&[data-dragging]]:opacity-50"
             :class="[
               idx !== 0 ? 'border-t border-neutral-100' : '',

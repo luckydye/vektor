@@ -1,4 +1,9 @@
-const DOCUMENT_ID_MIME = "application/x-vektor-document-id";
+import {
+  createVektorDocumentAddress,
+  parseVektorDocumentAddress,
+} from "../../utils/documentAddress.ts";
+
+const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
 
 /**
  * page-target
@@ -72,12 +77,36 @@ customElements.define(
       if (!documentId) {
         throw new Error("Missing data-document-id attribute");
       }
+      const spaceId = this.getAttribute("data-space-id") || undefined;
+      const url = this.getAttribute("data-document-url") || undefined;
+      const address =
+        this.getAttribute("data-document-address") ||
+        (spaceId
+          ? createVektorDocumentAddress({
+              origin: url
+                ? new URL(url, window.location.origin).origin
+                : window.location.origin,
+              spaceId,
+              documentId,
+              href: url ? new URL(url, window.location.origin).href : undefined,
+            })
+          : undefined);
+      if (!address) {
+        throw new Error("Missing document address");
+      }
 
       if (!e.dataTransfer) return;
 
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData(DOCUMENT_ID_MIME, documentId);
-      e.dataTransfer.setData("text/plain", documentId);
+      e.dataTransfer.setData(
+        DOCUMENT_LINK_MIME,
+        JSON.stringify({
+          address,
+        }),
+      );
+      if (url) {
+        e.dataTransfer.setData("text/plain", new URL(url, window.location.origin).href);
+      }
       this.setAttribute("data-dragging", "true");
 
       this.dispatchEvent(
@@ -147,12 +176,30 @@ customElements.define(
 
       if (!e.dataTransfer) return;
 
-      const draggedDocumentId =
-        e.dataTransfer.getData(DOCUMENT_ID_MIME) || e.dataTransfer.getData("text/plain");
+      const structured = e.dataTransfer.getData(DOCUMENT_LINK_MIME);
+      let address: unknown = null;
+      try {
+        address =
+          typeof structured === "string" && structured.trim()
+            ? (JSON.parse(structured) as { address?: unknown }).address
+            : null;
+      } catch {
+        return;
+      }
+      const parsedAddress =
+        typeof address === "string" ? parseVektorDocumentAddress(address) : null;
+      const draggedDocumentId = parsedAddress?.documentId;
       const targetDocumentId = this.getAttribute("data-document-id");
+      const targetSpaceId = this.getAttribute("data-space-id");
 
-      if (!draggedDocumentId || !targetDocumentId) {
+      if (!draggedDocumentId || !targetDocumentId || !parsedAddress) {
         throw new Error("Missing document IDs");
+      }
+      if (
+        parsedAddress.origin !== window.location.origin ||
+        (targetSpaceId && parsedAddress.spaceId !== targetSpaceId)
+      ) {
+        return;
       }
 
       if (draggedDocumentId === targetDocumentId) return;

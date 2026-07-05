@@ -1,4 +1,5 @@
 import * as wellKnownCaldav from "./extra/wellKnownCaldav.ts";
+import * as wellKnownVektor from "./extra/wellKnownVektor.ts";
 import * as authAll from "./routes/auth/[...all].ts";
 import * as caldavEvent from "./routes/caldav/calendars/[userId]/[spaceId]/[eventId].ts";
 import * as caldavCalendar from "./routes/caldav/calendars/[userId]/[spaceId]/index.ts";
@@ -8,6 +9,7 @@ import * as authCliToken from "./routes/v1/auth/cli/token.ts";
 import * as authCli from "./routes/v1/auth/cli.ts";
 import * as chatAcp from "./routes/v1/chat/acp.ts";
 import * as chatCompletions from "./routes/v1/chat/completions.ts";
+import * as proxyMedia from "./routes/v1/proxy-media.ts";
 import * as accessTokenResource from "./routes/v1/spaces/[spaceId]/access-tokens/[tokenId]/resources/[resourceType]/[resourceId].ts";
 import * as accessToken from "./routes/v1/spaces/[spaceId]/access-tokens/[tokenId].ts";
 import * as accessTokens from "./routes/v1/spaces/[spaceId]/access-tokens/index.ts";
@@ -55,7 +57,6 @@ import * as uploads from "./routes/v1/spaces/[spaceId]/uploads/index.ts";
 import * as workflowRun from "./routes/v1/spaces/[spaceId]/workflows/runs/[runId].ts";
 import * as workflowRuns from "./routes/v1/spaces/[spaceId]/workflows/runs/index.ts";
 import * as spaces from "./routes/v1/spaces/index.ts";
-import * as proxyMedia from "./routes/v1/proxy-media.ts";
 import * as urlMetadata from "./routes/v1/url-metadata.ts";
 import * as users from "./routes/v1/users/index.ts";
 import * as usersMe from "./routes/v1/users/me.ts";
@@ -73,6 +74,7 @@ export interface ApiRoute {
  */
 export const apiRoutes: ApiRoute[] = [
   { pattern: "/.well-known/caldav", module: wellKnownCaldav },
+  { pattern: "/.well-known/vektor", module: wellKnownVektor },
 
   { pattern: "/api/auth/[...all]", module: authAll },
 

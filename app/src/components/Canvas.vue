@@ -28,8 +28,9 @@ import {
 import { api } from "../api/client.ts";
 import {
   createDocumentLinkController,
+  type DocumentLinkReference,
   dragHasDocumentLink,
-  droppedDocumentId as getDroppedDocumentId,
+  droppedDocumentReference as getDroppedDocumentReference,
 } from "../canvas/elements/documentLink.ts";
 import {
   addCanvasDrawingPoint,
@@ -89,6 +90,7 @@ import type {
 import type { CollaborationPresenceProfile } from "../composeables/useCollaboration.ts";
 import { useDocument } from "../composeables/useDocument.ts";
 import { useDocuments } from "../composeables/useDocuments.ts";
+import { useSpace } from "../composeables/useSpace.ts";
 import type { CanvasPresenceState } from "../editor/collaboration.ts";
 import "../editor/elements/rich-text-editor.ts";
 import "@atrium-ui/elements/popover";
@@ -105,6 +107,12 @@ import {
   parseCanvasClipboardJson,
   serializeCanvasClipboard,
 } from "../utils/clipboard.ts";
+import {
+  createVektorDocumentAddress,
+  type ParsedVektorDocumentAddress,
+  parseVektorDocumentAddress,
+} from "../utils/documentAddress.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "../utils/documentHtmlSanitizer.ts";
 import {
   filenameFromUrl,
   IMAGE_RESIZE_TIERS,
@@ -272,16 +280,25 @@ let localPointer: { x: number; y: number } | null = null;
 const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
 const { document: documentData, saveDocument } = useDocument(props.documentId, "canvas");
-// Used to resolve a dropped/inserted document id to best-effort local title/type
-// metadata. The persisted canvas reference remains id-only.
+// Used to resolve dropped/inserted same-space document ids to best-effort local
+// title/type metadata before the full preview loads.
 const { documents } = useDocuments();
+const { spaces } = useSpace();
 
 const ydoc = props.ydoc;
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
 const documentLinks = createDocumentLinkController({
   documents,
-  fetchDocument: (documentId) => api.document.get(props.spaceId, documentId),
+  currentOrigin:
+    typeof window === "undefined" ? "http://localhost" : window.location.origin,
+  currentSpaceId: props.spaceId,
+  fetchDocument: async (ref) => {
+    if (isRemoteDocumentAddress(ref.address)) {
+      return fetchRemoteDocumentByAddress(ref);
+    }
+    return api.document.get(ref.spaceId, ref.documentId);
+  },
   insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
   selectShape: (shapeId) => selectOnlyShape(shapeId),
   afterInsert: () => {
@@ -302,6 +319,243 @@ function getDomainFromUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+function isRemoteDocumentUrl(url: string | undefined): url is string {
+  if (!url || typeof window === "undefined") return false;
+  try {
+    return new URL(url, window.location.origin).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function isRemoteDocumentShape(shape: CanvasShape): boolean {
+  return (
+    shape.type === "document" && isRemoteDocumentAddress(documentAddressForShape(shape))
+  );
+}
+
+function isRemoteDocumentAddress(address: string | undefined): address is string {
+  const origin = parseVektorDocumentAddress(address)?.origin;
+  return Boolean(
+    origin && typeof window !== "undefined" && origin !== window.location.origin,
+  );
+}
+
+function documentAddressForShape(shape: CanvasShape): string | undefined {
+  return parseVektorDocumentAddress(shape.docAddress)?.address;
+}
+
+function legacyDocumentAddress(input: {
+  docAddress?: unknown;
+  docId?: unknown;
+  docSpaceId?: unknown;
+  src?: string;
+}): string | undefined {
+  if (typeof input.docAddress === "string") {
+    const parsed = parseVektorDocumentAddress(input.docAddress);
+    if (parsed) return parsed.address;
+  }
+  if (typeof input.docId !== "string" || typeof window === "undefined") return undefined;
+  const href = input.src;
+  let origin = window.location.origin;
+  if (href) {
+    try {
+      origin = new URL(href, window.location.origin).origin;
+    } catch {
+      origin = window.location.origin;
+    }
+  }
+  return createVektorDocumentAddress({
+    origin,
+    spaceId: typeof input.docSpaceId === "string" ? input.docSpaceId : props.spaceId,
+    documentId: input.docId,
+    href,
+  });
+}
+
+async function fetchRemoteDocumentByAddress(ref: ParsedVektorDocumentAddress) {
+  const response = await fetch(
+    `${ref.origin}/api/v1/spaces/${encodeURIComponent(ref.spaceId)}/documents/${encodeURIComponent(ref.documentId)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch remote document: ${response.status}`);
+  }
+  const data = (await response.json()) as { document?: unknown };
+  const document = data.document as
+    | {
+        id?: unknown;
+        slug?: unknown;
+        properties?: unknown;
+        type?: unknown;
+        content?: unknown;
+      }
+    | undefined;
+  if (!document || typeof document.id !== "string") {
+    throw new Error("Invalid remote document response");
+  }
+  const properties =
+    document.properties && typeof document.properties === "object"
+      ? (document.properties as Record<string, string | string[]>)
+      : {};
+  return {
+    id: document.id,
+    properties,
+    type: typeof document.type === "string" ? document.type : "document",
+    content:
+      typeof document.content === "string"
+        ? sanitizeVektorDocumentPreviewHtml(document.content)
+        : "",
+  };
+}
+
+function documentUrlPartsFromUrl(
+  rawUrl: string,
+): { documentId: string; spaceId?: string; spaceSlug?: string; url: string } | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  let url: URL;
+  try {
+    url = new URL(trimmed, window.location.origin);
+  } catch {
+    return null;
+  }
+
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  if (pathParts.length < 2) return null;
+
+  let spaceId: string | undefined;
+  let spaceSlug: string | undefined;
+  let documentPath = "";
+
+  if (pathParts[0] === "doc" && pathParts[1]) {
+    spaceId = props.spaceId;
+    documentPath = pathParts.slice(1).join("/");
+  } else if (pathParts[1] === "doc" && pathParts[2]) {
+    spaceSlug = pathParts[0];
+    documentPath = pathParts.slice(2).join("/");
+  }
+
+  if ((!spaceId && !spaceSlug) || !documentPath) return null;
+  let documentId: string;
+  try {
+    documentId = decodeURIComponent(documentPath);
+  } catch {
+    return null;
+  }
+
+  return {
+    documentId,
+    ...(spaceId ? { spaceId } : {}),
+    ...(spaceSlug ? { spaceSlug } : {}),
+    url: url.href,
+  };
+}
+
+async function documentReferenceFromUrl(
+  rawUrl: string,
+): Promise<DocumentLinkReference | null> {
+  const parts = documentUrlPartsFromUrl(rawUrl);
+  if (!parts) return null;
+  if (parts.spaceId) {
+    return {
+      address: createVektorDocumentAddress({
+        origin: new URL(parts.url).origin,
+        spaceId: parts.spaceId,
+        documentId: parts.documentId,
+        href: parts.url,
+      }),
+    };
+  }
+
+  if (isRemoteDocumentUrl(parts.url)) return null;
+
+  const availableSpaces = spaces.value ?? (await api.spaces.get());
+  const space = availableSpaces.find((entry) => entry.slug === parts.spaceSlug);
+  if (!space) return null;
+
+  return {
+    address: createVektorDocumentAddress({
+      origin: window.location.origin,
+      spaceId: space.id,
+      documentId: parts.documentId,
+      href: parts.url,
+    }),
+  };
+}
+
+function insertLinkShape(url: string, at: { x: number; y: number }) {
+  const shape = createLinkShape(url, at);
+  yShapes.set(shape.id, createShapeMap(shape));
+  selectOnlyShape(shape.id);
+  activeTool.value = "select";
+  void linkPreviews.loadPreview(url);
+  saveImmediately();
+}
+
+async function insertDocumentLinkFromReference(
+  ref: DocumentLinkReference,
+  at: { x: number; y: number },
+  options: { fallbackToLink?: boolean } = {},
+) {
+  try {
+    const parsed = parseVektorDocumentAddress(ref.address);
+    if (!parsed) throw new Error("Invalid document address");
+    const doc = isRemoteDocumentAddress(ref.address)
+      ? await fetchRemoteDocumentByAddress(parsed)
+      : await api.document.get(parsed.spaceId, parsed.documentId);
+    documentLinks.insertDocumentLink(
+      {
+        address: createVektorDocumentAddress({
+          origin: parsed.origin,
+          spaceId: parsed.spaceId,
+          documentId: doc.id,
+          href: parsed.href,
+        }),
+      },
+      at,
+      doc,
+    );
+  } catch (err) {
+    const href = parseVektorDocumentAddress(ref.address)?.href;
+    if (options.fallbackToLink && href) {
+      insertLinkShape(href, at);
+      return;
+    }
+    toast.error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function insertDocumentLinkFromUrl(url: string, at: { x: number; y: number }) {
+  const ref = await documentReferenceFromUrl(url);
+  if (!ref) {
+    const metadata = await api.linkPreview.get(url).catch(() => null);
+    const remoteDocument = metadata?.vektorDocument;
+    if (metadata && remoteDocument) {
+      documentLinks.insertDocumentLink(
+        {
+          address:
+            remoteDocument.address ??
+            createVektorDocumentAddress({
+              origin: new URL(metadata.url || url).origin,
+              spaceId: remoteDocument.spaceId,
+              documentId: remoteDocument.documentId,
+              href: metadata.url || url,
+            }),
+        },
+        at,
+        {
+          properties: { title: metadata.title ?? remoteDocument.documentSlug },
+        },
+      );
+      return;
+    }
+    insertLinkShape(url, at);
+    return;
+  }
+  await insertDocumentLinkFromReference(ref, at, { fallbackToLink: true });
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -711,13 +965,14 @@ function toShape(
   id: string,
   source: Y.Map<unknown> | CanvasSerializedShape,
 ): CanvasShape {
-  const read = (key: keyof CanvasShape) =>
-    source instanceof Y.Map ? source.get(key) : source[key];
+  const read = (key: string) => (source instanceof Y.Map ? source.get(key) : source[key]);
 
   const typeValue = read("type");
   const type: CanvasShapeType = isCanvasShapeType(typeValue) ? typeValue : "note";
   const defaultSize = defaultSizeForShape(type);
   const minSize = minSizeForShape(type);
+  const src =
+    typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined;
   return {
     id,
     type,
@@ -730,11 +985,14 @@ function toShape(
       typeof read("color") === "string"
         ? String(read("color"))
         : defaultColorForShape(type),
-    src:
-      typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined,
+    src,
     alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
-    docId: typeof read("docId") === "string" ? String(read("docId")) : undefined,
-    variant: typeof read("variant") === "string" ? String(read("variant")) : undefined,
+    docAddress: legacyDocumentAddress({
+      docAddress: read("docAddress"),
+      docId: read("docId"),
+      docSpaceId: read("docSpaceId"),
+      src,
+    }),
     updatedAt: toNumber(read("updatedAt"), Date.now()),
   };
 }
@@ -807,8 +1065,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
   map.set("color", shape.color);
   if (shape.src) map.set("src", resolveMediaSrc(shape.src));
   if (shape.alt) map.set("alt", shape.alt);
-  if (shape.docId) map.set("docId", shape.docId);
-  if (shape.variant) map.set("variant", shape.variant);
+  if (shape.docAddress) map.set("docAddress", shape.docAddress);
   map.set("updatedAt", shape.updatedAt);
   return map;
 }
@@ -1350,9 +1607,15 @@ function onDocumentShapeOpen(shape: CanvasShape, event: Event) {
       : null;
   const documentId = requestedDocumentId ?? documentLinks.documentIdForShape(shape);
   if (!documentId) return;
+  const href = documentLinks.documentHrefForShape(shape);
+  if (isRemoteDocumentShape(shape) && href) {
+    window.open(href, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const spaceId = documentLinks.documentSpaceIdForShape(shape) || props.spaceId;
   window.dispatchEvent(
     new CustomEvent("view-document", {
-      detail: { spaceId: props.spaceId, documentId },
+      detail: { spaceId, documentId },
     }),
   );
 }
@@ -2050,10 +2313,10 @@ function handleDrop(event: DragEvent) {
   }
 
   // A document dragged from the sidebar or command palette becomes a link card.
-  const droppedId = getDroppedDocumentId(event.dataTransfer, documents.value);
+  const droppedRef = getDroppedDocumentReference(event.dataTransfer);
   if (
-    droppedId &&
-    documentLinks.insertDocumentLink(droppedId, insertionPointFromEvent(event))
+    droppedRef &&
+    documentLinks.insertDocumentLink(droppedRef, insertionPointFromEvent(event))
   ) {
     event.preventDefault();
   }
@@ -2089,6 +2352,26 @@ async function pasteFromContextMenu() {
     return;
   }
 
+  const trimmedText = clipboard.text.trim();
+  const documentRef =
+    /^https?:\/\//i.test(trimmedText) || trimmedText.startsWith("/")
+      ? documentUrlPartsFromUrl(trimmedText)
+      : null;
+  if (documentRef) {
+    void insertDocumentLinkFromUrl(trimmedText, insertAt);
+    return;
+  }
+
+  if (/^https?:\/\//i.test(trimmedText)) {
+    try {
+      new URL(trimmedText);
+      insertLinkShape(trimmedText, insertAt);
+      return;
+    } catch {
+      // not a valid URL, fall through
+    }
+  }
+
   if (clipboard.html.trim()) {
     const inserted = pasteDocumentClipboardShapes(
       documentClipboardToCanvasShapes({
@@ -2100,7 +2383,7 @@ async function pasteFromContextMenu() {
     if (inserted) return;
   }
 
-  if (clipboard.text.trim()) {
+  if (trimmedText) {
     pasteDocumentClipboardShapes(
       documentClipboardToCanvasShapes({ text: clipboard.text, at: insertAt }),
     );
@@ -2405,35 +2688,43 @@ function handlePaste(event: ClipboardEvent) {
     return;
   }
 
-  // 4. Plain-text URL that resolves to an image — fetch and insert as a
-  //    canvas image shape. Must run before the non-empty text bail below
-  //    because an image URL is "real" text we still want to consume.
-  const imageUrl = transformImageUrl(text.trim());
-  if (imageUrl) {
+  const trimmedUrl = text.trim();
+
+  // 4. Internal Vektor document URL — resolve the target space/document and
+  //    insert the same document attachment card used for sidebar drops.
+  const documentRef =
+    /^https?:\/\//i.test(trimmedUrl) || trimmedUrl.startsWith("/")
+      ? documentUrlPartsFromUrl(trimmedUrl)
+      : null;
+  if (documentRef) {
     event.preventDefault();
-    void addImageFromUrl(imageUrl, text.trim(), insertionPointFromEvent());
+    void insertDocumentLinkFromUrl(trimmedUrl, insertionPointFromEvent());
     return;
   }
 
-  // 5. Plain-text HTTP(S) URL — insert as a link preview card.
-  const trimmedUrl = text.trim();
+  // 5. Plain-text URL that resolves to an image — fetch and insert as a
+  //    canvas image shape. Must run before the non-empty text bail below
+  //    because an image URL is "real" text we still want to consume.
+  const imageUrl = transformImageUrl(trimmedUrl);
+  if (imageUrl) {
+    event.preventDefault();
+    void addImageFromUrl(imageUrl, trimmedUrl, insertionPointFromEvent());
+    return;
+  }
+
+  // 6. Plain-text HTTP(S) URL — insert as a link preview card.
   if (/^https?:\/\//i.test(trimmedUrl)) {
     try {
       new URL(trimmedUrl);
       event.preventDefault();
-      const shape = createLinkShape(trimmedUrl, insertionPointFromEvent());
-      yShapes.set(shape.id, createShapeMap(shape));
-      selectOnlyShape(shape.id);
-      activeTool.value = "select";
-      void linkPreviews.loadPreview(trimmedUrl);
-      saveImmediately();
+      insertLinkShape(trimmedUrl, insertionPointFromEvent());
       return;
     } catch {
       // not a valid URL, fall through
     }
   }
 
-  // 6. Rich document/web HTML — map supported nodes to canvas shapes.
+  // 7. Rich document/web HTML — map supported nodes to canvas shapes.
   if (html.trim()) {
     const inserted = pasteDocumentClipboardShapes(
       documentClipboardToCanvasShapes({
@@ -2448,7 +2739,7 @@ function handlePaste(event: ClipboardEvent) {
     }
   }
 
-  // 7. Plain text — create a text shape on the canvas.
+  // 8. Plain text — create a text shape on the canvas.
   if (text.trim().length > 0) {
     event.preventDefault();
     pasteDocumentClipboardShapes(
@@ -2631,13 +2922,15 @@ watch(
       .filter((shape) => shape.type === "document")
       .map((shape) => ({
         shapeId: shape.id,
-        docId: shape.docId ?? null,
+        address: documentAddressForShape(shape) ?? null,
         resolvedDocId: documentLinks.documentIdForShape(shape) ?? null,
       })),
   (documentRefs) => {
     for (const ref of documentRefs) {
       if (ref.resolvedDocId) {
-        void documentLinks.loadPreview(ref.resolvedDocId);
+        void documentLinks.loadPreview({
+          address: ref.address ?? "",
+        });
       }
     }
   },
@@ -3073,8 +3366,8 @@ onUnmounted(() => {
             :type="documentLinks.shapeType(shape)"
             :status="documentLinks.shapeStatus(shape)"
             :content="documentLinks.shapeContent(shape)"
-            :space-id="props.spaceId"
-            :document-id="documentLinks.documentIdForShape(shape) || ''"
+            :space-id="documentLinks.documentSpaceIdForShape(shape) || props.spaceId"
+            :document-id="isRemoteDocumentShape(shape) ? '' : documentLinks.documentIdForShape(shape) || ''"
             @pointerdown.stop="startShapeDrag(shape, $event)"
             @wheel.stop
             @open-document="onDocumentShapeOpen(shape, $event)"

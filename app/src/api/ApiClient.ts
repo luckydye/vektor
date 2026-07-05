@@ -1685,10 +1685,21 @@ export class ApiClient {
       title: string | null;
       description: string | null;
       image: string | null;
+      video: string | null;
       siteName: string | null;
       favicon: string | null;
       updatedAt: string | null;
       fetchedAt: number;
+      vektorDocument?: {
+        address: string;
+        documentId: string;
+        documentSlug: string;
+        spaceId: string;
+        spaceSlug: string;
+        spaceName: string;
+        type: string;
+        content: string;
+      };
     }> => {
       return await this.apiGet(this.baseUrl, `/api/v1/url-metadata`, { url });
     },
