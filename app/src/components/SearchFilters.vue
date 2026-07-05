@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { api, type PropertyFilter } from "#api/client.ts";
+import { useQuery } from "#composeables/query.ts";
 import {
   calendarIcon,
   chevronRightThinIcon,
   closeXIcon,
   plusIcon,
 } from "~/src/assets/icons.ts";
-import { api, type PropertyFilter } from "#api/client.ts";
-import { useQuery } from "#composeables/query.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
 

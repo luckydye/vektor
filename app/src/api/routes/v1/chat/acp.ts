@@ -7,9 +7,7 @@ import {
   badRequestResponse,
   errorResponse,
   parseJsonBody,
-  requireUser,
   unauthorizedResponse,
-  verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { listOAuthIntegrationsForUser } from "#db/oauthIntegrations.ts";

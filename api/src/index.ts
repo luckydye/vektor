@@ -247,7 +247,7 @@ export class VektorClient {
   ): Promise<Document | undefined> {
     const limit = 500;
     let cursor: string | undefined;
-    do {
+    for (;;) {
       const page = await this.listDocuments(spaceId, {
         limit,
         cursor,
@@ -258,7 +258,7 @@ export class VektorClient {
       if (match) return this.getDocument(spaceId, match.id, options.signal);
       if (!page.nextCursor || page.documents.length === 0) return undefined;
       cursor = page.nextCursor;
-    } while (true);
+    }
   }
 
   async listCategories(spaceId: string, signal?: AbortSignal): Promise<Category[]> {

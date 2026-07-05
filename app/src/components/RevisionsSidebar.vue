@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import type { AuditLog } from "#api/client.ts";
+import { useAuditLogs } from "#composeables/useAuditLogs.ts";
+import { useRevisions } from "#composeables/useRevisions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { Actions } from "#utils/actions.ts";
+import { replaceBrowserUrl } from "#utils/browserHistory.ts";
+import { t } from "#utils/lang.ts";
+import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   clipboardIcon,
   clockIcon,
@@ -10,14 +18,6 @@ import {
   refreshIcon,
   timelineNowDotIcon,
 } from "~/src/assets/icons.ts";
-import type { AuditLog } from "#api/client.ts";
-import { useAuditLogs } from "#composeables/useAuditLogs.ts";
-import { useRevisions } from "#composeables/useRevisions.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { Actions } from "#utils/actions.ts";
-import { replaceBrowserUrl } from "#utils/browserHistory.ts";
-import { t } from "#utils/lang.ts";
-import { normalizeTimestamp } from "#utils/utils.ts";
 import DockedPanel from "./DockedPanel.vue";
 import DocumentActivityFeed from "./DocumentActivityFeed.vue";
 import Pager from "./Pager.vue";

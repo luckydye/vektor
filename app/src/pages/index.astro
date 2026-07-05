@@ -10,7 +10,7 @@ if (!Astro.locals.session) {
 }
 
 const appConfig = config();
-const userId = Astro.locals.user!.id;
+const userId = Astro.locals.user?.id;
 
 const defaultSpace = appConfig.DEFAULT_SPACE
   ? await getSpaceBySlug(appConfig.DEFAULT_SPACE)

@@ -84,9 +84,9 @@ function renderUpdate(update: Record<string, unknown>): void {
       const shown = lines.slice(0, 12);
       const prefix = status === "failed" ? c.red("  ⎿ ") : c.dim("  ⎿ ");
       process.stdout.write(
-        shown
+        `${shown
           .map((line) => prefix + (line.length > 200 ? `${line.slice(0, 200)}…` : line))
-          .join("\n") + "\n",
+          .join("\n")}\n`,
       );
       if (lines.length > shown.length) {
         process.stdout.write(c.dim(`  ⎿ … ${lines.length - shown.length} more lines\n`));

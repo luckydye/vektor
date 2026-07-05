@@ -21,13 +21,13 @@ function parseRecipe(raw: string): Recipe {
   const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) throw new Error("Invalid recipe format");
   const [, frontmatter, body] = match;
-  const title = frontmatter!.match(/^title:\s*(.+)$/m)?.[1]?.trim() ?? "";
-  const keywordsLine = frontmatter!.match(/^keywords:\s*(.+)$/m)?.[1] ?? "";
+  const title = frontmatter?.match(/^title:\s*(.+)$/m)?.[1]?.trim() ?? "";
+  const keywordsLine = frontmatter?.match(/^keywords:\s*(.+)$/m)?.[1] ?? "";
   const keywords = keywordsLine
     .split(",")
     .map((k) => k.trim())
     .filter(Boolean);
-  return { title, keywords, body: body!.trim() };
+  return { title, keywords, body: body?.trim() };
 }
 
 const RECIPES: Record<string, Recipe> = {

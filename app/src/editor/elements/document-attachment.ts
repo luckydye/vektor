@@ -2,8 +2,8 @@
 // Renders document previews by document type and emits `open-document` from the
 // explicit open button.
 
-import { chevronRightThinIcon, documentIcon, tableRowIcon } from "~/src/assets/icons.ts";
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
+import { chevronRightThinIcon, documentIcon, tableRowIcon } from "~/src/assets/icons.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;

@@ -106,7 +106,7 @@ export function transformCachePath(
       ? "jpg"
       : params.format
         ? params.format
-        : originalPath.split(".").pop()!.toLowerCase();
+        : originalPath.split(".").pop()?.toLowerCase();
 
   const suffix = `_${params.w}x${params.h}_${params.format ?? "orig"}_q${params.quality}.${outputExt}`;
   const cacheFilename = originalPath + suffix;

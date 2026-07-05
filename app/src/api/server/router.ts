@@ -1,7 +1,7 @@
 import type { Context, Next } from "hono";
+import { apiRoutes } from "#api/routes.ts";
 import { authTrustedOrigins } from "#auth";
 import { appLogger } from "#observability/logger.ts";
-import { apiRoutes } from "#api/routes.ts";
 import { buildApiContext, PayloadTooLargeError } from "./adapter.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
 import type { ApiRouteMethod, ApiRouteModule } from "./types.ts";

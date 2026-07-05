@@ -10,21 +10,6 @@ import {
   watch,
 } from "vue";
 import * as Y from "yjs";
-import {
-  canvasFitViewIcon,
-  canvasNoteIcon,
-  canvasSectionIcon,
-  canvasSelectIcon,
-  canvasShapeIcon,
-  canvasTextIcon,
-  clipboardDocumentIcon,
-  copyIcon,
-  pencilIcon,
-  redoArrowIcon,
-  scissorsIcon,
-  trashIcon,
-  undoArrowIcon,
-} from "~/src/assets/icons.ts";
 import { api } from "#api/client.ts";
 import {
   createDocumentLinkController,
@@ -92,6 +77,21 @@ import { useDocument } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import {
+  canvasFitViewIcon,
+  canvasNoteIcon,
+  canvasSectionIcon,
+  canvasSelectIcon,
+  canvasShapeIcon,
+  canvasTextIcon,
+  clipboardDocumentIcon,
+  copyIcon,
+  pencilIcon,
+  redoArrowIcon,
+  scissorsIcon,
+  trashIcon,
+  undoArrowIcon,
+} from "~/src/assets/icons.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "@atrium-ui/elements/popover";
 import { useToast } from "#composeables/useToast.ts";

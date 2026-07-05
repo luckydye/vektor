@@ -2,18 +2,6 @@
 defineOptions({ inheritAttrs: false });
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import {
-  clockIcon,
-  copyOutlineIcon,
-  linkChainIcon,
-  pencilSquareIcon,
-  plusThinIcon,
-  robotIcon,
-  sendPlaneIcon,
-  stopIcon,
-  thinkingIcon,
-  trashSmallIcon,
-} from "~/src/assets/icons.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import {
@@ -31,6 +19,18 @@ import { propertyValueToText } from "#utils/documentProperties.ts";
 import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
+import {
+  clockIcon,
+  copyOutlineIcon,
+  linkChainIcon,
+  pencilSquareIcon,
+  plusThinIcon,
+  robotIcon,
+  sendPlaneIcon,
+  stopIcon,
+  thinkingIcon,
+  trashSmallIcon,
+} from "~/src/assets/icons.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";

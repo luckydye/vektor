@@ -2,7 +2,6 @@
 import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
-import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import {
   api,
   type OAuthIntegrationConnection,
@@ -14,6 +13,7 @@ import {
   readCanvasCursorColor,
   saveCanvasCursorColor,
 } from "#utils/userPreferences.ts";
+import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
 import SettingsLayout from "./SettingsLayout.vue";
 
 type ThemePreference = "system" | "light" | "dark";

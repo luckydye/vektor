@@ -1,9 +1,9 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Loader } from "astro/loaders";
-import { createHash } from "crypto";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
-import { extname, join } from "path";
 import sharp from "sharp";
-import { fileURLToPath } from "url";
 import type { Document, VektorClient } from "./index.ts";
 
 export type VektorLoaderRevision = "published" | "current";
@@ -310,7 +310,7 @@ export function vektorLoader(
 
       await Promise.all(
         selected.map(async (doc) => {
-          let full;
+          let full: Document | undefined;
           let content: string | null = null;
           try {
             full = await gate.run(() => client.getDocument(spaceId, doc.id));

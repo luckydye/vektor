@@ -1,18 +1,18 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import {
-  boltIcon,
-  chevronRightThinIcon,
-  documentIcon,
-  searchMagnifierIcon,
-} from "~/src/assets/icons.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { history } from "#utils/history.ts";
 import { formatRelativeTime, spacePath } from "#utils/utils.ts";
+import {
+  boltIcon,
+  chevronRightThinIcon,
+  documentIcon,
+  searchMagnifierIcon,
+} from "~/src/assets/icons.ts";
 
 const router = useRouter();
 const { documents } = useDocuments();

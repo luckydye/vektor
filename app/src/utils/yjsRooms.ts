@@ -5,6 +5,7 @@ import type { WebSocket } from "ws";
 import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument, updateDocument } from "#db/documents.ts";
+import { contentExtensions } from "#editor/extensions.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -12,7 +13,6 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#utils/realtime.ts";
-import { contentExtensions } from "#editor/extensions.ts";
 import { parseCanvasContent, seedCanvasDoc } from "./canvasYjs.ts";
 import { stripScriptTags } from "./utils.ts";
 

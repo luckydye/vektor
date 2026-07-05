@@ -1,10 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import { Placeholder } from "@tiptap/extensions";
-import {
-  messageMarkdownToHtml,
-  tiptapJsonToMarkdown,
-} from "#utils/messageMarkdown.ts";
 import { createBaseEditor } from "#editor/extensions.ts";
+import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "#utils/messageMarkdown.ts";
 
 export type RichTextEditorFormat = "bold" | "italic" | "bulletList" | "orderedList";
 

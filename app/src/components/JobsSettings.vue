@@ -186,7 +186,7 @@ const {
 } = usePagedList({
   queryKey: computed(() => ["job_runs", currentSpace.value?.id]),
   fetcher: ({ limit, offset }) =>
-    api.jobs.listRuns(currentSpace.value!.id, { limit, offset }).then((r) => ({
+    api.jobs.listRuns(currentSpace.value?.id, { limit, offset }).then((r) => ({
       items: r.runs,
       total: r.total,
     })),

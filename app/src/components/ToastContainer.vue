@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { alertCircleIcon, checkCircleOutlineIcon, infoIcon } from "~/src/assets/icons.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { alertCircleIcon, checkCircleOutlineIcon, infoIcon } from "~/src/assets/icons.ts";
 
 const { toasts } = useToast();
 

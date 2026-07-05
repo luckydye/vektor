@@ -3,6 +3,7 @@
  * Used by activity feed components and RevisionsSidebar.vue.
  */
 
+import type { AuditLog } from "#api/client.ts";
 import {
   closeCircleIcon,
   documentIcon,
@@ -17,7 +18,6 @@ import {
   trashCanIcon,
   unlockIcon,
 } from "~/src/assets/icons.ts";
-import type { AuditLog } from "#api/client.ts";
 import { normalizeTimestamp } from "./utils.ts";
 
 // ---------------------------------------------------------------------------

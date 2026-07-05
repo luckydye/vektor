@@ -3,13 +3,6 @@ import { twMerge } from "tailwind-merge";
 import { computed, inject, onMounted, onUnmounted, ref, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
-import { useQuery } from "#composeables/query.ts";
-import { useDocumentContext } from "#composeables/useDocument.ts";
-import { useEditor } from "#composeables/useEditor.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { optionalPropertyValueToText } from "#utils/documentProperties.ts";
-import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
 import AppView from "#components/AppView.vue";
 import Breadcrumbs from "#components/Breadcrumbs.vue";
 import ClientOnly from "#components/ClientOnly.vue";
@@ -24,6 +17,13 @@ import RevisionsSidebar from "#components/RevisionsSidebar.vue";
 import RevisionView from "#components/RevisionView.vue";
 import TitleEditor from "#components/TitleEditor.vue";
 import WorkflowView from "#components/WorkflowView.vue";
+import { useQuery } from "#composeables/query.ts";
+import { useDocumentContext } from "#composeables/useDocument.ts";
+import { useEditor } from "#composeables/useEditor.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { optionalPropertyValueToText } from "#utils/documentProperties.ts";
+import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
 
 const props = defineProps<{
   documentSlug?: string;

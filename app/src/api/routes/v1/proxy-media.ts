@@ -36,7 +36,7 @@ export const GET: APIRoute = (context) =>
       "User-Agent": "Mozilla/5.0 (compatible; WikiBot/1.0)",
     };
     const range = context.request.headers.get("range");
-    if (range) upstreamHeaders["Range"] = range;
+    if (range) upstreamHeaders.Range = range;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);

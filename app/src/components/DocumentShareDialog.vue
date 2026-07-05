@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import "@atrium-ui/elements/tabs";
-import { Icon } from "~/src/components/index.ts";
 import { api } from "#api/client.ts";
 import { isOwner } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getUserInitials } from "#utils/utils.ts";
+import { Icon } from "~/src/components/index.ts";
 
 const props = defineProps<{
   show: boolean;
@@ -111,7 +111,9 @@ async function load() {
     );
 
     const map = new Map<string, any>();
-    (users || []).forEach((u: any) => map.set(u.id, u));
+    (users || []).forEach((u: any) => {
+      map.set(u.id, u);
+    });
     usersMap.value = map;
     await loadCategoryPermissions();
   } catch (err) {

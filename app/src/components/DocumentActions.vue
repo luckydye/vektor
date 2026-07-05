@@ -2,12 +2,6 @@
 import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import "@atrium-ui/elements/popover";
-import {
-  ButtonSecondary,
-  ContextMenu,
-  ContextMenuItem,
-  Icon,
-} from "~/src/components/index.ts";
 import { api } from "#api/client.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
@@ -17,6 +11,12 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import {
+  ButtonSecondary,
+  ContextMenu,
+  ContextMenuItem,
+  Icon,
+} from "~/src/components/index.ts";
 import Contributors from "./Contributors.vue";
 import DocumentShareDialog from "./DocumentShareDialog.vue";
 import HeaderImageDialog from "./HeaderImageDialog.vue";

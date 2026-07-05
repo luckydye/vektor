@@ -27,10 +27,10 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { menuIcon, searchMagnifierIcon } from "~/src/assets/icons.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
 import { spacePath } from "#utils/utils.ts";
+import { menuIcon, searchMagnifierIcon } from "~/src/assets/icons.ts";
 
 const props = withDefaults(
   defineProps<{

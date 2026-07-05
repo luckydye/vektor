@@ -27,22 +27,18 @@ function mockFetch(
   );
 }
 
-function captureStdout(fn: () => Promise<void>): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    const written: string[] = [];
-    const spy = spyOn(process.stdout, "write").mockImplementation((chunk) => {
-      written.push(String(chunk));
-      return true;
-    });
-    try {
-      await fn();
-      resolve(written.join(""));
-    } catch (err) {
-      reject(err);
-    } finally {
-      spy.mockRestore();
-    }
+async function captureStdout(fn: () => Promise<void>): Promise<string> {
+  const written: string[] = [];
+  const spy = spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    written.push(String(chunk));
+    return true;
   });
+  try {
+    await fn();
+    return written.join("");
+  } finally {
+    spy.mockRestore();
+  }
 }
 
 function makeTempFile(name: string, content = "hello"): string {

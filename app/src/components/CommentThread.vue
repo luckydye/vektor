@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
-import { checkThinIcon, closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
+import { checkThinIcon, closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
 import Avatar from "./Avatar.vue";
 import ButtonGhost from "./ButtonGhost.vue";
 import MessageInput from "./MessageInput.vue";

@@ -19,11 +19,11 @@ type DrizzleDb = ReturnType<typeof drizzle>;
 // SSR bundle (which inlines its own copy of this module) shares the same
 // instances rather than creating isolated duplicates.
 declare global {
-  // biome-ignore lint/style/noVar: globalThis augmentation requires var
+  // biome-ignore lint: globalThis augmentation requires var
   var __vektor_auth_db: DrizzleDb | undefined;
-  // biome-ignore lint/style/noVar: globalThis augmentation requires var
+  // biome-ignore lint: globalThis augmentation requires var
   var __vektor_space_db_cache: Map<string, DrizzleDb> | undefined;
-  // biome-ignore lint/style/noVar: globalThis augmentation requires var
+  // biome-ignore lint: globalThis augmentation requires var
   var __vektor_space_db_preparation: Map<string, Promise<void>> | undefined;
 }
 

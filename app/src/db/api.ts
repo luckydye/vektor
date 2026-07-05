@@ -1,8 +1,8 @@
 import type { Attributes, Span } from "@opentelemetry/api";
 import type { APIContext } from "astro";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import { withSpan } from "#observability/otel.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import type { ValidateTokenResult } from "./accessTokens.ts";
 import { getTokenUserId, validateAccessToken } from "./accessTokens.ts";
 import {

@@ -11,7 +11,6 @@ import { provideDocumentContext } from "#composeables/useDocument.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import shortcuts from "#config/shortcuts.json";
-import strings from "#config/strings.json";
 import { Actions } from "#utils/actions.js";
 import { extensions } from "#utils/extensions.ts";
 import { history } from "#utils/history.ts";
@@ -172,10 +171,6 @@ const { pathname } = useRoute();
 const { currentSpaceId, currentSpace, spaceNotFound } = useSpace();
 const documentContext = provideDocumentContext();
 const isMobileSidebarOpen = ref(false);
-
-const lang =
-  typeof document !== "undefined" ? document.documentElement.lang || "en" : "en";
-globalThis._translations = strings;
 
 const initialSidebarWidth = parseSidebarWidth(props.initialSidebarWidth);
 const initialLayoutStyle = {

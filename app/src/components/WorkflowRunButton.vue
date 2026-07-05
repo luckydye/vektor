@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { api } from "#api/client.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
 import {
   closeXIcon,
   playCircleFilledIcon,
   spinnerQuarterIcon,
 } from "~/src/assets/icons.ts";
-import { api } from "#api/client.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
 
 const props = defineProps<{
   documentId: string;

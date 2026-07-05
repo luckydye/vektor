@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
+import ExtensionView from "#components/ExtensionView.vue";
 import { useExtensions } from "#composeables/useExtensions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import ExtensionView from "#components/ExtensionView.vue";
 
 const { currentSpace } = useSpace();
 const { extensions } = useExtensions();
@@ -17,7 +17,7 @@ const match = computed(() => {
     for (const route of ext.routes || []) {
       if (
         routePath.value === route.path ||
-        routePath.value.startsWith(route.path + "/")
+        routePath.value.startsWith(`${route.path}/`)
       ) {
         return { extension: ext, route };
       }
