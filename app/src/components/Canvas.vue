@@ -295,6 +295,7 @@ const editingDocumentShape = ref<{
   shapeId: string;
   documentId: string;
   address: string;
+  toggleTaskIndex: number | null;
 } | null>(null);
 const embeddedDocumentEditor = shallowRef<InstanceType<
   typeof CanvasDocumentEditor
@@ -1652,16 +1653,47 @@ function canEditEmbeddedDocument(shape: CanvasShape): boolean {
   return previewSupportsInlineEditing(documentLinks.cachedPreview(shape));
 }
 
+// Ordinal of the checkbox the click landed on within the read-only card, or
+// null when the click wasn't on a task checkbox. Used to replay the toggle in
+// the editor that the click is about to mount. The preview renders checkboxes
+// as non-interactive static HTML (the click actually lands on the card host),
+// so we hit-test the click point against the checkbox rects rather than the
+// event path.
+function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
+  const host = event.currentTarget as HTMLElement | null;
+  const view = host?.shadowRoot?.querySelector("document-view") as HTMLElement | null;
+  const root = view?.shadowRoot;
+  if (!root) return null;
+
+  const checkboxes = Array.from(
+    root.querySelectorAll<HTMLElement>('input[type="checkbox"]'),
+  );
+  const pad = 4;
+  const index = checkboxes.findIndex((checkbox) => {
+    const rect = checkbox.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left - pad &&
+      event.clientX <= rect.right + pad &&
+      event.clientY >= rect.top - pad &&
+      event.clientY <= rect.bottom + pad
+    );
+  });
+  return index >= 0 ? index : null;
+}
+
 // A plain click on a document card enters inline edit mode; modifier clicks
 // (shift/ctrl/meta) stay reserved for multi-select, and a click that ends a
 // drag is ignored via the dragMoved guard in startEmbeddedDocumentEdit.
 function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
   if (event.button !== 0) return;
   if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-  startEmbeddedDocumentEdit(shape);
+  startEmbeddedDocumentEdit(shape, clickedTaskCheckboxIndex(event));
 }
 
-function startEmbeddedDocumentEdit(shape: CanvasShape) {
+function startEmbeddedDocumentEdit(
+  shape: CanvasShape,
+  toggleTaskIndex: number | null = null,
+) {
   if (dragMoved) return;
   if (editingDocumentShape.value?.shapeId === shape.id) return;
   const documentId = documentLinks.documentIdForShape(shape);
@@ -1671,7 +1703,12 @@ function startEmbeddedDocumentEdit(shape: CanvasShape) {
     stopEmbeddedDocumentEdit();
   }
   selectOnlyShape(shape.id);
-  editingDocumentShape.value = { shapeId: shape.id, documentId, address };
+  editingDocumentShape.value = {
+    shapeId: shape.id,
+    documentId,
+    address,
+    toggleTaskIndex,
+  };
 }
 
 function stopEmbeddedDocumentEdit() {
@@ -3454,6 +3491,7 @@ onUnmounted(() => {
             :space-id="props.spaceId"
             :document-id="editingDocumentShape.documentId"
             :title="documentLinks.shapeTitle(shape)"
+            :toggle-task-index="editingDocumentShape.toggleTaskIndex"
             @drag-start="startShapeDrag(shape, $event)"
             @exit="stopEmbeddedDocumentEdit"
           />

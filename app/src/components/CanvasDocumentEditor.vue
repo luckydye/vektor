@@ -18,6 +18,10 @@ const props = defineProps<{
   spaceId: string;
   documentId: string;
   title: string;
+  // When the edit session was started by clicking a checkbox on the read-only
+  // card, this is that checkbox's ordinal so the toggle is replayed in the
+  // editor (the read-only preview can't persist the change itself).
+  toggleTaskIndex?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -42,6 +46,33 @@ const collaboration = useCollaboration<DocumentPresenceState>({
 });
 
 let leaveEditorSubscriptions: (() => void) | null = null;
+let pendingTaskToggle = props.toggleTaskIndex ?? null;
+
+// Toggle the checked state of the Nth task item, matching the checkbox the
+// user clicked on the read-only card. Task items render one checkbox each and
+// in document order, so the read-only ordinal maps directly onto the editor.
+function applyPendingTaskToggle(activeEditor: Editor) {
+  const index = pendingTaskToggle;
+  pendingTaskToggle = null;
+  if (index === null || index < 0) return;
+
+  const positions: number[] = [];
+  activeEditor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "taskItem") positions.push(pos);
+  });
+  const pos = positions[index];
+  if (pos === undefined) return;
+
+  activeEditor
+    .chain()
+    .command(({ tr }) => {
+      const node = tr.doc.nodeAt(pos);
+      if (node?.type.name !== "taskItem") return false;
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked: !node.attrs.checked });
+      return true;
+    })
+    .run();
+}
 
 function broadcastEditorPresence() {
   const state = currentEditorPresenceState(editor.value);
@@ -58,6 +89,8 @@ function setEditor(nextEditor: Editor | undefined) {
   leaveEditorSubscriptions = null;
   editor.value = nextEditor;
   if (!nextEditor) return;
+
+  applyPendingTaskToggle(nextEditor);
 
   nextEditor.on("focus", broadcastEditorPresence);
   nextEditor.on("blur", broadcastEditorPresence);
