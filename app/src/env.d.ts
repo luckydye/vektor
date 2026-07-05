@@ -24,6 +24,7 @@ declare namespace App {
     VEKTOR_DEFAULT_SPACE?: string;
     AUTH_LOGIN?: string;
     OAUTH_PROVIDER_ID?: string;
+    GOOGLE_AUTH_ENABLED?: string;
     VEKTOR_NO_AUTH?: string;
     VEKTOR_EXTENSION_ALLOWED_SOURCES?: string;
   };
