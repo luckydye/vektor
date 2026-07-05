@@ -1652,8 +1652,18 @@ function canEditEmbeddedDocument(shape: CanvasShape): boolean {
   return previewSupportsInlineEditing(documentLinks.cachedPreview(shape));
 }
 
+// A plain click on a document card enters inline edit mode; modifier clicks
+// (shift/ctrl/meta) stay reserved for multi-select, and a click that ends a
+// drag is ignored via the dragMoved guard in startEmbeddedDocumentEdit.
+function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
+  if (event.button !== 0) return;
+  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  startEmbeddedDocumentEdit(shape);
+}
+
 function startEmbeddedDocumentEdit(shape: CanvasShape) {
   if (dragMoved) return;
+  if (editingDocumentShape.value?.shapeId === shape.id) return;
   const documentId = documentLinks.documentIdForShape(shape);
   const address = documentAddressForShape(shape);
   if (!documentId || !address || !canEditEmbeddedDocument(shape)) return;
@@ -3458,7 +3468,7 @@ onUnmounted(() => {
             :document-id="isRemoteDocumentShape(shape) ? '' : documentLinks.documentIdForShape(shape) || ''"
             @pointerdown.stop="startShapeDrag(shape, $event)"
             @wheel.stop
-            @dblclick="startEmbeddedDocumentEdit(shape)"
+            @click="onDocumentShapeClick(shape, $event)"
             @open-document="onDocumentShapeOpen(shape, $event)"
           ></document-attachment>
           <a
