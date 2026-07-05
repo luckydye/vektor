@@ -1452,7 +1452,7 @@ details[open] .details-chevron { transform: rotate(90deg); }
   overflow-x: auto;
   margin: 0.5rem 0;
 }
-.markdown-content :deep(pre) :deep(code) { background: transparent; color: inherit; padding: 0; }
+.markdown-content :deep(pre code) { background: transparent; color: inherit; padding: 0; }
 .markdown-content :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
 .markdown-content :deep(blockquote) { border-left: 3px solid var(--color-neutral-200); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-neutral-500); }
 .markdown-content :deep(strong) { font-weight: 600; }

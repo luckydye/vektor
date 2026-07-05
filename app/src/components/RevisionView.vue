@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
 import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import { clockIcon } from "~/src/assets/icons.ts";
+import AppView from "./AppView.vue";
 import DiffView from "./DiffView.vue";
 
 const props = defineProps<{
@@ -10,8 +11,6 @@ const props = defineProps<{
   documentType: string;
   spaceId: string;
 }>();
-
-const AppView = defineAsyncComponent(() => import("./AppView.vue"));
 
 const { currentSpaceId } = useSpace();
 
