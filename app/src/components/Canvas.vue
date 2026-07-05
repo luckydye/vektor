@@ -15,6 +15,7 @@ import {
   canvasNoteIcon,
   canvasSectionIcon,
   canvasSelectIcon,
+  canvasShapeIcon,
   canvasTextIcon,
   clipboardDocumentIcon,
   copyIcon,
@@ -70,6 +71,12 @@ import {
   isValidCanvasShape,
   minSizeForShape,
 } from "../canvas/elements/registry.ts";
+import {
+  type CanvasShapeLibraryItem,
+  createShapeStroke,
+  getShapeLibraryItem,
+  SHAPE_LIBRARY,
+} from "../canvas/elements/shape.ts";
 import { createTextShape, shouldRemoveTextShape } from "../canvas/elements/text.ts";
 import type {
   CanvasSerializedShape,
@@ -86,6 +93,7 @@ import { useDocuments } from "../composeables/useDocuments.ts";
 import { useSpace } from "../composeables/useSpace.ts";
 import type { CanvasPresenceState } from "../editor/collaboration.ts";
 import "../editor/elements/rich-text-editor.ts";
+import "@atrium-ui/elements/popover";
 import { useToast } from "../composeables/useToast.ts";
 import {
   CANVAS_CLIPBOARD_MIME,
@@ -253,6 +261,9 @@ const SNAP_PROXIMITY_PX = 320;
 // hand during panning and a resting cursor otherwise.
 const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
+// Library entry the shape tool places next; the toolbar popover changes it.
+const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
+const shapePopoverRef = ref<(HTMLElement & { hide: () => void }) | null>(null);
 const noteColor = ref<string>(NOTE_COLORS[0]);
 const penColor = ref<string>(PEN_COLORS[0]);
 const cursorColor = ref<string>(readCanvasCursorColor());
@@ -1615,6 +1626,17 @@ function onFileShapeClick(event: MouseEvent) {
   event.stopPropagation();
 }
 
+// Stamps the active shape-library item at `at` as a regular freehand stroke,
+// so it lives on the ink layer with the same selection, move, recolor, and
+// undo behavior as drawn strokes.
+function placeShapeStroke(at: { x: number; y: number }) {
+  const item = getShapeLibraryItem(activeShapeId.value) ?? SHAPE_LIBRARY[0];
+  const stroke = createShapeStroke(item, at, penColor.value);
+  yStrokes.set(stroke.id, createStrokeMap(stroke));
+  selectStroke(stroke.id, false);
+  activeTool.value = "select";
+}
+
 function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
   const shape =
     type === "note"
@@ -1722,6 +1744,12 @@ function setNoteColor(color: string) {
   if (selectedShape.value?.type === "note") {
     updateShape(selectedShape.value.id, { color });
   }
+}
+
+function pickShapeLibraryItem(item: CanvasShapeLibraryItem) {
+  activeShapeId.value = item.id;
+  activeTool.value = "shape";
+  shapePopoverRef.value?.hide();
 }
 
 function setPenColor(color: string) {
@@ -2033,6 +2061,12 @@ function handleViewportPointerDown(event: PointerEvent) {
 
   if (activeTool.value === "draw") {
     startFreehand(event);
+    return;
+  }
+
+  if (activeTool.value === "shape") {
+    placeShapeStroke(screenToWorld(point));
+    event.preventDefault();
     return;
   }
 
@@ -2839,6 +2873,7 @@ function handleKeydown(event: KeyboardEvent) {
   if (key === "n") activeTool.value = "note";
   if (key === "t") activeTool.value = "text";
   if (key === "s") activeTool.value = "section";
+  if (key === "r") activeTool.value = "shape";
   if (key === "f") fitView();
 }
 
@@ -3052,6 +3087,7 @@ onUnmounted(() => {
       v-if="
         activeTool === 'draw' ||
         activeTool === 'note' ||
+        activeTool === 'shape' ||
         selectedStrokeIds.size > 0 ||
         selectedShape?.type === 'note'
       "
@@ -3103,13 +3139,13 @@ onUnmounted(() => {
       </span>
       <span
         v-if="
-          (activeTool === 'draw' || selectedStrokeIds.size > 0) &&
+          (activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0) &&
           (activeTool === 'note' || selectedShape?.type === 'note')
         "
         class="canvas-divider"
       ></span>
       <span
-        v-if="activeTool === 'draw' || selectedStrokeIds.size > 0"
+        v-if="activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0"
         class="canvas-note-colors"
         :aria-label="t('Pen color')"
       >
@@ -3139,6 +3175,45 @@ onUnmounted(() => {
       >
         <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="tool.icon" />
       </button>
+      <a-popover-trigger ref="shapePopoverRef" class="canvas-shape-trigger">
+        <button
+          slot="trigger"
+          type="button"
+          class="canvas-tool"
+          :class="{ active: activeTool === 'shape' }"
+          :aria-label="t('Shape')"
+          :aria-pressed="activeTool === 'shape'"
+          :data-tooltip="`${t('Shape')} · R`"
+        >
+          <div
+            class="svg-icon canvas-tool-icon"
+            aria-hidden="true"
+            v-html="canvasShapeIcon"
+          />
+        </button>
+        <a-popover placements="top">
+          <div class="canvas-shape-popover" @pointerdown.stop>
+            <div class="canvas-shape-popover-panel">
+              <button
+                v-for="item in SHAPE_LIBRARY"
+                :key="item.id"
+                type="button"
+                class="canvas-shape-option"
+                :class="{ active: activeTool === 'shape' && activeShapeId === item.id }"
+                :aria-label="t(item.label)"
+                @click="pickShapeLibraryItem(item)"
+              >
+                <div
+                  class="svg-icon canvas-shape-option-icon"
+                  aria-hidden="true"
+                  v-html="item.icon"
+                />
+                <span class="canvas-shape-option-label">{{ t(item.label) }}</span>
+              </button>
+            </div>
+          </div>
+        </a-popover>
+      </a-popover-trigger>
       <span class="canvas-divider"></span>
       <button
         type="button"
@@ -3693,6 +3768,84 @@ onUnmounted(() => {
   width: 1px;
   height: 24px;
   background: var(--canvas-divider-color);
+}
+
+.canvas-shape-trigger {
+  display: inline-flex;
+}
+
+/* The popover content is portaled to the document root, outside .canvas-root,
+   so it cannot use the --canvas-* variables and carries its own colors. */
+.canvas-shape-popover {
+  width: max-content;
+  padding-bottom: 8px;
+  transition: opacity 0.12s ease;
+}
+
+.canvas-shape-popover-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 6px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-shape-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 7px 10px;
+  color: #374151;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.canvas-shape-option:hover {
+  background: #f3f4f6;
+}
+
+.canvas-shape-option.active {
+  border-color: #bfdbfe;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.canvas-shape-option-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .canvas-shape-popover-panel {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(24, 24, 27, 0.94);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  }
+
+  .canvas-shape-option {
+    color: #d1d5db;
+  }
+
+  .canvas-shape-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .canvas-shape-option.active {
+    border-color: rgba(96, 165, 250, 0.48);
+    background: rgba(37, 99, 235, 0.26);
+    color: #bfdbfe;
+  }
 }
 
 .canvas-selection-overlay {

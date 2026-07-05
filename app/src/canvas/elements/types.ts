@@ -4,7 +4,7 @@ import type {
   FreehandStrokeStyle,
 } from "../../viewport/index.ts";
 
-export type CanvasTool = "select" | "draw" | "note" | "text" | "section";
+export type CanvasTool = "select" | "draw" | "note" | "text" | "section" | "shape";
 export type CanvasElementType =
   | "note"
   | "text"
