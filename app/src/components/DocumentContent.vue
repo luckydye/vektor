@@ -21,7 +21,7 @@ import {
   type DocumentPresenceState,
   findYSyncState,
 } from "#editor/collaboration.ts";
-import docStyles from "#styles/document.css?inline";
+import docStyles from "#editor/css/document.css?inline";
 import { Actions } from "#utils/actions.ts";
 import { supportsComments, supportsDocumentEditor } from "#utils/documentTypes.ts";
 import { extensions } from "#utils/extensions.ts";

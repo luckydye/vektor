@@ -4,7 +4,7 @@
 @import "./layout.css";
 @import "./tiptap.css";
 
-@reference "./index.css";
+@reference "#styles/index.css";
 
 [contenteditable] {
   outline: none;
