@@ -777,6 +777,8 @@ export class ApiClient {
         type: "role" | "feature";
         roleOrFeature: string;
         userId?: string;
+        /** Invite by email: resolved server-side to a user id (404 if none). */
+        email?: string;
         groupId?: string;
         resourceType?: PermissionResourceType;
         resourceId?: string;
