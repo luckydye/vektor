@@ -102,6 +102,8 @@ function getOAuthConfig(): GenericOAuthConfig[] {
   ];
 }
 
+const googleConfig = getGoogleConfig();
+
 export const auth = betterAuth({
   baseURL: appConfig.SITE_URL || "http://localhost:8080",
 
@@ -150,7 +152,29 @@ export const auth = betterAuth({
 
   trustedOrigins: authTrustedOrigins,
 
-  socialProviders: getGoogleConfig(),
+  socialProviders: googleConfig,
+
+  // When Google login is enabled, let a Google sign-in attach to a pre-existing
+  // account with the same email (e.g. one created via SSO or email/password)
+  // instead of failing with "account_not_linked". Google is a trusted provider
+  // because it verifies email ownership; `requireLocalEmailVerified: false`
+  // additionally permits linking onto local accounts whose email was never
+  // verified (this app allows unverified email/password sign-up). On a shared
+  // instance this is a mild account-takeover surface — an attacker who
+  // pre-registers an unverified local account under a victim's email could have
+  // the victim's later Google login land on it — so keep email/password sign-up
+  // restricted (VEKTOR_EMAIL_AUTH) if that matters to you.
+  ...(googleConfig
+    ? {
+        account: {
+          accountLinking: {
+            enabled: true,
+            trustedProviders: ["google" as const],
+            requireLocalEmailVerified: false,
+          },
+        },
+      }
+    : {}),
 
   plugins: [
     genericOAuth({
