@@ -86,6 +86,15 @@ export function config() {
       OAUTH_USERINFO_URL: process.env.OAUTH_USERINFO_URL,
       OAUTH_REDIRECT_URI: process.env.OAUTH_REDIRECT_URI,
 
+      /**
+       * Google social login. When both id and secret are set, a "Continue with
+       * Google" option is shown on the login screen. The redirect URI defaults
+       * to `${SITE_URL}/api/auth/callback/google` unless overridden.
+       */
+      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+      GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
+
       GITLAB_OAUTH_BASE_URL: process.env.VEKTOR_GITLAB_OAUTH_BASE_URL,
       GITLAB_OAUTH_CLIENT_ID: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_ID,
       GITLAB_OAUTH_CLIENT_SECRET: process.env.VEKTOR_GITLAB_OAUTH_CLIENT_SECRET,
@@ -152,6 +161,7 @@ export function config() {
     NO_AUTH: publicEnv.VEKTOR_NO_AUTH,
     AUTH_LOGIN: publicEnv.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: publicEnv.OAUTH_PROVIDER_ID,
+    GOOGLE_AUTH_ENABLED: publicEnv.GOOGLE_AUTH_ENABLED,
     EXTENSION_ALLOWED_SOURCES: publicEnv.VEKTOR_EXTENSION_ALLOWED_SOURCES,
   } as const;
 }
@@ -179,6 +189,11 @@ export function getPublicEnv(): App.PublicEnv {
     VEKTOR_DEFAULT_SPACE: appConfig.DEFAULT_SPACE,
     AUTH_LOGIN: appConfig.AUTH_LOGIN,
     OAUTH_PROVIDER_ID: appConfig.OAUTH_PROVIDER_ID,
+    // Never expose the client secret; only a boolean flag reaches the browser.
+    GOOGLE_AUTH_ENABLED:
+      appConfig.GOOGLE_CLIENT_ID?.trim() && appConfig.GOOGLE_CLIENT_SECRET?.trim()
+        ? "1"
+        : undefined,
     VEKTOR_NO_AUTH: appConfig.NO_AUTH,
     VEKTOR_EXTENSION_ALLOWED_SOURCES: appConfig.EXTENSION_ALLOWED_SOURCES,
   };

@@ -12,6 +12,7 @@ import {
 const conf = config();
 const showPasswordLogin = conf.AUTH_LOGIN !== "false";
 const showSsoLogin = !!conf.OAUTH_PROVIDER_ID;
+const showGoogleLogin = conf.GOOGLE_AUTH_ENABLED === "1";
 
 const email = ref("");
 const password = ref("");
@@ -33,6 +34,15 @@ async function onOAuthLogin() {
     disableRedirect: false,
     scopes: ["email", "profile", "openid"],
     requestSignUp: false,
+  });
+}
+
+async function onGoogleLogin() {
+  await authClient.signIn.social({
+    provider: "google",
+    callbackURL: "/",
+    errorCallbackURL: "/error",
+    newUserCallbackURL: "/",
   });
 }
 
@@ -98,7 +108,7 @@ function toggleMode() {
 
 <template>
   <div class="w-full space-y-5">
-    <div v-if="showPasswordLogin || showSsoLogin" class="mb-7">
+    <div v-if="showPasswordLogin || showSsoLogin || showGoogleLogin" class="mb-7">
       <h2 class="font-semibold text-neutral-900" style="font-size: 1.6rem; line-height: 1.2; letter-spacing: -0.02em">
         {{ isSignUp ? "Create an account" : "Welcome back" }}
       </h2>
@@ -156,7 +166,7 @@ function toggleMode() {
       </button>
     </form>
 
-    <div v-if="showPasswordLogin && showSsoLogin" class="relative">
+    <div v-if="showPasswordLogin && (showSsoLogin || showGoogleLogin)" class="relative">
       <div class="absolute inset-0 flex items-center">
         <div class="w-full border-t border-neutral"></div>
       </div>
@@ -166,6 +176,14 @@ function toggleMode() {
     </div>
 
     <ButtonSecondary
+      v-if="showGoogleLogin"
+      text="Continue with Google"
+      class="w-full px-6 py-3 text-base justify-center"
+      @click="onGoogleLogin"
+      :disabled="loading"
+    />
+
+    <ButtonSecondary
       v-if="showSsoLogin"
       text="Continue with SSO"
       class="w-full px-6 py-3 text-base justify-center"
@@ -173,7 +191,7 @@ function toggleMode() {
       :disabled="loading"
     />
 
-    <div v-if="!showPasswordLogin && !showSsoLogin" class="text-size-medium text-center text-neutral">
+    <div v-if="!showPasswordLogin && !showSsoLogin && !showGoogleLogin" class="text-size-medium text-center text-neutral">
       No login method configured.
     </div>
   </div>

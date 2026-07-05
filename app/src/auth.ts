@@ -50,6 +50,28 @@ function sanitizeOAuthGroups(raw: unknown): string {
   return JSON.stringify([...new Set(groups)]);
 }
 
+/**
+ * Google social login is enabled only when both the client id and secret are
+ * present. Returns `undefined` (rather than a partial config) so better-auth
+ * never registers a half-configured provider.
+ */
+function getGoogleConfig() {
+  const clientId = appConfig.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = appConfig.GOOGLE_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    return undefined;
+  }
+  return {
+    google: {
+      clientId,
+      clientSecret,
+      ...(appConfig.GOOGLE_REDIRECT_URI
+        ? { redirectURI: appConfig.GOOGLE_REDIRECT_URI }
+        : {}),
+    },
+  };
+}
+
 function getOAuthConfig(): GenericOAuthConfig[] {
   if (
     !appConfig.OAUTH_PROVIDER_ID ||
@@ -127,6 +149,8 @@ export const auth = betterAuth({
   },
 
   trustedOrigins: authTrustedOrigins,
+
+  socialProviders: getGoogleConfig(),
 
   plugins: [
     genericOAuth({
