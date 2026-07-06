@@ -260,7 +260,6 @@ type UploadPlaceholder = {
   height: number;
   filename: string;
   kind: "image" | "video" | "file";
-  progress: number;
 };
 const uploadPlaceholders = ref<UploadPlaceholder[]>([]);
 
@@ -281,16 +280,9 @@ function addUploadPlaceholder(
       height: size.height,
       filename,
       kind,
-      progress: 0,
     },
   ];
   return id;
-}
-
-function updateUploadPlaceholder(id: string, progress: number) {
-  uploadPlaceholders.value = uploadPlaceholders.value.map((placeholder) =>
-    placeholder.id === id ? { ...placeholder, progress } : placeholder,
-  );
 }
 
 function removeUploadPlaceholder(id: string) {
@@ -1605,7 +1597,6 @@ function beginUploadFeedback(
   });
   return {
     onProgress(progress: number) {
-      updateUploadPlaceholder(placeholderId, progress);
       toast.update(toastId, { progress });
     },
     done() {
@@ -3691,12 +3682,6 @@ onUnmounted(() => {
         >
           <div class="canvas-upload-spinner" aria-hidden="true"></div>
           <div class="canvas-upload-name">{{ placeholder.filename }}</div>
-          <div class="canvas-upload-progress">
-            <div
-              class="canvas-upload-progress-bar"
-              :style="{ width: `${Math.round(Math.max(0, Math.min(1, placeholder.progress)) * 100)}%` }"
-            ></div>
-          </div>
         </div>
       </div>
 
@@ -4277,21 +4262,6 @@ onUnmounted(() => {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.canvas-upload-progress {
-  width: 72%;
-  height: 4px;
-  overflow: hidden;
-  border-radius: 2px;
-  background: var(--canvas-shape-border);
-}
-
-.canvas-upload-progress-bar {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--color-accent, #3b82f6);
-  transition: width 0.2s ease-out;
 }
 
 @keyframes canvas-upload-spin {
