@@ -127,12 +127,10 @@
 
 <script setup>
 import { onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
 import { slugify } from "#utils/utils.ts";
 import { folderLargeIcon } from "~/src/assets/icons.ts";
 
-const router = useRouter();
 const showPrompt = ref(false);
 const spaceName = ref("");
 const spaceSlug = ref("");
@@ -198,8 +196,11 @@ async function handleCreateSpace() {
         logoSvg: logoSvg.value,
       },
     });
-    showPrompt.value = false;
-    router.push(`/${newSpace.slug}`);
+    // Space pages are separate Astro-rendered routes, and this prompt is a
+    // standalone island without a vue-router instance, so navigate with a full
+    // page load rather than router.push (which would throw and leave a blank
+    // page after the dialog is hidden).
+    window.location.href = `/${newSpace.slug}/`;
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Unknown error occurred";
     console.error("Failed to create space:", err);
