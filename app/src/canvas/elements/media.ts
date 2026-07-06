@@ -1,5 +1,16 @@
-import { api } from "#api/client.ts";
+import { useUploads } from "#composeables/useUploads.ts";
+import {
+  isImageFile,
+  isMediaFile,
+  isVideoFile,
+  mediaTypeForFile,
+  toAbsoluteUploadUrl,
+} from "#utils/uploadFiles.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
+
+// Re-exported so existing canvas imports keep working; the canonical
+// implementations now live in #utils/uploadFiles.ts.
+export { isImageFile, isMediaFile, isVideoFile, mediaTypeForFile };
 
 const mediaMinSize = { width: 80, height: 60 };
 
@@ -21,26 +32,6 @@ export const videoElement: CanvasElementDefinition = {
 
 export function isMediaElementType(type: string): type is "image" | "video" {
   return type === "image" || type === "video";
-}
-
-export function isImageFile(file: File) {
-  if (file.type.startsWith("image/")) return true;
-  return /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name);
-}
-
-export function isVideoFile(file: File) {
-  if (file.type.startsWith("video/")) return true;
-  return /\.(mp4|webm|mov|m4v|ogv)$/i.test(file.name);
-}
-
-export function isMediaFile(file: File) {
-  return isVideoFile(file) || isImageFile(file);
-}
-
-export function mediaTypeForFile(file: File): "image" | "video" | null {
-  if (isVideoFile(file)) return "video";
-  if (isImageFile(file)) return "image";
-  return null;
 }
 
 export function mediaFilesFromList(files: FileList | File[]) {
@@ -91,21 +82,13 @@ export function dragHasMediaFiles(transfer: DataTransfer | null) {
 
 export async function uploadMediaFile(
   file: File,
-  options: {
-    spaceId: string;
-    documentId?: string;
-    onProgress?: (progress: number) => void;
-  },
+  options: { spaceId: string; documentId?: string },
 ): Promise<string> {
-  const result = await api.uploads.post(
-    options.spaceId,
-    file,
-    file.name || "upload",
-    options.documentId,
-    { onProgress: options.onProgress },
-  );
-  const url = result.url;
-  return url.startsWith("/") ? `${window.location.origin}${url}` : url;
+  const result = await useUploads().uploadFile(file, {
+    spaceId: options.spaceId,
+    documentId: options.documentId,
+  });
+  return toAbsoluteUploadUrl(result.url);
 }
 
 export function imageSize(src: string): Promise<{ width: number; height: number }> {
@@ -153,11 +136,7 @@ export function fitMediaSize(width: number, height: number) {
 export async function createUploadedMediaShape(
   file: File,
   at: { x: number; y: number },
-  options: {
-    spaceId: string;
-    documentId?: string;
-    onProgress?: (progress: number) => void;
-  },
+  options: { spaceId: string; documentId?: string },
 ): Promise<CanvasShape | null> {
   const type = mediaTypeForFile(file);
   if (!type) return null;

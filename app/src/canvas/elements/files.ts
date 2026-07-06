@@ -1,5 +1,6 @@
 import "#editor/elements/file-attachment.ts";
-import { isMediaFile, uploadMediaFile } from "./media.ts";
+import { isMediaFile } from "#utils/uploadFiles.ts";
+import { uploadMediaFile } from "./media.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 export const fileElement: CanvasElementDefinition = {
@@ -81,11 +82,7 @@ export function createFileShape(params: {
 export async function createUploadedFileShape(
   file: File,
   at: { x: number; y: number },
-  options: {
-    spaceId: string;
-    documentId?: string;
-    onProgress?: (progress: number) => void;
-  },
+  options: { spaceId: string; documentId?: string },
 ): Promise<CanvasShape | null> {
   if (!isCanvasFile(file)) return null;
   const src = await uploadMediaFile(file, options);

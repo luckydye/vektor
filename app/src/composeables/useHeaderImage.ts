@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
-import { api } from "#api/client.ts";
 import { useProperties } from "./useProperties.ts";
 import { useSpace } from "./useSpace.ts";
+import { useUploads } from "./useUploads.ts";
 
 const HEADER_IMAGE_PROPERTY = "headerImage";
 
@@ -23,6 +23,7 @@ export const uploadingDocumentId = ref<string | null>(null);
 export function useHeaderImage() {
   const { currentSpaceId } = useSpace();
   const { updateProperty } = useProperties();
+  const { uploadFile } = useUploads();
 
   const isUploading = computed(() => uploadingDocumentId.value !== null);
   const dialogOpen = ref(false);
@@ -41,18 +42,17 @@ export function useHeaderImage() {
     if (!currentSpaceId.value || uploadingDocumentId.value !== null) return;
     try {
       uploadingDocumentId.value = documentId;
-      const result = await api.uploads.post(
-        currentSpaceId.value,
-        file,
-        file.name,
+      // The upload manager reports progress and surfaces failures via the
+      // shared toast; this composable only tracks the per-document busy state.
+      const result = await uploadFile(file, {
+        spaceId: currentSpaceId.value,
         documentId,
-      );
+      });
       const url = typeof result?.url === "string" ? result.url : "";
       if (!url) throw new Error("Upload did not return a URL");
       await saveHeaderImage(documentId, url);
     } catch (error) {
       console.error("Failed to set header image:", error);
-      alert("❌ Failed to upload header image. Please try again.");
     } finally {
       uploadingDocumentId.value = null;
     }

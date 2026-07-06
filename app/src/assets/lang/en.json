@@ -161,5 +161,7 @@
   "Find Documents": "Find Documents",
   "Access Denied": "Access Denied",
   "Uploading": "Uploading",
-  "Upload complete": "Upload complete"
+  "Upload complete": "Upload complete",
+  "Upload failed": "Upload failed",
+  "files": "files"
 }

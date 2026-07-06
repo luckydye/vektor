@@ -2,6 +2,7 @@ import { type Editor, mergeAttributes, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
+import { useUploads } from "#composeables/useUploads.ts";
 
 export interface FileAttachmentOptions {
   spaceId: string;
@@ -61,8 +62,13 @@ async function uploadFile(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  const { api } = await import("#api/client.ts");
-  const result = await api.uploads.post(spaceId, file, file.name, documentId);
+  // The editor shows its own inline placeholder/error, so the manager only
+  // drives the progress + success toast (errorToast disabled).
+  const result = await useUploads().uploadFile(file, {
+    spaceId,
+    documentId,
+    errorToast: false,
+  });
   return result.url;
 }
 

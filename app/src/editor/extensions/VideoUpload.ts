@@ -2,7 +2,13 @@ import { type Editor, mergeAttributes, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { useUploads } from "#composeables/useUploads.ts";
+import { isVideoFile } from "#utils/uploadFiles.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
+
+// Re-exported so existing importers keep working; the canonical check now
+// lives in #utils/uploadFiles.ts.
+export { isVideoFile };
 
 export interface VideoUploadOptions {
   spaceId: string;
@@ -10,29 +16,20 @@ export interface VideoUploadOptions {
 }
 
 const PLACEHOLDER_TEXT = "⏳ Uploading video...";
-const VIDEO_EXTENSIONS = ["mp4", "webm", "mov", "avi", "mkv", "ogv", "ogg"];
-const VIDEO_MIME_TYPES = [
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/x-msvideo",
-  "video/x-matroska",
-  "video/ogg",
-];
 
 async function uploadVideo(
   file: File,
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  const { api } = await import("#api/client.ts");
-  return api.uploads.post(spaceId, file, file.name, documentId).then((r) => r.url);
-}
-
-export function isVideoFile(file: File): boolean {
-  if (VIDEO_MIME_TYPES.includes(file.type)) return true;
-  const extension = file.name.split(".").pop()?.toLowerCase() || "";
-  return VIDEO_EXTENSIONS.includes(extension);
+  // The editor shows its own inline placeholder/error, so the manager only
+  // drives the progress + success toast (errorToast disabled).
+  const result = await useUploads().uploadFile(file, {
+    spaceId,
+    documentId,
+    errorToast: false,
+  });
+  return result.url;
 }
 
 export function videoFilesFromDataTransfer(

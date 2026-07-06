@@ -1582,65 +1582,36 @@ function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   });
 }
 
-// Wires up the on-canvas placeholder and the progress toast for a single file
-// upload. Returns an `onProgress` callback to hand to the upload helper and
-// `done`/`fail` to call once the upload settles.
-function beginUploadFeedback(
-  kind: UploadPlaceholder["kind"],
-  file: File,
-  at: { x: number; y: number },
-) {
-  const filename = file.name || "file";
-  const placeholderId = addUploadPlaceholder(kind, filename, at);
-  const toastId = toast.show(`${t("Uploading")} ${filename}`, "info", 0, {
-    progress: 0,
-  });
-  return {
-    onProgress(progress: number) {
-      toast.update(toastId, { progress });
-    },
-    done() {
-      removeUploadPlaceholder(placeholderId);
-      toast.update(
-        toastId,
-        { message: t("Upload complete"), type: "success", progress: 1 },
-        { duration: 2000 },
-      );
-    },
-    fail() {
-      removeUploadPlaceholder(placeholderId);
-      toast.remove(toastId);
-    },
-  };
-}
-
 async function addMediaFile(file: File, at: { x: number; y: number }) {
   saveState.value = "saving";
   dispatchSaveStatus();
 
-  const feedback = beginUploadFeedback(mediaTypeForFile(file) ?? "image", file, at);
+  // The progress/success/error toast is driven by the upload manager (via
+  // createUploadedMediaShape); the canvas only owns the on-canvas placeholder.
+  const placeholderId = addUploadPlaceholder(
+    mediaTypeForFile(file) ?? "image",
+    file.name || "file",
+    at,
+  );
   try {
     const shape = await createUploadedMediaShape(file, at, {
       spaceId: props.spaceId,
       documentId: props.documentId,
-      onProgress: feedback.onProgress,
     });
+    removeUploadPlaceholder(placeholderId);
     if (!shape) {
-      feedback.fail();
       saveState.value = "idle";
       dispatchSaveStatus();
       return;
     }
-    feedback.done();
     yShapes.set(shape.id, createShapeMap(shape));
     selectOnlyShape(shape.id);
     activeTool.value = "select";
     saveState.value = "idle";
     dispatchSaveStatus();
-  } catch (err) {
-    feedback.fail();
+  } catch (_err) {
+    removeUploadPlaceholder(placeholderId);
     saveState.value = "idle";
-    toast.error(err instanceof Error ? err.message : String(err));
     dispatchSaveStatus();
   }
 }
@@ -1656,29 +1627,26 @@ async function addCanvasFile(file: File, at: { x: number; y: number }) {
   saveState.value = "saving";
   dispatchSaveStatus();
 
-  const feedback = beginUploadFeedback("file", file, at);
+  const placeholderId = addUploadPlaceholder("file", file.name || "file", at);
   try {
     const shape = await createUploadedFileShape(file, at, {
       spaceId: props.spaceId,
       documentId: props.documentId,
-      onProgress: feedback.onProgress,
     });
+    removeUploadPlaceholder(placeholderId);
     if (!shape) {
-      feedback.fail();
       saveState.value = "idle";
       dispatchSaveStatus();
       return;
     }
-    feedback.done();
     yShapes.set(shape.id, createShapeMap(shape));
     selectOnlyShape(shape.id);
     activeTool.value = "select";
     saveState.value = "idle";
     dispatchSaveStatus();
-  } catch (err) {
-    feedback.fail();
+  } catch (_err) {
+    removeUploadPlaceholder(placeholderId);
     saveState.value = "idle";
-    toast.error(err instanceof Error ? err.message : String(err));
     dispatchSaveStatus();
   }
 }
