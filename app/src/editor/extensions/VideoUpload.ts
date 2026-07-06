@@ -6,10 +6,6 @@ import { useUploads } from "#composeables/useUploads.ts";
 import { isVideoFile } from "#utils/uploadFiles.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
-// Re-exported so existing importers keep working; the canonical check now
-// lives in #utils/uploadFiles.ts.
-export { isVideoFile };
-
 export interface VideoUploadOptions {
   spaceId: string;
   documentId?: string;

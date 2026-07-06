@@ -7,10 +7,6 @@ import { useUploads } from "#composeables/useUploads.ts";
 import { isImageFile } from "#utils/uploadFiles.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
-// Re-exported so existing importers keep working; the canonical check now
-// lives in #utils/uploadFiles.ts.
-export { isImageFile };
-
 export interface ImageUploadOptions {
   spaceId: string;
   documentId?: string;

@@ -46,7 +46,6 @@ import {
   createUploadedMediaShape,
   isMediaElementType,
   mediaFilesFromDataTransfer,
-  mediaTypeForFile,
   uploadMediaFile,
 } from "#canvas/elements/media.ts";
 import { createNoteShape, NOTE_COLORS } from "#canvas/elements/note.ts";
@@ -123,6 +122,7 @@ import {
   transformImageUrl,
 } from "#utils/imageUrlTransformers.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
+import { mediaTypeForFile } from "#utils/uploadFiles.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   CANVAS_CURSOR_COLOR_STORAGE_KEY,

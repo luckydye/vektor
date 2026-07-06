@@ -1,16 +1,10 @@
 import { useUploads } from "#composeables/useUploads.ts";
 import {
-  isImageFile,
   isMediaFile,
-  isVideoFile,
   mediaTypeForFile,
   toAbsoluteUploadUrl,
 } from "#utils/uploadFiles.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
-
-// Re-exported so existing canvas imports keep working; the canonical
-// implementations now live in #utils/uploadFiles.ts.
-export { isImageFile, isMediaFile, isVideoFile, mediaTypeForFile };
 
 const mediaMinSize = { width: 80, height: 60 };
 
