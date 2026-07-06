@@ -46,6 +46,7 @@ import {
   createUploadedMediaShape,
   isMediaElementType,
   mediaFilesFromDataTransfer,
+  mediaTypeForFile,
   uploadMediaFile,
 } from "#canvas/elements/media.ts";
 import { createNoteShape, NOTE_COLORS } from "#canvas/elements/note.ts";
@@ -247,6 +248,56 @@ const selectionRef = ref<HTMLCanvasElement | null>(null);
 const imageCache = new Map<string, HTMLImageElement | "loading" | "error">();
 const shapes = shallowRef<CanvasShape[]>([]);
 const strokes = shallowRef<CanvasStroke[]>([]);
+// Local-only placeholders shown on the canvas while a dropped/pasted file
+// uploads. They are never written to Yjs, so they are not persisted or shared
+// with other collaborators; the real shape replaces the placeholder once the
+// upload finishes.
+type UploadPlaceholder = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  filename: string;
+  kind: "image" | "video" | "file";
+  progress: number;
+};
+const uploadPlaceholders = ref<UploadPlaceholder[]>([]);
+
+function addUploadPlaceholder(
+  kind: UploadPlaceholder["kind"],
+  filename: string,
+  at: { x: number; y: number },
+): string {
+  const size = defaultSizeForShape(kind);
+  const id = `upload-${crypto.randomUUID()}`;
+  uploadPlaceholders.value = [
+    ...uploadPlaceholders.value,
+    {
+      id,
+      x: Math.round(at.x - size.width / 2),
+      y: Math.round(at.y - size.height / 2),
+      width: size.width,
+      height: size.height,
+      filename,
+      kind,
+      progress: 0,
+    },
+  ];
+  return id;
+}
+
+function updateUploadPlaceholder(id: string, progress: number) {
+  uploadPlaceholders.value = uploadPlaceholders.value.map((placeholder) =>
+    placeholder.id === id ? { ...placeholder, progress } : placeholder,
+  );
+}
+
+function removeUploadPlaceholder(id: string) {
+  uploadPlaceholders.value = uploadPlaceholders.value.filter(
+    (placeholder) => placeholder.id !== id,
+  );
+}
 const selectedShapeIds = ref<Set<string>>(new Set());
 const selectedStrokeIds = ref<Set<string>>(new Set());
 // Live screen-space rectangle while drag-selecting; null when not marqueeing.
@@ -1539,26 +1590,64 @@ function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   });
 }
 
+// Wires up the on-canvas placeholder and the progress toast for a single file
+// upload. Returns an `onProgress` callback to hand to the upload helper and
+// `done`/`fail` to call once the upload settles.
+function beginUploadFeedback(
+  kind: UploadPlaceholder["kind"],
+  file: File,
+  at: { x: number; y: number },
+) {
+  const filename = file.name || "file";
+  const placeholderId = addUploadPlaceholder(kind, filename, at);
+  const toastId = toast.show(`${t("Uploading")} ${filename}`, "info", 0, {
+    progress: 0,
+  });
+  return {
+    onProgress(progress: number) {
+      updateUploadPlaceholder(placeholderId, progress);
+      toast.update(toastId, { progress });
+    },
+    done() {
+      removeUploadPlaceholder(placeholderId);
+      toast.update(
+        toastId,
+        { message: t("Upload complete"), type: "success", progress: 1 },
+        { duration: 2000 },
+      );
+    },
+    fail() {
+      removeUploadPlaceholder(placeholderId);
+      toast.remove(toastId);
+    },
+  };
+}
+
 async function addMediaFile(file: File, at: { x: number; y: number }) {
   saveState.value = "saving";
   dispatchSaveStatus();
 
+  const feedback = beginUploadFeedback(mediaTypeForFile(file) ?? "image", file, at);
   try {
     const shape = await createUploadedMediaShape(file, at, {
       spaceId: props.spaceId,
       documentId: props.documentId,
+      onProgress: feedback.onProgress,
     });
     if (!shape) {
+      feedback.fail();
       saveState.value = "idle";
       dispatchSaveStatus();
       return;
     }
+    feedback.done();
     yShapes.set(shape.id, createShapeMap(shape));
     selectOnlyShape(shape.id);
     activeTool.value = "select";
     saveState.value = "idle";
     dispatchSaveStatus();
   } catch (err) {
+    feedback.fail();
     saveState.value = "idle";
     toast.error(err instanceof Error ? err.message : String(err));
     dispatchSaveStatus();
@@ -1576,22 +1665,27 @@ async function addCanvasFile(file: File, at: { x: number; y: number }) {
   saveState.value = "saving";
   dispatchSaveStatus();
 
+  const feedback = beginUploadFeedback("file", file, at);
   try {
     const shape = await createUploadedFileShape(file, at, {
       spaceId: props.spaceId,
       documentId: props.documentId,
+      onProgress: feedback.onProgress,
     });
     if (!shape) {
+      feedback.fail();
       saveState.value = "idle";
       dispatchSaveStatus();
       return;
     }
+    feedback.done();
     yShapes.set(shape.id, createShapeMap(shape));
     selectOnlyShape(shape.id);
     activeTool.value = "select";
     saveState.value = "idle";
     dispatchSaveStatus();
   } catch (err) {
+    feedback.fail();
     saveState.value = "idle";
     toast.error(err instanceof Error ? err.message : String(err));
     dispatchSaveStatus();
@@ -3582,6 +3676,28 @@ onUnmounted(() => {
             @pointerdown.stop="startShapeResize(shape, $event)"
           ></button>
         </article>
+
+        <!-- Local upload placeholders shown until each dropped/pasted file finishes uploading. -->
+        <div
+          v-for="placeholder in uploadPlaceholders"
+          :key="placeholder.id"
+          class="canvas-upload-placeholder"
+          :style="{
+            left: `${placeholder.x}px`,
+            top: `${placeholder.y}px`,
+            width: `${placeholder.width}px`,
+            height: `${placeholder.height}px`,
+          }"
+        >
+          <div class="canvas-upload-spinner" aria-hidden="true"></div>
+          <div class="canvas-upload-name">{{ placeholder.filename }}</div>
+          <div class="canvas-upload-progress">
+            <div
+              class="canvas-upload-progress-bar"
+              :style="{ width: `${Math.round(Math.max(0, Math.min(1, placeholder.progress)) * 100)}%` }"
+            ></div>
+          </div>
+        </div>
       </div>
 
       <!-- Resize handle for canvas-rendered image shapes (lives in screen space, not world div) -->
@@ -4127,6 +4243,61 @@ onUnmounted(() => {
   border-radius: 8px;
   box-shadow: 0 8px 22px var(--canvas-shape-shadow);
   content-visibility: auto;
+}
+
+.canvas-upload-placeholder {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--canvas-shape-border);
+  border-radius: 8px;
+  background: var(--canvas-image-bg);
+  color: var(--color-text-secondary, #6b7280);
+  pointer-events: none;
+}
+
+.canvas-upload-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2.5px solid var(--canvas-shape-border);
+  border-top-color: var(--color-accent, #3b82f6);
+  animation: canvas-upload-spin 0.7s linear infinite;
+}
+
+.canvas-upload-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-upload-progress {
+  width: 72%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--canvas-shape-border);
+}
+
+.canvas-upload-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-accent, #3b82f6);
+  transition: width 0.2s ease-out;
+}
+
+@keyframes canvas-upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 

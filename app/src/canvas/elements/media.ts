@@ -91,13 +91,18 @@ export function dragHasMediaFiles(transfer: DataTransfer | null) {
 
 export async function uploadMediaFile(
   file: File,
-  options: { spaceId: string; documentId?: string },
+  options: {
+    spaceId: string;
+    documentId?: string;
+    onProgress?: (progress: number) => void;
+  },
 ): Promise<string> {
   const result = await api.uploads.post(
     options.spaceId,
     file,
     file.name || "upload",
     options.documentId,
+    { onProgress: options.onProgress },
   );
   const url = result.url;
   return url.startsWith("/") ? `${window.location.origin}${url}` : url;
@@ -148,7 +153,11 @@ export function fitMediaSize(width: number, height: number) {
 export async function createUploadedMediaShape(
   file: File,
   at: { x: number; y: number },
-  options: { spaceId: string; documentId?: string },
+  options: {
+    spaceId: string;
+    documentId?: string;
+    onProgress?: (progress: number) => void;
+  },
 ): Promise<CanvasShape | null> {
   const type = mediaTypeForFile(file);
   if (!type) return null;

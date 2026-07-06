@@ -81,7 +81,11 @@ export function createFileShape(params: {
 export async function createUploadedFileShape(
   file: File,
   at: { x: number; y: number },
-  options: { spaceId: string; documentId?: string },
+  options: {
+    spaceId: string;
+    documentId?: string;
+    onProgress?: (progress: number) => void;
+  },
 ): Promise<CanvasShape | null> {
   if (!isCanvasFile(file)) return null;
   const src = await uploadMediaFile(file, options);

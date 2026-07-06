@@ -159,5 +159,7 @@
   "Home": "Home",
   "Settings": "Settings",
   "Find Documents": "Find Documents",
-  "Access Denied": "Access Denied"
+  "Access Denied": "Access Denied",
+  "Uploading": "Uploading",
+  "Upload complete": "Upload complete"
 }
