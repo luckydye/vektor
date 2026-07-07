@@ -2,7 +2,7 @@ import { Bash } from "just-bash";
 import { getAIProvider } from "#db/aiConfig.ts";
 import { callAnthropic } from "#provider/anthropic.ts";
 import { callOllama } from "#provider/ollama.ts";
-import { callOpenRouter } from "#provider/openrouter.ts";
+import { callOpenAICompatible } from "#provider/openaiCompatible.ts";
 import type { AIProvider, ChatMessage } from "#provider/types.ts";
 import {
   callTool as callVektorTool,
@@ -124,7 +124,7 @@ export async function callModel(options: {
   if (provider.provider === "ollama") {
     return callOllama({ ...options, provider });
   }
-  return callOpenRouter({ ...options, provider });
+  return callOpenAICompatible({ ...options, provider });
 }
 
 function shellQuote(value: string): string {

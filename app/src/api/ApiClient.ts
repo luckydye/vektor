@@ -1511,7 +1511,11 @@ export class ApiClient {
     put: async (
       spaceId: string,
       body:
-        | { provider: "anthropic" | "openrouter"; model: string; apiKey: string }
+        | {
+            provider: "anthropic" | "openrouter" | "opencode-zen";
+            model: string;
+            apiKey: string;
+          }
         | { provider: "ollama"; model: string; baseUrl: string },
     ) => {
       return await this.apiPut<{ aiProvider: AIConfigMeta }>(

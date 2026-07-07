@@ -11,7 +11,10 @@ import { verifyJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import { proxyToAnthropic } from "#provider/anthropic.ts";
 import { proxyToOllama } from "#provider/ollama.ts";
-import { getOpenAICompatibleChatCompletionsUrl } from "#provider/openrouter.ts";
+import {
+  getOpenAICompatibleChatCompletionsUrl,
+  getOpenAICompatibleHeaders,
+} from "#provider/openaiCompatible.ts";
 
 export const POST: APIRoute = (context) =>
   withApiErrorHandling(
@@ -51,10 +54,7 @@ export const POST: APIRoute = (context) =>
       bodyJson.model = provider.model;
       const response = await fetch(getOpenAICompatibleChatCompletionsUrl(provider), {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${provider.apiKey}`,
-        },
+        headers: getOpenAICompatibleHeaders(provider),
         body: JSON.stringify(bodyJson),
         signal: context.request.signal,
       });
