@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { closeIcon } from "~/src/assets/icons.ts";
-import { ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
+import { ButtonPrimary, ButtonSecondary, Dialog } from "~/src/components/index.ts";
 
 export interface ExcelExportConfig {
   sheetNameColumn: string;
@@ -50,16 +49,8 @@ function submit() {
 </script>
 
 <template>
-  <div
-    class="fixed inset-0 z-100 flex items-center justify-center bg-black/50 overflow-hidden"
-    @click.self="emit('cancel')"
-  >
-    <div class="bg-background rounded-lg shadow-xl p-s w-full max-w-sm min-w-[300px] flex flex-col gap-xs">
-      <div class="flex items-center justify-between">
-        <h2 class="text-large font-semibold">Export to Excel</h2>
-        <ButtonSecondary :icon="closeIcon" aria-label="Close" @click="emit('cancel')" />
-      </div>
-
+  <Dialog :show="true" title="Export to Excel" max-width="md:max-w-sm" @update:show="emit('cancel')">
+    <div class="flex flex-col gap-xs">
       <p class="text-size-small text-neutral-500">
         Creates an Overview sheet plus one sub-sheet per row. Long cell content is split into rows by the delimiter.
       </p>
@@ -123,11 +114,13 @@ function submit() {
       <p class="text-size-small text-neutral-400">
         {{ sheetCount }} sub-sheet{{ sheetCount === 1 ? '' : 's' }} will be created (one per row in current filter).
       </p>
+    </div>
 
+    <template #footer>
       <div class="flex items-center justify-end gap-2xs">
         <ButtonSecondary text="Cancel" @click="emit('cancel')" />
         <ButtonPrimary text="Download" :disabled="!sheetNameColumn || !splitColumn" @click="submit" />
       </div>
-    </div>
-  </div>
+    </template>
+  </Dialog>
 </template>

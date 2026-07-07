@@ -8,11 +8,17 @@ const props = withDefaults(
     title?: string;
     /** Close when the backdrop is clicked. */
     closeOnBackdrop?: boolean;
+    /** Desktop max-width utility class (mobile is always full-width). */
+    maxWidth?: string;
+    /** Override body padding — pass "p-0" for full-bleed content. */
+    bodyClass?: string;
   }>(),
   {
     show: false,
     title: "",
     closeOnBackdrop: true,
+    maxWidth: "md:max-w-md",
+    bodyClass: "px-5 pt-1 pb-5",
   },
 );
 
@@ -70,7 +76,8 @@ onBeforeUnmount(() => {
         <div class="dialog-backdrop absolute inset-0 bg-black/40 md:bg-black/50" @click="onBackdrop" />
 
         <div
-          class="dialog-panel relative flex w-full max-h-[90dvh] flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:max-w-md md:max-h-[85vh] md:rounded-2xl"
+          class="dialog-panel relative flex w-full max-h-[90dvh] flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:max-h-[85vh] md:rounded-2xl"
+          :class="maxWidth"
         >
           <!-- Mobile grab handle -->
           <div class="md:hidden flex justify-center flex-none pt-2 pb-1">
@@ -96,7 +103,7 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Body -->
-          <div class="flex-1 overflow-y-auto px-5 pt-1 pb-5" :class="{ 'pt-4': !title && !slots.header }">
+          <div class="flex-1 overflow-y-auto" :class="bodyClass">
             <slot />
           </div>
 
