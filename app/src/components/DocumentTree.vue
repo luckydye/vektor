@@ -19,6 +19,7 @@ import {
   plusSmallIcon,
   trashCanIcon,
 } from "~/src/assets/icons.ts";
+import Dialog from "./Dialog.vue";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();
@@ -659,103 +660,102 @@ defineExpose({ isEditMode, toggleEditMode });
       </div>
     </Teleport>
 
-    <!-- Create/Edit Dialog Overlay (Teleported to body) -->
-    <Teleport to="body">
-      <div v-if="showAddForm || editingId" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div class="bg-background rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
-          <form @submit.prevent="handleSave" class="space-y-4">
-            <div class="text-size-medium font-semibold text-neutral-900">
-              {{ editingId ? 'Edit Category' : 'New Category' }}
-            </div>
-
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Name</label>
-              <input
-                v-model="formData.name"
-                type="text"
-                required
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Category name"
-              />
-            </div>
-
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Slug</label>
-              <input
-                v-model="formData.slug"
-                type="text"
-                required
-                pattern="[a-z0-9-]+"
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="slug-name"
-              />
-              <p class="mt-1 text-size-small text-neutral">Lowercase, numbers, hyphens only</p>
-            </div>
-
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Description</label>
-              <textarea
-                v-model="formData.description"
-                rows="2"
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Description (optional)"
-              />
-            </div>
-
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-2">Color</label>
-              <div class="flex gap-2 items-center">
-                <input
-                  v-model="formData.color"
-                  type="color"
-                  class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
-                />
-                <input
-                  v-model="formData.color"
-                  type="text"
-                  placeholder="#4ECDC4"
-                  pattern="^#[0-9A-Fa-f]{6}$"
-                  class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Icon</label>
-              <input
-                v-model="formData.icon"
-                type="text"
-                maxlength="10"
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Icon (emoji or text)"
-              />
-            </div>
-
-            <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
-              <p class="text-size-small text-red-600">{{ formError }}</p>
-            </div>
-
-            <div class="flex gap-2 pt-2">
-              <button
-                type="button"
-                @click="cancelEdit"
-                :disabled="isSaving"
-                class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                :disabled="isSaving"
-                class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
-              </button>
-            </div>
-          </form>
+    <!-- Create/Edit Category Dialog -->
+    <Dialog
+      :show="showAddForm || !!editingId"
+      :title="editingId ? 'Edit Category' : 'New Category'"
+      @update:show="(v) => { if (!v) cancelEdit(); }"
+    >
+      <form id="category-form" @submit.prevent="handleSave" class="space-y-4">
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Name</label>
+          <input
+            v-model="formData.name"
+            type="text"
+            required
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Category name"
+          />
         </div>
-      </div>
-    </Teleport>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Slug</label>
+          <input
+            v-model="formData.slug"
+            type="text"
+            required
+            pattern="[a-z0-9-]+"
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="slug-name"
+          />
+          <p class="mt-1 text-size-small text-neutral">Lowercase, numbers, hyphens only</p>
+        </div>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Description</label>
+          <textarea
+            v-model="formData.description"
+            rows="2"
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Description (optional)"
+          />
+        </div>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-2">Color</label>
+          <div class="flex gap-2 items-center">
+            <input
+              v-model="formData.color"
+              type="color"
+              class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
+            />
+            <input
+              v-model="formData.color"
+              type="text"
+              placeholder="#4ECDC4"
+              pattern="^#[0-9A-Fa-f]{6}$"
+              class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Icon</label>
+          <input
+            v-model="formData.icon"
+            type="text"
+            maxlength="10"
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Icon (emoji or text)"
+          />
+        </div>
+
+        <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
+          <p class="text-size-small text-red-600">{{ formError }}</p>
+        </div>
+      </form>
+
+      <template #footer>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            @click="cancelEdit"
+            :disabled="isSaving"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="category-form"
+            :disabled="isSaving"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
+          </button>
+        </div>
+      </template>
+    </Dialog>
     </template>
   </div>
 </template>

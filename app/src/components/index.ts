@@ -3,6 +3,7 @@ export { default as ButtonPrimary } from "./ButtonPrimary.vue";
 export { default as ButtonSecondary } from "./ButtonSecondary.vue";
 export { default as ContextMenu } from "./ContextMenu.vue";
 export { default as ContextMenuItem } from "./ContextMenuItem.vue";
+export { default as Dialog } from "./Dialog.vue";
 export { default as FileDrop } from "./FileDrop.vue";
 export { default as FormField } from "./FormField.vue";
 export { default as Icon } from "./Icon.vue";
