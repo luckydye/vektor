@@ -2,7 +2,6 @@ import { type Editor, mergeAttributes, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
-import { useUploads } from "#composeables/useUploads.ts";
 
 export interface FileAttachmentOptions {
   spaceId: string;
@@ -63,7 +62,10 @@ async function uploadFile(
   documentId?: string,
 ): Promise<string> {
   // The editor shows its own inline placeholder/error, so the manager only
-  // drives the progress + success toast (errorToast disabled).
+  // drives the progress + success toast (errorToast disabled). Imported lazily
+  // so the upload manager (and its Vite-only i18n dependency) never loads on
+  // the server, which pulls in these extensions for collaborative editing.
+  const { useUploads } = await import("#composeables/useUploads.ts");
   const result = await useUploads().uploadFile(file, {
     spaceId,
     documentId,
