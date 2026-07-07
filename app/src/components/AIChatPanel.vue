@@ -14,6 +14,7 @@ import {
 } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { t } from "#utils/lang.ts";
@@ -63,6 +64,7 @@ type MentionSuggestion = {
 
 const { currentSpaceId } = useSpace();
 const { toggle: toggleWindow, windows: dockedWindows } = useDockedWindows();
+const { uploadFiles } = useUploads();
 const isOpen = computed(() => dockedWindows.value.get("ai-chat")?.open ?? false);
 const messageInput = ref("");
 const messages = ref<UIMessage[]>([]);
@@ -904,24 +906,27 @@ async function sendMessage() {
     }
     isUploadingFiles.value = true;
     try {
-      uploadedAttachments = await Promise.all(
-        attachmentsToUpload.map(async (attachment) => {
-          const result = await api.uploads.post(
-            currentSpaceId.value,
-            attachment.file,
-            attachment.name,
-            props.documentId || undefined,
-          );
-          return {
-            key: result.key as string,
-            url: result.url as string,
-            name: attachment.name,
-            type: attachment.type,
-            size: attachment.size,
-            isImage: attachment.type.startsWith("image/"),
-          };
-        }),
+      // The upload manager shows an aggregated progress toast; this panel
+      // keeps its own busy flag and inline error, so errorToast is disabled.
+      const results = await uploadFiles(
+        attachmentsToUpload.map((attachment) => attachment.file),
+        {
+          spaceId: currentSpaceId.value,
+          documentId: props.documentId || undefined,
+          errorToast: false,
+        },
       );
+      uploadedAttachments = results.map((result, index) => {
+        const attachment = attachmentsToUpload[index];
+        return {
+          key: result.key as string,
+          url: result.url as string,
+          name: attachment.name,
+          type: attachment.type,
+          size: attachment.size,
+          isImage: attachment.type.startsWith("image/"),
+        };
+      });
     } catch (error) {
       uploadError.value =
         error instanceof Error ? error.message : "Failed to upload attachments";

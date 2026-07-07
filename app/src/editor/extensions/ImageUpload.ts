@@ -3,7 +3,7 @@ import Image from "@tiptap/extension-image";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { api } from "#api/client.ts";
+import { isImageFile } from "#utils/uploadFiles.ts";
 import { createResizableAttributes, ResizableNodeView } from "./resizable.ts";
 
 export interface ImageUploadOptions {
@@ -13,21 +13,23 @@ export interface ImageUploadOptions {
 }
 
 const PLACEHOLDER_TEXT = "⏳ Uploading image...";
-const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
 
 async function uploadImage(
   file: File,
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  const data = await api.uploads.post(spaceId, file, undefined, documentId);
-  return data.url;
-}
-
-export function isImageFile(file: File): boolean {
-  if (file.type.startsWith("image/")) return true;
-  const extension = file.name.split(".").pop()?.toLowerCase() || "";
-  return IMAGE_EXTENSIONS.includes(extension);
+  // The editor shows its own inline placeholder/error, so the manager only
+  // drives the progress + success toast (errorToast disabled). Imported lazily
+  // so the upload manager (and its Vite-only i18n dependency) never loads on
+  // the server, which pulls in these extensions for collaborative editing.
+  const { useUploads } = await import("#composeables/useUploads.ts");
+  const result = await useUploads().uploadFile(file, {
+    spaceId,
+    documentId,
+    errorToast: false,
+  });
+  return result.url;
 }
 
 export function imageFilesFromDataTransfer(

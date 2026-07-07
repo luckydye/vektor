@@ -1300,6 +1300,7 @@ export class ApiClient {
       file: File | Blob,
       filename?: string,
       documentId?: string,
+      options?: { onProgress?: (progress: number) => void },
     ) => {
       const formData = new FormData();
       formData.append("file", file, filename);
@@ -1307,17 +1308,40 @@ export class ApiClient {
         formData.append("documentId", documentId);
       }
 
-      const response = await fetch(`/api/v1/spaces/${spaceId}/uploads`, {
-        method: "POST",
-        body: formData,
-      });
+      // Use XMLHttpRequest instead of fetch so we can report upload progress.
+      // fetch has no way to observe how much of the request body has been sent.
+      return await new Promise<{ url: string; [key: string]: unknown }>(
+        (resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", `/api/v1/spaces/${spaceId}/uploads`);
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Upload failed: ${response.status} ${error}`);
-      }
+          if (options?.onProgress) {
+            xhr.upload.addEventListener("progress", (event) => {
+              if (event.lengthComputable) {
+                options.onProgress?.(event.loaded / event.total);
+              }
+            });
+          }
 
-      return await response.json();
+          xhr.addEventListener("load", () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                resolve(JSON.parse(xhr.responseText));
+              } catch (_err) {
+                reject(new Error("Upload failed: invalid server response"));
+              }
+            } else {
+              reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
+            }
+          });
+
+          xhr.addEventListener("error", () => {
+            reject(new Error("Upload failed: network error"));
+          });
+
+          xhr.send(formData);
+        },
+      );
     },
   };
 

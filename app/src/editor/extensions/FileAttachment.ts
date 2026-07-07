@@ -61,8 +61,16 @@ async function uploadFile(
   spaceId: string,
   documentId?: string,
 ): Promise<string> {
-  const { api } = await import("#api/client.ts");
-  const result = await api.uploads.post(spaceId, file, file.name, documentId);
+  // The editor shows its own inline placeholder/error, so the manager only
+  // drives the progress + success toast (errorToast disabled). Imported lazily
+  // so the upload manager (and its Vite-only i18n dependency) never loads on
+  // the server, which pulls in these extensions for collaborative editing.
+  const { useUploads } = await import("#composeables/useUploads.ts");
+  const result = await useUploads().uploadFile(file, {
+    spaceId,
+    documentId,
+    errorToast: false,
+  });
   return result.url;
 }
 
