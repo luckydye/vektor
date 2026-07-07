@@ -12,6 +12,7 @@ import {
   categoryIcon,
   chevronRightThinIcon,
   documentIcon,
+  dotsVerticalIcon,
   dragDotsIcon,
   editOutlineIcon,
   plusIcon,
@@ -146,10 +147,11 @@ function closeContextMenu() {
   contextMenu.value = null;
 }
 
-function handleContextMenu(event, category) {
-  if (!canManageCategories.value || isEditMode.value) return;
-  event.preventDefault();
-  openContextMenu(event.clientX, event.clientY, category);
+// Open the menu anchored under the hover "⋯" button, right-aligned to it.
+function handleMenuButton(event, category) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const MENU_WIDTH = 224;
+  openContextMenu(rect.right - MENU_WIDTH, rect.bottom + 4, category);
 }
 
 function clearLongPress() {
@@ -501,7 +503,6 @@ defineExpose({ isEditMode, toggleEditMode });
           @dragover="isEditMode && handleDragOver($event, categories.findIndex(c => c.id === category.id))"
           @dragleave="isEditMode && handleDragLeave()"
           @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
-          @contextmenu="handleContextMenu($event, category)"
           @touchstart.passive="handleTouchStart($event, category)"
           @touchmove.passive="handleTouchMove($event)"
           @touchend="handleTouchEnd($event)"
@@ -527,16 +528,31 @@ defineExpose({ isEditMode, toggleEditMode });
               <span class="font-medium">{{ category.name }}</span>
             </button>
 
-            <!-- New Document Button (shown on hover, hidden in edit mode, editors only) -->
-            <a
-              v-if="!isEditMode && canEdit(currentSpace?.userRole)"
-              :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
-              class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-all shrink-0 mr-2 flex items-center gap-1"
-              title="New document in this category"
-              @click.stop
+            <!-- Hover actions: new document + options menu (hidden in edit mode, editors only) -->
+            <div
+              v-if="!isEditMode && canManageCategories"
+              class="flex items-center gap-0.5 shrink-0 mr-2 opacity-0 group-hover/category:opacity-100 transition-opacity"
+              :class="{ 'opacity-100': contextMenu?.category?.id === category.id }"
             >
-              <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
-            </a>
+              <a
+                :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
+                class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
+                title="New document in this category"
+                @click.stop
+              >
+                <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
+              </a>
+              <button
+                type="button"
+                class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
+                :class="{ 'text-neutral-900 bg-neutral-200': contextMenu?.category?.id === category.id }"
+                title="Category options"
+                aria-label="Category options"
+                @click.stop="handleMenuButton($event, category)"
+              >
+                <div class="svg-icon w-3.5 h-3.5" v-html="dotsVerticalIcon" />
+              </button>
+            </div>
 
             <!-- Edit/Delete Buttons (shown in edit mode) -->
             <div v-if="isEditMode" class="flex items-center gap-1 shrink-0 pr-2">
