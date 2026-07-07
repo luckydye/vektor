@@ -53,10 +53,14 @@ export const PUT: APIRoute = (context) =>
         { provider: "ollama", model, baseUrl: body.baseUrl.trim().replace(/\/$/, "") },
         user.id,
       );
-    } else if (provider === "anthropic" || provider === "openrouter") {
+    } else if (
+      provider === "anthropic" ||
+      provider === "openrouter" ||
+      provider === "opencode-zen"
+    ) {
       if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
         throw badRequestResponse(
-          "apiKey is required for anthropic and openrouter providers",
+          "apiKey is required for anthropic, openrouter and opencode-zen providers",
         );
       }
       await setAIConfig(
@@ -66,7 +70,7 @@ export const PUT: APIRoute = (context) =>
       );
     } else {
       throw badRequestResponse(
-        `Unknown provider "${provider}". Valid values: anthropic, openrouter, ollama`,
+        `Unknown provider "${provider}". Valid values: anthropic, openrouter, opencode-zen, ollama`,
       );
     }
 

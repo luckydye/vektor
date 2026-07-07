@@ -13,4 +13,5 @@ export type ChatMessage = {
 export type AIProvider =
   | { provider: "anthropic"; apiKey: string; model: string }
   | { provider: "openrouter"; apiKey: string; model: string }
+  | { provider: "opencode-zen"; apiKey: string; model: string }
   | { provider: "ollama"; baseUrl: string; model: string };

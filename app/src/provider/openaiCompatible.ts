@@ -1,16 +1,32 @@
 import type { ChatMessage } from "./types.ts";
 import { type PartialToolCall, parseSSE } from "./utils.ts";
 
-type OpenRouterProvider = { provider: "openrouter"; apiKey: string; model: string };
+/**
+ * Providers that speak the OpenAI `/chat/completions` wire format. They share
+ * a single streaming implementation and only differ by base URL.
+ *
+ * - `openrouter`: https://openrouter.ai
+ * - `opencode-zen`: https://opencode.ai/zen — the opencode Zen model gateway
+ */
+export type OpenAICompatibleProvider = {
+  provider: "openrouter" | "opencode-zen";
+  apiKey: string;
+  model: string;
+};
+
+const CHAT_COMPLETIONS_URLS: Record<OpenAICompatibleProvider["provider"], string> = {
+  openrouter: "https://openrouter.ai/api/v1/chat/completions",
+  "opencode-zen": "https://opencode.ai/zen/v1/chat/completions",
+};
 
 export function getOpenAICompatibleChatCompletionsUrl(
-  _provider: OpenRouterProvider,
+  provider: OpenAICompatibleProvider,
 ): string {
-  return "https://openrouter.ai/api/v1/chat/completions";
+  return CHAT_COMPLETIONS_URLS[provider.provider];
 }
 
 export function getOpenAICompatibleHeaders(
-  provider: OpenRouterProvider,
+  provider: OpenAICompatibleProvider,
 ): Record<string, string> {
   return {
     "Content-Type": "application/json",
@@ -18,8 +34,8 @@ export function getOpenAICompatibleHeaders(
   };
 }
 
-export async function callOpenRouter(options: {
-  provider: OpenRouterProvider;
+export async function callOpenAICompatible(options: {
+  provider: OpenAICompatibleProvider;
   messages: ChatMessage[];
   tools: unknown[];
   signal?: AbortSignal;
@@ -38,7 +54,9 @@ export async function callOpenRouter(options: {
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+    throw new Error(
+      `${options.provider.provider} ${response.status}: ${await response.text()}`,
+    );
   }
 
   const pendingCalls = new Map<number, PartialToolCall>();

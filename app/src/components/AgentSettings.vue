@@ -42,6 +42,7 @@
           >
             <option value="anthropic">Anthropic</option>
             <option value="openrouter">OpenRouter</option>
+            <option value="opencode-zen">opencode Zen</option>
             <option value="ollama">Ollama</option>
           </select>
         </div>
@@ -113,7 +114,7 @@ const isDeleting = ref(false);
 const saveError = ref<string | null>(null);
 
 const form = ref({
-  provider: "anthropic" as "anthropic" | "openrouter" | "ollama",
+  provider: "anthropic" as "anthropic" | "openrouter" | "opencode-zen" | "ollama",
   model: "",
   apiKey: "",
   baseUrl: "",
@@ -122,6 +123,7 @@ const form = ref({
 const modelPlaceholder = computed(() => {
   if (form.value.provider === "anthropic") return "claude-sonnet-4-6";
   if (form.value.provider === "openrouter") return "qwen/qwen3.5-397b-a17b";
+  if (form.value.provider === "opencode-zen") return "claude-sonnet-4-6";
   return "qwen3:latest";
 });
 

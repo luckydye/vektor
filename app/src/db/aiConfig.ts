@@ -37,7 +37,11 @@ export async function getAIProvider(spaceId: string): Promise<AIProvider> {
     return { provider: "ollama", baseUrl, model };
   }
 
-  if (provider === "anthropic" || provider === "openrouter") {
+  if (
+    provider === "anthropic" ||
+    provider === "openrouter" ||
+    provider === "opencode-zen"
+  ) {
     const secretRow = await db
       .select()
       .from(spaceSecret)
