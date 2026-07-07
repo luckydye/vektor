@@ -113,6 +113,11 @@ const dragOverIndex = ref(null);
 const isSaving = ref(false);
 const formError = ref(null);
 const deletingIds = ref(new Set());
+// Category pending deletion (drives the confirmation dialog).
+const deleteTarget = ref(null);
+const isDeleting = computed(
+  () => !!deleteTarget.value && deletingIds.value.has(deleteTarget.value.id),
+);
 
 const formData = ref({
   name: "",
@@ -225,7 +230,7 @@ function contextRearrange() {
 
 function contextDeleteCategory(category) {
   closeContextMenu();
-  handleDelete(category);
+  requestDelete(category);
 }
 
 function handleKeydown(event) {
@@ -357,13 +362,24 @@ async function handleDrop(e, index) {
   }
 }
 
-async function handleDelete(category) {
-  if (!confirm(`Delete "${category.name}"? Documents will not be deleted.`)) return;
+function requestDelete(category) {
+  deleteTarget.value = category;
+}
+
+function cancelDelete() {
+  if (isDeleting.value) return;
+  deleteTarget.value = null;
+}
+
+async function confirmDelete() {
+  const category = deleteTarget.value;
+  if (!category) return;
 
   deletingIds.value.add(category.id);
 
   try {
     await deleteCategory(category.id);
+    deleteTarget.value = null;
   } catch (err) {
     formError.value = err instanceof Error ? err.message : "Failed to delete category";
   } finally {
@@ -555,7 +571,7 @@ defineExpose({ isEditMode, toggleEditMode });
               </button>
             </div>
 
-            <!-- Edit/Delete Buttons (shown in edit mode) -->
+            <!-- Edit Button (shown in edit mode) -->
             <div v-if="isEditMode" class="flex items-center gap-1 shrink-0 pr-2">
               <button
                 @click="startEditing(category)"
@@ -563,14 +579,6 @@ defineExpose({ isEditMode, toggleEditMode });
                 title="Edit"
               >
                 <div class="svg-icon w-4 h-4" v-html="editOutlineIcon" />
-              </button>
-              <button
-                @click="handleDelete(category)"
-                :disabled="deletingIds.has(category.id)"
-                class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-sm transition-colors disabled:opacity-50"
-                title="Delete"
-              >
-                <div class="svg-icon w-4 h-4" v-html="trashCanIcon" />
               </button>
             </div>
           </div>
@@ -752,6 +760,40 @@ defineExpose({ isEditMode, toggleEditMode });
             class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
+          </button>
+        </div>
+      </template>
+    </Dialog>
+
+    <!-- Delete Category Confirmation -->
+    <Dialog
+      :show="!!deleteTarget"
+      title="Delete category"
+      :close-on-backdrop="!isDeleting"
+      @update:show="(v) => { if (!v) cancelDelete(); }"
+    >
+      <p class="text-size-medium text-neutral-700">
+        Delete <span class="font-semibold text-neutral-900">"{{ deleteTarget?.name }}"</span>?
+        Documents in this category will not be deleted.
+      </p>
+
+      <template #footer>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            @click="cancelDelete"
+            :disabled="isDeleting"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            @click="confirmDelete"
+            :disabled="isDeleting"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ isDeleting ? 'Deleting...' : 'Delete' }}
           </button>
         </div>
       </template>
