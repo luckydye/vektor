@@ -3,8 +3,7 @@ import { computed, onUnmounted, ref } from "vue";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
-import { closeIcon } from "~/src/assets/icons.ts";
-import { ButtonSecondary } from "~/src/components/index.ts";
+import { Dialog } from "~/src/components/index.ts";
 
 const show = ref(false);
 const user = useUserProfile();
@@ -37,17 +36,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    v-if="show"
-    class="fixed inset-0 z-100 flex items-center justify-center bg-black/50 overflow-hidden"
-    @click.self="show = false"
-  >
-    <div class="bg-background rounded-lg shadow-xl p-s w-full max-w-lg min-w-[320px] flex flex-col gap-xs">
-      <div class="flex items-center justify-between">
-        <h2 class="text-large font-semibold">CalDAV Setup</h2>
-        <ButtonSecondary :icon="closeIcon" @click="show = false" />
-      </div>
-
+  <Dialog v-model:show="show" title="CalDAV Setup" max-width="md:max-w-lg">
+    <div class="flex flex-col gap-xs">
       <p class="text-small text-neutral-500">
         Connect your calendar app to sync wiki documents as events.
       </p>
@@ -97,5 +87,5 @@ onUnmounted(() => {
         </li>
       </ol>
     </div>
-  </div>
+  </Dialog>
 </template>

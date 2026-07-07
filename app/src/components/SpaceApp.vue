@@ -182,24 +182,48 @@ const initialLayoutStyle = {
   "--inset-left": `${initialSidebarWidth}px`,
 };
 
-onMounted(async () => {
-  document.addEventListener("click", handleDocumentClick);
+// Lightweight custom elements the app chrome needs on every route: the sidebar
+// document tree (category/page targets, scroller), keyboard-shortcut hints, and
+// the mobile document drawer. Register these eagerly.
+function registerShellElements() {
+  return Promise.all([
+    import("#editor/elements/scroll.ts"),
+    import("#editor/elements/category-target.ts"),
+    import("#editor/elements/page-target.ts"),
+    import("#editor/elements/shortcut.ts"),
+    import("#editor/elements/drawer.ts"),
+  ]).catch(console.error);
+}
 
-  await Promise.all([
-    import("#editor/elements/textarea.ts"),
-    import("#editor/elements/expression.ts"),
-    import("#editor/document.ts"),
+// Heavy document/editor content elements — these pull in TipTap, CodeMirror,
+// Yjs and embeds. They only ever render inside document content, so keep them
+// off the initial-render/hydration critical path. Custom elements upgrade
+// automatically once defined, and the document renderers (e.g. PinnedDocument)
+// already tolerate late registration, so deferring is safe.
+function registerDocumentElements() {
+  return Promise.all([
+    import("#editor/document.ts"), // also registers textarea + expression
     import("#editor/elements/figma-embed.ts"),
     import("#editor/elements/html-block.ts"),
     import("#editor/elements/ticket-link.ts"),
     import("#editor/elements/user-mention.ts"),
-    import("#editor/elements/scroll.ts"),
-    import("#editor/elements/page-target.ts"),
-    import("#editor/elements/category-target.ts"),
-    import("#editor/elements/drawer.ts"),
-    import("#editor/elements/shortcut.ts"),
     import("#editor/elements/cake.ts"),
-  ]);
+  ]).catch(console.error);
+}
+
+onMounted(() => {
+  document.addEventListener("click", handleDocumentClick);
+
+  registerShellElements();
+
+  const idle = (window as unknown as {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
+  }).requestIdleCallback;
+  if (idle) {
+    idle(() => registerDocumentElements(), { timeout: 1500 });
+  } else {
+    setTimeout(() => registerDocumentElements(), 200);
+  }
 
   navigator.serviceWorker.register("/sw.js").catch(console.error);
 
@@ -224,7 +248,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div id="root" class="mx-auto relative origin-top" :style="initialLayoutStyle">
+  <div id="root" class="mx-auto relative origin-top overflow-x-clip" :style="initialLayoutStyle">
     <div
       :class="[
         'main-content min-h-screen h-full transition-transform md:transition-none relative',

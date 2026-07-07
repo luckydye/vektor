@@ -3,6 +3,7 @@ import { twMerge } from "tailwind-merge";
 import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
+import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import {
   DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDEBAR_WIDTH,
@@ -45,9 +46,16 @@ let resizeStartY = 0;
 let resizeStartWidth = 0;
 const resizeDragThreshold = 4;
 
+let holdsScrollLock = false;
 const setMobileOpen = (open: boolean) => {
   isMobileOpen.value = open;
-  document.body.style.overflow = open ? "hidden" : "";
+  if (open && !holdsScrollLock) {
+    lockScroll();
+    holdsScrollLock = true;
+  } else if (!open && holdsScrollLock) {
+    unlockScroll();
+    holdsScrollLock = false;
+  }
   emit("mobile-open-change", open);
 };
 
@@ -195,7 +203,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  document.body.style.overflow = "";
+  if (holdsScrollLock) {
+    unlockScroll();
+    holdsScrollLock = false;
+  }
   emit("mobile-open-change", false);
   Actions.unregister("ui:toggle:sidebar");
   Actions.unregister("sidebar:toggle-mobile");

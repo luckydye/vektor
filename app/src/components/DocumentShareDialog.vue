@@ -6,7 +6,7 @@ import { isOwner } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { getUserInitials } from "#utils/utils.ts";
-import { Icon } from "~/src/components/index.ts";
+import { Dialog } from "~/src/components/index.ts";
 
 const props = defineProps<{
   show: boolean;
@@ -291,30 +291,16 @@ function canRemoveSpaceMember(perm: any) {
 </script>
 
 <template>
-  <div
-    v-if="show"
-    class="fixed inset-0 bg-black/20 flex items-center justify-center z-50"
-    @click.self="emit('update:show', false)"
-  >
-    <div class="bg-background rounded-xl shadow-large w-full max-w-md mx-4 border border-neutral-100">
-
-      <!-- Header -->
-      <div class="flex items-start justify-between px-4 pt-4 pb-3">
-        <div class="min-w-0">
-          <h2 class="text-size-title font-semibold text-neutral-900 leading-tight">Share</h2>
-          <p v-if="documentTitle" class="text-size-small text-neutral-400 truncate mt-0.5">{{ documentTitle }}</p>
-        </div>
-        <button
-          type="button"
-          class="flex-none ml-3 mt-0.5 p-1 rounded-md text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
-          @click="emit('update:show', false)"
-        >
-          <Icon name="close" />
-        </button>
+  <Dialog :show="show" body-class="p-0" @update:show="emit('update:show', $event)">
+    <template #header>
+      <div class="min-w-0">
+        <h2 class="text-size-title font-semibold text-neutral-900 leading-tight">Share</h2>
+        <p v-if="documentTitle" class="text-size-small text-neutral-400 truncate mt-0.5">{{ documentTitle }}</p>
       </div>
+    </template>
 
-      <!-- Tabs -->
-      <a-tabs ref="tabsEl" @tab-selected="onTabSelected">
+    <!-- Tabs -->
+    <a-tabs ref="tabsEl" @tab-selected="onTabSelected">
         <a-tabs-list class="block border-b border-neutral-100 px-4">
           <a-tabs-tab class="px-1 py-2.5 mr-4 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">
             This document
@@ -560,7 +546,5 @@ function canRemoveSpaceMember(perm: any) {
           </div>
         </a-tabs-panel>
       </a-tabs>
-
-    </div>
-  </div>
+  </Dialog>
 </template>

@@ -9,13 +9,17 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueIncludes } from "#utils/documentProperties.ts";
 import { getTextColor, spacePath } from "#utils/utils.ts";
 import {
-  checkThinIcon,
+  categoryIcon,
   chevronRightThinIcon,
+  documentIcon,
+  dotsVerticalIcon,
+  dragDotsIcon,
   editOutlineIcon,
-  pencilIcon,
+  plusIcon,
   plusSmallIcon,
   trashCanIcon,
 } from "~/src/assets/icons.ts";
+import Dialog from "./Dialog.vue";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();
@@ -109,6 +113,12 @@ const dragOverIndex = ref(null);
 const isSaving = ref(false);
 const formError = ref(null);
 const deletingIds = ref(new Set());
+// Category pending deletion (drives the confirmation dialog).
+const deleteTarget = ref(null);
+const deleteError = ref(null);
+const isDeleting = computed(
+  () => !!deleteTarget.value && deletingIds.value.has(deleteTarget.value.id),
+);
 
 const formData = ref({
   name: "",
@@ -117,6 +127,118 @@ const formData = ref({
   color: "#4ECDC4",
   icon: "",
 });
+
+// Context menu state (opened via right-click on desktop or long-press on touch)
+const contextMenu = ref(null);
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE = 10;
+let longPressTimer = null;
+let longPressStart = null;
+let longPressFired = false;
+
+const canManageCategories = computed(() => canEdit(currentSpace.value?.userRole));
+
+function openContextMenu(clientX, clientY, category) {
+  if (!canManageCategories.value || isEditMode.value) return;
+
+  // Clamp to the viewport so the menu never renders off-screen.
+  const MENU_WIDTH = 224;
+  const MENU_HEIGHT = 240;
+  const x = Math.min(clientX, window.innerWidth - MENU_WIDTH - 8);
+  const y = Math.min(clientY, window.innerHeight - MENU_HEIGHT - 8);
+
+  contextMenu.value = { x: Math.max(8, x), y: Math.max(8, y), category };
+}
+
+function closeContextMenu() {
+  contextMenu.value = null;
+}
+
+// Open the menu anchored under the hover "⋯" button, right-aligned to it.
+function handleMenuButton(event, category) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const MENU_WIDTH = 224;
+  openContextMenu(rect.right - MENU_WIDTH, rect.bottom + 4, category);
+}
+
+function clearLongPress() {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressStart = null;
+}
+
+function handleTouchStart(event, category) {
+  if (!canManageCategories.value || isEditMode.value) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  longPressFired = false;
+  longPressStart = { x: touch.clientX, y: touch.clientY };
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    longPressFired = true;
+    openContextMenu(longPressStart.x, longPressStart.y, category);
+  }, LONG_PRESS_MS);
+}
+
+function handleTouchMove(event) {
+  if (longPressTimer === null || !longPressStart) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  const dx = touch.clientX - longPressStart.x;
+  const dy = touch.clientY - longPressStart.y;
+  // Cancel the long-press if the finger moves (i.e. the user is scrolling).
+  if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) {
+    clearLongPress();
+  }
+}
+
+function handleTouchEnd(event) {
+  // If the long-press just opened the menu, swallow the trailing synthetic click
+  // so it doesn't fall through to the backdrop and immediately close the menu.
+  if (longPressFired) {
+    event.preventDefault();
+    longPressFired = false;
+  }
+  clearLongPress();
+}
+
+// Context menu actions --------------------------------------------------------
+
+function contextNewDocument(category) {
+  closeContextMenu();
+  window.location.href = spacePath(
+    currentSpace.value?.slug,
+    `/new?category=${category.slug}`,
+  );
+}
+
+function contextEditCategory(category) {
+  closeContextMenu();
+  startEditing(category);
+}
+
+function contextNewCategory() {
+  closeContextMenu();
+  startCreating();
+}
+
+function contextRearrange() {
+  closeContextMenu();
+  if (!isEditMode.value) toggleEditMode();
+}
+
+function contextDeleteCategory(category) {
+  closeContextMenu();
+  requestDelete(category);
+}
+
+function handleKeydown(event) {
+  if (event.key === "Escape" && contextMenu.value) {
+    closeContextMenu();
+  }
+}
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
@@ -161,6 +283,8 @@ function startCreating() {
 }
 
 function cancelEdit() {
+  // Don't discard the form (and reset state) out from under an in-flight save.
+  if (isSaving.value) return;
   resetForm();
 }
 
@@ -241,15 +365,29 @@ async function handleDrop(e, index) {
   }
 }
 
-async function handleDelete(category) {
-  if (!confirm(`Delete "${category.name}"? Documents will not be deleted.`)) return;
+function requestDelete(category) {
+  deleteError.value = null;
+  deleteTarget.value = category;
+}
 
+function cancelDelete() {
+  if (isDeleting.value) return;
+  deleteError.value = null;
+  deleteTarget.value = null;
+}
+
+async function confirmDelete() {
+  const category = deleteTarget.value;
+  if (!category) return;
+
+  deleteError.value = null;
   deletingIds.value.add(category.id);
 
   try {
     await deleteCategory(category.id);
+    deleteTarget.value = null;
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : "Failed to delete category";
+    deleteError.value = err instanceof Error ? err.message : "Failed to delete category";
   } finally {
     deletingIds.value.delete(category.id);
   }
@@ -319,11 +457,14 @@ onMounted(() => {
 
   window.addEventListener("document-parent-change", handleDocumentParentChange);
   window.addEventListener("document-category-change", handleDocumentCategoryChange);
+  window.addEventListener("keydown", handleKeydown);
 });
 
 onUnmounted(() => {
   window.removeEventListener("document-parent-change", handleDocumentParentChange);
   window.removeEventListener("document-category-change", handleDocumentCategoryChange);
+  window.removeEventListener("keydown", handleKeydown);
+  clearLongPress();
 });
 
 defineExpose({ isEditMode, toggleEditMode });
@@ -350,8 +491,27 @@ defineExpose({ isEditMode, toggleEditMode });
     </div>
 
     <template v-if="isMounted">
-    <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-3 py-4 text-center">
-      <p class="text-size-medium text-neutral-500">No categories yet</p>
+    <!-- Empty state -->
+    <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-4xs">
+      <div
+        v-if="canManageCategories"
+        class="flex flex-col items-center text-center gap-2 rounded-lg border border-dashed border-neutral-200 px-4 py-5"
+      >
+        <div class="svg-icon w-6 h-6 text-neutral-400" v-html="categoryIcon" />
+        <div>
+          <p class="text-size-medium font-medium text-neutral-900">No categories yet</p>
+          <p class="text-size-small text-neutral-500 mt-0.5">Group your documents into categories to organize this space.</p>
+        </div>
+        <button
+          type="button"
+          @click="startCreating"
+          class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+        >
+          <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
+          <span>Create category</span>
+        </button>
+      </div>
+      <p v-else class="px-3 py-4 text-center text-size-medium text-neutral-500">No categories yet</p>
     </div>
 
     <!-- Categories List and Documents -->
@@ -366,6 +526,10 @@ defineExpose({ isEditMode, toggleEditMode });
           @dragover="isEditMode && handleDragOver($event, categories.findIndex(c => c.id === category.id))"
           @dragleave="isEditMode && handleDragLeave()"
           @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
+          @touchstart.passive="handleTouchStart($event, category)"
+          @touchmove.passive="handleTouchMove($event)"
+          @touchend="handleTouchEnd($event)"
+          @touchcancel="clearLongPress()"
         >
           <div class="group/category flex items-center gap-2 text-size-medium text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
             :class="{
@@ -387,34 +551,35 @@ defineExpose({ isEditMode, toggleEditMode });
               <span class="font-medium">{{ category.name }}</span>
             </button>
 
-            <!-- New Document Button (shown on hover, hidden in edit mode, editors only) -->
-            <a
-              v-if="!isEditMode && canEdit(currentSpace?.userRole)"
-              :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
-              class="opacity-0 group-hover/category:opacity-100 p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-all shrink-0 mr-2 flex items-center gap-1"
-              title="New document in this category"
-              @click.stop
+            <!-- Hover actions: new document + options menu (hidden in edit mode, editors only) -->
+            <div
+              v-if="!isEditMode && canManageCategories"
+              class="flex items-center gap-0.5 shrink-0 mr-2 opacity-0 group-hover/category:opacity-100 transition-opacity"
+              :class="{ 'opacity-100': contextMenu?.category?.id === category.id }"
             >
-              <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
-            </a>
+              <a
+                :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
+                class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
+                title="New document in this category"
+                @click.stop
+              >
+                <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
+              </a>
+              <button
+                type="button"
+                class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
+                :class="{ 'text-neutral-900 bg-neutral-200': contextMenu?.category?.id === category.id }"
+                title="Category options"
+                aria-label="Category options"
+                @click.stop="handleMenuButton($event, category)"
+              >
+                <div class="svg-icon w-3.5 h-3.5" v-html="dotsVerticalIcon" />
+              </button>
+            </div>
 
-            <!-- Edit/Delete Buttons (shown in edit mode) -->
-            <div v-if="isEditMode" class="flex items-center gap-1 shrink-0 pr-2">
-              <button
-                @click="startEditing(category)"
-                class="p-1 text-neutral-900 hover:text-blue-600 hover:bg-blue-50 rounded-sm transition-colors"
-                title="Edit"
-              >
-                <div class="svg-icon w-4 h-4" v-html="editOutlineIcon" />
-              </button>
-              <button
-                @click="handleDelete(category)"
-                :disabled="deletingIds.has(category.id)"
-                class="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-sm transition-colors disabled:opacity-50"
-                title="Delete"
-              >
-                <div class="svg-icon w-4 h-4" v-html="trashCanIcon" />
-              </button>
+            <!-- Drag handle (shown in rearrange mode) -->
+            <div v-if="isEditMode" class="flex items-center shrink-0 pr-2 text-neutral-400" title="Drag to reorder">
+              <div class="svg-icon w-4 h-4" v-html="dragDotsIcon" />
             </div>
           </div>
         </category-target>
@@ -436,103 +601,208 @@ defineExpose({ isEditMode, toggleEditMode });
       </button>
     </div>
 
-    <!-- Create/Edit Dialog Overlay (Teleported to body) -->
+    <!-- Category Context Menu (right-click on desktop, long-press on touch) -->
     <Teleport to="body">
-      <div v-if="showAddForm || editingId" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div class="bg-background rounded-lg shadow-xl p-6 w-full max-w-md" @click.stop>
-          <form @submit.prevent="handleSave" class="space-y-4">
-            <div class="text-size-medium font-semibold text-neutral-900">
-              {{ editingId ? 'Edit Category' : 'New Category' }}
-            </div>
+      <div
+        v-if="contextMenu"
+        class="fixed inset-0 z-50"
+        @click="closeContextMenu"
+        @contextmenu.prevent="closeContextMenu"
+      >
+        <div
+          class="absolute min-w-[224px] bg-background border border-neutral-100 rounded-lg p-5xs shadow-large"
+          :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+          @click.stop
+          @contextmenu.prevent.stop
+        >
+          <div class="px-3xs py-5xs text-size-small text-neutral-500 truncate">{{ contextMenu.category.name }}</div>
 
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Name</label>
-              <input
-                v-model="formData.name"
-                type="text"
-                required
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Category name"
-              />
-            </div>
+          <button
+            type="button"
+            @click="contextNewDocument(contextMenu.category)"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
+            <span>New document</span>
+          </button>
+          <button
+            type="button"
+            @click="contextEditCategory(contextMenu.category)"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
+            <span>Edit category</span>
+          </button>
 
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Slug</label>
-              <input
-                v-model="formData.slug"
-                type="text"
-                required
-                pattern="[a-z0-9-]+"
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="slug-name"
-              />
-              <p class="mt-1 text-size-small text-neutral">Lowercase, numbers, hyphens only</p>
-            </div>
+          <div class="my-5xs h-px bg-neutral-100" />
 
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Description</label>
-              <textarea
-                v-model="formData.description"
-                rows="2"
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Description (optional)"
-              />
-            </div>
+          <button
+            type="button"
+            @click="contextNewCategory()"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
+            <span>New category</span>
+          </button>
+          <button
+            type="button"
+            @click="contextRearrange()"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
+            <span>Rearrange categories</span>
+          </button>
 
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-2">Color</label>
-              <div class="flex gap-2 items-center">
-                <input
-                  v-model="formData.color"
-                  type="color"
-                  class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
-                />
-                <input
-                  v-model="formData.color"
-                  type="text"
-                  placeholder="#4ECDC4"
-                  pattern="^#[0-9A-Fa-f]{6}$"
-                  class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
+          <div class="my-5xs h-px bg-neutral-100" />
 
-            <div>
-              <label class="block text-size-small font-medium text-neutral-900 mb-1">Icon</label>
-              <input
-                v-model="formData.icon"
-                type="text"
-                maxlength="10"
-                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Icon (emoji or text)"
-              />
-            </div>
-
-            <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
-              <p class="text-size-small text-red-600">{{ formError }}</p>
-            </div>
-
-            <div class="flex gap-2 pt-2">
-              <button
-                type="button"
-                @click="cancelEdit"
-                :disabled="isSaving"
-                class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                :disabled="isSaving"
-                class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
-              </button>
-            </div>
-          </form>
+          <button
+            type="button"
+            @click="contextDeleteCategory(contextMenu.category)"
+            :disabled="deletingIds.has(contextMenu.category.id)"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
+            <span>Delete category</span>
+          </button>
         </div>
       </div>
     </Teleport>
+
+    <!-- Create/Edit Category Dialog -->
+    <Dialog
+      :show="showAddForm || !!editingId"
+      :title="editingId ? 'Edit Category' : 'New Category'"
+      :close-on-backdrop="!isSaving"
+      @update:show="(v) => { if (!v) cancelEdit(); }"
+    >
+      <form id="category-form" @submit.prevent="handleSave" class="space-y-4">
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Name</label>
+          <input
+            v-model="formData.name"
+            type="text"
+            required
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Category name"
+          />
+        </div>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Slug</label>
+          <input
+            v-model="formData.slug"
+            type="text"
+            required
+            pattern="[a-z0-9-]+"
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="slug-name"
+          />
+          <p class="mt-1 text-size-small text-neutral">Lowercase, numbers, hyphens only</p>
+        </div>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Description</label>
+          <textarea
+            v-model="formData.description"
+            rows="2"
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Description (optional)"
+          />
+        </div>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-2">Color</label>
+          <div class="flex gap-2 items-center">
+            <input
+              v-model="formData.color"
+              type="color"
+              class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
+            />
+            <input
+              v-model="formData.color"
+              type="text"
+              placeholder="#4ECDC4"
+              pattern="^#[0-9A-Fa-f]{6}$"
+              class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-size-small font-medium text-neutral-900 mb-1">Icon</label>
+          <input
+            v-model="formData.icon"
+            type="text"
+            maxlength="10"
+            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Icon (emoji or text)"
+          />
+        </div>
+
+        <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
+          <p class="text-size-small text-red-600">{{ formError }}</p>
+        </div>
+      </form>
+
+      <template #footer>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            @click="cancelEdit"
+            :disabled="isSaving"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="category-form"
+            :disabled="isSaving"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
+          </button>
+        </div>
+      </template>
+    </Dialog>
+
+    <!-- Delete Category Confirmation -->
+    <Dialog
+      :show="!!deleteTarget"
+      title="Delete category"
+      :close-on-backdrop="!isDeleting"
+      @update:show="(v) => { if (!v) cancelDelete(); }"
+    >
+      <p class="text-size-medium text-neutral-700">
+        Delete <span class="font-semibold text-neutral-900">"{{ deleteTarget?.name }}"</span>?
+        Documents in this category will not be deleted.
+      </p>
+
+      <div v-if="deleteError" class="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+        <p class="text-size-small text-red-600">{{ deleteError }}</p>
+      </div>
+
+      <template #footer>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            @click="cancelDelete"
+            :disabled="isDeleting"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            @click="confirmDelete"
+            :disabled="isDeleting"
+            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {{ isDeleting ? 'Deleting...' : 'Delete' }}
+          </button>
+        </div>
+      </template>
+    </Dialog>
     </template>
   </div>
 </template>
