@@ -571,15 +571,9 @@ defineExpose({ isEditMode, toggleEditMode });
               </button>
             </div>
 
-            <!-- Edit Button (shown in edit mode) -->
-            <div v-if="isEditMode" class="flex items-center gap-1 shrink-0 pr-2">
-              <button
-                @click="startEditing(category)"
-                class="p-1 text-neutral-900 hover:text-blue-600 hover:bg-blue-50 rounded-sm transition-colors"
-                title="Edit"
-              >
-                <div class="svg-icon w-4 h-4" v-html="editOutlineIcon" />
-              </button>
+            <!-- Drag handle (shown in rearrange mode) -->
+            <div v-if="isEditMode" class="flex items-center shrink-0 pr-2 text-neutral-400" title="Drag to reorder">
+              <div class="svg-icon w-4 h-4" v-html="dragDotsIcon" />
             </div>
           </div>
         </category-target>
