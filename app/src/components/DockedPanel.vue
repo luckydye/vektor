@@ -4,7 +4,9 @@ import {
   type DockedWindowState,
   useDockedWindows,
 } from "#composeables/useDockedWindows.ts";
+import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
+import Dialog from "./Dialog.vue";
 import {
   closeXIcon,
   dragDotsIcon,
@@ -57,8 +59,9 @@ const insets = ref<Insets>(getInsets());
 let stopInsets: (() => void) | null = null;
 
 // Track the md breakpoint reactively so docked positioning recomputes when the
-// sidebar collapses to an overlay below it.
-const isDesktop = ref(true);
+// sidebar collapses to an overlay below it, and so the panel becomes a bottom
+// drawer on mobile.
+const isDesktop = useIsDesktop();
 
 function sidebarOffset(): number {
   return isDesktop.value ? insets.value.sidebar : 0;
@@ -243,7 +246,6 @@ function onMouseUp() {
 }
 
 function onWindowResize() {
-  isDesktop.value = window.innerWidth >= 768;
   if (mode.value === "floating") {
     // Clamp floating position
     const maxX = window.innerWidth - floatW.value - DOCK_MARGIN;
@@ -282,7 +284,6 @@ onMounted(() => {
     width: props.defaultWidth ?? 380,
   });
 
-  isDesktop.value = window.innerWidth >= 768;
   stopInsets = onInsets((s) => {
     insets.value = s;
   });
@@ -302,8 +303,20 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- Mobile: render as a bottom-drawer dialog instead of a docked/floating panel. -->
+  <Dialog
+    v-if="!isDesktop"
+    :show="isOpen"
+    :title="title"
+    body-class="p-0 flex flex-col min-h-0 overflow-hidden"
+    @update:show="(v) => { if (!v) onClose(); }"
+  >
+    <slot />
+  </Dialog>
+
+  <!-- Desktop: docked / floating overlay. -->
   <div
-    v-if="isOpen"
+    v-else-if="isOpen"
     class="fixed z-50 flex flex-col bg-neutral-10 border border-neutral-100 rounded-md overflow-hidden shadow-xl"
     :style="overlayStyle"
   >
