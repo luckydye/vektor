@@ -224,7 +224,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div id="root" class="mx-auto relative origin-top" :style="initialLayoutStyle">
+  <div id="root" class="mx-auto relative origin-top overflow-x-clip" :style="initialLayoutStyle">
     <div
       :class="[
         'main-content min-h-screen h-full transition-transform md:transition-none relative',
