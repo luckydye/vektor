@@ -10,9 +10,7 @@ import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
   boltIcon,
-  checkThinIcon,
   homeIcon,
-  pencilIcon,
   puzzleIcon,
   searchIcon,
   settingsIcon,
@@ -231,15 +229,15 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 
     <!-- Document Tree -->
     <div class="@max-xs:hidden px-5xs py-m">
-      <div class="flex items-center justify-between gap-3xs px-4xs mb-2">
+      <div class="flex items-center justify-between gap-3xs px-4xs mb-2 min-h-[24px]">
         <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">{{ t('Categories') }}</h3>
         <button
+          v-if="documentTree?.isEditMode"
           @click="documentTree?.toggleEditMode()"
-          class="p-1 text-neutral-900 hover:text-neutral rounded-sm transition-colors"
-          :title="documentTree?.isEditMode ? 'Done editing' : 'Edit categories'"
+          class="px-1.5 py-0.5 text-size-small font-medium text-blue-600 hover:text-blue-700 rounded-sm transition-colors"
+          :title="t('Done rearranging')"
         >
-          <div v-if="!documentTree?.isEditMode" class="svg-icon" v-html="pencilIcon" />
-          <div v-else class="svg-icon" v-html="checkThinIcon" />
+          {{ t('Done') }}
         </button>
       </div>
       <DocumentTree ref="documentTree" />

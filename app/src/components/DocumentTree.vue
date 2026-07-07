@@ -9,10 +9,12 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueIncludes } from "#utils/documentProperties.ts";
 import { getTextColor, spacePath } from "#utils/utils.ts";
 import {
-  checkThinIcon,
+  categoryIcon,
   chevronRightThinIcon,
+  documentIcon,
+  dragDotsIcon,
   editOutlineIcon,
-  pencilIcon,
+  plusIcon,
   plusSmallIcon,
   trashCanIcon,
 } from "~/src/assets/icons.ts";
@@ -117,6 +119,117 @@ const formData = ref({
   color: "#4ECDC4",
   icon: "",
 });
+
+// Context menu state (opened via right-click on desktop or long-press on touch)
+const contextMenu = ref(null);
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE = 10;
+let longPressTimer = null;
+let longPressStart = null;
+let longPressFired = false;
+
+const canManageCategories = computed(() => canEdit(currentSpace.value?.userRole));
+
+function openContextMenu(clientX, clientY, category) {
+  if (!canManageCategories.value || isEditMode.value) return;
+
+  // Clamp to the viewport so the menu never renders off-screen.
+  const MENU_WIDTH = 224;
+  const MENU_HEIGHT = 240;
+  const x = Math.min(clientX, window.innerWidth - MENU_WIDTH - 8);
+  const y = Math.min(clientY, window.innerHeight - MENU_HEIGHT - 8);
+
+  contextMenu.value = { x: Math.max(8, x), y: Math.max(8, y), category };
+}
+
+function closeContextMenu() {
+  contextMenu.value = null;
+}
+
+function handleContextMenu(event, category) {
+  if (!canManageCategories.value || isEditMode.value) return;
+  event.preventDefault();
+  openContextMenu(event.clientX, event.clientY, category);
+}
+
+function clearLongPress() {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressStart = null;
+}
+
+function handleTouchStart(event, category) {
+  if (!canManageCategories.value || isEditMode.value) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  longPressFired = false;
+  longPressStart = { x: touch.clientX, y: touch.clientY };
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    longPressFired = true;
+    openContextMenu(longPressStart.x, longPressStart.y, category);
+  }, LONG_PRESS_MS);
+}
+
+function handleTouchMove(event) {
+  if (longPressTimer === null || !longPressStart) return;
+  const touch = event.touches[0];
+  if (!touch) return;
+  const dx = touch.clientX - longPressStart.x;
+  const dy = touch.clientY - longPressStart.y;
+  // Cancel the long-press if the finger moves (i.e. the user is scrolling).
+  if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_TOLERANCE) {
+    clearLongPress();
+  }
+}
+
+function handleTouchEnd(event) {
+  // If the long-press just opened the menu, swallow the trailing synthetic click
+  // so it doesn't fall through to the backdrop and immediately close the menu.
+  if (longPressFired) {
+    event.preventDefault();
+    longPressFired = false;
+  }
+  clearLongPress();
+}
+
+// Context menu actions --------------------------------------------------------
+
+function contextNewDocument(category) {
+  closeContextMenu();
+  window.location.href = spacePath(
+    currentSpace.value?.slug,
+    `/new?category=${category.slug}`,
+  );
+}
+
+function contextEditCategory(category) {
+  closeContextMenu();
+  startEditing(category);
+}
+
+function contextNewCategory() {
+  closeContextMenu();
+  startCreating();
+}
+
+function contextRearrange() {
+  closeContextMenu();
+  if (!isEditMode.value) toggleEditMode();
+}
+
+function contextDeleteCategory(category) {
+  closeContextMenu();
+  handleDelete(category);
+}
+
+function handleKeydown(event) {
+  if (event.key === "Escape" && contextMenu.value) {
+    closeContextMenu();
+  }
+}
 
 function toggleEditMode() {
   isEditMode.value = !isEditMode.value;
@@ -319,11 +432,14 @@ onMounted(() => {
 
   window.addEventListener("document-parent-change", handleDocumentParentChange);
   window.addEventListener("document-category-change", handleDocumentCategoryChange);
+  window.addEventListener("keydown", handleKeydown);
 });
 
 onUnmounted(() => {
   window.removeEventListener("document-parent-change", handleDocumentParentChange);
   window.removeEventListener("document-category-change", handleDocumentCategoryChange);
+  window.removeEventListener("keydown", handleKeydown);
+  clearLongPress();
 });
 
 defineExpose({ isEditMode, toggleEditMode });
@@ -350,8 +466,27 @@ defineExpose({ isEditMode, toggleEditMode });
     </div>
 
     <template v-if="isMounted">
-    <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-3 py-4 text-center">
-      <p class="text-size-medium text-neutral-500">No categories yet</p>
+    <!-- Empty state -->
+    <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-4xs">
+      <div
+        v-if="canManageCategories"
+        class="flex flex-col items-center text-center gap-2 rounded-lg border border-dashed border-neutral-200 px-4 py-5"
+      >
+        <div class="svg-icon w-6 h-6 text-neutral-400" v-html="categoryIcon" />
+        <div>
+          <p class="text-size-medium font-medium text-neutral-900">No categories yet</p>
+          <p class="text-size-small text-neutral-500 mt-0.5">Group your documents into categories to organize this space.</p>
+        </div>
+        <button
+          type="button"
+          @click="startCreating"
+          class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+        >
+          <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
+          <span>Create category</span>
+        </button>
+      </div>
+      <p v-else class="px-3 py-4 text-center text-size-medium text-neutral-500">No categories yet</p>
     </div>
 
     <!-- Categories List and Documents -->
@@ -366,6 +501,11 @@ defineExpose({ isEditMode, toggleEditMode });
           @dragover="isEditMode && handleDragOver($event, categories.findIndex(c => c.id === category.id))"
           @dragleave="isEditMode && handleDragLeave()"
           @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
+          @contextmenu="handleContextMenu($event, category)"
+          @touchstart.passive="handleTouchStart($event, category)"
+          @touchmove.passive="handleTouchMove($event)"
+          @touchend="handleTouchEnd($event)"
+          @touchcancel="clearLongPress()"
         >
           <div class="group/category flex items-center gap-2 text-size-medium text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
             :class="{
@@ -435,6 +575,73 @@ defineExpose({ isEditMode, toggleEditMode });
         <span>Add category</span>
       </button>
     </div>
+
+    <!-- Category Context Menu (right-click on desktop, long-press on touch) -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenu"
+        class="fixed inset-0 z-50"
+        @click="closeContextMenu"
+        @contextmenu.prevent="closeContextMenu"
+      >
+        <div
+          class="absolute min-w-[224px] bg-background border border-neutral-100 rounded-lg p-5xs shadow-large"
+          :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+          @click.stop
+          @contextmenu.prevent.stop
+        >
+          <div class="px-3xs py-5xs text-size-small text-neutral-500 truncate">{{ contextMenu.category.name }}</div>
+
+          <button
+            type="button"
+            @click="contextNewDocument(contextMenu.category)"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
+            <span>New document</span>
+          </button>
+          <button
+            type="button"
+            @click="contextEditCategory(contextMenu.category)"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
+            <span>Edit category</span>
+          </button>
+
+          <div class="my-5xs h-px bg-neutral-100" />
+
+          <button
+            type="button"
+            @click="contextNewCategory()"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
+            <span>New category</span>
+          </button>
+          <button
+            type="button"
+            @click="contextRearrange()"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
+            <span>Rearrange categories</span>
+          </button>
+
+          <div class="my-5xs h-px bg-neutral-100" />
+
+          <button
+            type="button"
+            @click="contextDeleteCategory(contextMenu.category)"
+            :disabled="deletingIds.has(contextMenu.category.id)"
+            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+          >
+            <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
+            <span>Delete category</span>
+          </button>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Create/Edit Dialog Overlay (Teleported to body) -->
     <Teleport to="body">
