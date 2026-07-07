@@ -308,6 +308,7 @@ onUnmounted(() => {
     v-if="!isDesktop"
     :show="isOpen"
     :title="title"
+    expand
     body-class="p-0 flex flex-col min-h-0 overflow-hidden"
     @update:show="(v) => { if (!v) onClose(); }"
   >

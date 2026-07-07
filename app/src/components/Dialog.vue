@@ -15,6 +15,10 @@ const props = withDefaults(
     /** Override body classes (padding + overflow). Pass e.g. "p-0" for
      * full-bleed content, or your own overflow for self-scrolling content. */
     bodyClass?: string;
+    /** Fill to a fixed tall height instead of fitting content. Needed for
+     * content that manages its own internal scroll (e.g. docked panels): a
+     * definite height lets a child's `h-full`/`flex-1` scroll region resolve. */
+    expand?: boolean;
   }>(),
   {
     show: false,
@@ -22,6 +26,7 @@ const props = withDefaults(
     closeOnBackdrop: true,
     maxWidth: "md:max-w-md",
     bodyClass: "px-5 pt-1 pb-5 overflow-y-auto",
+    expand: false,
   },
 );
 
@@ -80,8 +85,8 @@ onBeforeUnmount(() => applyScrollLock(false));
         <div class="dialog-backdrop absolute inset-0 bg-black/40 md:bg-black/50" />
 
         <div
-          class="dialog-panel relative flex w-full max-h-[90dvh] flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:max-h-[85vh] md:rounded-2xl"
-          :class="maxWidth"
+          class="dialog-panel relative flex w-full flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:rounded-2xl"
+          :class="[maxWidth, expand ? 'h-[90dvh] md:h-[85vh]' : 'max-h-[90dvh] md:max-h-[85vh]']"
           @click.stop
         >
           <!-- Mobile grab handle -->
