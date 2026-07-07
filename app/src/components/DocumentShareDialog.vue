@@ -291,7 +291,7 @@ function canRemoveSpaceMember(perm: any) {
 </script>
 
 <template>
-  <Dialog :show="show" body-class="p-0" @update:show="emit('update:show', $event)">
+  <Dialog :show="show" body-class="p-0 overflow-y-auto" @update:show="emit('update:show', $event)">
     <template #header>
       <div class="min-w-0">
         <h2 class="text-size-title font-semibold text-neutral-900 leading-tight">Share</h2>

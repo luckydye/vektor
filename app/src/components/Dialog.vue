@@ -12,7 +12,8 @@ const props = withDefaults(
     closeOnBackdrop?: boolean;
     /** Desktop max-width utility class (mobile is always full-width). */
     maxWidth?: string;
-    /** Override body padding — pass "p-0" for full-bleed content. */
+    /** Override body classes (padding + overflow). Pass e.g. "p-0" for
+     * full-bleed content, or your own overflow for self-scrolling content. */
     bodyClass?: string;
   }>(),
   {
@@ -20,7 +21,7 @@ const props = withDefaults(
     title: "",
     closeOnBackdrop: true,
     maxWidth: "md:max-w-md",
-    bodyClass: "px-5 pt-1 pb-5",
+    bodyClass: "px-5 pt-1 pb-5 overflow-y-auto",
   },
 );
 
@@ -107,7 +108,7 @@ onBeforeUnmount(() => applyScrollLock(false));
           </div>
 
           <!-- Body -->
-          <div class="flex-1 overflow-y-auto" :class="bodyClass">
+          <div class="flex-1 min-h-0" :class="bodyClass">
             <slot />
           </div>
 
