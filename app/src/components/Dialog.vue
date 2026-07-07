@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, useSlots, watch } from "vue";
+import { onBeforeUnmount, useSlots, watch } from "vue";
+import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import { closeIcon } from "~/src/assets/icons.ts";
+import "@atrium-ui/elements/blur";
 
 const props = withDefaults(
   defineProps<{
     show?: boolean;
     title?: string;
-    /** Close when the backdrop is clicked. */
+    /** Allow dismissing via backdrop click or Escape. */
     closeOnBackdrop?: boolean;
     /** Desktop max-width utility class (mobile is always full-width). */
     maxWidth?: string;
@@ -34,50 +36,52 @@ function close() {
   emit("close");
 }
 
-function onBackdrop() {
+// Backdrop click and <a-blur>'s exit event (Escape / focus-out) are the
+// dismissal paths; both respect closeOnBackdrop. The header ✕ always closes.
+function onDismiss() {
   if (props.closeOnBackdrop) close();
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === "Escape" && props.show) close();
-}
-
-// Lock background scroll while the dialog is open.
-function setBodyScrollLock(locked: boolean) {
-  if (typeof document === "undefined") return;
-  document.body.style.overflow = locked ? "hidden" : "";
+// Ref-counted body scroll lock so a closing dialog can't unlock the page while
+// another overlay (e.g. the mobile sidebar) is still open.
+let holdsLock = false;
+function applyScrollLock(shouldLock: boolean) {
+  if (shouldLock && !holdsLock) {
+    lockScroll();
+    holdsLock = true;
+  } else if (!shouldLock && holdsLock) {
+    unlockScroll();
+    holdsLock = false;
+  }
 }
 
 watch(
   () => props.show,
-  (show) => setBodyScrollLock(show),
+  (show) => applyScrollLock(show),
+  { immediate: true },
 );
 
-onMounted(() => {
-  window.addEventListener("keydown", onKeydown);
-  if (props.show) setBodyScrollLock(true);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener("keydown", onKeydown);
-  setBodyScrollLock(false);
-});
+onBeforeUnmount(() => applyScrollLock(false));
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-      <div
+      <a-blur
         v-if="show"
+        enabled
         class="dialog-root fixed inset-0 z-100 flex items-end justify-center md:items-center"
         role="dialog"
         aria-modal="true"
+        @click="onDismiss"
+        @exit="onDismiss"
       >
-        <div class="dialog-backdrop absolute inset-0 bg-black/40 md:bg-black/50" @click="onBackdrop" />
+        <div class="dialog-backdrop absolute inset-0 bg-black/40 md:bg-black/50" />
 
         <div
           class="dialog-panel relative flex w-full max-h-[90dvh] flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:max-h-[85vh] md:rounded-2xl"
           :class="maxWidth"
+          @click.stop
         >
           <!-- Mobile grab handle -->
           <div class="md:hidden flex justify-center flex-none pt-2 pb-1">
@@ -112,7 +116,7 @@ onBeforeUnmount(() => {
             <slot name="footer" />
           </div>
         </div>
-      </div>
+      </a-blur>
     </Transition>
   </Teleport>
 </template>

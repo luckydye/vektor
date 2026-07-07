@@ -128,7 +128,8 @@ watch(
           :icon="checkIcon"
           text="Create"
           class="flex-1"
-          @click="handleSubmit"
+          type="submit"
+          form="create-space-form"
         />
       </div>
     </template>

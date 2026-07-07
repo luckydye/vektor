@@ -115,6 +115,7 @@ const formError = ref(null);
 const deletingIds = ref(new Set());
 // Category pending deletion (drives the confirmation dialog).
 const deleteTarget = ref(null);
+const deleteError = ref(null);
 const isDeleting = computed(
   () => !!deleteTarget.value && deletingIds.value.has(deleteTarget.value.id),
 );
@@ -282,6 +283,8 @@ function startCreating() {
 }
 
 function cancelEdit() {
+  // Don't discard the form (and reset state) out from under an in-flight save.
+  if (isSaving.value) return;
   resetForm();
 }
 
@@ -363,11 +366,13 @@ async function handleDrop(e, index) {
 }
 
 function requestDelete(category) {
+  deleteError.value = null;
   deleteTarget.value = category;
 }
 
 function cancelDelete() {
   if (isDeleting.value) return;
+  deleteError.value = null;
   deleteTarget.value = null;
 }
 
@@ -375,13 +380,14 @@ async function confirmDelete() {
   const category = deleteTarget.value;
   if (!category) return;
 
+  deleteError.value = null;
   deletingIds.value.add(category.id);
 
   try {
     await deleteCategory(category.id);
     deleteTarget.value = null;
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : "Failed to delete category";
+    deleteError.value = err instanceof Error ? err.message : "Failed to delete category";
   } finally {
     deletingIds.value.delete(category.id);
   }
@@ -666,6 +672,7 @@ defineExpose({ isEditMode, toggleEditMode });
     <Dialog
       :show="showAddForm || !!editingId"
       :title="editingId ? 'Edit Category' : 'New Category'"
+      :close-on-backdrop="!isSaving"
       @update:show="(v) => { if (!v) cancelEdit(); }"
     >
       <form id="category-form" @submit.prevent="handleSave" class="space-y-4">
@@ -770,6 +777,10 @@ defineExpose({ isEditMode, toggleEditMode });
         Delete <span class="font-semibold text-neutral-900">"{{ deleteTarget?.name }}"</span>?
         Documents in this category will not be deleted.
       </p>
+
+      <div v-if="deleteError" class="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+        <p class="text-size-small text-red-600">{{ deleteError }}</p>
+      </div>
 
       <template #footer>
         <div class="flex gap-2">
