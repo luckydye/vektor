@@ -1,0 +1,51 @@
+---
+title: Create and control database documents (tables)
+keywords: database, table, rows, columns, schema, record, cell, spreadsheet, grid
+---
+
+A database is a document of type "database". Its columns live in a `_schema`
+property; each row is a separate child document of type "record" whose cell
+values are stored as document properties. Control everything with the standard
+document tools — there is no dedicated database tool.
+
+## Data model
+- Database doc: `type` "database". Column definitions are stored in its
+  `_schema` property as a JSON *string*:
+    {"columns":[{"name":"status","type":"select","label":"Status"}]}
+  Column `type` is "text" | "number" | "date" | "select"; every value is text.
+- Row doc: `type` "record", `parentId` = the database id. Cell values are
+  properties keyed by column name. The special `title` property is the row's
+  title column; all other properties are ordinary columns.
+
+## Read a database
+1. Find it: `list_documents` with {"type":"database"} (or
+   `get_current_document` if the database is the open page).
+2. Read columns: `read_document` on the database id, then parse the
+   `properties._schema` JSON string.
+3. List rows: `list_documents` with {"type":"record"}, then keep the ones
+   whose `parentId` equals the database id. Each row's `properties` holds its
+   cells. Pipe the JSON through `js-exec` to filter/format when there are many.
+
+## Change a database
+- Add a column: read the current `_schema`, append to its `columns`, and write
+  the whole array back with `update_document_properties` on the database:
+    {"documentId":"<dbId>","properties":{"_schema":"{\"columns\":[…]}"}}
+- Add a row: `write_document`
+    {"content":"<p></p>","type":"record","title":"<row title>","parentId":"<dbId>"}
+  It returns the new row id. Then set its cells with
+  `update_document_properties`:
+    {"documentId":"<rowId>","properties":{"status":"active","priority":"3"}}
+- Edit a cell: `update_document_properties` on the row with only the changed
+  columns. Set a value to null to clear a cell.
+- Rename a row: set the row's `title` property.
+- Delete a row: `delete_document` on the row id (archives it by default).
+- Remove a column: rewrite `_schema` without that column; optionally clear each
+  row's matching property (set it to null).
+
+## Rules
+- `_schema` is always a JSON *string*, never an object — stringify it yourself,
+  or it will be stored as "[object Object]".
+- Property values are stored as text; pass numbers and dates as strings.
+- Never invent a row id — create the row first and use the id it returns.
+- Rows carry data in properties only. Never edit row content with
+  sed/js-exec/regex; change cells with `update_document_properties`.
