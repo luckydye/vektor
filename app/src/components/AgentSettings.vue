@@ -104,8 +104,8 @@
         Endpoint the agent's <code class="font-mono">websearch</code> command queries. The search term is appended as a <code class="font-mono">q</code> parameter, and the JSON response is read as <code class="font-mono">results[]</code> with <code class="font-mono">title</code>, <code class="font-mono">url</code>, and <code class="font-mono">content</code> (falling back to <code class="font-mono">snippet</code>/<code class="font-mono">description</code>). Works with a self-hosted SearXNG instance.
       </p>
 
-      <div v-if="searchMeta?.configured" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between gap-4">
-        <span class="text-size-small text-green-700 font-mono break-all">{{ searchMeta.url }}</span>
+      <div v-if="savedSearchUrl" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between gap-4">
+        <span class="text-size-small text-green-700 font-mono break-all">{{ savedSearchUrl }}</span>
         <button
           @click="handleDeleteSearch"
           :disabled="isDeletingSearch"
@@ -146,10 +146,14 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { type AIConfigMeta, api, type SearchConfigMeta } from "#api/client.ts";
+import { type AIConfigMeta, api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
-const { currentSpace } = useSpace();
+const { currentSpace, updateSpace } = useSpace();
+
+// Keep in sync with AGENT_SEARCH_URL_KEY in #db/searchConfig.ts — the agent
+// reads this space preference to resolve the websearch endpoint.
+const SEARCH_URL_KEY = "agent:searchUrl";
 
 const meta = ref<AIConfigMeta | null>(null);
 const isLoading = ref(true);
@@ -245,36 +249,26 @@ async function handleDelete() {
   }
 }
 
-// Web search endpoint config
-const searchMeta = ref<SearchConfigMeta | null>(null);
+// Web search endpoint, stored as a plain space preference.
+const savedSearchUrl = computed(
+  () => currentSpace.value?.preferences?.[SEARCH_URL_KEY]?.trim() ?? "",
+);
 const searchForm = ref({ url: "" });
 const isSavingSearch = ref(false);
 const isDeletingSearch = ref(false);
 const searchError = ref<string | null>(null);
 
-async function loadSearch() {
-  const spaceId = currentSpace.value?.id;
-  if (!spaceId) return;
-  try {
-    const res = await api.agentSettings.getSearch(spaceId);
-    searchMeta.value = res.search;
-    searchForm.value.url = res.search.configured ? res.search.url : "";
-  } catch (err) {
-    searchError.value =
-      err instanceof Error ? err.message : "Failed to load search config";
-  }
+async function saveSearchUrl(url: string) {
+  const space = currentSpace.value;
+  if (!space) return;
+  await updateSpace(space.id, space.name, space.slug, { [SEARCH_URL_KEY]: url });
 }
 
 async function handleSaveSearch() {
-  const spaceId = currentSpace.value?.id;
-  if (!spaceId) return;
   isSavingSearch.value = true;
   searchError.value = null;
   try {
-    const res = await api.agentSettings.putSearch(spaceId, {
-      url: searchForm.value.url.trim(),
-    });
-    searchMeta.value = res.search;
+    await saveSearchUrl(searchForm.value.url.trim());
   } catch (err) {
     searchError.value =
       err instanceof Error ? err.message : "Failed to save search config";
@@ -284,13 +278,10 @@ async function handleSaveSearch() {
 }
 
 async function handleDeleteSearch() {
-  const spaceId = currentSpace.value?.id;
-  if (!spaceId) return;
   isDeletingSearch.value = true;
   searchError.value = null;
   try {
-    await api.agentSettings.deleteSearch(spaceId);
-    searchMeta.value = { configured: false };
+    await saveSearchUrl("");
     searchForm.value.url = "";
   } catch (err) {
     searchError.value =
@@ -303,10 +294,15 @@ async function handleDeleteSearch() {
 watch(
   () => currentSpace.value?.id,
   (id) => {
-    if (id) {
-      load();
-      loadSearch();
-    }
+    if (id) load();
+  },
+  { immediate: true },
+);
+
+watch(
+  savedSearchUrl,
+  (url) => {
+    searchForm.value.url = url;
   },
   { immediate: true },
 );

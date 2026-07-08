@@ -292,8 +292,6 @@ export type AIConfigMeta =
       hasApiKey: boolean;
     };
 
-export type SearchConfigMeta = { configured: false } | { configured: true; url: string };
-
 export type OAuthIntegrationProvider = "gitlab" | "youtrack";
 
 export interface OAuthIntegrationConnection {
@@ -1556,25 +1554,6 @@ export class ApiClient {
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/settings/ai-provider`,
       );
-    },
-
-    getSearch: async (spaceId: string) => {
-      return await this.apiGet<{ search: SearchConfigMeta }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/settings/search`,
-      );
-    },
-
-    putSearch: async (spaceId: string, body: { url: string }) => {
-      return await this.apiPut<{ search: SearchConfigMeta }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/settings/search`,
-        body,
-      );
-    },
-
-    deleteSearch: async (spaceId: string) => {
-      await this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/settings/search`);
     },
   };
 
