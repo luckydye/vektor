@@ -52,6 +52,7 @@ import * as searchRebuild from "./routes/v1/spaces/[spaceId]/search/rebuild.ts";
 import * as secret from "./routes/v1/spaces/[spaceId]/secrets/[name].ts";
 import * as secrets from "./routes/v1/spaces/[spaceId]/secrets/index.ts";
 import * as settingsAiProvider from "./routes/v1/spaces/[spaceId]/settings/ai-provider.ts";
+import * as settingsSearch from "./routes/v1/spaces/[spaceId]/settings/search.ts";
 import * as uploadFile from "./routes/v1/spaces/[spaceId]/uploads/[...path].ts";
 import * as uploads from "./routes/v1/spaces/[spaceId]/uploads/index.ts";
 import * as workflowRun from "./routes/v1/spaces/[spaceId]/workflows/runs/[runId].ts";
@@ -194,6 +195,10 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/settings/ai-provider",
     module: settingsAiProvider,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/settings/search",
+    module: settingsSearch,
   },
 
   { pattern: "/api/v1/spaces/[spaceId]/uploads", module: uploads },

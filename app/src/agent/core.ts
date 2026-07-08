@@ -18,6 +18,7 @@ import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: 
 import { getRecipe, recipesCommand } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
+import { websearchCommand } from "./commands/websearch.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 
 export type AgentResult = {
@@ -584,6 +585,7 @@ export function createAgentShell(
         : []),
       extensionCommand(mcpConfigRef),
       curlCommand,
+      websearchCommand(mcpConfigRef),
       jsExecCommand,
       ...runtimeStubCommands,
     ],

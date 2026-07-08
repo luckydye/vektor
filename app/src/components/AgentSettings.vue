@@ -96,12 +96,57 @@
         </div>
       </form>
     </div>
+
+    <!-- Web Search -->
+    <div class="mt-10 pt-6 border-t border-neutral-200">
+      <h2 class="text-size-medium font-semibold text-neutral-900 mb-1">Web Search</h2>
+      <p class="text-size-small text-neutral-500 mb-4">
+        Endpoint the agent's <code class="font-mono">websearch</code> command queries. The search term is appended as a <code class="font-mono">q</code> parameter, and the JSON response is read as <code class="font-mono">results[]</code> with <code class="font-mono">title</code>, <code class="font-mono">url</code>, and <code class="font-mono">content</code> (falling back to <code class="font-mono">snippet</code>/<code class="font-mono">description</code>). Works with a self-hosted SearXNG instance.
+      </p>
+
+      <div v-if="searchMeta?.configured" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between gap-4">
+        <span class="text-size-small text-green-700 font-mono break-all">{{ searchMeta.url }}</span>
+        <button
+          @click="handleDeleteSearch"
+          :disabled="isDeletingSearch"
+          class="shrink-0 text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
+        >{{ isDeletingSearch ? 'Removing…' : 'Remove' }}</button>
+      </div>
+      <div v-else class="mb-4 p-3 bg-neutral-50 border border-neutral-200 rounded-md text-size-medium text-neutral-500">
+        No search endpoint configured. The <code class="font-mono">websearch</code> command will be unavailable until one is set.
+      </div>
+
+      <form @submit.prevent="handleSaveSearch" class="space-y-4">
+        <div>
+          <label class="block text-size-small font-medium text-neutral-700 mb-1">Search endpoint URL</label>
+          <input
+            v-model="searchForm.url"
+            type="url"
+            required
+            placeholder="https://searxng.example.com/search?format=json"
+            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+          />
+        </div>
+
+        <div v-if="searchError" class="p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+          {{ searchError }}
+        </div>
+
+        <div class="flex justify-end">
+          <button
+            type="submit"
+            :disabled="isSavingSearch"
+            class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors"
+          >{{ isSavingSearch ? 'Saving…' : 'Save' }}</button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { type AIConfigMeta, api } from "#api/client.ts";
+import { type AIConfigMeta, api, type SearchConfigMeta } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
@@ -200,10 +245,68 @@ async function handleDelete() {
   }
 }
 
+// Web search endpoint config
+const searchMeta = ref<SearchConfigMeta | null>(null);
+const searchForm = ref({ url: "" });
+const isSavingSearch = ref(false);
+const isDeletingSearch = ref(false);
+const searchError = ref<string | null>(null);
+
+async function loadSearch() {
+  const spaceId = currentSpace.value?.id;
+  if (!spaceId) return;
+  try {
+    const res = await api.agentSettings.getSearch(spaceId);
+    searchMeta.value = res.search;
+    searchForm.value.url = res.search.configured ? res.search.url : "";
+  } catch (err) {
+    searchError.value =
+      err instanceof Error ? err.message : "Failed to load search config";
+  }
+}
+
+async function handleSaveSearch() {
+  const spaceId = currentSpace.value?.id;
+  if (!spaceId) return;
+  isSavingSearch.value = true;
+  searchError.value = null;
+  try {
+    const res = await api.agentSettings.putSearch(spaceId, {
+      url: searchForm.value.url.trim(),
+    });
+    searchMeta.value = res.search;
+  } catch (err) {
+    searchError.value =
+      err instanceof Error ? err.message : "Failed to save search config";
+  } finally {
+    isSavingSearch.value = false;
+  }
+}
+
+async function handleDeleteSearch() {
+  const spaceId = currentSpace.value?.id;
+  if (!spaceId) return;
+  isDeletingSearch.value = true;
+  searchError.value = null;
+  try {
+    await api.agentSettings.deleteSearch(spaceId);
+    searchMeta.value = { configured: false };
+    searchForm.value.url = "";
+  } catch (err) {
+    searchError.value =
+      err instanceof Error ? err.message : "Failed to remove search config";
+  } finally {
+    isDeletingSearch.value = false;
+  }
+}
+
 watch(
   () => currentSpace.value?.id,
   (id) => {
-    if (id) load();
+    if (id) {
+      load();
+      loadSearch();
+    }
   },
   { immediate: true },
 );
