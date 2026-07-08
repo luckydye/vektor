@@ -5,7 +5,7 @@
 - zip/unzip/zipinfo: virtual filesystem only. Use `zipinfo` instead of `unzip -l`.
 - `upload <file>` → returns JSON with URL. Never share sandbox paths — upload first.
 - Use `curl` + `html-to-markdown` for web pages.
-- `websearch [-n N] <query>`: search the web via the space's configured endpoint; returns ranked title/url/snippet. Use it to find pages, then `curl` to read them. Errors if no endpoint is configured in space settings.
+- Use the `websearch` tool to search the web via the space's configured endpoint; it returns ranked title/url/snippet. Find pages with it, then `curl` to read them. It errors if no endpoint is configured in space settings.
 - `extension init <name>` / `extension install <zip>`. Never install unless explicitly asked.
 
 ## Behavior

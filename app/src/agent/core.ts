@@ -18,7 +18,7 @@ import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: 
 import { getRecipe, recipesCommand } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
-import { websearchCommand } from "./commands/websearch.ts";
+import { runWebSearchTool } from "./commands/websearch.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
 
 export type AgentResult = {
@@ -380,6 +380,26 @@ export async function runAgentPrompt(options: {
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "websearch",
+        description:
+          "Search the web via the space's configured search endpoint. Returns ranked results (title, URL, snippet). Use it to find pages, then read a page with the bash `curl` command. Errors if no search endpoint is configured in space settings.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "The search query." },
+            count: {
+              type: "integer",
+              description: "Maximum number of results to return (1–20).",
+              default: 8,
+            },
+          },
+          required: ["query"],
+        },
+      },
+    },
     ...vektorTools.map((tool) => ({
       type: "function",
       function: {
@@ -502,6 +522,8 @@ export async function runAgentPrompt(options: {
             await bash.fs.writeFile(resolvedPath, content, "utf8");
           }
           result = `${mode === "append" ? "Appended" : "Wrote"} ${Buffer.byteLength(content, "utf8")} bytes to ${resolvedPath}.`;
+        } else if (toolCall.function.name === "websearch") {
+          result = await runWebSearchTool(spaceId, record);
         } else if (vektorToolNames.has(toolCall.function.name)) {
           result = await callVektorTool(mcpConfig, toolCall.function.name, record);
         } else {
@@ -585,7 +607,6 @@ export function createAgentShell(
         : []),
       extensionCommand(mcpConfigRef),
       curlCommand,
-      websearchCommand(mcpConfigRef),
       jsExecCommand,
       ...runtimeStubCommands,
     ],

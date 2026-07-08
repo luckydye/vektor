@@ -1,6 +1,4 @@
-import { defineCommand } from "just-bash";
 import { getAgentSearchUrl } from "#db/searchConfig.ts";
-import type { VektorMcpConfig } from "#utils/vektorMcp.ts";
 
 export type SearchResult = { title: string; url: string; snippet: string };
 
@@ -20,11 +18,10 @@ function toArray(value: unknown): unknown[] {
 
 /**
  * Normalize a search API's JSON response into a common result shape so a
- * single command works against any backend. The default schema is the
- * SearXNG style — `results[]` with `title` / `url` / `content` — and each
- * field falls back to the alternates other engines use when the default is
- * absent (Brave's `description`, Google's `snippet` / `link`, a bare array,
- * etc.).
+ * single tool works against any backend. The default schema is the SearXNG
+ * style — `results[]` with `title` / `url` / `content` — and each field
+ * falls back to the alternates other engines use when the default is absent
+ * (Brave's `description`, Google's `snippet` / `link`, a bare array, etc.).
  */
 export function extractSearchResults(data: unknown): SearchResult[] {
   if (Array.isArray(data)) return normalizeEntries(data);
@@ -77,9 +74,21 @@ export function formatSearchResults(
     .join("\n\n");
 }
 
+function resolveLimit(rawCount: unknown): number {
+  const value =
+    typeof rawCount === "number"
+      ? rawCount
+      : typeof rawCount === "string"
+        ? Number.parseInt(rawCount, 10)
+        : Number.NaN;
+  if (Number.isFinite(value) && value > 0) return Math.min(Math.floor(value), MAX_LIMIT);
+  return DEFAULT_LIMIT;
+}
+
 /**
- * `websearch [-n count] <query>` — query the space's configured search
- * endpoint and print ranked results.
+ * Execute the `websearch` tool: query the space's configured search endpoint
+ * and return ranked results as text. Throws on any failure so the agent loop
+ * reports it as a tool error.
  *
  * The endpoint host+path is set by a space owner in settings, so it is
  * trusted operator configuration (like the Ollama base URL). Only the `q`
@@ -87,85 +96,52 @@ export function formatSearchResults(
  * the query string, so a private/self-hosted instance can be reached directly
  * without the public-only SSRF guard used for arbitrary `curl` targets.
  */
-export function websearchCommand(mcpConfigRef: { current: VektorMcpConfig }) {
-  return defineCommand("websearch", async (args, _ctx) => {
-    let limit = DEFAULT_LIMIT;
-    const terms: string[] = [];
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i]!;
-      if (arg === "-n" || arg === "--num") {
-        const parsed = Number.parseInt(args[++i] ?? "", 10);
-        if (Number.isFinite(parsed) && parsed > 0) limit = Math.min(parsed, MAX_LIMIT);
-        continue;
-      }
-      terms.push(arg);
-    }
+export async function runWebSearchTool(
+  spaceId: string,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) throw new Error('websearch requires a non-empty "query".');
+  const limit = resolveLimit(args.count);
 
-    const query = terms.join(" ").trim();
-    if (!query) {
-      return { stdout: "", stderr: "usage: websearch [-n count] <query>\n", exitCode: 2 };
-    }
+  const configured = await getAgentSearchUrl(spaceId);
+  if (!configured) {
+    throw new Error(
+      "No search endpoint configured. Set one in Space Settings → Agent → Web Search.",
+    );
+  }
 
-    const configured = await getAgentSearchUrl(mcpConfigRef.current.spaceId);
-    if (!configured) {
-      return {
-        stdout: "",
-        stderr:
-          "websearch: no search endpoint configured. Set one in Space Settings → Agent → Web Search.\n",
-        exitCode: 1,
-      };
-    }
+  let endpoint: URL;
+  try {
+    endpoint = new URL(configured);
+  } catch {
+    throw new Error(`Configured search URL is invalid: ${configured}`);
+  }
+  endpoint.searchParams.set("q", query);
 
-    let endpoint: URL;
-    try {
-      endpoint = new URL(configured);
-    } catch {
-      return {
-        stdout: "",
-        stderr: `websearch: configured search URL is invalid: ${configured}\n`,
-        exitCode: 1,
-      };
-    }
-    endpoint.searchParams.set("q", query);
+  let response: Response;
+  try {
+    response = await fetch(endpoint.toString(), {
+      headers: { Accept: "application/json" },
+    });
+  } catch (error) {
+    throw new Error(
+      `Search request failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
-    let response: Response;
-    try {
-      response = await fetch(endpoint.toString(), {
-        headers: { Accept: "application/json" },
-      });
-    } catch (error) {
-      return {
-        stdout: "",
-        stderr: `websearch: request failed: ${error instanceof Error ? error.message : String(error)}\n`,
-        exitCode: 1,
-      };
-    }
+  if (!response.ok) {
+    throw new Error(`Search endpoint returned HTTP ${response.status}.`);
+  }
 
-    if (!response.ok) {
-      return {
-        stdout: "",
-        stderr: `websearch: HTTP ${response.status} from search endpoint\n`,
-        exitCode: 22,
-      };
-    }
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(
+      "Search endpoint did not return JSON. Ensure the configured URL returns JSON (e.g. SearXNG needs format=json).",
+    );
+  }
 
-    let data: unknown;
-    try {
-      data = await response.json();
-    } catch {
-      return {
-        stdout: "",
-        stderr:
-          "websearch: endpoint did not return JSON. Ensure the configured URL returns JSON (e.g. SearXNG needs format=json).\n",
-        exitCode: 1,
-      };
-    }
-
-    const results = extractSearchResults(data);
-    return {
-      stdout: `${formatSearchResults(query, results, limit)}\n`,
-      stderr: "",
-      exitCode: 0,
-    };
-  });
+  return formatSearchResults(query, extractSearchResults(data), limit);
 }
