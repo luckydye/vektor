@@ -33,10 +33,15 @@ const docViewEl = ref<DocumentViewElement | null>(null);
 
 watchEffect(
   async () => {
+    // Read both reactive deps synchronously: reads after an `await` are not
+    // tracked, so the effect must depend on `renderedHtml` here to re-run when
+    // the content changes (e.g. switching from a revision view to its diff)
+    // and not only when the element mounts.
     const el = docViewEl.value;
+    const html = renderedHtml.value;
     if (!el) return;
     await customElements.whenDefined("document-view");
-    el.renderReadHtml?.(renderedHtml.value);
+    el.renderReadHtml?.(html);
   },
   { flush: "post" },
 );
