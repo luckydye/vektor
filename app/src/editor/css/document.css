@@ -79,6 +79,14 @@ del.diff-del-media {
   opacity: 0.55;
 }
 
+/* An <hr> has no intrinsic width, so a shrink-to-fit inline-block marker would
+   collapse to nothing and hide the change. Let a marker wrapping a rule span
+   the row so the added/removed divider stays visible. */
+ins.diff-ins-media:has(> hr),
+del.diff-del-media:has(> hr) {
+  display: block;
+}
+
 img[data-display="full"] {
   width: 100% !important;
   max-width: 100%;
