@@ -1,5 +1,6 @@
 import { Bash } from "just-bash";
 import { getAIProvider } from "#db/aiConfig.ts";
+import { getAgentSearchUrl } from "#db/searchConfig.ts";
 import { callAnthropic } from "#provider/anthropic.ts";
 import { callOllama } from "#provider/ollama.ts";
 import { callOpenAICompatible } from "#provider/openaiCompatible.ts";
@@ -55,12 +56,16 @@ function buildCoreAgentSystemPrompt(
   connectedProviders?: string[],
   userProfile?: string,
   documentType?: string | null,
+  searchConfigured?: boolean,
 ) {
   const gitlabConnected = !connectedProviders || connectedProviders.includes("gitlab");
   const gitlabLine = gitlabConnected
     ? "- GitLab: prefer `integration_api_request` for API calls. The `gitlab ls/cat/tree <project> [path] [--ref <ref>]` shell commands are available for repository files.\n"
     : "";
-  return `${systemPromptRaw}${gitlabLine}${documentEditingSection(documentId, documentType)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
+  const websearchLine = searchConfigured
+    ? "- Use the `websearch` tool to search the web; it returns ranked title/url/snippet. Find pages with it, then `curl` to read them.\n"
+    : "";
+  return `${systemPromptRaw}${gitlabLine}${websearchLine}${documentEditingSection(documentId, documentType)}${userProfile ? `\n\n## User Profile\n${userProfile}` : ""}`;
 }
 
 const READONLY_DOC_TYPES = new Set(["csv"]);
@@ -297,6 +302,8 @@ export async function runAgentPrompt(options: {
   const bash = providedBash ?? createAgentShell({ current: mcpConfig });
   const vektorTools = await listVektorTools(mcpConfig);
   const vektorToolNames = new Set(vektorTools.map((tool) => tool.name));
+  // Only advertise websearch when the space has a search endpoint configured.
+  const searchConfigured = Boolean(await getAgentSearchUrl(spaceId));
   const tools = [
     {
       type: "function",
@@ -380,26 +387,30 @@ export async function runAgentPrompt(options: {
         },
       },
     },
-    {
-      type: "function",
-      function: {
-        name: "websearch",
-        description:
-          "Search the web via the space's configured search endpoint. Returns ranked results (title, URL, snippet). Use it to find pages, then read a page with the bash `curl` command. Errors if no search endpoint is configured in space settings.",
-        parameters: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "The search query." },
-            count: {
-              type: "integer",
-              description: "Maximum number of results to return (1–20).",
-              default: 8,
+    ...(searchConfigured
+      ? [
+          {
+            type: "function",
+            function: {
+              name: "websearch",
+              description:
+                "Search the web via the space's configured search endpoint. Returns ranked results (title, URL, snippet). Use it to find pages, then read a page with the bash `curl` command.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "The search query." },
+                  count: {
+                    type: "integer",
+                    description: "Maximum number of results to return (1–20).",
+                    default: 8,
+                  },
+                },
+                required: ["query"],
+              },
             },
           },
-          required: ["query"],
-        },
-      },
-    },
+        ]
+      : []),
     ...vektorTools.map((tool) => ({
       type: "function",
       function: {
@@ -418,6 +429,7 @@ export async function runAgentPrompt(options: {
         connectedProviders,
         userProfile,
         documentType,
+        searchConfigured,
       ),
     },
     ...messages,
