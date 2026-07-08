@@ -38,6 +38,55 @@ img {
   border-radius: 2px;
 }
 
+/* Inline revision diff redline: added text is highlighted green, removed text
+   is struck through in red. Applied to the <ins>/<del> markers produced by
+   inlineHtmlDiff so a diff reads like the document itself. */
+ins.diff-ins {
+  text-decoration: none;
+  color: #15803d;
+  background-color: rgba(34, 197, 94, 0.16);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+del.diff-del {
+  text-decoration: line-through;
+  text-decoration-color: rgba(185, 28, 28, 0.6);
+  color: #b91c1c;
+  background-color: rgba(239, 68, 68, 0.12);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Void/embedded elements (images, rules) that were added or removed. They have
+   no text to strike or highlight, so mark the element itself: a green outline
+   for additions, a dimmed red outline for removals. */
+ins.diff-ins-media,
+del.diff-del-media {
+  display: inline-block;
+  text-decoration: none;
+  background-color: transparent;
+  border-radius: 4px;
+  padding: 2px;
+}
+
+ins.diff-ins-media {
+  outline: 2px solid rgba(21, 128, 61, 0.6);
+}
+
+del.diff-del-media {
+  outline: 2px solid rgba(185, 28, 28, 0.6);
+  opacity: 0.55;
+}
+
+/* An <hr> has no intrinsic width, so a shrink-to-fit inline-block marker would
+   collapse to nothing and hide the change. Let a marker wrapping a rule span
+   the row so the added/removed divider stays visible. */
+ins.diff-ins-media:has(> hr),
+del.diff-del-media:has(> hr) {
+  display: block;
+}
+
 img[data-display="full"] {
   width: 100% !important;
   max-width: 100%;

@@ -2062,9 +2062,15 @@ export class ApiClient {
   };
 
   documentDiff = {
-    get: async (spaceId: string, documentId: string, rev: string): Promise<string> => {
+    get: async (
+      spaceId: string,
+      documentId: string,
+      rev: string,
+      format?: "html",
+    ): Promise<string> => {
+      const formatQuery = format ? `&format=${encodeURIComponent(format)}` : "";
       const response = await fetch(
-        `${this.baseUrl}/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}/diff?rev=${encodeURIComponent(rev)}`,
+        `${this.baseUrl}/api/v1/spaces/${encodeURIComponent(spaceId)}/documents/${encodeURIComponent(documentId)}/diff?rev=${encodeURIComponent(rev)}${formatQuery}`,
         { credentials: "same-origin" },
       );
       if (!response.ok)
