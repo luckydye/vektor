@@ -38,6 +38,26 @@ img {
   border-radius: 2px;
 }
 
+/* Inline revision diff redline: added text is highlighted green, removed text
+   is struck through in red. Applied to the <ins>/<del> markers produced by
+   inlineHtmlDiff so a diff reads like the document itself. */
+ins.diff-ins {
+  text-decoration: none;
+  color: #15803d;
+  background-color: rgba(34, 197, 94, 0.16);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+del.diff-del {
+  text-decoration: line-through;
+  text-decoration-color: rgba(185, 28, 28, 0.6);
+  color: #b91c1c;
+  background-color: rgba(239, 68, 68, 0.12);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 img[data-display="full"] {
   width: 100% !important;
   max-width: 100%;

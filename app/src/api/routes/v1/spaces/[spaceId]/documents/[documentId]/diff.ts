@@ -13,6 +13,7 @@ import {
 } from "#db/api.ts";
 import { getDocument } from "#db/documents.ts";
 import { getRevisionContent, getRevisionMetadata } from "#db/revisions.ts";
+import { inlineHtmlDiff } from "#utils/inlineHtmlDiff.ts";
 import { prettyPrintHtml } from "#utils/prettyHtml.ts";
 
 async function getRevision(rev: number, spaceId: string, id: string) {
@@ -81,6 +82,15 @@ export const GET: APIRoute = (context) =>
     const baseContent = await getRevisionContent(spaceId, id, compareBaseRev);
     if (!baseContent) {
       throw badRequestResponse("Document has no comparable base content");
+    }
+
+    // `format=html` returns a rendered, inline redline of the document (added
+    // text wrapped in <ins>, removed text in <del>) instead of a source-level
+    // unified patch, so the client can display changes in document context.
+    if (context.url.searchParams.get("format") === "html") {
+      return new Response(inlineHtmlDiff(baseContent, revisionContent), {
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
     }
 
     return new Response(
