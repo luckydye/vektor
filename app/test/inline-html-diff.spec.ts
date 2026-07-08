@@ -100,6 +100,34 @@ describe("inlineHtmlDiff", () => {
     expect(result).not.toContain('<del class="diff-del"><p>');
   });
 
+  it("does not tear a tag on a '>' inside a quoted attribute value", () => {
+    const base = "<p>x</p>";
+    const revision = '<p>x</p><img alt="a > b" src="/p.jpg">';
+
+    const result = inlineHtmlDiff(base, revision);
+
+    expect(result).toBe(
+      '<p>x</p><ins class="diff-ins-media"><img alt="a > b" src="/p.jpg"></ins>',
+    );
+  });
+
+  it("keeps an attribute with '>' intact when nearby text changes", () => {
+    const base = '<p>See <a href="/go" title="a > b">old</a></p>';
+    const revision = '<p>See <a href="/go" title="a > b">new</a></p>';
+
+    const result = inlineHtmlDiff(base, revision);
+
+    expect(result).toBe(
+      '<p>See <a href="/go" title="a > b"><del class="diff-del">old</del>' +
+        '<ins class="diff-ins">new</ins></a></p>',
+    );
+  });
+
+  it("leaves content with '>' in an attribute unchanged when nothing differs", () => {
+    const html = '<p><a href="/s?q=a>b">link</a></p>';
+    expect(inlineHtmlDiff(html, html)).toBe(html);
+  });
+
   it("keeps the space separating added words outside the marker", () => {
     const base = "<p>Lorem</p>";
     const revision = "<p>Lorem ipsum</p>";

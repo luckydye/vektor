@@ -8,7 +8,11 @@ import { diffArrays } from "diff";
  */
 function tokenizeHtml(html: string): string[] {
   const tokens: string[] = [];
-  const chunkPattern = /<[^>]+>|[^<]+/g;
+  // A tag runs to its closing `>`, but `>` is legal (and unescaped) inside a
+  // quoted attribute value, so skip over quoted strings rather than stopping at
+  // the first `>` — otherwise `<img alt="a > b">` would be torn apart. Comments
+  // are matched whole so a `>` inside them does not split the token either.
+  const chunkPattern = /<!--[\s\S]*?-->|<(?:[^>"']|"[^"]*"|'[^']*')*>|[^<]+/g;
   let chunk: RegExpExecArray | null = chunkPattern.exec(html);
 
   while (chunk !== null) {
