@@ -35,6 +35,19 @@ function isTag(token: string): boolean {
   return token.startsWith("<");
 }
 
+// Void/embedded elements that render as their own visible box. Unlike
+// structural tags (<p>, <li>, <td>, …) these carry no text to mark and have no
+// separate closing tag, so a changed one can be wrapped in a marker directly to
+// show it as added/removed. Structural tags stay verbatim so markers never span
+// a block boundary.
+const VOID_MEDIA_TAGS = new Set(["img", "hr"]);
+
+function isVoidMediaTag(token: string): boolean {
+  if (!token.startsWith("<") || token.startsWith("</")) return false;
+  const name = token.match(/^<([a-zA-Z0-9-]+)/)?.[1]?.toLowerCase();
+  return name !== undefined && VOID_MEDIA_TAGS.has(name);
+}
+
 /**
  * Wrap a run of text in an inline change marker, leaving surrounding
  * whitespace outside the marker so the highlight hugs the words themselves.
@@ -48,27 +61,40 @@ function wrapText(text: string, tag: "ins" | "del", className: string): string {
 }
 
 /**
- * Emit a run of changed tokens. Text runs are wrapped in an inline marker,
- * while tags are emitted verbatim (and never wrapped) so markers stay inline
- * and the surrounding block structure remains valid.
+ * Emit a run of changed tokens. Text runs are wrapped in an inline text marker
+ * and void/embedded elements (images, rules) in a media marker, while
+ * structural tags are emitted verbatim so markers stay inline and the
+ * surrounding block structure remains valid. An attribute-only change to a
+ * media element arrives here as a remove of the old tag and an add of the new
+ * one, so both states are marked without any special handling.
  */
-function renderChange(tokens: string[], tag: "ins" | "del", className: string): string {
+function renderChange(
+  tokens: string[],
+  tag: "ins" | "del",
+  textClass: string,
+  mediaClass: string,
+): string {
   let out = "";
   let buffer = "";
 
   const flush = () => {
     if (buffer) {
-      out += wrapText(buffer, tag, className);
+      out += wrapText(buffer, tag, textClass);
       buffer = "";
     }
   };
 
   for (const token of tokens) {
-    if (isTag(token)) {
-      flush();
-      out += token;
-    } else {
+    if (!isTag(token)) {
       buffer += token;
+      continue;
+    }
+
+    flush();
+    if (isVoidMediaTag(token)) {
+      out += `<${tag} class="${mediaClass}">${token}</${tag}>`;
+    } else {
+      out += token;
     }
   }
 
@@ -78,11 +104,12 @@ function renderChange(tokens: string[], tag: "ins" | "del", className: string): 
 
 /**
  * Produce a single, rendered HTML string that shows the changes between two
- * document HTML snapshots inline: removed text is wrapped in `<del>` and added
- * text in `<ins>`, both carrying classes the document stylesheet turns into a
- * red strikethrough / green highlight redline. Unchanged content and the
- * document's block structure are preserved so the result reads like the
- * document itself rather than a source-level diff.
+ * document HTML snapshots inline: removed text/media is wrapped in `<del>` and
+ * added text/media in `<ins>`, all carrying classes the document stylesheet
+ * turns into a red strikethrough / green highlight redline (and a red/green
+ * outline for images and rules). Unchanged content and the document's block
+ * structure are preserved so the result reads like the document itself rather
+ * than a source-level diff.
  */
 export function inlineHtmlDiff(baseHtml: string, revisionHtml: string): string {
   const changes = diffArrays(tokenizeHtml(baseHtml), tokenizeHtml(revisionHtml));
@@ -90,9 +117,9 @@ export function inlineHtmlDiff(baseHtml: string, revisionHtml: string): string {
   let out = "";
   for (const change of changes) {
     if (change.added) {
-      out += renderChange(change.value, "ins", "diff-ins");
+      out += renderChange(change.value, "ins", "diff-ins", "diff-ins-media");
     } else if (change.removed) {
-      out += renderChange(change.value, "del", "diff-del");
+      out += renderChange(change.value, "del", "diff-del", "diff-del-media");
     } else {
       out += change.value.join("");
     }

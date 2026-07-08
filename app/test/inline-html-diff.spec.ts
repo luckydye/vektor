@@ -44,6 +44,62 @@ describe("inlineHtmlDiff", () => {
     expect(result).toContain("<p>Second.</p>");
   });
 
+  it("wraps an added image in a media marker", () => {
+    const base = "<p>Before.</p>";
+    const revision = '<p>Before.</p><img src="/photo.jpg" alt="Photo">';
+
+    const result = inlineHtmlDiff(base, revision);
+
+    expect(result).toBe(
+      '<p>Before.</p><ins class="diff-ins-media"><img src="/photo.jpg" alt="Photo"></ins>',
+    );
+  });
+
+  it("wraps a removed image so it is shown as removed, not live", () => {
+    const base = '<p>Before.</p><img src="/photo.jpg" alt="Photo">';
+    const revision = "<p>Before.</p>";
+
+    const result = inlineHtmlDiff(base, revision);
+
+    expect(result).toContain(
+      '<del class="diff-del-media"><img src="/photo.jpg" alt="Photo"></del>',
+    );
+  });
+
+  it("marks an image src change as the old image removed and the new added", () => {
+    const base = '<p>x</p><img src="/old.jpg" alt="A">';
+    const revision = '<p>x</p><img src="/new.jpg" alt="A">';
+
+    const result = inlineHtmlDiff(base, revision);
+
+    expect(result).toContain(
+      '<del class="diff-del-media"><img src="/old.jpg" alt="A"></del>',
+    );
+    expect(result).toContain(
+      '<ins class="diff-ins-media"><img src="/new.jpg" alt="A"></ins>',
+    );
+    // No longer two live, unmarked <img> tags side by side.
+    expect(result).not.toContain(
+      '<img src="/old.jpg" alt="A"><img src="/new.jpg" alt="A">',
+    );
+  });
+
+  it("wraps an added horizontal rule", () => {
+    const result = inlineHtmlDiff("<p>a</p><p>b</p>", "<p>a</p><hr><p>b</p>");
+    expect(result).toContain('<ins class="diff-ins-media"><hr></ins>');
+  });
+
+  it("marks text but not structural tags inside a removed block with an image", () => {
+    const base = '<p>Keep</p><p>Gone <img src="/a.jpg"> text</p>';
+    const revision = "<p>Keep</p>";
+
+    const result = inlineHtmlDiff(base, revision);
+
+    expect(result).toContain('<del class="diff-del">Gone</del>');
+    expect(result).toContain('<del class="diff-del-media"><img src="/a.jpg"></del>');
+    expect(result).not.toContain('<del class="diff-del"><p>');
+  });
+
   it("keeps the space separating added words outside the marker", () => {
     const base = "<p>Lorem</p>";
     const revision = "<p>Lorem ipsum</p>";
