@@ -3,6 +3,8 @@ import { isMediaFile } from "#utils/uploadFiles.ts";
 import { uploadMediaFile } from "./media.ts";
 import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
+const PDF_PREVIEW_SIZE = { width: 420, height: 560 };
+
 export const fileElement: CanvasElementDefinition = {
   type: "file",
   defaultText: "",
@@ -14,6 +16,11 @@ export const fileElement: CanvasElementDefinition = {
 
 export function isCanvasFile(file: File) {
   return !isMediaFile(file);
+}
+
+/** Whether a filename or upload URL points at a PDF. */
+export function isPdfFile(value: string | undefined): boolean {
+  return /\.pdf(?:$|[?#])/i.test(value ?? "");
 }
 
 export function canvasFilesFromList(files: FileList | File[]) {
@@ -58,19 +65,17 @@ export function createFileShape(params: {
   origin?: "center" | "top-left";
 }): CanvasShape {
   const origin = params.origin ?? "center";
+  const size =
+    isPdfFile(params.filename) || isPdfFile(params.src)
+      ? PDF_PREVIEW_SIZE
+      : fileElement.defaultSize;
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "file",
-    x: Math.round(
-      origin === "center" ? params.at.x - fileElement.defaultSize.width / 2 : params.at.x,
-    ),
-    y: Math.round(
-      origin === "center"
-        ? params.at.y - fileElement.defaultSize.height / 2
-        : params.at.y,
-    ),
-    width: fileElement.defaultSize.width,
-    height: fileElement.defaultSize.height,
+    x: Math.round(origin === "center" ? params.at.x - size.width / 2 : params.at.x),
+    y: Math.round(origin === "center" ? params.at.y - size.height / 2 : params.at.y),
+    width: size.width,
+    height: size.height,
     text: fileElement.defaultText,
     color: fileElement.defaultColor,
     src: params.src,

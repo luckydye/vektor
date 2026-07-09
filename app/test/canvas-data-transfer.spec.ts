@@ -5,7 +5,11 @@ import {
   documentReferenceKey,
   droppedDocumentReference,
 } from "#canvas/elements/documentLink.ts";
-import { canvasFilesFromDataTransfer } from "#canvas/elements/files.ts";
+import {
+  canvasFilesFromDataTransfer,
+  createFileShape,
+  isPdfFile,
+} from "#canvas/elements/files.ts";
 import { mediaFilesFromDataTransfer } from "#canvas/elements/media.ts";
 import { createVektorDocumentAddress } from "#utils/documentAddress.ts";
 
@@ -43,6 +47,20 @@ describe("canvas data transfer helpers", () => {
     const file = new File(["doc"], "notes.pdf", { type: "application/pdf" });
 
     expect(canvasFilesFromDataTransfer(transferWithFileAndItem(file))).toEqual([file]);
+  });
+
+  it("uses a larger native-viewer frame for PDFs", () => {
+    const shape = createFileShape({
+      at: { x: 500, y: 500 },
+      src: "/api/v1/spaces/space-1/uploads/report.PDF?download=0",
+      filename: "report.PDF",
+    });
+
+    expect(isPdfFile(shape.src)).toBe(true);
+    expect(shape.width).toBe(420);
+    expect(shape.height).toBe(560);
+    expect(shape.x).toBe(290);
+    expect(shape.y).toBe(220);
   });
 
   it("preserves target space metadata for dragged document links", () => {

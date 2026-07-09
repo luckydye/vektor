@@ -40,6 +40,7 @@ import {
   canvasFilesFromDataTransfer,
   createUploadedFileShape,
   dragHasCanvasFiles,
+  isPdfFile,
 } from "#canvas/elements/files.ts";
 import { createLinkPreviewController, createLinkShape } from "#canvas/elements/link.ts";
 import {
@@ -1778,6 +1779,10 @@ function onFileShapeClick(event: MouseEvent) {
   if (!dragMoved) return;
   event.preventDefault();
   event.stopPropagation();
+}
+
+function isPdfFileShape(shape: CanvasShape): boolean {
+  return shape.type === "file" && (isPdfFile(shape.alt) || isPdfFile(shape.src));
 }
 
 // Stamps the active shape-library item at `at` as a regular freehand stroke,
@@ -3539,6 +3544,28 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
+          <!-- The header keeps selection and dragging available while the native
+               PDF viewer receives scroll, text-selection, and toolbar events. -->
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: This is the canvas drag handle for an embedded PDF viewer. -->
+          <div
+            v-else-if="isPdfFileShape(shape) && shape.src"
+            class="canvas-pdf-preview"
+            @pointerdown.stop
+          >
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
+            <div
+              class="canvas-pdf-preview-header"
+              :title="shape.alt || 'PDF'"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            >
+              {{ shape.alt || shape.text || 'PDF' }}
+            </div>
+            <iframe
+              class="canvas-pdf-preview-frame"
+              :src="shape.src"
+              title="PDF preview"
+            ></iframe>
+          </div>
           <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
           <file-attachment
             v-else-if="shape.type === 'file' && shape.src"
@@ -4317,6 +4344,42 @@ onUnmounted(() => {
   height: 100%;
   max-width: none;
   margin: 0;
+}
+
+.canvas-pdf-preview {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
+}
+
+.canvas-pdf-preview-header {
+  min-width: 0;
+  padding: 7px 10px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  background: #f8fafc;
+  color: var(--canvas-text, #111827);
+  cursor: move;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-pdf-preview-frame {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  border: 0;
+  background: #fff;
 }
 
 .canvas-shape.section {

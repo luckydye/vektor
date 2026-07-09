@@ -46,7 +46,9 @@ export const APP_CSP = [
   "connect-src 'self' https: wss: ws:",
   "font-src 'self' data:",
   "object-src 'none'",
-  "frame-src 'none'",
+  // Canvas PDF previews use the browser's built-in viewer in a same-origin
+  // iframe. Keep every third-party frame blocked.
+  "frame-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "form-action 'self'",
