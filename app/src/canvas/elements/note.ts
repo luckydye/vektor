@@ -27,6 +27,7 @@ export function createNoteShape(
     y: Math.round(at.y),
     width: noteElement.defaultSize.width,
     height: noteElement.defaultSize.height,
+    rotation: 0,
     text: noteElement.defaultText,
     color,
     updatedAt: Date.now(),

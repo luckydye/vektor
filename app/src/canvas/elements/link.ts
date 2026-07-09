@@ -20,6 +20,7 @@ export function createLinkShape(url: string, at: { x: number; y: number }): Canv
     y: Math.round(at.y - linkElement.defaultSize.height / 2),
     width: linkElement.defaultSize.width,
     height: linkElement.defaultSize.height,
+    rotation: 0,
     text: "",
     color: linkElement.defaultColor,
     src: url,

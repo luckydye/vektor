@@ -167,6 +167,7 @@ export function createMediaShape(params: {
     ),
     width: params.size.width,
     height: params.size.height,
+    rotation: 0,
     text: definition.defaultText,
     color: definition.defaultColor,
     src: params.src,

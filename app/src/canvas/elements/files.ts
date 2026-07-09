@@ -76,6 +76,7 @@ export function createFileShape(params: {
     y: Math.round(origin === "center" ? params.at.y - size.height / 2 : params.at.y),
     width: size.width,
     height: size.height,
+    rotation: 0,
     text: fileElement.defaultText,
     color: fileElement.defaultColor,
     src: params.src,

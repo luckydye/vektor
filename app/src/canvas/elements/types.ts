@@ -22,6 +22,9 @@ export type CanvasShape = {
   y: number;
   width: number;
   height: number;
+  // Clockwise degrees around the shape centre. Old documents omit this and
+  // are normalized to zero when read.
+  rotation: number;
   text: string;
   color: string;
   src?: string;
@@ -48,11 +51,17 @@ export type CanvasStrokeSnapshot = {
   id: string;
   points: FreehandPoint[];
   style: FreehandStrokeStyle;
+  // Stamped library primitives retain this marker so they can expose shape
+  // transform controls without changing freehand drawing behavior.
+  kind?: "shape";
+  rotation?: number;
   updatedAt: number;
 };
 
 export type CanvasStroke = FreehandStroke & {
   id: string;
+  kind?: "shape";
+  rotation?: number;
   updatedAt: number;
 };
 

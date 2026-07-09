@@ -79,6 +79,7 @@ export function createDocumentLinkShape(
     y: Math.round(at.y - documentLinkElement.defaultSize.height / 2),
     width: documentLinkElement.defaultSize.width,
     height: documentLinkElement.defaultSize.height,
+    rotation: 0,
     text: doc ? documentLabel(doc) : documentLinkElement.defaultText,
     color: documentLinkElement.defaultColor,
     docAddress: parsed.address,

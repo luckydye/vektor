@@ -45,7 +45,7 @@ export function defaultTextForShape(type: CanvasShapeType): string {
 }
 
 export function defaultColorForShape(type: CanvasShapeType): string {
-  if (type === "section") return "rgba(255, 255, 255, 0.02)";
+  if (type === "section") return "#60a5fa";
   return getCanvasElementDefinition(type)?.defaultColor ?? noteElement.defaultColor;
 }
 

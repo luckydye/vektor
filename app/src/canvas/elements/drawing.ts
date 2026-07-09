@@ -123,6 +123,8 @@ export function createStrokeMap(stroke: CanvasStrokeSnapshot) {
   const map = new Y.Map<unknown>();
   map.set("points", stroke.points.map(cloneFreehandPoint));
   map.set("style", { ...stroke.style });
+  if (stroke.kind === "shape") map.set("kind", "shape");
+  if (typeof stroke.rotation === "number") map.set("rotation", stroke.rotation);
   map.set("updatedAt", stroke.updatedAt);
   return map;
 }
@@ -151,6 +153,11 @@ export function toCanvasStroke(
   const stroke = buildFreehandStroke(points, options);
   return {
     id,
+    kind: read("kind") === "shape" ? "shape" : undefined,
+    rotation:
+      typeof read("rotation") === "number" && Number.isFinite(read("rotation"))
+        ? Number(read("rotation"))
+        : undefined,
     updatedAt:
       typeof read("updatedAt") === "number" && Number.isFinite(read("updatedAt"))
         ? Number(read("updatedAt"))
@@ -287,21 +294,30 @@ function themedStroke(stroke: FreehandStroke, defaultInkColor: string): Freehand
 
 function drawShapeOutline(
   context: CanvasRenderingContext2D,
-  bounds: { x: number; y: number; width: number; height: number; type?: string },
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation?: number;
+    type?: string;
+  },
   transform: WorldTransform,
   strokeStyle: string,
 ) {
   const expand = bounds.type === "section" ? 4 : 2;
-  const sx = bounds.x * transform.scale + transform.dx - expand;
-  const sy = bounds.y * transform.scale + transform.dy - expand;
+  const sx = (bounds.x + bounds.width / 2) * transform.scale + transform.dx;
+  const sy = (bounds.y + bounds.height / 2) * transform.scale + transform.dy;
   const sw = bounds.width * transform.scale + expand * 2;
   const sh = bounds.height * transform.scale + expand * 2;
   const r = Math.max(0, 8 * transform.scale + expand);
   context.save();
+  context.translate(sx, sy);
+  context.rotate(((bounds.rotation ?? 0) * Math.PI) / 180);
   context.strokeStyle = strokeStyle;
   context.lineWidth = 1.5;
   context.beginPath();
-  context.roundRect(sx, sy, sw, sh, r);
+  context.roundRect(-sw / 2, -sh / 2, sw, sh, r);
   context.stroke();
   context.restore();
 }
@@ -353,6 +369,7 @@ export function renderCanvasSelections(params: {
     y: number;
     width: number;
     height: number;
+    rotation?: number;
     type?: string;
   }>;
   remoteSelectedShapeBounds?: Array<{
@@ -360,6 +377,7 @@ export function renderCanvasSelections(params: {
     y: number;
     width: number;
     height: number;
+    rotation?: number;
     type?: string;
     color: string;
   }>;

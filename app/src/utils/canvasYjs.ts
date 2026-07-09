@@ -25,6 +25,7 @@ type RawShape = {
   y?: unknown;
   width?: unknown;
   height?: unknown;
+  rotation?: unknown;
   text?: unknown;
   color?: unknown;
   src?: unknown;
@@ -39,6 +40,8 @@ type RawStroke = {
   id?: unknown;
   points?: unknown;
   style?: unknown;
+  kind?: unknown;
+  rotation?: unknown;
   updatedAt?: unknown;
 };
 
@@ -54,6 +57,7 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   map.set("y", typeof shape.y === "number" ? shape.y : 0);
   map.set("width", typeof shape.width === "number" ? shape.width : 240);
   map.set("height", typeof shape.height === "number" ? shape.height : 150);
+  map.set("rotation", typeof shape.rotation === "number" ? shape.rotation : 0);
   map.set("text", typeof shape.text === "string" ? shape.text : "");
   map.set("color", typeof shape.color === "string" ? shape.color : "#fef3c7");
   if (typeof shape.src === "string") map.set("src", shape.src);
@@ -70,6 +74,8 @@ function seedStroke(target: Y.Map<Y.Map<unknown>>, stroke: RawStroke): void {
   const map = new Y.Map<unknown>();
   map.set("points", Array.isArray(stroke.points) ? stroke.points : []);
   map.set("style", stroke.style && typeof stroke.style === "object" ? stroke.style : {});
+  if (stroke.kind === "shape") map.set("kind", "shape");
+  if (typeof stroke.rotation === "number") map.set("rotation", stroke.rotation);
   map.set("updatedAt", typeof stroke.updatedAt === "number" ? stroke.updatedAt : 0);
   target.set(stroke.id, map);
 }

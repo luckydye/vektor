@@ -74,6 +74,17 @@ import type {
   CanvasStrokeSnapshot,
   CanvasTool,
 } from "#canvas/elements/types.ts";
+import {
+  normalizeRotation,
+  pointInRotatedShape,
+  pointOnRotatedShape,
+  resizeRotatedShapeFromBottomRight,
+  rotatedShapeBounds,
+  rotatedShapeCorners,
+  rotateVector,
+  rotationFromPointer,
+  snapRotation,
+} from "#canvas/geometry.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
@@ -178,11 +189,35 @@ type DragState =
       type: "resize";
       pointerId: number;
       shapeId: string;
-      startPointer: { x: number; y: number };
-      startSize: { width: number; height: number };
+      fixedTopLeft: { x: number; y: number };
       minSize: { width: number; height: number };
       // Locked width/height ratio for media; undefined lets the axes move freely.
       aspect?: number;
+      initial: Pick<CanvasShape, "x" | "y" | "width" | "height" | "rotation">;
+    }
+  | {
+      type: "rotate";
+      pointerId: number;
+      shapeId: string;
+      center: { x: number; y: number };
+      initial: Pick<CanvasShape, "x" | "y" | "width" | "height" | "rotation">;
+    }
+  | {
+      type: "stroke-resize";
+      pointerId: number;
+      strokeId: string;
+      fixedTopLeft: { x: number; y: number };
+      startBounds: Rect;
+      initialPoints: FreehandPoint[];
+    }
+  | {
+      type: "stroke-rotate";
+      pointerId: number;
+      strokeId: string;
+      center: { x: number; y: number };
+      startRotation: number;
+      initialRotation: number;
+      initialPoints: FreehandPoint[];
     }
   | {
       type: "pan";
@@ -202,6 +237,7 @@ type DragState =
 type Rect = { x: number; y: number; width: number; height: number };
 
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
+const SECTION_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"] as const;
 type ToolDef = {
   id: CanvasTool;
   label: TranslationKey;
@@ -312,6 +348,7 @@ const activeTool = ref<CanvasTool>("select");
 const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
 const shapePopoverRef = ref<(HTMLElement & { hide: () => void }) | null>(null);
 const noteColor = ref<string>(NOTE_COLORS[0]);
+const sectionColor = ref<string>(SECTION_COLORS[0]);
 const penColor = ref<string>(PEN_COLORS[0]);
 const cursorColor = ref<string>(readCanvasCursorColor());
 const drawStrokeMode = ref<DrawStrokeMode>("pen");
@@ -720,12 +757,55 @@ const selectedShape = computed(() => {
   return shapesById.value.get(id) ?? null;
 });
 
+// Text, file, and link shapes intentionally keep their existing move-only
+// interaction. Notes, sections, and media get full transform controls;
+// embedded documents expose only resize.
+const selectedTransformShape = computed(() =>
+  selectedShape.value &&
+  (selectedShape.value.type === "note" ||
+    selectedShape.value.type === "section" ||
+    isMediaElementType(selectedShape.value.type))
+    ? selectedShape.value
+    : null,
+);
+
+const selectedResizableDocument = computed(() =>
+  selectedShape.value?.type === "document" ? selectedShape.value : null,
+);
+
+function transformControlPositions(shape: CanvasShape) {
+  // Handles stay a comfortable fixed size in screen space. Convert their
+  // offset back to world units before placing them around the rotated shape.
+  const offset = 24 / transform.value.scale;
+  const resizeOffset = 18 / transform.value.scale / Math.SQRT2;
+  return {
+    rotation: worldToScreen(
+      pointOnRotatedShape(shape, { x: shape.width / 2, y: -offset }),
+    ),
+    resize: worldToScreen(
+      pointOnRotatedShape(shape, {
+        x: shape.width + resizeOffset,
+        y: shape.height + resizeOffset,
+      }),
+    ),
+  };
+}
+
 // Non-GIF image shapes render on the images canvas — no DOM article needed.
 // All other shapes stay in the DOM permanently; content-visibility:auto in CSS
 // tells the browser to skip painting off-screen articles without JS involvement.
 const domShapes = computed(() =>
   shapes.value.filter((shape) => shape.type !== "image" || isGifSrc(shape.src ?? "")),
 );
+
+const sectionShapes = computed(() =>
+  shapes.value.filter((shape) => shape.type === "section"),
+);
+
+function sectionTitlePosition(shape: CanvasShape) {
+  const screenGap = 32 / transform.value.scale;
+  return worldToScreen(pointOnRotatedShape(shape, { x: 0, y: -screenGap }));
+}
 
 // Canvas-rendered image shapes within the current viewport. Used only by
 // renderImages() to avoid drawImage calls for off-screen images.
@@ -735,12 +815,7 @@ const visibleImageShapes = computed(() => {
     (shape) =>
       shape.type === "image" &&
       !isGifSrc(shape.src ?? "") &&
-      rectsIntersect(vr, {
-        x: shape.x,
-        y: shape.y,
-        width: shape.width,
-        height: shape.height,
-      }),
+      rectsIntersect(vr, shapeAabb(shape)),
   );
 });
 
@@ -759,6 +834,18 @@ const selectedStrokeColor = computed(() => {
 const shapesById = computed(() => new Map(shapes.value.map((s) => [s.id, s])));
 const strokesById = computed(() => new Map(strokes.value.map((s) => [s.id, s])));
 
+const selectedBasicShapeStroke = computed(() => {
+  if (selectedShapeIds.value.size > 0 || selectedStrokeIds.value.size !== 1) return null;
+  const [id] = selectedStrokeIds.value;
+  const stroke = strokesById.value.get(id);
+  return stroke?.kind === "shape" ? stroke : null;
+});
+
+const selectedBasicShapeStrokeControls = computed(() => {
+  const stroke = selectedBasicShapeStroke.value;
+  return stroke ? strokeTransformControlPositions(stroke) : null;
+});
+
 // World-space bounding box of the current multi-selection. Does NOT depend on
 // the camera transform, so pan/zoom never triggers the O(n×points) loop — only
 // actual selection or position changes do.
@@ -773,7 +860,7 @@ const selectionWorldBounds = computed(() => {
   for (const id of selectedShapeIds.value) {
     const shape = shapesById.value.get(id);
     if (!shape) continue;
-    const bounds = shapeBounds(shape);
+    const bounds = shapeAabb(shape);
     minX = Math.min(minX, bounds.x);
     minY = Math.min(minY, bounds.y);
     maxX = Math.max(maxX, bounds.x + bounds.width);
@@ -887,6 +974,39 @@ function textShapeSize(shape: CanvasShape) {
 function shapeBounds(shape: CanvasShape): CanvasShape {
   if (shape.type !== "text") return shape;
   return { ...shape, ...textShapeSize(shape) };
+}
+
+function shapeAabb(shape: CanvasShape): Rect {
+  return rotatedShapeBounds(shapeBounds(shape));
+}
+
+function strokeBounds(stroke: Pick<CanvasStroke, "points">): Rect | null {
+  if (stroke.points.length === 0) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of stroke.points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function strokeTransformControlPositions(stroke: CanvasStroke) {
+  const bounds = strokeBounds(stroke);
+  if (!bounds) return null;
+  const offset = 24 / transform.value.scale;
+  const resizeOffset = 18 / transform.value.scale / Math.SQRT2;
+  return {
+    rotation: worldToScreen({ x: bounds.x + bounds.width / 2, y: bounds.y - offset }),
+    resize: worldToScreen({
+      x: bounds.x + bounds.width + resizeOffset,
+      y: bounds.y + bounds.height + resizeOffset,
+    }),
+  };
 }
 
 // Text shapes lay themselves out from their content. Width/height are local
@@ -1040,6 +1160,7 @@ function toShape(
     y: toNumber(read("y"), 0),
     width: Math.max(minSize.width, toNumber(read("width"), defaultSize.width)),
     height: Math.max(minSize.height, toNumber(read("height"), defaultSize.height)),
+    rotation: normalizeRotation(toNumber(read("rotation"), 0)),
     text: typeof read("text") === "string" ? String(read("text")) : "",
     color:
       typeof read("color") === "string"
@@ -1121,6 +1242,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
     map.set("width", shape.width);
     map.set("height", shape.height);
   }
+  map.set("rotation", shape.rotation);
   map.set("text", shape.text);
   map.set("color", shape.color);
   if (shape.src) map.set("src", resolveMediaSrc(shape.src));
@@ -1144,6 +1266,8 @@ function serializeSnapshot(): string {
       id: stroke.id,
       points: stroke.points.map(cloneFreehandPoint),
       style: { ...stroke.style },
+      kind: stroke.kind,
+      rotation: stroke.rotation,
       updatedAt: stroke.updatedAt,
     })),
   };
@@ -1420,26 +1544,41 @@ function renderImages() {
     const displayImg =
       cached instanceof HTMLImageElement ? cached : getCachedFallback(shape.src);
 
+    const centerX = sx + sw / 2;
+    const centerY = sy + sh / 2;
+    const angle = (shape.rotation * Math.PI) / 180;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(angle);
     if (!displayImg) {
       ctx.fillStyle = "rgba(128,128,128,0.15)";
-      ctx.fillRect(sx, sy, sw, sh);
+      ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
     } else {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(displayImg, sx, sy, sw, sh);
+      ctx.drawImage(displayImg, -sw / 2, -sh / 2, sw, sh);
     }
+    ctx.restore();
 
     for (const selection of remoteCanvasImageSelections.value) {
       if (selection.bounds.id !== shape.id) continue;
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(angle);
       ctx.strokeStyle = selection.cursorColor;
       ctx.lineWidth = 2;
-      ctx.strokeRect(sx - 2, sy - 2, sw + 4, sh + 4);
+      ctx.strokeRect(-sw / 2 - 2, -sh / 2 - 2, sw + 4, sh + 4);
+      ctx.restore();
     }
 
     if (selectedShapeIds.value.has(shape.id)) {
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(angle);
       ctx.strokeStyle = "#2563eb";
       ctx.lineWidth = 2;
-      ctx.strokeRect(sx - 2, sy - 2, sw + 4, sh + 4);
+      ctx.strokeRect(-sw / 2 - 2, -sh / 2 - 2, sw + 4, sh + 4);
+      ctx.restore();
     }
   }
 }
@@ -1503,6 +1642,7 @@ function renderSelections() {
       y: s.bounds.y,
       width: s.bounds.width,
       height: s.bounds.height,
+      rotation: s.bounds.rotation,
       type: s.bounds.type,
       color: s.cursorColor,
     })),
@@ -1808,8 +1948,9 @@ function addShape(type: "note" | "text" | "section", at: { x: number; y: number 
             x: Math.round(at.x),
             y: Math.round(at.y),
             ...defaultSizeForShape(type),
+            rotation: 0,
             text: defaultTextForShape(type),
-            color: defaultColorForShape(type),
+            color: sectionColor.value,
             updatedAt: Date.now(),
           };
   yShapes.set(shape.id, createShapeMap(shape));
@@ -1844,8 +1985,8 @@ function handleTextBlur(shape: CanvasShape, value: string) {
 
 function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
   if (shape.id === section.id) return false;
-  const bounds = shapeBounds(shape);
-  const sectionBounds = shapeBounds(section);
+  const bounds = shapeAabb(shape);
+  const sectionBounds = shapeAabb(section);
   return (
     bounds.x >= sectionBounds.x &&
     bounds.y >= sectionBounds.y &&
@@ -1855,11 +1996,12 @@ function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
 }
 
 function isPointInsideSection(point: FreehandPoint, section: CanvasShape) {
+  const bounds = shapeAabb(section);
   return (
-    point.x >= section.x &&
-    point.y >= section.y &&
-    point.x <= section.x + section.width &&
-    point.y <= section.y + section.height
+    point.x >= bounds.x &&
+    point.y >= bounds.y &&
+    point.x <= bounds.x + bounds.width &&
+    point.y <= bounds.y + bounds.height
   );
 }
 
@@ -1885,22 +2027,30 @@ function getSectionContents(section: CanvasShape) {
 }
 
 function translateStroke(id: string, points: FreehandPoint[], dx: number, dy: number) {
+  updateStrokePoints(
+    id,
+    points.map((point) => ({ ...point, x: point.x + dx, y: point.y + dy })),
+  );
+}
+
+function updateStrokePoints(id: string, points: FreehandPoint[], rotation?: number) {
   const stroke = yStrokes.get(id);
   if (!stroke) return;
   stroke.set("updatedAt", Date.now());
-  stroke.set(
-    "points",
-    points.map((point) => ({
-      ...point,
-      x: point.x + dx,
-      y: point.y + dy,
-    })),
-  );
+  stroke.set("points", points.map(cloneFreehandPoint));
+  if (rotation !== undefined) stroke.set("rotation", rotation);
 }
 
 function setNoteColor(color: string) {
   noteColor.value = color;
   if (selectedShape.value?.type === "note") {
+    updateShape(selectedShape.value.id, { color });
+  }
+}
+
+function setSectionColor(color: string) {
+  sectionColor.value = color;
+  if (selectedShape.value?.type === "section") {
     updateShape(selectedShape.value.id, { color });
   }
 }
@@ -2060,11 +2210,74 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
     type: "resize",
     pointerId: event.pointerId,
     shapeId: shape.id,
-    startPointer: screenToWorld(screenPoint(event)),
-    startSize: { width: shape.width, height: shape.height },
+    fixedTopLeft: rotatedShapeCorners(shape)[0],
     minSize: minSizeForShape(shape.type),
     // Media keeps its aspect ratio; notes and sections resize freely.
     aspect: isMedia && shape.height > 0 ? shape.width / shape.height : undefined,
+    initial: {
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      rotation: shape.rotation,
+    },
+  };
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
+function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
+  if (event.button !== 0 || shape.type === "text") return;
+  selectOnlyShape(shape.id);
+  dragState = {
+    type: "rotate",
+    pointerId: event.pointerId,
+    shapeId: shape.id,
+    center: {
+      x: shape.x + shape.width / 2,
+      y: shape.y + shape.height / 2,
+    },
+    initial: {
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      rotation: shape.rotation,
+    },
+  };
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
+function startStrokeResize(stroke: CanvasStroke, event: PointerEvent) {
+  if (event.button !== 0) return;
+  const bounds = strokeBounds(stroke);
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+  dragState = {
+    type: "stroke-resize",
+    pointerId: event.pointerId,
+    strokeId: stroke.id,
+    fixedTopLeft: { x: bounds.x, y: bounds.y },
+    startBounds: bounds,
+    initialPoints: stroke.points.map(cloneFreehandPoint),
+  };
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
+function startStrokeRotation(stroke: CanvasStroke, event: PointerEvent) {
+  if (event.button !== 0) return;
+  const bounds = strokeBounds(stroke);
+  if (!bounds) return;
+  const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  dragState = {
+    type: "stroke-rotate",
+    pointerId: event.pointerId,
+    strokeId: stroke.id,
+    center,
+    startRotation: rotationFromPointer(center, screenToWorld(screenPoint(event))),
+    initialRotation: stroke.rotation ?? 0,
+    initialPoints: stroke.points.map(cloneFreehandPoint),
   };
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -2114,7 +2327,7 @@ function applyMarqueeSelection(
 
   const shapeIds = new Set(state.additive ? state.baseShapeIds : []);
   for (const shape of shapes.value) {
-    const bounds = shapeBounds(shape);
+    const bounds = shapeAabb(shape);
     const hit =
       shape.type === "section"
         ? rectContains(worldRect, bounds)
@@ -2139,7 +2352,7 @@ function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | 
   for (let i = shapes.value.length - 1; i >= 0; i--) {
     const shape = shapes.value[i];
     if (shape.type !== "image" || isGifSrc(shape.src ?? "")) continue;
-    if (isPointInRect(worldPoint, shape)) return shape;
+    if (pointInRotatedShape(worldPoint, shape)) return shape;
   }
   return null;
 }
@@ -2204,7 +2417,20 @@ function handleViewportPointerDown(event: PointerEvent) {
       transform.value.scale,
     );
     if (hitStroke) {
-      selectStroke(hitStroke, additive);
+      // Match regular shapes: Shift only changes selection membership, while
+      // a normal pointerdown selects the stroke and starts a drag for the
+      // current stroke selection.
+      if (additive) {
+        selectStroke(hitStroke, true);
+        event.preventDefault();
+        return;
+      }
+      if (!selectedStrokeIds.value.has(hitStroke) || selectedShapeIds.value.size > 0) {
+        selectStroke(hitStroke, false);
+      }
+      dragMoved = false;
+      dragState = buildShapeDragState(event);
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       event.preventDefault();
       return;
     }
@@ -2239,6 +2465,33 @@ function handleViewportPointerDown(event: PointerEvent) {
   event.preventDefault();
 }
 
+function handleViewportDoubleClick(event: MouseEvent) {
+  // A double-click is an empty-canvas shortcut for text. Leave existing
+  // elements, their transform controls, and draw mode alone.
+  if (activeTool.value === "draw") return;
+  const target = event.target;
+  if (
+    target instanceof Element &&
+    target.closest(
+      ".canvas-shape, .canvas-transform-controls, .canvas-selection-overlay, .canvas-context-menu",
+    )
+  ) {
+    return;
+  }
+
+  const point = screenPoint(event);
+  const worldPoint = screenToWorld(point);
+  if (
+    hitTestImageShape(worldPoint) ||
+    hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale)
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  addShape("text", worldPoint);
+}
+
 // World-space bounding box of everything moving in a shape drag, at its
 // starting position. Stroke point extents are included so freehand selections
 // snap by their drawn bounds too.
@@ -2252,11 +2505,11 @@ function movingGroupBounds(
   for (const moved of drag.shapes) {
     const shape = shapesById.value.get(moved.id);
     if (!shape) continue;
-    const bounds = shapeBounds(shape);
-    minX = Math.min(minX, moved.x);
-    minY = Math.min(minY, moved.y);
-    maxX = Math.max(maxX, moved.x + bounds.width);
-    maxY = Math.max(maxY, moved.y + bounds.height);
+    const bounds = shapeAabb({ ...shape, x: moved.x, y: moved.y });
+    minX = Math.min(minX, bounds.x);
+    minY = Math.min(minY, bounds.y);
+    maxX = Math.max(maxX, bounds.x + bounds.width);
+    maxY = Math.max(maxY, bounds.y + bounds.height);
   }
   for (const stroke of drag.strokes) {
     for (const point of stroke.points) {
@@ -2299,10 +2552,8 @@ function snapDragOffset(
   };
   const movingIds = new Set(drag.shapes.map((moved) => moved.id));
   const targets: SnapTarget[] = shapes.value
-    .filter(
-      (shape) => !movingIds.has(shape.id) && rectsIntersect(near, shapeBounds(shape)),
-    )
-    .map((shape) => ({ id: shape.id, bounds: shapeBounds(shape) }));
+    .filter((shape) => !movingIds.has(shape.id) && rectsIntersect(near, shapeAabb(shape)))
+    .map((shape) => ({ id: shape.id, bounds: shapeAabb(shape) }));
 
   const guides = computeSnapGuides({
     camera: camera.value,
@@ -2370,27 +2621,68 @@ function handlePointerMove(event: PointerEvent) {
 
   const world = screenToWorld(point);
   if (dragState.type === "resize") {
-    let width = dragState.startSize.width + world.x - dragState.startPointer.x;
-    let height = dragState.startSize.height + world.y - dragState.startPointer.y;
-
-    if (dragState.aspect) {
-      // Drive the locked box from whichever axis the pointer pushed out
-      // furthest, then derive the other axis and clamp against both minimums.
-      width = Math.max(width, height * dragState.aspect, dragState.minSize.width);
-      height = width / dragState.aspect;
-      if (height < dragState.minSize.height) {
-        height = dragState.minSize.height;
-        width = height * dragState.aspect;
-      }
-    } else {
-      width = Math.max(dragState.minSize.width, width);
-      height = Math.max(dragState.minSize.height, height);
-    }
-
-    updateShape(dragState.shapeId, {
-      width: Math.round(width),
-      height: Math.round(height),
+    const resized = resizeRotatedShapeFromBottomRight({
+      fixedTopLeft: dragState.fixedTopLeft,
+      pointer: world,
+      rotation: dragState.initial.rotation,
+      minSize: dragState.minSize,
+      aspect: dragState.aspect,
     });
+    updateShape(dragState.shapeId, {
+      x: Math.round(resized.x),
+      y: Math.round(resized.y),
+      width: Math.round(resized.width),
+      height: Math.round(resized.height),
+    });
+    return;
+  }
+
+  if (dragState.type === "rotate") {
+    const rawRotation = rotationFromPointer(dragState.center, world);
+    const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
+    updateShape(dragState.shapeId, { rotation: Math.round(rotation * 10) / 10 });
+    return;
+  }
+
+  if (dragState.type === "stroke-resize") {
+    const resized = resizeRotatedShapeFromBottomRight({
+      fixedTopLeft: dragState.fixedTopLeft,
+      pointer: world,
+      rotation: 0,
+      minSize: { width: 32, height: 32 },
+    });
+    const scaleX = resized.width / dragState.startBounds.width;
+    const scaleY = resized.height / dragState.startBounds.height;
+    updateStrokePoints(
+      dragState.strokeId,
+      dragState.initialPoints.map((point) => ({
+        ...point,
+        x: resized.x + (point.x - dragState.startBounds.x) * scaleX,
+        y: resized.y + (point.y - dragState.startBounds.y) * scaleY,
+      })),
+    );
+    return;
+  }
+
+  if (dragState.type === "stroke-rotate") {
+    const rawRotation = rotationFromPointer(dragState.center, world);
+    const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
+    const delta = ((rotation - dragState.startRotation + 540) % 360) - 180;
+    updateStrokePoints(
+      dragState.strokeId,
+      dragState.initialPoints.map((point) => {
+        const rotated = rotateVector(
+          { x: point.x - dragState.center.x, y: point.y - dragState.center.y },
+          delta,
+        );
+        return {
+          ...point,
+          x: dragState.center.x + rotated.x,
+          y: dragState.center.y + rotated.y,
+        };
+      }),
+      normalizeRotation(dragState.initialRotation + delta),
+    );
     return;
   }
 
@@ -2437,6 +2729,34 @@ function handlePointerUp(event: PointerEvent) {
       renderInk();
     }
     dragState = null;
+  }
+}
+
+function cancelTransformDrag() {
+  if (dragState?.type === "resize" || dragState?.type === "rotate") {
+    updateShape(dragState.shapeId, dragState.initial);
+  } else if (dragState?.type === "stroke-resize" || dragState?.type === "stroke-rotate") {
+    updateStrokePoints(
+      dragState.strokeId,
+      dragState.initialPoints,
+      dragState.type === "stroke-rotate" ? dragState.initialRotation : undefined,
+    );
+  } else {
+    return false;
+  }
+  dragState = null;
+  return true;
+}
+
+function handlePointerCancel(event: PointerEvent) {
+  if (!dragState || dragState.pointerId !== event.pointerId) return;
+  if (cancelTransformDrag()) return;
+  if (dragState.type === "marquee") marqueeRect.value = null;
+  if (dragState.type === "pan") isPanning.value = false;
+  dragState = null;
+  if (activeSnapGuides.length > 0) {
+    activeSnapGuides = [];
+    renderInk();
   }
 }
 
@@ -2598,6 +2918,8 @@ function collectSelection(): {
       id: stroke.id,
       points: stroke.points.map(cloneFreehandPoint),
       style: { ...stroke.style },
+      kind: stroke.kind,
+      rotation: stroke.rotation,
       updatedAt: stroke.updatedAt,
     }));
   return { shapes: selShapes, strokes: selStrokes };
@@ -2736,6 +3058,8 @@ function pasteCanvasClipboard(
             y: point.y + dy,
           })),
           style: { ...stroke.style },
+          kind: stroke.kind,
+          rotation: stroke.rotation,
           updatedAt: now,
         }),
       );
@@ -2924,14 +3248,14 @@ function reservedSidebarWidth(): number {
 function fitView(maxZoom = 5) {
   const xs = [
     ...shapes.value.flatMap((shape) => {
-      const bounds = shapeBounds(shape);
+      const bounds = shapeAabb(shape);
       return [bounds.x, bounds.x + bounds.width];
     }),
     ...strokes.value.flatMap((stroke) => stroke.points.map((point) => point.x)),
   ];
   const ys = [
     ...shapes.value.flatMap((shape) => {
-      const bounds = shapeBounds(shape);
+      const bounds = shapeAabb(shape);
       return [bounds.y, bounds.y + bounds.height];
     }),
     ...strokes.value.flatMap((stroke) => stroke.points.map((point) => point.y)),
@@ -3003,6 +3327,11 @@ function handleKeydown(event: KeyboardEvent) {
   // document-view hosts the embedded document editor; shadow-DOM events
   // retarget to the host element, so closest() must match the host itself.
   if (target?.closest("textarea, input, select, document-view")) return;
+
+  if (event.key === "Escape" && cancelTransformDrag()) {
+    event.preventDefault();
+    return;
+  }
 
   const key = event.key.toLowerCase();
   if ((event.metaKey || event.ctrlKey) && key === "s") {
@@ -3228,7 +3557,7 @@ onMounted(() => {
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", handlePointerUp);
-  window.addEventListener("pointercancel", handlePointerUp);
+  window.addEventListener("pointercancel", handlePointerCancel);
   window.addEventListener("copy", handleCopy);
   window.addEventListener("cut", handleCut);
   window.addEventListener("paste", handlePaste);
@@ -3246,7 +3575,7 @@ onUnmounted(() => {
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("pointermove", handlePointerMove);
   window.removeEventListener("pointerup", handlePointerUp);
-  window.removeEventListener("pointercancel", handlePointerUp);
+  window.removeEventListener("pointercancel", handlePointerCancel);
   window.removeEventListener("copy", handleCopy);
   window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
@@ -3270,9 +3599,11 @@ onUnmounted(() => {
       v-if="
         activeTool === 'draw' ||
         activeTool === 'note' ||
+        activeTool === 'section' ||
         activeTool === 'shape' ||
         selectedStrokeIds.size > 0 ||
-        selectedShape?.type === 'note'
+        selectedShape?.type === 'note' ||
+        selectedShape?.type === 'section'
       "
       class="canvas-sub-toolbar"
       @pointerdown.stop
@@ -3318,9 +3649,28 @@ onUnmounted(() => {
         ></button>
       </span>
       <span
+        v-if="activeTool === 'section' || selectedShape?.type === 'section'"
+        class="canvas-note-colors"
+        :aria-label="`${t('Section')} color`"
+      >
+        <button
+          v-for="color in SECTION_COLORS"
+          :key="color"
+          type="button"
+          class="canvas-color-swatch"
+          :class="{ active: (selectedShape?.type === 'section' ? selectedShape.color : sectionColor) === color }"
+          :style="{ background: color }"
+          :aria-label="`${t('Section')} color ${color}`"
+          @click="setSectionColor(color)"
+        ></button>
+      </span>
+      <span
         v-if="
           (activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0) &&
-          (activeTool === 'note' || selectedShape?.type === 'note')
+          (activeTool === 'note' ||
+            selectedShape?.type === 'note' ||
+            activeTool === 'section' ||
+            selectedShape?.type === 'section')
         "
         class="canvas-divider"
       ></span>
@@ -3447,7 +3797,9 @@ onUnmounted(() => {
       :style="{ cursor: viewportCursor }"
       @contextmenu="handleContextMenu"
       @pointerdown="handleViewportPointerDown"
+      @pointercancel="handlePointerCancel"
       @pointerleave="handlePointerLeave"
+      @dblclick="handleViewportDoubleClick"
       @dragover="handleDragOver"
       @drop="handleDrop"
     >
@@ -3475,6 +3827,8 @@ onUnmounted(() => {
             ...(shape.type === 'text'
               ? {}
               : { width: `${shape.width}px`, height: `${shape.height}px` }),
+            transform: `rotate(${shape.rotation}deg)`,
+            ...(shape.type === 'section' ? { '--canvas-section-color': shape.color } : {}),
             ...(shape.type === 'image' ? {} : { background: shape.color }),
           }"
           :data-shape-id="shape.id"
@@ -3497,22 +3851,6 @@ onUnmounted(() => {
               @pointerdown.stop="startShapeDrag(shape, $event)"
             ></div>
           </template>
-          <div
-            v-if="shape.type === 'section'"
-            class="canvas-section-header"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-          >
-            <input
-              class="canvas-section-title"
-              :data-section-title="shape.id"
-              :value="shape.text"
-              spellcheck="false"
-              :aria-label="t('Section headline')"
-              @focus="selectOnlyShape(shape.id)"
-              @pointerdown.stop
-              @input="updateShapeText(shape, ($event.target as HTMLInputElement).value)"
-            >
-          </div>
           <div
             v-else-if="shape.type === 'note'"
             class="canvas-shape-handle"
@@ -3669,13 +4007,6 @@ onUnmounted(() => {
             @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
             @pointerdown.stop="shape.type === 'text' && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
           />
-          <button
-            v-if="shape.type !== 'text' && selectedShape?.id === shape.id"
-            type="button"
-            class="canvas-resize-handle"
-            :aria-label="`${t('Resize')} ${shape.type}`"
-            @pointerdown.stop="startShapeResize(shape, $event)"
-          ></button>
         </article>
 
         <!-- Local upload placeholders shown until each dropped/pasted file finishes uploading. -->
@@ -3695,18 +4026,96 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Resize handle for canvas-rendered image shapes (lives in screen space, not world div) -->
-      <button
-        v-if="selectedShape && selectedShape.type === 'image' && !isGifSrc(selectedShape.src ?? '')"
-        type="button"
-        class="canvas-resize-handle canvas-image-resize-handle"
-        :aria-label="`${t('Resize')} image`"
+      <div
+        v-for="shape in sectionShapes"
+        :key="shape.id"
+        class="canvas-section-title-overlay"
         :style="{
-          left: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).x - 18}px`,
-          top: `${worldToScreen({ x: selectedShape.x + selectedShape.width, y: selectedShape.y + selectedShape.height }).y - 18}px`,
+          left: `${sectionTitlePosition(shape).x}px`,
+          top: `${sectionTitlePosition(shape).y}px`,
+          width: `${Math.max(1, shape.width * transform.scale)}px`,
+          transform: `rotate(${shape.rotation}deg)`,
         }"
-        @pointerdown.stop="startShapeResize(selectedShape, $event)"
-      ></button>
+        @pointerdown.stop="startShapeDrag(shape, $event)"
+      >
+        <input
+          class="canvas-section-title"
+          :data-section-title="shape.id"
+          :value="shape.text"
+          spellcheck="false"
+          :aria-label="t('Section headline')"
+          @focus="selectOnlyShape(shape.id)"
+          @pointerdown.stop
+          @input="updateShapeText(shape, ($event.target as HTMLInputElement).value)"
+        >
+      </div>
+
+      <div v-if="selectedTransformShape" class="canvas-transform-controls">
+        <button
+          type="button"
+          class="canvas-transform-handle canvas-rotate-handle"
+          :aria-label="`${t('Rotate')} ${selectedTransformShape.type}`"
+          :style="{
+            left: `${transformControlPositions(selectedTransformShape).rotation.x}px`,
+            top: `${transformControlPositions(selectedTransformShape).rotation.y}px`,
+          }"
+          @pointerdown.stop="startShapeRotation(selectedTransformShape, $event)"
+        >
+          ↻
+        </button>
+        <button
+          type="button"
+          class="canvas-transform-handle canvas-resize-handle"
+          :aria-label="`${t('Resize')} ${selectedTransformShape.type}`"
+          :style="{
+            left: `${transformControlPositions(selectedTransformShape).resize.x}px`,
+            top: `${transformControlPositions(selectedTransformShape).resize.y}px`,
+            transform: `translate(-50%, -50%) rotate(${selectedTransformShape.rotation}deg)`,
+          }"
+          @pointerdown.stop="startShapeResize(selectedTransformShape, $event)"
+        ></button>
+      </div>
+      <div v-if="selectedResizableDocument" class="canvas-transform-controls">
+        <button
+          type="button"
+          class="canvas-transform-handle canvas-resize-handle"
+          :aria-label="`${t('Resize')} document`"
+          :style="{
+            left: `${transformControlPositions(selectedResizableDocument).resize.x}px`,
+            top: `${transformControlPositions(selectedResizableDocument).resize.y}px`,
+            transform: `translate(-50%, -50%) rotate(${selectedResizableDocument.rotation}deg)`,
+          }"
+          @pointerdown.stop="startShapeResize(selectedResizableDocument, $event)"
+        ></button>
+      </div>
+      <div
+        v-if="selectedBasicShapeStroke && selectedBasicShapeStrokeControls"
+        class="canvas-transform-controls"
+      >
+        <button
+          type="button"
+          class="canvas-transform-handle canvas-rotate-handle"
+          :aria-label="`${t('Rotate')} ${t('Shape')}`"
+          :style="{
+            left: `${selectedBasicShapeStrokeControls.rotation.x}px`,
+            top: `${selectedBasicShapeStrokeControls.rotation.y}px`,
+          }"
+          @pointerdown.stop="startStrokeRotation(selectedBasicShapeStroke, $event)"
+        >
+          ↻
+        </button>
+        <button
+          type="button"
+          class="canvas-transform-handle canvas-resize-handle"
+          :aria-label="`${t('Resize')} ${t('Shape')}`"
+          :style="{
+            left: `${selectedBasicShapeStrokeControls.resize.x}px`,
+            top: `${selectedBasicShapeStrokeControls.resize.y}px`,
+            transform: `translate(-50%, -50%) rotate(${selectedBasicShapeStroke.rotation || 0}deg)`,
+          }"
+          @pointerdown.stop="startStrokeResize(selectedBasicShapeStroke, $event)"
+        ></button>
+      </div>
 
       <div
         v-for="presence in remoteCanvasPointerPresences"
@@ -4258,6 +4667,7 @@ onUnmounted(() => {
   border-radius: 8px;
   box-shadow: 0 8px 22px var(--canvas-shape-shadow);
   content-visibility: auto;
+  transform-origin: center;
 }
 
 .canvas-upload-placeholder {
@@ -4383,20 +4793,24 @@ onUnmounted(() => {
 }
 
 .canvas-shape.section {
+  content-visibility: visible;
   overflow: visible;
-  border: 2px solid var(--canvas-section-border);
+  border: 2px solid
+    color-mix(in srgb, var(--canvas-section-color, #60a5fa) 60%, transparent);
   border-radius: 10px;
-  background: var(--canvas-section-bg) !important;
+  background: color-mix(
+    in srgb,
+    var(--canvas-section-color, #60a5fa) 9%,
+    transparent
+  ) !important;
   box-shadow: none;
   /* The inner fill is click-through; only the headline, border edges, and
      resize handle select/drag the section. */
   pointer-events: none;
 }
 
-.canvas-shape.section .canvas-section-header,
 .canvas-shape.section .canvas-section-title,
-.canvas-shape.section .canvas-section-edge,
-.canvas-shape.section .canvas-resize-handle {
+.canvas-shape.section .canvas-section-edge {
   pointer-events: auto;
 }
 
@@ -4541,23 +4955,29 @@ onUnmounted(() => {
   -webkit-box-orient: vertical;
 }
 
-.canvas-section-header {
+.canvas-section-title-overlay {
   position: absolute;
-  left: 12px;
-  top: -16px;
+  z-index: 6;
   display: flex;
-  max-width: calc(100% - 24px);
   cursor: move;
+  pointer-events: auto;
+  transform-origin: 0 0;
 }
 
 .canvas-section-title {
-  min-width: 96px;
+  box-sizing: border-box;
+  field-sizing: content;
   max-width: 100%;
-  border: 1px solid var(--canvas-section-title-border);
+  border: 1px solid
+    color-mix(in srgb, var(--canvas-section-color, #60a5fa) 48%, transparent);
   border-radius: 6px;
-  background: var(--canvas-section-title-bg);
+  background: color-mix(
+    in srgb,
+    var(--canvas-section-color, #60a5fa) 10%,
+    var(--canvas-toolbar-bg)
+  );
   padding: 3px 8px;
-  color: var(--canvas-section-title-text);
+  color: var(--canvas-text);
   font: inherit;
   font-size: 13px;
   font-weight: 750;
@@ -4566,8 +4986,8 @@ onUnmounted(() => {
 }
 
 .canvas-section-title:focus {
-  border-color: #2563eb;
-  background: var(--canvas-section-title-focus-bg);
+  border-color: var(--canvas-section-color, #60a5fa);
+  background: var(--canvas-toolbar-bg);
 }
 
 .canvas-shape-image {
@@ -4606,24 +5026,58 @@ onUnmounted(() => {
   color: #111827;
 }
 
-.canvas-image-resize-handle {
+.canvas-transform-controls {
   position: absolute;
-  right: auto;
-  bottom: auto;
-  z-index: 6;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
 }
 
-.canvas-resize-handle {
+.canvas-transform-handle {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 14px;
-  height: 14px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
   border: 0;
-  border-right: 2px solid var(--canvas-resize-border);
-  border-bottom: 2px solid var(--canvas-resize-border);
   background: transparent;
+  color: var(--canvas-resize-border);
   cursor: nwse-resize;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  text-shadow: 0 1px 2px var(--canvas-toolbar-shadow);
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.canvas-transform-handle:hover {
+  color: #1d4ed8;
+}
+
+.canvas-transform-handle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.canvas-rotate-handle {
+  cursor: grab;
+  font-size: 21px;
+}
+
+.canvas-rotate-handle:active {
+  cursor: grabbing;
+}
+
+.canvas-resize-handle::before {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
 }
 
 .canvas-marquee {

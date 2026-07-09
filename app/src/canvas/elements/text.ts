@@ -18,6 +18,7 @@ export function createTextShape(at: { x: number; y: number }): CanvasShape {
     // placeholder right after mount.
     width: textElement.minSize.width,
     height: textElement.minSize.height,
+    rotation: 0,
     text: textElement.defaultText,
     color: textElement.defaultColor,
     updatedAt: Date.now(),

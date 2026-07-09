@@ -107,6 +107,8 @@ export function createShapeStroke(
 ): CanvasStrokeSnapshot {
   return {
     id: `stroke-${crypto.randomUUID()}`,
+    kind: "shape",
+    rotation: 0,
     points: item.outline({ x: Math.round(at.x), y: Math.round(at.y) }, item.size),
     style: { ...FREEHAND_STYLE, color, width: SHAPE_STROKE_WIDTH },
     updatedAt: Date.now(),
