@@ -201,6 +201,8 @@ function formatCommentTime(date: Date | string): string {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
+      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+      <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
       <div
         v-if="isOpen"
         class="fixed inset-0 z-100 bg-black/30"
@@ -238,7 +240,7 @@ function formatCommentTime(date: Date | string): string {
                       </div>
 
                       <div class="flex items-center gap-2 shrink-0">
-                        <button
+                        <button type="button"
                           v-if="documentData"
                           @click="navigateToDocument"
                           class="px-3 py-1.5 text-size-medium font-medium text-neutral-600 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
@@ -246,7 +248,7 @@ function formatCommentTime(date: Date | string): string {
                         >
                           Open
                         </button>
-                        <button
+                        <button type="button"
                           @click="closeOverlay"
                           class="p-1.5 text-neutral-400 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
                           title="Close (Esc)"
@@ -272,7 +274,7 @@ function formatCommentTime(date: Date | string): string {
                           <div class="svg-icon w-6 h-6 text-red-600" v-html="warningTriangleIcon" />
                         </div>
                         <p class="text-neutral-600">{{ error }}</p>
-                        <button
+                        <button type="button"
                           @click="closeOverlay"
                           class="mt-4 px-4 py-2 text-size-medium font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded-sm hover:bg-neutral-50 transition-colors"
                         >
@@ -337,7 +339,7 @@ function formatCommentTime(date: Date | string): string {
                                 rows="2"
                               />
                               <div class="mt-2 flex justify-end gap-2">
-                                <button class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors">
+                                <button type="button" class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors">
                                   Comment
                                 </button>
                               </div>
@@ -355,9 +357,14 @@ function formatCommentTime(date: Date | string): string {
 </template>
 
 <style scoped>
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-comment :deep(ul) { list-style: disc; padding-left: 1.25rem; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-comment :deep(ol) { list-style: decimal; padding-left: 1.25rem; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-comment :deep(strong) { font-weight: 600; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-comment :deep(em) { font-style: italic; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-comment :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
 </style>

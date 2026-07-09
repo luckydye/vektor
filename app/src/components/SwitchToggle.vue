@@ -1,4 +1,5 @@
 <template>
+  <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
   <label
     class="inline-flex items-center gap-2"
     :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'"

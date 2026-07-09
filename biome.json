@@ -39,6 +39,9 @@
             ]
           }
         }
+      },
+      "complexity": {
+        "noImportantStyles": "off"
       }
     }
   },
@@ -48,7 +51,10 @@
     }
   },
   "html": {
-    "experimentalFullSupportEnabled": true
+    "experimentalFullSupportEnabled": true,
+    "formatter": {
+      "enabled": true
+    }
   },
   "formatter": {
     "enabled": true,

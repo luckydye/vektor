@@ -36,19 +36,20 @@
               <div class="px-3 pb-3">
                 <div class="-mt-8 mb-2.5 flex items-end gap-1.5">
                   <!-- Logo — click to upload, ×  to remove -->
+                  <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                   <label class="relative w-16 h-16 rounded-xl border-2 border-white shadow-sm flex items-center justify-center overflow-hidden cursor-pointer group"
                     :style="{ backgroundColor: localBrandColor }" title="Change logo">
                     <input type="file" accept="image/svg+xml,image/png,image/jpeg" @change="handleLogoUpload" class="sr-only" />
                     <template v-if="localLogoSvg">
                       <div v-if="localLogoSvg.startsWith('<')" v-html="localLogoSvg"
                         class="w-full h-full p-1.5 [&>svg]:w-full [&>svg]:h-full" />
-                      <img v-else :src="localLogoSvg" class="w-full h-full object-cover" />
+                      <img v-else :src="localLogoSvg" alt="" class="w-full h-full object-cover" />
                     </template>
                     <span v-else class="text-sm font-bold text-white select-none leading-none">
                       {{ (localName || '?')[0].toUpperCase() }}
                     </span>
                     <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 rounded-lg">
-                      <svg class="w-4 h-4 text-white" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+                      <svg aria-hidden="true" class="w-4 h-4 text-white" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
                     </div>
                   </label>
                   <button v-if="localLogoSvg" type="button" @click="localLogoSvg = ''"
@@ -130,7 +131,7 @@
             <div class="mt-8 pt-6">
                 <div class="flex items-center justify-between mb-4">
                 <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Secrets</h2>
-                <button
+                <button type="button"
                     v-if="!isCreatingSecret"
                     @click="isCreatingSecret = true"
                     class="text-size-small text-blue-600 hover:text-blue-800 font-medium"
@@ -150,6 +151,7 @@
                 <form @submit.prevent="handleCreateSecret" class="space-y-3">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
                         <input
                         v-model="newSecretName"
@@ -160,6 +162,7 @@
                         />
                     </div>
                     <div>
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">Description</label>
                         <input
                         v-model="newSecretDescription"
@@ -169,6 +172,7 @@
                         />
                     </div>
                     <div class="md:col-span-2">
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">Secret Value</label>
                         <input
                         v-model="newSecretValue"
@@ -220,16 +224,16 @@
                         <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ secret.lastUsedAt ? formatDate(secret.lastUsedAt) : "—" }}</td>
                         <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(secret.updatedAt) }}</td>
                         <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
-                        <button
+                        <button type="button"
                             @click="handleRevealSecret(secret.name)"
                             class="text-size-small text-blue-600 hover:text-blue-800"
                         >
                             Reveal
                         </button>
-                        <button @click="handleRotateSecret(secret.name)" class="text-size-small text-neutral-500 hover:text-neutral-700">
+                        <button type="button" @click="handleRotateSecret(secret.name)" class="text-size-small text-neutral-500 hover:text-neutral-700">
                             Rotate
                         </button>
-                        <button @click="handleDeleteSecret(secret.name)" class="text-size-small text-red-600 hover:text-red-800">
+                        <button type="button" @click="handleDeleteSecret(secret.name)" class="text-size-small text-red-600 hover:text-red-800">
                             Delete
                         </button>
                         </td>
@@ -241,7 +245,7 @@
                 <div v-if="selectedSecretName" class="mt-4 p-3 bg-neutral-50 border border-neutral-200 rounded-md">
                 <div class="flex items-center justify-between mb-2">
                     <p class="text-size-small font-medium text-neutral-700">Secret: <span class="font-mono">{{ selectedSecretName }}</span></p>
-                    <button @click="selectedSecretName = null; selectedSecretValue = null;" class="text-size-small text-neutral-500 hover:text-neutral-700">Close</button>
+                    <button type="button" @click="selectedSecretName = null; selectedSecretValue = null;" class="text-size-small text-neutral-500 hover:text-neutral-700">Close</button>
                 </div>
                 <div class="flex items-center gap-2 mb-3">
                     <code class="flex-1 px-2 py-1.5 text-size-small bg-background border border-neutral-200 rounded-sm font-mono break-all select-all">{{
@@ -277,7 +281,7 @@
                         {{ u.name }} ({{ u.email }})
                         </option>
                     </select>
-                    <button
+                    <button type="button"
                         @click="handleGrantSecretAccess"
                         :disabled="!selectedGrantUserId || !selectedSecretName || isGrantingSecretAccess"
                         class="px-3 py-1.5 text-size-small font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
@@ -294,7 +298,7 @@
                         class="inline-flex items-center gap-1 px-2 py-1 text-size-small bg-blue-50 text-blue-700 rounded-sm"
                     >
                         {{ formatSecretPermissionTarget(perm) }} ({{ perm.permission }})
-                        <button
+                        <button type="button"
                         v-if="perm.userId"
                         @click="handleRevokeSecretAccess(perm.userId)"
                         class="text-blue-500 hover:text-blue-700"
@@ -311,7 +315,7 @@
         <section class="mt-8 pt-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-size-large font-semibold text-neutral-900 mb-4 mt-2">Access Tokens</h2>
-                <button v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-size-small text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
+                <button type="button" v-if="!isCreatingToken" @click="handleStartCreateToken" class="text-size-small text-blue-600 hover:text-blue-800 font-medium">+ Create Token</button>
             </div>
             <div>
                 <div v-if="tokenError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
@@ -323,11 +327,13 @@
                 <form @submit.prevent="handleCreateToken" class="space-y-3">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">Name</label>
-                        <input v-model="newTokenName" type="text" required placeholder="e.g. CI Deploy Token" autofocus
+                        <input v-model="newTokenName" type="text" required placeholder="e.g. CI Deploy Token" 
                         class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">Permission</label>
                         <select v-model="newTokenPermission"
                         class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -338,6 +344,7 @@
                     </div>
                     <template v-if="newTokenPermission !== 'extensions'">
                         <div>
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">Resource Type</label>
                         <select v-model="newTokenResourceType"
                             class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -347,6 +354,7 @@
                         </select>
                         </div>
                         <div>
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">
                             Resource ID
                             <span v-if="newTokenResourceType === 'space'" class="text-neutral-400 font-normal">(space ID auto-filled)</span>
@@ -360,6 +368,7 @@
                         Grants space-wide permission to install and update extensions. No resource needed.
                     </div>
                     <div>
+                        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
                         <label class="block text-size-small font-medium text-neutral-700 mb-1">Expires in days <span class="text-neutral-400 font-normal">(optional)</span></label>
                         <input v-model.number="newTokenExpiresInDays" type="number" min="1" placeholder="Never"
                         class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -422,8 +431,8 @@
                         <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ token.lastUsedAt ? formatDate(token.lastUsedAt) : '—' }}</td>
                         <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ token.expiresAt ? formatDate(token.expiresAt) : '—' }}</td>
                         <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
-                        <button v-if="!token.revokedAt" @click="handleRevokeToken(token.id)" class="text-size-small text-red-600 hover:text-red-800">Revoke</button>
-                        <button @click="handleDeleteToken(token.id)" class="text-size-small text-neutral-500 hover:text-neutral-700">Delete</button>
+                        <button type="button" v-if="!token.revokedAt" @click="handleRevokeToken(token.id)" class="text-size-small text-red-600 hover:text-red-800">Revoke</button>
+                        <button type="button" @click="handleDeleteToken(token.id)" class="text-size-small text-neutral-500 hover:text-neutral-700">Delete</button>
                         </td>
                     </tr>
                     </tbody>
@@ -459,6 +468,8 @@
   </SettingsLayout>
 
   <!-- Delete Confirmation Modal -->
+  <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+  <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
   <div v-if="showDeleteConfirm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showDeleteConfirm = false">
     <div class="bg-background rounded-lg shadow-xl w-full mx-4 p-5">
       <h3 class="text-base font-semibold text-neutral-900 mb-3">Delete Space</h3>

@@ -14,7 +14,6 @@ import {
 } from "#utils/sidebarState.ts";
 import { Icon } from "./index.ts";
 import Navigation from "./Navigation.vue";
-import UserProfile from "./UserProfile.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -216,6 +215,8 @@ onUnmounted(() => {
 <template>
     <div>
         <!-- Sidebar -->
+        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+        <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
         <div ref="sidebarRef" :style="{
             width: `${displayWidth}px`,
             '--color-background': 'var(--color-neutral-10)'
@@ -237,19 +238,11 @@ onUnmounted(() => {
             </button>
             
             <div class="before:backdrop-surface-blur flex flex-col bg-background/90 rounded-lg relative overflow-hidden w-full h-full">
-                <!-- Navigation -->
-                <wiki-scroll name="navigation" class="z-1 flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]">
-                    <Navigation />
-                </wiki-scroll>
-
-                <!-- Bottom Actions -->
-                <div class="px-1 py-3 relative flex items-center">
-                    <!-- User Profile -->
-                    <UserProfile />
-                </div>
+                <Navigation />
             </div>
             
             <!-- Desktop Resize Handle -->
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
             <div :class="[
                 'hidden md:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
                 isResizing && 'bg-primary-200/50 active:bg-primary-200' || ''

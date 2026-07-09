@@ -244,7 +244,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
       <!-- Deselect + batch actions (inside toolbar) -->
       <template v-if="selectedIds.size > 0">
         <span class="text-size-small text-neutral-500">{{ selectedIds.size }} selected</span>
-        <button
+        <button type="button"
           @click="deselectAll"
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
           title="Deselect all"
@@ -259,7 +259,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
     <div v-if="showToolbar === false" class="flex items-center justify-end gap-2 mb-4 min-h-[32px]">
       <template v-if="selectedIds.size > 0">
         <span class="text-size-small text-neutral-500">{{ selectedIds.size }} selected</span>
-        <button
+        <button type="button"
           @click="deselectAll"
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
           title="Deselect all"
@@ -279,7 +279,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
     <div v-else class="space-y-4">
       <div v-for="group in groups" :key="group.label">
         <!-- Group header -->
-        <button
+        <button type="button"
           class="flex items-center gap-2 w-full text-left mb-2"
           @click="toggleCollapse(group.label)"
         >
@@ -311,6 +311,8 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
             ]"
           >
             <!-- Checkbox -->
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+            <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
             <div class="flex items-center pl-3 shrink-0 self-stretch" @click.stop>
               <input
                 type="checkbox"
@@ -322,6 +324,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
             </div>
 
             <!-- Link: doc icon + title + meta + badge + date -->
+            <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
             <a
               :href="doc.fileUrl ?? spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
               :target="doc.fileUrl ? '_blank' : undefined"
@@ -351,6 +354,8 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
             </a>
 
             <!-- Row actions slot -->
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+            <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
             <div
               class="flex items-center gap-1 pr-3 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity"
               @click.stop

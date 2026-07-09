@@ -57,13 +57,13 @@
               <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(ext.updatedAt) }}</td>
               <td class="px-4 py-2.5 whitespace-nowrap text-right">
                 <span class="flex items-center justify-end gap-3">
-                  <button
+                  <button type="button"
                     @click="downloadPackage(ext.id)"
                     class="text-size-small text-neutral hover:text-neutral-900"
                   >
                     Download
                   </button>
-                  <button
+                  <button type="button"
                     @click="handleDelete(ext.id)"
                     :disabled="isDeleting"
                     class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
@@ -85,13 +85,13 @@
               <td class="px-4 py-2.5 text-neutral-400">—</td>
               <td class="px-4 py-2.5 whitespace-nowrap text-right">
                 <span class="flex items-center justify-end gap-3">
-                  <button
+                  <button type="button"
                     @click="downloadPackage(item.id)"
                     class="text-size-small text-neutral hover:text-neutral-900"
                   >
                     Download
                   </button>
-                  <button
+                  <button type="button"
                     @click="handleDelete(item.id)"
                     :disabled="isDeleting"
                     class="text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
@@ -107,6 +107,7 @@
 
       <!-- Upload Section -->
       <div v-if="uploadAllowed" class="flex items-center gap-4">
+        <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
         <label
           class="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-neutral-100 rounded-md cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
         >

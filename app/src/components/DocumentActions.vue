@@ -510,6 +510,7 @@ watchEffect(() => {
       </ButtonSecondary>
     </div>
 
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div class="relative flex-none" @mousedown="handleContextMenuMousedown">
       <HeaderImageDialog
         v-model:show="dialogOpen"

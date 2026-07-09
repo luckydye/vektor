@@ -157,7 +157,6 @@ watch(
           v-model="newCommentContent"
           placeholder="Reply..."
           :rows="2"
-          autofocus
           submit-key="ctrl+enter"
           :disabled="isSubmitting || !newCommentContent.trim()"
           :loading="isSubmitting"
@@ -169,10 +168,16 @@ watch(
 </template>
 
 <style scoped>
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(p) { margin: 0.2rem 0; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(ul) { list-style: disc; padding-left: 1.1rem; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(ol) { list-style: decimal; padding-left: 1.1rem; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(strong) { font-weight: 600; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(em) { font-style: italic; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
 </style>

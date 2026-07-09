@@ -5,13 +5,14 @@
     :data-document-url="getDocumentUrl(doc.slug)"
     class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50 pl-[0.535rem]">
     <div class="flex items-center gap-1">
-      <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
+      <button type="button" v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
         :aria-label="isExpanded ? 'Collapse' : 'Expand'">
         <div class="svg-icon w-3 h-3 transition-transform text-neutral" :class="{ 'rotate-90': isExpanded }" v-html="chevronRightThinIcon" />
       </button>
 
       <div v-else class="flex-none w-4"></div>
 
+      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
       <a :href="getDocumentUrl(doc.slug)" :class="[
         'flex-1 px-2 py-1.5 text-size-medium rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive

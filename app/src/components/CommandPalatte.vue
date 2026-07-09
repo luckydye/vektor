@@ -197,6 +197,7 @@ Actions.register("ui:toggle:palatte", {
 <template>
   <div>
     <Transition name="fade">
+      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
       <a-blur
         v-if="isOpen"
         enabled
@@ -204,6 +205,8 @@ Actions.register("ui:toggle:palatte", {
         @click="closePalette"
         @exit="closePalette"
       >
+        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+        <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
         <div
           class="bg-background border border-neutral-100 rounded-xl shadow-2xl w-full max-w-[640px] mx-4 overflow-hidden"
           @click.stop
@@ -254,6 +257,7 @@ Actions.register("ui:toggle:palatte", {
                 @document-drag-start="closePalette"
               >
                 <button
+                  type="button"
                   :data-result-index="index"
                   class="w-full text-left px-3xs rounded-md min-h-[36px] flex items-center gap-2.5 text-neutral-800"
                   :class="[

@@ -179,7 +179,7 @@ async function onCsvFileChange(event: Event) {
           class="hidden"
           @change="onCsvFileChange"
         />
-        <button
+        <button type="button"
           class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-size-small text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 disabled:opacity-50 disabled:pointer-events-none transition-colors"
           title="Import CSV"
           :disabled="isImportingCsv"
@@ -221,7 +221,7 @@ async function onCsvFileChange(event: Event) {
             >
               <div class="flex items-center justify-between gap-1">
                 <span class="truncate">{{ col.label }}</span>
-                <button
+                <button type="button"
                   class="opacity-0 group-hover:opacity-100 shrink-0 hover:text-red-500 transition-all"
                   title="Delete column"
                   @click="openDeleteColumn(col.name, $event)"
@@ -234,7 +234,7 @@ async function onCsvFileChange(event: Event) {
             <!-- Add column button -->
             <th class="border-b border-neutral-100 px-2" :style="{ width: '48px' }">
               <a-popover-trigger ref="addColumnTriggerRef">
-                <button
+                <button type="button"
                   slot="trigger"
                   class="flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
                   title="Add column"
@@ -263,7 +263,7 @@ async function onCsvFileChange(event: Event) {
                         <option value="date">Date</option>
                         <option value="select">Select</option>
                       </select>
-                      <button
+                      <button type="button"
                         class="px-3 py-1.5 rounded bg-primary-600 text-white text-size-small hover:bg-primary-700 transition-colors"
                         @click="commitAddColumn"
                       >Add</button>
@@ -299,18 +299,19 @@ async function onCsvFileChange(event: Event) {
                 />
               </div>
               <div v-else class="flex items-center gap-2 min-w-0">
+                <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
                 <a
                   :href="spacePath(currentSpace?.slug, `/doc/${row.slug}`)"
                   class="flex-1 truncate text-neutral-800 font-medium hover:text-primary-600 hover:underline transition-colors"
                 >
                   {{ rowTitle(row.properties) }}
                 </a>
-                <button
+                <button type="button"
                   class="opacity-0 group-hover:opacity-100 shrink-0 text-neutral-400 hover:text-neutral-700 transition-all"
                   title="Edit name"
                   @click="startEdit(row.id, 'title', rowTitle(row.properties))"
                 >
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <svg aria-hidden="true" class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" />
                   </svg>
                 </button>
@@ -318,6 +319,7 @@ async function onCsvFileChange(event: Event) {
             </td>
 
             <!-- Property cells -->
+            <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
             <td
               v-for="col in derivedColumns"
               :key="col.name"
@@ -325,6 +327,8 @@ async function onCsvFileChange(event: Event) {
               :style="{ width: `${DEFAULT_COL_WIDTH}px` }"
               @click="startEdit(row.id, col.name, cellValue(row.properties, col.name))"
             >
+              <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+              <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
               <div
                 v-if="editingCell?.rowId === row.id && editingCell?.col === col.name"
                 class="flex items-center"
@@ -350,7 +354,7 @@ async function onCsvFileChange(event: Event) {
 
             <!-- Row actions -->
             <td class="px-2 py-2 align-top" :style="{ width: '48px' }">
-              <button
+              <button type="button"
                 class="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-all"
                 title="Delete row"
                 @click="openDeleteRow(row.id, $event)"
@@ -375,7 +379,7 @@ async function onCsvFileChange(event: Event) {
 
     <!-- Add row footer button -->
     <div class="border-t border-neutral-100 px-3 py-2 shrink-0">
-      <button
+      <button type="button"
         class="inline-flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-700 transition-colors"
         @click="() => addRow()"
       >
@@ -387,6 +391,7 @@ async function onCsvFileChange(event: Event) {
 
   <!-- Delete column popover -->
   <Teleport to="body">
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div
       v-if="deletingColumn"
       class="fixed inset-0 z-50"
@@ -398,8 +403,8 @@ async function onCsvFileChange(event: Event) {
       >
         <div class="text-size-small text-neutral-700">Delete column "{{ derivedColumns.find(c => c.name === deletingColumn)?.label }}"?</div>
         <div class="flex gap-2">
-          <button class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors" @click="deletingColumn = null">Cancel</button>
-          <button class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteColumn(deletingColumn!)">Delete</button>
+          <button type="button" class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors" @click="deletingColumn = null">Cancel</button>
+          <button type="button" class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteColumn(deletingColumn!)">Delete</button>
         </div>
       </div>
     </div>
@@ -407,6 +412,7 @@ async function onCsvFileChange(event: Event) {
 
   <!-- Delete row popover -->
   <Teleport to="body">
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div
       v-if="deletingRow"
       class="fixed inset-0 z-50"
@@ -418,8 +424,8 @@ async function onCsvFileChange(event: Event) {
       >
         <div class="text-size-small text-neutral-700">Delete this row?</div>
         <div class="flex gap-2">
-          <button class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors text-neutral-700" @click="deletingRow = null">Cancel</button>
-          <button class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteRow(deletingRow!)">Delete</button>
+          <button type="button" class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors text-neutral-700" @click="deletingRow = null">Cancel</button>
+          <button type="button" class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteRow(deletingRow!)">Delete</button>
         </div>
       </div>
     </div>

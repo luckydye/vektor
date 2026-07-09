@@ -190,6 +190,7 @@ function isInternal(url: string): boolean {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
+      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
       <div
         v-if="activePreview"
         class="fixed z-9999 bg-background dark:bg-neutral-800 max-w-[300px] rounded-lg shadow-xl border border-neutral-100 dark:border-neutral-700 overflow-hidden pointer-events-none"
@@ -225,6 +226,7 @@ function isInternal(url: string): boolean {
                 <img
                   v-if="activePreview.data.favicon"
                   :src="activePreview.data.favicon"
+                  alt=""
                   class="w-4 h-4"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
                 />

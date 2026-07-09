@@ -238,13 +238,12 @@ const batchArchive = async (ids: string[]) => {
         <input
           v-model="searchQuery"
           type="text"
-          autofocus
           placeholder="Find documents… (e.g. 'typescript', 'database design', 'react ui')"
           class="w-full py-3 pl-12 pr-12 border border-neutral-100 rounded-lg text-base bg-background focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 disabled:bg-neutral-100 disabled:cursor-not-allowed"
           @keydown="handleKeydown"
           :disabled="isSearching"
         />
-        <button
+        <button type="button"
           v-if="searchQuery"
           @click="clear"
           class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral hover:text-neutral-800 hover:bg-neutral-100 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -255,7 +254,7 @@ const batchArchive = async (ids: string[]) => {
         </button>
       </div>
 
-      <button
+      <button type="button"
         @click="handleSearch"
         :disabled="isSearching || !canSearch"
         class="flex items-center gap-2 px-5 py-3 bg-primary-500 text-white font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
@@ -290,7 +289,7 @@ const batchArchive = async (ids: string[]) => {
         empty-text="No documents yet"
       >
         <template v-if="userCanEdit" #batch-actions="{ selectedIds, deselectAll }">
-          <button
+          <button type="button"
             @click="batchArchive([...selectedIds]); deselectAll()"
             :disabled="isBatchArchiving"
             class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -301,7 +300,7 @@ const batchArchive = async (ids: string[]) => {
       </DocumentGroupedList>
 
       <div v-if="hasMoreDocuments" class="flex justify-center mt-6 pt-6 border-t border-neutral-100">
-        <button
+        <button type="button"
           @click="() => fetchNextPage()"
           :disabled="isFetchingNextPage"
           class="flex items-center gap-2 px-5 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -319,7 +318,7 @@ const batchArchive = async (ids: string[]) => {
         :show-toolbar="false"
       >
         <template v-if="userCanEdit" #batch-actions="{ selectedIds, deselectAll }">
-          <button
+          <button type="button"
             @click="batchArchive([...selectedIds]); deselectAll()"
             :disabled="isBatchArchiving"
             class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

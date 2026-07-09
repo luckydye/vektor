@@ -85,6 +85,7 @@ onUnmounted(() => {
   <Transition name="picker-fade">
     <div
       v-if="visible"
+      role="dialog"
       class="relative z-10 flex justify-center px-xs pt-6 pb-8 pointer-events-none"
       aria-label="Select document type"
     >
@@ -157,6 +158,7 @@ onUnmounted(() => {
   height: 72px;
 }
 
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .starter-illustration :deep(svg) {
   display: block;
   width: 100%;
@@ -173,6 +175,7 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .picker-preview :deep(svg) {
   display: block;
   width: 100%;

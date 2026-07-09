@@ -61,6 +61,7 @@ function docTitle(document: DocumentWithProperties): string {
 <template>
   <div class="overflow-hidden mb-10">
     <div class="flex items-center justify-between">
+      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
       <a
         :href="doc ? spacePath(currentSpace?.slug, `/doc/${doc.slug}`) : undefined"
         class="flex items-center gap-2 group"
@@ -72,7 +73,7 @@ function docTitle(document: DocumentWithProperties): string {
         </span>
         <span v-else class="h-4 w-40 bg-amber-100 animate-pulse rounded-sm"></span>
       </a>
-      <button
+      <button type="button"
         v-if="userCanEdit"
         @click="unpin"
         class="text-size-small text-neutral-400 hover:text-neutral-700 transition-colors"
@@ -83,6 +84,7 @@ function docTitle(document: DocumentWithProperties): string {
 
     <div class="relative overflow-hidden">
       <template v-if="doc && doc.type && doc.type !== 'document'">
+        <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
         <a
           :href="spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
           class="mt-3 flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 hover:bg-neutral-100 transition-colors"

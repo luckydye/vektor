@@ -29,7 +29,7 @@ import LandingLayout from "#layouts/LandingLayout.astro";
           class="rounded-lg flex items-center justify-center p-1.5"
           style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12)"
         >
-            <img src="/favicon_light.png" width="28px" />
+            <img src="/favicon_light.png" alt="" width="28px" />
         </div>
         <span
           class="text-white font-semibold"
@@ -79,6 +79,7 @@ import LandingLayout from "#layouts/LandingLayout.astro";
                   style="background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08)"
                 >
                   <svg
+                    aria-hidden="true"
                     width="14"
                     height="14"
                     viewBox="0 0 24 24"
@@ -115,7 +116,7 @@ import LandingLayout from "#layouts/LandingLayout.astro";
         <!-- Mobile-only logo -->
         <div class="flex items-center gap-2.5 mb-10 lg:hidden">
           <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-primary-500">
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none">
               <path
                 d="M2 2.5L8 13.5L14 2.5"
                 stroke="white"

@@ -498,7 +498,7 @@ useSync(
                 v-html="ssrDeclarativeShadowDom" />
         </div>
 
-        <div v-if="isMounted && documentType === 'canvas'" class="h-screen">
+        <div v-if="isMounted && documentType === 'canvas'" class="h-[calc(100vh-4rem)] md:h-screen">
             <Canvas
                 :documentId="documentId"
                 :spaceId="props.spaceId"

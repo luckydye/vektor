@@ -322,6 +322,7 @@ onUnmounted(() => {
     :style="overlayStyle"
   >
     <!-- Header / drag handle -->
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div
       class="flex items-center gap-2 px-3 py-2.5 bg-neutral-10 border-b border-neutral-100 cursor-move select-none shrink-0"
       @mousedown="onDragStart"
@@ -332,7 +333,7 @@ onUnmounted(() => {
       <!-- Right controls -->
       <div class="panel-close flex items-center gap-0.5">
         <!-- Dock/undock toggle -->
-        <button
+        <button type="button"
           v-if="mode === 'floating'"
           class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
           title="Dock panel"
@@ -340,7 +341,7 @@ onUnmounted(() => {
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="panelRightIcon" />
         </button>
-        <button
+        <button type="button"
           v-else
           class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
           title="Undock panel"
@@ -349,7 +350,7 @@ onUnmounted(() => {
           <div class="svg-icon w-3.5 h-3.5" v-html="windowRestoreIcon" />
         </button>
         <!-- Close -->
-        <button
+        <button type="button"
           class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
           @click="onClose"
         >
@@ -364,12 +365,14 @@ onUnmounted(() => {
     </div>
 
     <!-- Resize handle: inner edge for docked, corner for floating -->
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div
       v-if="mode === 'docked'"
       class="absolute top-0 h-full w-1.5 cursor-ew-resize hover:bg-primary-200/30 transition-colors"
       :class="side === 'right' ? 'left-0' : 'right-0'"
       @mousedown="onResizeEdgeStart"
     />
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div
       v-else
       class="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"

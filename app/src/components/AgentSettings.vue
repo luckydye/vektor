@@ -22,7 +22,7 @@
             <span class="text-size-small text-green-700">{{ meta.baseUrl }}</span>
           </template>
         </div>
-        <button
+        <button type="button"
           @click="handleDelete"
           :disabled="isDeleting"
           class="shrink-0 text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
@@ -35,6 +35,7 @@
       <!-- Configuration form -->
       <form @submit.prevent="handleSave" class="space-y-4">
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-700 mb-1">Provider</label>
           <select
             v-model="form.provider"
@@ -48,6 +49,7 @@
         </div>
 
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-700 mb-1">Model</label>
           <input
             v-model="form.model"
@@ -59,6 +61,7 @@
         </div>
 
         <div v-if="form.provider === 'ollama'">
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-700 mb-1">Base URL</label>
           <input
             v-model="form.baseUrl"
@@ -70,6 +73,7 @@
         </div>
 
         <div v-else>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-700 mb-1">
             API Key
             <span v-if="meta?.configured && meta.hasApiKey" class="ml-1 text-neutral-400 font-normal">(leave blank to keep existing)</span>

@@ -518,6 +518,7 @@ defineExpose({ isEditMode, toggleEditMode });
     <div v-if="!isLoading" class="px-4xs space-y-1">
       <!-- Category Items -->
       <div v-for="category in categoriesWithDocs" :key="category.id">
+        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
         <category-target
           :data-category-id="category.id"
           class="block [&[data-drag-over]]:bg-neutral-100"
@@ -537,7 +538,7 @@ defineExpose({ isEditMode, toggleEditMode });
               'cursor-move': isEditMode
             }"
           >
-            <button @click="!isEditMode && toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5">
+            <button type="button" @click="!isEditMode && toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5">
               <div class="flex-none relative w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold" :style="{
                 backgroundColor: category.color || '#E5E7EB',
                 color: getTextColor(category.color)
@@ -557,6 +558,9 @@ defineExpose({ isEditMode, toggleEditMode });
               class="flex items-center gap-0.5 shrink-0 mr-2 opacity-0 group-hover/category:opacity-100 transition-opacity"
               :class="{ 'opacity-100': contextMenu?.category?.id === category.id }"
             >
+              <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+              <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
+              <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
               <a
                 :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
                 class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
@@ -591,7 +595,7 @@ defineExpose({ isEditMode, toggleEditMode });
       </div>
 
       <!-- Add Category Button (shown in edit mode) -->
-      <button
+      <button type="button"
         v-if="isEditMode"
         @click="startCreating"
         class="w-full flex items-center gap-3 px-3 py-2 text-size-medium text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
@@ -603,12 +607,16 @@ defineExpose({ isEditMode, toggleEditMode });
 
     <!-- Category Context Menu (right-click on desktop, long-press on touch) -->
     <Teleport to="body">
+      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+      <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
       <div
         v-if="contextMenu"
         class="fixed inset-0 z-50"
         @click="closeContextMenu"
         @contextmenu.prevent="closeContextMenu"
       >
+        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+        <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
         <div
           class="absolute min-w-[224px] bg-background border border-neutral-100 rounded-lg p-5xs shadow-large"
           :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
@@ -677,6 +685,7 @@ defineExpose({ isEditMode, toggleEditMode });
     >
       <form id="category-form" @submit.prevent="handleSave" class="space-y-4">
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-900 mb-1">Name</label>
           <input
             v-model="formData.name"
@@ -688,6 +697,7 @@ defineExpose({ isEditMode, toggleEditMode });
         </div>
 
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-900 mb-1">Slug</label>
           <input
             v-model="formData.slug"
@@ -701,6 +711,7 @@ defineExpose({ isEditMode, toggleEditMode });
         </div>
 
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-900 mb-1">Description</label>
           <textarea
             v-model="formData.description"
@@ -711,6 +722,7 @@ defineExpose({ isEditMode, toggleEditMode });
         </div>
 
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-900 mb-2">Color</label>
           <div class="flex gap-2 items-center">
             <input
@@ -729,6 +741,7 @@ defineExpose({ isEditMode, toggleEditMode });
         </div>
 
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-900 mb-1">Icon</label>
           <input
             v-model="formData.icon"

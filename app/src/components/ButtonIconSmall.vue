@@ -19,6 +19,7 @@ const props = withDefaults(defineProps<Props>(), {});
 </template>
 
 <style scoped>
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style deep selector. */
 button :deep(svg) {
   width: 18px;
   height: 18px;

@@ -329,7 +329,7 @@ useSync(
             <template #header-actions="{ items }">
               <div v-if="primaryRevisionEntry(items)" class="shrink-0">
                 <a-popover-trigger :showdelay="0" :hidedelay="100">
-                  <button
+                  <button type="button"
                     slot="trigger"
                     class="inline-flex items-center justify-center w-7 h-7 rounded-sm hover:bg-neutral-200 transition-colors"
                     title="Revision actions"
@@ -340,28 +340,28 @@ useSync(
                   <a-popover @exit="console.error" class="group" placements="bottom-end">
                     <div class="w-max py-2 opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
                       <div class="bg-background border border-neutral-100 rounded-lg origin-top-right scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 min-w-[160px]">
-                        <button
+                        <button type="button"
                           @click="e => { exitPopover(e); viewRevision(primaryRevisionEntry(items)!.revisionId); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="eyeIcon" />
                           View Revision
                         </button>
-                        <button
+                        <button type="button"
                           @click="e => { exitPopover(e); showDiff(primaryRevisionEntry(items)!); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="clipboardIcon" />
                           Show Diff
                         </button>
-                        <button
+                        <button type="button"
                           @click="e => { exitPopover(e); copyRevisionLink(primaryRevisionEntry(items)!.id); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="copyIcon" />
                           Copy Link
                         </button>
-                        <button
+                        <button type="button"
                           v-if="!isPublishedEntry(primaryRevisionEntry(items)!) && !isSuggestionEntry(primaryRevisionEntry(items)!)"
                           @click="e => { exitPopover(e); publishRevisionAction(primaryRevisionEntry(items)!.revisionId); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

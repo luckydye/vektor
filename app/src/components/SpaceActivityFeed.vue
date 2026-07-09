@@ -336,6 +336,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
           {{ getActivityBucketLabel(group.time) }}
         </div>
 
+        <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
         <a
           v-for="batch in getCompactActivityBatches(group.items)"
           :key="batch.id"

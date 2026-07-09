@@ -18,7 +18,7 @@ import {
 import { MenuLink, SpaceSelector } from "~/src/components/index.ts";
 import CreateSpaceDialog from "./CreateSpaceDialog.vue";
 import DocumentTree from "./DocumentTree.vue";
-import NewDocumentButton from "./NewDocumentButton.vue";
+import UserProfile from "./UserProfile.vue";
 
 // UI-specific Space interface for the selector component
 interface UiSpace {
@@ -165,11 +165,10 @@ Actions.mapShortcut("meta-shift-f", "find:open");
 </script>
 
 <template>
-    <div>
-        <CreateSpaceDialog v-model:show="showCreateDialog" @create="handleCreateSpace" />
-        
+    <div class="z-1 flex flex-col h-full">
         <!-- Space Selector -->
-        <div class="px-5xs py-5xs flex-none sticky top-0 z-10 rounded-t-md">
+        <div class="px-5xs py-5xs flex-none sticky top-0 z-10 rounded-t-md flex-none">
+            <CreateSpaceDialog v-model:show="showCreateDialog" @create="handleCreateSpace" />
             <SpaceSelector
                 :spaces="uiSpaces"
                 :model-value="currentSpace?.id"
@@ -180,71 +179,78 @@ Actions.mapShortcut("meta-shift-f", "find:open");
                 @create-doc="handleCreateDoc"
             />
         </div>
-    
-        <nav class="@container flex flex-col gap-3xs">
         
-            <div class="px-4xs flex-none flex flex-col gap-0.5">
-                <div class="flex items-center gap-px">
-                    <MenuLink
-                        class="flex-1"
-                        :icon="homeIcon"
-                        :text="t('Home')"
-                        :href="spacePath(currentSpace?.slug, '/')"
-                        :is-active="activeRoute === 'home'"
-                    />
-                    <button
-                        class="@max-sm:hidden inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
-                        :title="t('Command Palette')"
-                        @click="Actions.run('ui:toggle:palatte')"
-                    >
-                        <span v-html="boltIcon" class="icon inline flex-none" />
-                    </button>
+        <wiki-scroll name="navigation" class="flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]">
+            <nav class="@container flex flex-col gap-3xs">                
+                <div class="px-4xs flex-none flex flex-col gap-0.5">
+                    <div class="flex items-center gap-px">
+                        <MenuLink
+                            class="flex-1"
+                            :icon="homeIcon"
+                            :text="t('Home')"
+                            :href="spacePath(currentSpace?.slug, '/')"
+                            :is-active="activeRoute === 'home'"
+                        />
+                        <button type="button"
+                            class="@max-sm:hidden inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
+                            :title="t('Command Palette')"
+                            @click="Actions.run('ui:toggle:palatte')"
+                        >
+                            <span v-html="boltIcon" class="icon inline flex-none" />
+                        </button>
+                        </div>
+                        <MenuLink
+                            v-if="userCanAccessSettings"
+                            :icon="settingsIcon"
+                            :text="t('Settings')"
+                            :href="spacePath(currentSpace?.slug, '/settings')"
+                            :is-active="activeRoute === 'settings'"
+                        />
+                        <MenuLink
+                            :icon="searchIcon"
+                            :text="t('Find')"
+                            :href="spacePath(currentSpace?.slug, '/search')"
+                            :is-active="activeRoute === 'search'"
+                        >
+                            <a-shortcut class="ml-6 flex-none @max-xs:hidden!" data-shortcut="cmd-shift-f"></a-shortcut>
+                        </MenuLink>
                     </div>
-                    <MenuLink
-                        v-if="userCanAccessSettings"
-                        :icon="settingsIcon"
-                        :text="t('Settings')"
-                        :href="spacePath(currentSpace?.slug, '/settings')"
-                        :is-active="activeRoute === 'settings'"
-                    />
-                    <MenuLink
-                        :icon="searchIcon"
-                        :text="t('Find')"
-                        :href="spacePath(currentSpace?.slug, '/search')"
-                        :is-active="activeRoute === 'search'"
-                    >
-                        <a-shortcut class="ml-6 flex-none @max-xs:hidden!" data-shortcut="cmd-shift-f"></a-shortcut>
-                    </MenuLink>
-                </div>
-            
-                <!-- Extension Menu Links -->
-                <div v-if="extensionMenuLinks.length > 0 && !isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
-                    <MenuLink
-                        v-for="link in extensionMenuLinks"
-                        :key="`${link.extensionId}-${link.route}`"
-                        :icon="link.icon || puzzleIcon"
-                        :text="link.title"
-                        :href="spacePath(currentSpace?.slug, `/x/${link.route}`)"
-                        :is-active="activeRoute === `x/${link.route}`"
-                    />
-                </div>
-            
-                <!-- Document Tree -->
-                <div class="@max-xs:hidden px-5xs py-m">
-                <div class="flex items-center justify-between gap-3xs px-4xs mb-2 min-h-[24px]">
-                    <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">{{ t('Categories') }}</h3>
-                    <button
-                    v-if="documentTree?.isEditMode"
-                    @click="documentTree?.toggleEditMode()"
-                    class="px-1.5 py-0.5 text-size-small font-medium text-blue-600 hover:text-blue-700 rounded-sm transition-colors"
-                    :title="t('Done rearranging')"
-                    >
-                    {{ t('Done') }}
-                    </button>
-                </div>
                 
-                <DocumentTree ref="documentTree" />
-            </div>
-        </nav>
+                    <!-- Extension Menu Links -->
+                    <div v-if="extensionMenuLinks.length > 0 && !isLoading" class="px-4xs flex-none flex flex-col gap-0.5">
+                        <MenuLink
+                            v-for="link in extensionMenuLinks"
+                            :key="`${link.extensionId}-${link.route}`"
+                            :icon="link.icon || puzzleIcon"
+                            :text="link.title"
+                            :href="spacePath(currentSpace?.slug, `/x/${link.route}`)"
+                            :is-active="activeRoute === `x/${link.route}`"
+                        />
+                    </div>
+                
+                    <!-- Document Tree -->
+                    <div class="@max-xs:hidden px-5xs py-m">
+                    <div class="flex items-center justify-between gap-3xs px-4xs mb-2 min-h-[24px]">
+                        <h3 class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50">{{ t('Categories') }}</h3>
+                        <button type="button"
+                        v-if="documentTree?.isEditMode"
+                        @click="documentTree?.toggleEditMode()"
+                        class="px-1.5 py-0.5 text-size-small font-medium text-blue-600 hover:text-blue-700 rounded-sm transition-colors"
+                        :title="t('Done rearranging')"
+                        >
+                        {{ t('Done') }}
+                        </button>
+                    </div>
+                    
+                    <DocumentTree ref="documentTree" />
+                </div>
+            </nav>
+        </wiki-scroll>
+        
+        <!-- Bottom Actions -->
+        <div class="flex-none px-1 py-3 relative flex items-center">
+            <!-- User Profile -->
+            <UserProfile />
+        </div>
     </div>
 </template>

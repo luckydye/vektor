@@ -8,7 +8,7 @@ const props = defineProps<{
 
 <template>
   <a-list-item class="group">
-    <button
+    <button type="button"
       @click="(e) => {
         e.preventDefault();
         e.stopPropagation();

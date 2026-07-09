@@ -7,7 +7,7 @@ const props = defineProps<{
 </script>
 
 <template>
-  <button
+  <button type="button"
     class="button-secondary"
     :aria-label="props.ariaLabel ?? props.text"
     :title="props.ariaLabel ?? props.text"

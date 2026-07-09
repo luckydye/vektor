@@ -73,18 +73,21 @@ onBeforeUnmount(() => applyScrollLock(false));
 <template>
   <Teleport to="body">
     <Transition name="dialog">
+      <!-- biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. -->
       <a-blur
         v-if="show"
         enabled
         class="dialog-root fixed inset-0 z-100 flex items-end justify-center md:items-center"
-        role="dialog"
-        aria-modal="true"
         @click="onDismiss"
         @exit="onDismiss"
       >
         <div class="dialog-backdrop absolute inset-0 bg-black/40 md:bg-black/50" />
 
+        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+        <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
         <div
+          role="dialog"
+          aria-modal="true"
           class="dialog-panel relative flex w-full flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:rounded-2xl"
           :class="[maxWidth, expand ? 'h-[90dvh] md:h-[85vh]' : 'max-h-[90dvh] md:max-h-[85vh]']"
           @click.stop

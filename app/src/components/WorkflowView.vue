@@ -409,6 +409,7 @@ const statusBadgeClass: Record<string, string> = {
 
 <template>
   <Teleport v-if="sourceExtensionHref" to="#workflow-breadcrumb-slot">
+    <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
     <a
       :href="sourceExtensionHref"
       class="inline-flex items-center gap-1.5 text-size-medium text-neutral-400 hover:text-neutral-600 transition-colors"
@@ -471,6 +472,7 @@ const statusBadgeClass: Record<string, string> = {
 
             <div class="flex flex-wrap items-center gap-2">
               <!-- Document link -->
+              <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
               <a
                 v-if="outputDocumentId && outputDocumentHref"
                 :href="outputDocumentHref"
@@ -482,6 +484,7 @@ const statusBadgeClass: Record<string, string> = {
 
               <!-- File download -->
               <template v-if="selectedRunFileUrl && selectedRunFileName">
+                <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
                 <a
                   :href="selectedRunFileUrl"
                   target="_blank"
@@ -491,7 +494,7 @@ const statusBadgeClass: Record<string, string> = {
                   <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
                   {{ selectedRunFileName }}
                 </a>
-                <button
+                <button type="button"
                   class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
                   title="Download"
                   @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
@@ -539,7 +542,7 @@ const statusBadgeClass: Record<string, string> = {
 
           <!-- Logs -->
           <div v-if="allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
-            <button
+            <button type="button"
               class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
               @click="logsExpanded = !logsExpanded"
             >
@@ -585,7 +588,7 @@ const statusBadgeClass: Record<string, string> = {
                 :class="selectedRunId === run.runId ? 'bg-primary-50' : 'hover:bg-neutral-50'"
               >
                 <div class="grid grid-cols-[1fr_120px_140px] items-center text-size-medium">
-                  <button
+                  <button type="button"
                     class="flex items-center gap-2 min-w-0 py-2.5 px-4 text-left"
                     @click="selectRun(run.runId)"
                   >
@@ -605,7 +608,7 @@ const statusBadgeClass: Record<string, string> = {
                   </div>
 
                   <div class="flex items-center justify-end py-2.5 pr-4">
-                    <button
+                    <button type="button"
                       v-if="run.status === 'completed'"
                       class="inline-flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
                       @click="toggleHistoryRun(run.runId)"
@@ -633,6 +636,7 @@ const statusBadgeClass: Record<string, string> = {
                       :export-file-name="historyRunTitle(run) ?? 'data'"
                     />
                     <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
+                      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
                       <a
                         :href="historyOutputDocumentHref(run.runId)!"
                         class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"

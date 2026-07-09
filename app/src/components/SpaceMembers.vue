@@ -365,7 +365,7 @@ async function copyMemberId(memberId) {
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h2 class="text-size-large font-semibold text-neutral-900">Members</h2>
-      <button
+      <button type="button"
         @click="showAddMember = true"
         class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
@@ -410,7 +410,7 @@ async function copyMemberId(memberId) {
                   <div class="font-medium text-neutral-900">{{ getMemberName(perm) }}</div>
                   <div v-if="getMemberEmail(perm)" class="text-size-small text-neutral-500">{{ getMemberEmail(perm) }}</div>
                 </div>
-                <button
+                <button type="button"
                   v-if="perm.permission.userId"
                   @click="copyMemberId(perm.permission.userId)"
                   :title="copiedUserId === perm.permission.userId ? 'Copied!' : 'Copy ID'"
@@ -441,7 +441,7 @@ async function copyMemberId(memberId) {
             </td>
             <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(perm.permission.createdAt) }}</td>
             <td class="px-4 py-2.5 whitespace-nowrap text-right">
-              <button
+              <button type="button"
                 v-if="canRemoveMember(perm)"
                 @click="handleRemoveMember(perm)"
                 :disabled="removingMember === (perm.permission.userId || perm.permission.groupId)"
@@ -464,6 +464,8 @@ async function copyMemberId(memberId) {
   </div>
 
   <!-- Add Member Modal -->
+  <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+  <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
   <div
     v-if="showAddMember"
     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
@@ -487,6 +489,7 @@ async function copyMemberId(memberId) {
         </div>
 
         <div>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label for="member-id" class="block text-size-medium font-medium text-neutral-900 mb-1">
             {{ newMemberType === "user" ? "Email" : "Group ID" }}
           </label>

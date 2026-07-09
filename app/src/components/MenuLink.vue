@@ -11,6 +11,7 @@ const props = defineProps<{
 </script>
 
 <template>
+  <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
   <a
     :href="props.href"
     :class="twMerge(

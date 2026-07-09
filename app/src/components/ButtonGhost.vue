@@ -14,7 +14,7 @@ const handleClick = (event: MouseEvent) => {
 </script>
 
 <template>
-  <button
+  <button type="button"
     class="button-ghost"
     @click="handleClick"
   >

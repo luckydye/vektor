@@ -82,13 +82,13 @@ const handleCreateDoc = (event: Event) => {
     </div>
     
     <a-popover-trigger v-else class="block w-full group relative z-10 overflow-hidden">
-      <button slot="trigger" class="w-full">
+      <button type="button" slot="trigger" class="w-full">
         <div class="flex items-center gap-3xs px-4xs py-4xs rounded-md transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50">
           <div class="flex w-full gap-3xs cursor-pointer">
             <!-- Space Icon -->
             <div class="flex-none w-[2.375rem] aspect-square rounded-md flex items-center justify-center bg-primary-500 overflow-hidden" :style="{ background: currentSpace?.color }">
               <div v-if="currentSpace?.logoSvg && currentSpace.logoSvg.startsWith('<')" v-html="currentSpace.logoSvg" class="text-white" />
-              <img v-else-if="currentSpace?.logoSvg" :src="currentSpace.logoSvg" class="w-full h-full object-cover" />
+              <img v-else-if="currentSpace?.logoSvg" :src="currentSpace.logoSvg" alt="" class="w-full h-full object-cover" />
               <div v-else v-html="homeIcon" class="text-white" />
             </div>
   
@@ -124,7 +124,7 @@ const handleCreateDoc = (event: Event) => {
               >
                 <div class="w-6 h-6 rounded-sm overflow-hidden flex items-center justify-center" :style="{ background: space.color || '#6366f1' }">
                   <div v-if="space.logoSvg && space.logoSvg.startsWith('<')" v-html="space.logoSvg" class="block text-white" />
-                  <img v-else-if="space.logoSvg" :src="space.logoSvg" class="block object-contain" />
+                  <img v-else-if="space.logoSvg" :src="space.logoSvg" alt="" class="block object-contain" />
                   <div v-else v-html="homeIcon" class="text-white [&>svg]:w-4 [&>svg]:h-4 [&>svg]:object-contain" />
                 </div>
                 <div class="flex-1 min-w-0">

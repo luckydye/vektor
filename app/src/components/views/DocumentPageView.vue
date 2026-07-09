@@ -404,6 +404,7 @@ watchEffect(() => {
     <div v-else-if="!isDraft" class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500">
         <p class="text-2xl font-semibold text-neutral-800">404</p>
         <p>Document not found.</p>
+        <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
         <a :href="`/${currentSpace?.slug ?? ''}/`" class="text-sm underline hover:text-neutral-800">Back to space</a>
     </div>
 

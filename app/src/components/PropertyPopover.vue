@@ -145,7 +145,7 @@ onMounted(() => {
         <div class="text-size-small font-medium text-neutral-600">
           New Property
         </div>
-        <button @click="handleBack" class="text-size-small text-neutral-500 hover:text-neutral-700">
+        <button type="button" @click="handleBack" class="text-size-small text-neutral-500 hover:text-neutral-700">
           Back
         </button>
       </div>
@@ -173,6 +173,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 button :deep(svg) {
   width: 18px;
   height: 18px;

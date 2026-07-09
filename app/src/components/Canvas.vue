@@ -3425,6 +3425,7 @@ onUnmounted(() => {
       </button>
     </div>
 
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div
       ref="viewportRef"
       class="canvas-viewport"
@@ -3529,6 +3530,7 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
           <file-attachment
             v-else-if="shape.type === 'file' && shape.src"
             class="canvas-shape-file"
@@ -3548,6 +3550,7 @@ onUnmounted(() => {
             @drag-start="startShapeDrag(shape, $event)"
             @exit="stopEmbeddedDocumentEdit"
           />
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
           <document-attachment
             v-else-if="shape.type === 'document'"
             class="canvas-shape-document"
@@ -3562,6 +3565,9 @@ onUnmounted(() => {
             @click="onDocumentShapeClick(shape, $event)"
             @open-document="onDocumentShapeOpen(shape, $event)"
           ></document-attachment>
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
+          <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
           <a
             v-else-if="shape.type === 'link' && shape.src"
             class="canvas-shape-link"

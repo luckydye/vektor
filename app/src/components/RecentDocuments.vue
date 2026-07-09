@@ -54,6 +54,7 @@ const docs = computed(() => docsData.value ?? []);
       <DocumentTeaser v-for="doc in docs" :key="doc.id" :doc="doc" />
 
       <!-- Trailing "view all" card -->
+      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
       <a
         :href="spacePath(currentSpace?.slug, '/search')"
         class="group flex-none w-60 block pr-4"

@@ -26,7 +26,7 @@ const handleClick = (event: MouseEvent) => {
 </script>
 
 <template>
-    <button
+    <button type="button"
       class="button-primary"
       :class="{
         'px-3xs': !showContextMenu,

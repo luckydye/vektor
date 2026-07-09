@@ -36,6 +36,7 @@ function docTags(doc: DocumentWithProperties): string[] {
 </script>
 
 <template>
+  <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
   <a
     :href="doc.fileUrl ?? spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
     :target="doc.fileUrl ? '_blank' : undefined"

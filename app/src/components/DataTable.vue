@@ -257,7 +257,7 @@ onUnmounted(() => {
       />
       <div class="flex items-center gap-2 text-size-small text-neutral-400 shrink-0">
         <span>{{ filtered.length }} / {{ data.length }} rows</span>
-        <button
+        <button type="button"
           class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm border border-neutral-200 bg-background hover:bg-neutral-50 hover:border-neutral-300 text-neutral-600 transition-colors"
           title="Download as Excel"
           @click="downloadExcel"
@@ -286,6 +286,7 @@ onUnmounted(() => {
                 </span>
               </span>
               <!-- Resize handle -->
+              <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
               <div
                 class="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-neutral-300 active:bg-neutral-400"
                 @mousedown.stop="onResizeMouseDown(col, $event)"
@@ -311,6 +312,7 @@ onUnmounted(() => {
               :style="{ width: colWidth(col), maxWidth: colWidth(col) }"
             >
               <div class="max-h-24 overflow-y-auto whitespace-pre-wrap break-words" :title="cellText(row[col])">
+                <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
                 <a
                   v-if="documentHref(col, row[col])"
                   :href="documentHref(col, row[col])!"
@@ -332,13 +334,13 @@ onUnmounted(() => {
       v-if="pageCount > 1"
       class="flex items-center justify-end gap-1 px-4 pt-3 text-size-small text-neutral-400"
     >
-      <button
+      <button type="button"
         class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         :disabled="page === 0"
         @click="page--"
       >←</button>
       <span>{{ page + 1 }} / {{ pageCount }}</span>
-      <button
+      <button type="button"
         class="px-2 py-0.5 rounded-sm border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         :disabled="page >= pageCount - 1"
         @click="page++"

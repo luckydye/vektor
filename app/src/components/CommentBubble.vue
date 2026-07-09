@@ -313,7 +313,7 @@ defineExpose({ commentsForOverlays, handleMoveThread });
       :class="fadeAddBubble ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'"
       :style="{ top: `${bubbleY}px` }"
     >
-      <button
+      <button type="button"
         @click="handleAddComment"
         class="w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md flex items-center justify-center text-neutral-500 hover:text-primary-600 hover:border-primary-300 hover:shadow-lg transition-all"
         title="Add comment"

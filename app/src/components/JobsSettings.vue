@@ -3,7 +3,7 @@
     <!-- Scheduled Jobs -->
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-size-medium font-semibold text-neutral-900">Scheduled Jobs</h2>
-      <button v-if="!isCreatingSchedule" @click="handleStartCreateSchedule"
+      <button type="button" v-if="!isCreatingSchedule" @click="handleStartCreateSchedule"
         class="text-size-small text-blue-600 hover:text-blue-800 font-medium">+ Add Schedule</button>
     </div>
 
@@ -16,6 +16,7 @@
       <form @submit.prevent="handleCreateSchedule" class="space-y-3">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
             <label class="block text-size-small font-medium text-neutral-700 mb-1">Job</label>
             <select v-model="newScheduleJobId" required
               class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -26,12 +27,14 @@
             </select>
           </div>
           <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
             <label class="block text-size-small font-medium text-neutral-700 mb-1">Cron Expression</label>
             <input v-model="newScheduleCron" type="text" required placeholder="e.g. 0 6 * * 1"
               class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono" />
             <p class="mt-0.5 text-size-small text-neutral-500">minute hour day month weekday</p>
           </div>
           <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
             <label class="block text-size-small font-medium text-neutral-700 mb-1">Timezone <span class="text-neutral-400 font-normal">(optional)</span></label>
             <input v-model="newScheduleTimezone" type="text" placeholder="e.g. Europe/Berlin"
               class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -78,10 +81,10 @@
             <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ schedule.enabled && schedule.nextRunAt ? formatDateTime(schedule.nextRunAt) : '—' }}</td>
             <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ schedule.lastRunAt ? formatDateTime(schedule.lastRunAt) : '—' }}</td>
             <td class="px-4 py-2.5 whitespace-nowrap text-right space-x-2">
-              <button @click="handleToggleSchedule(schedule)" class="text-size-small text-blue-600 hover:text-blue-800">
+              <button type="button" @click="handleToggleSchedule(schedule)" class="text-size-small text-blue-600 hover:text-blue-800">
                 {{ schedule.enabled ? 'Disable' : 'Enable' }}
               </button>
-              <button @click="handleDeleteSchedule(schedule.id)" class="text-size-small text-red-600 hover:text-red-800">Delete</button>
+              <button type="button" @click="handleDeleteSchedule(schedule.id)" class="text-size-small text-red-600 hover:text-red-800">Delete</button>
             </td>
           </tr>
         </tbody>
@@ -92,7 +95,7 @@
     <div class="mt-8 pt-6 border-t border-neutral-100">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-size-medium font-semibold text-neutral-900">Recent Job Runs</h2>
-        <button @click="refreshRuns" :disabled="isLoadingRuns"
+        <button type="button" @click="refreshRuns" :disabled="isLoadingRuns"
           class="text-size-small text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50">
           {{ isLoadingRuns ? 'Refreshing...' : 'Refresh' }}
         </button>

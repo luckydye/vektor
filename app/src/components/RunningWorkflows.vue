@@ -191,6 +191,7 @@ const groupedRuns = computed(() => {
           {{ group.date }}
         </div>
         <div class="space-y-2">
+      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
       <a
         v-for="run in group.items"
         :key="run.runId"
