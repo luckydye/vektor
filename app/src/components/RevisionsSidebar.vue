@@ -289,11 +289,18 @@ useSync(
 </script>
 
 <template>
-  <DockedPanel id="revisions" title="Document Activity" default-side="right" :default-width="420">
+  <DockedPanel
+    id="revisions"
+    title="Document Activity"
+    default-side="right"
+    :default-width="420"
+  >
     <div class="relative flex flex-col h-full">
-
       <!-- Error State -->
-      <div v-if="auditError" class="mx-4 mt-4 p-3 text-size-medium text-red-700 bg-red-50 border border-red-200 rounded-sm">
+      <div
+        v-if="auditError"
+        class="mx-4 mt-4 p-3 text-size-medium text-red-700 bg-red-50 border border-red-200 rounded-sm"
+      >
         {{ auditError }}
       </div>
 
@@ -303,17 +310,28 @@ useSync(
         class="flex-1 flex items-center justify-center"
       >
         <div class="text-center">
-          <div class="svg-icon w-8 h-8 mx-auto mb-2 text-neutral-400 animate-spin" v-html="refreshIcon" />
+          <div
+            class="svg-icon w-8 h-8 mx-auto mb-2 text-neutral-400 animate-spin"
+            v-html="refreshIcon"
+          />
           <p class="text-size-medium text-neutral-600">Loading history...</p>
         </div>
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="sortedEntries.length === 0" class="flex-1 flex items-center justify-center">
+      <div
+        v-else-if="sortedEntries.length === 0"
+        class="flex-1 flex items-center justify-center"
+      >
         <div class="text-center px-4">
-          <div class="svg-icon w-12 h-12 mx-auto mb-3 text-neutral-300" v-html="clockIcon" />
+          <div
+            class="svg-icon w-12 h-12 mx-auto mb-3 text-neutral-300"
+            v-html="clockIcon"
+          />
           <p class="font-medium text-neutral-600">No activity yet</p>
-          <p class="text-size-medium text-neutral-500 mt-1">Activity will appear here as you work</p>
+          <p class="text-size-medium text-neutral-500 mt-1">
+            Activity will appear here as you work
+          </p>
         </div>
       </div>
 
@@ -329,39 +347,51 @@ useSync(
             <template #header-actions="{ items }">
               <div v-if="primaryRevisionEntry(items)" class="shrink-0">
                 <a-popover-trigger :showdelay="0" :hidedelay="100">
-                  <button type="button"
+                  <button
+                    type="button"
                     slot="trigger"
                     class="inline-flex items-center justify-center w-7 h-7 rounded-sm hover:bg-neutral-200 transition-colors"
                     title="Revision actions"
                   >
-                    <div class="svg-icon w-[12px] h-[18px] text-neutral-500" v-html="dotsVerticalIcon" />
+                    <div
+                      class="svg-icon w-[12px] h-[18px] text-neutral-500"
+                      v-html="dotsVerticalIcon"
+                    />
                   </button>
 
                   <a-popover @exit="console.error" class="group" placements="bottom-end">
-                    <div class="w-max py-2 opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
-                      <div class="bg-background border border-neutral-100 rounded-lg origin-top-right scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 min-w-[160px]">
-                        <button type="button"
+                    <div
+                      class="w-max py-2 opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100"
+                    >
+                      <div
+                        class="bg-background border border-neutral-100 rounded-lg origin-top-right scale-95 transition-all shadow-large duration-150 group-[[enabled]]:scale-100 min-w-[160px]"
+                      >
+                        <button
+                          type="button"
                           @click="e => { exitPopover(e); viewRevision(primaryRevisionEntry(items)!.revisionId); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="eyeIcon" />
                           View Revision
                         </button>
-                        <button type="button"
+                        <button
+                          type="button"
                           @click="e => { exitPopover(e); showDiff(primaryRevisionEntry(items)!); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="clipboardIcon" />
                           Show Diff
                         </button>
-                        <button type="button"
+                        <button
+                          type="button"
                           @click="e => { exitPopover(e); copyRevisionLink(primaryRevisionEntry(items)!.id); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
                           <div class="svg-icon w-4 h-4" v-html="copyIcon" />
                           Copy Link
                         </button>
-                        <button type="button"
+                        <button
+                          type="button"
                           v-if="!isPublishedEntry(primaryRevisionEntry(items)!) && !isSuggestionEntry(primaryRevisionEntry(items)!)"
                           @click="e => { exitPopover(e); publishRevisionAction(primaryRevisionEntry(items)!.revisionId); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -382,11 +412,13 @@ useSync(
               <span
                 v-if="isPublishedEntry(entry)"
                 class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded-sm border border-blue-200 text-blue-600 bg-blue-50"
-              >Published</span>
+                >Published</span
+              >
               <span
                 v-else-if="isSuggestionEntry(entry)"
                 class="shrink-0 self-center px-1.5 py-px text-[10px] font-medium uppercase tracking-wide rounded-sm border border-amber-200 text-amber-600 bg-amber-50"
-              >{{ revisionStatusOf(entry) === "applied" ? "Applied" : "Suggestion" }}</span>
+                >{{ revisionStatusOf(entry) === "applied" ? "Applied" : "Suggestion" }}</span
+              >
             </template>
           </DocumentActivityFeed>
         </div>

@@ -5,7 +5,6 @@ import LandingLayout from "#layouts/LandingLayout.astro";
 
 <LandingLayout title="Vektor">
   <div class="min-h-screen flex">
-
     <!-- Left: branded marketing panel -->
     <aside
       class="hidden lg:flex w-[54%] xl:w-[52%] flex-col justify-between p-12 relative overflow-hidden"
@@ -29,11 +28,12 @@ import LandingLayout from "#layouts/LandingLayout.astro";
           class="rounded-lg flex items-center justify-center p-1.5"
           style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12)"
         >
-            <img src="/favicon_light.png" alt="" width="28px" />
+          <img src="/favicon_light.png" alt="" width="28px">
         </div>
         <span
           class="text-white font-semibold"
-          style="font-size: 15px; letter-spacing: -0.01em">Vektor</span
+          style="font-size: 15px; letter-spacing: -0.01em"
+          >Vektor</span
         >
       </div>
 
@@ -43,19 +43,18 @@ import LandingLayout from "#layouts/LandingLayout.astro";
           class="font-bold text-white mb-4"
           style="font-size: 2.3rem; line-height: 1.18; letter-spacing: -0.03em"
         >
-          Your team's knowledge,<br />organized.
+          Your team's knowledge,<br>organized.
         </h1>
         <p
           class="mb-10 leading-relaxed"
           style="font-size: 14px; color: #c2b6d4; line-height: 1.75"
         >
-            A self-hosted documentation platform with real-time collaboration,<br/>
-            rich editing, and zero external dependencies.
+          A self-hosted documentation platform with real-time collaboration,<br>
+          rich editing, and zero external dependencies.
         </p>
 
         <ul class="space-y-3">
-          {
-            [
+          {[
               {
                 label: "Real-time collaboration across your whole team",
                 d: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 3.13a4 4 0 0 1 0 7.75",
@@ -94,8 +93,7 @@ import LandingLayout from "#layouts/LandingLayout.astro";
                 </div>
                 <span style="font-size: 13px; color: #c2b6d4">{f.label}</span>
               </li>
-            ))
-          }
+            ))}
         </ul>
       </div>
 
@@ -108,15 +106,18 @@ import LandingLayout from "#layouts/LandingLayout.astro";
     </aside>
 
     <!-- Right: login panel -->
-    <div
-      class="flex-1 flex flex-col justify-center items-center px-8 py-16"
-    >
+    <div class="flex-1 flex flex-col justify-center items-center px-8 py-16">
       <div class="w-full max-w-[360px]">
-
         <!-- Mobile-only logo -->
         <div class="flex items-center gap-2.5 mb-10 lg:hidden">
           <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-primary-500">
-            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <svg
+              aria-hidden="true"
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              fill="none"
+            >
               <path
                 d="M2 2.5L8 13.5L14 2.5"
                 stroke="white"
@@ -126,7 +127,9 @@ import LandingLayout from "#layouts/LandingLayout.astro";
               ></path>
             </svg>
           </div>
-          <span class="font-semibold text-neutral-900" style="font-size: 15px">Vektor</span>
+          <span class="font-semibold text-neutral-900" style="font-size: 15px"
+            >Vektor</span
+          >
         </div>
 
         <Login client:load />

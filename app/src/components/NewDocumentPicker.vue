@@ -124,7 +124,9 @@ onUnmounted(() => {
                 <span class="block text-[21px] leading-7 font-semibold text-neutral-900">
                   {{ option.title }}
                 </span>
-                <span class="mt-1 block max-w-[240px] text-size-medium leading-6 text-neutral-500">
+                <span
+                  class="mt-1 block max-w-[240px] text-size-medium leading-6 text-neutral-500"
+                >
                   {{ option.description }}
                 </span>
               </span>

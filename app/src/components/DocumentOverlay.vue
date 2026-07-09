@@ -203,11 +203,7 @@ function formatCommentTime(date: Date | string): string {
     >
       <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
       <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
-      <div
-        v-if="isOpen"
-        class="fixed inset-0 z-100 bg-black/30"
-        @click="closeOverlay"
-      />
+      <div v-if="isOpen" class="fixed inset-0 z-100 bg-black/30" @click="closeOverlay" />
     </Transition>
 
     <!-- Slide-in Panel -->
@@ -225,132 +221,163 @@ function formatCommentTime(date: Date | string): string {
         enabled="isOpen"
         class="fixed overflow-hidden top-6 left-0 right-0 bottom-0 z-100 lg:top-0 lg:right-0 lg:bottom-0 lg:left-auto w-full lg:max-w-[50vw] min-w-[400px]"
       >
-            <drawer-track class="pointer-events-none h-full">
-                <div class="flex-none h-[calc(100vh-169px)] w-full pointer-events-none lg:hidden"></div>
+        <drawer-track class="pointer-events-none h-full">
+          <div
+            class="flex-none h-[calc(100vh-169px)] w-full pointer-events-none lg:hidden"
+          ></div>
 
-                <div class="flex-1 bg-background max-h-screen h-full pointer-events-auto flex flex-col">
-                    <!-- Header -->
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0">
-                      <div class="flex items-center gap-3 min-w-0">
-                        <div class="svg-icon w-5 h-5 text-neutral-400 shrink-0" v-html="documentIcon" />
-                        <h2 v-if="documentData" class="text-size-title font-semibold text-foreground truncate">
-                          {{ documentData.title }}
-                        </h2>
-                        <div v-else-if="loading" class="h-6 w-48 bg-neutral-200 rounded-sm animate-pulse" />
-                      </div>
+          <div
+            class="flex-1 bg-background max-h-screen h-full pointer-events-auto flex flex-col"
+          >
+            <!-- Header -->
+            <div
+              class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 shrink-0"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <div
+                  class="svg-icon w-5 h-5 text-neutral-400 shrink-0"
+                  v-html="documentIcon"
+                />
+                <h2
+                  v-if="documentData"
+                  class="text-size-title font-semibold text-foreground truncate"
+                >
+                  {{ documentData.title }}
+                </h2>
+                <div
+                  v-else-if="loading"
+                  class="h-6 w-48 bg-neutral-200 rounded-sm animate-pulse"
+                />
+              </div>
 
-                      <div class="flex items-center gap-2 shrink-0">
-                        <button type="button"
-                          v-if="documentData"
-                          @click="navigateToDocument"
-                          class="px-3 py-1.5 text-size-medium font-medium text-neutral-600 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
-                          title="Open full document"
-                        >
-                          Open
-                        </button>
-                        <button type="button"
-                          @click="closeOverlay"
-                          class="p-1.5 text-neutral-400 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
-                          title="Close (Esc)"
-                        >
-                          <div class="svg-icon w-5 h-5" v-html="closeXIcon" />
-                        </button>
-                      </div>
-                    </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  v-if="documentData"
+                  @click="navigateToDocument"
+                  class="px-3 py-1.5 text-size-medium font-medium text-neutral-600 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
+                  title="Open full document"
+                >
+                  Open
+                </button>
+                <button
+                  type="button"
+                  @click="closeOverlay"
+                  class="p-1.5 text-neutral-400 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
+                  title="Close (Esc)"
+                >
+                  <div class="svg-icon w-5 h-5" v-html="closeXIcon" />
+                </button>
+              </div>
+            </div>
 
-                    <!-- Content -->
-                    <div class="flex-1 overflow-y-auto" data-scroll-container>
-                      <!-- Loading state -->
-                      <div v-if="loading" class="p-6 space-y-4">
-                        <div class="h-4 w-3/4 bg-neutral-200 rounded-sm animate-pulse" />
-                        <div class="h-4 w-full bg-neutral-200 rounded-sm animate-pulse" />
-                        <div class="h-4 w-5/6 bg-neutral-200 rounded-sm animate-pulse" />
-                        <div class="h-4 w-2/3 bg-neutral-200 rounded-sm animate-pulse" />
-                      </div>
+            <!-- Content -->
+            <div class="flex-1 overflow-y-auto" data-scroll-container>
+              <!-- Loading state -->
+              <div v-if="loading" class="p-6 space-y-4">
+                <div class="h-4 w-3/4 bg-neutral-200 rounded-sm animate-pulse" />
+                <div class="h-4 w-full bg-neutral-200 rounded-sm animate-pulse" />
+                <div class="h-4 w-5/6 bg-neutral-200 rounded-sm animate-pulse" />
+                <div class="h-4 w-2/3 bg-neutral-200 rounded-sm animate-pulse" />
+              </div>
 
-                      <!-- Error state -->
-                      <div v-else-if="error" class="p-6 text-center">
-                        <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
-                          <div class="svg-icon w-6 h-6 text-red-600" v-html="warningTriangleIcon" />
-                        </div>
-                        <p class="text-neutral-600">{{ error }}</p>
-                        <button type="button"
-                          @click="closeOverlay"
-                          class="mt-4 px-4 py-2 text-size-medium font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded-sm hover:bg-neutral-50 transition-colors"
-                        >
-                          Close
-                        </button>
-                      </div>
+              <!-- Error state -->
+              <div v-else-if="error" class="p-6 text-center">
+                <div
+                  class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4"
+                >
+                  <div
+                    class="svg-icon w-6 h-6 text-red-600"
+                    v-html="warningTriangleIcon"
+                  />
+                </div>
+                <p class="text-neutral-600">{{ error }}</p>
+                <button
+                  type="button"
+                  @click="closeOverlay"
+                  class="mt-4 px-4 py-2 text-size-medium font-medium text-neutral-600 hover:text-foreground border border-neutral-100 rounded-sm hover:bg-neutral-50 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
 
-                      <!-- Document content (rendered into shadow DOM) -->
-                      <div v-else-if="documentData" ref="contentContainer" class="p-6" />
+              <!-- Document content (rendered into shadow DOM) -->
+              <div v-else-if="documentData" ref="contentContainer" class="p-6" />
 
-                      <!-- Comments Thread -->
-                      <div v-if="documentData" class="border-t border-neutral-100 bg-neutral-50">
-                        <!-- Comments Header -->
-                        <div class="px-6 py-4 flex items-center gap-2">
-                          <div class="svg-icon w-4 h-4 text-neutral-600" v-html="commentIcon" />
-                          <h3 class="text-size-medium font-semibold text-foreground">
-                            Comments ({{ comments.length }})
-                          </h3>
-                        </div>
-
-                        <!-- Comments List -->
-                        <div class="px-6 pb-6 space-y-6">
-                          <div v-if="comments.length === 0" class="py-8 text-center">
-                            <p class="text-size-medium text-neutral-500">No comments yet. Be the first to comment!</p>
-                          </div>
-
-                          <div v-for="comment in comments" :key="comment.id" class="flex gap-3">
-                            <!-- Avatar -->
-                            <div class="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-blue-600 flex items-center justify-center text-size-small font-semibold text-white shrink-0">
-                              {{ getInitials(comment.createdByUser?.name || comment.createdBy) }}
-                            </div>
-
-                            <!-- Comment Content -->
-                            <div class="flex-1 min-w-0">
-                              <div class="flex items-baseline gap-2">
-                                <span class="text-size-medium font-semibold text-foreground">
-                                  {{ comment.createdByUser?.name || comment.createdBy }}
-                                </span>
-                                <span class="text-size-small text-neutral-500">
-                                  {{ formatCommentTime(comment.createdAt) }}
-                                </span>
-                              </div>
-
-                              <div
-                                class="mt-1 text-size-medium text-neutral-700 leading-relaxed markdown-comment"
-                                v-html="renderMessageMarkdown(comment.content)"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <!-- Add Comment Input -->
-                        <div class="px-6 py-4 border-t border-neutral-100 bg-white">
-                          <div class="flex gap-3">
-                            <div class="w-8 h-8 rounded-full bg-linear-to-br from-purple-400 to-purple-600 flex items-center justify-center text-size-small font-semibold text-white shrink-0">
-                              You
-                            </div>
-                            <div class="flex-1">
-                              <textarea
-                                placeholder="Add a comment..."
-                                class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-sm bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                                rows="2"
-                              />
-                              <div class="mt-2 flex justify-end gap-2">
-                                <button type="button" class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors">
-                                  Comment
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+              <!-- Comments Thread -->
+              <div v-if="documentData" class="border-t border-neutral-100 bg-neutral-50">
+                <!-- Comments Header -->
+                <div class="px-6 py-4 flex items-center gap-2">
+                  <div class="svg-icon w-4 h-4 text-neutral-600" v-html="commentIcon" />
+                  <h3 class="text-size-medium font-semibold text-foreground">
+                    Comments ({{ comments.length }})
+                  </h3>
                 </div>
 
-            </drawer-track>
+                <!-- Comments List -->
+                <div class="px-6 pb-6 space-y-6">
+                  <div v-if="comments.length === 0" class="py-8 text-center">
+                    <p class="text-size-medium text-neutral-500">
+                      No comments yet. Be the first to comment!
+                    </p>
+                  </div>
+
+                  <div v-for="comment in comments" :key="comment.id" class="flex gap-3">
+                    <!-- Avatar -->
+                    <div
+                      class="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-blue-600 flex items-center justify-center text-size-small font-semibold text-white shrink-0"
+                    >
+                      {{ getInitials(comment.createdByUser?.name || comment.createdBy) }}
+                    </div>
+
+                    <!-- Comment Content -->
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-baseline gap-2">
+                        <span class="text-size-medium font-semibold text-foreground">
+                          {{ comment.createdByUser?.name || comment.createdBy }}
+                        </span>
+                        <span class="text-size-small text-neutral-500">
+                          {{ formatCommentTime(comment.createdAt) }}
+                        </span>
+                      </div>
+
+                      <div
+                        class="mt-1 text-size-medium text-neutral-700 leading-relaxed markdown-comment"
+                        v-html="renderMessageMarkdown(comment.content)"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Add Comment Input -->
+                <div class="px-6 py-4 border-t border-neutral-100 bg-white">
+                  <div class="flex gap-3">
+                    <div
+                      class="w-8 h-8 rounded-full bg-linear-to-br from-purple-400 to-purple-600 flex items-center justify-center text-size-small font-semibold text-white shrink-0"
+                    >
+                      You
+                    </div>
+                    <div class="flex-1">
+                      <textarea
+                        placeholder="Add a comment..."
+                        class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-sm bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        rows="2"
+                      />
+                      <div class="mt-2 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-sm transition-colors"
+                        >
+                          Comment
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </drawer-track>
       </a-blur>
     </Transition>
   </Teleport>
@@ -358,13 +385,26 @@ function formatCommentTime(date: Date | string): string {
 
 <style scoped>
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(ul) { list-style: disc; padding-left: 1.25rem; }
+.markdown-comment :deep(ul) {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(ol) { list-style: decimal; padding-left: 1.25rem; }
+.markdown-comment :deep(ol) {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(strong) { font-weight: 600; }
+.markdown-comment :deep(strong) {
+  font-weight: 600;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(em) { font-style: italic; }
+.markdown-comment :deep(em) {
+  font-style: italic;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-comment :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
+.markdown-comment :deep(a) {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+}
 </style>

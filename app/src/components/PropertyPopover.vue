@@ -126,7 +126,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <a-blur v-if="isOpen" enabled @exit="handleExit" class="absolute -top-4xs -left-5xs bg-neutral-10 border border-neutral-100 rounded-lg p-5xs flex flex-col gap-4xs z-50 shadow-large min-w-[200px]">
+  <a-blur
+    v-if="isOpen"
+    enabled
+    @exit="handleExit"
+    class="absolute -top-4xs -left-5xs bg-neutral-10 border border-neutral-100 rounded-lg p-5xs flex flex-col gap-4xs z-50 shadow-large min-w-[200px]"
+  >
     <!-- Select Mode: Choose existing property or create new -->
     <template v-if="mode === 'select'">
       <div class="text-size-small font-medium text-neutral-600 px-4xs mt-4xs">
@@ -142,17 +147,24 @@ onMounted(() => {
     <!-- Create Mode: Property name input and type selection -->
     <template v-else-if="mode === 'create'">
       <div class="flex items-center justify-between px-4xs mt-4xs">
-        <div class="text-size-small font-medium text-neutral-600">
-          New Property
-        </div>
-        <button type="button" @click="handleBack" class="text-size-small text-neutral-500 hover:text-neutral-700">
+        <div class="text-size-small font-medium text-neutral-600">New Property</div>
+        <button
+          type="button"
+          @click="handleBack"
+          class="text-size-small text-neutral-500 hover:text-neutral-700"
+        >
           Back
         </button>
       </div>
 
       <div class="flex flex-col gap-2.5 px-4xs w-full mt-4xs">
         <div class="flex-1 overflow-hidden">
-          <input v-model="propertyName" ref="inputElement" class="bg-transparent border-none outline-none text-interactive w-full px-5xs" placeholder="Property name" />
+          <input
+            v-model="propertyName"
+            ref="inputElement"
+            class="bg-transparent border-none outline-none text-interactive w-full px-5xs"
+            placeholder="Property name"
+          >
         </div>
       </div>
 

@@ -234,7 +234,10 @@ const batchArchive = async (ids: string[]) => {
     <!-- Search Box -->
     <div class="flex gap-3 mb-3">
       <div class="relative flex-1">
-        <div class="svg-icon absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none" v-html="searchMagnifierIcon" />
+        <div
+          class="svg-icon absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none"
+          v-html="searchMagnifierIcon"
+        />
         <input
           v-model="searchQuery"
           type="text"
@@ -242,8 +245,9 @@ const batchArchive = async (ids: string[]) => {
           class="w-full py-3 pl-12 pr-12 border border-neutral-100 rounded-lg text-base bg-background focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 disabled:bg-neutral-100 disabled:cursor-not-allowed"
           @keydown="handleKeydown"
           :disabled="isSearching"
-        />
-        <button type="button"
+        >
+        <button
+          type="button"
           v-if="searchQuery"
           @click="clear"
           class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-neutral hover:text-neutral-800 hover:bg-neutral-100 rounded-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -254,7 +258,8 @@ const batchArchive = async (ids: string[]) => {
         </button>
       </div>
 
-      <button type="button"
+      <button
+        type="button"
         @click="handleSearch"
         :disabled="isSearching || !canSearch"
         class="flex items-center gap-2 px-5 py-3 bg-primary-500 text-white font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
@@ -275,7 +280,10 @@ const batchArchive = async (ids: string[]) => {
     </div>
 
     <!-- Error Message -->
-    <div v-if="searchError" class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-size-medium">
+    <div
+      v-if="searchError"
+      class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-size-medium"
+    >
       <div class="svg-icon w-5 h-5 shrink-0" v-html="closeCircleFilledIcon" />
       {{ searchError.message ?? "Search failed" }}
     </div>
@@ -289,7 +297,8 @@ const batchArchive = async (ids: string[]) => {
         empty-text="No documents yet"
       >
         <template v-if="userCanEdit" #batch-actions="{ selectedIds, deselectAll }">
-          <button type="button"
+          <button
+            type="button"
             @click="batchArchive([...selectedIds]); deselectAll()"
             :disabled="isBatchArchiving"
             class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -299,13 +308,21 @@ const batchArchive = async (ids: string[]) => {
         </template>
       </DocumentGroupedList>
 
-      <div v-if="hasMoreDocuments" class="flex justify-center mt-6 pt-6 border-t border-neutral-100">
-        <button type="button"
+      <div
+        v-if="hasMoreDocuments"
+        class="flex justify-center mt-6 pt-6 border-t border-neutral-100"
+      >
+        <button
+          type="button"
           @click="() => fetchNextPage()"
           :disabled="isFetchingNextPage"
           class="flex items-center gap-2 px-5 py-2 bg-background border border-neutral-100 rounded-lg font-medium text-size-medium hover:border-primary-300 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <div v-if="isFetchingNextPage" class="svg-icon w-4 h-4 animate-spin" v-html="spinnerIcon" />
+          <div
+            v-if="isFetchingNextPage"
+            class="svg-icon w-4 h-4 animate-spin"
+            v-html="spinnerIcon"
+          />
           {{ isFetchingNextPage ? "Loading…" : "Load more" }}
         </button>
       </div>
@@ -313,12 +330,10 @@ const batchArchive = async (ids: string[]) => {
 
     <!-- Search results: grouped list -->
     <template v-else-if="sortedResults.length > 0">
-      <DocumentGroupedList
-        :items="sortedResults as any"
-        :show-toolbar="false"
-      >
+      <DocumentGroupedList :items="sortedResults as any" :show-toolbar="false">
         <template v-if="userCanEdit" #batch-actions="{ selectedIds, deselectAll }">
-          <button type="button"
+          <button
+            type="button"
             @click="batchArchive([...selectedIds]); deselectAll()"
             :disabled="isBatchArchiving"
             class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -338,9 +353,17 @@ const batchArchive = async (ids: string[]) => {
     </template>
 
     <!-- No search results -->
-    <div v-else-if="hasSearched && !isSearching && !searchError" class="text-center py-12">
-      <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="searchMagnifierIcon" />
-      <h3 class="text-size-large font-semibold text-neutral-800 mb-2">No results found</h3>
+    <div
+      v-else-if="hasSearched && !isSearching && !searchError"
+      class="text-center py-12"
+    >
+      <div
+        class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300"
+        v-html="searchMagnifierIcon"
+      />
+      <h3 class="text-size-large font-semibold text-neutral-800 mb-2">
+        No results found
+      </h3>
       <p class="text-neutral-600 mb-8">
         <span v-if="searchQuery.trim()">
           No documents match <span class="font-semibold">"{{ searchQuery }}"</span>
@@ -351,16 +374,25 @@ const batchArchive = async (ids: string[]) => {
 
     <!-- Loading documents -->
     <div v-else-if="!hasSearched && isLoadingDocuments" class="text-center py-12">
-      <div class="svg-icon w-10 h-10 mx-auto mb-4 text-neutral-300 animate-spin" v-html="spinnerIcon" />
+      <div
+        class="svg-icon w-10 h-10 mx-auto mb-4 text-neutral-300 animate-spin"
+        v-html="spinnerIcon"
+      />
       <p class="text-size-medium text-neutral-500">Loading documents…</p>
     </div>
 
     <!-- No documents yet -->
     <div v-else-if="!hasSearched && !isLoadingDocuments" class="text-center py-12">
-      <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="documentIcon" />
-      <h3 class="text-size-large font-semibold text-neutral-700 mb-2">No documents yet</h3>
-      <p class="text-neutral-500 text-size-medium">There are no documents in this space yet</p>
+      <div
+        class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300"
+        v-html="documentIcon"
+      />
+      <h3 class="text-size-large font-semibold text-neutral-700 mb-2">
+        No documents yet
+      </h3>
+      <p class="text-neutral-500 text-size-medium">
+        There are no documents in this space yet
+      </p>
     </div>
-
   </div>
 </template>

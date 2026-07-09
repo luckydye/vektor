@@ -169,7 +169,9 @@ async function onCsvFileChange(event: Event) {
 <template>
   <div class="relative flex flex-col h-full min-h-0 overflow-hidden px-xs lg:px-xl">
     <!-- Toolbar -->
-    <div class="flex items-center justify-between gap-3 px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0">
+    <div
+      class="flex items-center justify-between gap-3 px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0"
+    >
       <span class="text-size-small text-neutral-500">{{ rows.length }} rows</span>
       <div class="flex items-center gap-1.5">
         <input
@@ -178,8 +180,9 @@ async function onCsvFileChange(event: Event) {
           accept=".csv,text/csv"
           class="hidden"
           @change="onCsvFileChange"
-        />
-        <button type="button"
+        >
+        <button
+          type="button"
           class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-size-small text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 disabled:opacity-50 disabled:pointer-events-none transition-colors"
           title="Import CSV"
           :disabled="isImportingCsv"
@@ -193,7 +196,10 @@ async function onCsvFileChange(event: Event) {
 
     <!-- Table -->
     <div class="overflow-auto flex-1 min-h-0">
-      <div v-if="isLoading" class="flex items-center justify-center h-24 text-neutral-400 text-size-small">
+      <div
+        v-if="isLoading"
+        class="flex items-center justify-center h-24 text-neutral-400 text-size-small"
+      >
         Loading…
       </div>
 
@@ -221,7 +227,8 @@ async function onCsvFileChange(event: Event) {
             >
               <div class="flex items-center justify-between gap-1">
                 <span class="truncate">{{ col.label }}</span>
-                <button type="button"
+                <button
+                  type="button"
                   class="opacity-0 group-hover:opacity-100 shrink-0 hover:text-red-500 transition-all"
                   title="Delete column"
                   @click="openDeleteColumn(col.name, $event)"
@@ -234,7 +241,8 @@ async function onCsvFileChange(event: Event) {
             <!-- Add column button -->
             <th class="border-b border-neutral-100 px-2" :style="{ width: '48px' }">
               <a-popover-trigger ref="addColumnTriggerRef">
-                <button type="button"
+                <button
+                  type="button"
                   slot="trigger"
                   class="flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
                   title="Add column"
@@ -243,9 +251,15 @@ async function onCsvFileChange(event: Event) {
                   <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
                 </button>
                 <a-popover class="group" placements="bottom-end">
-                  <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
-                    <div class="bg-background border border-neutral-200 rounded-xl shadow-large p-4 w-56 flex flex-col gap-3 mt-1">
-                      <div class="text-size-small font-medium text-neutral-700">Add column</div>
+                  <div
+                    class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
+                  >
+                    <div
+                      class="bg-background border border-neutral-200 rounded-xl shadow-large p-4 w-56 flex flex-col gap-3 mt-1"
+                    >
+                      <div class="text-size-small font-medium text-neutral-700">
+                        Add column
+                      </div>
                       <input
                         ref="newColumnInputRef"
                         v-model="newColumnName"
@@ -253,7 +267,7 @@ async function onCsvFileChange(event: Event) {
                         placeholder="Column name"
                         class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
                         @keydown="onAddColKeydown"
-                      />
+                      >
                       <select
                         v-model="newColumnType"
                         class="border border-neutral-200 rounded-lg px-3 py-1.5 text-size-medium bg-background focus:outline-none focus:border-primary-400"
@@ -263,10 +277,13 @@ async function onCsvFileChange(event: Event) {
                         <option value="date">Date</option>
                         <option value="select">Select</option>
                       </select>
-                      <button type="button"
+                      <button
+                        type="button"
                         class="px-3 py-1.5 rounded bg-primary-600 text-white text-size-small hover:bg-primary-700 transition-colors"
                         @click="commitAddColumn"
-                      >Add</button>
+                      >
+                        Add
+                      </button>
                     </div>
                   </div>
                 </a-popover>
@@ -296,7 +313,7 @@ async function onCsvFileChange(event: Event) {
                   class="flex-1 bg-transparent border-none outline-none text-size-medium text-neutral-800"
                   @blur="commitEdit"
                   @keydown="onCellKeydown"
-                />
+                >
               </div>
               <div v-else class="flex items-center gap-2 min-w-0">
                 <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
@@ -306,12 +323,20 @@ async function onCsvFileChange(event: Event) {
                 >
                   {{ rowTitle(row.properties) }}
                 </a>
-                <button type="button"
+                <button
+                  type="button"
                   class="opacity-0 group-hover:opacity-100 shrink-0 text-neutral-400 hover:text-neutral-700 transition-all"
                   title="Edit name"
                   @click="startEdit(row.id, 'title', rowTitle(row.properties))"
                 >
-                  <svg aria-hidden="true" class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <svg
+                    aria-hidden="true"
+                    class="w-3.5 h-3.5"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
                     <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" />
                   </svg>
                 </button>
@@ -341,7 +366,7 @@ async function onCsvFileChange(event: Event) {
                   class="w-full bg-transparent border-none outline-none text-size-medium text-neutral-700"
                   @blur="commitEdit"
                   @keydown="onCellKeydown"
-                />
+                >
               </div>
               <div
                 v-else
@@ -354,7 +379,8 @@ async function onCsvFileChange(event: Event) {
 
             <!-- Row actions -->
             <td class="px-2 py-2 align-top" :style="{ width: '48px' }">
-              <button type="button"
+              <button
+                type="button"
                 class="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-all"
                 title="Delete row"
                 @click="openDeleteRow(row.id, $event)"
@@ -379,7 +405,8 @@ async function onCsvFileChange(event: Event) {
 
     <!-- Add row footer button -->
     <div class="border-t border-neutral-100 px-3 py-2 shrink-0">
-      <button type="button"
+      <button
+        type="button"
         class="inline-flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-700 transition-colors"
         @click="() => addRow()"
       >
@@ -401,10 +428,24 @@ async function onCsvFileChange(event: Event) {
         class="absolute bg-background border border-neutral-200 rounded-lg shadow-large p-3 flex flex-col gap-2 w-44"
         :style="columnPopoverStyle"
       >
-        <div class="text-size-small text-neutral-700">Delete column "{{ derivedColumns.find(c => c.name === deletingColumn)?.label }}"?</div>
+        <div class="text-size-small text-neutral-700">
+          Delete column "{{ derivedColumns.find(c => c.name === deletingColumn)?.label }}"?
+        </div>
         <div class="flex gap-2">
-          <button type="button" class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors" @click="deletingColumn = null">Cancel</button>
-          <button type="button" class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteColumn(deletingColumn!)">Delete</button>
+          <button
+            type="button"
+            class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+            @click="deletingColumn = null"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+            @click="confirmDeleteColumn(deletingColumn!)"
+          >
+            Delete
+          </button>
         </div>
       </div>
     </div>
@@ -424,8 +465,20 @@ async function onCsvFileChange(event: Event) {
       >
         <div class="text-size-small text-neutral-700">Delete this row?</div>
         <div class="flex gap-2">
-          <button type="button" class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors text-neutral-700" @click="deletingRow = null">Cancel</button>
-          <button type="button" class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors" @click="confirmDeleteRow(deletingRow!)">Delete</button>
+          <button
+            type="button"
+            class="text-size-small px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors text-neutral-700"
+            @click="deletingRow = null"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="text-size-small px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600 transition-colors"
+            @click="confirmDeleteRow(deletingRow!)"
+          >
+            Delete
+          </button>
         </div>
       </div>
     </div>

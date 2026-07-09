@@ -46,12 +46,16 @@ onUnmounted(() => {
         <li class="flex flex-col gap-4xs">
           <span class="text-small font-medium">1. Create an access token</span>
           <span class="text-small text-neutral-500">
-            Open a Space → Settings → Access Tokens, create a token with <em>viewer</em> permission.
+            Open a Space → Settings → Access Tokens, create a token with
+            <em>viewer</em>
+            permission.
           </span>
         </li>
 
         <li class="flex flex-col gap-4xs">
-          <span class="text-small font-medium">2. Add a CalDAV account in your calendar app</span>
+          <span class="text-small font-medium"
+            >2. Add a CalDAV account in your calendar app</span
+          >
           <span class="text-small text-neutral-500">Use these credentials:</span>
 
           <div class="flex flex-col gap-4xs">
@@ -62,8 +66,12 @@ onUnmounted(() => {
                 class="flex-1 text-left text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded-sm px-3xs py-5xs truncate hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                 :title="serverUrl"
                 @click="copy(serverUrl, 'url')"
-              >{{ serverUrl }}</button>
-              <span v-if="copied === 'url'" class="text-small text-green-500 shrink-0">Copied!</span>
+              >
+                {{ serverUrl }}
+              </button>
+              <span v-if="copied === 'url'" class="text-small text-green-500 shrink-0"
+                >Copied!</span
+              >
             </div>
 
             <div class="flex items-center gap-4xs">
@@ -73,13 +81,19 @@ onUnmounted(() => {
                 class="flex-1 text-left text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded-sm px-3xs py-5xs truncate hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
                 :title="user?.email"
                 @click="user?.email && copy(user.email, 'email')"
-              >{{ user?.email ?? '—' }}</button>
-              <span v-if="copied === 'email'" class="text-small text-green-500 shrink-0">Copied!</span>
+              >
+                {{ user?.email ?? '—' }}
+              </button>
+              <span v-if="copied === 'email'" class="text-small text-green-500 shrink-0"
+                >Copied!</span
+              >
             </div>
 
             <div class="flex items-center gap-4xs">
               <span class="text-small text-neutral-400 w-24 shrink-0">Password</span>
-              <span class="flex-1 text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded-sm px-3xs py-5xs text-neutral-500 italic">
+              <span
+                class="flex-1 text-small font-mono bg-neutral-100 dark:bg-neutral-800 rounded-sm px-3xs py-5xs text-neutral-500 italic"
+              >
                 access token from step 1
               </span>
             </div>

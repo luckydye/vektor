@@ -89,12 +89,18 @@ const remainingPresentCount = computed(() => {
       </button>
 
       <a-popover class="group" placements="bottom-center">
-        <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs">
+        <div
+          class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs"
+        >
           <a-popover-arrow>
             <div class="contributors-arrow" />
           </a-popover-arrow>
-          <div class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]">
-            <div class="text-size-small font-medium text-neutral-600 px-4xs">Present now</div>
+          <div
+            class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]"
+          >
+            <div class="text-size-small font-medium text-neutral-600 px-4xs">
+              Present now
+            </div>
             <div class="overflow-y-auto max-h-[240px] flex flex-col">
               <div
                 v-for="presentUser in presentUsers"
@@ -108,7 +114,9 @@ const remainingPresentCount = computed(() => {
                     aria-hidden="true"
                   />
                 </div>
-                <span class="text-interactive text-neutral-950 truncate">{{ presentUser.user.name }}</span>
+                <span class="text-interactive text-neutral-950 truncate"
+                  >{{ presentUser.user.name }}</span
+                >
               </div>
             </div>
           </div>
@@ -116,38 +124,66 @@ const remainingPresentCount = computed(() => {
       </a-popover>
     </a-popover-trigger>
 
-    <a-popover-trigger v-if="!isLoading && !error && contributors.length > 0" showdelay="200" hidedelay="100" class="group relative z-10">
-      <button slot="trigger" type="button" class="flex items-center" data-tooltip="Authors">
-        <div v-for="(contributor, index) in displayContributors" :key="contributor.id" class="relative" :style="{
+    <a-popover-trigger
+      v-if="!isLoading && !error && contributors.length > 0"
+      showdelay="200"
+      hidedelay="100"
+      class="group relative z-10"
+    >
+      <button
+        slot="trigger"
+        type="button"
+        class="flex items-center"
+        data-tooltip="Authors"
+      >
+        <div
+          v-for="(contributor, index) in displayContributors"
+          :key="contributor.id"
+          class="relative"
+          :style="{
           marginLeft: index > 0 ? `-18px` : '0',
           zIndex: displayContributors.length - index
-        }" :title="contributor.name">
+        }"
+          :title="contributor.name"
+        >
           <Avatar size="small" :user="contributor" />
         </div>
-        <div v-if="remainingCount > 0"
+        <div
+          v-if="remainingCount > 0"
           class="relative flex items-center justify-center rounded-full bg-primary-100 text-label text-primary-400 font-medium border-2 border-background"
           :style="{
             width: `32px`,
             height: `32px`,
             marginLeft: `-18px`,
             zIndex: 0
-          }">
+          }"
+        >
           +{{ remainingCount }}
         </div>
       </button>
 
       <a-popover class="group" placements="bottom-center">
-        <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs">
+        <div
+          class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs"
+        >
           <a-popover-arrow>
             <div class="contributors-arrow" />
           </a-popover-arrow>
-          <div class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]">
+          <div
+            class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]"
+          >
             <div class="text-size-small font-medium text-neutral-600 px-4xs">Authors</div>
             <div class="overflow-y-auto max-h-[240px] flex flex-col">
-            <div v-for="contributor in contributors" :key="contributor.id" class="flex items-center gap-3xs px-4xs py-4xs rounded-md">
-              <Avatar size="small" :user="contributor" />
-              <span class="text-interactive text-neutral-950 truncate">{{ contributor.name }}</span>
-            </div>
+              <div
+                v-for="contributor in contributors"
+                :key="contributor.id"
+                class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
+              >
+                <Avatar size="small" :user="contributor" />
+                <span class="text-interactive text-neutral-950 truncate"
+                  >{{ contributor.name }}</span
+                >
+              </div>
             </div>
           </div>
         </div>

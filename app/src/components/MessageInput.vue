@@ -254,10 +254,13 @@ defineExpose({
       multiple
       class="hidden"
       @change="onFilesSelected"
-    />
+    >
 
     <!-- Pending attachment previews -->
-    <div v-if="attachments && pendingAttachments.length > 0" class="mb-2 flex flex-wrap gap-1.5">
+    <div
+      v-if="attachments && pendingAttachments.length > 0"
+      class="mb-2 flex flex-wrap gap-1.5"
+    >
       <div
         v-for="attachment in pendingAttachments"
         :key="attachment.id"
@@ -268,7 +271,7 @@ defineExpose({
           :src="attachment.previewUrl"
           :alt="attachment.name"
           class="h-8 w-8 rounded-sm object-cover"
-        />
+        >
         <div
           v-else
           class="h-8 w-8 rounded-sm bg-neutral-200 text-neutral-500 flex items-center justify-center text-[10px] font-semibold"
@@ -277,7 +280,9 @@ defineExpose({
         </div>
         <div class="min-w-0 max-w-36">
           <p class="truncate text-size-small text-neutral-700">{{ attachment.name }}</p>
-          <p class="text-[10px] text-neutral-500">{{ formatFileSize(attachment.size) }}</p>
+          <p class="text-[10px] text-neutral-500">
+            {{ formatFileSize(attachment.size) }}
+          </p>
         </div>
         <button
           type="button"
@@ -332,8 +337,12 @@ defineExpose({
 
     <!-- Upload status (controlled by parent) -->
     <template v-if="attachments">
-      <p v-if="isUploading" class="mt-2 text-size-small text-neutral-500">Uploading files...</p>
-      <p v-if="uploadError" class="mt-2 text-size-small text-red-600">{{ uploadError }}</p>
+      <p v-if="isUploading" class="mt-2 text-size-small text-neutral-500">
+        Uploading files...
+      </p>
+      <p v-if="uploadError" class="mt-2 text-size-small text-red-600">
+        {{ uploadError }}
+      </p>
     </template>
 
     <slot name="below" />

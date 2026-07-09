@@ -47,8 +47,15 @@ watch(
 </script>
 
 <template>
-  <nav v-if="showBreadcrumbs" aria-label="Breadcrumb" class="breadcrumbs text-size-medium text-neutral-600 min-w-0">
-    <ol ref="olRef" class="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+  <nav
+    v-if="showBreadcrumbs"
+    aria-label="Breadcrumb"
+    class="breadcrumbs text-size-medium text-neutral-600 min-w-0"
+  >
+    <ol
+      ref="olRef"
+      class="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
       <!-- Category -->
       <li v-if="category" class="flex items-center gap-1.5 shrink-0">
         <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
@@ -63,7 +70,11 @@ watch(
       </li>
 
       <!-- Parent Documents -->
-      <li v-for="parent in parents" :key="parent.id" class="flex items-center gap-1.5 shrink-0">
+      <li
+        v-for="parent in parents"
+        :key="parent.id"
+        class="flex items-center gap-1.5 shrink-0"
+      >
         <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
         <a
           :href="spacePath(currentSpace?.slug, `/doc/${parent.slug}`)"
@@ -77,7 +88,10 @@ watch(
 
       <!-- Current Document -->
       <li class="px-1 shrink-0">
-        <span class="text-neutral-900 font-medium truncate max-w-[200px] block" :title="currentTitle">
+        <span
+          class="text-neutral-900 font-medium truncate max-w-[200px] block"
+          :title="currentTitle"
+        >
           {{ currentTitle }}
         </span>
       </li>

@@ -346,7 +346,11 @@ const availableNewProperties = computed(() => {
       />
 
       <div v-if="!readonly" class="relative">
-        <ButtonIconSmall :icon="plusIcon" aria-label="New property" @click="toggleCreatePopover" />
+        <ButtonIconSmall
+          :icon="plusIcon"
+          aria-label="New property"
+          @click="toggleCreatePopover"
+        />
 
         <PropertyPopover
           :is-open="isCreatePopoverOpen"

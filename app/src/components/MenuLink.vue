@@ -23,8 +23,8 @@ const props = defineProps<{
     )"
   >
     <div class="flex-1 flex items-center @max-xs:justify-center text-size-medium">
-        <div v-html="icon" class="icon inline flex-none" />
-        <span class="@max-xs:hidden">{{ text }}</span>
+      <div v-html="icon" class="icon inline flex-none" />
+      <span class="@max-xs:hidden">{{ text }}</span>
     </div>
 
     <slot />

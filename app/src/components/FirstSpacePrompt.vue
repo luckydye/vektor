@@ -5,18 +5,26 @@
   >
     <div class="bg-background rounded-lg shadow-2xl p-8 w-full max-w-lg mx-4">
       <div class="text-center mb-6">
-        <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+        <div
+          class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4"
+        >
           <div class="svg-icon w-8 h-8 text-blue-600" v-html="folderLargeIcon" />
         </div>
-        <h2 class="text-size-title font-bold text-neutral-900 mb-2">Welcome to Your Space!</h2>
+        <h2 class="text-size-title font-bold text-neutral-900 mb-2">
+          Welcome to Your Space!
+        </h2>
         <p class="text-neutral">
-          G'day! Let's get you sorted by creating your first space. Spaces help organize your documents and knowledge.
+          G'day! Let's get you sorted by creating your first space. Spaces help organize
+          your documents and knowledge.
         </p>
       </div>
 
       <form @submit.prevent="handleCreateSpace" class="space-y-4">
         <div>
-          <label for="space-name" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="space-name"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Space Name
           </label>
           <input
@@ -27,11 +35,14 @@
             placeholder="Engineering, Product, Design ..."
             class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             :disabled="isCreating"
-          />
+          >
         </div>
 
         <div>
-          <label for="space-slug" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="space-slug"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Slug
           </label>
           <input
@@ -43,14 +54,17 @@
             pattern="[a-z0-9-]+"
             class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             :disabled="isCreating"
-          />
+          >
           <p class="mt-1 text-size-small text-neutral">
             Only lowercase letters, numbers, and hyphens
           </p>
         </div>
 
         <div>
-          <label for="brand-color" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="brand-color"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Brand Color
           </label>
           <div class="flex gap-2 items-center">
@@ -59,22 +73,23 @@
               v-model="brandColor"
               type="color"
               class="h-10 w-20 border border-neutral-100 rounded-md cursor-pointer"
-            />
+            >
             <input
               v-model="brandColor"
               type="text"
               placeholder="#1e293b"
               pattern="^#[0-9A-Fa-f]{6}$"
               class="flex-1 px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            >
           </div>
-          <p class="mt-1 text-size-small text-neutral">
-            Used for the header and sidebar
-          </p>
+          <p class="mt-1 text-size-small text-neutral">Used for the header and sidebar</p>
         </div>
 
         <div>
-          <label for="logo-svg" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="logo-svg"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Logo (SVG)
           </label>
           <div class="space-y-2">
@@ -85,8 +100,11 @@
               @change="handleLogoUpload"
               :disabled="isCreating"
               class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <div v-if="logoSvg" class="flex items-center gap-2 p-2 bg-neutral-300 border border-neutral-100 rounded-md">
+            >
+            <div
+              v-if="logoSvg"
+              class="flex items-center gap-2 p-2 bg-neutral-300 border border-neutral-100 rounded-md"
+            >
               <div v-html="logoSvg" class="h-8 flex items-center"></div>
               <button
                 type="button"

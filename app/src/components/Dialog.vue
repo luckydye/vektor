@@ -74,62 +74,69 @@ onBeforeUnmount(() => applyScrollLock(false));
 <template>
   <ClientOnly>
     <Teleport to="body">
-      <Transition name="dialog"><!-- biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. --><a-blur
-        v-if="show"
-        enabled
-        class="dialog-root fixed inset-0 z-100 flex items-end justify-center md:items-center"
-        @exit="onDismiss"
-      >
-        <button
-          type="button"
-          class="dialog-backdrop absolute inset-0 border-0 bg-black/40 md:bg-black/50"
-          aria-label="Close dialog"
-          @click="onDismiss"
-        />
-
-        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-        <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
-        <div
-          role="dialog"
-          aria-modal="true"
-          class="dialog-panel relative flex w-full flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:rounded-2xl"
-          :class="[maxWidth, expand ? 'h-[90dvh] md:h-[85vh]' : 'max-h-[90dvh] md:max-h-[85vh]']"
-          @click.stop
+      <Transition name="dialog"
+        ><!-- biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. --><a-blur
+          v-if="show"
+          enabled
+          class="dialog-root fixed inset-0 z-100 flex items-end justify-center md:items-center"
+          @exit="onDismiss"
         >
-          <!-- Mobile grab handle -->
-          <div class="md:hidden flex justify-center flex-none pt-2 pb-1">
-            <div class="h-1 w-9 rounded-full bg-neutral-300" />
-          </div>
+          <button
+            type="button"
+            class="dialog-backdrop absolute inset-0 border-0 bg-black/40 md:bg-black/50"
+            aria-label="Close dialog"
+            @click="onDismiss"
+          />
 
-          <!-- Header -->
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
           <div
-            v-if="title || slots.header"
-            class="flex items-center justify-between gap-3 flex-none px-5 pt-3 pb-2 md:pt-4"
+            role="dialog"
+            aria-modal="true"
+            class="dialog-panel relative flex w-full flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:rounded-2xl"
+            :class="[maxWidth, expand ? 'h-[90dvh] md:h-[85vh]' : 'max-h-[90dvh] md:max-h-[85vh]']"
+            @click.stop
           >
-            <slot name="header">
-              <h2 class="text-size-medium font-semibold text-neutral-900">{{ title }}</h2>
-            </slot>
-            <button
-              type="button"
-              class="p-1 -mr-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors flex-none"
-              aria-label="Close"
-              @click="close"
+            <!-- Mobile grab handle -->
+            <div class="md:hidden flex justify-center flex-none pt-2 pb-1">
+              <div class="h-1 w-9 rounded-full bg-neutral-300" />
+            </div>
+
+            <!-- Header -->
+            <div
+              v-if="title || slots.header"
+              class="flex items-center justify-between gap-3 flex-none px-5 pt-3 pb-2 md:pt-4"
             >
-              <div class="svg-icon w-4 h-4" v-html="closeIcon" />
-            </button>
-          </div>
+              <slot name="header">
+                <h2 class="text-size-medium font-semibold text-neutral-900">
+                  {{ title }}
+                </h2>
+              </slot>
+              <button
+                type="button"
+                class="p-1 -mr-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors flex-none"
+                aria-label="Close"
+                @click="close"
+              >
+                <div class="svg-icon w-4 h-4" v-html="closeIcon" />
+              </button>
+            </div>
 
-          <!-- Body -->
-          <div class="flex-1 min-h-0" :class="bodyClass">
-            <slot />
-          </div>
+            <!-- Body -->
+            <div class="flex-1 min-h-0" :class="bodyClass">
+              <slot />
+            </div>
 
-          <!-- Footer (optional, stays pinned) -->
-          <div v-if="slots.footer" class="flex-none px-5 py-4 border-t border-neutral-100">
-            <slot name="footer" />
+            <!-- Footer (optional, stays pinned) -->
+            <div
+              v-if="slots.footer"
+              class="flex-none px-5 py-4 border-t border-neutral-100"
+            >
+              <slot name="footer" />
+            </div>
           </div>
-        </div>
-      </a-blur></Transition>
+        </a-blur></Transition
+      >
     </Teleport>
   </ClientOnly>
 </template>

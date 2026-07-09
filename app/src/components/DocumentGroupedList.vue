@@ -220,7 +220,9 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
           </button>
         </button>
         <a-popover placements="bottom-start">
-          <div class="bg-background border border-neutral-100 rounded-lg shadow-lg p-3 mt-1">
+          <div
+            class="bg-background border border-neutral-100 rounded-lg shadow-lg p-3 mt-1"
+          >
             <a-calendar
               mode="range"
               week-start="1"
@@ -243,35 +245,57 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
 
       <!-- Deselect + batch actions (inside toolbar) -->
       <template v-if="selectedIds.size > 0">
-        <span class="text-size-small text-neutral-500">{{ selectedIds.size }} selected</span>
-        <button type="button"
+        <span class="text-size-small text-neutral-500"
+          >{{ selectedIds.size }}
+          selected</span
+        >
+        <button
+          type="button"
           @click="deselectAll"
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
           title="Deselect all"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
         </button>
-        <slot name="batch-actions" :selected-ids="selectedIds" :deselect-all="deselectAll" />
+        <slot
+          name="batch-actions"
+          :selected-ids="selectedIds"
+          :deselect-all="deselectAll"
+        />
       </template>
     </div>
 
     <!-- Deselect + batch actions (outside toolbar, when toolbar hidden) -->
-    <div v-if="showToolbar === false" class="flex items-center justify-end gap-2 mb-4 min-h-[32px]">
+    <div
+      v-if="showToolbar === false"
+      class="flex items-center justify-end gap-2 mb-4 min-h-[32px]"
+    >
       <template v-if="selectedIds.size > 0">
-        <span class="text-size-small text-neutral-500">{{ selectedIds.size }} selected</span>
-        <button type="button"
+        <span class="text-size-small text-neutral-500"
+          >{{ selectedIds.size }}
+          selected</span
+        >
+        <button
+          type="button"
           @click="deselectAll"
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
           title="Deselect all"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
         </button>
-        <slot name="batch-actions" :selected-ids="selectedIds" :deselect-all="deselectAll" />
+        <slot
+          name="batch-actions"
+          :selected-ids="selectedIds"
+          :deselect-all="deselectAll"
+        />
       </template>
     </div>
 
     <!-- Empty state -->
-    <div v-if="filtered.length === 0" class="py-12 text-center text-size-small text-neutral-400">
+    <div
+      v-if="filtered.length === 0"
+      class="py-12 text-center text-size-small text-neutral-400"
+    >
       {{ items.length === 0 ? (emptyText ?? 'No documents') : 'No documents in the selected date range' }}
     </div>
 
@@ -279,13 +303,18 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
     <div v-else class="space-y-4">
       <div v-for="group in groups" :key="group.label">
         <!-- Group header -->
-        <button type="button"
+        <button
+          type="button"
           class="flex items-center gap-2 w-full text-left mb-2"
           @click="toggleCollapse(group.label)"
         >
           <div class="svg-icon w-3.5 h-3.5 text-neutral-400" v-html="clockIcon" />
-          <span class="text-size-small font-semibold text-neutral-700">{{ group.label }}</span>
-          <span class="px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-500 text-[11px] font-medium tabular-nums">
+          <span class="text-size-small font-semibold text-neutral-700"
+            >{{ group.label }}</span
+          >
+          <span
+            class="px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-500 text-[11px] font-medium tabular-nums"
+          >
             {{ group.docs.length }}
           </span>
           <div class="flex-1" />
@@ -297,7 +326,10 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
         </button>
 
         <!-- Group rows -->
-        <div v-if="!collapsed.has(group.label)" class="border border-neutral-100 rounded-lg overflow-hidden">
+        <div
+          v-if="!collapsed.has(group.label)"
+          class="border border-neutral-100 rounded-lg overflow-hidden"
+        >
           <page-target
             v-for="(doc, idx) in group.docs"
             :key="doc.id"
@@ -320,7 +352,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
                 @click="toggleSelect(doc.id, $event)"
                 class="w-3.5 h-3.5 accent-primary-500 cursor-pointer opacity-0 group-hover/row:opacity-100 transition-opacity"
                 :class="selectedIds.has(doc.id) ? '!opacity-100' : ''"
-              />
+              >
             </div>
 
             <!-- Link: doc icon + title + meta + badge + date -->
@@ -331,10 +363,15 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
               :rel="doc.fileUrl ? 'noopener noreferrer' : undefined"
               class="flex flex-1 items-center gap-3 px-3 py-2.5 min-w-0"
             >
-              <div class="svg-icon w-4 h-4 shrink-0 text-neutral-300" v-html="documentIcon" />
+              <div
+                class="svg-icon w-4 h-4 shrink-0 text-neutral-300"
+                v-html="documentIcon"
+              />
 
               <div class="flex-1 min-w-0">
-                <p class="text-size-medium font-medium text-neutral-800 truncate">{{ docTitle(doc) }}</p>
+                <p class="text-size-medium font-medium text-neutral-800 truncate">
+                  {{ docTitle(doc) }}
+                </p>
                 <p class="text-[11px] text-neutral-400 truncate">
                   <span v-if="docCategoryName(doc)">{{ docCategoryName(doc) }} • </span>
                   <span class="capitalize">{{ doc.type || "Document" }}</span>
@@ -348,7 +385,9 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
                 {{ docCategoryName(doc) }}
               </span>
 
-              <span class="shrink-0 text-[11px] text-neutral-400 tabular-nums w-20 text-right">
+              <span
+                class="shrink-0 text-[11px] text-neutral-400 tabular-nums w-20 text-right"
+              >
                 {{ formatDate(doc.updatedAt) }}
               </span>
             </a>

@@ -1,4 +1,3 @@
-
 ---
 import Content from "#docs/api.md";
 import docStyles from "#editor/css/document.css?inline";
@@ -6,12 +5,12 @@ import BaseLayout from "#layouts/BaseLayout.astro";
 ---
 
 <BaseLayout title="Document - Vektor">
-    <div>
-        <document-view>
-            <template shadowrootmode="open">
-                <style set:html={docStyles}></style>
-                <Content />
-            </template>
-        </document-view>
-    </div>
+  <div>
+    <document-view>
+      <template shadowrootmode="open">
+        <style set:html={docStyles}></style>
+        <Content />
+      </template>
+    </document-view>
+  </div>
 </BaseLayout>

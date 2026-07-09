@@ -82,7 +82,9 @@ async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
     </div>
 
     <div v-else-if="error" class="py-8 text-center">
-      <p class="text-size-small text-red-600">{{ error?.message ?? "Failed to load archived documents" }}</p>
+      <p class="text-size-small text-red-600">
+        {{ error?.message ?? "Failed to load archived documents" }}
+      </p>
     </div>
 
     <DocumentGroupedList
@@ -92,13 +94,15 @@ async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
       empty-text="No archived documents"
     >
       <template #batch-actions="{ selectedIds, deselectAll }">
-        <button type="button"
+        <button
+          type="button"
           @click="handleBatchRestore(selectedIds, deselectAll)"
           class="px-3 py-1.5 text-size-small font-medium border border-neutral-200 rounded-md text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 transition-colors"
         >
           Restore selected
         </button>
-        <button type="button"
+        <button
+          type="button"
           @click="handleBatchDelete(selectedIds, deselectAll)"
           class="p-1.5 border border-neutral-200 rounded-md text-neutral-500 hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-colors"
           title="Delete selected permanently"
@@ -108,13 +112,15 @@ async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
       </template>
 
       <template #row-actions="{ doc }">
-        <button type="button"
+        <button
+          type="button"
           @click="handleRestore(doc.id)"
           class="px-2.5 py-1 text-[11px] font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors"
         >
           Restore
         </button>
-        <button type="button"
+        <button
+          type="button"
           @click="handleDelete(doc.id)"
           class="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
           title="Delete permanently"

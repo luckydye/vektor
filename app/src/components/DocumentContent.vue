@@ -483,46 +483,65 @@ useSync(
 </script>
 
 <template>
-    <main :class="twMerge('relative', documentType !== 'canvas' && 'mb-30')">
-        <!-- CSV Spreadsheet View -->
-        <table-view v-if="!editing && documentType === 'csv'"
-            :html="renderedHtml" class="block flex-1 min-h-0"></table-view>
+  <main :class="twMerge('relative', documentType !== 'canvas' && 'mb-30')">
+    <!-- CSV Spreadsheet View -->
+    <table-view
+      v-if="!editing && documentType === 'csv'"
+      :html="renderedHtml"
+      class="block flex-1 min-h-0"
+    ></table-view>
 
-        <!-- Document View (read + edit, single persistent instance) -->
-        <div v-if="supportsRichTextDocument"
-            :class="editing ? 'h-full' : ''">
-            <document-view ref="documentViewEl"
-                :html="renderedHtml"
-                :space-id="props.spaceId" :document-id="documentId"
-                data-allow-mismatch="children"
-                v-html="ssrDeclarativeShadowDom" />
-        </div>
+    <!-- Document View (read + edit, single persistent instance) -->
+    <div v-if="supportsRichTextDocument" :class="editing ? 'h-full' : ''">
+      <document-view
+        ref="documentViewEl"
+        :html="renderedHtml"
+        :space-id="props.spaceId"
+        :document-id="documentId"
+        data-allow-mismatch="children"
+        v-html="ssrDeclarativeShadowDom"
+      />
+    </div>
 
-        <div v-if="isMounted && documentType === 'canvas'" class="h-[calc(100vh-4rem)] md:h-screen">
-            <Canvas
-                :documentId="documentId"
-                :spaceId="props.spaceId"
-                :ydoc="collaboration.ydoc.value"
-                :presenceProfiles="canvasPresenceProfiles"
-                @presence="handleCanvasPresence"
-            />
-        </div>
+    <div
+      v-if="isMounted && documentType === 'canvas'"
+      class="h-[calc(100vh-4rem)] md:h-screen"
+    >
+      <Canvas
+        :documentId="documentId"
+        :spaceId="props.spaceId"
+        :ydoc="collaboration.ydoc.value"
+        :presenceProfiles="canvasPresenceProfiles"
+        @presence="handleCanvasPresence"
+      />
+    </div>
 
-        <div><!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview --></div>
-    </main>
+    <div>
+      <!-- DON'T REMOVE; This fixes shadowDOM content not visible in print preview -->
+    </div>
+  </main>
 
-    <template v-if="documentId && supportsComments(documentType)">
-        <CommentBubble ref="commentBubble" :spaceId="props.spaceId" :documentId="documentId"
-            :currentRev="documentData?.currentRev" :editor="editor" />
-        <CommentOverlays :comments="commentBubble?.commentsForOverlays ?? []"
-            @move="commentBubble?.handleMoveThread($event)" />
-    </template>
+  <template v-if="documentId && supportsComments(documentType)">
+    <CommentBubble
+      ref="commentBubble"
+      :spaceId="props.spaceId"
+      :documentId="documentId"
+      :currentRev="documentData?.currentRev"
+      :editor="editor"
+    />
+    <CommentOverlays
+      :comments="commentBubble?.commentsForOverlays ?? []"
+      @move="commentBubble?.handleMoveThread($event)"
+    />
+  </template>
 
-    <document-statusbar
-        v-if="editing && canMountEditor"
-        class="fixed inset-x-0 bottom-0 z-10 mx-auto block max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs lg:px-xl pb-4 pointer-events-none md:left-(--inset-left) md:right-(--inset-right)"
-    ></document-statusbar>
+  <document-statusbar
+    v-if="editing && canMountEditor"
+    class="fixed inset-x-0 bottom-0 z-10 mx-auto block max-w-[calc(var(--document-width)+1.5rem)] overflow-hidden px-xs lg:px-xl pb-4 pointer-events-none md:left-(--inset-left) md:right-(--inset-right)"
+  ></document-statusbar>
 
-    <document-toolbar ref="documentToolbar"
-        :data-comments-enabled="supportsComments(documentType) ? '' : undefined"></document-toolbar>
+  <document-toolbar
+    ref="documentToolbar"
+    :data-comments-enabled="supportsComments(documentType) ? '' : undefined"
+  ></document-toolbar>
 </template>

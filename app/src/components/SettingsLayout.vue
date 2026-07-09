@@ -53,7 +53,10 @@ onMounted(async () => {
           :key="tab.id"
           class="px-4 py-3 border-b-2 border-transparent"
         >
-          <div class="h-3.5 rounded bg-neutral-100 animate-pulse" :style="`width:${tab.label.length * 7}px`" />
+          <div
+            class="h-3.5 rounded bg-neutral-100 animate-pulse"
+            :style="`width:${tab.label.length * 7}px`"
+          />
         </div>
       </div>
       <div :class="[compact ? 'px-4 py-3' : 'py-4', 'space-y-3']">
@@ -69,15 +72,12 @@ onMounted(async () => {
           v-for="tab in tabs"
           :key="tab.id"
           class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
-        >{{ tab.label }}</a-tabs-tab>
+          >{{ tab.label }}</a-tabs-tab
+        >
       </a-tabs-list>
-      <a-tabs-panel
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="block min-w-0"
-      >
+      <a-tabs-panel v-for="tab in tabs" :key="tab.id" class="block min-w-0">
         <div :class="[compact ? 'px-4' : '', 'px-2 py-4']">
-            <slot :name="tab.id" />
+          <slot :name="tab.id" />
         </div>
       </a-tabs-panel>
     </a-tabs>

@@ -145,16 +145,21 @@ const popoverInner =
 
 <template>
   <div class="flex flex-wrap items-center gap-2 select-none">
-
     <!-- Date range picker -->
     <a-popover-trigger class="group">
-      <button type="button"
+      <button
+        type="button"
         slot="trigger"
         :class="[chipBase, activeDateRange ? chipActive : chipInactive]"
       >
         <div class="svg-icon w-3 h-3 opacity-60" v-html="calendarIcon" />
         <span>{{ dateRangeLabel ?? 'Modified' }}</span>
-        <button type="button" v-if="activeDateRange" @click="clearDateFilter" class="hover:opacity-70 flex-none">
+        <button
+          type="button"
+          v-if="activeDateRange"
+          @click="clearDateFilter"
+          class="hover:opacity-70 flex-none"
+        >
           <div class="svg-icon w-3 h-3" v-html="closeXIcon" />
         </button>
       </button>
@@ -181,7 +186,8 @@ const popoverInner =
 
     <!-- Type filter chips -->
     <template v-if="typeValues.length > 0">
-      <button type="button"
+      <button
+        type="button"
         v-for="tv in typeValues"
         :key="tv"
         @click="toggleFilter('type', tv)"
@@ -194,7 +200,8 @@ const popoverInner =
         ]"
       >
         {{ tv }}
-        <button type="button"
+        <button
+          type="button"
           v-if="hasActiveFilter('type', tv)"
           @click.stop="removeFilterByKeyValue('type', tv)"
           class="hover:opacity-70 flex-none"
@@ -212,15 +219,22 @@ const popoverInner =
     >
       <span class="font-medium">{{ filter.key }}</span>
       <span class="opacity-40">:</span>
-      <span :class="filter.value === null ? 'italic opacity-70' : ''">{{ filter.value ?? "exists" }}</span>
-      <button type="button" @click="removeFilterByKeyValue(filter.key, filter.value)" class="ml-0.5 hover:opacity-70 flex-none">
+      <span :class="filter.value === null ? 'italic opacity-70' : ''"
+        >{{ filter.value ?? "exists" }}</span
+      >
+      <button
+        type="button"
+        @click="removeFilterByKeyValue(filter.key, filter.value)"
+        class="ml-0.5 hover:opacity-70 flex-none"
+      >
         <div class="svg-icon w-3 h-3" v-html="closeXIcon" />
       </button>
     </div>
 
     <!-- Add property filter -->
     <a-popover-trigger v-if="nonTypeProperties.length > 0" class="group">
-      <button type="button"
+      <button
+        type="button"
         slot="trigger"
         class="flex items-center gap-1 py-1 px-3xs text-interactive rounded-lg border border-dashed border-neutral-300 text-neutral-500 hover:border-primary-300 hover:text-primary-600 transition-colors text-size-small"
       >
@@ -232,11 +246,14 @@ const popoverInner =
         <div :class="popoverPanel">
           <div :class="[popoverInner, 'w-52']">
             <div class="px-3 py-2 border-b border-neutral-100">
-              <span class="text-[11px] font-medium text-neutral uppercase tracking-wider">Properties</span>
+              <span class="text-[11px] font-medium text-neutral uppercase tracking-wider"
+                >Properties</span
+              >
             </div>
             <div class="py-1 max-h-64 overflow-y-auto">
               <div v-for="prop in nonTypeProperties" :key="prop.name" class="px-1">
-                <button type="button"
+                <button
+                  type="button"
                   @click="toggleProperty(prop.name)"
                   class="w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 text-size-small text-neutral-700 hover:bg-primary-50 transition-colors hover:transition-none"
                 >
@@ -254,8 +271,12 @@ const popoverInner =
                   </span>
                 </button>
 
-                <div v-if="expandedProperties.has(prop.name)" class="ml-5 mt-0.5 mb-1 flex flex-col gap-0.5">
-                  <button type="button"
+                <div
+                  v-if="expandedProperties.has(prop.name)"
+                  class="ml-5 mt-0.5 mb-1 flex flex-col gap-0.5"
+                >
+                  <button
+                    type="button"
                     v-for="val in prop.values.slice(0, 20)"
                     :key="val"
                     @click="toggleFilter(prop.name, val)"
@@ -264,15 +285,20 @@ const popoverInner =
                   >
                     {{ val }}
                   </button>
-                  <button type="button"
+                  <button
+                    type="button"
                     @click="toggleFilter(prop.name, null)"
                     class="text-left px-2 py-1 rounded-sm text-size-small italic transition-colors hover:transition-none"
                     :class="hasActiveFilter(prop.name, null) ? 'bg-primary-100 text-primary-700 font-medium' : 'text-neutral-500 hover:bg-primary-50'"
                   >
                     any value
                   </button>
-                  <span v-if="prop.values.length > 20" class="px-2 text-[10px] text-neutral-400">
-                    +{{ prop.values.length - 20 }} more
+                  <span
+                    v-if="prop.values.length > 20"
+                    class="px-2 text-[10px] text-neutral-400"
+                  >
+                    +{{ prop.values.length - 20 }}
+                    more
                   </span>
                 </div>
               </div>
@@ -283,7 +309,8 @@ const popoverInner =
     </a-popover-trigger>
 
     <!-- Clear all -->
-    <button type="button"
+    <button
+      type="button"
       v-if="hasAnyFilters"
       @click="clearAll"
       class="text-[11px] text-neutral hover:text-neutral-800 transition-colors ml-1"

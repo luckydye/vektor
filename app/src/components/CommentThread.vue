@@ -89,12 +89,19 @@ watch(
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-background rounded-lg shadow-xl border border-neutral-100 w-80 max-h-[600px]">
+  <div
+    class="flex flex-col h-full bg-background rounded-lg shadow-xl border border-neutral-100 w-80 max-h-[600px]"
+  >
     <!-- Header -->
-    <div class="flex items-center justify-between p-3 border-b border-neutral-100 bg-neutral-50/80 rounded-t-lg backdrop-blur-sm">
+    <div
+      class="flex items-center justify-between p-3 border-b border-neutral-100 bg-neutral-50/80 rounded-t-lg backdrop-blur-sm"
+    >
       <div class="flex items-center gap-2">
         <h3 class="font-semibold text-neutral-800 text-size-medium">Thread</h3>
-        <span v-if="comments.length > 0" class="text-[10px] font-medium text-neutral-500 bg-neutral-200/50 px-1.5 py-0.5 rounded-full">
+        <span
+          v-if="comments.length > 0"
+          class="text-[10px] font-medium text-neutral-500 bg-neutral-200/50 px-1.5 py-0.5 rounded-full"
+        >
           {{ comments.length }}
         </span>
       </div>
@@ -107,7 +114,10 @@ watch(
         >
           <div class="svg-icon w-4 h-4" v-html="checkThinIcon" />
         </ButtonGhost>
-        <ButtonGhost @click="emit('close')" class="p-1 -mr-1 text-neutral-400 hover:text-neutral-700 w-6 h-6">
+        <ButtonGhost
+          @click="emit('close')"
+          class="p-1 -mr-1 text-neutral-400 hover:text-neutral-700 w-6 h-6"
+        >
           <div class="svg-icon w-4 h-4" v-html="closeXIcon" />
         </ButtonGhost>
       </div>
@@ -115,7 +125,10 @@ watch(
 
     <!-- Comments List -->
     <div ref="commentListRef" class="flex-1 p-3 overflow-y-auto space-y-4">
-      <div v-if="comments.length === 0" class="flex flex-col items-center justify-center h-24 text-center text-neutral-400">
+      <div
+        v-if="comments.length === 0"
+        class="flex flex-col items-center justify-center h-24 text-center text-neutral-400"
+      >
         <p class="text-size-medium font-medium text-neutral-500">No comments yet</p>
         <p class="text-size-small opacity-75">Start the conversation!</p>
       </div>
@@ -169,15 +182,30 @@ watch(
 
 <style scoped>
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(p) { margin: 0.2rem 0; }
+.comment-markdown :deep(p) {
+  margin: 0.2rem 0;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(ul) { list-style: disc; padding-left: 1.1rem; }
+.comment-markdown :deep(ul) {
+  list-style: disc;
+  padding-left: 1.1rem;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(ol) { list-style: decimal; padding-left: 1.1rem; }
+.comment-markdown :deep(ol) {
+  list-style: decimal;
+  padding-left: 1.1rem;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(strong) { font-weight: 600; }
+.comment-markdown :deep(strong) {
+  font-weight: 600;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(em) { font-style: italic; }
+.comment-markdown :deep(em) {
+  font-style: italic;
+}
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.comment-markdown :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
+.comment-markdown :deep(a) {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+}
 </style>

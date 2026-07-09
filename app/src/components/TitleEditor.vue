@@ -1,16 +1,29 @@
 <template>
   <div class="flex items-center gap-3 flex-1 -ml-1">
-    <input ref="inputEl" v-if="isEditing" v-model="localTitle" type="text" placeholder="Untitled Document"
+    <input
+      ref="inputEl"
+      v-if="isEditing"
+      v-model="localTitle"
+      type="text"
+      placeholder="Untitled Document"
       class="text-size-display font-bold text-neutral-900 bg-neutral-50 focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors px-1"
-      @blur="updateTitle" @keydown.enter="updateTitle" />
+      @blur="updateTitle"
+      @keydown.enter="updateTitle"
+    >
 
     <div v-else :data-document-id="documentId">
-        <h1 class="text-size-display font-bold text-neutral-900 flex items-center gap-3 px-1"
-          :class="{ 'cursor-text hover:bg-neutral-50': canEdit, 'cursor-default': !canEdit }"
-          @dblclick="canEdit && startEditing()">
-            {{ localTitle || 'Untitled Document' }}
-            <div v-if="starred" class="svg-icon w-6 h-6 text-yellow-500" v-html="starFilledIcon" />
-        </h1>
+      <h1
+        class="text-size-display font-bold text-neutral-900 flex items-center gap-3 px-1"
+        :class="{ 'cursor-text hover:bg-neutral-50': canEdit, 'cursor-default': !canEdit }"
+        @dblclick="canEdit && startEditing()"
+      >
+        {{ localTitle || 'Untitled Document' }}
+        <div
+          v-if="starred"
+          class="svg-icon w-6 h-6 text-yellow-500"
+          v-html="starFilledIcon"
+        />
+      </h1>
     </div>
   </div>
 </template>

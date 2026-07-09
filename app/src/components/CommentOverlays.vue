@@ -187,7 +187,8 @@ onUnmounted(() => {
     class="absolute inset-0 right-0 pointer-events-none overflow-visible"
   >
     <template v-for="overlay in overlays" :key="overlay.reference">
-      <button type="button"
+      <button
+        type="button"
         @pointerdown="startDrag($event, overlay)"
         @pointermove="onDragMove($event, overlay)"
         @pointerup="endDrag(overlay)"

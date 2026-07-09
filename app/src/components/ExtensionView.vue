@@ -74,16 +74,19 @@ onUnmounted(() => {
       <p class="text-size-medium mt-1">{{ error }}</p>
     </div>
 
-    <extension-view ref="containerRef" :class="twMerge(loading && 'hidden')"></extension-view>
+    <extension-view
+      ref="containerRef"
+      :class="twMerge(loading && 'hidden')"
+    ></extension-view>
   </div>
 </template>
 
 <style>
 extension-view {
-    height: 100%;
-    width: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 </style>

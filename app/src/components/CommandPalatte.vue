@@ -213,7 +213,10 @@ Actions.register("ui:toggle:palatte", {
         >
           <!-- Search input -->
           <div class="flex items-center gap-3 px-4 py-3 border-b border-neutral-100">
-            <div class="svg-icon w-4 h-4 text-neutral flex-none" v-html="searchMagnifierIcon" />
+            <div
+              class="svg-icon w-4 h-4 text-neutral flex-none"
+              v-html="searchMagnifierIcon"
+            />
             <input
               ref="searchInput"
               v-model="searchQuery"
@@ -221,8 +224,10 @@ Actions.register("ui:toggle:palatte", {
               placeholder="Search documents and actions…"
               class="flex-1 outline-none bg-transparent text-neutral-900 text-size-medium placeholder:text-neutral"
               @keydown="handleKeydown"
-            />
-            <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-[11px] text-neutral border border-neutral-100 rounded-sm font-mono">
+            >
+            <kbd
+              class="hidden sm:inline-block px-1.5 py-0.5 text-[11px] text-neutral border border-neutral-100 rounded-sm font-mono"
+            >
               ESC
             </kbd>
           </div>
@@ -234,13 +239,18 @@ Actions.register("ui:toggle:palatte", {
               <p class="text-size-medium text-neutral">No results found</p>
             </div>
 
-            <template v-for="(result, index) in filteredResults" :key="result.type === 'document' ? 'doc-' + result.data.id : 'action-' + result.id">
+            <template
+              v-for="(result, index) in filteredResults"
+              :key="result.type === 'document' ? 'doc-' + result.data.id : 'action-' + result.id"
+            >
               <!-- Section header -->
               <div
                 v-if="(index === 0 && result.type === 'document') || (result.type === 'action' && index === firstActionIndex)"
                 class="px-3 pt-2 pb-0.5"
               >
-                <span class="text-[11px] font-medium text-neutral uppercase tracking-wider">
+                <span
+                  class="text-[11px] font-medium text-neutral uppercase tracking-wider"
+                >
                   {{ result.type === "document" ? "Documents" : "Actions" }}
                 </span>
               </div>
@@ -311,19 +321,30 @@ Actions.register("ui:toggle:palatte", {
           </div>
 
           <!-- Footer -->
-          <div class="px-4 py-2 bg-neutral-50 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral rounded-b-xl">
+          <div
+            class="px-4 py-2 bg-neutral-50 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral rounded-b-xl"
+          >
             <div class="flex items-center gap-3">
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">↑↓</kbd>
+                <kbd
+                  class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono"
+                  >↑↓</kbd
+                >
                 Navigate
               </span>
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">↵</kbd>
+                <kbd
+                  class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono"
+                  >↵</kbd
+                >
                 Select
               </span>
             </div>
             <span class="flex items-center gap-1">
-              <kbd class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono">⌘K</kbd>
+              <kbd
+                class="px-1.5 py-0.5 bg-background border border-neutral-100 rounded-sm font-mono"
+                >⌘K</kbd
+              >
               Toggle
             </span>
           </div>

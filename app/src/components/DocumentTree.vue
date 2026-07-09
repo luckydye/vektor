@@ -482,7 +482,11 @@ defineExpose({ isEditMode, toggleEditMode });
         </div>
         <!-- Documents under category -->
         <div class="pl-3 space-y-1">
-          <div v-for="j in 2" :key="`doc-skeleton-${i}-${j}`" class="flex items-center gap-2 p-2 rounded-md">
+          <div
+            v-for="j in 2"
+            :key="`doc-skeleton-${i}-${j}`"
+            class="flex items-center gap-2 p-2 rounded-md"
+          >
             <div class="w-4 h-4 bg-neutral-200 rounded-sm animate-pulse flex-none" />
             <div class="h-3 bg-neutral-200 rounded-sm w-32 animate-pulse flex-1" />
           </div>
@@ -491,331 +495,381 @@ defineExpose({ isEditMode, toggleEditMode });
     </div>
 
     <template v-if="isMounted">
-    <!-- Empty state -->
-    <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-4xs">
-      <div
-        v-if="canManageCategories"
-        class="flex flex-col items-center text-center gap-2 rounded-lg border border-dashed border-neutral-200 px-4 py-5"
-      >
-        <div class="svg-icon w-6 h-6 text-neutral-400" v-html="categoryIcon" />
-        <div>
-          <p class="text-size-medium font-medium text-neutral-900">No categories yet</p>
-          <p class="text-size-small text-neutral-500 mt-0.5">Group your documents into categories to organize this space.</p>
+      <!-- Empty state -->
+      <div v-if="!isLoading && !isEditMode && categories.length === 0" class="px-4xs">
+        <div
+          v-if="canManageCategories"
+          class="flex flex-col items-center text-center gap-2 rounded-lg border border-dashed border-neutral-200 px-4 py-5"
+        >
+          <div class="svg-icon w-6 h-6 text-neutral-400" v-html="categoryIcon" />
+          <div>
+            <p class="text-size-medium font-medium text-neutral-900">No categories yet</p>
+            <p class="text-size-small text-neutral-500 mt-0.5">
+              Group your documents into categories to organize this space.
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="startCreating"
+            class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+          >
+            <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
+            <span>Create category</span>
+          </button>
         </div>
-        <button
-          type="button"
-          @click="startCreating"
-          class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-        >
-          <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
-          <span>Create category</span>
-        </button>
+        <p v-else class="px-3 py-4 text-center text-size-medium text-neutral-500">
+          No categories yet
+        </p>
       </div>
-      <p v-else class="px-3 py-4 text-center text-size-medium text-neutral-500">No categories yet</p>
-    </div>
 
-    <!-- Categories List and Documents -->
-    <div v-if="!isLoading" class="px-4xs space-y-1">
-      <!-- Category Items -->
-      <div v-for="category in categoriesWithDocs" :key="category.id">
-        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-        <category-target
-          :data-category-id="category.id"
-          class="block [&[data-drag-over]]:bg-neutral-100"
-          :draggable="isEditMode"
-          @dragstart="isEditMode && handleDragStart($event, category)"
-          @dragover="isEditMode && handleDragOver($event, categories.findIndex(c => c.id === category.id))"
-          @dragleave="isEditMode && handleDragLeave()"
-          @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
-          @touchstart.passive="handleTouchStart($event, category)"
-          @touchmove.passive="handleTouchMove($event)"
-          @touchend="handleTouchEnd($event)"
-          @touchcancel="clearLongPress()"
-        >
-          <div class="group/category flex items-center gap-2 text-size-medium text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
-            :class="{
+      <!-- Categories List and Documents -->
+      <div v-if="!isLoading" class="px-4xs space-y-1">
+        <!-- Category Items -->
+        <div v-for="category in categoriesWithDocs" :key="category.id">
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+          <category-target
+            :data-category-id="category.id"
+            class="block [&[data-drag-over]]:bg-neutral-100"
+            :draggable="isEditMode"
+            @dragstart="isEditMode && handleDragStart($event, category)"
+            @dragover="isEditMode && handleDragOver($event, categories.findIndex(c => c.id === category.id))"
+            @dragleave="isEditMode && handleDragLeave()"
+            @drop="isEditMode && handleDrop($event, categories.findIndex(c => c.id === category.id))"
+            @touchstart.passive="handleTouchStart($event, category)"
+            @touchmove.passive="handleTouchMove($event)"
+            @touchend="handleTouchEnd($event)"
+            @touchcancel="clearLongPress()"
+          >
+            <div
+              class="group/category flex items-center gap-2 text-size-medium text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
+              :class="{
               'bg-blue-50 border border-blue-300': dragOverIndex === categories.findIndex(c => c.id === category.id) && isEditMode,
               'cursor-move': isEditMode
             }"
-          >
-            <button type="button" @click="!isEditMode && toggleItem(category.id)" class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5">
-              <div class="flex-none relative w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold" :style="{
-                backgroundColor: category.color || '#E5E7EB',
-                color: getTextColor(category.color)
-              }">
-                <span class="block group-hover/category:opacity-0 transition-opacity">{{ category.icon || category.name.charAt(0).toUpperCase() }}</span>
-                
-                <div class="opacity-0 group-hover/category:opacity-100 transition-opacity svg-icon flex-none w-4 h-4 transition-transform absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
-                    :class="{ 'rotate-90': expandedItems.has(category.id) }" v-html="chevronRightThinIcon" />
-              </div>
-
-              <span class="font-medium">{{ category.name }}</span>
-            </button>
-
-            <!-- Hover actions: new document + options menu (hidden in edit mode, editors only) -->
-            <div
-              v-if="!isEditMode && canManageCategories"
-              class="flex items-center gap-0.5 shrink-0 mr-2 opacity-0 group-hover/category:opacity-100 transition-opacity"
-              :class="{ 'opacity-100': contextMenu?.category?.id === category.id }"
             >
-              <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-              <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
-              <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
-              <a
-                :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
-                class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
-                title="New document in this category"
-                @click.stop
-              >
-                <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
-              </a>
               <button
                 type="button"
-                class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
-                :class="{ 'text-neutral-900 bg-neutral-200': contextMenu?.category?.id === category.id }"
-                title="Category options"
-                aria-label="Category options"
-                @click.stop="handleMenuButton($event, category)"
+                @click="!isEditMode && toggleItem(category.id)"
+                class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5"
               >
-                <div class="svg-icon w-3.5 h-3.5" v-html="dotsVerticalIcon" />
+                <div
+                  class="flex-none relative w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold"
+                  :style="{
+                backgroundColor: category.color || '#E5E7EB',
+                color: getTextColor(category.color)
+              }"
+                >
+                  <span class="block group-hover/category:opacity-0 transition-opacity"
+                    >{{ category.icon || category.name.charAt(0).toUpperCase() }}</span
+                  >
+
+                  <div
+                    class="opacity-0 group-hover/category:opacity-100 transition-opacity svg-icon flex-none w-4 h-4 transition-transform absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
+                    :class="{ 'rotate-90': expandedItems.has(category.id) }"
+                    v-html="chevronRightThinIcon"
+                  />
+                </div>
+
+                <span class="font-medium">{{ category.name }}</span>
               </button>
-            </div>
 
-            <!-- Drag handle (shown in rearrange mode) -->
-            <div v-if="isEditMode" class="flex items-center shrink-0 pr-2 text-neutral-400" title="Drag to reorder">
-              <div class="svg-icon w-4 h-4" v-html="dragDotsIcon" />
+              <!-- Hover actions: new document + options menu (hidden in edit mode, editors only) -->
+              <div
+                v-if="!isEditMode && canManageCategories"
+                class="flex items-center gap-0.5 shrink-0 mr-2 opacity-0 group-hover/category:opacity-100 transition-opacity"
+                :class="{ 'opacity-100': contextMenu?.category?.id === category.id }"
+              >
+                <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+                <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
+                <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+                <a
+                  :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
+                  class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
+                  title="New document in this category"
+                  @click.stop
+                >
+                  <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
+                </a>
+                <button
+                  type="button"
+                  class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
+                  :class="{ 'text-neutral-900 bg-neutral-200': contextMenu?.category?.id === category.id }"
+                  title="Category options"
+                  aria-label="Category options"
+                  @click.stop="handleMenuButton($event, category)"
+                >
+                  <div class="svg-icon w-3.5 h-3.5" v-html="dotsVerticalIcon" />
+                </button>
+              </div>
+
+              <!-- Drag handle (shown in rearrange mode) -->
+              <div
+                v-if="isEditMode"
+                class="flex items-center shrink-0 pr-2 text-neutral-400"
+                title="Drag to reorder"
+              >
+                <div class="svg-icon w-4 h-4" v-html="dragDotsIcon" />
+              </div>
             </div>
+          </category-target>
+
+          <div
+            v-show="expandedItems.has(category.id) && !isEditMode"
+            class="space-y-1 pt-1 pb-1.5"
+          >
+            <DocumentTreeItem
+              v-for="doc in category.rootDocs"
+              :key="doc.id"
+              :doc="doc"
+              :all-docs="category.docs"
+              :active-doc-id="activeDocSlug"
+              :expanded-items="expandedItems"
+              @toggle="toggleItem"
+            />
           </div>
-        </category-target>
-
-        <div v-show="expandedItems.has(category.id) && !isEditMode" class="space-y-1 pt-1 pb-1.5">
-          <DocumentTreeItem v-for="doc in category.rootDocs" :key="doc.id" :doc="doc" :all-docs="category.docs"
-            :active-doc-id="activeDocSlug" :expanded-items="expandedItems" @toggle="toggleItem" />
         </div>
+
+        <!-- Add Category Button (shown in edit mode) -->
+        <button
+          type="button"
+          v-if="isEditMode"
+          @click="startCreating"
+          class="w-full flex items-center gap-3 px-3 py-2 text-size-medium text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
+        >
+          <div class="svg-icon w-4 h-4 shrink-0" v-html="plusSmallIcon" />
+          <span>Add category</span>
+        </button>
       </div>
 
-      <!-- Add Category Button (shown in edit mode) -->
-      <button type="button"
-        v-if="isEditMode"
-        @click="startCreating"
-        class="w-full flex items-center gap-3 px-3 py-2 text-size-medium text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
-      >
-        <div class="svg-icon w-4 h-4 shrink-0" v-html="plusSmallIcon" />
-        <span>Add category</span>
-      </button>
-    </div>
-
-    <!-- Category Context Menu (right-click on desktop, long-press on touch) -->
-    <Teleport to="body">
-      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-      <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
-      <div
-        v-if="contextMenu"
-        class="fixed inset-0 z-50"
-        @click="closeContextMenu"
-        @contextmenu.prevent="closeContextMenu"
-      >
+      <!-- Category Context Menu (right-click on desktop, long-press on touch) -->
+      <Teleport to="body">
         <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
         <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
         <div
-          class="absolute min-w-[224px] bg-background border border-neutral-100 rounded-lg p-5xs shadow-large"
-          :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-          @click.stop
-          @contextmenu.prevent.stop
+          v-if="contextMenu"
+          class="fixed inset-0 z-50"
+          @click="closeContextMenu"
+          @contextmenu.prevent="closeContextMenu"
         >
-          <div class="px-3xs py-5xs text-size-small text-neutral-500 truncate">{{ contextMenu.category.name }}</div>
-
-          <button
-            type="button"
-            @click="contextNewDocument(contextMenu.category)"
-            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
+          <div
+            class="absolute min-w-[224px] bg-background border border-neutral-100 rounded-lg p-5xs shadow-large"
+            :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+            @click.stop
+            @contextmenu.prevent.stop
           >
-            <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
-            <span>New document</span>
-          </button>
-          <button
-            type="button"
-            @click="contextEditCategory(contextMenu.category)"
-            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
-          >
-            <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
-            <span>Edit category</span>
-          </button>
+            <div class="px-3xs py-5xs text-size-small text-neutral-500 truncate">
+              {{ contextMenu.category.name }}
+            </div>
 
-          <div class="my-5xs h-px bg-neutral-100" />
+            <button
+              type="button"
+              @click="contextNewDocument(contextMenu.category)"
+              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+            >
+              <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
+              <span>New document</span>
+            </button>
+            <button
+              type="button"
+              @click="contextEditCategory(contextMenu.category)"
+              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+            >
+              <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
+              <span>Edit category</span>
+            </button>
 
-          <button
-            type="button"
-            @click="contextNewCategory()"
-            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
-          >
-            <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
-            <span>New category</span>
-          </button>
-          <button
-            type="button"
-            @click="contextRearrange()"
-            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
-          >
-            <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
-            <span>Rearrange categories</span>
-          </button>
+            <div class="my-5xs h-px bg-neutral-100" />
 
-          <div class="my-5xs h-px bg-neutral-100" />
+            <button
+              type="button"
+              @click="contextNewCategory()"
+              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+            >
+              <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
+              <span>New category</span>
+            </button>
+            <button
+              type="button"
+              @click="contextRearrange()"
+              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+            >
+              <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
+              <span>Rearrange categories</span>
+            </button>
 
-          <button
-            type="button"
-            @click="contextDeleteCategory(contextMenu.category)"
-            :disabled="deletingIds.has(contextMenu.category.id)"
-            class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
-          >
-            <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
-            <span>Delete category</span>
-          </button>
-        </div>
-      </div>
-    </Teleport>
+            <div class="my-5xs h-px bg-neutral-100" />
 
-    <!-- Create/Edit Category Dialog -->
-    <Dialog
-      :show="showAddForm || !!editingId"
-      :title="editingId ? 'Edit Category' : 'New Category'"
-      :close-on-backdrop="!isSaving"
-      @update:show="(v) => { if (!v) cancelEdit(); }"
-    >
-      <form id="category-form" @submit.prevent="handleSave" class="space-y-4">
-        <div>
-          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-          <label class="block text-size-small font-medium text-neutral-900 mb-1">Name</label>
-          <input
-            v-model="formData.name"
-            type="text"
-            required
-            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Category name"
-          />
-        </div>
-
-        <div>
-          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-          <label class="block text-size-small font-medium text-neutral-900 mb-1">Slug</label>
-          <input
-            v-model="formData.slug"
-            type="text"
-            required
-            pattern="[a-z0-9-]+"
-            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="slug-name"
-          />
-          <p class="mt-1 text-size-small text-neutral">Lowercase, numbers, hyphens only</p>
-        </div>
-
-        <div>
-          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-          <label class="block text-size-small font-medium text-neutral-900 mb-1">Description</label>
-          <textarea
-            v-model="formData.description"
-            rows="2"
-            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Description (optional)"
-          />
-        </div>
-
-        <div>
-          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-          <label class="block text-size-small font-medium text-neutral-900 mb-2">Color</label>
-          <div class="flex gap-2 items-center">
-            <input
-              v-model="formData.color"
-              type="color"
-              class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
-            />
-            <input
-              v-model="formData.color"
-              type="text"
-              placeholder="#4ECDC4"
-              pattern="^#[0-9A-Fa-f]{6}$"
-              class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <button
+              type="button"
+              @click="contextDeleteCategory(contextMenu.category)"
+              :disabled="deletingIds.has(contextMenu.category.id)"
+              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+            >
+              <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
+              <span>Delete category</span>
+            </button>
           </div>
         </div>
+      </Teleport>
 
-        <div>
-          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-          <label class="block text-size-small font-medium text-neutral-900 mb-1">Icon</label>
-          <input
-            v-model="formData.icon"
-            type="text"
-            maxlength="10"
-            class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Icon (emoji or text)"
-          />
+      <!-- Create/Edit Category Dialog -->
+      <Dialog
+        :show="showAddForm || !!editingId"
+        :title="editingId ? 'Edit Category' : 'New Category'"
+        :close-on-backdrop="!isSaving"
+        @update:show="(v) => { if (!v) cancelEdit(); }"
+      >
+        <form id="category-form" @submit.prevent="handleSave" class="space-y-4">
+          <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+            <label class="block text-size-small font-medium text-neutral-900 mb-1"
+              >Name</label
+            >
+            <input
+              v-model="formData.name"
+              type="text"
+              required
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Category name"
+            >
+          </div>
+
+          <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+            <label class="block text-size-small font-medium text-neutral-900 mb-1"
+              >Slug</label
+            >
+            <input
+              v-model="formData.slug"
+              type="text"
+              required
+              pattern="[a-z0-9-]+"
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="slug-name"
+            >
+            <p class="mt-1 text-size-small text-neutral">
+              Lowercase, numbers, hyphens only
+            </p>
+          </div>
+
+          <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+            <label class="block text-size-small font-medium text-neutral-900 mb-1"
+              >Description</label
+            >
+            <textarea
+              v-model="formData.description"
+              rows="2"
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Description (optional)"
+            />
+          </div>
+
+          <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+            <label class="block text-size-small font-medium text-neutral-900 mb-2"
+              >Color</label
+            >
+            <div class="flex gap-2 items-center">
+              <input
+                v-model="formData.color"
+                type="color"
+                class="h-8 w-16 border border-neutral-100 rounded-sm cursor-pointer"
+              >
+              <input
+                v-model="formData.color"
+                type="text"
+                placeholder="#4ECDC4"
+                pattern="^#[0-9A-Fa-f]{6}$"
+                class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+            </div>
+          </div>
+
+          <div>
+            <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+            <label class="block text-size-small font-medium text-neutral-900 mb-1"
+              >Icon</label
+            >
+            <input
+              v-model="formData.icon"
+              type="text"
+              maxlength="10"
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Icon (emoji or text)"
+            >
+          </div>
+
+          <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
+            <p class="text-size-small text-red-600">{{ formError }}</p>
+          </div>
+        </form>
+
+        <template #footer>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              @click="cancelEdit"
+              :disabled="isSaving"
+              class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="category-form"
+              :disabled="isSaving"
+              class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
+            </button>
+          </div>
+        </template>
+      </Dialog>
+
+      <!-- Delete Category Confirmation -->
+      <Dialog
+        :show="!!deleteTarget"
+        title="Delete category"
+        :close-on-backdrop="!isDeleting"
+        @update:show="(v) => { if (!v) cancelDelete(); }"
+      >
+        <p class="text-size-medium text-neutral-700">
+          Delete
+          <span class="font-semibold text-neutral-900">"{{ deleteTarget?.name }}"</span>?
+          Documents in this category will not be deleted.
+        </p>
+
+        <div
+          v-if="deleteError"
+          class="mt-3 p-3 bg-red-50 border border-red-200 rounded-md"
+        >
+          <p class="text-size-small text-red-600">{{ deleteError }}</p>
         </div>
 
-        <div v-if="formError" class="p-3 bg-red-50 border border-red-200 rounded-md">
-          <p class="text-size-small text-red-600">{{ formError }}</p>
-        </div>
-      </form>
-
-      <template #footer>
-        <div class="flex gap-2">
-          <button
-            type="button"
-            @click="cancelEdit"
-            :disabled="isSaving"
-            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form="category-form"
-            :disabled="isSaving"
-            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
-          </button>
-        </div>
-      </template>
-    </Dialog>
-
-    <!-- Delete Category Confirmation -->
-    <Dialog
-      :show="!!deleteTarget"
-      title="Delete category"
-      :close-on-backdrop="!isDeleting"
-      @update:show="(v) => { if (!v) cancelDelete(); }"
-    >
-      <p class="text-size-medium text-neutral-700">
-        Delete <span class="font-semibold text-neutral-900">"{{ deleteTarget?.name }}"</span>?
-        Documents in this category will not be deleted.
-      </p>
-
-      <div v-if="deleteError" class="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
-        <p class="text-size-small text-red-600">{{ deleteError }}</p>
-      </div>
-
-      <template #footer>
-        <div class="flex gap-2">
-          <button
-            type="button"
-            @click="cancelDelete"
-            :disabled="isDeleting"
-            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            @click="confirmDelete"
-            :disabled="isDeleting"
-            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {{ isDeleting ? 'Deleting...' : 'Delete' }}
-          </button>
-        </div>
-      </template>
-    </Dialog>
+        <template #footer>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              @click="cancelDelete"
+              :disabled="isDeleting"
+              class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="confirmDelete"
+              :disabled="isDeleting"
+              class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {{ isDeleting ? 'Deleting...' : 'Delete' }}
+            </button>
+          </div>
+        </template>
+      </Dialog>
     </template>
   </div>
 </template>

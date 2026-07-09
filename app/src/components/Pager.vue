@@ -65,7 +65,9 @@ a-pager::part(page) {
   font-weight: 500;
   border-radius: 0.375rem;
   color: var(--color-neutral-500);
-  transition: background-color 0.15s, color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 a-pager::part(page):hover {

@@ -365,7 +365,8 @@ async function copyMemberId(memberId) {
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h2 class="text-size-large font-semibold text-neutral-900">Members</h2>
-      <button type="button"
+      <button
+        type="button"
         @click="showAddMember = true"
         class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
@@ -384,45 +385,97 @@ async function copyMemberId(memberId) {
     </div>
 
     <!-- Members List -->
-    <div v-if="!isLoading && !loadingUsers && rolePermissions.length > 0" class="overflow-x-auto border border-neutral-100 rounded-md">
+    <div
+      v-if="!isLoading && !loadingUsers && rolePermissions.length > 0"
+      class="overflow-x-auto border border-neutral-100 rounded-md"
+    >
       <table class="min-w-full text-size-medium">
         <thead class="bg-neutral-50">
           <tr>
-            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Member</th>
-            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Type</th>
-            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Access</th>
-            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Role</th>
-            <th class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide">Added</th>
-            <th class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">Actions</th>
+            <th
+              class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+            >
+              Member
+            </th>
+            <th
+              class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+            >
+              Type
+            </th>
+            <th
+              class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+            >
+              Access
+            </th>
+            <th
+              class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+            >
+              Role
+            </th>
+            <th
+              class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+            >
+              Added
+            </th>
+            <th
+              class="px-4 py-2.5 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+            >
+              Actions
+            </th>
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-          <tr v-for="perm in rolePermissions" :key="`${perm.permission.resourceType || 'space'}-${perm.permission.resourceId || currentSpace?.id}-${perm.permission.userId || perm.permission.groupId}`" class="hover:bg-neutral-50">
+          <tr
+            v-for="perm in rolePermissions"
+            :key="`${perm.permission.resourceType || 'space'}-${perm.permission.resourceId || currentSpace?.id}-${perm.permission.userId || perm.permission.groupId}`"
+            class="hover:bg-neutral-50"
+          >
             <td class="px-4 py-2.5">
               <div class="flex items-center gap-3">
-                <div :class="[getMemberBgColor(perm), 'flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center']">
-                  <span v-if="perm.permission.userId" class="text-white text-size-small font-medium">
+                <div
+                  :class="[getMemberBgColor(perm), 'flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center']"
+                >
+                  <span
+                    v-if="perm.permission.userId"
+                    class="text-white text-size-small font-medium"
+                  >
                     {{ getUserInitials(getMemberName(perm)) }}
                   </span>
                   <div v-else class="svg-icon w-4 h-4 text-white" v-html="usersIcon" />
                 </div>
                 <div>
-                  <div class="font-medium text-neutral-900">{{ getMemberName(perm) }}</div>
-                  <div v-if="getMemberEmail(perm)" class="text-size-small text-neutral-500">{{ getMemberEmail(perm) }}</div>
+                  <div class="font-medium text-neutral-900">
+                    {{ getMemberName(perm) }}
+                  </div>
+                  <div
+                    v-if="getMemberEmail(perm)"
+                    class="text-size-small text-neutral-500"
+                  >
+                    {{ getMemberEmail(perm) }}
+                  </div>
                 </div>
-                <button type="button"
+                <button
+                  type="button"
                   v-if="perm.permission.userId"
                   @click="copyMemberId(perm.permission.userId)"
                   :title="copiedUserId === perm.permission.userId ? 'Copied!' : 'Copy ID'"
                   class="p-1 text-neutral-400 hover:text-neutral-600 transition-colors"
                 >
-                  <div v-if="copiedUserId === perm.permission.userId" class="svg-icon w-3.5 h-3.5 text-green-600" v-html="checkThinIcon" />
+                  <div
+                    v-if="copiedUserId === perm.permission.userId"
+                    class="svg-icon w-3.5 h-3.5 text-green-600"
+                    v-html="checkThinIcon"
+                  />
                   <div v-else class="svg-icon w-3.5 h-3.5" v-html="copyIcon" />
                 </button>
               </div>
             </td>
-            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">{{ getMemberType(perm) }}</td>
-            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">{{ getResourceLabel(perm) }}</td>
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">
+              {{ getMemberType(perm) }}
+            </td>
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-600">
+              {{ getResourceLabel(perm) }}
+            </td>
             <td class="px-4 py-2.5 whitespace-nowrap">
               <select
                 v-if="canEditMember(perm.permission.userId, perm)"
@@ -435,13 +488,20 @@ async function copyMemberId(memberId) {
                 <option value="editor">Editor</option>
                 <option value="owner">Owner</option>
               </select>
-              <span v-else class="inline-flex items-center px-2 py-0.5 rounded-full text-size-small font-medium" :class="getRoleBadgeClass(perm.permission.permission)">
+              <span
+                v-else
+                class="inline-flex items-center px-2 py-0.5 rounded-full text-size-small font-medium"
+                :class="getRoleBadgeClass(perm.permission.permission)"
+              >
                 {{ perm.permission.permission }}
               </span>
             </td>
-            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">{{ formatDate(perm.permission.createdAt) }}</td>
+            <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
+              {{ formatDate(perm.permission.createdAt) }}
+            </td>
             <td class="px-4 py-2.5 whitespace-nowrap text-right">
-              <button type="button"
+              <button
+                type="button"
                 v-if="canRemoveMember(perm)"
                 @click="handleRemoveMember(perm)"
                 :disabled="removingMember === (perm.permission.userId || perm.permission.groupId)"
@@ -455,11 +515,16 @@ async function copyMemberId(memberId) {
         </tbody>
       </table>
     </div>
-    
+
     <!-- Empty State -->
-    <div v-if="!isLoading && !loadingUsers && rolePermissions.length === 0" class="text-center py-12 border border-neutral-100 rounded-lg">
+    <div
+      v-if="!isLoading && !loadingUsers && rolePermissions.length === 0"
+      class="text-center py-12 border border-neutral-100 rounded-lg"
+    >
       <div class="svg-icon mx-auto h-12 w-12 text-neutral-400" v-html="usersGroupIcon" />
-      <p class="mt-4 text-neutral-500">No members yet. Add your first member to get started.</p>
+      <p class="mt-4 text-neutral-500">
+        No members yet. Add your first member to get started.
+      </p>
     </div>
   </div>
 
@@ -475,7 +540,10 @@ async function copyMemberId(memberId) {
       <h3 class="text-size-title font-semibold text-neutral-900 mb-4">Invite People</h3>
       <form @submit.prevent="handleAddMember" class="space-y-4">
         <div>
-          <label for="member-type" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="member-type"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Type
           </label>
           <select
@@ -490,7 +558,10 @@ async function copyMemberId(memberId) {
 
         <div>
           <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-          <label for="member-id" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="member-id"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             {{ newMemberType === "user" ? "Email" : "Group ID" }}
           </label>
           <input
@@ -501,7 +572,7 @@ async function copyMemberId(memberId) {
             required
             placeholder="person@example.com"
             class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          >
           <input
             v-else
             id="member-id"
@@ -510,9 +581,13 @@ async function copyMemberId(memberId) {
             required
             placeholder="e.g., admins, developers"
             class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <p v-if="newMemberType === 'user'" class="mt-1 text-size-small text-neutral-500">
-            Enter the email of an existing account. They'll be added to the space immediately.
+          >
+          <p
+            v-if="newMemberType === 'user'"
+            class="mt-1 text-size-small text-neutral-500"
+          >
+            Enter the email of an existing account. They'll be added to the space
+            immediately.
           </p>
           <p v-else class="mt-1 text-size-small text-neutral-500">
             The group name from your OAuth provider's wiki_groups field
@@ -520,7 +595,10 @@ async function copyMemberId(memberId) {
         </div>
 
         <div>
-          <label for="member-scope" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="member-scope"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Access
           </label>
           <select
@@ -534,7 +612,10 @@ async function copyMemberId(memberId) {
         </div>
 
         <div v-if="newMemberScope === 'category'">
-          <label for="member-category" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="member-category"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Category
           </label>
           <select
@@ -544,14 +625,21 @@ async function copyMemberId(memberId) {
             class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select a category...</option>
-            <option v-for="category in categories" :key="category.id" :value="category.id">
+            <option
+              v-for="category in categories"
+              :key="category.id"
+              :value="category.id"
+            >
               {{ category.name }}
             </option>
           </select>
         </div>
 
         <div>
-          <label for="member-role" class="block text-size-medium font-medium text-neutral-900 mb-1">
+          <label
+            for="member-role"
+            class="block text-size-medium font-medium text-neutral-900 mb-1"
+          >
             Permission Level
           </label>
           <select

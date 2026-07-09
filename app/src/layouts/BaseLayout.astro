@@ -42,15 +42,32 @@ let faviconFilename = {
 <!doctype html>
 <html lang={lang}>
   <head>
-    <meta charset="utf-8" />
-    <link rel="icon" type="image/png" href={`/${faviconFilename[isDev ? "dev" : 'light']}.png`} media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/png" href={`/${faviconFilename[isDev ? "dev" : 'dark']}.png`} media="(prefers-color-scheme: light)" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta charset="utf-8">
+    <link
+      rel="icon"
+      type="image/png"
+      href={`/${faviconFilename[isDev ? "dev" : 'light']}.png`}
+      media="(prefers-color-scheme: dark)"
+    >
+    <link
+      rel="icon"
+      type="image/png"
+      href={`/${faviconFilename[isDev ? "dev" : 'dark']}.png`}
+      media="(prefers-color-scheme: light)"
+    >
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    >
     <title>{title}</title>
-    <script type="application/json" id="env" set:html={JSON.stringify(publicEnv)}></script>
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#181818" media="(prefers-color-scheme: dark)" />
+    <script
+      type="application/json"
+      id="env"
+      set:html={JSON.stringify(publicEnv)}
+    ></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#181818" media="(prefers-color-scheme: dark)">
     {meta?.description && <meta name="description" content={meta.description} />}
     {meta?.title && <meta property="og:title" content={meta.title} />}
     {meta?.description && <meta property="og:description" content={meta.description} />}

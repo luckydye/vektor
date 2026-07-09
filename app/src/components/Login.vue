@@ -109,7 +109,10 @@ function toggleMode() {
 <template>
   <div class="w-full space-y-5">
     <div v-if="showPasswordLogin || showSsoLogin || showGoogleLogin" class="mb-7">
-      <h2 class="font-semibold text-neutral-900" style="font-size: 1.6rem; line-height: 1.2; letter-spacing: -0.02em">
+      <h2
+        class="font-semibold text-neutral-900"
+        style="font-size: 1.6rem; line-height: 1.2; letter-spacing: -0.02em"
+      >
         {{ isSignUp ? "Create an account" : "Welcome back" }}
       </h2>
       <p class="text-size-medium text-neutral-500 mt-1.5">
@@ -119,12 +122,7 @@ function toggleMode() {
 
     <form v-if="showPasswordLogin" @submit.prevent="onEmailLogin" class="space-y-4">
       <FormField v-if="isSignUp" label="Name">
-        <Input
-          v-model="name"
-          placeholder="Your Name"
-          type="text"
-          :disabled="loading"
-        />
+        <Input v-model="name" placeholder="Your Name" type="text" :disabled="loading" />
       </FormField>
 
       <FormField label="Email">
@@ -191,7 +189,10 @@ function toggleMode() {
       :disabled="loading"
     />
 
-    <div v-if="!showPasswordLogin && !showSsoLogin && !showGoogleLogin" class="text-size-medium text-center text-neutral">
+    <div
+      v-if="!showPasswordLogin && !showSsoLogin && !showGoogleLogin"
+      class="text-size-medium text-center text-neutral"
+    >
       No login method configured.
     </div>
   </div>

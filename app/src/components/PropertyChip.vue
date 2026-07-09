@@ -165,32 +165,38 @@ onMounted(() => {
       }"
       @click="handleClick"
     >
-        <div
-          v-if="icon"
-          v-html="icon"
-          class="[&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:inline"
-          :class="variant === 'special' ? '[&_svg]:text-primary-700' : '[&_svg]:text-primary-600'"
-        />
-        <div v-if="!icon" class="w-[18px] h-[18px] rounded-sm flex items-center justify-center bg-primary-500" />
-        <span
-          v-if="valueLabels.length === 0"
-          :class="twMerge(
+      <div
+        v-if="icon"
+        v-html="icon"
+        class="[&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:inline"
+        :class="variant === 'special' ? '[&_svg]:text-primary-700' : '[&_svg]:text-primary-600'"
+      />
+      <div
+        v-if="!icon"
+        class="w-[18px] h-[18px] rounded-sm flex items-center justify-center bg-primary-500"
+      />
+      <span
+        v-if="valueLabels.length === 0"
+        :class="twMerge(
             'max-w-[150px] text-ellipsis overflow-hidden whitespace-nowrap capitalize',
             variant === 'special' && 'text-primary-700',
             variant === 'default' && 'text-primary-600'
           )"
+      >
+        {{ label }}
+      </span>
+      <span
+        v-else
+        class="flex items-center gap-4xs min-w-0 max-w-[260px] overflow-hidden"
+      >
+        <span
+          v-for="valueLabel in valueLabels"
+          :key="valueLabel"
+          class="max-w-[110px] text-ellipsis overflow-hidden whitespace-nowrap capitalize rounded-md bg-primary-50 px-4xs text-primary-600"
         >
-          {{ label }}
+          {{ valueLabel }}
         </span>
-        <span v-else class="flex items-center gap-4xs min-w-0 max-w-[260px] overflow-hidden">
-          <span
-            v-for="valueLabel in valueLabels"
-            :key="valueLabel"
-            class="max-w-[110px] text-ellipsis overflow-hidden whitespace-nowrap capitalize rounded-md bg-primary-50 px-4xs text-primary-600"
-          >
-            {{ valueLabel }}
-          </span>
-        </span>
+      </span>
     </button>
 
     <button
@@ -223,10 +229,19 @@ onMounted(() => {
     </button>
 
     <!-- Edit Property Popover -->
-    <a-blur v-if="isEditPopoverOpen && property" enabled @exit="handleExit" class="absolute -top-4xs -left-4xs bg-neutral-10 border border-neutral-100 rounded-lg p-5xs flex flex-col z-50 shadow-large">
+    <a-blur
+      v-if="isEditPopoverOpen && property"
+      enabled
+      @exit="handleExit"
+      class="absolute -top-4xs -left-4xs bg-neutral-10 border border-neutral-100 rounded-lg p-5xs flex flex-col z-50 shadow-large"
+    >
       <!-- Property name input with delete button -->
       <div class="flex items-center gap-4xs px-3xs w-full">
-        <div v-if="icon" v-html="icon" class="[&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:text-neutral-950" />
+        <div
+          v-if="icon"
+          v-html="icon"
+          class="[&_svg]:w-[18px] [&_svg]:h-[18px] [&_svg]:text-neutral-950"
+        />
         <div class="flex-1 overflow-hidden py-5xs whitespace-nowrap">
           <input
             v-if="property.type !== 'date'"
@@ -234,11 +249,8 @@ onMounted(() => {
             v-model="searchInput"
             class="bg-transparent border-none outline-none text-interactive w-[150px]"
             :placeholder="property.name || 'Property name'"
-          />
-          <span
-            v-else
-            class="text-interactive"
           >
+          <span v-else class="text-interactive">
             {{ property.name }}
           </span>
         </div>
@@ -253,11 +265,7 @@ onMounted(() => {
 
       <!-- Date Picker for date type -->
       <div v-if="property.type === 'date'">
-        <a-calendar
-          :value="dateValue"
-          @change="handleDateChange"
-          class="p-2 w-[250px]"
-        />
+        <a-calendar :value="dateValue" @change="handleDateChange" class="p-2 w-[250px]" />
       </div>
 
       <!-- Property Value Selector for other types -->

@@ -29,7 +29,9 @@ const match = computed(() => {
 
 <template>
   <div class="min-h-screen h-full flex flex-col relative overflow-x-hidden">
-    <inset-view class="block overflow-hidden h-full relative flex-1 md:ml-(--inset-left) my-1.5 md:mr-(--inset-right)">
+    <inset-view
+      class="block overflow-hidden h-full relative flex-1 md:ml-(--inset-left) my-1.5 md:mr-(--inset-right)"
+    >
       <ExtensionView
         v-if="currentSpace && match"
         :extensionId="match.extension.id"

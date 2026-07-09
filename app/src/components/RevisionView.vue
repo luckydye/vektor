@@ -134,8 +134,12 @@ onUnmounted(() => {
             <template v-if="showingDiff">
               Changes from the published version are shown inline.
               <span class="inline-flex items-center gap-2">
-                <span class="px-1 rounded-xs bg-green-100 text-green-700 no-underline">added</span>
-                <span class="px-1 rounded-xs bg-red-100 text-red-700 line-through">removed</span>
+                <span class="px-1 rounded-xs bg-green-100 text-green-700 no-underline"
+                  >added</span
+                >
+                <span class="px-1 rounded-xs bg-red-100 text-red-700 line-through"
+                  >removed</span
+                >
               </span>
             </template>
             <template v-else-if="viewingSuggestion">
@@ -147,7 +151,8 @@ onUnmounted(() => {
           </p>
         </div>
       </div>
-      <button type="button"
+      <button
+        type="button"
         @click="closeRevisionView"
         class="px-4 py-2 text-size-medium font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors"
       >

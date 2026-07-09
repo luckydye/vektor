@@ -250,21 +250,25 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div id="root" class="mx-auto relative origin-top overflow-x-clip" :style="initialLayoutStyle">
+  <div
+    id="root"
+    class="mx-auto relative origin-top overflow-x-clip"
+    :style="initialLayoutStyle"
+  >
     <div
       :class="[
         'main-content min-h-screen h-full transition-transform md:transition-none relative',
         isMobileSidebarOpen ? 'translate-x-(--sidebar-width) md:translate-x-0' : '',
       ]"
     >
-      <MobileHeader
-        :spaceName="currentSpace?.name ?? ''"
-        :pathname="pathname"
-      />
+      <MobileHeader :spaceName="currentSpace?.name ?? ''" :pathname="pathname" />
 
       <DockedWindowLayout />
 
-      <div v-if="spaceNotFound" class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500">
+      <div
+        v-if="spaceNotFound"
+        class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500"
+      >
         <p class="text-2xl font-semibold text-neutral-800">404</p>
         <p>Space not found.</p>
         <a href="/" class="text-sm underline hover:text-neutral-800">Go home</a>

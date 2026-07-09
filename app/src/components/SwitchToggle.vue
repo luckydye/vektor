@@ -12,7 +12,7 @@
       role="switch"
       :aria-checked="modelValue"
       @change="handleChange"
-    />
+    >
     <span
       class="relative inline-flex h-5 w-9 shrink-0 rounded-full bg-neutral-200 transition-colors peer-checked:bg-green-600 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-blue-500 peer-disabled:opacity-50 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"
     ></span>

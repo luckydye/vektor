@@ -213,7 +213,7 @@ function isInternal(url: string): boolean {
               :alt="activePreview.data.title || 'Preview'"
               class="w-full h-full object-cover"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
+            >
           </div>
 
           <div class="p-4xs space-y-2">
@@ -229,7 +229,7 @@ function isInternal(url: string): boolean {
                   alt=""
                   class="w-4 h-4"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
+                >
               </template>
               <span class="text-size-small text-neutral-500 truncate">
                 {{ activePreview.data.siteName || getDomain(activePreview.url) }}
