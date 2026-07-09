@@ -3428,33 +3428,45 @@ watch(
   { immediate: true },
 );
 
+const documentPreviewAddresses = computed(() =>
+  [
+    ...new Set(
+      shapes.value
+        .filter((shape) => shape.type === "document")
+        .map(documentAddressForShape)
+        .filter((address): address is string => Boolean(address)),
+    ),
+  ].sort(),
+);
+
+const linkPreviewUrls = computed(() =>
+  [
+    ...new Set(
+      shapes.value
+        .filter((shape) => shape.type === "link")
+        .map((shape) => shape.src)
+        .filter((url): url is string => Boolean(url)),
+    ),
+  ].sort(),
+);
+
+// Moving a card changes updatedAt and refreshes the shapes array. Watch a
+// stable key of the actual preview inputs instead, so those visual edits never
+// cause preview work. The loaders themselves remain responsible for caching.
 watch(
-  () =>
-    shapes.value
-      .filter((shape) => shape.type === "document")
-      .map((shape) => ({
-        shapeId: shape.id,
-        address: documentAddressForShape(shape) ?? null,
-        resolvedDocId: documentLinks.documentIdForShape(shape) ?? null,
-      })),
-  (documentRefs) => {
-    for (const ref of documentRefs) {
-      if (ref.resolvedDocId) {
-        void documentLinks.loadPreview({
-          address: ref.address ?? "",
-        });
-      }
+  () => documentPreviewAddresses.value.join("\u001f"),
+  () => {
+    for (const address of documentPreviewAddresses.value) {
+      void documentLinks.loadPreview({ address });
     }
   },
-  { deep: true, immediate: true },
+  { immediate: true },
 );
 
 watch(
-  () => shapes.value.filter((s) => s.type === "link").map((s) => s.src),
-  (urls) => {
-    for (const url of urls) {
-      if (url) void linkPreviews.loadPreview(url);
-    }
+  () => linkPreviewUrls.value.join("\u001f"),
+  () => {
+    for (const url of linkPreviewUrls.value) void linkPreviews.loadPreview(url);
   },
   { immediate: true },
 );
