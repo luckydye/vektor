@@ -8,7 +8,7 @@
         <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
           <div class="svg-icon w-8 h-8 text-blue-600" v-html="folderLargeIcon" />
         </div>
-        <h2 class="text-size-title font-bold text-neutral-900 mb-2">Welcome to Your Wiki!</h2>
+        <h2 class="text-size-title font-bold text-neutral-900 mb-2">Welcome to Your Space!</h2>
         <p class="text-neutral">
           G'day! Let's get you sorted by creating your first space. Spaces help organize your documents and knowledge.
         </p>
@@ -24,7 +24,7 @@
             v-model="spaceName"
             type="text"
             required
-            placeholder="Engineering, Product, Company Wiki..."
+            placeholder="Engineering, Product, Design ..."
             class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             :disabled="isCreating"
           />

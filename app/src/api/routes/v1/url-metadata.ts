@@ -151,7 +151,7 @@ async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
       response = await fetch(target, {
         signal: controller.signal,
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; WikiBot/1.0)",
+          "User-Agent": "Mozilla/5.0 (compatible; VektorBot/1.0)",
           Accept: "text/html,application/xhtml+xml",
         },
         redirect: "manual",

@@ -239,7 +239,7 @@ export function documentToICal(doc: DocumentWithProperties): string | null {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Wiki//CalDAV//EN",
+    "PRODID:-//Vektor//CalDAV//EN",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
     `UID:${doc.id}`,
@@ -303,7 +303,7 @@ export function calDavUnauthorized(): Response {
   return new Response("Unauthorized", {
     status: 401,
     headers: {
-      "WWW-Authenticate": 'Basic realm="Wiki CalDAV"',
+      "WWW-Authenticate": 'Basic realm="Vektor CalDAV"',
       ...CORS_HEADERS,
     },
   });

@@ -1,7 +1,7 @@
 {
-  "name": "Wiki",
-  "short_name": "Wiki",
-  "description": "Wiki",
+  "name": "Vektor",
+  "short_name": "Vektor",
+  "description": "Vektor",
   "theme_color": "#ffffff",
   "start_url": "/",
   "display": "standalone",

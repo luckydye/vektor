@@ -88,7 +88,7 @@ watch(
         <label for="space-name" class="block text-small font-medium text-neutral-900 mb-5xs">
           Space Name
         </label>
-        <Input v-model="newSpaceName" placeholder="My Wiki" @input="handleNameInput" />
+        <Input v-model="newSpaceName" placeholder="My Space" @input="handleNameInput" />
       </div>
 
       <div>

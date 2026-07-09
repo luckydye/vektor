@@ -26,7 +26,7 @@
  *   BASE_URL=http://localhost:3000 bun run scripts/create-perf-test-data.ts
  *
  * Environment Variables:
- *   BASE_URL - Wiki server URL (default: http://127.0.0.1:8080)
+ *   BASE_URL - Vektor server URL (default: http://127.0.0.1:8080)
  *   BATCH_SIZE - Number of documents to create per batch (default: 100)
  *                Smaller batches = slower but more reliable
  *   REVISION_PROBABILITY - Probability of adding extra revisions (default: 0.1)

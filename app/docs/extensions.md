@@ -1,6 +1,6 @@
-# Wiki Extension API
+# Vektor Extension API
 
-This document describes the API surface available to Wiki extensions.
+This document describes the API surface available to Vektor extensions.
 
 ## Extension Structure
 
@@ -104,7 +104,7 @@ The context object passed to `activate` and `deactivate`:
 | `extensionId` | `string` | Your extension's ID |
 | `spaceId` | `string` | Current space ID |
 | `route` | `string \| null` | Current route path if rendering a view |
-| `api` | `ApiClient` | Wiki API client |
+| `api` | `ApiClient` | Vektor API client |
 | `actions` | `Actions` | Action registration |
 | `views` | `Views` | View registration for custom routes |
 | `suggestions` | `Suggestions` | Suggestion provider registration |
@@ -211,7 +211,7 @@ Extension ui is isolated from the host application using a shadowDOM. Every view
 
 ## API Client
 
-Access the Wiki API through `ctx.api`:
+Access the Vektor API through `ctx.api`:
 
 ```ts
 export function activate({ api, spaceId }: ExtensionContext): void {
@@ -471,7 +471,7 @@ Create a ZIP file containing:
 - `manifest.json`
 - `dist/main.js` (or whatever path specified in manifest entries)
 
-Upload via the Wiki extensions management UI.
+Upload via the Vektor extensions management UI.
 
 ## Job Disk Cache
 

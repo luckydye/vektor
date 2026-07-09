@@ -242,7 +242,7 @@ watch(
   title,
   (t) => {
     if (typeof document === "undefined") return;
-    if (t) document.title = `${t} - ${currentSpace.value?.name ?? ""} - Wiki`;
+    if (t) document.title = `${t} - ${currentSpace.value?.name ?? ""} - Vektor`;
   },
   { immediate: true },
 );
