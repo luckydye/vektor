@@ -2,6 +2,7 @@
 import { onBeforeUnmount, useSlots, watch } from "vue";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import { closeIcon } from "~/src/assets/icons.ts";
+import ClientOnly from "./ClientOnly.vue";
 import "@atrium-ui/elements/blur";
 
 const props = withDefaults(
@@ -71,17 +72,20 @@ onBeforeUnmount(() => applyScrollLock(false));
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="dialog">
-      <!-- biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. -->
-      <a-blur
+  <ClientOnly>
+    <Teleport to="body">
+      <Transition name="dialog"><!-- biome-ignore lint/a11y/noStaticElementInteractions: a-blur emits dismissal events for this modal container. --><a-blur
         v-if="show"
         enabled
         class="dialog-root fixed inset-0 z-100 flex items-end justify-center md:items-center"
-        @click="onDismiss"
         @exit="onDismiss"
       >
-        <div class="dialog-backdrop absolute inset-0 bg-black/40 md:bg-black/50" />
+        <button
+          type="button"
+          class="dialog-backdrop absolute inset-0 border-0 bg-black/40 md:bg-black/50"
+          aria-label="Close dialog"
+          @click="onDismiss"
+        />
 
         <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
         <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
@@ -125,9 +129,9 @@ onBeforeUnmount(() => applyScrollLock(false));
             <slot name="footer" />
           </div>
         </div>
-      </a-blur>
-    </Transition>
-  </Teleport>
+      </a-blur></Transition>
+    </Teleport>
+  </ClientOnly>
 </template>
 
 <style scoped>
