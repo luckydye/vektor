@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { t } from "#utils/lang.ts";
 import { arrowLeftIcon, lockIcon } from "~/src/assets/icons.ts";
 import { ButtonPrimary } from "~/src/components/index.ts";
-import { t } from "#utils/lang.ts";
 
 function goBack() {
   history.back();

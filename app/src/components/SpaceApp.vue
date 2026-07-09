@@ -216,9 +216,11 @@ onMounted(() => {
 
   registerShellElements();
 
-  const idle = (window as unknown as {
-    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
-  }).requestIdleCallback;
+  const idle = (
+    window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
+    }
+  ).requestIdleCallback;
   if (idle) {
     idle(() => registerDocumentElements(), { timeout: 1500 });
   } else {
