@@ -3,23 +3,40 @@
     :data-document-id="doc.id"
     :data-space-id="currentSpace?.id"
     :data-document-url="getDocumentUrl(doc.slug)"
-    class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50 pl-[0.535rem]">
+    class="block [&[data-drag-over]]:bg-neutral-100 [&[data-dragging]]:opacity-50 pl-[0.535rem]"
+  >
     <div class="flex items-center gap-1">
-      <button v-if="hasChildren" @click="$emit('toggle', doc.id)" class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
-        :aria-label="isExpanded ? 'Collapse' : 'Expand'">
-        <div class="svg-icon w-3 h-3 transition-transform text-neutral" :class="{ 'rotate-90': isExpanded }" v-html="chevronRightThinIcon" />
+      <button
+        type="button"
+        v-if="hasChildren"
+        @click="$emit('toggle', doc.id)"
+        class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
+        :aria-label="isExpanded ? 'Collapse' : 'Expand'"
+      >
+        <div
+          class="svg-icon w-3 h-3 transition-transform text-neutral"
+          :class="{ 'rotate-90': isExpanded }"
+          v-html="chevronRightThinIcon"
+        />
       </button>
 
       <div v-else class="flex-none w-4"></div>
 
-      <a :href="getDocumentUrl(doc.slug)" :class="[
+      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+      <a
+        :href="getDocumentUrl(doc.slug)"
+        :class="[
         'flex-1 px-2 py-1.5 text-size-medium rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive
           ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'
-      ]">
+      ]"
+      >
         <span>{{ docTitle(doc) }}</span>
-        <span v-if="doc.mentionCount && doc.mentionCount > 0" class="ml-2 px-1.5 py-0.5 text-size-small rounded-full bg-blue-500 text-white font-medium">
+        <span
+          v-if="doc.mentionCount && doc.mentionCount > 0"
+          class="ml-2 px-1.5 py-0.5 text-size-small rounded-full bg-blue-500 text-white font-medium"
+        >
           {{ doc.mentionCount }}
         </span>
       </a>
@@ -37,8 +54,13 @@
           v-else
           class="absolute left-0 top-0 h-[0.975rem] w-[0.52rem] border-l border-b border-neutral-400"
         ></div>
-        <DocumentTreeItem :doc="child" :all-docs="allDocs"
-          :active-doc-id="activeDocId" :expanded-items="expandedItems" @toggle="$emit('toggle', $event)" />
+        <DocumentTreeItem
+          :doc="child"
+          :all-docs="allDocs"
+          :active-doc-id="activeDocId"
+          :expanded-items="expandedItems"
+          @toggle="$emit('toggle', $event)"
+        />
       </div>
     </div>
   </page-target>

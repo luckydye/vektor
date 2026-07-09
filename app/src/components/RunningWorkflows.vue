@@ -184,68 +184,89 @@ const groupedRuns = computed(() => {
 <template>
   <div v-if="runs.length > 0 || isLoading">
     <h2 class="text-size-title font-semibold mb-3">Workflows</h2>
-    <div v-if="isLoading && runs.length === 0" class="text-size-medium text-neutral-500 py-4">Loading runs...</div>
+    <div
+      v-if="isLoading && runs.length === 0"
+      class="text-size-medium text-neutral-500 py-4"
+    >
+      Loading runs...
+    </div>
     <div class="space-y-6">
       <div v-for="group in groupedRuns" :key="group.date" class="space-y-3">
-        <div class="text-size-small font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 py-2">
+        <div
+          class="text-size-small font-semibold text-neutral-900 uppercase tracking-wide sticky top-0 py-2"
+        >
           {{ group.date }}
         </div>
         <div class="space-y-2">
-      <a
-        v-for="run in group.items"
-        :key="run.runId"
-        :href="docHref(run)"
-        class="group relative flex flex-col overflow-hidden rounded-xl border border-neutral-200/80 bg-white dark:bg-neutral-100 p-0 shadow-[0_2px_8px_rgba(15,23,42,0.04)] hover:border-sky-300 dark:hover:border-neutral-300 transition-colors"
-      >
-        <!-- Status gradient -->
-        <div class="absolute inset-0 pointer-events-none" :class="statusGradient(run.status)" />
+          <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+          <a
+            v-for="run in group.items"
+            :key="run.runId"
+            :href="docHref(run)"
+            class="group relative flex flex-col overflow-hidden rounded-xl border border-neutral-200/80 bg-white dark:bg-neutral-100 p-0 shadow-[0_2px_8px_rgba(15,23,42,0.04)] hover:border-sky-300 dark:hover:border-neutral-300 transition-colors"
+          >
+            <!-- Status gradient -->
+            <div
+              class="absolute inset-0 pointer-events-none"
+              :class="statusGradient(run.status)"
+            />
 
-        <div class="relative flex flex-col p-4">
-          <!-- Top row: name + badge -->
-          <div class="flex items-start justify-between gap-3 mb-3">
-            <div class="min-w-0">
-              <p class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400 mb-1">Workflow</p>
-              <h3 class="font-semibold text-[15px] leading-tight text-neutral-900 line-clamp-2">{{ run.runtimeInputs?.title ?? run.documentTitle }}</h3>
-            </div>
-            <span
-              class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold text-[11px] uppercase tracking-[0.08em] flex-shrink-0"
-              :class="statusBadge(run.status)"
-            >
-              <div v-if="run.status === 'running'" class="svg-icon w-2.5 h-2.5 animate-spin" v-html="spinnerQuarterIcon" />
-              <span v-else class="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
-              <span class="leading-none capitalize">{{ run.status }}</span>
-            </span>
-          </div>
+            <div class="relative flex flex-col p-4">
+              <!-- Top row: name + badge -->
+              <div class="flex items-start justify-between gap-3 mb-3">
+                <div class="min-w-0">
+                  <p
+                    class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400 mb-1"
+                  >
+                    Workflow
+                  </p>
+                  <h3
+                    class="font-semibold text-[15px] leading-tight text-neutral-900 line-clamp-2"
+                  >
+                    {{ run.runtimeInputs?.title ?? run.documentTitle }}
+                  </h3>
+                </div>
+                <span
+                  class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-semibold text-[11px] uppercase tracking-[0.08em] flex-shrink-0"
+                  :class="statusBadge(run.status)"
+                >
+                  <div
+                    v-if="run.status === 'running'"
+                    class="svg-icon w-2.5 h-2.5 animate-spin"
+                    v-html="spinnerQuarterIcon"
+                  />
+                  <span v-else class="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                  <span class="leading-none capitalize">{{ run.status }}</span>
+                </span>
+              </div>
 
-          <!-- Progress bar -->
-          <div v-if="run.totalNodes > 0" class="mb-3 flex items-center gap-2">
-            <div class="flex-1 h-1 rounded-full bg-neutral-200 overflow-hidden">
+              <!-- Progress bar -->
+              <div v-if="run.totalNodes > 0" class="mb-3 flex items-center gap-2">
+                <div class="flex-1 h-1 rounded-full bg-neutral-200 overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-500"
+                    :class="run.status === 'failed' ? 'bg-rose-400' : run.status === 'completed' ? 'bg-emerald-400' : 'bg-sky-400'"
+                    :style="{ width: `${Math.round((run.completedNodes / run.totalNodes) * 100)}%` }"
+                  />
+                </div>
+                <span class="text-[11px] text-neutral-400 tabular-nums whitespace-nowrap">
+                  {{ run.completedNodes }}/{{ run.totalNodes }}
+                </span>
+              </div>
+
+              <!-- Bottom: time info -->
               <div
-                class="h-full rounded-full transition-all duration-500"
-                :class="run.status === 'failed' ? 'bg-rose-400' : run.status === 'completed' ? 'bg-emerald-400' : 'bg-sky-400'"
-                :style="{ width: `${Math.round((run.completedNodes / run.totalNodes) * 100)}%` }"
-              />
+                class="flex justify-between mt-auto text-[11px] text-neutral-400"
+                :title="fullTimestamp(run.createdAt)"
+              >
+                <div>{{ startedAtLabel(run) }}</div>
+                <div v-if="durationLabel(run)">{{ durationLabel(run) }}</div>
+              </div>
             </div>
-            <span class="text-[11px] text-neutral-400 tabular-nums whitespace-nowrap">
-              {{ run.completedNodes }}/{{ run.totalNodes }}
-            </span>
-          </div>
-
-          <!-- Bottom: time info -->
-          <div class="flex justify-between mt-auto text-[11px] text-neutral-400" :title="fullTimestamp(run.createdAt)">
-            <div>{{ startedAtLabel(run) }}</div>
-            <div v-if="durationLabel(run)">{{ durationLabel(run) }}</div>
-          </div>
-        </div>
-      </a>
+          </a>
         </div>
       </div>
     </div>
-    <Pager
-      class="mt-4 pt-4"
-      :page="page"
-      :total-pages="totalPages"
-      @change="goToPage"
-    />
+    <Pager class="mt-4 pt-4" :page="page" :total-pages="totalPages" @change="goToPage" />
   </div>
 </template>

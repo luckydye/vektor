@@ -230,13 +230,15 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
 
       <article class="rounded-lg border border-neutral-100 bg-neutral-10 px-3 py-3">
         <div class="flex items-start gap-3">
-          <div class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-neutral-200 text-neutral-700">
+          <div
+            class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-neutral-200 text-neutral-700"
+          >
             <img
               v-if="getCardUser(group.userId)?.image"
               :src="getCardUser(group.userId)?.image ?? undefined"
               :alt="getUserName(group.userId)"
               class="h-full w-full object-cover"
-            />
+            >
             <div
               v-else
               class="flex h-full w-full items-center justify-center text-size-small font-semibold leading-none"
@@ -247,11 +249,15 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
 
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 items-center gap-2">
-              <div class="flex min-w-0 flex-1 items-baseline gap-1 text-size-small leading-small">
+              <div
+                class="flex min-w-0 flex-1 items-baseline gap-1 text-size-small leading-small"
+              >
                 <span class="truncate font-semibold text-neutral-900">
                   {{ getUserName(group.userId) }}
                 </span>
-                <span class="shrink-0 text-neutral-700">{{ getGroupAction(group.items) }}</span>
+                <span class="shrink-0 text-neutral-700"
+                  >{{ getGroupAction(group.items) }}</span
+                >
               </div>
               <slot name="header-actions" :items="group.items" />
             </div>
@@ -266,7 +272,9 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
                   class="svg-icon h-4 w-4 shrink-0 text-neutral-400"
                   v-html="getDocumentActivityIcon(entry)"
                 />
-                <div class="min-w-0 flex-1 truncate text-size-small font-medium text-neutral-600">
+                <div
+                  class="min-w-0 flex-1 truncate text-size-small font-medium text-neutral-600"
+                >
                   {{ getEntryChangeLabel(entry) ?? getAuditEventLabel(entry.event) }}
                 </div>
 
@@ -283,7 +291,10 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
                   </span>
                   <span v-else class="text-neutral-400">—</span>
                   <span class="font-mono text-size-extra-small text-neutral-400">→</span>
-                  <span v-if="entry.event === 'property_delete'" class="shrink-0 text-red-500">
+                  <span
+                    v-if="entry.event === 'property_delete'"
+                    class="shrink-0 text-red-500"
+                  >
                     removed
                   </span>
                   <span
@@ -311,11 +322,9 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
                   v-html="plusIcon"
                 />
                 <span>
-                  {{
-                    isGroupExpanded(group.id)
+                  {{ isGroupExpanded(group.id)
                       ? "Show fewer changes"
-                      : getMoreChangesLabel(getHiddenDocumentEntryCount(group.items))
-                  }}
+                      : getMoreChangesLabel(getHiddenDocumentEntryCount(group.items)) }}
                 </span>
               </button>
             </div>

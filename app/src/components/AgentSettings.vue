@@ -4,7 +4,10 @@
       <h2 class="text-size-medium font-semibold text-neutral-900">AI Provider</h2>
     </div>
 
-    <div v-if="loadError" class="mb-4 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+    <div
+      v-if="loadError"
+      class="mb-4 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600"
+    >
       {{ loadError }}
     </div>
 
@@ -12,7 +15,10 @@
 
     <div v-else>
       <!-- Current config status -->
-      <div v-if="meta?.configured" class="mb-5 p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between gap-4">
+      <div
+        v-if="meta?.configured"
+        class="mb-5 p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between gap-4"
+      >
         <div class="text-size-medium text-green-800">
           <span class="font-medium">{{ meta.provider }}</span>
           <span class="mx-1.5 text-green-400">·</span>
@@ -23,19 +29,28 @@
           </template>
         </div>
         <button
+          type="button"
           @click="handleDelete"
           :disabled="isDeleting"
           class="shrink-0 text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
-        >{{ isDeleting ? 'Removing…' : 'Remove' }}</button>
+        >
+          {{ isDeleting ? 'Removing…' : 'Remove' }}
+        </button>
       </div>
-      <div v-else class="mb-5 p-3 bg-neutral-50 border border-neutral-200 rounded-md text-size-medium text-neutral-500">
+      <div
+        v-else
+        class="mb-5 p-3 bg-neutral-50 border border-neutral-200 rounded-md text-size-medium text-neutral-500"
+      >
         No AI provider configured. The agent will not work until one is set.
       </div>
 
       <!-- Configuration form -->
       <form @submit.prevent="handleSave" class="space-y-4">
         <div>
-          <label class="block text-size-small font-medium text-neutral-700 mb-1">Provider</label>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+          <label class="block text-size-small font-medium text-neutral-700 mb-1"
+            >Provider</label
+          >
           <select
             v-model="form.provider"
             class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -48,31 +63,42 @@
         </div>
 
         <div>
-          <label class="block text-size-small font-medium text-neutral-700 mb-1">Model</label>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+          <label class="block text-size-small font-medium text-neutral-700 mb-1"
+            >Model</label
+          >
           <input
             v-model="form.model"
             type="text"
             required
             :placeholder="modelPlaceholder"
             class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-          />
+          >
         </div>
 
         <div v-if="form.provider === 'ollama'">
-          <label class="block text-size-small font-medium text-neutral-700 mb-1">Base URL</label>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+          <label class="block text-size-small font-medium text-neutral-700 mb-1"
+            >Base URL</label
+          >
           <input
             v-model="form.baseUrl"
             type="url"
             required
             placeholder="http://127.0.0.1:11434"
             class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-          />
+          >
         </div>
 
         <div v-else>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
           <label class="block text-size-small font-medium text-neutral-700 mb-1">
             API Key
-            <span v-if="meta?.configured && meta.hasApiKey" class="ml-1 text-neutral-400 font-normal">(leave blank to keep existing)</span>
+            <span
+              v-if="meta?.configured && meta.hasApiKey"
+              class="ml-1 text-neutral-400 font-normal"
+              >(leave blank to keep existing)</span
+            >
           </label>
           <input
             v-model="form.apiKey"
@@ -80,10 +106,13 @@
             :required="!(meta?.configured && meta.hasApiKey)"
             :placeholder="meta?.configured && meta.hasApiKey ? '••••••••' : 'sk-…'"
             class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-          />
+          >
         </div>
 
-        <div v-if="saveError" class="p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+        <div
+          v-if="saveError"
+          class="p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600"
+        >
           {{ saveError }}
         </div>
 
@@ -92,7 +121,9 @@
             type="submit"
             :disabled="isSaving"
             class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors"
-          >{{ isSaving ? 'Saving…' : 'Save' }}</button>
+          >
+            {{ isSaving ? 'Saving…' : 'Save' }}
+          </button>
         </div>
       </form>
     </div>
@@ -101,34 +132,61 @@
     <div class="mt-10 pt-6 border-t border-neutral-200">
       <h2 class="text-size-medium font-semibold text-neutral-900 mb-1">Web Search</h2>
       <p class="text-size-small text-neutral-500 mb-4">
-        Endpoint the agent's <code class="font-mono">websearch</code> command queries. The search term is appended as a <code class="font-mono">q</code> parameter, and the JSON response is read as <code class="font-mono">results[]</code> with <code class="font-mono">title</code>, <code class="font-mono">url</code>, and <code class="font-mono">content</code> (falling back to <code class="font-mono">snippet</code>/<code class="font-mono">description</code>). Works with a self-hosted SearXNG instance.
+        Endpoint the agent's <code class="font-mono">websearch</code> command queries. The
+        search term is appended as a <code class="font-mono">q</code> parameter, and the
+        JSON response is read as <code class="font-mono">results[]</code> with
+        <code class="font-mono">title</code>, <code class="font-mono">url</code>, and
+        <code class="font-mono">content</code>
+        (falling back to
+        <code class="font-mono">snippet</code>/<code class="font-mono"
+          >description</code
+        >). Works with a self-hosted SearXNG instance.
       </p>
 
-      <div v-if="savedSearchUrl" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between gap-4">
-        <span class="text-size-small text-green-700 font-mono break-all">{{ savedSearchUrl }}</span>
+      <div
+        v-if="savedSearchUrl"
+        class="mb-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center justify-between gap-4"
+      >
+        <span class="text-size-small text-green-700 font-mono break-all"
+          >{{ savedSearchUrl }}</span
+        >
         <button
+          type="button"
           @click="handleDeleteSearch"
           :disabled="isDeletingSearch"
           class="shrink-0 text-size-small text-red-600 hover:text-red-800 disabled:opacity-50"
-        >{{ isDeletingSearch ? 'Removing…' : 'Remove' }}</button>
+        >
+          {{ isDeletingSearch ? 'Removing…' : 'Remove' }}
+        </button>
       </div>
-      <div v-else class="mb-4 p-3 bg-neutral-50 border border-neutral-200 rounded-md text-size-medium text-neutral-500">
-        No search endpoint configured. The <code class="font-mono">websearch</code> command will be unavailable until one is set.
+      <div
+        v-else
+        class="mb-4 p-3 bg-neutral-50 border border-neutral-200 rounded-md text-size-medium text-neutral-500"
+      >
+        No search endpoint configured. The
+        <code class="font-mono">websearch</code>
+        command will be unavailable until one is set.
       </div>
 
       <form @submit.prevent="handleSaveSearch" class="space-y-4">
         <div>
-          <label class="block text-size-small font-medium text-neutral-700 mb-1">Search endpoint URL</label>
+          <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
+          <label class="block text-size-small font-medium text-neutral-700 mb-1"
+            >Search endpoint URL</label
+          >
           <input
             v-model="searchForm.url"
             type="url"
             required
             placeholder="https://searxng.example.com/search?format=json"
             class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-          />
+          >
         </div>
 
-        <div v-if="searchError" class="p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600">
+        <div
+          v-if="searchError"
+          class="p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600"
+        >
           {{ searchError }}
         </div>
 
@@ -137,7 +195,9 @@
             type="submit"
             :disabled="isSavingSearch"
             class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors"
-          >{{ isSavingSearch ? 'Saving…' : 'Save' }}</button>
+          >
+            {{ isSavingSearch ? 'Saving…' : 'Save' }}
+          </button>
         </div>
       </form>
     </div>

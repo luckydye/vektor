@@ -33,7 +33,7 @@ export const GET: APIRoute = (context) =>
     }
 
     const upstreamHeaders: HeadersInit = {
-      "User-Agent": "Mozilla/5.0 (compatible; WikiBot/1.0)",
+      "User-Agent": "Mozilla/5.0 (compatible; VektorBot/1.0)",
     };
     const range = context.request.headers.get("range");
     if (range) upstreamHeaders.Range = range;

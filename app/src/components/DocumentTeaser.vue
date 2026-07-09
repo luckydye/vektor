@@ -36,6 +36,7 @@ function docTags(doc: DocumentWithProperties): string[] {
 </script>
 
 <template>
+  <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
   <a
     :href="doc.fileUrl ?? spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
     :target="doc.fileUrl ? '_blank' : undefined"
@@ -43,13 +44,15 @@ function docTags(doc: DocumentWithProperties): string[] {
     class="group flex-none w-60 block pr-4"
   >
     <!-- Thumbnail -->
-    <div class="relative aspect-video rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center">
+    <div
+      class="relative aspect-video rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center"
+    >
       <img
         v-if="docHeaderImage(doc)"
         :src="teaserImageUrl(docHeaderImage(doc)!)"
         class="absolute inset-0 w-full h-full object-cover"
         alt=""
-      />
+      >
       <span v-else class="text-neutral-400 text-sm font-medium select-none">
         {{ doc.type ? doc.type.toUpperCase() : "DOC" }}
       </span>
@@ -79,7 +82,9 @@ function docTags(doc: DocumentWithProperties): string[] {
       <p class="text-[11px] font-semibold text-neutral-500 tabular-nums mb-1">
         {{ formatDate(doc.updatedAt) }}
       </p>
-      <h4 class="doc-title text-size-medium font-bold italic leading-snug line-clamp-3 transition-colors">
+      <h4
+        class="doc-title text-size-medium font-bold italic leading-snug line-clamp-3 transition-colors"
+      >
         {{ docTitle(doc) }}
       </h4>
       <p

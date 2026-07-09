@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { t } from "#utils/lang.ts";
 import { arrowLeftIcon, lockIcon } from "~/src/assets/icons.ts";
 import { ButtonPrimary } from "~/src/components/index.ts";
-import { t } from "#utils/lang.ts";
 
 function goBack() {
   history.back();
@@ -16,11 +16,12 @@ function goBack() {
       </div>
 
       <h1 class="text-size-display font-bold text-neutral-900 mb-4">
-        {{t("Access Denied")}}
+        {{ t("Access Denied") }}
       </h1>
 
       <p class="text-size-title text-neutral-900 mb-8">
-        Sorry mate, you don't have permission to view this page. If you reckon this is a mistake, have a chat with your administrator.
+        Sorry mate, you don't have permission to view this page. If you reckon this is a
+        mistake, have a chat with your administrator.
       </p>
 
       <ButtonPrimary @click="goBack">

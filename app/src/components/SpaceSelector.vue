@@ -74,42 +74,67 @@ const handleCreateDoc = (event: Event) => {
 <template>
   <div class="w-full flex gap-4">
     <div v-if="loading" class="flex items-start gap-3xs w-full px-4xs py-4xs">
-      <div class="flex-none w-[2.375rem] aspect-square bg-neutral-200 rounded-md animate-pulse" />
+      <div
+        class="flex-none w-[2.375rem] aspect-square bg-neutral-200 rounded-md animate-pulse"
+      />
       <div class="flex-1 flex flex-col gap-1">
         <div class="h-4 bg-neutral-200 rounded-sm animate-pulse w-25" />
         <div class="h-3 bg-neutral-100 rounded-sm animate-pulse w-16" />
       </div>
     </div>
-    
+
     <a-popover-trigger v-else class="block w-full group relative z-10 overflow-hidden">
-      <button slot="trigger" class="w-full">
-        <div class="flex items-center gap-3xs px-4xs py-4xs rounded-md transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50">
+      <button type="button" slot="trigger" class="w-full">
+        <div
+          class="flex items-center gap-3xs px-4xs py-4xs rounded-md transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50"
+        >
           <div class="flex w-full gap-3xs cursor-pointer">
             <!-- Space Icon -->
-            <div class="flex-none w-[2.375rem] aspect-square rounded-md flex items-center justify-center bg-primary-500 overflow-hidden" :style="{ background: currentSpace?.color }">
-              <div v-if="currentSpace?.logoSvg && currentSpace.logoSvg.startsWith('<')" v-html="currentSpace.logoSvg" class="text-white" />
-              <img v-else-if="currentSpace?.logoSvg" :src="currentSpace.logoSvg" class="w-full h-full object-cover" />
+            <div
+              class="flex-none w-[2.375rem] aspect-square rounded-md flex items-center justify-center bg-primary-500 overflow-hidden"
+              :style="{ background: currentSpace?.color }"
+            >
+              <div
+                v-if="currentSpace?.logoSvg && currentSpace.logoSvg.startsWith('<')"
+                v-html="currentSpace.logoSvg"
+                class="text-white"
+              />
+              <img
+                v-else-if="currentSpace?.logoSvg"
+                :src="currentSpace.logoSvg"
+                alt=""
+                class="w-full h-full object-cover"
+              >
               <div v-else v-html="homeIcon" class="text-white" />
             </div>
-  
+
             <!-- Space Info -->
             <div class="relative h-9 flex-1 text-left">
               <div class="left-0 w-full h-full">
-                <div class="whitespace-nowrap text-base leading-[1.35em] font-normal text-foreground overflow-hidden text-ellipsis">
+                <div
+                  class="whitespace-nowrap text-base leading-[1.35em] font-normal text-foreground overflow-hidden text-ellipsis"
+                >
                   {{ currentSpace?.name || spaceName || 'Select Space' }}
                 </div>
-                <div class="whitespace-nowrap text-label leading-[1.35em] text-neutral-600 overflow-hidden text-ellipsis">
-                  {{ currentSpace?.members || 0 }} Members
+                <div
+                  class="whitespace-nowrap text-label leading-[1.35em] text-neutral-600 overflow-hidden text-ellipsis"
+                >
+                  {{ currentSpace?.members || 0 }}
+                  Members
                 </div>
               </div>
             </div>
           </div>
         </div>
       </button>
-  
+
       <a-popover class="group" placements="bottom-start">
-        <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 min-w-(--trigger-width)">
-          <div class="bg-neutral-50 border border-neutral-100 rounded-lg origin-top scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100 max-h-[500px] overflow-y-auto">
+        <div
+          class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 min-w-(--trigger-width)"
+        >
+          <div
+            class="bg-neutral-50 border border-neutral-100 rounded-lg origin-top scale-95 transition-all shadow-xl duration-150 group-[[enabled]]:scale-100 max-h-[500px] overflow-y-auto"
+          >
             <div class="p-[4px] flex flex-col gap-[4px]">
               <!-- Space List -->
               <button
@@ -122,10 +147,26 @@ const handleCreateDoc = (event: Event) => {
                   'bg-primary-100': space.id === modelValue,
                 }"
               >
-                <div class="w-6 h-6 rounded-sm overflow-hidden flex items-center justify-center" :style="{ background: space.color || '#6366f1' }">
-                  <div v-if="space.logoSvg && space.logoSvg.startsWith('<')" v-html="space.logoSvg" class="block text-white" />
-                  <img v-else-if="space.logoSvg" :src="space.logoSvg" class="block object-contain" />
-                  <div v-else v-html="homeIcon" class="text-white [&>svg]:w-4 [&>svg]:h-4 [&>svg]:object-contain" />
+                <div
+                  class="w-6 h-6 rounded-sm overflow-hidden flex items-center justify-center"
+                  :style="{ background: space.color || '#6366f1' }"
+                >
+                  <div
+                    v-if="space.logoSvg && space.logoSvg.startsWith('<')"
+                    v-html="space.logoSvg"
+                    class="block text-white"
+                  />
+                  <img
+                    v-else-if="space.logoSvg"
+                    :src="space.logoSvg"
+                    alt=""
+                    class="block object-contain"
+                  >
+                  <div
+                    v-else
+                    v-html="homeIcon"
+                    class="text-white [&>svg]:w-4 [&>svg]:h-4 [&>svg]:object-contain"
+                  />
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-interactive font-medium text-foreground truncate">
@@ -133,7 +174,7 @@ const handleCreateDoc = (event: Event) => {
                   </div>
                 </div>
               </button>
-  
+
               <!-- Create Space Button -->
               <div class="border-t border-neutral-100 pt-[4px] mt-[4px]">
                 <button
@@ -152,10 +193,14 @@ const handleCreateDoc = (event: Event) => {
         </div>
       </a-popover>
     </a-popover-trigger>
-    
+
     <!-- Action Buttons -->
     <div class="@max-sm:hidden flex items-center gap-2xs flex-none py-5xs pr-3xs">
-      <ButtonSecondary v-if="props.canCreateDocs" aria-label="New document" @click="handleCreateDoc">
+      <ButtonSecondary
+        v-if="props.canCreateDocs"
+        aria-label="New document"
+        @click="handleCreateDoc"
+      >
         <Icon name="plus" class="-mx-1" />
       </ButtonSecondary>
     </div>

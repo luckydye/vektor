@@ -29,7 +29,7 @@ export const Mentions = Mention.extend<MentionOptions>({
 
   addOptions() {
     return {
-      ...this.parent!(),
+      ...this.parent?.(),
       HTMLAttributes: {
         class: "mention",
       },

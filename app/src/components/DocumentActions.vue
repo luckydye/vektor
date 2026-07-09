@@ -484,7 +484,9 @@ watchEffect(() => {
             <Icon name="chevron-down" />
           </button>
           <a-popover class="group" placements="bottom-end">
-            <div class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100">
+            <div
+              class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100"
+            >
               <div
                 class="bg-background border border-neutral-100 rounded-lg p-[4px] flex flex-col gap-[4px] min-w-[220px]"
                 style="box-shadow: -2px 2px 24px 0px rgba(0, 0, 0, 0.1)"
@@ -496,7 +498,9 @@ watchEffect(() => {
                   @click="saveAsSuggestion"
                 >
                   <div class="font-medium text-size-small">Save as suggestion</div>
-                  <div class="text-size-small text-neutral-500">Create an open suggestion instead of publishing</div>
+                  <div class="text-size-small text-neutral-500">
+                    Create an open suggestion instead of publishing
+                  </div>
                 </button>
               </div>
             </div>
@@ -510,6 +514,7 @@ watchEffect(() => {
       </ButtonSecondary>
     </div>
 
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div class="relative flex-none" @mousedown="handleContextMenuMousedown">
       <HeaderImageDialog
         v-model:show="dialogOpen"
@@ -522,30 +527,45 @@ watchEffect(() => {
         :documentTitle="title"
       />
       <ContextMenu>
-      <ContextMenuItem v-for="[name, options] of actions" :onClick="(event) => runContextMenuAction(event, name)">
-        <div class="aspect-sqaure flex-none w-[1rem]">
-            <Icon :name="(options.icon?.() as any) || 'placeholder'" />
-        </div>
-        <span class="block w-full text-left mr-2" :data-action="name">{{options.title}}</span>
-        <a-shortcut :data-shortcut="Actions.getShortcutsForAction(name)?.values().next().value"></a-shortcut>
-      </ContextMenuItem>
-
-      <ContextMenuItem v-for="[name, options] of actionsDanger" :onClick="(event) => runContextMenuAction(event, name)" class="text-orange-600 hover:text-orange-700">
-        <div class="aspect-sqaure flex-none w-[1rem]">
-            <Icon :name="(options.icon?.() as any) || 'placeholder'" />
-        </div>
-        <span>{{options.title}}</span>
-      </ContextMenuItem>
-
-      <template v-if="devMode">
-        <ContextMenuItem v-for="[name, options] of actionsDev" :onClick="(event) => runContextMenuAction(event, name)" class="text-neutral-400">
+        <ContextMenuItem
+          v-for="[ name, options ] of actions"
+          :onClick="(event) => runContextMenuAction(event, name)"
+        >
           <div class="aspect-sqaure flex-none w-[1rem]">
-              <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+            <Icon :name="(options.icon?.() as any) || 'placeholder'" />
           </div>
-          <span>{{options.title}}</span>
+          <span class="block w-full text-left mr-2" :data-action="name"
+            >{{ options.title }}</span
+          >
+          <a-shortcut
+            :data-shortcut="Actions.getShortcutsForAction(name)?.values().next().value"
+          ></a-shortcut>
         </ContextMenuItem>
-      </template>
-    </ContextMenu>
+
+        <ContextMenuItem
+          v-for="[ name, options ] of actionsDanger"
+          :onClick="(event) => runContextMenuAction(event, name)"
+          class="text-orange-600 hover:text-orange-700"
+        >
+          <div class="aspect-sqaure flex-none w-[1rem]">
+            <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+          </div>
+          <span>{{ options.title }}</span>
+        </ContextMenuItem>
+
+        <template v-if="devMode">
+          <ContextMenuItem
+            v-for="[ name, options ] of actionsDev"
+            :onClick="(event) => runContextMenuAction(event, name)"
+            class="text-neutral-400"
+          >
+            <div class="aspect-sqaure flex-none w-[1rem]">
+              <Icon :name="(options.icon?.() as any) || 'placeholder'" />
+            </div>
+            <span>{{ options.title }}</span>
+          </ContextMenuItem>
+        </template>
+      </ContextMenu>
     </div>
   </div>
 </template>

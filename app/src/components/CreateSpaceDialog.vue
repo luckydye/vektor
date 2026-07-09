@@ -82,17 +82,31 @@ watch(
 </script>
 
 <template>
-  <Dialog :show="show" title="Create New Space" @update:show="(v) => { if (!v) handleClose() }">
-    <form id="create-space-form" @submit.prevent="handleSubmit" class="flex flex-col gap-3xs">
+  <Dialog
+    :show="show"
+    title="Create New Space"
+    @update:show="(v) => { if (!v) handleClose() }"
+  >
+    <form
+      id="create-space-form"
+      @submit.prevent="handleSubmit"
+      class="flex flex-col gap-3xs"
+    >
       <div>
-        <label for="space-name" class="block text-small font-medium text-neutral-900 mb-5xs">
+        <label
+          for="space-name"
+          class="block text-small font-medium text-neutral-900 mb-5xs"
+        >
           Space Name
         </label>
-        <Input v-model="newSpaceName" placeholder="My Wiki" @input="handleNameInput" />
+        <Input v-model="newSpaceName" placeholder="My Space" @input="handleNameInput" />
       </div>
 
       <div>
-        <label for="space-slug" class="block text-small font-medium text-neutral-900 mb-5xs">
+        <label
+          for="space-slug"
+          class="block text-small font-medium text-neutral-900 mb-5xs"
+        >
           Slug
         </label>
         <Input v-model="newSpaceSlug" placeholder="my-wiki" />
@@ -102,17 +116,22 @@ watch(
       </div>
 
       <div>
-        <label for="brand-color" class="block text-small font-medium text-neutral-900 mb-5xs">
+        <label
+          for="brand-color"
+          class="block text-small font-medium text-neutral-900 mb-5xs"
+        >
           Brand Color
         </label>
         <div class="flex gap-4xs items-center">
-          <input id="brand-color" v-model="brandColor" type="color"
-            class="h-10 w-20 border border-neutral-100 rounded-md cursor-pointer" />
+          <input
+            id="brand-color"
+            v-model="brandColor"
+            type="color"
+            class="h-10 w-20 border border-neutral-100 rounded-md cursor-pointer"
+          >
           <Input v-model="brandColor" placeholder="#42516d" class="flex-1" />
         </div>
-        <p class="mt-5xs text-small text-neutral-500">
-          Used for the header and sidebar
-        </p>
+        <p class="mt-5xs text-small text-neutral-500">Used for the header and sidebar</p>
       </div>
     </form>
 

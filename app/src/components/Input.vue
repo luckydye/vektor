@@ -53,7 +53,7 @@ const handleBlur = () => {
         @focus="handleFocus"
         @blur="handleBlur"
         class="w-full bg-transparent text-[14px] outline-none placeholder:opacity-30 font-normal disabled:opacity-50 disabled:cursor-not-allowed"
-      />
+      >
     </div>
   </div>
 </template>

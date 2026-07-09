@@ -11,6 +11,7 @@ const props = defineProps<{
 </script>
 
 <template>
+  <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
   <a
     :href="props.href"
     :class="twMerge(
@@ -22,8 +23,8 @@ const props = defineProps<{
     )"
   >
     <div class="flex-1 flex items-center @max-xs:justify-center text-size-medium">
-        <div v-html="icon" class="icon inline flex-none" />
-        <span class="@max-xs:hidden">{{ text }}</span>
+      <div v-html="icon" class="icon inline flex-none" />
+      <span class="@max-xs:hidden">{{ text }}</span>
     </div>
 
     <slot />

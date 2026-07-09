@@ -108,5 +108,9 @@ const props = defineProps<{
 </script>
 
 <template>
-  <div v-html="icons[props.name]" class="icon flex-none aspect-square [&_svg]:w-full [&_svg]:h-full" aria-hidden="true" />
+  <div
+    v-html="icons[props.name]"
+    class="icon flex-none aspect-square [&_svg]:w-full [&_svg]:h-full"
+    aria-hidden="true"
+  />
 </template>

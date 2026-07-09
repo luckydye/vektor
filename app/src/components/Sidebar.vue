@@ -14,7 +14,6 @@ import {
 } from "#utils/sidebarState.ts";
 import { Icon } from "./index.ts";
 import Navigation from "./Navigation.vue";
-import UserProfile from "./UserProfile.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -214,48 +213,58 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div>
-        <!-- Sidebar -->
-        <div ref="sidebarRef" :style="{
+  <div>
+    <!-- Sidebar -->
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+    <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
+    <div
+      ref="sidebarRef"
+      :style="{
             width: `${displayWidth}px`,
             '--color-background': 'var(--color-neutral-10)'
-        }" :class="[
+        }"
+      :class="[
             '@container sidebar p-1.5 flex',
             'fixed top-0 bottom-0 w-(--sidebar-width) transition-transform',
             'z-40 md:z-10',
             'md:translate-x-0',
             isMobileOpen ? 'translate-x-0' : '-translate-x-full'
-        ]" @click="handleSidebarClick">
-            <!-- Toggle Button - Floating on Right Border -->
-            <button @click.stop="toggleCollapse" type="button"
-                class="hidden md:block absolute bottom-7.5 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
-                :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'">
-                <Icon name="collapse" :class="twMerge(
+        ]"
+      @click="handleSidebarClick"
+    >
+      <!-- Toggle Button - Floating on Right Border -->
+      <button
+        @click.stop="toggleCollapse"
+        type="button"
+        class="hidden md:block absolute bottom-7.5 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
+        :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'"
+      >
+        <Icon
+          name="collapse"
+          :class="twMerge(
                     'w-4 h-4 transition-transform',
                     currentWidth === minWidth ? 'rotate-180' : ''
-                )" />
-            </button>
-            
-            <div class="before:backdrop-surface-blur flex flex-col bg-background/90 rounded-lg relative overflow-hidden border border-neutral-200 w-full h-full">
-                <!-- Navigation -->
-                <wiki-scroll name="navigation" class="z-1 flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]">
-                    <Navigation />
-                </wiki-scroll>
+                )"
+        />
+      </button>
 
-                <!-- Bottom Actions -->
-                <div class="px-1 py-3 relative flex items-center">
-                    <!-- User Profile -->
-                    <UserProfile />
-                </div>
-            </div>
-            
-            <!-- Desktop Resize Handle -->
-            <div :class="[
+      <div
+        class="before:backdrop-surface-blur flex flex-col bg-background/90 rounded-lg relative overflow-hidden w-full h-full"
+      >
+        <Navigation />
+      </div>
+
+      <!-- Desktop Resize Handle -->
+      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+      <div
+        :class="[
                 'hidden md:block absolute top-2 bottom-2 right-1 w-1 cursor-col-resize hover:bg-primary-200/50 transition-colors group z-20',
                 isResizing && 'bg-primary-200/50 active:bg-primary-200' || ''
-            ]" @mousedown="startResize">
-                <div class="absolute inset-y-0 -right-1 w-3"></div>
-            </div>
-        </div>
+            ]"
+        @mousedown="startResize"
+      >
+        <div class="absolute inset-y-0 -right-1 w-3"></div>
+      </div>
     </div>
+  </div>
 </template>

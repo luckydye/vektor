@@ -1062,20 +1062,24 @@ onUnmounted(() => {
     :default-width="380"
   >
     <div class="flex flex-col h-full bg-neutral-50">
-
-            <!-- Sessions picker -->
-            <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
-              <div class="flex items-center justify-between mb-3 px-1">
-                <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide">Recent conversations</p>
-                <button
-                  @click="startNewChat"
-                  class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
-                >
-                  <div class="svg-icon w-3.5 h-3.5" v-html="plusThinIcon" />
-                  New chat
-                </button>
-              </div>
+      <!-- Sessions picker -->
+      <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
+        <div class="flex items-center justify-between mb-3 px-1">
+          <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide">
+            Recent conversations
+          </p>
+          <button
+            type="button"
+            @click="startNewChat"
+            class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
+          >
+            <div class="svg-icon w-3.5 h-3.5" v-html="plusThinIcon" />
+            New chat
+          </button>
+        </div>
         <div class="space-y-0.5">
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The row preserves the surrounding list layout and is activated by Vue click handling. -->
+          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: Session navigation is handled by the surrounding keyboard command interface. -->
           <div
             v-for="session in sessions"
             :key="session.id"
@@ -1096,7 +1100,9 @@ onUnmounted(() => {
             </div>
 
             <div class="flex-1 min-w-0">
-              <p class="text-size-medium text-neutral-800 truncate">{{ session.title }}</p>
+              <p class="text-size-medium text-neutral-800 truncate">
+                {{ session.title }}
+              </p>
               <p class="text-size-small mt-0.5">
                 <template v-if="getSessionStatus(session) === 'generating'">
                   <span class="text-primary-500 font-medium">Generating response…</span>
@@ -1105,12 +1111,15 @@ onUnmounted(() => {
                   <span class="text-amber-500 font-medium">Awaiting response</span>
                 </template>
                 <template v-else>
-                  <span class="text-neutral-400">{{ formatSessionDate(session.updatedAt) }}</span>
+                  <span class="text-neutral-400"
+                    >{{ formatSessionDate(session.updatedAt) }}</span
+                  >
                 </template>
               </p>
             </div>
 
             <button
+              type="button"
               @click.stop="removeSession(session.id)"
               class="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-red-500 transition-all shrink-0"
               title="Delete"
@@ -1122,6 +1131,8 @@ onUnmounted(() => {
       </div>
 
       <!-- Messages -->
+      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+      <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
       <div
         v-else
         ref="messagesContainer"
@@ -1132,125 +1143,162 @@ onUnmounted(() => {
           v-for="(message, index) in messages"
           :key="getMessageKey(message, index)"
         >
-        <div
-          v-if="message.role !== 'tool' || message.toolPhase !== 'call'"
-          :class="[
+          <div
+            v-if="message.role !== 'tool' || message.toolPhase !== 'call'"
+            :class="[
             'animate-message-slide-in',
             message.role === 'system' ? 'flex justify-center' : 'flex gap-2',
             message.role === 'user' ? 'justify-end' : 'justify-start',
           ]"
-        >
-          <div
-            v-if="message.role === 'system'"
-            class="px-3 py-1 bg-neutral-100 text-neutral-600 rounded-full text-size-small"
           >
-            {{ message.content }}
-          </div>
-          <div
-            v-else-if="message.role === 'status'"
-            class="max-w-[85%] status-bubble rounded-xl px-3 py-2 shadow-sm"
-          >
-            <div class="text-[11px] uppercase tracking-wide status-bubble-label mb-1">Agent log</div>
-            <pre class="text-size-small leading-relaxed whitespace-pre-wrap font-mono">{{ message.content }}</pre>
-          </div>
-          <template v-else-if="message.role === 'thinking'">
-            <div class="w-7 h-7 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 mt-0.5">
-              <div class="svg-icon w-4 h-4 text-neutral-500" v-html="thinkingIcon" />
+            <div
+              v-if="message.role === 'system'"
+              class="px-3 py-1 bg-neutral-100 text-neutral-600 rounded-full text-size-small"
+            >
+              {{ message.content }}
             </div>
-            <div class="flex-1 min-w-0">
-              <div class="bg-neutral-100 border border-neutral-200 rounded-xl overflow-hidden shadow-sm max-h-72 flex flex-col">
-                <div class="px-3.5 py-2 border-b border-neutral-200 text-[11px] font-medium uppercase tracking-wide text-neutral-500 shrink-0">
-                  Thinking
+            <div
+              v-else-if="message.role === 'status'"
+              class="max-w-[85%] status-bubble rounded-xl px-3 py-2 shadow-sm"
+            >
+              <div class="text-[11px] uppercase tracking-wide status-bubble-label mb-1">
+                Agent log
+              </div>
+              <pre
+                class="text-size-small leading-relaxed whitespace-pre-wrap font-mono"
+              >{{ message.content }}</pre>
+            </div>
+            <template v-else-if="message.role === 'thinking'">
+              <div
+                class="w-7 h-7 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center shrink-0 mt-0.5"
+              >
+                <div class="svg-icon w-4 h-4 text-neutral-500" v-html="thinkingIcon" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div
+                  class="bg-neutral-100 border border-neutral-200 rounded-xl overflow-hidden shadow-sm max-h-72 flex flex-col"
+                >
+                  <div
+                    class="px-3.5 py-2 border-b border-neutral-200 text-[11px] font-medium uppercase tracking-wide text-neutral-500 shrink-0"
+                  >
+                    Thinking
+                  </div>
+                  <pre
+                    class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 overflow-y-auto flex-1 min-h-0 thinking-content"
+                  >{{ message.content }}</pre>
                 </div>
-                <pre class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 overflow-y-auto flex-1 min-h-0 thinking-content">{{ message.content }}</pre>
-              </div>
-              <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
-                {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                &nbsp;·&nbsp; Agent
-              </div>
-            </div>
-          </template>
-          <template v-else-if="message.role === 'assistant'">
-            <!-- Robot avatar -->
-            <div class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5">
-              <div class="svg-icon w-4 h-4 text-primary-500" v-html="robotIcon" />
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm">
-                <div class="px-3.5 py-3 text-size-medium text-neutral-800 leading-relaxed markdown-content" v-html="renderMessageMarkdown(message.content)"></div>
-              </div>
-              <!-- Timestamp + model + copy/refresh icons -->
-              <div class="flex items-center justify-between mt-1.5 px-0.5">
-                <span class="text-[11px] text-neutral-500">
+                <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
                   {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
                   &nbsp;·&nbsp; Agent
-                </span>
-                <div class="flex items-center gap-1">
-                  <button class="p-0.5 text-neutral-400 hover:text-neutral-600 transition-colors" title="Copy" @click="navigator.clipboard.writeText(message.content)">
-                    <div class="svg-icon w-3.5 h-3.5" v-html="copyOutlineIcon" />
-                  </button>
                 </div>
               </div>
-            </div>
-          </template>
-          <template v-else-if="message.role === 'tool'">
-            <div class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5">
-              <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkChainIcon" />
-            </div>
-            <div class="flex-1 min-w-0">
-              <button
-                type="button"
-                class="w-full text-left border tool-message-bg rounded-xl overflow-hidden shadow-sm cursor-pointer"
-                @click="toggleToolMessageExpanded(message, index)"
+            </template>
+            <template v-else-if="message.role === 'assistant'">
+              <!-- Robot avatar -->
+              <div
+                class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5"
               >
-                <div class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide">
-                  {{ message.toolPhase === 'call' ? 'Tool call' : 'Tool result' }}
-                  <span v-if="message.toolName" class="normal-case tracking-normal font-semibold tool-message-name ml-1">
-                    {{ message.toolName }}
-                  </span>
-                  <span
-                    v-if="message.toolPhase === 'result'"
-                    class="normal-case tracking-normal font-medium text-neutral-500 ml-2"
-                  >
-                    {{ isToolMessageExpanded(message, index) ? 'Collapse' : 'Expand' }}
-                  </span>
+                <div class="svg-icon w-4 h-4 text-primary-500" v-html="robotIcon" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div
+                  class="bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm"
+                >
+                  <div
+                    class="px-3.5 py-3 text-size-medium text-neutral-800 leading-relaxed markdown-content"
+                    v-html="renderMessageMarkdown(message.content)"
+                  ></div>
                 </div>
-                <pre
-                  class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
-                  :style="
+                <!-- Timestamp + model + copy/refresh icons -->
+                <div class="flex items-center justify-between mt-1.5 px-0.5">
+                  <span class="text-[11px] text-neutral-500">
+                    {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+                    &nbsp;·&nbsp; Agent
+                  </span>
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="button"
+                      class="p-0.5 text-neutral-400 hover:text-neutral-600 transition-colors"
+                      title="Copy"
+                      @click="navigator.clipboard.writeText(message.content)"
+                    >
+                      <div class="svg-icon w-3.5 h-3.5" v-html="copyOutlineIcon" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template v-else-if="message.role === 'tool'">
+              <div
+                class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5"
+              >
+                <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkChainIcon" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <button
+                  type="button"
+                  class="w-full text-left border tool-message-bg rounded-xl overflow-hidden shadow-sm cursor-pointer"
+                  @click="toggleToolMessageExpanded(message, index)"
+                >
+                  <div
+                    class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide"
+                  >
+                    {{ message.toolPhase === 'call' ? 'Tool call' : 'Tool result' }}
+                    <span
+                      v-if="message.toolName"
+                      class="normal-case tracking-normal font-semibold tool-message-name ml-1"
+                    >
+                      {{ message.toolName }}
+                    </span>
+                    <span
+                      v-if="message.toolPhase === 'result'"
+                      class="normal-case tracking-normal font-medium text-neutral-500 ml-2"
+                    >
+                      {{ isToolMessageExpanded(message, index) ? 'Collapse' : 'Expand' }}
+                    </span>
+                  </div>
+                  <pre
+                    class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
+                    :style="
                     message.toolPhase === 'result' && !isToolMessageExpanded(message, index)
                       ? { maxHeight: '12rem' }
                       : undefined
                   "
-                  :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
-                >{{ formatToolPreview(message) }}</pre>
-              </button>
-              <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
-                {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                &nbsp;·&nbsp; ACP
+                    :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
+                  >{{ formatToolPreview(message) }}</pre>
+                </button>
+                <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
+                  {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+                  &nbsp;·&nbsp; ACP
+                </div>
+              </div>
+            </template>
+            <div
+              v-else
+              class="max-w-[80%] bg-primary-600 text-white rounded-xl px-3.5 py-2.5 ml-auto"
+            >
+              <div
+                class="text-size-medium leading-relaxed markdown-content user-markdown"
+                v-html="renderMessageMarkdown(message.content)"
+              />
+              <div v-if="message.attachments?.length" class="mt-2 space-y-1.5">
+                <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+                <a
+                  v-for="attachment in message.attachments"
+                  :key="attachment.key"
+                  :href="attachment.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block rounded-lg border border-white/20 bg-white/10 px-2 py-1.5 text-size-small hover:bg-white/15 transition-colors"
+                >
+                  <span class="font-medium">{{ attachment.name }}</span>
+                  <span class="opacity-80 ml-1"
+                    >({{ formatFileSize(attachment.size) }})</span
+                  >
+                </a>
               </div>
             </div>
-          </template>
-          <div
-            v-else
-            class="max-w-[80%] bg-primary-600 text-white rounded-xl px-3.5 py-2.5 ml-auto"
-          >
-            <div class="text-size-medium leading-relaxed markdown-content user-markdown" v-html="renderMessageMarkdown(message.content)" />
-            <div v-if="message.attachments?.length" class="mt-2 space-y-1.5">
-              <a
-                v-for="attachment in message.attachments"
-                :key="attachment.key"
-                :href="attachment.url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="block rounded-lg border border-white/20 bg-white/10 px-2 py-1.5 text-size-small hover:bg-white/15 transition-colors"
-              >
-                <span class="font-medium">{{ attachment.name }}</span>
-                <span class="opacity-80 ml-1">({{ formatFileSize(attachment.size) }})</span>
-              </a>
-            </div>
           </div>
-        </div>
         </template>
 
         <!-- Tool-executing indicator -->
@@ -1258,11 +1306,17 @@ onUnmounted(() => {
           v-if="waitingState?.kind === 'tool_executing'"
           class="flex gap-2 justify-start animate-message-slide-in"
         >
-          <div class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5">
+          <div
+            class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5"
+          >
             <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkChainIcon" />
           </div>
-          <div class="flex-1 min-w-0 tool-message-bg border border-neutral-200 rounded-xl overflow-hidden shadow-sm mt-0.5">
-            <div class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide flex items-center gap-1.5">
+          <div
+            class="flex-1 min-w-0 tool-message-bg border border-neutral-200 rounded-xl overflow-hidden shadow-sm mt-0.5"
+          >
+            <div
+              class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide flex items-center gap-1.5"
+            >
               Running
               <span class="normal-case tracking-normal font-semibold tool-message-name">
                 {{ waitingState.tool.toolName }}
@@ -1285,10 +1339,14 @@ onUnmounted(() => {
           v-else-if="waitingState?.kind === 'waiting'"
           class="flex gap-2 justify-start animate-message-slide-in"
         >
-          <div class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5">
+          <div
+            class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5"
+          >
             <div class="svg-icon w-4 h-4 text-primary-500" v-html="robotIcon" />
           </div>
-          <div class="flex items-center bg-neutral-10 border border-neutral-100 rounded-xl px-3.5 py-3 gap-1 mt-0.5">
+          <div
+            class="flex items-center bg-neutral-10 border border-neutral-100 rounded-xl px-3.5 py-3 gap-1 mt-0.5"
+          >
             <span class="typing-dot" />
             <span class="typing-dot" style="animation-delay: 160ms" />
             <span class="typing-dot" style="animation-delay: 320ms" />
@@ -1297,8 +1355,12 @@ onUnmounted(() => {
       </div>
 
       <!-- Toolbar -->
-      <div v-if="!showSessionPicker" class="px-3 py-1.5 flex items-center gap-3 shrink-0 border-t border-neutral-100 bg-neutral-50">
+      <div
+        v-if="!showSessionPicker"
+        class="px-3 py-1.5 flex items-center gap-3 shrink-0 border-t border-neutral-100 bg-neutral-50"
+      >
         <button
+          type="button"
           @click="startNewChat"
           :disabled="isGenerating"
           class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -1307,8 +1369,9 @@ onUnmounted(() => {
           <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
           New chat
         </button>
-        <div class="flex-1"/>
+        <div class="flex-1" />
         <button
+          type="button"
           v-if="sessions.length > 0"
           @click="showSessionPicker = true"
           class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 transition-colors"
@@ -1364,7 +1427,6 @@ onUnmounted(() => {
           </MessageInput>
         </div>
       </div>
-
     </div>
   </DockedPanel>
   <Teleport to="body">
@@ -1385,7 +1447,9 @@ onUnmounted(() => {
         @mousedown.prevent="selectMention(suggestion)"
       >
         <span class="truncate font-medium">{{ suggestion.title }}</span>
-        <span class="ml-2 truncate text-size-small opacity-70">{{ suggestion.slug }}</span>
+        <span class="ml-2 truncate text-size-small opacity-70"
+          >{{ suggestion.slug }}</span
+        >
       </button>
     </div>
   </Teleport>
@@ -1403,8 +1467,14 @@ onUnmounted(() => {
 }
 
 @keyframes messageSlideIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .typing-dot {
@@ -1418,8 +1488,16 @@ onUnmounted(() => {
 }
 
 @keyframes typingBounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-4px); opacity: 1; }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 .overflow-y-auto::-webkit-scrollbar {
@@ -1435,13 +1513,39 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
-details[open] .details-chevron { transform: rotate(90deg); }
+details[open] .details-chevron {
+  transform: rotate(90deg);
+}
 
-.markdown-content :deep(p) { margin: 0.25rem 0; }
-.markdown-content :deep(h1), .markdown-content :deep(h2), .markdown-content :deep(h3), .markdown-content :deep(h4) { margin: 0.5rem 0; font-weight: 600; }
-.markdown-content :deep(ul) { margin: 0.25rem 0; padding-left: 1.25rem; list-style-type: disc; }
-.markdown-content :deep(ol) { margin: 0.25rem 0; padding-left: 1.25rem; list-style-type: decimal; }
-.markdown-content :deep(li) { margin: 0.125rem 0; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(p) {
+  margin: 0.25rem 0;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(h1),
+.markdown-content :deep(h2),
+.markdown-content :deep(h3),
+.markdown-content :deep(h4) {
+  margin: 0.5rem 0;
+  font-weight: 600;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(ul) {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(ol) {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+  list-style-type: decimal;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(li) {
+  margin: 0.125rem 0;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(code) {
   background: var(--color-primary-50);
   color: var(--color-primary-700);
@@ -1449,6 +1553,7 @@ details[open] .details-chevron { transform: rotate(90deg); }
   border-radius: 0.25rem;
   font-size: 0.875em;
 }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(pre) {
   background: var(--color-neutral-900);
   color: var(--color-neutral-100);
@@ -1457,13 +1562,41 @@ details[open] .details-chevron { transform: rotate(90deg); }
   overflow-x: auto;
   margin: 0.5rem 0;
 }
-.markdown-content :deep(pre code) { background: transparent; color: inherit; padding: 0; }
-.markdown-content :deep(a) { color: var(--color-primary-600); text-decoration: underline; }
-.markdown-content :deep(blockquote) { border-left: 3px solid var(--color-neutral-200); padding-left: 0.75rem; margin: 0.5rem 0; color: var(--color-neutral-500); }
-.markdown-content :deep(strong) { font-weight: 600; }
-.markdown-content :deep(em) { font-style: italic; }
-.markdown-content :deep(hr) { margin: 0.75rem 0; border-color: var(--color-neutral-200); }
-.user-markdown :deep(a) { color: inherit; }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(pre code) {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(a) {
+  color: var(--color-primary-600);
+  text-decoration: underline;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(blockquote) {
+  border-left: 3px solid var(--color-neutral-200);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--color-neutral-500);
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(strong) {
+  font-weight: 600;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(em) {
+  font-style: italic;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(hr) {
+  margin: 0.75rem 0;
+  border-color: var(--color-neutral-200);
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.user-markdown :deep(a) {
+  color: inherit;
+}
 
 /* ── Chat bubble theming ────────────────────────────────────────────── */
 
@@ -1500,6 +1633,7 @@ details[open] .details-chevron { transform: rotate(90deg); }
 }
 
 @media (prefers-color-scheme: dark) {
+  /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
   .markdown-content :deep(pre) {
     background: var(--color-neutral-200);
     color: var(--color-neutral-800);
@@ -1531,6 +1665,7 @@ details[open] .details-chevron { transform: rotate(90deg); }
   }
 }
 
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 :root[data-theme="dark"] .markdown-content :deep(pre) {
   background: var(--color-neutral-200);
   color: var(--color-neutral-800);

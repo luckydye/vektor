@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
 import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import { clockIcon } from "~/src/assets/icons.ts";
 import AppView from "./AppView.vue";
-import DiffView from "./DiffView.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -19,7 +18,13 @@ const revisionNumber = ref<number | null>(null);
 const revisionContent = ref("");
 const viewingSuggestion = ref(false);
 const showingDiff = ref(false);
-const diffPatch = ref("");
+const diffContent = ref("");
+
+// When viewing a diff the document element renders the inline redline instead
+// of the plain revision content; otherwise it renders the revision as-is.
+const renderedHtml = computed(() =>
+  showingDiff.value ? diffContent.value : revisionContent.value,
+);
 
 type DocumentViewElement = HTMLElement & {
   renderReadHtml?: (html: string) => void;
@@ -28,10 +33,15 @@ const docViewEl = ref<DocumentViewElement | null>(null);
 
 watchEffect(
   async () => {
+    // Read both reactive deps synchronously: reads after an `await` are not
+    // tracked, so the effect must depend on `renderedHtml` here to re-run when
+    // the content changes (e.g. switching from a revision view to its diff)
+    // and not only when the element mounts.
     const el = docViewEl.value;
+    const html = renderedHtml.value;
     if (!el) return;
     await customElements.whenDefined("document-view");
-    el.renderReadHtml?.(revisionContent.value);
+    el.renderReadHtml?.(html);
   },
   { flush: "post" },
 );
@@ -43,6 +53,7 @@ function handleRevisionView(event: CustomEvent) {
   revisionContent.value = event.detail.content;
   viewingSuggestion.value = Boolean(event.detail.isSuggestion);
   showingDiff.value = false;
+  diffContent.value = "";
 }
 
 function handleRevisionClose() {
@@ -52,6 +63,7 @@ function handleRevisionClose() {
   revisionContent.value = "";
   viewingSuggestion.value = false;
   showingDiff.value = false;
+  diffContent.value = "";
 
   const params = new URLSearchParams(location.search);
   params.delete("revision");
@@ -70,11 +82,11 @@ async function handleRevisionDiff(event: CustomEvent) {
 
   try {
     const response = await fetch(
-      `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}/diff?rev=${event.detail.revision}`,
+      `/api/v1/spaces/${currentSpaceId.value}/documents/${props.documentId}/diff?rev=${event.detail.revision}&format=html`,
     );
     if (!response.ok) throw new Error("Failed to fetch diff");
 
-    diffPatch.value = await response.text();
+    diffContent.value = await response.text();
     showingDiff.value = true;
     viewingRevision.value = true;
     document.body.dataset.revision = "true";
@@ -115,18 +127,32 @@ onUnmounted(() => {
         <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
         <div>
           <p class="text-size-medium font-semibold text-amber-900">
-            Viewing {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
+            {{ showingDiff ? "Comparing" : "Viewing" }}
+            {{ viewingSuggestion ? "Suggestion" : "Revision" }} {{ revisionNumber }}
           </p>
-          <p class="my-0! text-size-small text-amber-700">
-            {{
-              viewingSuggestion
-                ? "This suggestion is read-only until it is applied."
-                : "This is a historical version of the document. Changes cannot be made."
-            }}
+          <p class="my-0! text-size-small text-amber-700 flex items-center gap-3">
+            <template v-if="showingDiff">
+              Changes from the published version are shown inline.
+              <span class="inline-flex items-center gap-2">
+                <span class="px-1 rounded-xs bg-green-100 text-green-700 no-underline"
+                  >added</span
+                >
+                <span class="px-1 rounded-xs bg-red-100 text-red-700 line-through"
+                  >removed</span
+                >
+              </span>
+            </template>
+            <template v-else-if="viewingSuggestion">
+              This suggestion is read-only until it is applied.
+            </template>
+            <template v-else>
+              This is a historical version of the document. Changes cannot be made.
+            </template>
           </p>
         </div>
       </div>
       <button
+        type="button"
         @click="closeRevisionView"
         class="px-4 py-2 text-size-medium font-medium text-amber-900 bg-amber-100 border border-amber-300 rounded-sm hover:bg-amber-200 transition-colors"
       >
@@ -134,17 +160,12 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <!-- Revision View with Diff -->
-    <div v-if="showingDiff">
-      <DiffView :patch="diffPatch" />
-    </div>
-
-    <!-- App Revision View -->
-    <div v-else-if="documentType === 'app'" class="h-full">
+    <!-- App Revision View (diffs render as an inline redline via document-view) -->
+    <div v-if="documentType === 'app' && !showingDiff" class="h-full">
       <AppView :html="revisionContent" />
     </div>
 
-    <!-- Document / other type Revision View -->
+    <!-- Document / other type Revision View and inline diff -->
     <div v-else>
       <document-view ref="docViewEl" />
     </div>

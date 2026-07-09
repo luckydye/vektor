@@ -113,11 +113,10 @@ tasks:
         [ -z "$TSC_OUT" ]
 
   check:biome:
-    internal: true
     dir: ./app
     cmds:
       - echo "== biome =="
-      - bunx biome check --diagnostic-level=error
+      - bunx biome check --diagnostic-level=error {{.CLI_ARGS}}
 
   test:
     dir: ./app

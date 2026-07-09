@@ -69,9 +69,9 @@ defineExpose({ isDragging, openPicker });
 </script>
 
 <template>
+  <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
   <div
     ref="dropZone"
-    tabindex="0"
     class="relative flex flex-col items-center justify-center gap-3xs rounded-xl border-2 border-dashed px-m py-l transition-colors"
     :class="
       isDragging

@@ -346,7 +346,11 @@ const availableNewProperties = computed(() => {
       />
 
       <div v-if="!readonly" class="relative">
-        <ButtonIconSmall :icon="plusIcon" aria-label="New property" @click="toggleCreatePopover" />
+        <ButtonIconSmall
+          :icon="plusIcon"
+          aria-label="New property"
+          @click="toggleCreatePopover"
+        />
 
         <PropertyPopover
           :is-open="isCreatePopoverOpen"
@@ -361,6 +365,7 @@ const availableNewProperties = computed(() => {
 </template>
 
 <style scoped>
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 button :deep(svg) {
   color: var(--color-primary-600);
   display: inline;

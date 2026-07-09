@@ -185,7 +185,6 @@ watch(
 
   <!-- Tabbed settings layout -->
   <SettingsLayout :tabs="tabs" compact class="min-h-[200px]">
-
     <!-- Appearance tab -->
     <template #appearance>
       <section>
@@ -277,10 +276,8 @@ watch(
             <p class="text-label text-neutral-500 mt-0.5">
               <template v-if="getIntegrationConnection(provider)?.connected">
                 Connected as
-                {{
-                  getIntegrationConnection(provider)?.externalUsername ||
-                  getIntegrationConnection(provider)?.externalAccountId
-                }}
+                {{ getIntegrationConnection(provider)?.externalUsername ||
+                  getIntegrationConnection(provider)?.externalAccountId }}
               </template>
               <template v-else>Not connected</template>
             </p>
@@ -320,6 +317,5 @@ watch(
         </div>
       </section>
     </template>
-
   </SettingsLayout>
 </template>

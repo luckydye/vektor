@@ -3,18 +3,18 @@ import docStyles from "#editor/css/document.css?inline";
 import BaseLayout from "#layouts/BaseLayout.astro";
 ---
 
-<BaseLayout title="Document - Wiki">
-    <document-view>
-        <template shadowrootmode="open">
-            <style set:html={docStyles}></style>
-            
-            <div>
-                <ul>
-                    <li><a href="/docs/extensions">Extensions</a></li>
-                    <li><a href="/docs/api">API</a></li>
-                    <li><a href="/docs/workflows">Workflows</a></li>
-                </ul>
-            </div>
-        </template>
-    </document-view>
+<BaseLayout title="Document - Vektor">
+  <document-view>
+    <template shadowrootmode="open">
+      <style set:html={docStyles}></style>
+
+      <div>
+        <ul>
+          <li><a href="/docs/extensions">Extensions</a></li>
+          <li><a href="/docs/api">API</a></li>
+          <li><a href="/docs/workflows">Workflows</a></li>
+        </ul>
+      </div>
+    </template>
+  </document-view>
 </BaseLayout>

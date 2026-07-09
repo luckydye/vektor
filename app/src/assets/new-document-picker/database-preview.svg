@@ -1,22 +1,46 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="230" height="116" viewBox="0 0 230 116" fill="none" aria-hidden="true" focusable="false">
-  <rect x=".5" y=".5" width="229" height="115" rx="7.5" fill="#FBFBFB" stroke="#E5E7EB"/>
-  <path d="M1 1h228v114H1V1Z" fill="url(#databasePreviewDots)"/>
-  <rect x="16.5" y="16.5" width="197" height="83" rx="7.5" fill="white" stroke="#EDF0F2"/>
-  <path d="M17 33.5h197M17 50.5h197M17 67.5h197M17 84.5h197M66.5 17v83M115.5 17v83M164.5 17v83" stroke="#EDF0F2"/>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="230"
+  height="116"
+  viewBox="0 0 230 116"
+  fill="none"
+  aria-hidden="true"
+  focusable="false"
+>
+  <rect x=".5" y=".5" width="229" height="115" rx="7.5" fill="#FBFBFB" stroke="#E5E7EB" />
+  <path d="M1 1h228v114H1V1Z" fill="url(#databasePreviewDots)" />
+  <rect
+    x="16.5"
+    y="16.5"
+    width="197"
+    height="83"
+    rx="7.5"
+    fill="white"
+    stroke="#EDF0F2"
+  />
+  <path
+    d="M17 33.5h197M17 50.5h197M17 67.5h197M17 84.5h197M66.5 17v83M115.5 17v83M164.5 17v83"
+    stroke="#EDF0F2"
+  />
   <g stroke="#E6EAED" stroke-width="5" stroke-linecap="round">
-    <path d="M32 26h29M82 26h29M131 26h29M181 26h29"/>
-    <path d="M32 43h29M82 43h29M131 43h29M181 43h29"/>
-    <path d="M32 60h29M82 60h29M131 60h29M181 60h29"/>
-    <path d="M32 77h29M82 77h29M131 77h29M181 77h29"/>
-    <path d="M32 94h29M82 94h29M131 94h29M181 94h29"/>
+    <path d="M32 26h29M82 26h29M131 26h29M181 26h29" />
+    <path d="M32 43h29M82 43h29M131 43h29M181 43h29" />
+    <path d="M32 60h29M82 60h29M131 60h29M181 60h29" />
+    <path d="M32 77h29M82 77h29M131 77h29M181 77h29" />
+    <path d="M32 94h29M82 94h29M131 94h29M181 94h29" />
   </g>
-  <rect x="133" y="39" width="24" height="8" rx="4" fill="#5EEAD4"/>
-  <rect x="133" y="56" width="24" height="8" rx="4" fill="#FDE68A"/>
-  <rect x="133" y="73" width="24" height="8" rx="4" fill="#BEF264"/>
-  <rect x="133" y="90" width="24" height="8" rx="4" fill="#C4B5FD"/>
+  <rect x="133" y="39" width="24" height="8" rx="4" fill="#5EEAD4" />
+  <rect x="133" y="56" width="24" height="8" rx="4" fill="#FDE68A" />
+  <rect x="133" y="73" width="24" height="8" rx="4" fill="#BEF264" />
+  <rect x="133" y="90" width="24" height="8" rx="4" fill="#C4B5FD" />
   <defs>
-    <pattern id="databasePreviewDots" width="14" height="14" patternUnits="userSpaceOnUse">
-      <circle cx="1" cy="1" r="1" fill="#0F172A" opacity=".07"/>
+    <pattern
+      id="databasePreviewDots"
+      width="14"
+      height="14"
+      patternUnits="userSpaceOnUse"
+    >
+      <circle cx="1" cy="1" r="1" fill="#0F172A" opacity=".07" />
     </pattern>
   </defs>
 </svg>

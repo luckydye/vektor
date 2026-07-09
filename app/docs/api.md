@@ -78,7 +78,7 @@ Most errors are JSON:
 | GET | `/spaces/:spaceId/documents/:documentId/revisions` | Lists revision metadata/history. |
 | POST | `/spaces/:spaceId/documents/:documentId/revisions?rev=<n>` | Restores revision `n` as a new revision. |
 | GET | `/spaces/:spaceId/documents/:documentId/audit-logs` | Returns document audit logs. |
-| GET | `/spaces/:spaceId/documents/:documentId/diff?rev=<n>` | Returns unified diff between revision `n` and published content. |
+| GET | `/spaces/:spaceId/documents/:documentId/diff?rev=<n>` | Returns diff between revision `n` and published content (unified patch, or inline-diff HTML with `format=html`). |
 | GET | `/spaces/:spaceId/extensions` | Lists extensions the user can access. |
 | POST | `/spaces/:spaceId/extensions` | Uploads or updates an extension package (`.zip`). |
 | GET | `/spaces/:spaceId/extensions/:extensionId` | Returns extension metadata. |
@@ -636,10 +636,11 @@ Most errors are JSON:
 - Auth: session OR access token with document `viewer`.
 - Query:
 - `rev` required positive integer.
+- `format` optional. `html` returns a rendered inline redline of the document (added text wrapped in `<ins class="diff-ins">`, removed text in `<del class="diff-del">`); omitted returns a unified patch.
 - Behavior:
 - creates unified diff between revision `rev` and current published content.
 - Returns:
-- `200` plain text patch.
+- `200` plain text (unified patch, or inline-diff HTML when `format=html`).
 
 ---
 

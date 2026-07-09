@@ -14,10 +14,7 @@ const handleClick = (event: MouseEvent) => {
 </script>
 
 <template>
-  <button
-    class="button-ghost"
-    @click="handleClick"
-  >
+  <button type="button" class="button-ghost" @click="handleClick">
     <slot />
     <div v-if="icon" v-html="icon" />
     <span v-if="text">{{ text }}</span>

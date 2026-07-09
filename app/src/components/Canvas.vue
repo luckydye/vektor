@@ -3295,10 +3295,7 @@ onUnmounted(() => {
           />
         </button>
       </span>
-      <span
-        v-if="activeTool === 'draw'"
-        class="canvas-divider"
-      ></span>
+      <span v-if="activeTool === 'draw'" class="canvas-divider"></span>
       <span
         v-if="activeTool === 'note' || selectedShape?.type === 'note'"
         class="canvas-note-colors"
@@ -3401,7 +3398,11 @@ onUnmounted(() => {
         :disabled="!canUndo"
         @click="undo"
       >
-        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="undoArrowIcon" />
+        <div
+          class="svg-icon canvas-tool-icon"
+          aria-hidden="true"
+          v-html="undoArrowIcon"
+        />
       </button>
       <button
         type="button"
@@ -3411,7 +3412,11 @@ onUnmounted(() => {
         :disabled="!canRedo"
         @click="redo"
       >
-        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="redoArrowIcon" />
+        <div
+          class="svg-icon canvas-tool-icon"
+          aria-hidden="true"
+          v-html="redoArrowIcon"
+        />
       </button>
       <span class="canvas-divider"></span>
       <button
@@ -3421,10 +3426,15 @@ onUnmounted(() => {
         :data-tooltip="`${t('Fit to view')} · F`"
         @click="fitView()"
       >
-        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="canvasFitViewIcon" />
+        <div
+          class="svg-icon canvas-tool-icon"
+          aria-hidden="true"
+          v-html="canvasFitViewIcon"
+        />
       </button>
     </div>
 
+    <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
     <div
       ref="viewportRef"
       class="canvas-viewport"
@@ -3496,7 +3506,7 @@ onUnmounted(() => {
               @focus="selectOnlyShape(shape.id)"
               @pointerdown.stop
               @input="updateShapeText(shape, ($event.target as HTMLInputElement).value)"
-            />
+            >
           </div>
           <div
             v-else-if="shape.type === 'note'"
@@ -3511,7 +3521,7 @@ onUnmounted(() => {
             draggable="false"
             decoding="async"
             @pointerdown.stop="startShapeDrag(shape, $event)"
-          />
+          >
           <div
             v-else-if="shape.type === 'image'"
             class="canvas-shape-image"
@@ -3529,6 +3539,7 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
           <file-attachment
             v-else-if="shape.type === 'file' && shape.src"
             class="canvas-shape-file"
@@ -3548,6 +3559,7 @@ onUnmounted(() => {
             @drag-start="startShapeDrag(shape, $event)"
             @exit="stopEmbeddedDocumentEdit"
           />
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
           <document-attachment
             v-else-if="shape.type === 'document'"
             class="canvas-shape-document"
@@ -3562,6 +3574,9 @@ onUnmounted(() => {
             @click="onDocumentShapeClick(shape, $event)"
             @open-document="onDocumentShapeOpen(shape, $event)"
           ></document-attachment>
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
+          <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
           <a
             v-else-if="shape.type === 'link' && shape.src"
             class="canvas-shape-link"
@@ -3591,7 +3606,7 @@ onUnmounted(() => {
                 alt=""
                 draggable="false"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
-              />
+              >
             </div>
             <div class="canvas-link-body">
               <div class="canvas-link-site">
@@ -3602,7 +3617,7 @@ onUnmounted(() => {
                   aria-hidden="true"
                   draggable="false"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
+                >
                 <span class="canvas-link-domain">
                   {{ linkPreviews.previewForShape(shape)?.metadata?.siteName || getDomainFromUrl(shape.src) }}
                 </span>
@@ -3733,7 +3748,11 @@ onUnmounted(() => {
           :data-tooltip="`${t('Cut')} · ⌘X`"
           @click="cutSelectionToClipboard"
         >
-          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="scissorsIcon" />
+          <div
+            class="svg-icon canvas-tool-icon"
+            aria-hidden="true"
+            v-html="scissorsIcon"
+          />
         </button>
         <span class="canvas-divider"></span>
         <button
@@ -3770,7 +3789,11 @@ onUnmounted(() => {
             :aria-label="t('Cut')"
             @click="cutSelectionToClipboard(); contextMenuPos = null"
           >
-            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="scissorsIcon" />
+            <div
+              class="svg-icon canvas-tool-icon"
+              aria-hidden="true"
+              v-html="scissorsIcon"
+            />
           </button>
           <span class="canvas-divider"></span>
         </template>
@@ -3780,7 +3803,11 @@ onUnmounted(() => {
           :aria-label="t('Paste')"
           @click="pasteFromContextMenu"
         >
-          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="clipboardDocumentIcon" />
+          <div
+            class="svg-icon canvas-tool-icon"
+            aria-hidden="true"
+            v-html="clipboardDocumentIcon"
+          />
         </button>
         <template v-if="selectedShapeIds.size > 0 || selectedStrokeIds.size > 0">
           <span class="canvas-divider"></span>
@@ -3790,7 +3817,11 @@ onUnmounted(() => {
             :aria-label="t('Delete')"
             @click="deleteSelectedShape(); contextMenuPos = null"
           >
-            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="trashIcon" />
+            <div
+              class="svg-icon canvas-tool-icon"
+              aria-hidden="true"
+              v-html="trashIcon"
+            />
           </button>
         </template>
       </div>
@@ -3935,7 +3966,10 @@ onUnmounted(() => {
   padding: 0;
   color: var(--canvas-tool-text);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .canvas-tool:disabled {
@@ -3952,7 +3986,6 @@ onUnmounted(() => {
   background: var(--canvas-tool-hover-bg);
   color: var(--canvas-text);
 }
-
 
 .canvas-tool.active,
 .canvas-tool.primary {
@@ -4013,7 +4046,10 @@ onUnmounted(() => {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .canvas-shape-option:hover {
@@ -4071,7 +4107,6 @@ onUnmounted(() => {
   pointer-events: auto;
   will-change: transform;
 }
-
 
 .canvas-context-menu {
   position: absolute;
@@ -4238,7 +4273,6 @@ onUnmounted(() => {
   }
 }
 
-
 .canvas-shape.text {
   width: max-content;
   max-width: none;
@@ -4295,7 +4329,6 @@ onUnmounted(() => {
      resize handle select/drag the section. */
   pointer-events: none;
 }
-
 
 .canvas-shape.section .canvas-section-header,
 .canvas-shape.section .canvas-section-title,

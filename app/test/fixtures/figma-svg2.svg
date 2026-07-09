@@ -1,5 +1,14 @@
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-<circle cx="32" cy="32" r="32" fill="#26522E"/>
-<circle cx="32.0013" cy="31.9998" r="21.3333" fill="#6EB57F"/>
-<path d="M18.668 31.9995L23.2241 27.3433L29.3572 33.4693L40.8011 22.1255L45.3346 26.6662L29.3346 42.6662L18.668 31.9995Z" fill="#1C3F23"/>
+<svg
+  width="64"
+  height="64"
+  viewBox="0 0 64 64"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <circle cx="32" cy="32" r="32" fill="#26522E" />
+  <circle cx="32.0013" cy="31.9998" r="21.3333" fill="#6EB57F" />
+  <path
+    d="M18.668 31.9995L23.2241 27.3433L29.3572 33.4693L40.8011 22.1255L45.3346 26.6662L29.3346 42.6662L18.668 31.9995Z"
+    fill="#1C3F23"
+  />
 </svg>

@@ -336,6 +336,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
           {{ getActivityBucketLabel(group.time) }}
         </div>
 
+        <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
         <a
           v-for="batch in getCompactActivityBatches(group.items)"
           :key="batch.id"
@@ -346,13 +347,15 @@ const activityGroups = computed((): CompactActivityGroup[] => {
             class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto]"
           >
             <div class="flex min-w-0 items-center gap-3">
-              <div class="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-neutral-200 text-neutral-700">
+              <div
+                class="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-neutral-200 text-neutral-700"
+              >
                 <img
                   v-if="getCardUser(group.userId)?.image"
                   :src="getCardUser(group.userId)?.image ?? undefined"
                   :alt="getUserName(group.userId)"
                   class="h-full w-full object-cover"
-                />
+                >
                 <div
                   v-else
                   class="flex h-full w-full items-center justify-center text-size-medium font-semibold leading-none"
@@ -362,7 +365,9 @@ const activityGroups = computed((): CompactActivityGroup[] => {
               </div>
 
               <div class="min-w-0">
-                <div class="flex min-w-0 items-baseline gap-1 text-size-medium leading-medium">
+                <div
+                  class="flex min-w-0 items-baseline gap-1 text-size-medium leading-medium"
+                >
                   <span class="font-semibold text-neutral-900">
                     {{ getUserName(group.userId) }}
                   </span>

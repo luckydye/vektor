@@ -50,21 +50,24 @@ const userInitials = computed(() => {
 </script>
 
 <template>
-  <div class="rounded-full bg-neutral-200 border-1 border-neutral-100 overflow-hidden flex-none" :style="{
+  <div
+    class="rounded-full bg-neutral-200 border-1 border-neutral-100 overflow-hidden flex-none"
+    :style="{
     width: `${avatarSize}px`,
     height: `${avatarSize}px`
-  }">
+  }"
+  >
     <img
-        v-if="resolvedUser?.image"
-        :src="resolvedUser.image"
-        :alt="resolvedUser.name || 'User profile'"
-        class="object-cover"
-    />
-    <div
-        v-else
-        class="bg-linear-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-bold text-size-medium w-full h-full leading-[2.2rem]"
+      v-if="resolvedUser?.image"
+      :src="resolvedUser.image"
+      :alt="resolvedUser.name || 'User profile'"
+      class="object-cover"
     >
-        {{ userInitials }}
+    <div
+      v-else
+      class="bg-linear-to-br from-primary-500 to-purple-600 flex items-center justify-center text-white font-bold text-size-medium w-full h-full leading-[2.2rem]"
+    >
+      {{ userInitials }}
     </div>
   </div>
 </template>

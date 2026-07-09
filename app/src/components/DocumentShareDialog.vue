@@ -291,260 +291,357 @@ function canRemoveSpaceMember(perm: any) {
 </script>
 
 <template>
-  <Dialog :show="show" body-class="p-0 overflow-y-auto" @update:show="emit('update:show', $event)">
+  <Dialog
+    :show="show"
+    body-class="p-0 overflow-y-auto"
+    @update:show="emit('update:show', $event)"
+  >
     <template #header>
       <div class="min-w-0">
-        <h2 class="text-size-title font-semibold text-neutral-900 leading-tight">Share</h2>
-        <p v-if="documentTitle" class="text-size-small text-neutral-400 truncate mt-0.5">{{ documentTitle }}</p>
+        <h2 class="text-size-title font-semibold text-neutral-900 leading-tight">
+          Share
+        </h2>
+        <p v-if="documentTitle" class="text-size-small text-neutral-400 truncate mt-0.5">
+          {{ documentTitle }}
+        </p>
       </div>
     </template>
 
     <!-- Tabs -->
     <a-tabs ref="tabsEl" @tab-selected="onTabSelected">
-        <a-tabs-list class="block border-b border-neutral-100 px-4">
-          <a-tabs-tab class="px-1 py-2.5 mr-4 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">
-            This document
-          </a-tabs-tab>
-          <a-tabs-tab class="px-1 py-2.5 mr-4 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">
-            Category
-          </a-tabs-tab>
-          <a-tabs-tab class="px-1 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">
-            Entire space
-          </a-tabs-tab>
-        </a-tabs-list>
+      <a-tabs-list class="block border-b border-neutral-100 px-4">
+        <a-tabs-tab
+          class="px-1 py-2.5 mr-4 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
+        >
+          This document
+        </a-tabs-tab>
+        <a-tabs-tab
+          class="px-1 py-2.5 mr-4 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
+        >
+          Category
+        </a-tabs-tab>
+        <a-tabs-tab
+          class="px-1 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
+        >
+          Entire space
+        </a-tabs-tab>
+      </a-tabs-list>
 
-        <!-- Document panel -->
-        <a-tabs-panel class="block">
-          <div class="px-4 py-3 space-y-3">
-
-            <form @submit.prevent="handleInvite">
-              <div class="flex flex-wrap gap-2 items-center">
+      <!-- Document panel -->
+      <a-tabs-panel class="block">
+        <div class="px-4 py-3 space-y-3">
+          <form @submit.prevent="handleInvite">
+            <div class="flex flex-wrap gap-2 items-center">
+              <input
+                v-model="newMemberEmail"
+                type="email"
+                required
+                placeholder="person@example.com"
+                class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+              >
+              <select
+                v-model="newMemberRole"
+                class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+              >
+                <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+              <label
+                class="inline-flex items-center gap-1.5 text-size-small text-neutral-600 whitespace-nowrap"
+              >
                 <input
-                  v-model="newMemberEmail"
-                  type="email"
-                  required
-                  placeholder="person@example.com"
-                  class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
-                />
-                <select
-                  v-model="newMemberRole"
-                  class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+                  v-model="includeChildPages"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-neutral-200 text-neutral-900 focus:ring-neutral-400"
                 >
-                  <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                </select>
-                <label class="inline-flex items-center gap-1.5 text-size-small text-neutral-600 whitespace-nowrap">
-                  <input
-                    v-model="includeChildPages"
-                    type="checkbox"
-                    class="h-4 w-4 rounded border-neutral-200 text-neutral-900 focus:ring-neutral-400"
-                  />
-                  <span>Include child pages</span>
-                </label>
-                <button type="submit" :disabled="addingMember || !newMemberEmail.trim()" class="button-primary px-3xs">
-                  {{ addingMember ? "…" : "Invite" }}
-                </button>
-              </div>
-              <p v-if="addMemberError" class="mt-1.5 text-size-small text-red-500">{{ addMemberError }}</p>
-            </form>
-
-            <div v-if="isLoading" class="flex justify-center py-6">
-              <div class="animate-spin rounded-full h-5 w-5 border-2 border-neutral-200 border-t-neutral-600" />
+                <span>Include child pages</span>
+              </label>
+              <button
+                type="submit"
+                :disabled="addingMember || !newMemberEmail.trim()"
+                class="button-primary px-3xs"
+              >
+                {{ addingMember ? "…" : "Invite" }}
+              </button>
             </div>
+            <p v-if="addMemberError" class="mt-1.5 text-size-small text-red-500">
+              {{ addMemberError }}
+            </p>
+          </form>
 
-            <template v-else>
-              <div v-if="docPermissions.length > 0" class="max-h-64 overflow-y-auto divide-y divide-neutral-100">
-                <div
-                  v-for="perm in docPermissions"
-                  :key="`${perm.permission.resourceType}-${perm.permission.userId || perm.permission.groupId}`"
-                  class="flex items-center gap-2.5 py-2"
-                >
-                  <div class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center">
-                    <span class="text-neutral-700 text-size-small font-medium leading-none">
-                      {{ getUserInitials(getMemberName(perm)) }}
-                    </span>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-size-medium text-neutral-900 truncate">{{ getMemberName(perm) }}</div>
-                    <div v-if="getMemberEmail(perm)" class="text-size-small text-neutral-400 truncate">{{ getMemberEmail(perm) }}</div>
-                    <div class="text-size-small text-neutral-400 truncate">{{ permissionScopeLabel(perm) }}</div>
-                  </div>
-                  <span class="flex-shrink-0 text-size-small font-medium px-2 py-0.5 rounded-full" :class="roleBadgeClass(perm.permission.permission)">
-                    {{ perm.permission.permission }}
-                  </span>
-                  <button
-                    v-if="!isSelf(perm)"
-                    type="button"
-                    class="flex-shrink-0 text-size-small text-neutral-400 hover:text-red-500 transition-colors"
-                    @click="removeDocPerm(perm)"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-              <p v-else class="text-size-small text-neutral-400">
-                No one has been given direct access to this document yet.
-              </p>
-
-              <p v-if="spacePermissions.length > 0" class="text-size-small text-neutral-400">
-                {{ spacePermissions.length }} space member{{ spacePermissions.length !== 1 ? 's' : '' }} can also access this document via their space role.
-              </p>
-            </template>
-
+          <div v-if="isLoading" class="flex justify-center py-6">
+            <div
+              class="animate-spin rounded-full h-5 w-5 border-2 border-neutral-200 border-t-neutral-600"
+            />
           </div>
-        </a-tabs-panel>
 
-        <!-- Category panel -->
-        <a-tabs-panel class="block">
-          <div class="px-4 py-3 space-y-3">
-            <select
-              v-model="selectedCategoryId"
-              class="w-full px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
-              @change="loadCategoryPermissions"
+          <template v-else>
+            <div
+              v-if="docPermissions.length > 0"
+              class="max-h-64 overflow-y-auto divide-y divide-neutral-100"
             >
-              <option value="">Select a category...</option>
-              <option v-for="category in categories" :key="category.id" :value="category.id">
-                {{ category.name }}
-              </option>
-            </select>
-
-            <form @submit.prevent="handleInvite">
-              <div class="flex flex-wrap gap-2 items-center">
-                <input
-                  v-model="newMemberEmail"
-                  type="email"
-                  required
-                  placeholder="person@example.com"
-                  class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
-                />
-                <select
-                  v-model="newMemberRole"
-                  class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+              <div
+                v-for="perm in docPermissions"
+                :key="`${perm.permission.resourceType}-${perm.permission.userId || perm.permission.groupId}`"
+                class="flex items-center gap-2.5 py-2"
+              >
+                <div
+                  class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center"
                 >
-                  <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                </select>
-                <button type="submit" :disabled="addingMember || !newMemberEmail.trim() || !selectedCategoryId" class="button-primary px-3xs">
-                  {{ addingMember ? "..." : "Invite" }}
+                  <span class="text-neutral-700 text-size-small font-medium leading-none">
+                    {{ getUserInitials(getMemberName(perm)) }}
+                  </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-size-medium text-neutral-900 truncate">
+                    {{ getMemberName(perm) }}
+                  </div>
+                  <div
+                    v-if="getMemberEmail(perm)"
+                    class="text-size-small text-neutral-400 truncate"
+                  >
+                    {{ getMemberEmail(perm) }}
+                  </div>
+                  <div class="text-size-small text-neutral-400 truncate">
+                    {{ permissionScopeLabel(perm) }}
+                  </div>
+                </div>
+                <span
+                  class="flex-shrink-0 text-size-small font-medium px-2 py-0.5 rounded-full"
+                  :class="roleBadgeClass(perm.permission.permission)"
+                >
+                  {{ perm.permission.permission }}
+                </span>
+                <button
+                  v-if="!isSelf(perm)"
+                  type="button"
+                  class="flex-shrink-0 text-size-small text-neutral-400 hover:text-red-500 transition-colors"
+                  @click="removeDocPerm(perm)"
+                >
+                  Remove
                 </button>
               </div>
-              <p v-if="addMemberError" class="mt-1.5 text-size-small text-red-500">{{ addMemberError }}</p>
-            </form>
-
-            <div v-if="isLoading" class="flex justify-center py-6">
-              <div class="animate-spin rounded-full h-5 w-5 border-2 border-neutral-200 border-t-neutral-600" />
             </div>
+            <p v-else class="text-size-small text-neutral-400">
+              No one has been given direct access to this document yet.
+            </p>
 
-            <template v-else>
-              <div v-if="categoryPermissions.length > 0" class="max-h-64 overflow-y-auto divide-y divide-neutral-100">
-                <div
-                  v-for="perm in categoryPermissions"
-                  :key="`${perm.permission.resourceType}-${perm.permission.userId || perm.permission.groupId}`"
-                  class="flex items-center gap-2.5 py-2"
-                >
-                  <div class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center">
-                    <span class="text-neutral-700 text-size-small font-medium leading-none">
-                      {{ getUserInitials(getMemberName(perm)) }}
-                    </span>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-size-medium text-neutral-900 truncate">{{ getMemberName(perm) }}</div>
-                    <div v-if="getMemberEmail(perm)" class="text-size-small text-neutral-400 truncate">{{ getMemberEmail(perm) }}</div>
-                  </div>
-                  <span class="flex-shrink-0 text-size-small font-medium px-2 py-0.5 rounded-full" :class="roleBadgeClass(perm.permission.permission)">
-                    {{ perm.permission.permission }}
-                  </span>
-                  <button
-                    v-if="!isSelf(perm)"
-                    type="button"
-                    class="flex-shrink-0 text-size-small text-neutral-400 hover:text-red-500 transition-colors"
-                    @click="removeCategoryPerm(perm)"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-              <p v-else class="text-size-small text-neutral-400">
-                No one has been given direct access to this category yet.
-              </p>
-            </template>
+            <p
+              v-if="spacePermissions.length > 0"
+              class="text-size-small text-neutral-400"
+            >
+              {{ spacePermissions.length }}
+              space member{{ spacePermissions.length !== 1 ? 's' : '' }}
+              can also access this document via their space role.
+            </p>
+          </template>
+        </div>
+      </a-tabs-panel>
+
+      <!-- Category panel -->
+      <a-tabs-panel class="block">
+        <div class="px-4 py-3 space-y-3">
+          <select
+            v-model="selectedCategoryId"
+            class="w-full px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+            @change="loadCategoryPermissions"
+          >
+            <option value="">Select a category...</option>
+            <option
+              v-for="category in categories"
+              :key="category.id"
+              :value="category.id"
+            >
+              {{ category.name }}
+            </option>
+          </select>
+
+          <form @submit.prevent="handleInvite">
+            <div class="flex flex-wrap gap-2 items-center">
+              <input
+                v-model="newMemberEmail"
+                type="email"
+                required
+                placeholder="person@example.com"
+                class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+              >
+              <select
+                v-model="newMemberRole"
+                class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+              >
+                <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+              <button
+                type="submit"
+                :disabled="addingMember || !newMemberEmail.trim() || !selectedCategoryId"
+                class="button-primary px-3xs"
+              >
+                {{ addingMember ? "..." : "Invite" }}
+              </button>
+            </div>
+            <p v-if="addMemberError" class="mt-1.5 text-size-small text-red-500">
+              {{ addMemberError }}
+            </p>
+          </form>
+
+          <div v-if="isLoading" class="flex justify-center py-6">
+            <div
+              class="animate-spin rounded-full h-5 w-5 border-2 border-neutral-200 border-t-neutral-600"
+            />
           </div>
-        </a-tabs-panel>
 
-        <!-- Space panel -->
-        <a-tabs-panel class="block">
-          <div class="px-4 py-3 space-y-3">
-
-            <form @submit.prevent="handleInvite">
-              <div class="flex gap-2 items-center">
-                <input
-                  v-model="newMemberEmail"
-                  type="email"
-                  required
-                  placeholder="person@example.com"
-                  class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
-                />
-                <select
-                  v-model="newMemberRole"
-                  class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+          <template v-else>
+            <div
+              v-if="categoryPermissions.length > 0"
+              class="max-h-64 overflow-y-auto divide-y divide-neutral-100"
+            >
+              <div
+                v-for="perm in categoryPermissions"
+                :key="`${perm.permission.resourceType}-${perm.permission.userId || perm.permission.groupId}`"
+                class="flex items-center gap-2.5 py-2"
+              >
+                <div
+                  class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center"
                 >
-                  <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                </select>
-                <button type="submit" :disabled="addingMember || !newMemberEmail.trim()" class="button-primary px-3xs">
-                  {{ addingMember ? "…" : "Invite" }}
+                  <span class="text-neutral-700 text-size-small font-medium leading-none">
+                    {{ getUserInitials(getMemberName(perm)) }}
+                  </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-size-medium text-neutral-900 truncate">
+                    {{ getMemberName(perm) }}
+                  </div>
+                  <div
+                    v-if="getMemberEmail(perm)"
+                    class="text-size-small text-neutral-400 truncate"
+                  >
+                    {{ getMemberEmail(perm) }}
+                  </div>
+                </div>
+                <span
+                  class="flex-shrink-0 text-size-small font-medium px-2 py-0.5 rounded-full"
+                  :class="roleBadgeClass(perm.permission.permission)"
+                >
+                  {{ perm.permission.permission }}
+                </span>
+                <button
+                  v-if="!isSelf(perm)"
+                  type="button"
+                  class="flex-shrink-0 text-size-small text-neutral-400 hover:text-red-500 transition-colors"
+                  @click="removeCategoryPerm(perm)"
+                >
+                  Remove
                 </button>
               </div>
-              <p v-if="addMemberError" class="mt-1.5 text-size-small text-red-500">{{ addMemberError }}</p>
-            </form>
-
-            <div v-if="isLoading" class="flex justify-center py-6">
-              <div class="animate-spin rounded-full h-5 w-5 border-2 border-neutral-200 border-t-neutral-600" />
             </div>
+            <p v-else class="text-size-small text-neutral-400">
+              No one has been given direct access to this category yet.
+            </p>
+          </template>
+        </div>
+      </a-tabs-panel>
 
-            <template v-else>
-              <div v-if="spacePermissions.length > 0" class="max-h-64 overflow-y-auto divide-y divide-neutral-100">
-                <div
-                  v-for="perm in spacePermissions"
-                  :key="perm.permission.userId || perm.permission.groupId"
-                  class="flex items-center gap-2.5 py-2"
-                >
-                  <div class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center">
-                    <span class="text-neutral-700 text-size-small font-medium leading-none">
-                      {{ getUserInitials(getMemberName(perm)) }}
-                    </span>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-size-medium text-neutral-900 truncate">{{ getMemberName(perm) }}</div>
-                    <div v-if="getMemberEmail(perm)" class="text-size-small text-neutral-400 truncate">{{ getMemberEmail(perm) }}</div>
-                  </div>
-                  <select
-                    v-if="userIsOwner && !isSelf(perm)"
-                    :value="perm.permission.permission"
-                    @change="(e) => changeSpaceRole(perm, (e.target as HTMLSelectElement).value)"
-                    class="text-size-small border border-neutral-200 rounded-md px-2 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-700"
-                  >
-                    <option value="viewer">Viewer</option>
-                    <option value="editor">Editor</option>
-                    <option value="owner">Owner</option>
-                  </select>
-                  <span v-else class="flex-shrink-0 text-size-small font-medium px-2 py-0.5 rounded-full" :class="roleBadgeClass(perm.permission.permission)">
-                    {{ perm.permission.permission }}
-                  </span>
-                  <button
-                    v-if="canRemoveSpaceMember(perm)"
-                    type="button"
-                    class="flex-shrink-0 text-size-small text-neutral-400 hover:text-red-500 transition-colors"
-                    @click="removeSpacePerm(perm)"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-              <p v-else class="text-size-small text-neutral-400">
-                No space members yet.
-              </p>
-            </template>
+      <!-- Space panel -->
+      <a-tabs-panel class="block">
+        <div class="px-4 py-3 space-y-3">
+          <form @submit.prevent="handleInvite">
+            <div class="flex gap-2 items-center">
+              <input
+                v-model="newMemberEmail"
+                type="email"
+                required
+                placeholder="person@example.com"
+                class="flex-1 min-w-0 px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+              >
+              <select
+                v-model="newMemberRole"
+                class="px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
+              >
+                <option v-for="opt in roleOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+              <button
+                type="submit"
+                :disabled="addingMember || !newMemberEmail.trim()"
+                class="button-primary px-3xs"
+              >
+                {{ addingMember ? "…" : "Invite" }}
+              </button>
+            </div>
+            <p v-if="addMemberError" class="mt-1.5 text-size-small text-red-500">
+              {{ addMemberError }}
+            </p>
+          </form>
 
+          <div v-if="isLoading" class="flex justify-center py-6">
+            <div
+              class="animate-spin rounded-full h-5 w-5 border-2 border-neutral-200 border-t-neutral-600"
+            />
           </div>
-        </a-tabs-panel>
-      </a-tabs>
+
+          <template v-else>
+            <div
+              v-if="spacePermissions.length > 0"
+              class="max-h-64 overflow-y-auto divide-y divide-neutral-100"
+            >
+              <div
+                v-for="perm in spacePermissions"
+                :key="perm.permission.userId || perm.permission.groupId"
+                class="flex items-center gap-2.5 py-2"
+              >
+                <div
+                  class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center"
+                >
+                  <span class="text-neutral-700 text-size-small font-medium leading-none">
+                    {{ getUserInitials(getMemberName(perm)) }}
+                  </span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-size-medium text-neutral-900 truncate">
+                    {{ getMemberName(perm) }}
+                  </div>
+                  <div
+                    v-if="getMemberEmail(perm)"
+                    class="text-size-small text-neutral-400 truncate"
+                  >
+                    {{ getMemberEmail(perm) }}
+                  </div>
+                </div>
+                <select
+                  v-if="userIsOwner && !isSelf(perm)"
+                  :value="perm.permission.permission"
+                  @change="(e) => changeSpaceRole(perm, (e.target as HTMLSelectElement).value)"
+                  class="text-size-small border border-neutral-200 rounded-md px-2 py-0.5 bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-700"
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="editor">Editor</option>
+                  <option value="owner">Owner</option>
+                </select>
+                <span
+                  v-else
+                  class="flex-shrink-0 text-size-small font-medium px-2 py-0.5 rounded-full"
+                  :class="roleBadgeClass(perm.permission.permission)"
+                >
+                  {{ perm.permission.permission }}
+                </span>
+                <button
+                  v-if="canRemoveSpaceMember(perm)"
+                  type="button"
+                  class="flex-shrink-0 text-size-small text-neutral-400 hover:text-red-500 transition-colors"
+                  @click="removeSpacePerm(perm)"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+            <p v-else class="text-size-small text-neutral-400">No space members yet.</p>
+          </template>
+        </div>
+      </a-tabs-panel>
+    </a-tabs>
   </Dialog>
 </template>

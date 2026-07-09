@@ -4,6 +4,7 @@ defineProps({ html: { type: String, default: "" } });
 
 <template>
   <iframe
+    title="Document preview"
     :srcdoc="html"
     sandbox="allow-scripts allow-forms allow-modals allow-popups"
     class="w-full border-none block"

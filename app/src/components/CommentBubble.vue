@@ -314,6 +314,7 @@ defineExpose({ commentsForOverlays, handleMoveThread });
       :style="{ top: `${bubbleY}px` }"
     >
       <button
+        type="button"
         @click="handleAddComment"
         class="w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md flex items-center justify-center text-neutral-500 hover:text-primary-600 hover:border-primary-300 hover:shadow-lg transition-all"
         title="Add comment"

@@ -409,6 +409,7 @@ const statusBadgeClass: Record<string, string> = {
 
 <template>
   <Teleport v-if="sourceExtensionHref" to="#workflow-breadcrumb-slot">
+    <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
     <a
       :href="sourceExtensionHref"
       class="inline-flex items-center gap-1.5 text-size-medium text-neutral-400 hover:text-neutral-600 transition-colors"
@@ -419,37 +420,50 @@ const statusBadgeClass: Record<string, string> = {
   </Teleport>
 
   <div class="px-xs lg:px-xl space-y-8 mx-auto mb-12">
-
     <div class="flex justify-between gap-4">
-        <!-- Title -->
-        <h2 class="text-size-title font-semibold text-neutral-800">{{ selectedRunTitle || "Untitled" }}</h2>
-    
-        <!-- Header -->
-        <div class="flex items-center justify-between gap-12">
-            <div class="flex items-center gap-3">
-                <span v-if="selectedRunCreatedAt" class="text-size-small text-neutral-400">
-                  {{ formatDate(selectedRunCreatedAt) }}
-                </span>
-                <div v-if="selectedRunDetail" class="flex items-center gap-3">
-                    <span
-                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-size-medium font-medium capitalize"
-                        :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
-                        >
-                        <div v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'" class="svg-icon w-3 h-3 animate-spin" v-html="spinnerQuarterIcon" />
-                        {{ selectedRunDetail.status }}
-                    </span>
-                </div>
-            </div>
-    
+      <!-- Title -->
+      <h2 class="text-size-title font-semibold text-neutral-800">
+        {{ selectedRunTitle || "Untitled" }}
+      </h2>
+
+      <!-- Header -->
+      <div class="flex items-center justify-between gap-12">
+        <div class="flex items-center gap-3">
+          <span v-if="selectedRunCreatedAt" class="text-size-small text-neutral-400">
+            {{ formatDate(selectedRunCreatedAt) }}
+          </span>
+          <div v-if="selectedRunDetail" class="flex items-center gap-3">
+            <span
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-size-medium font-medium capitalize"
+              :class="statusBadgeClass[selectedRunDetail.status] ?? 'bg-neutral-100 text-neutral-500'"
+            >
+              <div
+                v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'"
+                class="svg-icon w-3 h-3 animate-spin"
+                v-html="spinnerQuarterIcon"
+              />
+              {{ selectedRunDetail.status }}
+            </span>
+          </div>
         </div>
+      </div>
     </div>
 
     <!-- Tabs: Results / Run Details / History -->
     <a-tabs>
       <a-tabs-list class="border-b border-neutral-100">
-        <a-tabs-tab class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">Results</a-tabs-tab>
-        <a-tabs-tab class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">Run Details</a-tabs-tab>
-        <a-tabs-tab class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900">History</a-tabs-tab>
+        <a-tabs-tab
+          class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
+          >Results</a-tabs-tab
+        >
+        <a-tabs-tab
+          class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
+          >Run Details</a-tabs-tab
+        >
+        <a-tabs-tab
+          class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
+          >History</a-tabs-tab
+        >
       </a-tabs-list>
 
       <!-- Results panel -->
@@ -457,7 +471,10 @@ const statusBadgeClass: Record<string, string> = {
         <div class="space-y-4 pt-4">
           <template v-if="selectedRunDetail?.status === 'completed'">
             <!-- HTML output -->
-            <div v-if="outputHtml" class="rounded-xl border border-neutral-200 overflow-hidden">
+            <div
+              v-if="outputHtml"
+              class="rounded-xl border border-neutral-200 overflow-hidden"
+            >
               <div v-html="outputHtml" class="p-2" />
             </div>
 
@@ -471,27 +488,36 @@ const statusBadgeClass: Record<string, string> = {
 
             <div class="flex flex-wrap items-center gap-2">
               <!-- Document link -->
+              <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
               <a
                 v-if="outputDocumentId && outputDocumentHref"
                 :href="outputDocumentHref"
                 class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
               >
-                <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
+                <div
+                  class="svg-icon w-4 h-4 text-neutral-400"
+                  v-html="clipboardDocumentIcon"
+                />
                 {{ outputDocumentTitle ?? "Open document" }}
               </a>
 
               <!-- File download -->
               <template v-if="selectedRunFileUrl && selectedRunFileName">
+                <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
                 <a
                   :href="selectedRunFileUrl"
                   target="_blank"
                   rel="noreferrer"
                   class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
                 >
-                  <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
+                  <div
+                    class="svg-icon w-4 h-4 text-neutral-400"
+                    v-html="clipboardDocumentIcon"
+                  />
                   {{ selectedRunFileName }}
                 </a>
                 <button
+                  type="button"
                   class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-neutral-300 hover:bg-neutral-50 transition-colors text-size-medium text-neutral-500"
                   title="Download"
                   @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
@@ -504,7 +530,9 @@ const statusBadgeClass: Record<string, string> = {
             <p
               v-if="!outputHtml && !outputData && !outputDocumentId && !selectedRunFileUrl"
               class="text-size-medium text-neutral-400"
-            >No output</p>
+            >
+              No output
+            </p>
           </template>
 
           <p v-else class="text-size-medium text-neutral-400">
@@ -518,11 +546,25 @@ const statusBadgeClass: Record<string, string> = {
         <div class="space-y-6 pt-4">
           <!-- Input fields -->
           <div v-if="selectedRunInputs">
-            <div class="mb-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide">Input fields</div>
+            <div
+              class="mb-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+            >
+              Input fields
+            </div>
             <div class="rounded-lg border border-neutral-100 overflow-hidden">
-              <div class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50">
-                <div class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">Field</div>
-                <div class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">Value</div>
+              <div
+                class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50"
+              >
+                <div
+                  class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+                >
+                  Field
+                </div>
+                <div
+                  class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+                >
+                  Value
+                </div>
               </div>
               <div>
                 <div
@@ -530,33 +572,60 @@ const statusBadgeClass: Record<string, string> = {
                   :key="key"
                   class="grid grid-cols-[180px_1fr] border-b border-neutral-100 last:border-b-0 transition-colors hover:bg-neutral-50"
                 >
-                  <div class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate">{{ key }}</div>
-                  <pre class="px-0 py-2.5 pr-4 overflow-x-auto whitespace-pre-wrap break-all text-size-small text-neutral-700">{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
+                  <div
+                    class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate"
+                  >
+                    {{ key }}
+                  </div>
+                  <pre
+                    class="px-0 py-2.5 pr-4 overflow-x-auto whitespace-pre-wrap break-all text-size-small text-neutral-700"
+                  >{{ typeof val === 'object' ? JSON.stringify(val, null, 2) : val }}</pre>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Logs -->
-          <div v-if="allLogs.length > 0" class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg">
+          <div
+            v-if="allLogs.length > 0"
+            class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg"
+          >
             <button
+              type="button"
               class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
               @click="logsExpanded = !logsExpanded"
             >
-              <div class="svg-icon w-3 h-3 transition-transform" :class="logsExpanded ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
+              <div
+                class="svg-icon w-3 h-3 transition-transform"
+                :class="logsExpanded ? 'rotate-90' : ''"
+                v-html="chevronRightSmallIcon"
+              />
               Logs
             </button>
-            <div v-if="logsExpanded || runFailureError" class="mt-2 w-full overflow-x-auto max-h-[400px]">
+            <div
+              v-if="logsExpanded || runFailureError"
+              class="mt-2 w-full overflow-x-auto max-h-[400px]"
+            >
               <div class="font-mono text-[11px] space-y-0.5">
                 <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
-                  <span class="text-neutral-500 dark:text-neutral-400 shrink-0">{{ entry.nodeId }}</span>
-                  <span :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'">{{ entry.line }}</span>
+                  <span class="text-neutral-500 dark:text-neutral-400 shrink-0"
+                    >{{ entry.nodeId }}</span
+                  >
+                  <span
+                    :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'"
+                    >{{ entry.line }}</span
+                  >
                 </div>
               </div>
             </div>
           </div>
 
-          <p v-if="!selectedRunInputs && allLogs.length === 0" class="text-size-medium text-neutral-400">No details available.</p>
+          <p
+            v-if="!selectedRunInputs && allLogs.length === 0"
+            class="text-size-medium text-neutral-400"
+          >
+            No details available.
+          </p>
         </div>
       </a-tabs-panel>
 
@@ -567,13 +636,19 @@ const statusBadgeClass: Record<string, string> = {
             <div
               class="grid grid-cols-[1fr_120px_140px] items-center h-9 border-b border-neutral-100 bg-neutral-50 sticky top-0 z-10 transition-colors"
             >
-              <div class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+              <div
+                class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
                 Run
               </div>
-              <div class="text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+              <div
+                class="text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
                 Status
               </div>
-              <div class="pr-4 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide">
+              <div
+                class="pr-4 text-right text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
                 Results
               </div>
             </div>
@@ -584,8 +659,11 @@ const statusBadgeClass: Record<string, string> = {
                 class="border-b border-neutral-100 group transition-colors hover:transition-none"
                 :class="selectedRunId === run.runId ? 'bg-primary-50' : 'hover:bg-neutral-50'"
               >
-                <div class="grid grid-cols-[1fr_120px_140px] items-center text-size-medium">
+                <div
+                  class="grid grid-cols-[1fr_120px_140px] items-center text-size-medium"
+                >
                   <button
+                    type="button"
                     class="flex items-center gap-2 min-w-0 py-2.5 px-4 text-left"
                     @click="selectRun(run.runId)"
                   >
@@ -601,16 +679,22 @@ const statusBadgeClass: Record<string, string> = {
                     <span
                       class="px-1.5 py-0.5 rounded-sm text-[11px] font-medium capitalize"
                       :class="statusBadgeClass[run.status] ?? 'bg-neutral-100 text-neutral-500'"
-                    >{{ run.status }}</span>
+                      >{{ run.status }}</span
+                    >
                   </div>
 
                   <div class="flex items-center justify-end py-2.5 pr-4">
                     <button
+                      type="button"
                       v-if="run.status === 'completed'"
                       class="inline-flex items-center gap-1 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
                       @click="toggleHistoryRun(run.runId)"
                     >
-                      <div class="svg-icon w-3 h-3 transition-transform" :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''" v-html="chevronRightSmallIcon" />
+                      <div
+                        class="svg-icon w-3 h-3 transition-transform"
+                        :class="expandedHistoryRuns.has(run.runId) ? 'rotate-90' : ''"
+                        v-html="chevronRightSmallIcon"
+                      />
                       Results
                     </button>
                     <span v-else class="text-size-small text-neutral-300">-</span>
@@ -623,7 +707,10 @@ const statusBadgeClass: Record<string, string> = {
                   class="px-4 pb-4 space-y-3 bg-neutral-50"
                 >
                   <template v-if="historyRunDetails.has(run.runId)">
-                    <div v-if="historyOutputHtml(run.runId)" class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100">
+                    <div
+                      v-if="historyOutputHtml(run.runId)"
+                      class="rounded-lg border border-neutral-200 overflow-hidden bg-white dark:bg-neutral-100"
+                    >
                       <div v-html="historyOutputHtml(run.runId)" class="p-4" />
                     </div>
                     <DataTable
@@ -632,16 +719,28 @@ const statusBadgeClass: Record<string, string> = {
                       :document-id="props.documentId"
                       :export-file-name="historyRunTitle(run) ?? 'data'"
                     />
-                    <div v-if="historyOutputDocumentHref(run.runId)" class="inline-flex items-center gap-2">
+                    <div
+                      v-if="historyOutputDocumentHref(run.runId)"
+                      class="inline-flex items-center gap-2"
+                    >
+                      <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
                       <a
                         :href="historyOutputDocumentHref(run.runId)!"
                         class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
                       >
-                        <div class="svg-icon w-4 h-4 text-neutral-400" v-html="clipboardDocumentIcon" />
+                        <div
+                          class="svg-icon w-4 h-4 text-neutral-400"
+                          v-html="clipboardDocumentIcon"
+                        />
                         {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
                       </a>
                     </div>
-                    <p v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)" class="text-size-small text-neutral-400">No output</p>
+                    <p
+                      v-if="!historyOutputHtml(run.runId) && !historyOutputDocumentHref(run.runId) && !historyOutputData(run.runId)"
+                      class="text-size-small text-neutral-400"
+                    >
+                      No output
+                    </p>
                   </template>
                   <div v-else class="text-size-small text-neutral-400">Loading…</div>
                 </div>
@@ -655,10 +754,11 @@ const statusBadgeClass: Record<string, string> = {
               @change="runGoToPage"
             />
           </div>
-          <p v-else class="text-size-medium text-neutral-400 py-8 text-center">No runs yet.</p>
+          <p v-else class="text-size-medium text-neutral-400 py-8 text-center">
+            No runs yet.
+          </p>
         </div>
       </a-tabs-panel>
     </a-tabs>
-
   </div>
 </template>

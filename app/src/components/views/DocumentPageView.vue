@@ -242,7 +242,7 @@ watch(
   title,
   (t) => {
     if (typeof document === "undefined") return;
-    if (t) document.title = `${t} - ${currentSpace.value?.name ?? ""} - Wiki`;
+    if (t) document.title = `${t} - ${currentSpace.value?.name ?? ""} - Vektor`;
   },
   { immediate: true },
 );
@@ -265,151 +265,233 @@ watchEffect(() => {
 </script>
 
 <template>
-    <div v-if="currentSpace && (isDraft ? !redirecting : doc)">
-        <inset-view :key="doc?.id ?? 'draft'"
-            :class="twMerge('block min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')">
-            <div :data-type="documentType" :data-updated-at="doc?.updatedAt" :data-created-at="doc?.createdAt"
-                :data-layout="effectiveLayout" :class="twMerge(
+  <div v-if="currentSpace && (isDraft ? !redirecting : doc)">
+    <inset-view
+      :key="doc?.id ?? 'draft'"
+      :class="twMerge('block min-h-0 flex-1', !isCanvas && 'md:mr-(--inset-right) md:ml-(--inset-left)')"
+    >
+      <div
+        :data-type="documentType"
+        :data-updated-at="doc?.updatedAt"
+        :data-created-at="doc?.createdAt"
+        :data-layout="effectiveLayout"
+        :class="twMerge(
                     'relative mx-auto flex h-full w-full flex-col',
                     isCsv || isDatabase || effectiveLayout === 'full'
                         ? 'max-w-full'
                         : 'max-w-(--document-width)',
-                )">
+                )"
+      >
+        <div
+          v-if="doc?.archived"
+          class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 md:mx-10"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="space-y-2">
+              <div class="text-yellow-600 font-semibold text-size-medium">
+                ⚠️ This document is archived
+              </div>
+              <p class="text-yellow-700 text-size-medium">
+                This document has been archived and is no longer actively maintained.
+              </p>
+            </div>
+            <RestoreButton :documentId="doc.id" />
+          </div>
+        </div>
 
-                <div v-if="doc?.archived" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 md:mx-10">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="space-y-2">
-                            <div class="text-yellow-600 font-semibold text-size-medium">
-                                ⚠️ This document is archived
-                            </div>
-                            <p class="text-yellow-700 text-size-medium">
-                                This document has been archived and is no longer actively maintained.
-                            </p>
-                        </div>
-                        <RestoreButton :documentId="doc.id" />
-                    </div>
-                </div>
+        <!-- Document Header (no wrapper for normal docs so sticky title works) -->
+        <template v-if="isCanvas">
+          <div
+            class="block pointer-events-none absolute top-0 right-0 left-0 z-20 md:right-(--inset-right) md:left-(--inset-left)"
+          >
+            <div class="px-xs md:px-xl mt-4 min-h-7">
+              <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
+              <Breadcrumbs
+                v-else-if="!isDraft"
+                :category="docCategory"
+                :parents="parentBreadcrumbs"
+                :currentTitle="title"
+              />
+            </div>
 
-                <!-- Document Header (no wrapper for normal docs so sticky title works) -->
-                <template v-if="isCanvas">
-                    <div class="block pointer-events-none absolute top-0 right-0 left-0 z-20 md:right-(--inset-right) md:left-(--inset-left)">
-                        <div class="px-xs md:px-xl mt-4 min-h-7">
-                            <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
-                            <Breadcrumbs v-else-if="!isDraft" :category="docCategory" :parents="parentBreadcrumbs"
-                                :currentTitle="title" />
-                        </div>
+            <HeaderImage
+              v-if="!isDraft && !isApp && !isWorkflow && !isCanvas"
+              class="mt-4 mb-4"
+              :documentId="doc.id"
+              :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)"
+            />
 
-                        <HeaderImage v-if="!isDraft && !isApp && !isWorkflow && !isCanvas" class="mt-4 mb-4" :documentId="doc.id"
-                            :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)" />
-
-                        <inset-view :class="twMerge(
+            <inset-view
+              :class="twMerge(
                             'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
                             'pointer-events-auto',
                             'sticky top-0 z-10',
-                        )">
-                            <div class="flex items-start justify-between w-full">
-                                <TitleEditor :initialEditMode="isDraft" :title="title" :documentId="doc?.id"
-                                    :spaceId="currentSpace.id" :canEdit="userCanEdit" />
-                            </div>
-                            <DocumentActions :title="title" />
-                        </inset-view>
+                        )"
+            >
+              <div class="flex items-start justify-between w-full">
+                <TitleEditor
+                  :initialEditMode="isDraft"
+                  :title="title"
+                  :documentId="doc?.id"
+                  :spaceId="currentSpace.id"
+                  :canEdit="userCanEdit"
+                />
+              </div>
+              <DocumentActions :title="title" />
+            </inset-view>
 
-                        <inset-view id="document-properties"
-                            :class="twMerge('block px-xs md:px-xl print:px-0 mb-l', 'pointer-events-auto')">
-                            <DocumentProperties :documentId="doc?.id" :documentType="documentType"
-                                :readonly="!userCanEdit"
-                                :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
-                                :initialCategory="null" />
-                        </inset-view>
-                    </div>
-                </template>
+            <inset-view
+              id="document-properties"
+              :class="twMerge('block px-xs md:px-xl print:px-0 mb-l', 'pointer-events-auto')"
+            >
+              <DocumentProperties
+                :documentId="doc?.id"
+                :documentType="documentType"
+                :readonly="!userCanEdit"
+                :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
+                :initialCategory="null"
+              />
+            </inset-view>
+          </div>
+        </template>
 
-                <template v-else-if="!isApp">
-                    <div class="px-xs md:px-xl mt-4 min-h-7">
-                        <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
-                        <Breadcrumbs v-else-if="!isDraft" :category="docCategory" :parents="parentBreadcrumbs"
-                            :currentTitle="title" />
-                    </div>
+        <template v-else-if="!isApp">
+          <div class="px-xs md:px-xl mt-4 min-h-7">
+            <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
+            <Breadcrumbs
+              v-else-if="!isDraft"
+              :category="docCategory"
+              :parents="parentBreadcrumbs"
+              :currentTitle="title"
+            />
+          </div>
 
-                    <HeaderImage v-if="!isDraft && !isWorkflow" class="mt-4 mb-4" :documentId="doc.id"
-                        :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)" />
+          <HeaderImage
+            v-if="!isDraft && !isWorkflow"
+            class="mt-4 mb-4"
+            :documentId="doc.id"
+            :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)"
+          />
 
-                    <inset-view :class="twMerge(
+          <inset-view
+            :class="twMerge(
                         'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
                         'bg-neutral-10',
                         'sticky top-0 z-10',
-                    )">
-                        <div class="flex items-start justify-between w-full">
-                            <TitleEditor :initialEditMode="isDraft" :title="title" :documentId="doc?.id"
-                                :spaceId="currentSpace.id" :canEdit="userCanEdit" />
-                        </div>
-                        <DocumentActions :title="title" />
-                    </inset-view>
+                    )"
+          >
+            <div class="flex items-start justify-between w-full">
+              <TitleEditor
+                :initialEditMode="isDraft"
+                :title="title"
+                :documentId="doc?.id"
+                :spaceId="currentSpace.id"
+                :canEdit="userCanEdit"
+              />
+            </div>
+            <DocumentActions :title="title" />
+          </inset-view>
 
-                    <inset-view id="document-properties"
-                        :class="twMerge('block px-xs md:px-xl print:px-0 mb-l')">
-                        <DocumentProperties :documentId="doc?.id" :documentType="documentType"
-                            :readonly="!userCanEdit"
-                            :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
-                            :initialCategory="null" />
-                    </inset-view>
-                </template>
+          <inset-view
+            id="document-properties"
+            :class="twMerge('block px-xs md:px-xl print:px-0 mb-l')"
+          >
+            <DocumentProperties
+              :documentId="doc?.id"
+              :documentType="documentType"
+              :readonly="!userCanEdit"
+              :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
+              :initialCategory="null"
+            />
+          </inset-view>
+        </template>
 
-                <div :class="twMerge(
+        <div
+          :class="twMerge(
                     'max-w-none text-neutral-700 h-full overflow-x-auto',
                     isCsv || isDatabase
                         ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
                         : 'h-full overflow-x-auto',
                     isPaddedDocument && 'px-xs md:px-xl print:px-0',
-                )">
-                    <template v-if="isDraft">
-                        <NewDocumentPicker v-if="showPicker" />
-                        <DocumentContent :spaceId="currentSpace.id" :documentType="documentType" />
-                    </template>
-                    <template v-else>
-                        <RevisionView :documentId="doc.id" :documentType="documentType" :spaceId="currentSpace.id" />
+                )"
+        >
+          <template v-if="isDraft">
+            <NewDocumentPicker v-if="showPicker" />
+            <DocumentContent :spaceId="currentSpace.id" :documentType="documentType" />
+          </template>
+          <template v-else>
+            <RevisionView
+              :documentId="doc.id"
+              :documentType="documentType"
+              :spaceId="currentSpace.id"
+            />
 
-                        <AppView v-if="isApp" :html="doc.content || ''" />
-                        <WorkflowView v-else-if="isWorkflow" :documentId="doc.id" :spaceId="currentSpace.id" />
-                        <DatabaseView v-else-if="isDatabase" :databaseDocumentId="doc.id" :schemaJson="optionalPropertyValueToText(doc.properties._schema) ?? undefined" />
-                        <DocumentContent v-else :spaceId="currentSpace.id" :documentId="doc.id" :initialHtml="doc.content"
-                            :documentType="documentType" :readonly="isReadonly" />
-                    </template>
-                </div>
+            <AppView v-if="isApp" :html="doc.content || ''" />
+            <WorkflowView
+              v-else-if="isWorkflow"
+              :documentId="doc.id"
+              :spaceId="currentSpace.id"
+            />
+            <DatabaseView
+              v-else-if="isDatabase"
+              :databaseDocumentId="doc.id"
+              :schemaJson="optionalPropertyValueToText(doc.properties._schema) ?? undefined"
+            />
+            <DocumentContent
+              v-else
+              :spaceId="currentSpace.id"
+              :documentId="doc.id"
+              :initialHtml="doc.content"
+              :documentType="documentType"
+              :readonly="isReadonly"
+            />
+          </template>
+        </div>
 
-                <inset-view
-                    v-if="!isDraft && !editing && !isCanvas"
-                    :class="twMerge(
+        <inset-view
+          v-if="!isDraft && !editing && !isCanvas"
+          :class="twMerge(
                     'flex items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
                       isCanvas && 'pointer-events-auto',
                     )"
-                >
-                    <div
-                        v-if="doc?.updatedAt"
-                        class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500 mb-12"
-                    >
-                    <ClientOnly>
-                        <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
-                    </ClientOnly>
-                    </div>
-                </inset-view>
-            </div>
+        >
+          <div
+            v-if="doc?.updatedAt"
+            class="flex flex-wrap items-center gap-2 text-size-medium text-neutral-500 mb-12"
+          >
+            <ClientOnly>
+              <span v-if="updatedAtStr">Updated {{ updatedAtStr }}</span>
+            </ClientOnly>
+          </div>
         </inset-view>
-    </div>
+      </div>
+    </inset-view>
+  </div>
 
-    <div v-else-if="!isDraft && docQuery.isLoading.value" class="flex items-center justify-center h-64 text-neutral-400">
-        Loading…
-    </div>
+  <div
+    v-else-if="!isDraft && docQuery.isLoading.value"
+    class="flex items-center justify-center h-64 text-neutral-400"
+  >
+    Loading…
+  </div>
 
-    <div v-else-if="!isDraft" class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500">
-        <p class="text-2xl font-semibold text-neutral-800">404</p>
-        <p>Document not found.</p>
-        <a :href="`/${currentSpace?.slug ?? ''}/`" class="text-sm underline hover:text-neutral-800">Back to space</a>
-    </div>
+  <div
+    v-else-if="!isDraft"
+    class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500"
+  >
+    <p class="text-2xl font-semibold text-neutral-800">404</p>
+    <p>Document not found.</p>
+    <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+    <a
+      :href="`/${currentSpace?.slug ?? ''}/`"
+      class="text-sm underline hover:text-neutral-800"
+      >Back to space</a
+    >
+  </div>
 
-    <ClientOnly>
-        <Teleport to="body">
-            <RevisionsSidebar v-if="!isDraft && doc" :documentId="doc.id" />
-        </Teleport>
-    </ClientOnly>
+  <ClientOnly>
+    <Teleport to="body">
+      <RevisionsSidebar v-if="!isDraft && doc" :documentId="doc.id" />
+    </Teleport>
+  </ClientOnly>
 </template>

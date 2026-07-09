@@ -76,7 +76,11 @@ onUnmounted(() => {
     :disabled="cancelling"
     @click="cancelRun"
   >
-    <div v-if="cancelling" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
+    <div
+      v-if="cancelling"
+      class="svg-icon w-3.5 h-3.5 animate-spin"
+      v-html="spinnerQuarterIcon"
+    />
     <div v-else class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
     {{ cancelling ? "Cancelling…" : "Cancel" }}
   </button>
@@ -87,7 +91,11 @@ onUnmounted(() => {
     :disabled="starting"
     @click="startRun"
   >
-    <div v-if="starting" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerQuarterIcon" />
+    <div
+      v-if="starting"
+      class="svg-icon w-3.5 h-3.5 animate-spin"
+      v-html="spinnerQuarterIcon"
+    />
     <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
     {{ starting ? "Starting…" : "Run Workflow" }}
   </button>

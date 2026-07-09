@@ -52,7 +52,9 @@ onUnmounted(() => {
         @click="handleCreateDocument('document')"
       >
         <Icon name="plus" />
-        <span class="@max-sm:hidden">{{ isCreating ? 'Loading...' : 'New Document' }}</span>
+        <span class="@max-sm:hidden"
+          >{{ isCreating ? 'Loading...' : 'New Document' }}</span
+        >
       </button>
     </div>
   </div>

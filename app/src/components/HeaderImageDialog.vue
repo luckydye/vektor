@@ -52,14 +52,20 @@ function onSelect(file: File) {
     />
 
     <a-popover class="group" placements="bottom-end" @exit="onExit">
-      <div class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100">
+      <div
+        class="w-max opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
+      >
         <div
           class="bg-background border border-neutral-100 rounded-2xl shadow-large w-[400px] p-m origin-top-right scale-95 transition-all duration-150 group-[&[enabled]]:scale-100"
         >
           <div class="flex flex-col gap-s">
             <div class="flex flex-col items-center gap-5xs text-center">
-              <h2 class="text-size-large font-semibold text-neutral-900">{{ t("Header image") }}</h2>
-              <p class="text-small text-neutral-400">{{ t("Upload an image for this document") }}</p>
+              <h2 class="text-size-large font-semibold text-neutral-900">
+                {{ t("Header image") }}
+              </h2>
+              <p class="text-small text-neutral-400">
+                {{ t("Upload an image for this document") }}
+              </p>
             </div>
 
             <FileDrop
