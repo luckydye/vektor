@@ -14,4 +14,4 @@
 - Tool output is capped at ~6 000 chars — when truncated, see `recipes large-output`.
 
 ## Recipes
-- `recipes [<name>]` / `recipes search <words>`: edit-text, edit-json, canvas, create-doc, find-docs, app-doc, workflow, upload, extension, large-output.
+- `recipes [<name>]` / `recipes search <words>`: edit-text, edit-json, canvas, create-doc, database, find-docs, app-doc, workflow, upload, extension, large-output.
