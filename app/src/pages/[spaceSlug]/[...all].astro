@@ -100,5 +100,6 @@ const initialSidebarWidth = parseSidebarWidth(
     initialSpace={initialSpace}
     initialDocument={initialDocument}
     initialSidebarWidth={initialSidebarWidth}
+    replicaScope={Astro.locals.user?.id ? `user:${Astro.locals.user.id}` : "public"}
   />
 </BaseLayout>

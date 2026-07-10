@@ -44,9 +44,13 @@ interface QueryEntry<T = unknown> {
 
 interface UseQueryOptions<TData> {
   enabled?: MaybeRef<boolean>;
+  /** Hydrates an otherwise empty query before its network request resolves. */
+  initialData?: () => Promise<TData | undefined>;
   placeholderData?: (previousData: TData | undefined) => TData | undefined;
   queryFn: () => Promise<TData>;
   queryKey: QueryKeyInput;
+  /** Receives authoritative and optimistic updates from an external data source. */
+  subscribe?: (callback: (data: TData | undefined) => void) => () => void;
   staleTime?: number;
 }
 
@@ -305,6 +309,7 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
   let currentEntry: QueryEntry<TData> | null = null;
   let currentObserver: (() => void) | null = null;
   let currentFetcher: (() => Promise<unknown>) | null = null;
+  let currentDataSubscription: (() => void) | null = null;
   let hasPlaceholder = false;
   let placeholderData: TData | undefined;
   let previousData: TData | undefined;
@@ -318,11 +323,13 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
     if (currentFetcher) {
       currentEntry.fetchers.delete(currentFetcher);
     }
+    currentDataSubscription?.();
 
     const entry = currentEntry;
     currentEntry = null;
     currentObserver = null;
     currentFetcher = null;
+    currentDataSubscription = null;
 
     if (entry.observers.size === 0) {
       if (entry.gcTimer) clearTimeout(entry.gcTimer);
@@ -387,6 +394,25 @@ export function useQuery<TData = unknown>(options: UseQueryOptions<TData>) {
     entry.observers.add(currentObserver);
     entry.fetchers.add(currentFetcher);
     currentObserver();
+
+    if (!hadCachedData && options.initialData) {
+      void options
+        .initialData()
+        .then((initialData) => {
+          // A remote response is always newer than IndexedDB hydration.
+          if (entry !== currentEntry || entry.hasData.value || initialData === undefined)
+            return;
+          queryClient.setQueryData(options.queryKey, initialData);
+        })
+        .catch(() => undefined);
+    }
+
+    if (options.subscribe) {
+      currentDataSubscription = options.subscribe((nextData) => {
+        if (entry !== currentEntry || nextData === undefined) return;
+        queryClient.setQueryData(options.queryKey, nextData);
+      });
+    }
 
     if (enabled) {
       void fetchEntry(entry).catch(() => undefined);

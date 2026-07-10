@@ -6,6 +6,7 @@ import {
   createWebHistory,
   RouterView,
 } from "vue-router";
+import { api } from "#api/client.ts";
 import { useQueryClient } from "#composeables/query.ts";
 import { provideDocumentContext } from "#composeables/useDocument.ts";
 import { useRoute } from "#composeables/useRoute.ts";
@@ -42,9 +43,14 @@ const props = defineProps<{
   initialSpace?: InitialSpace;
   initialDocument?: Record<string, unknown>;
   initialSidebarWidth?: number;
+  replicaScope?: string;
 }>();
 
 const isServer = typeof window === "undefined";
+
+if (!isServer) {
+  api.setReplicaScope(props.replicaScope);
+}
 
 const routerBase = props.initialSpace?.slug ? `/${props.initialSpace.slug}/` : "/";
 

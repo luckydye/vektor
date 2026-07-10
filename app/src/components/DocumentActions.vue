@@ -39,13 +39,8 @@ const {
   dialogOpen,
 } = useHeaderImage();
 const { cancelCount, editing, saveStatus, hasChanges } = useEditor();
-const {
-  documentContext,
-  canUseDocumentEditor,
-  hasPublishedVersion,
-  markDocumentPublished,
-  markDocumentUnpublished,
-} = useDocumentContext();
+const { documentContext, canUseDocumentEditor, hasPublishedVersion } =
+  useDocumentContext();
 
 const userCanEdit = computed(() => documentContext.value.userCanEdit);
 const userCanManageDocument = computed(() => canEdit(currentSpace.value?.userRole));
@@ -184,9 +179,6 @@ async function publishDocument(e: MouseEvent) {
   const action = Actions.get("document:save:publish");
   if (!action) return;
   await action.run();
-  if (saveStatus.value === "saved") {
-    markDocumentPublished();
-  }
   (e.target as Element)?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
 
@@ -367,8 +359,6 @@ watchEffect(() => {
         await api.document.patch(currentSpaceId.value, documentId.value, {
           publishedRev: null,
         });
-
-        markDocumentUnpublished();
       },
     });
   }

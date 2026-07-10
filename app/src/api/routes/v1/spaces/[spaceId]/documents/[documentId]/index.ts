@@ -463,13 +463,7 @@ export const PUT: APIRoute = (context) =>
     // TODO: propper sanitization needed, parse html doc and only use allowed elements and attributes.
     const contentSanitized = stripScriptTags(content);
 
-    const document = await updateDocument(
-      spaceId,
-      id,
-      contentSanitized,
-      userId,
-      nextType,
-    );
+    let document = await updateDocument(spaceId, id, contentSanitized, userId, nextType);
 
     if (userId) {
       const revision = await createRevision(spaceId, id, contentSanitized, userId, {
@@ -477,6 +471,14 @@ export const PUT: APIRoute = (context) =>
       });
       if (publish === true) {
         await handlePublishedRevisionPatch(spaceId, id, userId, revision.rev);
+        // updateDocument returns before the newly-created revision is assigned
+        // to publishedRev. Return the final canonical document so clients can
+        // replace their optimistic publish state with the real revision number.
+        const publishedDocument = await getDocument(spaceId, id);
+        if (!publishedDocument) {
+          throw notFoundResponse("Document");
+        }
+        document = publishedDocument;
       }
     }
 

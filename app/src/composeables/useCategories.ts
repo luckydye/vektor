@@ -1,11 +1,12 @@
 import { computed } from "vue";
 import { api, type Category } from "#api/client.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { realtimeTopics } from "#utils/realtime.ts";
+import { useMutation, useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
+import { useSync } from "./useSync.ts";
 
 export function useCategories() {
   const { currentSpaceId: spaceId } = useSpace();
-  const queryClient = useQueryClient();
 
   const {
     data: categoriesData,
@@ -19,6 +20,14 @@ export function useCategories() {
         throw new Error("No space ID");
       }
       return await api.categories.get(spaceId.value);
+    },
+    initialData: async () => {
+      if (!spaceId.value) return undefined;
+      return await api.categories.getCached(spaceId.value);
+    },
+    subscribe: (callback) => {
+      if (!spaceId.value) return () => {};
+      return api.categories.subscribeCached(spaceId.value, callback);
     },
     enabled: computed(() => !!spaceId.value),
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -39,14 +48,6 @@ export function useCategories() {
       }
       return await api.categories.post(spaceId.value, params);
     },
-    onSuccess: (newCategory) => {
-      queryClient.setQueryData(
-        ["wiki_categories", spaceId.value],
-        (old: Category[] | undefined) => {
-          return old ? [...old, newCategory] : [newCategory];
-        },
-      );
-    },
   });
 
   const updateCategoryMutation = useMutation({
@@ -64,15 +65,6 @@ export function useCategories() {
       const { categoryId, ...rest } = params;
       return await api.category.put(spaceId.value, categoryId, rest);
     },
-    onSuccess: (updatedCategory, variables) => {
-      queryClient.setQueryData(
-        ["wiki_categories", spaceId.value],
-        (old: Category[] | undefined) => {
-          if (!old) return [updatedCategory];
-          return old.map((c) => (c.id === variables.categoryId ? updatedCategory : c));
-        },
-      );
-    },
   });
 
   const deleteCategoryMutation = useMutation({
@@ -82,15 +74,6 @@ export function useCategories() {
       }
       await api.category.delete(spaceId.value, categoryId);
       return categoryId;
-    },
-    onSuccess: (categoryId) => {
-      queryClient.setQueryData(
-        ["wiki_categories", spaceId.value],
-        (old: Category[] | undefined) => {
-          if (!old) return [];
-          return old.filter((c) => c.id !== categoryId);
-        },
-      );
     },
   });
 
@@ -139,11 +122,6 @@ export function useCategories() {
       }
       return await api.categories.reorder(spaceId.value, categoryIds);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["wiki_categories", spaceId.value],
-      });
-    },
   });
 
   const reorderCategories = async (categoryIds: string[]) => {
@@ -157,6 +135,12 @@ export function useCategories() {
   const getCategoryBySlug = (slug: string): Category | undefined => {
     return categories.value.find((c) => c.slug === slug);
   };
+
+  useSync(spaceId, [realtimeTopics.categories], (keys) => {
+    if (keys.includes(realtimeTopics.categories)) {
+      void refresh();
+    }
+  });
 
   return {
     categories,

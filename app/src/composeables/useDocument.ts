@@ -3,7 +3,7 @@ import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
 import { supportsDocumentEditor } from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { useMutation, useQuery } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";
 
@@ -93,22 +93,6 @@ export function useDocumentContext() {
     return true;
   }
 
-  function markDocumentPublished(version = 0): void {
-    if (documentContext.value.publishedVersion != null) return;
-    documentContext.value = {
-      ...documentContext.value,
-      publishedVersion: version,
-    };
-  }
-
-  function markDocumentUnpublished(): void {
-    if (documentContext.value.publishedVersion == null) return;
-    documentContext.value = {
-      ...documentContext.value,
-      publishedVersion: null,
-    };
-  }
-
   function resetDocumentContext(): void {
     documentContext.value = { ...DEFAULT_DOCUMENT_CONTEXT };
   }
@@ -118,15 +102,12 @@ export function useDocumentContext() {
     canUseDocumentEditor,
     hasPublishedVersion,
     setDocumentContext,
-    markDocumentPublished,
-    markDocumentUnpublished,
     resetDocumentContext,
   };
 }
 
 export function useDocument(documentId: string | undefined, documentType = "document") {
   const { currentSpaceId, currentSpace } = useSpace();
-  const queryClient = useQueryClient();
   const router = useRouter();
   const saveStatus: Ref<SaveStatus> = ref("idle");
   const saveError: Ref<string | null> = ref(null);
@@ -150,6 +131,14 @@ export function useDocument(documentId: string | undefined, documentType = "docu
         return null;
       }
       return await api.document.get(spaceId.value, documentId);
+    },
+    initialData: async () => {
+      if (!spaceId.value || !documentId) return undefined;
+      return await api.document.getCached(spaceId.value, documentId);
+    },
+    subscribe: (callback) => {
+      if (!spaceId.value || !documentId) return () => {};
+      return api.document.subscribeCached(spaceId.value, documentId, callback);
     },
     enabled: computed(() => !!spaceId.value && !!documentId),
   });
@@ -199,10 +188,6 @@ export function useDocument(documentId: string | undefined, documentType = "docu
         router.push(`/doc/${data.document.slug}`);
         return;
       }
-
-      queryClient.invalidateQueries({
-        queryKey: ["wiki_document", currentSpaceId.value, documentId],
-      });
 
       setTimeout(() => {
         if (saveStatus.value === "saved") {

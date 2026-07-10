@@ -56,6 +56,18 @@ const docQuery = useQuery({
     if (!currentSpace.value?.id || !props.documentSlug) return null;
     return await api.document.get(currentSpace.value.id, props.documentSlug);
   },
+  initialData: async () => {
+    if (!currentSpace.value?.id || !props.documentSlug) return undefined;
+    return await api.document.getCached(currentSpace.value.id, props.documentSlug);
+  },
+  subscribe: (callback) => {
+    if (!currentSpace.value?.id || !props.documentSlug) return () => {};
+    return api.document.subscribeCached(
+      currentSpace.value.id,
+      props.documentSlug,
+      callback,
+    );
+  },
   enabled: computed(
     () => !isDraft.value && !!currentSpace.value?.id && !!props.documentSlug,
   ),

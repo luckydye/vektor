@@ -6,7 +6,7 @@ import {
   resolveReferenceSelector,
 } from "#utils/commentReference.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { useMutation, useQuery } from "./query.ts";
 import { useSync } from "./useSync.ts";
 
 export function useComments(options: {
@@ -14,7 +14,6 @@ export function useComments(options: {
   documentId: Ref<string | undefined>;
   currentRev?: Ref<number | undefined>;
 }) {
-  const queryClient = useQueryClient();
   const activeReference = ref<string | null>(null);
   const threadPosition = ref(0);
 
@@ -36,6 +35,21 @@ export function useComments(options: {
       return await api.documentComments.get(
         options.spaceId.value,
         options.documentId.value,
+      );
+    },
+    initialData: async () => {
+      if (!options.spaceId.value || !options.documentId.value) return undefined;
+      return await api.documentComments.getCached(
+        options.spaceId.value,
+        options.documentId.value,
+      );
+    },
+    subscribe: (callback) => {
+      if (!options.spaceId.value || !options.documentId.value) return () => {};
+      return api.documentComments.subscribeCached(
+        options.spaceId.value,
+        options.documentId.value,
+        callback,
       );
     },
     enabled: computed(() => !!options.spaceId.value && !!options.documentId.value),
@@ -92,14 +106,6 @@ export function useComments(options: {
         },
       );
     },
-    onSuccess: (newComment) => {
-      queryClient.setQueryData(
-        ["wiki_comments", options.spaceId.value, options.documentId.value],
-        (old: Comment[] | undefined) => {
-          return old ? [...old, newComment] : [newComment];
-        },
-      );
-    },
     onError: (error) => {
       console.error("Error posting comment:", error);
       alert("Could not post comment. Please try again.");
@@ -115,14 +121,6 @@ export function useComments(options: {
         options.spaceId.value,
         options.documentId.value,
         commentId,
-      );
-    },
-    onSuccess: (_, commentId) => {
-      queryClient.setQueryData(
-        ["wiki_comments", options.spaceId.value, options.documentId.value],
-        (old: Comment[] | undefined) => {
-          return old ? old.filter((c: Comment) => c.id !== commentId) : [];
-        },
       );
     },
     onError: (error) => {
@@ -161,11 +159,6 @@ export function useComments(options: {
     },
     onSuccess: (result) => {
       if (!result) return;
-      queryClient.setQueryData(
-        ["wiki_comments", options.spaceId.value, options.documentId.value],
-        (old: Comment[] | undefined) =>
-          old?.filter((c: Comment) => !result.commentIds.includes(c.id)),
-      );
       if (activeReference.value === result.reference) {
         activeReference.value = null;
       }
@@ -197,15 +190,6 @@ export function useComments(options: {
     },
     onSuccess: (result) => {
       if (!result) return;
-      queryClient.setQueryData(
-        ["wiki_comments", options.spaceId.value, options.documentId.value],
-        (old: Comment[] | undefined) =>
-          old?.map((c: Comment) =>
-            result.commentIds.includes(c.id)
-              ? { ...c, reference: result.newReference }
-              : c,
-          ),
-      );
       if (activeReference.value === result.reference) {
         activeReference.value = result.newReference;
       }

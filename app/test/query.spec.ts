@@ -591,3 +591,42 @@ describe("infinite query helper", () => {
     scope.stop();
   });
 });
+
+describe("external query data sources", () => {
+  it("hydrates an empty query and never lets delayed hydration replace remote data", async () => {
+    let resolveInitial!: (value: string) => void;
+    let receiveUpdate: ((value: string | undefined) => void) | undefined;
+    const scope = effectScope();
+    const query = scope.run(() =>
+      useQuery({
+        queryKey: ["replicated-document", "doc_1"],
+        queryFn: async () => "remote",
+        initialData: () =>
+          new Promise<string>((resolve) => {
+            resolveInitial = resolve;
+          }),
+        subscribe: (callback) => {
+          receiveUpdate = callback;
+          return () => {
+            receiveUpdate = undefined;
+          };
+        },
+      }),
+    );
+    if (!query) throw new Error("Query was not created");
+
+    await waitFor(() => {
+      expect(query.data.value).toBe("remote");
+    });
+
+    resolveInitial("indexeddb");
+    await flushAsync();
+    expect(query.data.value).toBe("remote");
+
+    receiveUpdate?.("optimistic");
+    expect(query.data.value).toBe("optimistic");
+
+    scope.stop();
+    expect(receiveUpdate).toBeUndefined();
+  });
+});

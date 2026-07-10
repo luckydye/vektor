@@ -1,14 +1,15 @@
 import { computed, inject, type Ref, ref } from "vue";
 import { api, type Space } from "#api/client.ts";
-import { useMutation, useQuery, useQueryClient } from "./query.ts";
+import { useMutation, useQuery } from "./query.ts";
 
 export function useSpace() {
   const activeSpaceId = inject<Ref<string | null>>("space:activeId", ref(null));
-  const queryClient = useQueryClient();
 
   const { data: spaces, isPending } = useQuery({
     queryKey: ["wiki_spaces"],
     queryFn: () => api.spaces.get(),
+    initialData: () => api.spaces.getCached(),
+    subscribe: (callback) => api.spaces.subscribeCached(callback),
   });
 
   const currentSpace = computed<Space | null>(() => {
@@ -35,11 +36,6 @@ export function useSpace() {
     }) => {
       return await api.spaces.post(params);
     },
-    onSuccess: (newSpace) => {
-      queryClient.setQueryData(["wiki_spaces"], (old: Space[] | undefined) => {
-        return old ? [...old, newSpace] : [newSpace];
-      });
-    },
   });
 
   const updateSpaceMutation = useMutation({
@@ -52,28 +48,12 @@ export function useSpace() {
       const { spaceId, ...rest } = params;
       return await api.space.patch(spaceId, rest);
     },
-    onSuccess: (updatedSpace, variables) => {
-      queryClient.setQueryData(["wiki_spaces"], (old: Space[] | undefined) => {
-        if (!old) return [updatedSpace];
-        return old.map((s) => {
-          if (s.id !== variables.spaceId) return s;
-          // PATCH endpoint doesn't return userRole/memberCount; preserve from cached entry.
-          return { ...updatedSpace, userRole: s.userRole, memberCount: s.memberCount };
-        });
-      });
-    },
   });
 
   const deleteSpaceMutation = useMutation({
     mutationFn: async (spaceId: string) => {
       await api.space.delete(spaceId);
       return spaceId;
-    },
-    onSuccess: (spaceId) => {
-      queryClient.setQueryData(["wiki_spaces"], (old: Space[] | undefined) => {
-        if (!old) return [];
-        return old.filter((s) => s.id !== spaceId);
-      });
     },
   });
 
