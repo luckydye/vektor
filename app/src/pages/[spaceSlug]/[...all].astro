@@ -1,7 +1,7 @@
 ---
 import SpaceApp from "#components/SpaceApp.vue";
 import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
-import { getDocumentBySlug } from "#db/documents.ts";
+import { getDocument, getDocumentBySlug } from "#db/documents.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 import {
@@ -35,10 +35,22 @@ if (settingsPath) {
   }
 }
 
-const initialDocument = docSlugMatch
-  ? JSON.parse(
-      JSON.stringify((await getDocumentBySlug(space.id, docSlugMatch[1])) ?? undefined),
-    )
+const documentRecord = docSlugMatch
+  ? await getDocumentBySlug(space.id, docSlugMatch[1])
+  : null;
+
+if (docSlugMatch && !documentRecord) {
+  // A document addressed by its ID redirects to its canonical slug URL, matching
+  // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
+  // rendering the shell for a document whose slug the URL never resolved.
+  const documentById = await getDocument(space.id, docSlugMatch[1]);
+  if (documentById) {
+    return Astro.redirect(`/${space.slug}/doc/${documentById.slug}${Astro.url.search}`);
+  }
+}
+
+const initialDocument = documentRecord
+  ? JSON.parse(JSON.stringify(documentRecord))
   : undefined;
 
 let hasDirectDocumentAccess = false;

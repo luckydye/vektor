@@ -1,4 +1,5 @@
-import type en from "#assets/lang/en.json";
+import de from "#assets/lang/de.json";
+import en from "#assets/lang/en.json";
 
 const FALLBACK_LANG = "en";
 
@@ -6,20 +7,11 @@ const FALLBACK_LANG = "en";
 // that can be translated, so `t()` only accepts keys that actually exist.
 export type TranslationKey = keyof typeof en;
 
-// Eagerly bundle every language file under assets/lang. Adding a new
-// <lang>.json file is enough to make that language available here.
-const modules = import.meta.glob<Record<string, string>>("../assets/lang/*.json", {
-  eager: true,
-  import: "default",
-});
-
-const translations: Record<string, Record<string, string>> = {};
-for (const path in modules) {
-  const lang = path.match(/([^/]+)\.json$/)?.[1];
-  if (lang) {
-    translations[lang] = modules[path];
-  }
-}
+// Every language file under assets/lang. Add a new <lang>.json file and
+// register it here to make that language available. Static imports (rather
+// than Vite's `import.meta.glob`) keep this working under plain runtimes such
+// as `bun test`, where `import.meta.glob` is undefined.
+const translations: Record<string, Record<string, string>> = { de, en };
 
 function normalizeLang(lang: string): string {
   return lang.split("-")[0] || FALLBACK_LANG;

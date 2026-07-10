@@ -46,7 +46,18 @@ async function authorizeRealtimeTopic(
   }
 
   if (isDocumentRealtimeTopic(topic)) {
-    await verifyDocumentRole(spaceId, topic.slice("document:".length), userId, "viewer");
+    try {
+      await verifyDocumentRole(
+        spaceId,
+        topic.slice("document:".length),
+        userId,
+        "viewer",
+      );
+    } catch {
+      // Missing document or insufficient access: treat as a forbidden topic so
+      // the caller reports it rather than tearing the whole message down.
+      return false;
+    }
     return true;
   }
 

@@ -12,6 +12,7 @@ import {
   hasPermission,
   ResourceType,
 } from "./acl.ts";
+import { getDocument } from "./documents.ts";
 import { getSpace } from "./spaces.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
@@ -352,6 +353,14 @@ export async function verifyDocumentRole(
   userId: string | null,
   requiredRole: string,
 ): Promise<void> {
+  // Reject references to documents that do not exist before evaluating access,
+  // mirroring verifySpaceRole. Otherwise no-auth mode (where hasPermission short
+  // -circuits to true) would authorize any documentId, real or not.
+  const doc = await getDocument(spaceId, documentId);
+  if (!doc) {
+    throw notFoundResponse("Document");
+  }
+
   // For unauthenticated users, check if document has public access with required role
   if (!userId) {
     const hasPublicAccess = await hasPermission(
