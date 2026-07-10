@@ -4677,7 +4677,6 @@ onUnmounted(() => {
   overflow: hidden;
   border: 1px solid var(--canvas-shape-border);
   border-radius: 8px;
-  box-shadow: 0 8px 22px var(--canvas-shape-shadow);
   content-visibility: auto;
   transform-origin: center;
 }

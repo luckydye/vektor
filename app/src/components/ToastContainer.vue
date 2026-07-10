@@ -14,7 +14,7 @@ const icons = {
 <template>
   <Teleport to="body">
     <div
-      class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2 pointer-events-none"
+      class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2 pointer-events-none"
     >
       <TransitionGroup name="toast">
         <div
