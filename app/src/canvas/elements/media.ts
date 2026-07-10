@@ -24,6 +24,17 @@ export const videoElement: CanvasElementDefinition = {
   minSize: mediaMinSize,
 };
 
+// Audio renders as a fixed-height native player bar, so it has no natural
+// pixel size and is not aspect-locked like image/video (see isMediaElementType).
+const audioMinSize = { width: 220, height: 54 };
+export const audioElement: CanvasElementDefinition = {
+  type: "audio",
+  defaultText: "",
+  defaultColor: "transparent",
+  defaultSize: { width: 320, height: 54 },
+  minSize: audioMinSize,
+};
+
 export function isMediaElementType(type: string): type is "image" | "video" {
   return type === "image" || type === "video";
 }
@@ -68,7 +79,8 @@ export function dragHasMediaFiles(transfer: DataTransfer | null) {
         item.kind === "file" &&
         (item.type === "" ||
           item.type.startsWith("image/") ||
-          item.type.startsWith("video/")),
+          item.type.startsWith("video/") ||
+          item.type.startsWith("audio/")),
     );
   }
   return transfer.types.includes("Files");
@@ -136,25 +148,35 @@ export async function createUploadedMediaShape(
   if (!type) return null;
 
   const src = await uploadMediaFile(file, options);
-  const naturalSize = await (type === "video" ? videoSize(src) : imageSize(src));
+  // Audio has no intrinsic pixel size; use the player-bar default size.
+  let size = audioElement.defaultSize;
+  if (type !== "audio") {
+    const natural = await (type === "video" ? videoSize(src) : imageSize(src));
+    size = fitMediaSize(natural.width, natural.height);
+  }
   return createMediaShape({
     type,
     at,
-    size: fitMediaSize(naturalSize.width, naturalSize.height),
+    size,
     src,
     alt: file.name,
   });
 }
 
 export function createMediaShape(params: {
-  type: "image" | "video";
+  type: "image" | "video" | "audio";
   at: { x: number; y: number };
   size: { width: number; height: number };
   src: string;
   alt?: string;
   origin?: "center" | "top-left";
 }): CanvasShape {
-  const definition = params.type === "video" ? videoElement : imageElement;
+  const definition =
+    params.type === "video"
+      ? videoElement
+      : params.type === "audio"
+        ? audioElement
+        : imageElement;
   const origin = params.origin ?? "center";
   return {
     id: `shape-${crypto.randomUUID()}`,

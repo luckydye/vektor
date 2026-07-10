@@ -13,6 +13,17 @@ export const VIDEO_MIME_TYPES = [
   "video/x-matroska",
   "video/ogg",
 ];
+export const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "oga", "opus"];
+export const AUDIO_MIME_TYPES = [
+  "audio/mpeg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/mp4",
+  "audio/aac",
+  "audio/flac",
+  "audio/ogg",
+  "audio/opus",
+];
 
 function extensionOf(file: File): string {
   return file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -29,13 +40,23 @@ export function isVideoFile(file: File): boolean {
   return VIDEO_EXTENSIONS.includes(extensionOf(file));
 }
 
-export function isMediaFile(file: File): boolean {
-  return isVideoFile(file) || isImageFile(file);
+export function isAudioFile(file: File): boolean {
+  if (file.type.startsWith("audio/")) return true;
+  if (AUDIO_MIME_TYPES.includes(file.type)) return true;
+  return AUDIO_EXTENSIONS.includes(extensionOf(file));
 }
 
-export function mediaTypeForFile(file: File): "image" | "video" | null {
+export function isMediaFile(file: File): boolean {
+  return isVideoFile(file) || isImageFile(file) || isAudioFile(file);
+}
+
+export function mediaTypeForFile(file: File): "image" | "video" | "audio" | null {
+  // Audio mime types win over the video extension list so `.ogg`/`.oga`
+  // audio (an extension shared with video containers) is not misread as video.
+  if (file.type.startsWith("audio/")) return "audio";
   if (isVideoFile(file)) return "video";
   if (isImageFile(file)) return "image";
+  if (isAudioFile(file)) return "audio";
   return null;
 }
 

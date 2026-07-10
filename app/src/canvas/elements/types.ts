@@ -10,6 +10,7 @@ export type CanvasElementType =
   | "text"
   | "image"
   | "video"
+  | "audio"
   | "file"
   | "document"
   | "link";

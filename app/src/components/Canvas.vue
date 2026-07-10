@@ -296,7 +296,7 @@ type UploadPlaceholder = {
   width: number;
   height: number;
   filename: string;
-  kind: "image" | "video" | "file";
+  kind: "image" | "video" | "audio" | "file";
 };
 const uploadPlaceholders = ref<UploadPlaceholder[]>([]);
 
@@ -3894,6 +3894,28 @@ onUnmounted(() => {
             draggable="false"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></video>
+          <!-- Native audio player. The grip handles selection/drag; the player
+               itself keeps its pointer events so its controls stay clickable. -->
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handle forwards pointer events to the canvas drag interaction. -->
+          <div
+            v-else-if="shape.type === 'audio' && shape.src"
+            class="canvas-shape-audio"
+            @pointerdown.stop
+          >
+            <div
+              class="canvas-shape-audio-handle"
+              :title="shape.alt || shape.text || 'Audio'"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            ></div>
+            <!-- biome-ignore lint/a11y/useMediaCaption: User-uploaded audio has no caption track available. -->
+            <audio
+              class="canvas-shape-audio-player"
+              :src="shape.src"
+              :aria-label="shape.alt || shape.text || 'Audio'"
+              controls
+              preload="metadata"
+            ></audio>
+          </div>
           <!-- The header keeps selection and dragging available while the native
                PDF viewer receives scroll, text-selection, and toolbar events. -->
           <!-- biome-ignore lint/a11y/noStaticElementInteractions: This is the canvas drag handle for an embedded PDF viewer. -->
@@ -4765,6 +4787,43 @@ onUnmounted(() => {
   height: 100%;
   max-width: none;
   margin: 0;
+}
+
+.canvas-shape.audio {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.canvas-shape-audio {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  border-radius: var(--radius-md);
+  background: var(--canvas-toolbar-bg, #fff);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
+}
+
+.canvas-shape-audio-handle {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 100%;
+  cursor: move;
+  background-image: radial-gradient(currentcolor 1px, transparent 1px);
+  background-position: center;
+  background-size: 4px 4px;
+  color: var(--canvas-text-muted, #9ca3af);
+  opacity: 0.6;
+}
+
+.canvas-shape-audio-player {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  flex: 1 1 auto;
 }
 
 .canvas-pdf-preview {
