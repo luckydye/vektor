@@ -152,20 +152,60 @@ if (
       private floatingStyle = "";
       private tableStyle = "";
       private dismissedSelectionKey: string | null = null;
-      editor?: Editor;
+      private _editor?: Editor;
 
       constructor() {
         super();
         this.root = this.attachShadow({ mode: "open" });
       }
 
+      // `variant="canvas"` renders a reduced, markdown-only toolbar (the marks
+      // canvas text shapes actually round-trip); the default drives the full
+      // document editor. `standalone` binds directly to the assigned editor's
+      // events instead of the document editor's global window events, so the
+      // element can be reused for a canvas text node.
+      // NOTE: these read the attributes rather than being named `variant` /
+      // `standalone`. A getter named after the attribute would make
+      // `"variant" in el` true, so Vue's DOM runtime sets it as a (setter-less)
+      // property instead of an attribute — silently dropping it.
+      private get isCanvasVariant(): boolean {
+        return this.getAttribute("variant") === "canvas";
+      }
+
+      private get isStandalone(): boolean {
+        return this.hasAttribute("standalone");
+      }
+
+      get editor(): Editor | undefined {
+        return this._editor;
+      }
+
+      set editor(value: Editor | undefined) {
+        if (this._editor === value) return;
+        if (this.isStandalone) this.unbindEditorEvents();
+        this._editor = value;
+        if (this.isStandalone) {
+          this.bindEditorEvents();
+          this.update();
+        }
+      }
+
+      // Public hook so a host that moves the editor without firing scroll/resize
+      // (e.g. the canvas panning/zooming via a CSS transform) can keep the
+      // fixed-position toolbar glued to the selection.
+      reposition() {
+        this.updatePosition();
+      }
+
       connectedCallback() {
-        window.addEventListener("editor-destroyed", this.handleEditModeEnd);
-        window.addEventListener("editor-update", this.update);
-        window.addEventListener(
-          "table-selection-pointer-state",
-          this.handleTableSelectionPointerState as EventListener,
-        );
+        if (!this.isStandalone) {
+          window.addEventListener("editor-destroyed", this.handleEditModeEnd);
+          window.addEventListener("editor-update", this.update);
+          window.addEventListener(
+            "table-selection-pointer-state",
+            this.handleTableSelectionPointerState as EventListener,
+          );
+        }
         window.addEventListener("resize", this.updatePosition, { passive: true });
         document.addEventListener("pointerup", this.handlePointerUp);
         document.addEventListener("scroll", this.updatePosition, {
@@ -173,21 +213,64 @@ if (
           capture: true,
         });
 
+        if (this.isStandalone) this.bindEditorEvents();
+
         this.update();
         this.paint();
       }
 
       disconnectedCallback() {
-        window.removeEventListener("editor-destroyed", this.handleEditModeEnd);
-        window.removeEventListener("editor-update", this.update);
-        window.removeEventListener(
-          "table-selection-pointer-state",
-          this.handleTableSelectionPointerState as EventListener,
-        );
+        if (!this.isStandalone) {
+          window.removeEventListener("editor-destroyed", this.handleEditModeEnd);
+          window.removeEventListener("editor-update", this.update);
+          window.removeEventListener(
+            "table-selection-pointer-state",
+            this.handleTableSelectionPointerState as EventListener,
+          );
+        } else {
+          this.unbindEditorEvents();
+        }
         window.removeEventListener("resize", this.updatePosition);
         document.removeEventListener("pointerup", this.handlePointerUp);
         document.removeEventListener("scroll", this.updatePosition);
       }
+
+      private bindEditorEvents() {
+        const editor = this._editor;
+        if (!editorReady(editor)) return;
+        editor.on("transaction", this.update);
+        editor.on("focus", this.update);
+        editor.on("blur", this.handleEditorBlur);
+        editor.on("destroy", this.handleEditorDestroy);
+      }
+
+      private unbindEditorEvents() {
+        const editor = this._editor;
+        if (!editor) return;
+        editor.off("transaction", this.update);
+        editor.off("focus", this.update);
+        editor.off("blur", this.handleEditorBlur);
+        editor.off("destroy", this.handleEditorDestroy);
+      }
+
+      private handleEditorBlur = () => {
+        // Defer so a pointerdown landing on a toolbar button (which keeps the
+        // editor focused via preventDefault) can cancel the hide.
+        window.setTimeout(() => {
+          const editor = this._editor;
+          if (!editorReady(editor) || !editor.isFocused) {
+            this.shouldShow = false;
+            this.paint();
+          }
+        }, 150);
+      };
+
+      private handleEditorDestroy = () => {
+        this.unbindEditorEvents();
+        this._editor = undefined;
+        this.shouldShow = false;
+        this.paint();
+      };
 
       private get menu() {
         return this.root.querySelector<HTMLElement>(".floating-menu");
@@ -259,6 +342,23 @@ if (
           this.secondaryOpen = false;
           this.tableActive = false;
           this.paint();
+          return;
+        }
+
+        if (this.isCanvasVariant) {
+          this.inColumnLayout = false;
+          this.imageActive = false;
+          this.tableActive = false;
+          this.updateHeadingLevel(editor);
+          // Show over a non-empty selection, but only while this node is
+          // actually being edited. Unlike the single document editor, blurring
+          // a canvas text node doesn't collapse its selection, so without the
+          // focus check the bubble would linger after clicking away.
+          const { from, to } = editor.state.selection;
+          const selectedText = editor.state.doc.textBetween(from, to, " ");
+          this.shouldShow =
+            editor.isFocused && from !== to && selectedText.trim().length > 0;
+          this.updatePosition();
           return;
         }
 
@@ -1011,9 +1111,83 @@ if (
         `;
       }
 
+      private renderCanvasToolbar() {
+        return html`
+          <div
+            class="floating-menu"
+            style=${this.floatingStyle}
+            @mousedown=${() => {
+              this.interacting = true;
+            }}
+            @mouseup=${() => {
+              window.setTimeout(() => {
+                this.interacting = false;
+              }, 100);
+            }}
+          >
+            <div class="toolbar-section">
+              <div class="menu-group">
+                <a-popover-trigger showdelay="0" hidedelay="100">
+                  <button
+                    slot="trigger"
+                    class="menu-btn heading-trigger"
+                    title="Heading Level"
+                    type="button"
+                    @mousedown=${(event: MouseEvent) => {
+                      event.preventDefault();
+                    }}
+                  >
+                    <span class="heading-label">${this.headingLevel === 0 ? "P" : `H${this.headingLevel}`}</span>
+                    ${this.icon(chevronDownIcon)}
+                  </button>
+                  <a-popover placements="bottom-start">
+                    ${this.renderHeadingDropdown()}
+                  </a-popover>
+                </a-popover-trigger>
+              </div>
+              <div class="menu-divider"></div>
+              <div class="menu-group">
+                ${this.button(
+                  this.icon(boldIcon),
+                  "Bold",
+                  () => this.chain()?.toggleBold().run(),
+                  { active: this.isActive("bold") },
+                )}
+                ${this.button(
+                  this.icon(italicIcon),
+                  "Italic",
+                  () => this.chain()?.toggleItalic().run(),
+                  { active: this.isActive("italic") },
+                )}
+                ${this.button(this.icon(linkIcon), "Link", () => this.setLink(), {
+                  active: this.isActive("link"),
+                })}
+              </div>
+              <div class="menu-divider"></div>
+              <div class="menu-group">
+                ${this.button(
+                  this.icon(listUnorderedIcon),
+                  "Bullet List",
+                  () => this.chain()?.toggleBulletList().run(),
+                  { active: this.isActive("bulletList") },
+                )}
+                ${this.button(
+                  this.icon(listOrderedIcon),
+                  "Numbered List",
+                  () => this.chain()?.toggleOrderedList().run(),
+                  { active: this.isActive("orderedList") },
+                )}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
       private renderFormattingToolbar() {
         const editor = this.getEditor();
         if (!editorReady(editor)) return null;
+
+        if (this.isCanvasVariant) return this.renderCanvasToolbar();
 
         return html`
           <div

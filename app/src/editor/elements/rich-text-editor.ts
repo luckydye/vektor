@@ -1,6 +1,7 @@
-import type { Editor } from "@tiptap/core";
+import { type Editor, Extension } from "@tiptap/core";
 import { Placeholder } from "@tiptap/extensions";
 import { createBaseEditor } from "#editor/extensions.ts";
+import { Heading } from "#editor/extensions/baseExtensions.ts";
 import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "#utils/messageMarkdown.ts";
 
 export type RichTextEditorFormat = "bold" | "italic" | "bulletList" | "orderedList";
@@ -15,6 +16,7 @@ type FormatCommandChain = {
 export interface RichTextEditorElementApi extends HTMLElement {
   value: string;
   readonly el: HTMLElement | null;
+  readonly editorInstance: Editor | null;
   focus(): void;
   isActive(name: string): boolean;
   toggleFormat(name: RichTextEditorFormat): void;
@@ -35,6 +37,14 @@ const SHADOW_STYLES = `
   .ProseMirror-hideselection *::selection { background: transparent; }
   .ProseMirror-hideselection *::-moz-selection { background: transparent; }
   .ProseMirror-hideselection { caret-color: transparent; }
+
+  /* Don't paint the text selection while the editor is unfocused — blurring a
+     canvas text node keeps its ProseMirror selection, and the browser would
+     otherwise leave the highlight visible after you click away. */
+  .tiptap:not(:focus) ::selection { background: transparent; }
+  .tiptap:not(:focus) ::-moz-selection { background: transparent; }
+  .tiptap:not(:focus)::selection { background: transparent; }
+  .tiptap:not(:focus)::-moz-selection { background: transparent; }
 
   /* Editor element (.tiptap.ProseMirror) */
   .tiptap {
@@ -61,6 +71,15 @@ const SHADOW_STYLES = `
   }
 
   .tiptap p { margin: 0; }
+  .tiptap h1, .tiptap h2, .tiptap h3, .tiptap h4 {
+    margin: 0;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .tiptap h1 { font-size: 1.75em; }
+  .tiptap h2 { font-size: 1.4em; }
+  .tiptap h3 { font-size: 1.2em; }
+  .tiptap h4 { font-size: 1.05em; }
   .tiptap ul { list-style-type: disc; padding-left: 1.5rem; margin: 0.25rem 0; }
   .tiptap ol { list-style-type: decimal; padding-left: 1.5rem; margin: 0.25rem 0; }
   .tiptap li { display: list-item; margin: 0.125rem 0; }
@@ -159,12 +178,51 @@ if (
         this.editor.view.dom.setAttribute("data-placeholder", this.placeholderText);
       }
 
+      private get headingsEnabled() {
+        return this.hasAttribute("headings");
+      }
+
       private mountEditor() {
+        const headingsEnabled = this.headingsEnabled;
+
+        // The custom base marks don't ship keyboard shortcuts (the document
+        // editor binds them through an app-level Actions registry, which the
+        // canvas/chat editors don't use). Bind the common ones here so Cmd+B
+        // etc. work in a standalone rich-text-editor.
+        const KeyboardShortcuts = Extension.create({
+          name: "richTextKeyboardShortcuts",
+          addKeyboardShortcuts() {
+            const shortcuts: Record<string, () => boolean> = {
+              "Mod-b": () => this.editor.chain().focus().toggleBold().run(),
+              "Mod-i": () => this.editor.chain().focus().toggleItalic().run(),
+              "Mod-Shift-8": () =>
+                this.editor.chain().focus().toggleBulletList().run(),
+              "Mod-Shift-7": () =>
+                this.editor.chain().focus().toggleOrderedList().run(),
+            };
+            if (headingsEnabled) {
+              for (const level of [1, 2, 3, 4] as const) {
+                shortcuts[`Mod-Alt-${level}`] = () =>
+                  this.editor.chain().focus().toggleHeading({ level }).run();
+              }
+            }
+            return shortcuts;
+          },
+        });
+
         this.editor = createBaseEditor({
           element: this._mount,
           content: messageMarkdownToHtml(this.lastValue),
           injectCSS: false,
-          extensions: [Placeholder.configure({ placeholder: this.placeholderText })],
+          extensions: [
+            Placeholder.configure({ placeholder: this.placeholderText }),
+            KeyboardShortcuts,
+            // Opt-in (canvas text/notes): enables the `## `→H2 markdown input
+            // rule and heading nodes. Chat input leaves this off.
+            ...(headingsEnabled
+              ? [Heading.configure({ levels: [1, 2, 3, 4] })]
+              : []),
+          ],
           editorProps: {
             attributes: {
               "data-placeholder": this.placeholderText,
@@ -295,6 +353,12 @@ if (
 
       get el() {
         return this.editor?.view.dom ?? null;
+      }
+
+      // Exposes the underlying TipTap editor so a shared formatting toolbar
+      // (see <document-toolbar variant="canvas">) can issue commands against it.
+      get editorInstance() {
+        return this.editor;
       }
 
       get value(): string {

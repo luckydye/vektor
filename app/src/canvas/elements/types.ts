@@ -26,6 +26,10 @@ export type CanvasShape = {
   // Clockwise degrees around the shape centre. Old documents omit this and
   // are normalized to zero when read.
   rotation: number;
+  // Proportional scale for text shapes (1 = intrinsic size). Text auto-fits its
+  // content, so resizing scales the font rather than a fixed box. Other shape
+  // types size via width/height and leave this at 1.
+  fontScale?: number;
   text: string;
   color: string;
   src?: string;

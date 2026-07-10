@@ -107,6 +107,7 @@ import {
   undoArrowIcon,
 } from "~/src/assets/icons.ts";
 import "#editor/elements/rich-text-editor.ts";
+import "#editor/elements/toolbar.ts";
 import "@atrium-ui/elements/popover";
 import { useToast } from "#composeables/useToast.ts";
 import {
@@ -193,6 +194,9 @@ type DragState =
       minSize: { width: number; height: number };
       // Locked width/height ratio for media; undefined lets the axes move freely.
       aspect?: number;
+      // Text scales its font instead of a fixed box.
+      isText?: boolean;
+      initialFontScale?: number;
       initial: Pick<CanvasShape, "x" | "y" | "width" | "height" | "rotation">;
     }
   | {
@@ -347,6 +351,15 @@ const activeTool = ref<CanvasTool>("select");
 // Library entry the shape tool places next; the toolbar popover changes it.
 const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
 const shapePopoverRef = ref<(HTMLElement & { hide: () => void }) | null>(null);
+// Shared inline-formatting toolbar (<document-toolbar variant="canvas">),
+// retargeted to whichever text shape's editor is focused.
+type CanvasTextEditorEl = HTMLElement & { editorInstance?: unknown };
+type CanvasFormatToolbarEl = HTMLElement & {
+  editor: unknown;
+  dismiss: () => void;
+  reposition: () => void;
+};
+const canvasToolbarRef = ref<CanvasFormatToolbarEl | null>(null);
 const noteColor = ref<string>(NOTE_COLORS[0]);
 const sectionColor = ref<string>(SECTION_COLORS[0]);
 const penColor = ref<string>(PEN_COLORS[0]);
@@ -764,6 +777,7 @@ const selectedTransformShape = computed(() =>
   selectedShape.value &&
   (selectedShape.value.type === "note" ||
     selectedShape.value.type === "section" ||
+    selectedShape.value.type === "text" ||
     isMediaElementType(selectedShape.value.type))
     ? selectedShape.value
     : null,
@@ -774,18 +788,20 @@ const selectedResizableDocument = computed(() =>
 );
 
 function transformControlPositions(shape: CanvasShape) {
+  // Text auto-sizes, so anchor the handles to its measured box.
+  const bounds = shapeBounds(shape);
   // Handles stay a comfortable fixed size in screen space. Convert their
   // offset back to world units before placing them around the rotated shape.
   const offset = 24 / transform.value.scale;
   const resizeOffset = 18 / transform.value.scale / Math.SQRT2;
   return {
     rotation: worldToScreen(
-      pointOnRotatedShape(shape, { x: shape.width / 2, y: -offset }),
+      pointOnRotatedShape(bounds, { x: bounds.width / 2, y: -offset }),
     ),
     resize: worldToScreen(
-      pointOnRotatedShape(shape, {
-        x: shape.width + resizeOffset,
-        y: shape.height + resizeOffset,
+      pointOnRotatedShape(bounds, {
+        x: bounds.width + resizeOffset,
+        y: bounds.height + resizeOffset,
       }),
     ),
   };
@@ -955,6 +971,14 @@ function getPresenceColor(seed: string) {
 
 function toNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+const MIN_FONT_SCALE = 0.3;
+const MAX_FONT_SCALE = 10;
+const TEXT_BASE_FONT_PX = 15;
+
+function clampFontScale(value: number) {
+  return Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, value));
 }
 
 function textShapeFallbackSize(shape: CanvasShape) {
@@ -1161,6 +1185,7 @@ function toShape(
     width: Math.max(minSize.width, toNumber(read("width"), defaultSize.width)),
     height: Math.max(minSize.height, toNumber(read("height"), defaultSize.height)),
     rotation: normalizeRotation(toNumber(read("rotation"), 0)),
+    fontScale: clampFontScale(toNumber(read("fontScale"), 1)),
     text: typeof read("text") === "string" ? String(read("text")) : "",
     color:
       typeof read("color") === "string"
@@ -1243,6 +1268,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
     map.set("height", shape.height);
   }
   map.set("rotation", shape.rotation);
+  if (typeof shape.fontScale === "number") map.set("fontScale", shape.fontScale);
   map.set("text", shape.text);
   map.set("color", shape.color);
   if (shape.src) map.set("src", resolveMediaSrc(shape.src));
@@ -1349,6 +1375,12 @@ function screenPoint(event: MouseEvent) {
 const transform = computed(() =>
   buildTransform(camera.value, screen.value, FIT_REFERENCE),
 );
+
+// The canvas moves shapes by transforming the viewport, which fires no
+// scroll/resize event — so the fixed-position formatting toolbar won't follow
+// on its own. Re-anchor it after each transform is painted (flush: "post" so
+// the editor DOM reflects the new position when we read its coords).
+watch(transform, () => canvasToolbarRef.value?.reposition(), { flush: "post" });
 
 const canvasCursorCache = new Map<string, string>();
 function makeCanvasCursor(color: string): string {
@@ -1971,6 +2003,13 @@ function updateShapeText(shape: CanvasShape, text: string) {
   updateShape(shape.id, { text });
 }
 
+function handleTextFocus(shape: CanvasShape, event: Event) {
+  selectOnlyShape(shape.id);
+  const editorEl = event.currentTarget as CanvasTextEditorEl | null;
+  const toolbar = canvasToolbarRef.value;
+  if (toolbar) toolbar.editor = editorEl?.editorInstance ?? null;
+}
+
 function handleTextBlur(shape: CanvasShape, value: string) {
   // A text element with no content has nothing to anchor it, so remove it once
   // editing ends. Notes and sections keep their box even when empty.
@@ -2203,22 +2242,28 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeResize(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || shape.type === "text") return;
+  if (event.button !== 0) return;
   selectOnlyShape(shape.id);
+  // Text auto-sizes to its content, so drive off its measured box.
+  const bounds = shapeBounds(shape);
   const isMedia = isMediaElementType(shape.type);
+  const isText = shape.type === "text";
   dragState = {
     type: "resize",
     pointerId: event.pointerId,
     shapeId: shape.id,
-    fixedTopLeft: rotatedShapeCorners(shape)[0],
+    fixedTopLeft: rotatedShapeCorners(bounds)[0],
     minSize: minSizeForShape(shape.type),
-    // Media keeps its aspect ratio; notes and sections resize freely.
-    aspect: isMedia && shape.height > 0 ? shape.width / shape.height : undefined,
+    // Media and text keep their aspect ratio (text scales its font); notes and
+    // sections resize freely.
+    aspect: (isMedia || isText) && bounds.height > 0 ? bounds.width / bounds.height : undefined,
+    isText,
+    initialFontScale: shape.fontScale ?? 1,
     initial: {
       x: shape.x,
       y: shape.y,
-      width: shape.width,
-      height: shape.height,
+      width: bounds.width,
+      height: bounds.height,
       rotation: shape.rotation,
     },
   };
@@ -2227,21 +2272,22 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || shape.type === "text") return;
+  if (event.button !== 0) return;
   selectOnlyShape(shape.id);
+  const bounds = shapeBounds(shape);
   dragState = {
     type: "rotate",
     pointerId: event.pointerId,
     shapeId: shape.id,
     center: {
-      x: shape.x + shape.width / 2,
-      y: shape.y + shape.height / 2,
+      x: shape.x + bounds.width / 2,
+      y: shape.y + bounds.height / 2,
     },
     initial: {
       x: shape.x,
       y: shape.y,
-      width: shape.width,
-      height: shape.height,
+      width: bounds.width,
+      height: bounds.height,
       rotation: shape.rotation,
     },
   };
@@ -2425,7 +2471,10 @@ function handleViewportPointerDown(event: PointerEvent) {
         event.preventDefault();
         return;
       }
-      if (!selectedStrokeIds.value.has(hitStroke) || selectedShapeIds.value.size > 0) {
+      // Grabbing a stroke that's already part of the selection keeps the whole
+      // group (including any selected shapes/text) so it all drags together;
+      // grabbing an unselected stroke collapses to just it.
+      if (!selectedStrokeIds.value.has(hitStroke)) {
         selectStroke(hitStroke, false);
       }
       dragMoved = false;
@@ -2628,6 +2677,18 @@ function handlePointerMove(event: PointerEvent) {
       minSize: dragState.minSize,
       aspect: dragState.aspect,
     });
+    if (dragState.isText) {
+      // Text has no stored box; translate the drag into a proportional font
+      // scale and let the node re-measure its own width/height. Top-left stays
+      // put, so it grows toward the corner being dragged.
+      const ratio =
+        dragState.initial.width > 0 ? resized.width / dragState.initial.width : 1;
+      const nextScale = clampFontScale((dragState.initialFontScale ?? 1) * ratio);
+      updateShape(dragState.shapeId, {
+        fontScale: Math.round(nextScale * 1000) / 1000,
+      });
+      return;
+    }
     updateShape(dragState.shapeId, {
       x: Math.round(resized.x),
       y: Math.round(resized.y),
@@ -3837,7 +3898,7 @@ onUnmounted(() => {
             left: `${shape.x}px`,
             top: `${shape.y}px`,
             ...(shape.type === 'text'
-              ? {}
+              ? { '--canvas-text-font-size': `${TEXT_BASE_FONT_PX * (shape.fontScale ?? 1)}px` }
               : { width: `${shape.width}px`, height: `${shape.height}px` }),
             transform: `rotate(${shape.rotation}deg)`,
             ...(shape.type === 'section' ? { '--canvas-section-color': shape.color } : {}),
@@ -4035,9 +4096,10 @@ onUnmounted(() => {
           <rich-text-editor
             v-else-if="shape.type !== 'section'"
             class="canvas-shape-textwrap"
+            headings
             :value="shape.text"
             @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
-            @editor-focus="selectOnlyShape(shape.id)"
+            @editor-focus="handleTextFocus(shape, $event)"
             @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
             @pointerdown.stop="shape.type === 'text' && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
           />
@@ -4296,6 +4358,8 @@ onUnmounted(() => {
         </template>
       </div>
     </div>
+
+    <document-toolbar ref="canvasToolbarRef" variant="canvas" standalone />
   </div>
 </template>
 
@@ -5075,7 +5139,7 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  --editor-padding: 10px 12px;
+  --editor-padding: 0.25rem;
   color: var(--canvas-text);
   font-size: 15px;
   line-height: 1.35;
@@ -5087,6 +5151,7 @@ onUnmounted(() => {
   width: max-content;
   max-width: none;
   cursor: move;
+  font-size: var(--canvas-text-font-size, 15px);
   --editor-white-space: pre-wrap;
   --editor-word-break: normal;
   --editor-overflow-wrap: normal;

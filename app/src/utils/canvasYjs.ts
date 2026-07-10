@@ -26,6 +26,7 @@ type RawShape = {
   width?: unknown;
   height?: unknown;
   rotation?: unknown;
+  fontScale?: unknown;
   text?: unknown;
   color?: unknown;
   src?: unknown;
@@ -58,6 +59,7 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   map.set("width", typeof shape.width === "number" ? shape.width : 240);
   map.set("height", typeof shape.height === "number" ? shape.height : 150);
   map.set("rotation", typeof shape.rotation === "number" ? shape.rotation : 0);
+  if (typeof shape.fontScale === "number") map.set("fontScale", shape.fontScale);
   map.set("text", typeof shape.text === "string" ? shape.text : "");
   map.set("color", typeof shape.color === "string" ? shape.color : "#fef3c7");
   if (typeof shape.src === "string") map.set("src", shape.src);

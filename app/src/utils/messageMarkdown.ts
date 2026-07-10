@@ -64,6 +64,10 @@ function serializeNode(node: JSONContent, depth = 0): string {
       return children.map((child) => serializeNode(child, depth)).join("\n\n");
     case "paragraph":
       return inline();
+    case "heading": {
+      const level = Math.min(6, Math.max(1, Number(node.attrs?.level ?? 1)));
+      return `${"#".repeat(level)} ${inline()}`;
+    }
     case "bulletList":
       return children
         .map((child) => `${"  ".repeat(depth)}- ${serializeNode(child, depth + 1)}`)
