@@ -24,6 +24,16 @@ export interface LinkMetadata {
   favicon: string | null;
   updatedAt: string | null;
   fetchedAt: number;
+  /**
+   * Rich third-party embed HTML (currently only X/Twitter, via oEmbed).
+   * When present the canvas renders this instead of the generic OpenGraph
+   * card. The HTML is script-free (oEmbed is fetched with `omit_script`);
+   * the client loads the provider's widget script itself.
+   */
+  embed?: {
+    provider: "twitter";
+    html: string;
+  };
   vektorDocument?: {
     address: string;
     documentId: string;
@@ -211,6 +221,50 @@ async function fetchExternalMetadata(url: string): Promise<LinkMetadata> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/** Detect an X/Twitter status (tweet) URL, e.g. `x.com/user/status/123`. */
+function isTwitterStatusUrl(url: URL): boolean {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  const isTwitterHost =
+    host === "twitter.com" || host === "x.com" || host === "mobile.twitter.com";
+  if (!isTwitterHost) return false;
+  return /^\/[^/]+\/status(?:es)?\/\d+/.test(url.pathname);
+}
+
+/**
+ * Resolve an X/Twitter tweet to its embeddable oEmbed markup. Twitter blocks
+ * generic OpenGraph scraping, so tweets would otherwise render as a bare link
+ * card; the oEmbed endpoint returns a `<blockquote>` the client hydrates into
+ * the live embed via widgets.js. `omit_script` keeps the returned HTML free of
+ * any `<script>`, and `dnt` opts out of tracking.
+ */
+async function fetchTwitterEmbed(url: string): Promise<LinkMetadata | null> {
+  // Use `publish.x.com` directly: `publish.twitter.com` 301-redirects here, and
+  // `fetchJsonWithTimeout` rejects redirects (`redirect: "error"`) as an SSRF
+  // guard, so the legacy host would never resolve.
+  const oembedUrl = new URL("https://publish.x.com/oembed");
+  oembedUrl.searchParams.set("url", url);
+  oembedUrl.searchParams.set("omit_script", "true");
+  oembedUrl.searchParams.set("dnt", "true");
+  oembedUrl.searchParams.set("hide_thread", "false");
+
+  const data = await fetchJsonWithTimeout(oembedUrl.toString());
+  if (!isRecord(data) || typeof data.html !== "string") return null;
+
+  const authorName = typeof data.author_name === "string" ? data.author_name : null;
+  return {
+    url,
+    title: authorName,
+    description: null,
+    image: null,
+    video: null,
+    siteName: "X",
+    favicon: null,
+    updatedAt: null,
+    fetchedAt: Date.now(),
+    embed: { provider: "twitter", html: data.html },
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -488,6 +542,14 @@ export const GET: ApiRouteHandler = (context) =>
       const cached = getCachedMetadata(cacheKey);
       if (cached) {
         return jsonResponse(cached);
+      }
+
+      if (isTwitterStatusUrl(new URL(url))) {
+        const twitterMetadata = await fetchTwitterEmbed(url);
+        if (twitterMetadata) {
+          setCachedMetadata(cacheKey, twitterMetadata, EXTERNAL_CACHE_TTL_MS);
+          return jsonResponse(twitterMetadata);
+        }
       }
 
       const vektorMetadata = await fetchRemoteVektorMetadata(url);

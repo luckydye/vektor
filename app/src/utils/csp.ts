@@ -34,7 +34,9 @@
  */
 export const APP_CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  // `platform.twitter.com` is allowed so canvas X/Twitter link cards can load
+  // widgets.js and hydrate a tweet into its live embed.
+  "script-src 'self' 'unsafe-inline' https://platform.twitter.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   // `https:` is intentionally broad here — same rationale as `img-src https:`
@@ -47,8 +49,10 @@ export const APP_CSP = [
   "font-src 'self' data:",
   "object-src 'none'",
   // Canvas PDF previews use the browser's built-in viewer in a same-origin
-  // iframe. Keep every third-party frame blocked.
-  "frame-src 'self'",
+  // iframe. The X/Twitter widget hydrates a tweet into an iframe served from
+  // Twitter's platform/syndication hosts. Every other third-party frame stays
+  // blocked.
+  "frame-src 'self' https://platform.twitter.com https://syndication.twitter.com",
   "frame-ancestors 'none'",
   "base-uri 'none'",
   "form-action 'self'",

@@ -163,6 +163,7 @@ import {
   worldViewportBounds,
 } from "#viewport/index.ts";
 import CanvasDocumentEditor from "./CanvasDocumentEditor.vue";
+import CanvasTwitterEmbed from "./CanvasTwitterEmbed.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -1157,6 +1158,70 @@ function syncTextShapeObservers() {
   }
 }
 
+// Link preview cards (image + title + description) have a content height that
+// depends on the card width (the image keeps a 4/3 ratio) rather than a fixed
+// box, so a fixed shape height clips the body. We observe each card and fit the
+// shape height to its content — mirroring the text-shape auto-size machinery.
+let linkShapeObserver: ResizeObserver | null = null;
+const observedLinkShapes = new Map<Element, string>();
+
+/** Sum of the card's stacked children — the true content height, independent
+ *  of the (possibly clipping) shape box, so the shape can shrink as well as grow. */
+function linkCardContentHeight(element: HTMLElement): number {
+  let total = 0;
+  for (const child of Array.from(element.children)) {
+    total += (child as HTMLElement).offsetHeight;
+  }
+  return total;
+}
+
+function observeLinkShapeSize(element: HTMLElement, shapeId: string) {
+  if (observedLinkShapes.get(element) === shapeId) return;
+  if (!linkShapeObserver && typeof ResizeObserver !== "undefined") {
+    linkShapeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const id = observedLinkShapes.get(entry.target);
+        if (id) fitLinkShapeHeight(id, linkCardContentHeight(entry.target as HTMLElement));
+      }
+    });
+  }
+  observedLinkShapes.set(element, shapeId);
+  linkShapeObserver?.observe(element);
+}
+
+function syncLinkShapeObservers() {
+  const viewport = viewportRef.value;
+  if (!viewport) return;
+
+  const currentElements = new Set<Element>();
+  for (const element of viewport.querySelectorAll<HTMLElement>(
+    ".canvas-shape-link[data-link-shape-id]",
+  )) {
+    const shapeId = element.dataset.linkShapeId;
+    if (!shapeId) continue;
+    currentElements.add(element);
+    observeLinkShapeSize(element, shapeId);
+  }
+
+  for (const [element] of observedLinkShapes) {
+    if (!currentElements.has(element) || !element.isConnected) {
+      linkShapeObserver?.unobserve(element);
+      observedLinkShapes.delete(element);
+    }
+  }
+}
+
+/** Re-measure every observed link card. The ResizeObserver only fires on the
+ *  card's own box, not on content changes, so this is triggered when preview
+ *  metadata loads (image/title appear) to grow cards to their real height. */
+function refitAllLinkShapes() {
+  for (const [element, id] of observedLinkShapes) {
+    if (element.isConnected) {
+      fitLinkShapeHeight(id, linkCardContentHeight(element as HTMLElement));
+    }
+  }
+}
+
 function isGifSrc(src: string): boolean {
   return /\.gif($|\?)/i.test(src);
 }
@@ -2134,6 +2199,28 @@ function handleStorageChange(event: StorageEvent) {
   }
 }
 
+// Fit a link shape's height to its rendered content (a generic preview card or
+// a hydrated tweet) so nothing clips. Content height is deterministic per
+// width, so collaborators converge on the same value and stop writing; a small
+// threshold avoids churn from sub-pixel jitter, and we never fight an in-flight
+// manual resize of the same shape.
+function fitLinkShapeHeight(id: string, height: number) {
+  if (!userCanEditDocuments.value) return;
+  if (dragState?.shapeId === id) return;
+  if (!Number.isFinite(height) || height <= 0) return;
+  const shape = shapes.value.find((candidate) => candidate.id === id);
+  if (!shape) return;
+  // Don't fit until the preview has settled: a card measured while its metadata
+  // (and image) is still loading would persist a too-small height that never
+  // corrects, since the observer won't re-fire once the box is fixed.
+  const preview = shape.src ? linkPreviews.previews.value.get(shape.src) : undefined;
+  if (!preview || preview.status === "loading") return;
+  const minHeight = minSizeForShape("link").height;
+  const target = Math.max(minHeight, Math.round(height));
+  if (Math.abs(target - shape.height) <= 2) return;
+  updateShape(id, { height: target });
+}
+
 function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
   const shape = yShapes.get(id);
   if (!shape) return;
@@ -2789,8 +2876,21 @@ function handlePointerUp(event: PointerEvent) {
       activeSnapGuides = [];
       renderInk();
     }
+    // Height fitting is suppressed during a manual resize; once it ends, snap a
+    // link card back to its content height for the new width.
+    const resizedShapeId = dragState.type === "resize" ? dragState.shapeId : null;
     dragState = null;
+    if (resizedShapeId) void nextTick(() => refitLinkShape(resizedShapeId));
   }
+}
+
+/** Re-measure a link card and fit its shape height (used after a manual resize,
+ *  when the ResizeObserver is intentionally ignored). */
+function refitLinkShape(id: string) {
+  const element = viewportRef.value?.querySelector<HTMLElement>(
+    `.canvas-shape-link[data-link-shape-id="${id}"]`,
+  );
+  if (element) fitLinkShapeHeight(id, linkCardContentHeight(element));
 }
 
 function cancelTransformDrag() {
@@ -3432,6 +3532,7 @@ watch(
   shapes,
   () => {
     void nextTick(syncTextShapeObservers);
+    void nextTick(syncLinkShapeObservers);
     renderImages();
     renderSelections();
   },
@@ -3532,6 +3633,15 @@ watch(
   { immediate: true },
 );
 
+// Once a preview loads, its card renders the image/title; re-measure so the
+// shape grows to fit (the ResizeObserver alone won't catch content-only growth).
+watch(
+  linkPreviews.previews,
+  () => {
+    void nextTick(refitAllLinkShapes);
+  },
+);
+
 watch(
   () => [
     camera.value.centerX,
@@ -3577,6 +3687,7 @@ onMounted(() => {
   syncShapesFromY();
   syncStrokesFromY();
   void nextTick(syncTextShapeObservers);
+  void nextTick(syncLinkShapeObservers);
   resize();
 
   viewportControls = createViewportControls({
@@ -3641,6 +3752,8 @@ onUnmounted(() => {
   resizeObserver?.disconnect();
   textShapeObserver?.disconnect();
   observedTextShapes.clear();
+  linkShapeObserver?.disconnect();
+  observedLinkShapes.clear();
   themeObserver?.disconnect();
   colorSchemeMedia?.removeEventListener("change", updateThemeMode);
   emit("presence", []);
@@ -4034,12 +4147,29 @@ onUnmounted(() => {
             @click="onDocumentShapeClick(shape, $event)"
             @open-document="onDocumentShapeOpen(shape, $event)"
           ></document-attachment>
+          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
+          <div
+            v-else-if="
+              shape.type === 'link' &&
+              shape.src &&
+              linkPreviews.previewForShape(shape)?.metadata?.embed?.provider === 'twitter'
+            "
+            class="canvas-twitter-shape"
+            @pointerdown.stop="startShapeDrag(shape, $event)"
+            @wheel.stop
+          >
+            <CanvasTwitterEmbed
+              :html="linkPreviews.previewForShape(shape)!.metadata!.embed!.html"
+              @resize="fitLinkShapeHeight(shape.id, $event)"
+            />
+          </div>
           <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
           <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
           <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
           <a
             v-else-if="shape.type === 'link' && shape.src"
             class="canvas-shape-link"
+            :data-link-shape-id="shape.id"
             :href="shape.src"
             target="_blank"
             rel="noopener noreferrer"
@@ -5020,10 +5150,19 @@ onUnmounted(() => {
   cursor: move;
 }
 
-.canvas-link-image {
-  flex: 1;
+.canvas-twitter-shape {
   width: 100%;
-  height: 120px;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--canvas-link-bg);
+  cursor: move;
+}
+
+.canvas-link-image {
+  flex: none;
+  width: 100%;
+  aspect-ratio: 4/3;
   overflow: hidden;
   background: var(--canvas-handle-bg);
 }
