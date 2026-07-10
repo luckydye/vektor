@@ -55,6 +55,34 @@ describe("ApiReplica", () => {
     }
   });
 
+  it("hydrates grouped category documents from the replica", async () => {
+    const client = new ApiClient({ baseUrl: "https://api.example.test" });
+    client.setReplicaScope("user:one");
+    const documentsByCategory = { planning: [] };
+    globalThis.fetch = (async () =>
+      Response.json({
+        documentsByCategory,
+        categorySlugs: ["planning"],
+      })) as typeof fetch;
+
+    await client.documents.getByCategories("space_1", ["planning"]);
+
+    expect(await client.documents.getByCategoriesCached("space_1", ["planning"])).toEqual(
+      documentsByCategory,
+    );
+  });
+
+  it("hydrates extension manifests from the replica", async () => {
+    const client = new ApiClient({ baseUrl: "https://api.example.test" });
+    client.setReplicaScope("user:one");
+    const extensionManifest = { extensions: [], errors: [] };
+    globalThis.fetch = (async () => Response.json(extensionManifest)) as typeof fetch;
+
+    await client.extensions.get("space_1");
+
+    expect(await client.extensions.getCached("space_1")).toEqual(extensionManifest);
+  });
+
   it("replaces an ApiClient optimistic mutation with its canonical response", async () => {
     const client = new ApiClient({ baseUrl: "https://api.example.test" });
     client.setReplicaScope("user:one");

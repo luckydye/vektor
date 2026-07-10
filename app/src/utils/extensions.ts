@@ -160,16 +160,17 @@ export class Extensions {
     }
 
     this.initPromise = (async () => {
-      const extensions = await this.fetchExtensions(spaceId);
+      const cached = await api.extensions.getCached(spaceId);
+      // loadExtensions announces cached manifest routes before it waits for
+      // frontend module imports, allowing the sidebar to render from IndexedDB
+      // on a warm start.
+      const cachedLoads = cached
+        ? this.loadExtensions(cached.extensions)
+        : Promise.resolve();
 
-      for (const ext of extensions) {
-        await this.loadExtension(ext);
-      }
-
-      // Notify listeners that extensions have loaded
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("extensions:loaded"));
-      }
+      const remoteExtensions = await this.fetchExtensions(spaceId);
+      await cachedLoads;
+      await this.loadExtensions(remoteExtensions, { reconcile: true });
     })();
 
     return this.initPromise;
@@ -200,15 +201,52 @@ export class Extensions {
     return result.extensions;
   }
 
+  private notifyExtensionsLoaded(): void {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("extensions:loaded"));
+    }
+  }
+
+  private async loadExtensions(
+    extensionInfos: ExtensionInfo[],
+    options?: { reconcile?: boolean },
+  ): Promise<void> {
+    if (options?.reconcile) {
+      const currentIds = new Set(extensionInfos.map((extension) => extension.id));
+      for (const extensionId of [...this.loaded.keys()]) {
+        if (!currentIds.has(extensionId)) {
+          await this.unloadExtension(extensionId);
+        }
+      }
+    }
+
+    // Calling an async function runs it through its first await immediately.
+    // loadExtension records manifest metadata before importing its frontend
+    // module, so the sidebar can use the routes below without waiting on that
+    // network work.
+    const loading = extensionInfos.map((extension) => this.loadExtension(extension));
+    this.notifyExtensionsLoaded();
+    await Promise.all(loading);
+    this.notifyExtensionsLoaded();
+  }
+
   /**
    * Load a single extension's frontend entry
    */
   async loadExtension(info: ExtensionInfo): Promise<void> {
-    if (!info.enabled) {
+    const existing = this.loaded.get(info.id);
+    if (existing) {
+      if (!info.enabled) {
+        await this.unloadExtension(info.id);
+        return;
+      }
+      // The manifest is canonical server data. Update menu routes and other
+      // metadata even when the frontend module has already been loaded.
+      existing.info = info;
       return;
     }
 
-    if (this.loaded.has(info.id)) {
+    if (!info.enabled) {
       return;
     }
 

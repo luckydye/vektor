@@ -39,6 +39,14 @@ export function useExtensions() {
       }
       return await api.extensions.get(currentSpaceId.value);
     },
+    initialData: async () => {
+      if (!currentSpaceId.value) return undefined;
+      return await api.extensions.getCached(currentSpaceId.value);
+    },
+    subscribe: (callback) => {
+      if (!currentSpaceId.value) return () => {};
+      return api.extensions.subscribeCached(currentSpaceId.value, callback);
+    },
     enabled: computed(() => !!currentSpaceId.value),
   });
 

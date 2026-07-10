@@ -568,6 +568,10 @@ export class ApiClient {
     return `/api/v1/spaces/${spaceId}/documents/${documentId}/comments`;
   }
 
+  private categorySlugsQuery(categorySlugs: string[]): string {
+    return [...new Set(categorySlugs)].sort().join(",");
+  }
+
   private isDocumentDetailPath(path: string): boolean {
     return /^\/api\/v1\/spaces\/[^/]+\/documents\/[^/?]+$/.test(path);
   }
@@ -1445,10 +1449,42 @@ export class ApiClient {
         documentsByCategory: Record<string, DocumentWithProperties[]>;
         categorySlugs: string[];
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/documents`, {
-        categorySlugs: categorySlugs.join(","),
+        categorySlugs: this.categorySlugsQuery(categorySlugs),
         grouped: true,
       });
       return response.documentsByCategory;
+    },
+
+    getByCategoriesCached: async (spaceId: string, categorySlugs: string[]) => {
+      return (
+        await this.readReplica<{
+          documentsByCategory: Record<string, DocumentWithProperties[]>;
+          categorySlugs: string[];
+        }>(this.documentsPath(spaceId), {
+          categorySlugs: this.categorySlugsQuery(categorySlugs),
+          grouped: true,
+        })
+      )?.documentsByCategory;
+    },
+
+    subscribeByCategoriesCached: (
+      spaceId: string,
+      categorySlugs: string[],
+      callback: (
+        documentsByCategory: Record<string, DocumentWithProperties[]> | undefined,
+      ) => void,
+    ) => {
+      return this.subscribeToReplica<{
+        documentsByCategory: Record<string, DocumentWithProperties[]>;
+        categorySlugs: string[];
+      }>(
+        this.documentsPath(spaceId),
+        (response) => callback(response?.documentsByCategory),
+        {
+          categorySlugs: this.categorySlugsQuery(categorySlugs),
+          grouped: true,
+        },
+      );
     },
 
     /**
@@ -2201,6 +2237,45 @@ export class ApiClient {
         extensions: response.extensions ?? [],
         errors: response.errors ?? [],
       };
+    },
+
+    getCached: async (
+      spaceId: string,
+    ): Promise<
+      { extensions: ExtensionInfo[]; errors: ExtensionManifestError[] } | undefined
+    > => {
+      const response = await this.readReplica<{
+        extensions: ExtensionInfo[];
+        errors?: ExtensionManifestError[];
+      }>(`/api/v1/spaces/${spaceId}/extensions`);
+      if (!response) return undefined;
+      return {
+        extensions: response.extensions ?? [],
+        errors: response.errors ?? [],
+      };
+    },
+
+    subscribeCached: (
+      spaceId: string,
+      callback: (
+        response:
+          | { extensions: ExtensionInfo[]; errors: ExtensionManifestError[] }
+          | undefined,
+      ) => void,
+    ) => {
+      return this.subscribeToReplica<{
+        extensions: ExtensionInfo[];
+        errors?: ExtensionManifestError[];
+      }>(`/api/v1/spaces/${spaceId}/extensions`, (response) => {
+        callback(
+          response
+            ? {
+                extensions: response.extensions ?? [],
+                errors: response.errors ?? [],
+              }
+            : undefined,
+        );
+      });
     },
 
     /**

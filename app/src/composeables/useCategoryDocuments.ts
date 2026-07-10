@@ -33,6 +33,21 @@ export function useCategoryDocuments(categorySlugs: Ref<string[]>) {
         categorySlugs.value,
       );
     },
+    initialData: async () => {
+      if (!currentSpaceId.value || categorySlugs.value.length === 0) return {};
+      return await api.documents.getByCategoriesCached(
+        currentSpaceId.value,
+        categorySlugs.value,
+      );
+    },
+    subscribe: (callback) => {
+      if (!currentSpaceId.value || categorySlugs.value.length === 0) return () => {};
+      return api.documents.subscribeByCategoriesCached(
+        currentSpaceId.value,
+        categorySlugs.value,
+        callback,
+      );
+    },
     enabled: computed(() => !!currentSpaceId.value && categorySlugs.value.length > 0),
     staleTime: 1000 * 60 * 5, // 5 minutes
     placeholderData: (prev) => prev,
