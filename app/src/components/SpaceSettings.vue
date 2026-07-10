@@ -894,10 +894,12 @@ function setTab(id: string) {
 
 import { type AccessToken, api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 
 const emit = defineEmits(["saved"]);
 
 const { currentSpace, updateSpace } = useSpace();
+const toast = useToast();
 
 const localName = ref("");
 const localDescription = ref("");
@@ -1055,6 +1057,13 @@ async function handleLogoUpload(event: Event) {
     return;
   }
 
+  // The logo is stored inline in the space preferences, which every space
+  // request carries — keep it small.
+  if (file.size > 300 * 1024) {
+    error.value = "Logo file must be smaller than 300 KB";
+    return;
+  }
+
   try {
     if (file.type === "image/svg+xml") {
       let text = await file.text();
@@ -1095,6 +1104,7 @@ async function handleSave() {
         logoSvg: localLogoSvg.value,
       },
     );
+    toast.success("Space settings saved");
     emit("saved");
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to update space";

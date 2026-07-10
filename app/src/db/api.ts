@@ -45,6 +45,20 @@ export function badRequestResponse(message: string): Response {
   return errorResponse(message, 400);
 }
 
+/**
+ * Space preferences are embedded in every space read and list response, so an
+ * oversized value (e.g. a multi-megabyte inline logo) bloats every request
+ * that carries it and can stall request bodies behind dev/reverse proxies.
+ */
+const MAX_PREFERENCES_BYTES = 512 * 1024;
+
+export function requirePreferencesSize(preferences: unknown): void {
+  if (preferences === undefined) return;
+  if (Buffer.byteLength(JSON.stringify(preferences)) > MAX_PREFERENCES_BYTES) {
+    throw badRequestResponse("preferences must be smaller than 512 KB");
+  }
+}
+
 export function successResponse(data?: unknown): Response {
   return jsonResponse(data ?? { success: true }, 200);
 }

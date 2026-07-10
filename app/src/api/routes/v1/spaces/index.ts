@@ -6,6 +6,7 @@ import {
   extractAccessToken,
   jsonResponse,
   parseJsonBody,
+  requirePreferencesSize,
   requireUser,
   withApiErrorHandling,
 } from "#db/api.ts";
@@ -40,6 +41,8 @@ export const POST: ApiRouteHandler = (context) =>
       if (!name || typeof name !== "string" || !slug || typeof slug !== "string") {
         throw badRequestResponse("Name and slug are required");
       }
+
+      requirePreferencesSize(preferences);
 
       const space = await createSpace(
         user.id,

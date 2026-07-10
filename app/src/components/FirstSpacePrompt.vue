@@ -172,6 +172,13 @@ async function handleLogoUpload(event) {
     return;
   }
 
+  // The logo is stored inline in the space preferences, which every space
+  // request carries — keep it small.
+  if (file.size > 300 * 1024) {
+    error.value = "Logo file must be smaller than 300 KB";
+    return;
+  }
+
   try {
     let text = await file.text();
 

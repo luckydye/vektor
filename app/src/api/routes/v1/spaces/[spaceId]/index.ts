@@ -4,6 +4,7 @@ import {
   jsonResponse,
   parseJsonBody,
   requireParam,
+  requirePreferencesSize,
   requireUser,
   successResponse,
   verifySpaceRole,
@@ -61,6 +62,10 @@ export const PATCH: ApiRouteHandler = (context) =>
           Array.isArray(preferences))
       ) {
         throw badRequestResponse("preferences must be an object");
+      }
+
+      if (hasPreferences) {
+        requirePreferencesSize(preferences);
       }
 
       const space = await getSpace(spaceId);
