@@ -2,7 +2,7 @@ import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
 
 export const textElement: CanvasElementDefinition = {
   type: "text",
-  defaultText: "Text",
+  defaultText: "",
   defaultColor: "#ffffff",
   defaultSize: { width: 220, height: 88 },
   minSize: { width: 32, height: 40 },
