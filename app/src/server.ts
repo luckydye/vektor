@@ -2,46 +2,18 @@ import "./observability/bootstrap.ts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { dev } from "astro";
 import { Hono } from "hono";
-import { type WebSocket, WebSocketServer } from "ws";
-import * as Y from "yjs";
 import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
-import { auth } from "./auth.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
-import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
-import { subscribeToSyncEvents } from "./db/ws.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "./noAuth.ts";
 import { appLogger } from "./observability/logger.ts";
+import { attachRealtimeWebSocketServer } from "./realtime/websocket.ts";
 import {
   createEmbeddedClientAssetMiddleware,
   createFileSystemClientAssetMiddleware,
 } from "./utils/clientAssets.ts";
 import { APP_CSP } from "./utils/csp.ts";
-import {
-  isDocumentRealtimeTopic,
-  isWorkflowRunRealtimeTopic,
-  type PresenceEnvelope,
-  type PresenceJoinPayload,
-  type PresenceLeavePayload,
-  type PresenceUpdatePayload,
-  realtimeTopics,
-  WsMsgType,
-  wsDecode,
-  wsDecodeJson,
-  wsDecodeYjsUpdate,
-  wsEncode,
-  wsEncodeYjsUpdate,
-} from "./utils/realtime.ts";
-import {
-  getRoom,
-  loadYDoc,
-  persistYRoomDraft,
-  scheduleYRoomDraftPersist,
-  type YRoom,
-  yRooms,
-} from "./utils/yjsRooms.ts";
 
 type AstroMiddleware = (
   req: IncomingMessage,
@@ -49,25 +21,7 @@ type AstroMiddleware = (
   next: (error?: unknown) => void,
 ) => void | Promise<void>;
 
-function broadcastPresence(
-  room: YRoom,
-  sender: WebSocket,
-  type: WsMsgType,
-  payload: object,
-) {
-  const frame = wsEncode(type, payload);
-  for (const client of room.clients) {
-    if (client === sender || client.readyState !== 1) {
-      continue;
-    }
-    client.send(frame);
-  }
-}
-
 const app = new Hono<ApiBindings>();
-
-const realtimeWebSocketServer = new WebSocketServer({ noServer: true });
-const getWss = () => realtimeWebSocketServer;
 
 app.use("*", async (c, next) => {
   const res = c.env.outgoing;
@@ -123,308 +77,6 @@ app.use("*", async (c, next) => {
 
   await next();
 });
-
-const realtimeSpaceTopics = new Set<string>([
-  realtimeTopics.acl,
-  realtimeTopics.categories,
-  realtimeTopics.categoryDocuments,
-  realtimeTopics.documentTree,
-  realtimeTopics.documents,
-  realtimeTopics.properties,
-  realtimeTopics.workflowRuns,
-]);
-
-async function authorizeRealtimeTopic(
-  spaceId: string,
-  userId: string,
-  topic: string,
-): Promise<boolean> {
-  if (realtimeSpaceTopics.has(topic)) {
-    return true;
-  }
-
-  if (isDocumentRealtimeTopic(topic)) {
-    await verifyDocumentRole(spaceId, topic.slice("document:".length), userId, "viewer");
-    return true;
-  }
-
-  // Per-run topics are pure change signals; the run data itself is fetched via
-  // the ACL-checked run endpoints. The connection is already space-viewer authed.
-  if (isWorkflowRunRealtimeTopic(topic)) {
-    return true;
-  }
-
-  return false;
-}
-
-async function handleRealtimeWebSocket(
-  websocket: WebSocket,
-  request: IncomingMessage,
-  spaceId: string,
-) {
-  let userId: string;
-
-  if (isNoAuthMode()) {
-    userId = LOCAL_USER_ID;
-  } else {
-    const session = await auth.api.getSession({
-      headers: request.headers as unknown as Headers,
-    });
-
-    if (!session?.user?.id) {
-      websocket.send(wsEncode(WsMsgType.Error, { message: "Unauthorized" }));
-      websocket.close();
-      return;
-    }
-
-    try {
-      await verifySpaceRole(spaceId, session.user.id, "viewer");
-    } catch {
-      websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-      websocket.close();
-      return;
-    }
-
-    userId = session.user.id;
-  }
-
-  const subscriptions = new Set<string>();
-  const yjsRooms = new Set<string>();
-  // Rooms this connection may mutate (editor role). Viewers can join to receive
-  // state but may not send updates.
-  const yjsEditableRooms = new Set<string>();
-  const joinedPresence = new Map<string, Set<string>>();
-  const off = subscribeToSyncEvents((event) => {
-    if (event.spaceId !== spaceId) return;
-
-    const matchedEvents = event.events.filter(({ topic }) => subscriptions.has(topic));
-    if (matchedEvents.length === 0) return;
-
-    websocket.send(
-      wsEncode(WsMsgType.Event, {
-        topics: matchedEvents.map(({ topic }) => topic),
-        events: matchedEvents,
-        timestamp: event.timestamp,
-      }),
-    );
-  });
-
-  websocket.on("message", async (rawMessage: Buffer | ArrayBuffer | Buffer[]) => {
-    try {
-      const messageBuffer = Array.isArray(rawMessage)
-        ? Buffer.concat(rawMessage)
-        : Buffer.isBuffer(rawMessage)
-          ? rawMessage
-          : Buffer.from(rawMessage);
-      const { type, payload } = wsDecode(messageBuffer);
-
-      if (type === WsMsgType.YjsUpdate) {
-        const { documentId, update } = wsDecodeYjsUpdate(payload);
-        const roomKey = `${spaceId}:${documentId}`;
-        // Only editors may mutate the room. Viewers receive state on join but
-        // their updates are dropped (a read-only client should never produce
-        // them anyway).
-        if (!yjsEditableRooms.has(roomKey)) return;
-        const room = yRooms.get(roomKey);
-        if (!room?.doc) return;
-
-        Y.applyUpdate(room.doc, update, websocket);
-        scheduleYRoomDraftPersist(roomKey);
-
-        const frame = wsEncodeYjsUpdate(documentId, update);
-        for (const client of room.clients) {
-          if (client !== websocket && client.readyState === 1) {
-            client.send(frame);
-          }
-        }
-        return;
-      }
-
-      if (type === WsMsgType.YjsJoin) {
-        const { documentId } = wsDecodeJson<{ documentId: string }>(payload);
-        // Editors get read+write; viewers may still join to receive state
-        // (the room is the single source of truth for rendering). Anyone
-        // without view access is rejected.
-        let canEdit = false;
-        try {
-          await verifyDocumentRole(spaceId, documentId, userId, "editor");
-          canEdit = true;
-        } catch {
-          try {
-            await verifyDocumentRole(spaceId, documentId, userId, "viewer");
-          } catch {
-            websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-            return;
-          }
-        }
-
-        const roomKey = `${spaceId}:${documentId}`;
-        const room = getRoom(spaceId, documentId);
-        if (!room.doc) {
-          room.doc = await loadYDoc(spaceId, documentId);
-        }
-
-        room.clients.add(websocket);
-        yjsRooms.add(roomKey);
-        if (canEdit) yjsEditableRooms.add(roomKey);
-
-        websocket.send(wsEncodeYjsUpdate(documentId, Y.encodeStateAsUpdate(room.doc)));
-        return;
-      }
-
-      if (type === WsMsgType.PresenceJoin) {
-        const join = wsDecodeJson<PresenceJoinPayload>(payload);
-        try {
-          await verifyDocumentRole(spaceId, join.room, userId, "viewer");
-        } catch {
-          websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-          return;
-        }
-
-        const roomKey = `${spaceId}:${join.room}`;
-        const room = getRoom(spaceId, join.room);
-        room.clients.add(websocket);
-        const presence: PresenceEnvelope = {
-          room: join.room,
-          clientId: join.clientId,
-          user: join.user,
-          state: join.state ?? null,
-          updatedAt: new Date().toISOString(),
-        };
-        room.presences.set(join.clientId, presence);
-
-        const roomPresence = joinedPresence.get(roomKey) ?? new Set<string>();
-        roomPresence.add(join.clientId);
-        joinedPresence.set(roomKey, roomPresence);
-
-        websocket.send(
-          wsEncode(WsMsgType.PresenceSnapshot, {
-            room: join.room,
-            presences: [...room.presences.values()],
-          }),
-        );
-        broadcastPresence(room, websocket, WsMsgType.PresenceUpdate, {
-          presence,
-        });
-        return;
-      }
-
-      if (type === WsMsgType.PresenceUpdate) {
-        const update = wsDecodeJson<PresenceUpdatePayload>(payload);
-        try {
-          await verifyDocumentRole(spaceId, update.room, userId, "viewer");
-        } catch {
-          websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
-          return;
-        }
-
-        const room = yRooms.get(`${spaceId}:${update.room}`);
-        const existingPresence = room?.presences.get(update.clientId);
-        if (!room || !existingPresence) {
-          return;
-        }
-
-        const presence: PresenceEnvelope = {
-          ...existingPresence,
-          state: update.state,
-          updatedAt: new Date().toISOString(),
-        };
-        room.presences.set(update.clientId, presence);
-        broadcastPresence(room, websocket, WsMsgType.PresenceUpdate, {
-          presence,
-        });
-        return;
-      }
-
-      if (type === WsMsgType.PresenceLeave) {
-        const leave = wsDecodeJson<PresenceLeavePayload>(payload);
-        const roomKey = `${spaceId}:${leave.room}`;
-        const room = yRooms.get(roomKey);
-        if (!room) {
-          return;
-        }
-        room.presences.delete(leave.clientId);
-        joinedPresence.get(roomKey)?.delete(leave.clientId);
-        broadcastPresence(room, websocket, WsMsgType.PresenceLeave, {
-          room: leave.room,
-          clientId: leave.clientId,
-          timestamp: new Date().toISOString(),
-        });
-
-        if (room.clients.size === 0 && room.presences.size === 0) {
-          yRooms.delete(roomKey);
-        }
-        return;
-      }
-
-      if (type !== WsMsgType.Subscribe && type !== WsMsgType.Unsubscribe) {
-        throw new Error("Unsupported message type");
-      }
-
-      const { topics } = wsDecodeJson<{ topics: string[] }>(payload);
-      const authorizedTopics = new Set<string>();
-      for (const topic of topics) {
-        if (await authorizeRealtimeTopic(spaceId, userId, topic)) {
-          authorizedTopics.add(topic);
-        }
-      }
-
-      if (authorizedTopics.size !== topics.length) {
-        websocket.send(
-          wsEncode(WsMsgType.Error, {
-            message: "One or more realtime topics are forbidden",
-          }),
-        );
-      }
-
-      if (type === WsMsgType.Subscribe) {
-        for (const topic of authorizedTopics) subscriptions.add(topic);
-      } else {
-        for (const topic of authorizedTopics) subscriptions.delete(topic);
-      }
-    } catch (error) {
-      appLogger.warn("Failed to handle realtime message", { error, spaceId });
-      websocket.send(wsEncode(WsMsgType.Error, { message: "Invalid message" }));
-    }
-  });
-
-  websocket.on("close", () => {
-    off();
-
-    for (const roomKey of yjsRooms) {
-      const room = yRooms.get(roomKey);
-      if (!room) continue;
-      void persistYRoomDraft(roomKey);
-      room.clients.delete(websocket);
-      if (room.clients.size === 0 && room.presences.size === 0) {
-        yRooms.delete(roomKey);
-      }
-    }
-
-    for (const [roomKey, clientIds] of joinedPresence.entries()) {
-      const room = yRooms.get(roomKey);
-      if (!room) {
-        continue;
-      }
-
-      for (const clientId of clientIds) {
-        room.presences.delete(clientId);
-        broadcastPresence(room, websocket, WsMsgType.PresenceLeave, {
-          room: roomKey.slice(spaceId.length + 1),
-          clientId,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      room.clients.delete(websocket);
-      if (room.clients.size === 0 && room.presences.size === 0) {
-        yRooms.delete(roomKey);
-      }
-    }
-
-    appLogger.info("Realtime WebSocket connection closed", { spaceId });
-  });
-}
 
 function buildHeaders(req: IncomingMessage): Headers {
   const headers = new Headers();
@@ -599,24 +251,13 @@ const server = createServer(async (req, res) => {
   }
 });
 
+const realtimeWebSocketServer = attachRealtimeWebSocketServer(server);
+
 server.listen(port, host, () => {
   appLogger.info("Server listening", { host, port });
 });
 
 startCronScheduler();
-
-server.on("upgrade", (request, socket, head) => {
-  const url = new URL(request.url ?? "/", "http://localhost");
-  const match = url.pathname.match(/^\/events\/([^/]+)$/);
-  if (!match) {
-    socket.destroy();
-    return;
-  }
-
-  realtimeWebSocketServer.handleUpgrade(request, socket, head, (websocket) => {
-    void handleRealtimeWebSocket(websocket, request, match[1]);
-  });
-});
 
 let isShuttingDown = false;
 let forcedShutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -643,13 +284,6 @@ async function shutdown(reason: string, exitCode = 0) {
 
   try {
     realtimeWebSocketServer.close();
-    for (const client of getWss().clients) {
-      try {
-        client.close();
-      } catch (error) {
-        appLogger.warn("Failed to close WebSocket client", { error });
-      }
-    }
 
     await new Promise<void>((resolve, reject) => {
       server.close((error: unknown) => {

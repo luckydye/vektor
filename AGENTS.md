@@ -17,7 +17,8 @@
 - Prefere to seperate UI rendering from data handling. Data and logic should be provided to a UI component, not computed inside the component.
 - Do not worry about backwards compatibility, unless requested otherwise.
 - ALWAYS mark backwards compatible code paths or depricated functions as deprecated when encountered
-- Do NOT include backwards compatibility comments or code for code that has not been committed yet!
+- Unless the code is committed, feel free to completly change or refactor it, without backwards compatibility concerns.
+- Staging / unstaged is controlled by humans, do not worry about or modify it. Also do not run any git commands unless prompted to.
 - Important: Before implementing a "fix" or adding a new feature, ALWAYS look for a reason not to write new code. It may already exist in a similar from in the codebase.
 - NEVER just run tests and checks after doing something, I tell you when we are done and should check the code.
 
