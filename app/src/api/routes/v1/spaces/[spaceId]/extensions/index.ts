@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { Feature, getUserGroups, hasFeature } from "#db/acl.ts";
 import {
   authenticateRequest,
@@ -30,9 +30,9 @@ import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
  * List extension metadata in a space.
  * Jobs may list all extensions in the space; user sessions only see extensions they can access.
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     const { extensions: allExtensions, errors: manifestErrors } =
@@ -75,12 +75,12 @@ export const GET: APIRoute = (context) =>
  * POST /api/v1/spaces/:spaceId/extensions
  * Upload a new extension (zip file)
  */
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
 
-      const formData = await context.request.formData();
+      const formData = await context.req.raw.formData();
       const file = formData.get("file") as File | null;
 
       if (!file) {
@@ -120,7 +120,7 @@ export const POST: APIRoute = (context) =>
       const extensionId = manifest.id;
 
       let createdBy: string;
-      const jobTokenHeader = context.request.headers.get("X-Job-Token");
+      const jobTokenHeader = context.req.raw.headers.get("X-Job-Token");
       if (jobTokenHeader) {
         const parsed = parseJobToken(jobTokenHeader, spaceId);
         if (!parsed) throw forbiddenResponse("Invalid job token");

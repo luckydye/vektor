@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { deleteAIConfig, getAIConfigMeta, setAIConfig } from "#db/aiConfig.ts";
 import {
   badRequestResponse,
@@ -11,20 +11,20 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "editor");
 
     const meta = await getAIConfigMeta(spaceId);
     return jsonResponse({ aiProvider: meta });
   }, "Failed to get AI provider config");
 
-export const PUT: APIRoute = (context) =>
+export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "owner");
 
     const body = await parseJsonBody<{
@@ -32,7 +32,7 @@ export const PUT: APIRoute = (context) =>
       model?: string;
       apiKey?: string;
       baseUrl?: string;
-    }>(context.request);
+    }>(context.req.raw);
 
     if (typeof body.provider !== "string") {
       throw badRequestResponse("provider is required");
@@ -78,10 +78,10 @@ export const PUT: APIRoute = (context) =>
     return jsonResponse({ aiProvider: meta });
   }, "Failed to update AI provider config");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "owner");
 
     await deleteAIConfig(spaceId);

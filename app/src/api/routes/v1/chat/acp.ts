@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
 import { getLocalOrigin } from "#config";
@@ -618,10 +618,10 @@ function getOrStartActiveChatTurn(options: {
 // POST handler
 // ---------------------------------------------------------------------------
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const body = await parseJsonBody<AcpJsonRpcRequest>(context.request);
+      const body = await parseJsonBody<AcpJsonRpcRequest>(context.req.raw);
 
       if (body.jsonrpc !== "2.0" || !body.method) {
         return badRequestResponse("Invalid JSON-RPC 2.0 request");
@@ -663,10 +663,10 @@ export const POST: APIRoute = (context) =>
         let jobToken: string;
         let userId: string | null = null;
 
-        const providedJobToken = context.request.headers.get("X-Job-Token");
+        const providedJobToken = context.req.raw.headers.get("X-Job-Token");
         if (providedJobToken) {
           // Job-to-job: verify and reuse the provided token as-is.
-          const headerSpaceId = context.request.headers.get("X-Space-Id");
+          const headerSpaceId = context.req.raw.headers.get("X-Space-Id");
           if (!headerSpaceId || !verifyJobToken(providedJobToken, headerSpaceId)) {
             throw unauthorizedResponse();
           }
@@ -771,9 +771,9 @@ export const POST: APIRoute = (context) =>
 
         let userId: string | null = null;
 
-        const cancelJobToken = context.request.headers.get("X-Job-Token");
+        const cancelJobToken = context.req.raw.headers.get("X-Job-Token");
         if (cancelJobToken) {
-          const headerSpaceId = context.request.headers.get("X-Space-Id");
+          const headerSpaceId = context.req.raw.headers.get("X-Space-Id");
           if (!headerSpaceId || !verifyJobToken(cancelJobToken, headerSpaceId)) {
             throw unauthorizedResponse();
           }

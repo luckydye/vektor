@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   calDavUnauthorized,
   optionsPreflight,
@@ -13,9 +13,9 @@ import {
  * @example
  * curl -X PROPFIND -u user@example.com:password http://localhost:4321/.well-known/caldav
  */
-export const ALL: APIRoute = async (context) => {
-  if (context.request.method === "OPTIONS") return optionsPreflight();
-  const caldavUser = await verifyBasicAuth(context.request.headers.get("Authorization"));
+export const ALL: ApiRouteHandler = async (context) => {
+  if (context.req.raw.method === "OPTIONS") return optionsPreflight();
+  const caldavUser = await verifyBasicAuth(context.req.raw.headers.get("Authorization"));
   if (!caldavUser) return calDavUnauthorized();
 
   const body = `<?xml version="1.0" encoding="utf-8" ?>

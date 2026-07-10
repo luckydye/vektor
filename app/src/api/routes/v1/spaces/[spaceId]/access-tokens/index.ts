@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   createAccessToken,
   getTokenUserId,
@@ -28,10 +28,10 @@ import {
  * GET /api/v1/spaces/:spaceId/access-tokens
  * List all access tokens and their permissions in this space
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifySpaceRole(spaceId, user.id, "editor");
 
@@ -62,15 +62,15 @@ export const GET: APIRoute = (context) =>
  *   - permission: "viewer" | "editor" | "owner"
  *   - expiresInDays: Optional expiration in days
  */
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
     // Token creation is a privileged delegation; restrict to space owners.
     await verifySpaceRole(spaceId, user.id, "owner");
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { name, resourceType, resourceId, permission, expiresInDays } = body;
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {

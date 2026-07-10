@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   escapeXml,
   optionsPreflight,
@@ -10,9 +10,9 @@ import {
  * CalDAV principal endpoint.
  * Returns calendar-home-set and calendar-user-address-set for a user.
  */
-export const ALL: APIRoute = async (context) => {
-  if (context.request.method === "OPTIONS") return optionsPreflight();
-  const { userId } = context.params;
+export const ALL: ApiRouteHandler = async (context) => {
+  if (context.req.raw.method === "OPTIONS") return optionsPreflight();
+  const { userId } = context.var.params;
   const caldavUser = await requireCalDAVUserAndAccess(context, { userId });
   if (caldavUser instanceof Response) return caldavUser;
 

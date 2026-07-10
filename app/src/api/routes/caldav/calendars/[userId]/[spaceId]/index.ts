@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getUserGroups } from "#db/acl.ts";
 import {
   documentToICal,
@@ -13,14 +13,14 @@ import { listDocuments } from "#db/documents.ts";
  * - PROPFIND: returns calendar metadata
  * - REPORT: returns all documents as VEVENT iCal data
  */
-export const ALL: APIRoute = async (context) => {
-  if (context.request.method === "OPTIONS") return optionsPreflight();
-  const { userId, spaceId } = context.params;
+export const ALL: ApiRouteHandler = async (context) => {
+  if (context.req.raw.method === "OPTIONS") return optionsPreflight();
+  const { userId, spaceId } = context.var.params;
   if (!spaceId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
   if (caldavUser instanceof Response) return caldavUser;
 
-  const method = context.request.method.toUpperCase();
+  const method = context.req.raw.method.toUpperCase();
 
   if (method === "REPORT") {
     // Filter by per-document ACL so the calendar feed doesn't expose

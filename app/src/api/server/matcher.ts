@@ -15,7 +15,7 @@ const SEGMENT_LITERAL = 2;
 const SEGMENT_PARAM = 1;
 const SEGMENT_REST = 0;
 
-/** Compile an Astro-style pattern (e.g. `/api/v1/spaces/[spaceId]`) into a matcher. */
+/** Compile a bracket-parameter pattern (e.g. `/api/v1/spaces/[spaceId]`) into a matcher. */
 export function compileRoute(pattern: string, module: ApiRouteModule): CompiledRoute {
   const segments = pattern.split("/").filter((s) => s.length > 0);
   const paramNames: string[] = [];

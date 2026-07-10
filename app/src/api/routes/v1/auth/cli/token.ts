@@ -9,15 +9,15 @@
  * Returns: { token: string, spaceId: string }
  */
 
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { pendingCliCodes } from "#api/routes/v1/auth/cli.ts";
 import { createAccessToken, grantTokenAccess } from "#db/accessTokens.ts";
 import { ResourceType } from "#db/acl.ts";
 import { badRequestResponse, parseJsonBody, withApiErrorHandling } from "#db/api.ts";
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { code } = body;
 
     if (!code || typeof code !== "string") {

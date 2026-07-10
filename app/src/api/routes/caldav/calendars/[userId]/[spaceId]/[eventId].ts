@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   CORS_HEADERS,
   documentToICal,
@@ -15,10 +15,10 @@ import { createDocument, getDocument, updateDocumentProperty } from "#db/documen
  *        On create, responds 201 with a Location header pointing to the canonical URL.
  * The eventId parameter includes the .ics extension (e.g., {docId}.ics).
  */
-export const OPTIONS: APIRoute = () => optionsPreflight();
+export const OPTIONS: ApiRouteHandler = () => optionsPreflight();
 
-export const GET: APIRoute = async (context) => {
-  const { userId, spaceId, eventId } = context.params;
+export const GET: ApiRouteHandler = async (context) => {
+  const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, { userId, spaceId });
   if (caldavUser instanceof Response) return caldavUser;
@@ -36,8 +36,8 @@ export const GET: APIRoute = async (context) => {
   });
 };
 
-export const PUT: APIRoute = async (context) => {
-  const { userId, spaceId, eventId } = context.params;
+export const PUT: ApiRouteHandler = async (context) => {
+  const { userId, spaceId, eventId } = context.var.params;
   if (!spaceId || !eventId) return new Response("Bad Request", { status: 400 });
   const caldavUser = await requireCalDAVUserAndAccess(context, {
     userId,
@@ -46,7 +46,7 @@ export const PUT: APIRoute = async (context) => {
   });
   if (caldavUser instanceof Response) return caldavUser;
 
-  const icalText = await context.request.text();
+  const icalText = await context.req.raw.text();
   const event = parseICalEvent(icalText);
   if (!event) return new Response("Bad Request", { status: 400 });
 

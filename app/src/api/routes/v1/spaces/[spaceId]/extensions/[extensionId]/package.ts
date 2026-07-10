@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   notFoundResponse,
   requireParam,
@@ -14,11 +14,11 @@ import { getSpace } from "#db/spaces.ts";
  * Download the raw extension ZIP. Useful for debugging broken packages.
  * Owners only (same restriction as delete).
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const extensionId = requireParam(context.params, "extensionId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const extensionId = requireParam(context.var.params, "extensionId");
 
     await verifySpaceOwnership(spaceId, user.id, getSpace);
 

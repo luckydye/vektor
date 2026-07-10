@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { badRequestResponse, requireUser, withApiErrorHandling } from "#db/api.ts";
 import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
 
@@ -12,11 +12,11 @@ const HEADERS_TO_FORWARD = [
   "accept-ranges",
 ];
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     requireUser(context);
 
-    const url = context.url.searchParams.get("url");
+    const url = new URL(context.req.url).searchParams.get("url");
     if (!url) throw badRequestResponse("url parameter is required");
 
     try {
@@ -35,7 +35,7 @@ export const GET: APIRoute = (context) =>
     const upstreamHeaders: HeadersInit = {
       "User-Agent": "Mozilla/5.0 (compatible; VektorBot/1.0)",
     };
-    const range = context.request.headers.get("range");
+    const range = context.req.raw.headers.get("range");
     if (range) upstreamHeaders.Range = range;
 
     const controller = new AbortController();

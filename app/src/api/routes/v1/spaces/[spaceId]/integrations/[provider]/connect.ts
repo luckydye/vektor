@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -22,11 +22,11 @@ import {
   normalizeRedirectPath,
 } from "#integrations/oauthUtils.ts";
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const providerParam = requireParam(context.params, "provider");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const providerParam = requireParam(context.var.params, "provider");
 
     if (!isOAuthIntegrationProvider(providerParam)) {
       throw badRequestResponse("Unsupported integration provider");
@@ -34,7 +34,7 @@ export const POST: APIRoute = (context) =>
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const body = await parseJsonBodyOrEmpty<{ redirectTo?: string }>(context.request);
+    const body = await parseJsonBodyOrEmpty<{ redirectTo?: string }>(context.req.raw);
     const redirectTo = normalizeRedirectPath(
       typeof body.redirectTo === "string" ? body.redirectTo : null,
     );

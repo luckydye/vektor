@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -19,10 +19,10 @@ import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
       const user = requireUser(context);
       await verifySpaceRole(spaceId, user.id, "viewer");
 
@@ -43,15 +43,15 @@ export const GET: APIRoute = (context) =>
     },
   );
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
       const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
       const isJobAuth = auth.type === "job";
 
       // Parse the form data
-      const formData = await context.request.formData();
+      const formData = await context.req.raw.formData();
       const file = formData.get("file") as Blob | null;
       const originalName =
         (formData.get("filename") as string | null) ??

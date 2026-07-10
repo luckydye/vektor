@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getAIProvider } from "#db/aiConfig.ts";
 import {
   badRequestResponse,
@@ -16,30 +16,30 @@ import {
   getOpenAICompatibleHeaders,
 } from "#provider/openaiCompatible.ts";
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const spaceId = context.request.headers.get("X-Space-Id");
+      const spaceId = context.req.raw.headers.get("X-Space-Id");
       if (!spaceId) {
         throw badRequestResponse("X-Space-Id header is required");
       }
 
-      if (!context.locals.user) {
-        const jobToken = context.request.headers.get("X-Job-Token");
+      if (!context.var.user) {
+        const jobToken = context.req.raw.headers.get("X-Job-Token");
         if (!jobToken || !verifyJobToken(jobToken, spaceId)) {
           throw unauthorizedResponse();
         }
       }
 
       const provider = await getAIProvider(spaceId);
-      const bodyJson = await parseJsonBody(context.request);
+      const bodyJson = await parseJsonBody(context.req.raw);
 
       if (provider.provider === "anthropic") {
         return proxyToAnthropic(
           provider.apiKey,
           provider.model,
           bodyJson,
-          context.request.signal,
+          context.req.raw.signal,
         );
       }
       if (provider.provider === "ollama") {
@@ -47,7 +47,7 @@ export const POST: APIRoute = (context) =>
           provider.baseUrl,
           provider.model,
           bodyJson,
-          context.request.signal,
+          context.req.raw.signal,
         );
       }
 
@@ -56,7 +56,7 @@ export const POST: APIRoute = (context) =>
         method: "POST",
         headers: getOpenAICompatibleHeaders(provider),
         body: JSON.stringify(bodyJson),
-        signal: context.request.signal,
+        signal: context.req.raw.signal,
       });
 
       await logChatCompletionUpstreamFailure(provider.provider, provider.model, response);

@@ -1,8 +1,7 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { auth } from "#auth";
 
-export const ALL: APIRoute = async (ctx) => {
-  // If you want to use rate limiting, make sure to set the 'x-forwarded-for' header to the request headers from the context
-  // ctx.request.headers.set("x-forwarded-for", ctx.clientAddress);
-  return auth.handler(ctx.request);
+export const ALL: ApiRouteHandler = async (ctx) => {
+  // Keep better-auth's rate-limit identity pinned to the trusted client IP.
+  return auth.handler(new Request(ctx.req.raw, { headers: ctx.var.requestHeaders }));
 };

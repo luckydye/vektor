@@ -1,4 +1,4 @@
-import type { APIContext } from "astro";
+import type { ApiContext } from "#api/server/types.ts";
 import { eq } from "drizzle-orm";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 import { propertyValueToText } from "#utils/documentProperties.ts";
@@ -20,12 +20,12 @@ export interface CalDAVUser {
  * Session auth is checked first (for browser-based clients), then Basic auth
  * with email:access_token (for external CalDAV clients).
  */
-export async function verifyCalDAVUser(context: APIContext): Promise<CalDAVUser | null> {
-  const sessionUser = context.locals.user;
+export async function verifyCalDAVUser(context: ApiContext): Promise<CalDAVUser | null> {
+  const sessionUser = context.var.user;
   if (sessionUser) {
     return { id: sessionUser.id, email: sessionUser.email, name: sessionUser.name };
   }
-  return verifyBasicAuth(context.request.headers.get("Authorization"));
+  return verifyBasicAuth(context.req.raw.headers.get("Authorization"));
 }
 
 /**
@@ -317,7 +317,7 @@ export function calDavForbidden(): Response {
 }
 
 export async function requireCalDAVUserAndAccess(
-  context: APIContext,
+  context: ApiContext,
   options: { userId?: string; spaceId?: string; requiredRole?: string },
 ): Promise<CalDAVUser | Response> {
   const caldavUser = await verifyCalDAVUser(context);

@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { Feature } from "#db/acl.ts";
 import {
   badRequestResponse,
@@ -20,11 +20,11 @@ import {
   updateRevisionStatus,
 } from "#db/revisions.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
@@ -36,12 +36,12 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ revisions });
   }, "Failed to list revisions");
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
-    const revParam = context.url.searchParams.get("rev");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
+    const revParam = new URL(context.req.url).searchParams.get("rev");
 
     if (!revParam) {
       throw badRequestResponse("Revision query parameter is required");
@@ -49,9 +49,9 @@ export const POST: APIRoute = (context) =>
 
     await verifyDocumentRole(spaceId, documentId, user.id, "editor");
 
-    const rev = parseQueryInt(context.url.searchParams, "rev", { min: 1 });
+    const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
 
-    const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.request);
+    const body = await parseJsonBodyOrEmpty<{ message?: string }>(context.req.raw);
     const message = typeof body.message === "string" ? body.message : undefined;
     const revision = await restoreRevision(spaceId, documentId, rev, user.id, message);
 
@@ -70,12 +70,12 @@ export const POST: APIRoute = (context) =>
     });
   }, "Failed to restore revision");
 
-export const PATCH: APIRoute = (context) =>
+export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
-    const revParam = context.url.searchParams.get("rev");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
+    const revParam = new URL(context.req.url).searchParams.get("rev");
 
     if (!revParam) {
       throw badRequestResponse("Revision query parameter is required");
@@ -83,8 +83,8 @@ export const PATCH: APIRoute = (context) =>
 
     await verifyDocumentRole(spaceId, documentId, user.id, "editor");
 
-    const rev = parseQueryInt(context.url.searchParams, "rev", { min: 1 });
-    const body = await parseJsonBodyOrEmpty<{ status?: unknown }>(context.request);
+    const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
+    const body = await parseJsonBodyOrEmpty<{ status?: unknown }>(context.req.raw);
     const status = body.status;
 
     if (status !== "open" && status !== "applied" && status !== "dismissed") {

@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -18,11 +18,11 @@ import {
   isOAuthIntegrationProvider,
 } from "#integrations/oauthProviders.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const providerParam = requireParam(context.params, "provider");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const providerParam = requireParam(context.var.params, "provider");
 
     if (!isOAuthIntegrationProvider(providerParam)) {
       throw badRequestResponse("Unsupported integration provider");
@@ -55,11 +55,11 @@ export const GET: APIRoute = (context) =>
     });
   }, "Failed to get integration status");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const providerParam = requireParam(context.params, "provider");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const providerParam = requireParam(context.var.params, "provider");
 
     if (!isOAuthIntegrationProvider(providerParam)) {
       throw badRequestResponse("Unsupported integration provider");

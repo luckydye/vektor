@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { ResourceType } from "#db/acl.ts";
 import {
   badRequestResponse,
@@ -16,11 +16,11 @@ import { deleteCategory, getCategory, updateCategory } from "#db/categories.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 
 async function verifyCategoryRead(
-  context: Parameters<APIRoute>[0],
+  context: Parameters<ApiRouteHandler>[0],
   spaceId: string,
   id: string,
 ) {
-  if (context.request.headers.get("X-Job-Token")) {
+  if (context.req.raw.headers.get("X-Job-Token")) {
     await authenticateSpaceAccess(context, spaceId, "viewer");
     return;
   }
@@ -38,10 +38,10 @@ async function verifyCategoryRead(
   await verifyCategoryRole(spaceId, id, null, "viewer");
 }
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "id");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "id");
     await verifyCategoryRead(context, spaceId, id);
 
     const categoryData = await getCategory(spaceId, id);
@@ -52,16 +52,16 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ category: categoryData });
   }, "Failed to get category");
 
-export const PUT: APIRoute = (context) =>
+export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "id");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "id");
     await authenticateJobTokenOrSpaceRole(context, spaceId, "editor", {
       type: ResourceType.CATEGORY,
       id,
     });
 
-    const body = (await parseJsonBody(context.request)) as Record<string, unknown>;
+    const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name : undefined;
     const slug = typeof body.slug === "string" ? body.slug : undefined;
     const description =
@@ -90,10 +90,10 @@ export const PUT: APIRoute = (context) =>
     return jsonResponse({ category: categoryData });
   }, "Failed to update category");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "id");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "id");
     await authenticateJobTokenOrSpaceRole(context, spaceId, "editor", {
       type: ResourceType.CATEGORY,
       id,

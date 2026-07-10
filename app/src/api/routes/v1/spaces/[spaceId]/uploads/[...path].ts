@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { eq } from "drizzle-orm";
 import { requireParam, withApiErrorHandling } from "#db/api.ts";
 import { getSpaceDb } from "#db/db.ts";
@@ -45,11 +45,11 @@ const MIME_TYPES: Record<string, string> = {
   obj: "model/obj",
 };
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const spaceId = requireParam(context.params, "spaceId");
-      const path = requireParam(context.params, "path");
+      const spaceId = requireParam(context.var.params, "spaceId");
+      const path = requireParam(context.var.params, "path");
 
       await authenticateSpaceAccess(context, spaceId, "viewer");
 
@@ -71,7 +71,7 @@ export const GET: APIRoute = (context) =>
       // If transform params are present, serve via the transform+cache path.
       // This bypasses redirectUrl so the server can read, transform, and cache
       // the result locally regardless of the storage backend.
-      const transformParams = parseTransformParams(context.url.searchParams, extension);
+      const transformParams = parseTransformParams(new URL(context.req.url).searchParams, extension);
       if (transformParams) {
         return serveTransformed(spaceId, path, transformParams, storage);
       }
@@ -116,7 +116,7 @@ export const GET: APIRoute = (context) =>
         "X-Content-Type-Options": "nosniff",
       };
 
-      const rangeHeader = context.request.headers.get("range");
+      const rangeHeader = context.req.raw.headers.get("range");
       if (rangeHeader) {
         const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
         const start = match?.[1]
@@ -169,11 +169,11 @@ export const GET: APIRoute = (context) =>
     },
   );
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const spaceId = requireParam(context.params, "spaceId");
-      const path = requireParam(context.params, "path");
+      const spaceId = requireParam(context.var.params, "spaceId");
+      const path = requireParam(context.var.params, "path");
 
       await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 

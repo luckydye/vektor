@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getUserGroups } from "#db/acl.ts";
 import {
   jsonResponse,
@@ -10,11 +10,11 @@ import {
 } from "#db/api.ts";
 import { getDocument, getDocumentChildren } from "#db/documents.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
     await verifyDocumentAccess(spaceId, id, user.id);
 
     const document = await getDocument(spaceId, id);

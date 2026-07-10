@@ -14,7 +14,7 @@
  *   data: { type: "error",  error: string }
  *   data: [DONE]
  */
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -29,10 +29,10 @@ import { runJob } from "#jobs/scheduler.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async (span) => {
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
 
       // Auth: job token OR user session
       const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
@@ -42,7 +42,7 @@ export const POST: APIRoute = (context) =>
         jobId?: string;
         inputs?: Record<string, unknown>;
         stream?: boolean;
-      }>(context.request);
+      }>(context.req.raw);
       const { jobId, inputs = {} } = body;
       if (jobId) span?.setAttribute("wiki.job.id", jobId);
 
@@ -85,7 +85,7 @@ export const POST: APIRoute = (context) =>
                 spaceId,
                 (message) => send({ type: "log", message }),
                 {
-                  signal: context.request.signal,
+                  signal: context.req.raw.signal,
                   initiatedByUserId,
                   jobType: "single_job",
                   jobId,

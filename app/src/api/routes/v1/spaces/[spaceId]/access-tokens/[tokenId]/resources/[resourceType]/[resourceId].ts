@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   grantTokenAccess,
   listTokenResources,
@@ -23,13 +23,13 @@ import {
  * Body:
  *   - permission: "viewer" | "editor"
  */
-export const PUT: APIRoute = (context) =>
+export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const tokenId = requireParam(context.params, "tokenId");
-    const resourceType = requireParam(context.params, "resourceType");
-    const resourceId = requireParam(context.params, "resourceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const tokenId = requireParam(context.var.params, "tokenId");
+    const resourceType = requireParam(context.var.params, "resourceType");
+    const resourceId = requireParam(context.var.params, "resourceId");
 
     // Granting token access is a privileged delegation; restrict to owners.
     await verifySpaceRole(spaceId, user.id, "owner");
@@ -40,7 +40,7 @@ export const PUT: APIRoute = (context) =>
       );
     }
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { permission } = body;
 
     if (!permission || typeof permission !== "string") {
@@ -73,13 +73,13 @@ export const PUT: APIRoute = (context) =>
  * DELETE /api/v1/spaces/:spaceId/access-tokens/:tokenId/resources/:resourceType/:resourceId
  * Revoke token access to a specific resource in this space.
  */
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const tokenId = requireParam(context.params, "tokenId");
-    const resourceType = requireParam(context.params, "resourceType");
-    const resourceId = requireParam(context.params, "resourceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const tokenId = requireParam(context.var.params, "tokenId");
+    const resourceType = requireParam(context.var.params, "resourceType");
+    const resourceId = requireParam(context.var.params, "resourceId");
 
     await verifySpaceRole(spaceId, user.id, "owner");
 

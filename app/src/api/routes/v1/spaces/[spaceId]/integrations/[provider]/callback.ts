@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   requireParam,
@@ -35,9 +35,9 @@ async function resolveFallbackPath(spaceId: string): Promise<string> {
   return defaultSettingsPath(space.slug);
 }
 
-export const GET: APIRoute = async (context) => {
-  const spaceId = requireParam(context.params, "spaceId");
-  const providerParam = requireParam(context.params, "provider");
+export const GET: ApiRouteHandler = async (context) => {
+  const spaceId = requireParam(context.var.params, "spaceId");
+  const providerParam = requireParam(context.var.params, "provider");
 
   if (!isOAuthIntegrationProvider(providerParam)) {
     return badRequestResponse("Unsupported integration provider");
@@ -57,7 +57,7 @@ export const GET: APIRoute = async (context) => {
     const user = requireUser(context);
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const url = new URL(context.request.url);
+    const url = new URL(context.req.raw.url);
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
     const oauthError = url.searchParams.get("error");

@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -21,10 +21,10 @@ import {
 } from "#db/spaceSecrets.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const name = requireParam(context.params, "name");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const name = requireParam(context.var.params, "name");
     const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
     const userId = auth.type === "user" ? auth.user.id : auth.userId;
 
@@ -43,17 +43,17 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ name, value });
   }, "Failed to get secret");
 
-export const PUT: APIRoute = (context) =>
+export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const name = requireParam(context.params, "name");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const name = requireParam(context.var.params, "name");
     await verifySpaceRole(spaceId, user.id, "owner");
 
     const body = await parseJsonBody<{
       value?: string;
       description?: string | null;
-    }>(context.request);
+    }>(context.req.raw);
 
     if (typeof body.value !== "string") {
       throw badRequestResponse("value is required");
@@ -83,11 +83,11 @@ export const PUT: APIRoute = (context) =>
     return jsonResponse({ secret });
   }, "Failed to update secret");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const name = requireParam(context.params, "name");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const name = requireParam(context.var.params, "name");
     await verifySpaceRole(spaceId, user.id, "owner");
 
     const deleted = await deleteSpaceSecret(spaceId, name);
@@ -98,11 +98,11 @@ export const DELETE: APIRoute = (context) =>
     return successResponse();
   }, "Failed to delete secret");
 
-export const HEAD: APIRoute = (context) =>
+export const HEAD: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const name = requireParam(context.params, "name");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const name = requireParam(context.var.params, "name");
     await verifySpaceRole(spaceId, user.id, "editor");
 
     const secret = await getSpaceSecretMetadata(spaceId, name);

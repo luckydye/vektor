@@ -4,8 +4,9 @@ import type { dev } from "astro";
 import { Hono } from "hono";
 import { type WebSocket, WebSocketServer } from "ws";
 import * as Y from "yjs";
-import { sendWebResponse } from "./api/server/adapter.ts";
+import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter } from "./api/server/router.ts";
+import type { ApiBindings } from "./api/server/types.ts";
 import { auth } from "./auth.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
 import { verifyDocumentRole, verifySpaceRole } from "./db/api.ts";
@@ -42,11 +43,6 @@ import {
   yRooms,
 } from "./utils/yjsRooms.ts";
 
-type Bindings = {
-  incoming: IncomingMessage;
-  outgoing: ServerResponse;
-};
-
 type AstroMiddleware = (
   req: IncomingMessage,
   res: ServerResponse,
@@ -68,7 +64,7 @@ function broadcastPresence(
   }
 }
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<ApiBindings>();
 
 const realtimeWebSocketServer = new WebSocketServer({ noServer: true });
 const getWss = () => realtimeWebSocketServer;
@@ -444,6 +440,15 @@ function buildHeaders(req: IncomingMessage): Headers {
 }
 
 function requestUrl(req: IncomingMessage): string {
+  const siteUrl = config().SITE_URL;
+  if (siteUrl) {
+    try {
+      return `${new URL(siteUrl).origin}${req.url ?? "/"}`;
+    } catch {
+      // Fall through to the request-derived origin for invalid configuration.
+    }
+  }
+
   const socketEncrypted = (req.socket as { encrypted?: boolean })?.encrypted;
   const forwardedProto = isTrustProxyEnabled()
     ? req.headers["x-forwarded-proto"]
@@ -516,8 +521,8 @@ async function runAstroHandler(
 }
 
 // Serve the API directly from Hono so it can operate without the Astro
-// frontend. The API adapter reads the raw Node request body itself so JSON,
-// multipart, binary uploads, and CalDAV requests keep their original bytes.
+// frontend. Hono retains ownership of request bodies for JSON, multipart,
+// binary uploads, and CalDAV requests.
 app.use("*", apiRouter);
 
 // The Astro frontend is optional: set VEKTOR_API_ONLY=1 to run a headless API

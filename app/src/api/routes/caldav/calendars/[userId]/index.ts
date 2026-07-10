@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   escapeXml,
   optionsPreflight,
@@ -12,9 +12,9 @@ import { listUserSpaces } from "#db/spaces.ts";
  * Lists all spaces accessible to the user as CalDAV calendars.
  * Responds to PROPFIND with Depth: 1.
  */
-export const ALL: APIRoute = async (context) => {
-  if (context.request.method === "OPTIONS") return optionsPreflight();
-  const { userId } = context.params;
+export const ALL: ApiRouteHandler = async (context) => {
+  if (context.req.raw.method === "OPTIONS") return optionsPreflight();
+  const { userId } = context.var.params;
   const caldavUser = await requireCalDAVUserAndAccess(context, { userId });
   if (caldavUser instanceof Response) return caldavUser;
 

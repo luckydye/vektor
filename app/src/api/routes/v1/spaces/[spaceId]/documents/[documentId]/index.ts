@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { eq } from "drizzle-orm";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import { ResourceType } from "#db/acl.ts";
@@ -220,15 +220,15 @@ async function handleReadonlyPatch(
   });
 }
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const rawSpaceId = requireParam(context.params, "spaceId");
-    const rawId = requireParam(context.params, "documentId");
-    const revParam = context.url.searchParams.get("rev");
-    const draft = context.url.searchParams.get("draft") === "true";
+    const rawSpaceId = requireParam(context.var.params, "spaceId");
+    const rawId = requireParam(context.var.params, "documentId");
+    const revParam = new URL(context.req.url).searchParams.get("rev");
+    const draft = new URL(context.req.url).searchParams.get("draft") === "true";
     // live=true returns the draft content as currently held in the document's
     // collaboration room (if open), so partial edits reference the same state.
-    const live = context.url.searchParams.get("live") === "true";
+    const live = new URL(context.req.url).searchParams.get("live") === "true";
 
     const space = (await getSpace(rawSpaceId)) ?? (await getSpaceBySlug(rawSpaceId));
     if (!space) {
@@ -249,7 +249,7 @@ export const GET: APIRoute = (context) =>
     // view only requires viewer.
     const requiredRole = draft || live ? "editor" : "viewer";
 
-    const jobToken = context.request.headers.get("X-Job-Token");
+    const jobToken = context.req.raw.headers.get("X-Job-Token");
     if (jobToken) {
       const parsed = parseJobToken(jobToken, spaceId);
       if (!parsed) {
@@ -280,7 +280,7 @@ export const GET: APIRoute = (context) =>
     }
 
     if (revParam) {
-      const rev = parseQueryInt(context.url.searchParams, "rev", { min: 1 });
+      const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
 
       const metadata = await getRevisionMetadata(spaceId, id, rev);
       if (!metadata) {
@@ -327,7 +327,7 @@ export const GET: APIRoute = (context) =>
       }
     }
 
-    const accept = context.request.headers.get("Accept") ?? "";
+    const accept = context.req.raw.headers.get("Accept") ?? "";
     if (accept.includes("text/markdown") || accept.includes("text/plain")) {
       return withCors(
         new Response(htmlToMarkdown(document.content ?? ""), {
@@ -349,20 +349,20 @@ export const GET: APIRoute = (context) =>
     );
   }, "Failed to get document");
 
-export const PUT: APIRoute = (context) =>
+export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
 
     const existingDoc = await getDocument(spaceId, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
     }
 
-    const publish = context.url.searchParams.get("publish") === "true";
+    const publish = new URL(context.req.url).searchParams.get("publish") === "true";
     let userId: string | undefined;
 
-    const jobToken = context.request.headers.get("X-Job-Token");
+    const jobToken = context.req.raw.headers.get("X-Job-Token");
     const isJobRequest = Boolean(jobToken);
     if (jobToken) {
       const parsed = parseJobToken(jobToken, spaceId);
@@ -393,12 +393,12 @@ export const PUT: APIRoute = (context) =>
       }
     }
 
-    const contentType = getMimeType(context.request.headers.get("Content-Type"));
+    const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
     let content: string;
     let nextType: string | null | undefined;
 
     if (contentType === "application/json") {
-      const body = await parseJsonBody(context.request);
+      const body = await parseJsonBody(context.req.raw);
       const { content: jsonContent, restore } = body as {
         content?: unknown;
         restore?: unknown;
@@ -451,7 +451,7 @@ export const PUT: APIRoute = (context) =>
         throw forbiddenResponse("Cannot update readonly document");
       }
 
-      const rawContent = await context.request.text();
+      const rawContent = await context.req.raw.text();
       if (!rawContent) {
         throw badRequestResponse("Content is required and must be a string");
       }
@@ -485,10 +485,10 @@ export const PUT: APIRoute = (context) =>
     return jsonResponse({ document });
   }, "Failed to update document");
 
-export const PATCH: APIRoute = (context) =>
+export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
     const existingDoc = await getDocument(spaceId, id);
     if (!existingDoc) {
       throw notFoundResponse("Document");
@@ -503,7 +503,7 @@ export const PATCH: APIRoute = (context) =>
       throw forbiddenResponse("Job token is missing user context");
     }
 
-    const body = await parseJsonBody<DocumentPatchBody>(context.request);
+    const body = await parseJsonBody<DocumentPatchBody>(context.req.raw);
     const { properties, parentId, publishedRev, readonly } = body;
 
     await verifyDocumentRole(spaceId, id, userId, "editor");
@@ -584,11 +584,11 @@ export const PATCH: APIRoute = (context) =>
     return jsonResponse({ success: true });
   }, "Failed to patch document");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
-    const permanent = context.url.searchParams.get("permanent") === "true";
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
+    const permanent = new URL(context.req.url).searchParams.get("permanent") === "true";
     const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor", {
       type: ResourceType.DOCUMENT,
       id,
@@ -609,11 +609,11 @@ export const DELETE: APIRoute = (context) =>
     return successResponse();
   }, "Failed to delete document");
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
 
@@ -626,12 +626,12 @@ export const POST: APIRoute = (context) =>
       throw forbiddenResponse("Cannot save readonly document");
     }
 
-    const contentType = getMimeType(context.request.headers.get("Content-Type"));
+    const contentType = getMimeType(context.req.raw.headers.get("Content-Type"));
     let html: string;
     let message: string | undefined;
 
     if (contentType === "application/json") {
-      const body = await parseJsonBody(context.request);
+      const body = await parseJsonBody(context.req.raw);
       const { html: jsonHtml, message: jsonMessage, mode } = body;
 
       if (!jsonHtml || typeof jsonHtml !== "string") {
@@ -666,7 +666,7 @@ export const POST: APIRoute = (context) =>
         },
       });
     } else {
-      const rawContent = await context.request.text();
+      const rawContent = await context.req.raw.text();
       if (!rawContent) {
         throw badRequestResponse("Content is required and must be a string");
       }

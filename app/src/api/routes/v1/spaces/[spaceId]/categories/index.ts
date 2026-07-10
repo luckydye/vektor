@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import {
   getUserGroups,
@@ -21,8 +21,8 @@ import { createCategory, listCategories, reorderCategories } from "#db/categorie
 import { getSpace } from "#db/spaces.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 
-async function visibleCategoryIds(context: Parameters<APIRoute>[0], spaceId: string) {
-  if (context.request.headers.get("X-Job-Token")) {
+async function visibleCategoryIds(context: Parameters<ApiRouteHandler>[0], spaceId: string) {
+  if (context.req.raw.headers.get("X-Job-Token")) {
     await authenticateSpaceAccess(context, spaceId, "viewer");
     return null;
   }
@@ -94,9 +94,9 @@ async function visibleCategoryIds(context: Parameters<APIRoute>[0], spaceId: str
   return new Set(ids);
 }
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     const space = await getSpace(spaceId);
     if (!space) {
       return new Response("Space not found", {
@@ -116,12 +116,12 @@ export const GET: APIRoute = (context) =>
     });
   }, "Failed to list categories");
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
-    const body = (await parseJsonBody(context.request)) as Record<string, unknown>;
+    const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name : undefined;
     const slug = typeof body.slug === "string" ? body.slug : undefined;
     const description =
@@ -144,12 +144,12 @@ export const POST: APIRoute = (context) =>
     return createdResponse({ category: categoryData });
   }, "Failed to create category");
 
-export const PUT: APIRoute = (context) =>
+export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { categoryIds } = body;
 
     if (!Array.isArray(categoryIds) || categoryIds.length === 0) {

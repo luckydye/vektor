@@ -1,5 +1,5 @@
 import type { Attributes, Span } from "@opentelemetry/api";
-import type { APIContext } from "astro";
+import type { ApiContext } from "#api/server/types.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
 import { withSpan } from "#observability/otel.ts";
@@ -63,7 +63,7 @@ export async function withApiErrorHandling(
           error: unknown,
         ) => Response | undefined | Promise<Response | undefined>;
         telemetry?: {
-          context: APIContext;
+          context: ApiContext;
           spanName: string;
           attributes?: Attributes;
         };
@@ -80,8 +80,8 @@ export async function withApiErrorHandling(
       return await withSpan(
         spanName,
         {
-          traceparent: context.request.headers.get("traceparent"),
-          tracestate: context.request.headers.get("tracestate"),
+          traceparent: context.req.raw.headers.get("traceparent"),
+          tracestate: context.req.raw.headers.get("tracestate"),
           attributes,
         },
         async (span) => handler(span),
@@ -106,8 +106,8 @@ export async function withApiErrorHandling(
   }
 }
 
-export function requireUser(context: APIContext) {
-  const user = context.locals.user;
+export function requireUser(context: ApiContext) {
+  const user = context.var.user;
   if (!user) {
     throw unauthorizedResponse();
   }
@@ -547,8 +547,8 @@ export async function verifyCanGrantTokenAccess(
  * Extract access token from Authorization header
  * Supports: "Bearer at_xxxxx" or "at_xxxxx"
  */
-export function extractAccessToken(context: APIContext): string | null {
-  const authHeader = context.request.headers.get("Authorization");
+export function extractAccessToken(context: ApiContext): string | null {
+  const authHeader = context.req.raw.headers.get("Authorization");
   if (!authHeader) {
     return null;
   }
@@ -583,7 +583,7 @@ export function extractAccessToken(context: APIContext): string | null {
  * ```
  */
 export async function authenticateWithToken(
-  context: APIContext,
+  context: ApiContext,
   spaceId: string,
 ): Promise<ValidateTokenResult | null> {
   const token = extractAccessToken(context);
@@ -659,14 +659,14 @@ export async function verifyTokenFeature(
  * Returns { type: "user", user } or { type: "token", token }
  */
 export async function authenticateRequest(
-  context: APIContext,
+  context: ApiContext,
   spaceId: string,
 ): Promise<
-  | { type: "user"; user: NonNullable<APIContext["locals"]["user"]> }
+  | { type: "user"; user: NonNullable<App.Locals["user"]> }
   | { type: "token"; token: ValidateTokenResult }
 > {
   // Try user session first
-  const user = context.locals.user;
+  const user = context.var.user;
   if (user) {
     return { type: "user", user };
   }
@@ -687,14 +687,14 @@ export async function authenticateRequest(
  * the request must be rejected with unauthorizedResponse().
  */
 export async function tryAuthenticateRequest(
-  context: APIContext,
+  context: ApiContext,
   spaceId: string,
 ): Promise<
-  | { type: "user"; user: NonNullable<APIContext["locals"]["user"]> }
+  | { type: "user"; user: NonNullable<App.Locals["user"]> }
   | { type: "token"; token: ValidateTokenResult }
   | null
 > {
-  const user = context.locals.user;
+  const user = context.var.user;
   if (user) {
     return { type: "user", user };
   }

@@ -12,7 +12,7 @@
  *   enabled?: boolean
  * }
  */
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -31,10 +31,10 @@ import {
   validateCronExpression,
 } from "#db/jobSchedules.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
@@ -44,14 +44,14 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ schedules: schedules.map(toJobScheduleDto) });
   }, "Failed to list job schedules");
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifySpaceRole(spaceId, user.id, "editor");
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { jobId, cronExpression, timezone, inputs, enabled } = body;
 
     if (!jobId || typeof jobId !== "string") {

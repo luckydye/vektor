@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { sql } from "drizzle-orm";
 import {
   denyFeature,
@@ -27,16 +27,16 @@ import { user as userTable } from "#db/schema/auth.ts";
 // GET /api/v1/spaces/:spaceId/permissions
 // List all permissions (roles and feature overrides)
 // Query params: ?type=role|feature|all (default: all)
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
-    const typeFilter = context.url.searchParams.get("type") || "all";
+    const typeFilter = new URL(context.req.url).searchParams.get("type") || "all";
     const resourceType =
-      (context.url.searchParams.get("resourceType") as ResourceType) ||
+      (new URL(context.req.url).searchParams.get("resourceType") as ResourceType) ||
       ResourceType.SPACE;
-    const resourceId = context.url.searchParams.get("resourceId") || spaceId;
+    const resourceId = new URL(context.req.url).searchParams.get("resourceId") || spaceId;
 
     await verifySpaceRole(spaceId, user.id, "editor");
 
@@ -76,12 +76,12 @@ export const GET: APIRoute = (context) =>
 //   groupId?: string,
 //   action: "grant" | "deny" | "revoke"
 // }
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
-    const body = (await parseJsonBody(context.request)) as Record<string, unknown>;
+    const body = (await parseJsonBody(context.req.raw)) as Record<string, unknown>;
     const type = typeof body.type === "string" ? body.type : undefined;
     const roleOrFeature =
       typeof body.roleOrFeature === "string" ? body.roleOrFeature : undefined;

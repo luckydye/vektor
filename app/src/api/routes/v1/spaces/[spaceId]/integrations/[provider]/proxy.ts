@@ -1,4 +1,4 @@
-import type { APIContext, APIRoute } from "astro";
+import type { ApiContext, ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   forbiddenResponse,
@@ -33,8 +33,8 @@ type IntegrationProxyRequest = {
 const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const FORWARDED_HEADERS = new Set(["accept", "content-type"]);
 
-async function resolveUserId(context: APIContext, spaceId: string): Promise<string> {
-  const jobToken = context.request.headers.get("X-Job-Token");
+async function resolveUserId(context: ApiContext, spaceId: string): Promise<string> {
+  const jobToken = context.req.raw.headers.get("X-Job-Token");
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed?.userId) {
@@ -152,17 +152,17 @@ async function resolveAccessToken(
   return refreshed.accessToken;
 }
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const providerParam = requireParam(context.params, "provider");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const providerParam = requireParam(context.var.params, "provider");
     if (!isOAuthIntegrationProvider(providerParam)) {
       throw badRequestResponse("Unsupported integration provider");
     }
 
     const userId = await resolveUserId(context, spaceId);
 
-    const body = (await context.request
+    const body = (await context.req.raw
       .json()
       .catch(() => null)) as IntegrationProxyRequest | null;
     if (!body || typeof body !== "object") {

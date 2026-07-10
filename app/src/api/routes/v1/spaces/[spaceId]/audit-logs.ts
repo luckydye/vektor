@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { Feature } from "#db/acl.ts";
 import {
   jsonResponse,
@@ -12,17 +12,17 @@ import {
 import { getRecentAuditLogs, parseAuditDetails } from "#db/auditLogs.ts";
 import { getSpaceDb } from "#db/db.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifySpaceAccess(spaceId, user.id);
 
     // Verify user has audit log viewing feature access
     await verifyFeatureAccess(spaceId, Feature.VIEW_AUDIT, user.id);
 
-    const { limit, offset } = parsePaginationParams(context.url.searchParams);
+    const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams);
 
     const db = await getSpaceDb(spaceId);
     const { rows, total } = await getRecentAuditLogs(db, limit, offset);

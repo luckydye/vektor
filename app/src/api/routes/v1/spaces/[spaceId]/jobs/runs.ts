@@ -6,7 +6,7 @@
  *
  * Query: ?jobId=...&scheduleId=...&limit=50&offset=0 (max 500)
  */
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   jsonResponse,
   parsePaginationParams,
@@ -17,16 +17,16 @@ import {
 } from "#db/api.ts";
 import { listJobRuns, toJobRunDto } from "#db/jobRuns.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const { limit, offset } = parsePaginationParams(context.url.searchParams);
-    const jobId = context.url.searchParams.get("jobId") ?? undefined;
-    const scheduleId = context.url.searchParams.get("scheduleId") ?? undefined;
+    const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams);
+    const jobId = new URL(context.req.url).searchParams.get("jobId") ?? undefined;
+    const scheduleId = new URL(context.req.url).searchParams.get("scheduleId") ?? undefined;
 
     const { runs, total } = await listJobRuns(spaceId, {
       jobId,

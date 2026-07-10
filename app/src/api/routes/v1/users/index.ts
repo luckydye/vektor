@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { eq, inArray } from "drizzle-orm";
 import { getSpaceMemberIds } from "#db/acl.ts";
 import {
@@ -22,13 +22,13 @@ import { user } from "#db/schema/auth.ts";
  * A bare listing of all users is not permitted. Inviting people is done by
  * email via the permissions endpoint, so no user-directory endpoint is needed.
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const caller = requireUser(context);
     const db = getAuthDb();
 
-    const id = context.url.searchParams.get("id");
-    const spaceId = context.url.searchParams.get("spaceId");
+    const id = new URL(context.req.url).searchParams.get("id");
+    const spaceId = new URL(context.req.url).searchParams.get("spaceId");
 
     // Minimal public profile fields only — never expose email here.
     const publicFields = {

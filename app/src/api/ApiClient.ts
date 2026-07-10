@@ -1060,7 +1060,9 @@ export class ApiClient {
           await Promise.all([
             this.replaceReplica(detailPath, space),
             this.updateRemoteReplica<Space[]>(listPath, (spaces) =>
-              spaces.map((current) => (current.id === spaceId ? space : current)),
+              spaces.map((current) =>
+                current.id === spaceId ? { ...current, ...space } : current,
+              ),
             ),
           ]);
         },

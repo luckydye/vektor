@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   type AIChatSessionInput,
   deleteAIChatSession,
@@ -71,11 +71,11 @@ function parseSessionInput(
   };
 }
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const sessionId = requireParam(context.params, "sessionId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
@@ -87,26 +87,26 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ session });
   }, "Failed to get AI chat session");
 
-export const PUT: APIRoute = (context) =>
+export const PUT: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const sessionId = requireParam(context.params, "sessionId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const session = parseSessionInput(spaceId, sessionId, body);
     const saved = await upsertAIChatSession(spaceId, user.id, session);
 
     return jsonResponse({ session: saved });
   }, "Failed to save AI chat session");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const sessionId = requireParam(context.params, "sessionId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const sessionId = requireParam(context.var.params, "sessionId");
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 

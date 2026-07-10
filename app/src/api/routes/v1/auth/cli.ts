@@ -13,7 +13,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { badRequestResponse, requireUser, withApiErrorHandling } from "#db/api.ts";
 import { listUserSpaces, type Space } from "#db/spaces.ts";
 
@@ -450,12 +450,12 @@ function renderCliAuthPage(options: {
   });
 }
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
 
-    const redirectUri = context.url.searchParams.get("redirect_uri");
-    const state = context.url.searchParams.get("state");
+    const redirectUri = new URL(context.req.url).searchParams.get("redirect_uri");
+    const state = new URL(context.req.url).searchParams.get("state");
 
     if (!redirectUri || !isLocalhostUri(redirectUri)) {
       throw badRequestResponse("redirect_uri must be http://localhost:<port>/callback");
@@ -485,10 +485,10 @@ function createCliApproval(userId: string, redirectUri: string, state: string): 
   return approval;
 }
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const formData = await context.request.formData();
+    const formData = await context.req.raw.formData();
     const redirectUri = formData.get("redirect_uri");
     const state = formData.get("state");
     const approval = formData.get("approval");

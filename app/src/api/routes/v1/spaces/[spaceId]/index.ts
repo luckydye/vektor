@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -11,22 +11,22 @@ import {
 } from "#db/api.ts";
 import { deleteSpace, getSpace, updateSpace } from "#db/spaces.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "viewer");
     const space = await getSpace(spaceId);
     return jsonResponse(space);
   }, "Failed to get space");
 
-export const PATCH: APIRoute = (context) =>
+export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const user = requireUser(context);
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
 
-      const body = await parseJsonBody(context.request);
+      const body = await parseJsonBody(context.req.raw);
       const { name, slug, preferences } = body;
 
       const hasName = typeof name === "string";
@@ -88,10 +88,10 @@ export const PATCH: APIRoute = (context) =>
     },
   );
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "owner");
     await deleteSpace(spaceId);
     return successResponse();

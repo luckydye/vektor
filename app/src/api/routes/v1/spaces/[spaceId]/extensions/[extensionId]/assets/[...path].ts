@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   notFoundResponse,
   requireParam,
@@ -39,12 +39,12 @@ function getMimeType(filePath: string): string {
  * Assets are extracted on-demand from the stored zip.
  * Access is granted if user is an editor on the space OR has explicit ACL entry for the extension.
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const extensionId = requireParam(context.params, "extensionId");
-    const assetPath = context.params.path;
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const extensionId = requireParam(context.var.params, "extensionId");
+    const assetPath = context.var.params.path;
 
     if (!assetPath) {
       return notFoundResponse("Asset path");

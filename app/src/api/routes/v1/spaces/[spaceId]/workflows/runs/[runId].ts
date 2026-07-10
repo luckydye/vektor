@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -17,10 +17,10 @@ import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
  * Nodes are returned in insertion order (= execution order for JS scripts).
  * Output is taken from the "_script" node's outputs (the script's return value).
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const runId = requireParam(context.params, "runId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const runId = requireParam(context.var.params, "runId");
 
     await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
@@ -60,12 +60,12 @@ export const GET: APIRoute = (context) =>
     });
   }, "Failed to get run");
 
-function cancelWorkflowRun(context: Parameters<APIRoute>[0]) {
+function cancelWorkflowRun(context: Parameters<ApiRouteHandler>[0]) {
   return withApiErrorHandling(
     async () => {
       const user = requireUser(context);
-      const spaceId = requireParam(context.params, "spaceId");
-      const runId = requireParam(context.params, "runId");
+      const spaceId = requireParam(context.var.params, "spaceId");
+      const runId = requireParam(context.var.params, "runId");
       await verifySpaceRole(spaceId, user.id, "editor");
       await ensureSpaceRecovered(spaceId);
       const run = await getRunForRead(spaceId, runId);
@@ -80,6 +80,6 @@ function cancelWorkflowRun(context: Parameters<APIRoute>[0]) {
   );
 }
 
-export const POST: APIRoute = (context) => cancelWorkflowRun(context);
+export const POST: ApiRouteHandler = (context) => cancelWorkflowRun(context);
 
-export const DELETE: APIRoute = (context) => cancelWorkflowRun(context);
+export const DELETE: ApiRouteHandler = (context) => cancelWorkflowRun(context);

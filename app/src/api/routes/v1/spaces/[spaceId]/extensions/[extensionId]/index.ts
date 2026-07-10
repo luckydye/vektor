@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -19,10 +19,10 @@ import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
  * Get a single extension's metadata.
  * Jobs may read any extension metadata in the same space; user sessions still require extension access.
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const extensionId = requireParam(context.params, "extensionId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const extensionId = requireParam(context.var.params, "extensionId");
     const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
 
     if (auth.type === "user") {
@@ -56,15 +56,15 @@ export const GET: APIRoute = (context) =>
  * PATCH /api/v1/spaces/:spaceId/extensions/:extensionId
  * Update extension settings (owners only)
  */
-export const PATCH: APIRoute = (context) =>
+export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const extensionId = requireParam(context.params, "extensionId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const extensionId = requireParam(context.var.params, "extensionId");
 
     await verifySpaceOwnership(spaceId, user.id, getSpace);
 
-    const body = await parseJsonBody<{ enabled?: unknown }>(context.request);
+    const body = await parseJsonBody<{ enabled?: unknown }>(context.req.raw);
     if (typeof body.enabled !== "boolean") {
       return jsonResponse({ error: "enabled must be a boolean" }, 400);
     }
@@ -96,11 +96,11 @@ export const PATCH: APIRoute = (context) =>
  * DELETE /api/v1/spaces/:spaceId/extensions/:extensionId
  * Delete an extension (owners only)
  */
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const extensionId = requireParam(context.params, "extensionId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const extensionId = requireParam(context.var.params, "extensionId");
 
     // Only owners can delete extensions
     await verifySpaceOwnership(spaceId, user.id, getSpace);

@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   jsonResponse,
   requireParam,
@@ -9,10 +9,10 @@ import {
 } from "#db/api.ts";
 import { getDocumentBreadcrumbs } from "#db/documents.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
 
     const auth = await tryAuthenticateRequest(context, spaceId);
     if (auth?.type === "user") {

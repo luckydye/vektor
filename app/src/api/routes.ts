@@ -63,7 +63,7 @@ import * as usersMe from "./routes/v1/users/me.ts";
 import type { ApiRouteModule } from "./server/types.ts";
 
 export interface ApiRoute {
-  /** Astro-style path pattern, e.g. `/api/v1/spaces/[spaceId]`. */
+  /** Bracket-parameter path pattern, e.g. `/api/v1/spaces/[spaceId]`. */
   pattern: string;
   module: ApiRouteModule;
 }

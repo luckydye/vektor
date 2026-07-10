@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   errorResponse,
@@ -410,14 +410,14 @@ function parseInternalPath(
   }
 }
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       // This endpoint drives server-side fetches; require an authenticated user
       // so it cannot be used as an open SSRF-probing proxy by anonymous callers.
       requireUser(context);
 
-      const url = context.url.searchParams.get("url");
+      const url = new URL(context.req.url).searchParams.get("url");
 
       if (!url) {
         throw badRequestResponse("url parameter is required");
@@ -430,7 +430,7 @@ export const GET: APIRoute = (context) =>
         throw badRequestResponse("Invalid URL provided");
       }
 
-      const siteUrl = context.url.origin;
+      const siteUrl = new URL(context.req.url).origin;
 
       // Handle internal document links
       if (isInternalUrl(url, siteUrl)) {
@@ -457,7 +457,7 @@ export const GET: APIRoute = (context) =>
           throw badRequestResponse("Document not found");
         }
 
-        const userId = context.locals.user?.id || null;
+        const userId = context.var.user?.id || null;
         try {
           await verifyDocumentAccess(space.id, doc.id, userId);
         } catch {

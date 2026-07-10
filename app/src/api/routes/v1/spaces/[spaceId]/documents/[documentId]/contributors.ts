@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { inArray } from "drizzle-orm";
 import {
   jsonResponse,
@@ -11,11 +11,11 @@ import { getAuditLogsForDocument } from "#db/auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "#db/db.ts";
 import { user } from "#db/schema/auth.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const currentUser = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, currentUser.id);
 

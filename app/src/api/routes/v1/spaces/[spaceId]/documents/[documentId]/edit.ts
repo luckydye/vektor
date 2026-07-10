@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { ResourceType } from "#db/acl.ts";
 import {
   badRequestResponse,
@@ -23,10 +23,10 @@ import { transformDocumentContent } from "#utils/yjsRooms.ts";
  * live Yjs doc and broadcast to connected clients, so it merges with
  * concurrent changes instead of overwriting them.
  */
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
 
     const existingDoc = await getDocument(spaceId, id);
     if (!existingDoc) {
@@ -53,7 +53,7 @@ export const POST: APIRoute = (context) =>
       throw forbiddenResponse("Cannot edit readonly document");
     }
 
-    const body = await parseJsonBody<{ operations?: unknown }>(context.request);
+    const body = await parseJsonBody<{ operations?: unknown }>(context.req.raw);
 
     let result: Awaited<ReturnType<typeof transformDocumentContent>>;
     try {

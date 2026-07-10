@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -9,10 +9,10 @@ import {
 import { type PropertyFilter, searchDocuments } from "#db/search.ts";
 import { authenticateSpaceAccess } from "#utils/auth.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
 
       const access = await authenticateSpaceAccess(context, spaceId, "viewer");
       // searchDocuments uses null for "trusted system view" (no per-document
@@ -20,12 +20,12 @@ export const GET: APIRoute = (context) =>
       // so documents inheriting space-level access are searchable.
       const userId = access.isPublic ? null : access.aclUserId;
 
-      const query = context.url.searchParams.get("q") || "";
-      const { limit, offset } = parsePaginationParams(context.url.searchParams, {
+      const query = new URL(context.req.url).searchParams.get("q") || "";
+      const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams, {
         defaultLimit: 20,
         maxLimit: 100,
       });
-      const filtersParam = context.url.searchParams.get("filters");
+      const filtersParam = new URL(context.req.url).searchParams.get("filters");
 
       // Parse property filters from JSON string
       let filters: PropertyFilter[] = [];

@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { createPatch } from "diff";
 import { ResourceType } from "#db/acl.ts";
 import {
@@ -33,15 +33,15 @@ async function getRevision(rev: number, spaceId: string, id: string) {
 /**
  * Returns a patch from publsihed content to given revision
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
-    const id = requireParam(context.params, "documentId");
-    const revParam = context.url.searchParams.get("rev");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const id = requireParam(context.var.params, "documentId");
+    const revParam = new URL(context.req.url).searchParams.get("rev");
     if (!revParam) {
       throw badRequestResponse("Revision query parameter is required");
     }
-    const rev = parseQueryInt(context.url.searchParams, "rev", { min: 1 });
+    const rev = parseQueryInt(new URL(context.req.url).searchParams, "rev", { min: 1 });
 
     // Authenticate with either user session or access token
     const auth = await authenticateRequest(context, spaceId);
@@ -87,7 +87,7 @@ export const GET: APIRoute = (context) =>
     // `format=html` returns a rendered, inline redline of the document (added
     // text wrapped in <ins>, removed text in <del>) instead of a source-level
     // unified patch, so the client can display changes in document context.
-    if (context.url.searchParams.get("format") === "html") {
+    if (new URL(context.req.url).searchParams.get("format") === "html") {
       return new Response(inlineHtmlDiff(baseContent, revisionContent), {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });

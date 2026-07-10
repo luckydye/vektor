@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { findSpaceForToken } from "#db/accessTokens.ts";
 import {
   badRequestResponse,
@@ -11,7 +11,7 @@ import {
 } from "#db/api.ts";
 import { createSpace, getSpace, listPublicSpaces, listUserSpaces } from "#db/spaces.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const rawToken = extractAccessToken(context);
     if (rawToken) {
@@ -20,7 +20,7 @@ export const GET: APIRoute = (context) =>
       const space = await getSpace(spaceId);
       return jsonResponse(space ? [space] : []);
     }
-    const user = context.locals.user;
+    const user = context.var.user;
     if (user) {
       const spaces = await listUserSpaces(user.id);
       return jsonResponse(spaces);
@@ -30,11 +30,11 @@ export const GET: APIRoute = (context) =>
     return jsonResponse(spaces);
   }, "Failed to list spaces");
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const user = requireUser(context);
-      const body = await parseJsonBody(context.request);
+      const body = await parseJsonBody(context.req.raw);
       const { name, slug, preferences } = body;
 
       if (!name || typeof name !== "string" || !slug || typeof slug !== "string") {

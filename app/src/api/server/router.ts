@@ -1,10 +1,11 @@
-import type { Context, Next } from "hono";
+import type { Next } from "hono";
 import { apiRoutes } from "#api/routes.ts";
-import { authTrustedOrigins } from "#auth";
+import { auth, authTrustedOrigins } from "#auth";
+import { getPublicEnv, isTrustProxyEnabled } from "#config";
+import { isNoAuthMode, LOCAL_SESSION, LOCAL_USER } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
-import { buildApiContext, PayloadTooLargeError } from "./adapter.ts";
 import { type CompiledRoute, compileRoute, matchRoute, sortRoutes } from "./matcher.ts";
-import type { ApiRouteMethod, ApiRouteModule } from "./types.ts";
+import type { ApiContext, ApiRouteMethod, ApiRouteModule } from "./types.ts";
 
 const compiledRoutes: CompiledRoute[] = sortRoutes(
   apiRoutes.map(({ pattern, module }) => compileRoute(pattern, module)),
@@ -31,7 +32,7 @@ const trustedOrigins = new Set(
  * navigations) pass through — they are not forgeable by a hostile web page.
  * This is an explicit second layer on top of the SameSite cookie default.
  */
-function isCrossSiteForgery(c: Context, method: string): boolean {
+function isCrossSiteForgery(c: ApiContext, method: string): boolean {
   if (SAFE_METHODS.has(method)) return false;
   const origin = c.req.header("origin");
   if (!origin) return false;
@@ -44,6 +45,41 @@ function isCrossSiteForgery(c: Context, method: string): boolean {
   } catch {
     return true;
   }
+}
+
+function clientIp(c: ApiContext): string {
+  const socketIp = c.env.incoming.socket?.remoteAddress ?? "";
+  if (!isTrustProxyEnabled()) return socketIp;
+  const forwardedFor = c.req.header("x-forwarded-for");
+  return forwardedFor?.split(",").at(-1)?.trim() || socketIp;
+}
+
+async function hydrateRequestContext(c: ApiContext): Promise<void> {
+  const headers = new Headers(c.req.raw.headers);
+  const ip = clientIp(c);
+  if (ip) {
+    headers.set("x-forwarded-for", ip);
+  } else {
+    headers.delete("x-forwarded-for");
+  }
+
+  let user: App.Locals["user"] = null;
+  let session: App.Locals["session"] = null;
+  if (isNoAuthMode()) {
+    user = LOCAL_USER;
+    session = LOCAL_SESSION;
+  } else {
+    const authenticated = await auth.api.getSession({ headers });
+    if (authenticated) {
+      user = authenticated.user;
+      session = authenticated.session;
+    }
+  }
+
+  c.set("publicEnv", getPublicEnv());
+  c.set("requestHeaders", headers);
+  c.set("session", session);
+  c.set("user", user);
 }
 
 function isApiPath(pathname: string): boolean {
@@ -68,7 +104,10 @@ function jsonError(status: number, message: string): Response {
  * Hono middleware that serves the migrated API routes. Non-API paths fall
  * through to the next handler (e.g. the Astro frontend handler, when mounted).
  */
-export async function apiRouter(c: Context, next: Next): Promise<Response | undefined> {
+export async function apiRouter(
+  c: ApiContext,
+  next: Next,
+): Promise<Response | undefined> {
   const pathname = c.req.path;
   if (!isApiPath(pathname)) {
     await next();
@@ -79,6 +118,7 @@ export async function apiRouter(c: Context, next: Next): Promise<Response | unde
   if (!match) {
     return jsonError(404, "Not found");
   }
+  c.set("params", match.params);
 
   const method = c.req.method.toUpperCase();
   if (isCrossSiteForgery(c, method)) {
@@ -97,8 +137,8 @@ export async function apiRouter(c: Context, next: Next): Promise<Response | unde
   }
 
   try {
-    const context = await buildApiContext(c.env.incoming, match.params);
-    const result = await handler(context as never);
+    await hydrateRequestContext(c);
+    const result = await handler(c);
 
     if (!(result instanceof Response)) {
       appLogger.error("API handler returned a non-Response value", { path: pathname });
@@ -107,9 +147,6 @@ export async function apiRouter(c: Context, next: Next): Promise<Response | unde
 
     return result;
   } catch (error) {
-    if (error instanceof PayloadTooLargeError) {
-      return jsonError(413, "Request body too large");
-    }
     appLogger.error("Unhandled API route error", {
       path: pathname,
       error: error instanceof Error ? error.message : String(error),

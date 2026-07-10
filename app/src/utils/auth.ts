@@ -1,4 +1,4 @@
-import type { APIContext } from "astro";
+import type { ApiContext } from "#api/server/types.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import { getUserGroups, hasPermission, ResourceType } from "#db/acl.ts";
 import {
@@ -56,17 +56,17 @@ async function enforceUserRoleOnTarget(
  * so resource-scoped credentials are neither over- nor under-privileged.
  */
 export async function authenticateJobTokenOrSpaceRole(
-  context: APIContext,
+  context: ApiContext,
   spaceId: string,
   requiredRole: string,
   resource?: { type: ResourceType; id: string },
 ): Promise<
   | { type: "job"; userId: string | null }
-  | { type: "user"; user: NonNullable<APIContext["locals"]["user"]> }
+  | { type: "user"; user: NonNullable<App.Locals["user"]> }
 > {
   const target = resource ?? { type: ResourceType.SPACE, id: spaceId };
 
-  const jobToken = context.request.headers.get("X-Job-Token");
+  const jobToken = context.req.raw.headers.get("X-Job-Token");
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");
@@ -103,7 +103,7 @@ export async function authenticateJobTokenOrSpaceRole(
  */
 export interface SpaceAccess {
   /** The authenticated user, if session-based. */
-  user?: NonNullable<APIContext["locals"]["user"]>;
+  user?: NonNullable<App.Locals["user"]>;
   /**
    * Identity for per-document ACL filtering. `null` means a trusted system
    * caller (user-less job token) that sees everything; an empty string means
@@ -151,12 +151,12 @@ export function spaceAccessToViewer(access: SpaceAccess): AclViewer | null {
  * ```
  */
 export async function authenticateSpaceAccess(
-  context: APIContext,
+  context: ApiContext,
   spaceId: string,
   requiredRole: string,
 ): Promise<SpaceAccess> {
   // 1. Job token
-  const jobToken = context.request.headers.get("X-Job-Token");
+  const jobToken = context.req.raw.headers.get("X-Job-Token");
   if (jobToken) {
     const parsed = parseJobToken(jobToken, spaceId);
     if (!parsed) throw forbiddenResponse("Invalid job token");

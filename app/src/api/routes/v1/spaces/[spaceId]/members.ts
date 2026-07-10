@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { inArray } from "drizzle-orm";
 import {
   getSpaceMembersWithGroups,
@@ -18,11 +18,11 @@ import { getAuthDb } from "#db/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { getSpace } from "#db/spaces.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async () => {
       const user = requireUser(context);
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
 
       await verifySpaceRole(spaceId, user.id, "viewer");
 

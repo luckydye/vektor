@@ -5,7 +5,7 @@
  * PATCH:  update cronExpression/timezone/inputs/enabled (editor)
  * DELETE: remove the schedule (editor); run history is preserved
  */
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   jsonResponse,
@@ -25,11 +25,11 @@ import {
   validateCronExpression,
 } from "#db/jobSchedules.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const scheduleId = requireParam(context.params, "scheduleId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const scheduleId = requireParam(context.var.params, "scheduleId");
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
@@ -43,11 +43,11 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ schedule: toJobScheduleDto(schedule) });
   }, "Failed to get job schedule");
 
-export const PATCH: APIRoute = (context) =>
+export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const scheduleId = requireParam(context.params, "scheduleId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const scheduleId = requireParam(context.var.params, "scheduleId");
 
     await verifySpaceRole(spaceId, user.id, "editor");
 
@@ -58,7 +58,7 @@ export const PATCH: APIRoute = (context) =>
       throw notFoundResponse("Job schedule");
     }
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { cronExpression, timezone, inputs, enabled } = body;
 
     if (cronExpression !== undefined && typeof cronExpression !== "string") {
@@ -101,11 +101,11 @@ export const PATCH: APIRoute = (context) =>
     return jsonResponse({ schedule: toJobScheduleDto(schedule) });
   }, "Failed to update job schedule");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const scheduleId = requireParam(context.params, "scheduleId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const scheduleId = requireParam(context.var.params, "scheduleId");
 
     await verifySpaceRole(spaceId, user.id, "editor");
 

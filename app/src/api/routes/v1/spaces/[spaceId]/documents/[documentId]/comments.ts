@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { inArray } from "drizzle-orm";
 import { Feature, ResourceType } from "#db/acl.ts";
 import {
@@ -26,11 +26,11 @@ import { user as userTable } from "#db/schema/auth.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const user = context.locals.user;
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
+    const user = context.var.user;
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
 
     // Allow viewing comments if user has access to document (including public docs)
     await verifyDocumentAccess(spaceId, documentId, user?.id || null);
@@ -67,11 +67,11 @@ export const GET: APIRoute = (context) =>
     return jsonResponse({ comments: enrichedComments });
   }, "Failed to list comments");
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
 
     // Ensure user has access to document
     await verifyDocumentAccess(spaceId, documentId, user.id);
@@ -79,7 +79,7 @@ export const POST: APIRoute = (context) =>
     // Verify user has commenting feature access
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { content, parentId, type, reference } = body;
 
     if (!content || typeof content !== "string") {
@@ -123,16 +123,16 @@ export const POST: APIRoute = (context) =>
     return jsonResponse({ comment });
   }, "Failed to create comment");
 
-export const PATCH: APIRoute = (context) =>
+export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
 
     await verifyDocumentAccess(spaceId, documentId, user.id);
     await verifyFeatureAccess(spaceId, Feature.COMMENT, user.id);
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { commentIds, reference, archived } = body;
 
     if (
@@ -174,13 +174,13 @@ export const PATCH: APIRoute = (context) =>
     return jsonResponse({ success: true });
   }, "Failed to update comments");
 
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const documentId = requireParam(context.params, "documentId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const documentId = requireParam(context.var.params, "documentId");
 
-    const body = await parseJsonBody(context.request);
+    const body = await parseJsonBody(context.req.raw);
     const { commentId } = body;
 
     if (!commentId || typeof commentId !== "string") {

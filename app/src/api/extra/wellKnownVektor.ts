@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 
 function corsJson(data: unknown): Response {
   const body = JSON.stringify(data);
@@ -14,7 +14,7 @@ function corsJson(data: unknown): Response {
   });
 }
 
-export const GET: APIRoute = () =>
+export const GET: ApiRouteHandler = () =>
   corsJson({
     service: "vektor",
     version: 1,
@@ -22,7 +22,7 @@ export const GET: APIRoute = () =>
     documentEndpoint: "/api/v1/spaces/{spaceId}/documents/{documentId}",
   });
 
-export const OPTIONS: APIRoute = () =>
+export const OPTIONS: ApiRouteHandler = () =>
   new Response(null, {
     status: 204,
     headers: {

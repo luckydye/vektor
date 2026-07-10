@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { filterReadableResources, getUserGroups, ResourceType } from "#db/acl.ts";
 import {
   badRequestResponse,
@@ -30,9 +30,9 @@ import { propertyValueToText } from "#utils/documentProperties.ts";
  * Without documentId: returns { runs: [{ runId, documentId, status, documentTitle }] } for runs in the space.
  * Optional query: sourceExtensionId filters runs created directly by that extension.
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
     // A run is keyed to a document; its status/title must only be visible to a
     // caller who can read that document. User-less system tokens (userId null)
@@ -51,10 +51,10 @@ export const GET: APIRoute = (context) =>
       return readable.has(docId);
     };
 
-    const documentId = context.url.searchParams.get("documentId");
-    const sourceExtensionId = context.url.searchParams.get("sourceExtensionId");
+    const documentId = new URL(context.req.url).searchParams.get("documentId");
+    const sourceExtensionId = new URL(context.req.url).searchParams.get("sourceExtensionId");
     const filterDocumentId =
-      context.url.searchParams.get("filterDocumentId") ?? undefined;
+      new URL(context.req.url).searchParams.get("filterDocumentId") ?? undefined;
 
     await ensureSpaceRecovered(spaceId);
 
@@ -67,7 +67,7 @@ export const GET: APIRoute = (context) =>
       return jsonResponse({ runId, status: run.status });
     }
 
-    const { limit, offset } = parsePaginationParams(context.url.searchParams, {
+    const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams, {
       defaultLimit: 20,
       maxLimit: 200,
     });
@@ -125,10 +125,10 @@ export const GET: APIRoute = (context) =>
  * Body: { documentId: string }
  * Returns 202 { runId } immediately; execution proceeds in the background.
  */
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
     async (span) => {
-      const spaceId = requireParam(context.params, "spaceId");
+      const spaceId = requireParam(context.var.params, "spaceId");
       const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
       const initiatedByUserId = auth.type === "user" ? auth.user.id : auth.userId;
 
@@ -136,7 +136,7 @@ export const POST: APIRoute = (context) =>
         documentId?: string;
         inputs?: Record<string, unknown>;
         sourceExtensionId?: string;
-      }>(context.request);
+      }>(context.req.raw);
       const { documentId, inputs, sourceExtensionId } = body;
       if (documentId) span?.setAttribute("wiki.document.id", documentId);
 

@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   deleteAccessToken,
   getAccessToken,
@@ -19,11 +19,11 @@ import {
  * GET /api/v1/spaces/:spaceId/access-tokens/:tokenId
  * Get token details and its resources in this space
  */
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const tokenId = requireParam(context.params, "tokenId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const tokenId = requireParam(context.var.params, "tokenId");
 
     await verifySpaceRole(spaceId, user.id, "editor");
 
@@ -41,11 +41,11 @@ export const GET: APIRoute = (context) =>
  * PATCH /api/v1/spaces/:spaceId/access-tokens/:tokenId
  * Revoke an access token (soft delete)
  */
-export const PATCH: APIRoute = (context) =>
+export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const tokenId = requireParam(context.params, "tokenId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const tokenId = requireParam(context.var.params, "tokenId");
 
     await verifySpaceRole(spaceId, user.id, "owner");
 
@@ -61,11 +61,11 @@ export const PATCH: APIRoute = (context) =>
  * DELETE /api/v1/spaces/:spaceId/access-tokens/:tokenId
  * Permanently delete an access token
  */
-export const DELETE: APIRoute = (context) =>
+export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
-    const tokenId = requireParam(context.params, "tokenId");
+    const spaceId = requireParam(context.var.params, "spaceId");
+    const tokenId = requireParam(context.var.params, "tokenId");
 
     await verifySpaceRole(spaceId, user.id, "owner");
 

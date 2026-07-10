@@ -1,4 +1,4 @@
-import type { APIRoute } from "astro";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   badRequestResponse,
   createdResponse,
@@ -15,27 +15,27 @@ import {
   upsertSpaceSecret,
 } from "#db/spaceSecrets.ts";
 
-export const GET: APIRoute = (context) =>
+export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "editor");
 
     const secrets = await listSpaceSecrets(spaceId);
     return jsonResponse({ secrets });
   }, "Failed to list secrets");
 
-export const POST: APIRoute = (context) =>
+export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
-    const spaceId = requireParam(context.params, "spaceId");
+    const spaceId = requireParam(context.var.params, "spaceId");
     await verifySpaceRole(spaceId, user.id, "owner");
 
     const body = await parseJsonBody<{
       name?: string;
       value?: string;
       description?: string | null;
-    }>(context.request);
+    }>(context.req.raw);
 
     if (typeof body.name !== "string") {
       throw badRequestResponse("name is required");
