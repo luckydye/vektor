@@ -326,3 +326,35 @@ function replacePlaceholderWithError(
       .run();
   }
 }
+
+export async function handleFileAttachmentUpload(
+  editor: Editor,
+  spaceId: string,
+  documentId?: string,
+): Promise<void> {
+  if (!spaceId) {
+    alert("File upload is not available in this editor.");
+    return;
+  }
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = false;
+
+  input.onchange = async (event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    const placeholderText = `⏳ Uploading ${file.name}...`;
+    editor.chain().focus().insertContent(placeholderText).run();
+
+    try {
+      const url = await uploadFile(file, spaceId, documentId);
+      replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
+    } catch (error) {
+      replacePlaceholderWithError(editor, placeholderText, error);
+    }
+  };
+
+  input.click();
+}

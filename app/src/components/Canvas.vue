@@ -38,6 +38,7 @@ import {
 import { isFigmaClipboardHtml, pasteFigmaClipboard } from "#canvas/elements/figma.ts";
 import {
   canvasFilesFromDataTransfer,
+  canvasFilesFromList,
   createUploadedFileShape,
   dragHasCanvasFiles,
   isPdfFile,
@@ -47,6 +48,7 @@ import {
   createUploadedMediaShape,
   isMediaElementType,
   mediaFilesFromDataTransfer,
+  mediaFilesFromList,
   uploadMediaFile,
 } from "#canvas/elements/media.ts";
 import { createNoteShape, NOTE_COLORS } from "#canvas/elements/note.ts";
@@ -105,6 +107,7 @@ import {
   scissorsIcon,
   trashIcon,
   undoArrowIcon,
+  uploadIcon,
 } from "~/src/assets/icons.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
@@ -3030,6 +3033,29 @@ async function pasteFromContextMenu() {
   }
 }
 
+function uploadFromContextMenu() {
+  const insertAt = contextMenuInsertWorld ?? insertionPointFromEvent();
+  contextMenuPos.value = null;
+  contextMenuInsertWorld = null;
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+
+  input.onchange = () => {
+    const files = input.files;
+    if (!files?.length) return;
+
+    void addDroppedCanvasFiles(
+      mediaFilesFromList(files),
+      canvasFilesFromList(files),
+      insertAt,
+    );
+  };
+
+  input.click();
+}
+
 async function readSystemClipboard() {
   const result = { canvasJson: "", html: "", text: "" };
 
@@ -4470,6 +4496,14 @@ onUnmounted(() => {
             aria-hidden="true"
             v-html="clipboardDocumentIcon"
           />
+        </button>
+        <button
+          type="button"
+          class="canvas-tool"
+          :aria-label="t('Upload file')"
+          @click="uploadFromContextMenu"
+        >
+          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="uploadIcon" />
         </button>
         <template v-if="selectedShapeIds.size > 0 || selectedStrokeIds.size > 0">
           <span class="canvas-divider"></span>

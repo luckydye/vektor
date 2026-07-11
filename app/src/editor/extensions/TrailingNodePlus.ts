@@ -5,6 +5,7 @@ import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { addIcon, puzzleIcon } from "~/src/assets/icons.ts";
 import { extensions } from "~/src/utils/extensions.ts";
+import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
 import { handleVideoUpload } from "./VideoUpload.ts";
 
@@ -52,6 +53,14 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       icon: "🎬",
       command: (editor) => {
         handleVideoUpload(editor, spaceId, documentId);
+      },
+    },
+    {
+      title: "File/Attachment",
+      description: "Upload and insert any file",
+      icon: "📎",
+      command: (editor) => {
+        handleFileAttachmentUpload(editor, spaceId, documentId);
       },
     },
     {
