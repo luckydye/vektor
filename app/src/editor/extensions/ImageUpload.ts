@@ -130,6 +130,7 @@ class ResizableImageView extends ResizableNodeView {
     super(node, view, getPos);
 
     this.dom.classList.add("image-wrapper");
+    this.dom.style.display = "block";
 
     this.img = document.createElement("img");
     this.img.src = node.attrs.src;
@@ -140,6 +141,13 @@ class ResizableImageView extends ResizableNodeView {
     this.img.draggable = false;
 
     this.setupResizableContent(this.img, "width");
+  }
+
+  updateSize(): void {
+    super.updateSize();
+    // Keep the editor-only resize container aligned with the block-level image
+    // emitted by renderHTML in read mode, while retaining a tight resize anchor.
+    this.dom.style.width = this.node.attrs.display === "full" ? "100%" : "fit-content";
   }
 
   updateContent(): void {

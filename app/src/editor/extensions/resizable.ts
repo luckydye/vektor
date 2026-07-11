@@ -77,17 +77,11 @@ export abstract class ResizableNodeView implements NodeView {
     if (this.node.attrs.display !== "full" && !this.handle) {
       this.handle = document.createElement("div");
       this.handle.classList.add("resize-handle");
-      this.handle.style.position = "absolute";
-      this.handle.style.right = "-4px";
-      this.handle.style.bottom = "-4px";
-      this.handle.style.width = "12px";
-      this.handle.style.height = "12px";
-      this.handle.style.background = "#3b82f6";
-      this.handle.style.border = "2px solid white";
-      this.handle.style.borderRadius = "var(--radius-sm)";
+      if (this.dom.classList.contains("image-wrapper")) {
+        this.handle.classList.add("image-resize-handle");
+      }
       this.handle.style.cursor =
         this.resizeMode === "height" ? "ns-resize" : "nwse-resize";
-      this.handle.style.zIndex = "10";
 
       this.handle.addEventListener("mousedown", this.handleMouseDown);
       this.dom.appendChild(this.handle);
@@ -112,7 +106,9 @@ export abstract class ResizableNodeView implements NodeView {
     if (this.node.attrs.display === "full") {
       this.contentEl.style.width = "100%";
       this.contentEl.style.height = "auto";
-    } else if (this.resizeMode === "height" && this.node.attrs.height) {
+    }
+
+    if (this.resizeMode === "height" && this.node.attrs.height) {
       this.contentEl.style.height = `${this.node.attrs.height}px`;
       this.contentEl.style.width = "100%";
     } else if (this.resizeMode === "width" && this.node.attrs.width) {

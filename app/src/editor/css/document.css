@@ -98,8 +98,9 @@ img[width] {
 
 /* Image wrapper styles */
 .image-wrapper {
-  display: inline-block;
+  display: block;
   position: relative;
+  width: fit-content;
   max-width: 100%;
   user-select: none;
 }
@@ -138,6 +139,51 @@ img[width] {
 
 .resize-handle:active {
   background: #1d4ed8;
+}
+
+/* Match the canvas element resize control while retaining the document
+   editor's absolute positioning and drag interaction. */
+.image-resize-handle {
+  right: -20px;
+  bottom: -20px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary, #3b82f6);
+  box-shadow: none;
+}
+
+.image-resize-handle::before {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 3px;
+  height: 13px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+}
+
+.image-resize-handle::after {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  width: 13px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+}
+
+.image-resize-handle:hover,
+.image-resize-handle:active {
+  background: transparent;
+  color: #1d4ed8;
+  transform: none;
 }
 
 /* Positioned relative to the host (not the viewport) so carets stay correct
