@@ -29,10 +29,18 @@ A cosmetic is a purchasable visual: avatar frames/rings, animated name colors,
 profile badges, canvas cursor trails, sticky-note skins. They attach to a user,
 not a space or document.
 
+**Buying always happens on the cloud platform, never on a local instance.**
+The store, Stripe Checkout, and payment live only on `vektorapp.org`. Instances
+have no shop, no checkout, no payment code — they are read-only consumers of
+ownership. This keeps every host out of the money path entirely, the same way a
+CS dedicated server never sells you a skin; you buy on Steam and the server just
+renders it.
+
 Flow:
 
-1. User opens the Shop in any instance and buys a cosmetic → Stripe Checkout on
-   the cloud → webhook writes an entitlement for that email hash.
+1. User buys a cosmetic on the cloud platform (`vektorapp.org`) → Stripe
+   Checkout → webhook writes an entitlement for that email hash. No instance is
+   involved.
 2. When the user joins a collaboration room, the instance looks up their owned
    cosmetics from the cloud (cached) and injects them into the presence payload
    (`PresenceUser`) that vektor already broadcasts to everyone in the room.
@@ -45,13 +53,19 @@ CDN, selected by ID**. Instances never render arbitrary remote HTML/CSS — that
 would be a cross-host XSS vector. The client validates every cosmetic ID against
 the signed catalog before drawing it.
 
-Cloud endpoints:
+Cloud endpoints an instance calls (read-only):
 
-- `GET /api/v1/cosmetics/catalog` — public list of products, prices, previews,
-  and immutable asset IDs.
+- `GET /api/v1/cosmetics/catalog` — public list of products, previews, and
+  immutable asset IDs, so a client can resolve and render an owned cosmetic.
 - `GET /api/v1/cosmetics/owned?u=<email_hash>` — signed list of what a user owns.
+
+Store and payment endpoints (cloud platform only, never called by an instance):
+
 - `POST /api/v1/cosmetics/checkout` — starts a Stripe Checkout session.
 - `POST /api/v1/stripe/webhook` — on payment, grants the entitlement.
+
+An instance may deep-link a "Get more" button out to `vektorapp.org`, but the
+purchase itself never touches the instance.
 
 ## Auto-update
 
