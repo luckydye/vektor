@@ -1,11 +1,11 @@
 import { eq, sql } from "drizzle-orm";
-import { config } from "#config";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToText,
 } from "#utils/documentProperties.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
+import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
 import { listAccessibleResources, ResourceType } from "./acl.ts";
 import { getSpaceDb } from "./db.ts";
 import { document, file as fileTable, property } from "./schema/space.ts";
@@ -91,8 +91,6 @@ export function fileRowToDocument(f: FileRow): DocumentWithProperties {
 // Embedding utilities
 // ---------------------------------------------------------------------------
 
-const LOCAL_EMBEDDING_DIMENSIONS = 384;
-
 function stripMarkup(input: string): string {
   return input
     .replace(/<[^>]+>/g, " ")
@@ -103,79 +101,6 @@ function stripMarkup(input: string): string {
 
 function normalizeText(input: string): string {
   return stripMarkup(input).toLowerCase();
-}
-
-function hashToken(token: string): number {
-  let hash = 2166136261;
-  for (let index = 0; index < token.length; index++) {
-    hash ^= token.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Math.abs(hash >>> 0);
-}
-
-function normalizeVector(vector: number[]): number[] {
-  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
-  if (magnitude === 0) {
-    return vector;
-  }
-  return vector.map((value) => value / magnitude);
-}
-
-function localEmbedding(text: string): number[] {
-  const normalized = normalizeText(text);
-  const vector = new Array<number>(LOCAL_EMBEDDING_DIMENSIONS).fill(0);
-  const words = normalized.match(/[a-z0-9]+/g) ?? [];
-
-  for (const word of words) {
-    const wordIndex = hashToken(`w:${word}`) % LOCAL_EMBEDDING_DIMENSIONS;
-    vector[wordIndex] += 3;
-
-    if (word.length >= 3) {
-      for (let index = 0; index <= word.length - 3; index++) {
-        const trigram = word.slice(index, index + 3);
-        const trigramIndex = hashToken(`g:${trigram}`) % LOCAL_EMBEDDING_DIMENSIONS;
-        vector[trigramIndex] += 1;
-      }
-    }
-  }
-
-  return normalizeVector(vector);
-}
-
-async function remoteEmbedding(text: string): Promise<number[]> {
-  const runtimeConfig = config();
-  const apiKey = runtimeConfig.SEARCH_EMBEDDINGS_API_KEY;
-  const model = runtimeConfig.SEARCH_EMBEDDINGS_MODEL || "text-embedding-3-small";
-  const baseUrl =
-    runtimeConfig.SEARCH_EMBEDDINGS_BASE_URL || "https://openrouter.ai/api/v1";
-
-  if (!apiKey) {
-    throw new Error("SEARCH_EMBEDDINGS_API_KEY is not configured");
-  }
-
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/embeddings`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      input: text,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Embedding request failed with status ${response.status}`);
-  }
-
-  const data = await response.json();
-  const embedding = data?.data?.[0]?.embedding;
-  if (!Array.isArray(embedding)) {
-    throw new Error("Embedding response did not include a vector");
-  }
-  return normalizeVector(embedding.map((value: unknown) => Number(value) || 0));
 }
 
 export function buildDocumentSearchText(
@@ -193,13 +118,11 @@ export function buildDocumentSearchText(
 }
 
 export async function embedText(text: string): Promise<number[]> {
-  const provider = config().SEARCH_EMBEDDINGS_PROVIDER || "local";
-
-  if (provider === "remote") {
-    return remoteEmbedding(text);
+  const [embedding] = await embedTexts([text]);
+  if (!embedding) {
+    throw new Error("Native embedding runtime returned no vector");
   }
-
-  return localEmbedding(text);
+  return embedding;
 }
 
 export function parseEmbedding(value: string | null | undefined): number[] | null {
@@ -338,6 +261,7 @@ export async function updateDocumentEmbedding(
       .set({
         searchText: null,
         searchEmbedding: null,
+        searchEmbeddingModel: null,
         searchUpdatedAt: null,
       })
       .where(eq(document.id, documentId));
@@ -369,12 +293,14 @@ export async function updateDocumentEmbedding(
     fileText || undefined,
   );
   const searchEmbedding = serializeEmbedding(await embedText(searchText));
+  const searchEmbeddingModel = getEmbeddingModel();
 
   await db
     .update(document)
     .set({
       searchText,
       searchEmbedding,
+      searchEmbeddingModel,
       searchUpdatedAt: new Date(),
     })
     .where(eq(document.id, documentId));
@@ -423,12 +349,13 @@ export async function searchDocuments(
   }
 
   if (hasQuery) {
+    const embeddingModel = getEmbeddingModel();
     try {
       const missingEmbeddings = await db
         .select({ id: document.id })
         .from(document)
         .where(
-          sql`(search_embedding IS NULL OR search_text IS NULL)
+          sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel})
             AND (type IS NULL OR type != 'canvas')
             AND ${nonArchivedDocumentCondition}`,
         )
@@ -496,6 +423,7 @@ export async function searchDocuments(
   }[];
 
   if (hasQuery) {
+    const embeddingModel = getEmbeddingModel();
     let queryEmbedding: number[] | null = null;
     try {
       queryEmbedding = await embedText(query.trim());
@@ -510,6 +438,7 @@ export async function searchDocuments(
       content: string;
       searchText: string | null;
       searchEmbedding: string | null;
+      searchEmbeddingModel: string | null;
       userId: string;
       parentId: string | null;
       currentRev: number;
@@ -526,6 +455,7 @@ export async function searchDocuments(
         d.content,
         d.search_text as searchText,
         d.search_embedding as searchEmbedding,
+        d.search_embedding_model as searchEmbeddingModel,
         d.created_by as userId,
         d.parent_id as parentId,
         d.current_rev as currentRev,
@@ -544,7 +474,7 @@ export async function searchDocuments(
         const keywordScore = scoreKeywordOverlap(query, textForScoring);
 
         let combinedScore: number;
-        if (queryEmbedding !== null) {
+        if (queryEmbedding !== null && candidate.searchEmbeddingModel === embeddingModel) {
           const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
           if (documentEmbedding) {
             const semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);

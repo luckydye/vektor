@@ -45,6 +45,12 @@ jobs:
           bun i
           bun run build
 
+      - name: Build native embedding runtime
+        working-directory: app/native/embedding
+        run: |
+          bun i
+          bun run build
+
       - name: Build Astro assets + compile binary
         working-directory: app
         run: |

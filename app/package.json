@@ -71,6 +71,7 @@
     "#config/*": "./src/config/*",
     "#db/*": "./src/db/*",
     "#editor/*": "./src/editor/*",
+    "#embeddings/*": "./src/embeddings/*",
     "#exec/*": "./src/exec/*",
     "#integrations/*": "./src/integrations/*",
     "#jobs/*": "./src/jobs/*",

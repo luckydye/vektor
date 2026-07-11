@@ -192,6 +192,7 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
   await ensureColumnExists(spaceDb, "oauth_integration_state", "instance_url", "TEXT");
   await ensureColumnExists(spaceDb, "document", "search_text", "TEXT");
   await ensureColumnExists(spaceDb, "document", "search_embedding", "TEXT");
+  await ensureColumnExists(spaceDb, "document", "search_embedding_model", "TEXT");
   await ensureColumnExists(spaceDb, "document", "search_updated_at", "INTEGER");
   await ensureColumnExists(spaceDb, "revision", "status", "TEXT");
 

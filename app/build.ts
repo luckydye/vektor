@@ -136,6 +136,23 @@ if (!existsSync(execShimPath)) {
 }
 console.log(`[native-exec] embedding ${execAddonFilename}`);
 
+const embeddingAddonFilename = `embedding-${process.platform}-${process.arch}.node`;
+const embeddingAddonPath = `${import.meta.dir}/src/embeddings/native/${embeddingAddonFilename}`;
+if (!existsSync(embeddingAddonPath)) {
+  throw new Error(
+    `[native-embedding] addon not found at ${embeddingAddonPath}\n` +
+      `Build it first:  cd native/embedding && bun run build`,
+  );
+}
+const embeddingShimPath = `${import.meta.dir}/src/embeddings/native/addon.ts`;
+if (!existsSync(embeddingShimPath)) {
+  throw new Error(
+    `[native-embedding] shim not found at ${embeddingShimPath}\n` +
+      `Build it first:  cd native/embedding && bun run build`,
+  );
+}
+console.log(`[native-embedding] embedding ${embeddingAddonFilename}`);
+
 const result = await Bun.build({
   entrypoints: ["./vektor.ts"],
   compile: true,
