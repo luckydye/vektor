@@ -1,0 +1,78 @@
+# Vektor Cloud
+
+Vektor Cloud is a proprietary service that adds two things to the open-source
+binary: **auto-update** and **cosmetics**. It works like skins in CS/Steam —
+anyone can host their own vektor instance (like a dedicated server), but a
+user's cosmetics are owned centrally and show up on every instance they join.
+
+The service lives in a separate private repo. The open-source binary only ships
+a thin client that talks to `VEKTOR_CLOUD_URL` (default `http://vektorapp.org/`).
+If the service is unreachable or disabled, vektor behaves exactly as it does
+today — nothing blocks.
+
+## The model
+
+- **The cloud is the authority on ownership.** Instances never store who owns
+  what. They ask the cloud and trust the (signed) answer. This is the Steam
+  inventory: the server renders the skin, Steam decides who owns it.
+- **Identity is the verified email.** A user is the same person across instances
+  because they log into each one with the same verified email. The cloud keys
+  ownership on `sha256(email + salt)`, never the raw address.
+- **Instances are untrusted dedicated servers.** A malicious host can only
+  *display* a cosmetic locally; it cannot grant ownership or move money. Signed
+  responses stop a host or middlebox from forging entitlements. That's the whole
+  trust boundary — cosmetic-only, so it doesn't need to be Fort Knox.
+
+## Cosmetics
+
+A cosmetic is a purchasable visual: avatar frames/rings, animated name colors,
+profile badges, canvas cursor trails, sticky-note skins. They attach to a user,
+not a space or document.
+
+Flow:
+
+1. User opens the Shop in any instance and buys a cosmetic → Stripe Checkout on
+   the cloud → webhook writes an entitlement for that email hash.
+2. When the user joins a collaboration room, the instance looks up their owned
+   cosmetics from the cloud (cached) and injects them into the presence payload
+   (`PresenceUser`) that vektor already broadcasts to everyone in the room.
+3. Every other user's client renders the cosmetic from that broadcast. Because it
+   rides existing presence, it appears live, on every instance, to everyone —
+   with no shared database between instances.
+
+Cosmetic assets are a **fixed whitelist of shapes/SVGs served from the cloud
+CDN, selected by ID**. Instances never render arbitrary remote HTML/CSS — that
+would be a cross-host XSS vector. The client validates every cosmetic ID against
+the signed catalog before drawing it.
+
+Cloud endpoints:
+
+- `GET /api/v1/cosmetics/catalog` — public list of products, prices, previews,
+  and immutable asset IDs.
+- `GET /api/v1/cosmetics/owned?u=<email_hash>` — signed list of what a user owns.
+- `POST /api/v1/cosmetics/checkout` — starts a Stripe Checkout session.
+- `POST /api/v1/stripe/webhook` — on payment, grants the entitlement.
+
+## Auto-update
+
+The cloud is the release authority. It reads the existing GitHub Releases and
+adds channels (stable/beta), staged rollout, and a kill-switch/mandatory flag on
+top.
+
+- `GET /api/v1/update/check?version=&os=&arch=&channel=` → `{ latest, url, notes,
+  mandatory }`, signed.
+- On startup and once a day, the binary compares its own version to `latest` and
+  shows an admin banner when a newer one exists.
+- `vektor update` downloads the new binary, verifies a checksum from the signed
+  response, atomically replaces itself, and restarts. The download itself is
+  always over HTTPS (GitHub Releases) even though the API default is HTTP, so a
+  tampered check response can't point the updater at a malicious binary.
+
+## Configuration
+
+- `VEKTOR_CLOUD_URL` — cloud base URL. Default `http://vektorapp.org/`.
+- `VEKTOR_NO_COSMETICS=1` — disable the cosmetics client.
+- `VEKTOR_NO_UPDATE_CHECK=1` — disable update checks.
+
+All cloud calls are best-effort with short timeouts and are cached locally; they
+never block `serve` or rendering.
