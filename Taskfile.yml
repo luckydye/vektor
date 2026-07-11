@@ -136,3 +136,21 @@ tasks:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.
     cmds:
       - docker build -t luckydye/vektor .
+
+  release:
+    desc: Tag the current commit with the next date-based release version and push it.
+    cmds:
+      - |
+        git fetch origin --tags
+
+        tag="v$(date +%F)"
+        if git rev-parse --verify --quiet "refs/tags/$tag" > /dev/null; then
+          n=1
+          while git rev-parse --verify --quiet "refs/tags/$tag.$n" > /dev/null; do
+            n=$((n + 1))
+          done
+          tag="$tag.$n"
+        fi
+
+        git tag "$tag"
+        git push origin "$tag"
