@@ -1,7 +1,7 @@
 # Vektor Cloud
 
 Vektor Cloud is a proprietary service that adds two things to the open-source
-binary: **auto-update** and **cosmetics**. It works like skins in CS/Steam —
+binary: **on-demand updates** and **cosmetics**. It works like skins in CS/Steam —
 anyone can host their own vektor instance (like a dedicated server), but a
 user's cosmetics are owned centrally and show up on every instance they join.
 
@@ -89,26 +89,34 @@ Store and payment endpoints (cloud platform only, never called by an instance):
 An instance may deep-link a "Get more" button out to `vektorapp.org`, but the
 purchase itself never touches the instance.
 
-## Auto-update
+## Updates
+
+Updates are **on demand only**. The binary never checks for updates on startup,
+on a schedule, or in the background — a check happens only when an admin
+explicitly asks for one. Nothing phones home unless triggered.
 
 The cloud is the release authority. It reads the existing GitHub Releases and
 adds channels (stable/beta), staged rollout, and a kill-switch/mandatory flag on
 top.
 
 - `GET /api/v1/update/check?version=&os=&arch=&channel=` → `{ latest, url, notes,
-  mandatory }`, signed.
-- On startup and once a day, the binary compares its own version to `latest` and
-  shows an admin banner when a newer one exists.
-- `vektor update` downloads the new binary, verifies a checksum from the signed
-  response, atomically replaces itself, and restarts. The download itself is
-  always over HTTPS (GitHub Releases) even though the API default is HTTP, so a
-  tampered check response can't point the updater at a malicious binary.
+  mandatory }`, signed. Called only in response to an explicit check.
+- An admin triggers a check from the settings UI (a "Check for updates" button)
+  or via the `vektor update` CLI. If a newer version exists it is shown; there is
+  no automatic banner polling.
+- `vektor update` performs the check, then downloads the new binary, verifies a
+  checksum from the signed response, atomically replaces itself, and restarts.
+  The download itself is always over HTTPS (GitHub Releases) even though the API
+  default is HTTP, so a tampered check response can't point the updater at a
+  malicious binary.
 
 ## Configuration
 
 - `VEKTOR_CLOUD_URL` — cloud base URL. Default `http://vektorapp.org/`.
 - `VEKTOR_NO_COSMETICS=1` — disable the cosmetics client.
-- `VEKTOR_NO_UPDATE_CHECK=1` — disable update checks.
+
+There is no env var for updates: they never run on their own, so there is
+nothing to disable — a check happens only when an admin triggers one.
 
 All cloud calls are best-effort with short timeouts and are cached locally; they
 never block `serve` or rendering.
