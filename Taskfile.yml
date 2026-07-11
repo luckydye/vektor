@@ -138,7 +138,7 @@ tasks:
       - docker build -t luckydye/vektor .
 
   release:
-    desc: Tag the current commit with the next date-based release version and push it.
+    desc: Bump the app patch version, commit it, and push the next date-based release tag.
     cmds:
       - |
         git fetch origin --tags
@@ -152,5 +152,15 @@ tasks:
           tag="$tag.$n"
         fi
 
+        next_version="$(bun -e '
+          const packageJson = await Bun.file("app/package.json").json();
+          const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(packageJson.version);
+          if (!match) throw new Error(`Expected a stable semantic version, received ${packageJson.version}`);
+          console.log(`${match[1]}.${match[2]}.${Number(match[3]) + 1}`);
+        ')"
+        (cd app && bun pm pkg set version="$next_version")
+
+        git add app/package.json
+        git commit -m "release: $tag"
         git tag "$tag"
-        git push origin "$tag"
+        git push origin HEAD "$tag"
