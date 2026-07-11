@@ -33,3 +33,6 @@ api-example
 
 # Downloaded at native-embedding build time and compiled into the addon.
 /app/native/embedding/models/
+
+# Generated platform-specific native embedding addon and its loader.
+/app/src/embeddings/native/

@@ -13,8 +13,9 @@ napi = { version = "3", default-features = false, features = ["napi8"] }
 napi-derive = "3"
 # FastEmbed's default features pull this in transitively. We use its
 # user-defined model API to eliminate runtime model downloads, so enable the
-# ONNX Runtime binary explicitly at build time instead.
-ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+# ONNX Runtime binary explicitly at build time instead. Rustls avoids requiring
+# system OpenSSL headers in Linux CI.
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["download-binaries", "tls-rustls"] }
 
 [build-dependencies]
 napi-build = "2"
