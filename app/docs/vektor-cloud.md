@@ -25,9 +25,27 @@ today — nothing blocks.
 
 ## Cosmetics
 
-A cosmetic is a purchasable visual: avatar frames/rings, animated name colors,
-profile badges, canvas cursor trails, sticky-note skins. They attach to a user,
-not a space or document.
+A cosmetic is a purchasable visual. Most attach to a **user** and travel with
+them across instances; one type attaches to a **space**.
+
+Cosmetic types:
+
+- **Canvas cursor & caret decorations / pets** — user-scoped. Decorates the
+  user's live cursor and text caret on canvas and in documents; other
+  collaborators see it via presence.
+- **Canvas emotes** — user-scoped. Temporary reactions a user triggers on a
+  canvas, broadcast to everyone in the room.
+- **Stickers** — user-scoped. Placeable decals the user can drop onto canvas or
+  documents; ownership gates which sticker packs they can use.
+- **Avatar frames** — user-scoped. A frame/ring around the user's avatar,
+  rendered anywhere the avatar appears.
+- **Space themes** — **space-scoped**. Unlocked by an owning member's
+  entitlement and applied to the whole space, so every member sees the theme
+  regardless of who is present. This is the one type that attaches to a space
+  rather than riding the presence payload.
+
+User-scoped cosmetics travel with the user to every instance they join.
+Space themes stay with the space they were applied to.
 
 **Buying always happens on the cloud platform, never on a local instance.**
 The store, Stripe Checkout, and payment live only on `vektorapp.org`. Instances
@@ -47,6 +65,10 @@ Flow:
 3. Every other user's client renders the cosmetic from that broadcast. Because it
    rides existing presence, it appears live, on every instance, to everyone —
    with no shared database between instances.
+
+Space themes are the exception to the presence flow: when a space loads, the
+instance checks whether any owning member holds the theme entitlement and, if
+so, applies it for all members — present or not.
 
 Cosmetic assets are a **fixed whitelist of shapes/SVGs served from the cloud
 CDN, selected by ID**. Instances never render arbitrary remote HTML/CSS — that
