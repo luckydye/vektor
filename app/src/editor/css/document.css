@@ -10,6 +10,14 @@
   outline: none;
 }
 
+/* Browsers apply break-word wrapping to editable content. Declare it on both
+   render roots so long text (notably URLs in tables) keeps the same layout
+   in read and edit mode. */
+.tiptap .ProseMirror,
+[part="content"] {
+  overflow-wrap: break-word;
+}
+
 :host {
   display: block;
   /* Containing block for the presence overlay. */
@@ -31,6 +39,15 @@ button {
 img {
   @apply max-w-full h-auto;
   display: block;
+}
+
+/* ProseMirror inserts these separators beside inline atom nodes. Keep them
+   inline so the document-level image layout rule above does not add a blank
+   line in edit mode. */
+img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
 }
 
 .comment-anchor {

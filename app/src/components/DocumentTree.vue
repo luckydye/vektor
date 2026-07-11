@@ -6,7 +6,10 @@ import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { propertyValueIncludes } from "#utils/documentProperties.ts";
+import {
+  propertyValueIncludes,
+  propertyValueToText,
+} from "#utils/documentProperties.ts";
 import { getTextColor, spacePath } from "#utils/utils.ts";
 import {
   categoryIcon,
@@ -69,9 +72,21 @@ const expandedCategorySlugs = computed(() => {
 // Use the composable with all expanded category slugs
 const { documentsBySlug } = useCategoryDocuments(expandedCategorySlugs);
 
+const documentTitleCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+function documentTitle(doc) {
+  const title = doc.properties?.title;
+  return title ? propertyValueToText(title) : "Untitled";
+}
+
 const categoriesWithDocs = computed(() => {
   return categories.value.map((category) => {
-    const categoryDocs = documentsBySlug.value.get(category.slug) || [];
+    const categoryDocs = [...(documentsBySlug.value.get(category.slug) || [])].sort(
+      (left, right) => documentTitleCollator.compare(documentTitle(left), documentTitle(right)),
+    );
 
     // Root docs are docs that belong to this category and whose parent is not in this
     // category's doc list (so they can't be rendered as a nested child).
