@@ -75,3 +75,38 @@ jobs:
           files: |
             artifacts/vektor-linux-x64
             artifacts/vektor-darwin-arm64
+
+  deploy:
+    needs: release
+    runs-on: ubuntu-latest
+    environment: Production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vektor-linux-x64
+          path: artifacts
+
+      - name: Upload release binary
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: artifacts/vektor-linux-x64
+          target: /tmp
+          strip_components: 1
+          overwrite: true
+
+      - name: Install and restart Vektor
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -eu
+            sudo install -m 755 /tmp/vektor-linux-x64 /usr/local/bin/vektor.new
+            sudo mv -f /usr/local/bin/vektor.new /usr/local/bin/vektor
+            tmux send-keys -t 0:0.0 C-c
+            sleep 1
+            tmux send-keys -t 0:0.0 '/usr/local/bin/vektor serve --port 3000' Enter
