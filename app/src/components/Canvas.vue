@@ -2772,8 +2772,7 @@ function handleViewportPointerDown(event: PointerEvent) {
 
     const hitSectionTitle = hitTestSectionTitle(worldPoint);
     if (hitSectionTitle) {
-      editSectionTitle(hitSectionTitle);
-      event.preventDefault();
+      startShapeDrag(hitSectionTitle, event);
       return;
     }
 
@@ -2815,9 +2814,19 @@ function handleViewportPointerDown(event: PointerEvent) {
 }
 
 function handleViewportDoubleClick(event: MouseEvent) {
-  // A double-click is an empty-canvas shortcut for text. Leave existing
-  // elements, their transform controls, and draw mode alone.
+  // A double-click is an empty-canvas shortcut for text. A section title is
+  // the exception: it opens that title for editing.
   if (activeTool.value === "draw") return;
+
+  const point = screenPoint(event);
+  const worldPoint = screenToWorld(point);
+  const hitSectionTitle = hitTestSectionTitle(worldPoint);
+  if (hitSectionTitle) {
+    event.preventDefault();
+    editSectionTitle(hitSectionTitle);
+    return;
+  }
+
   const target = event.target;
   if (
     target instanceof Element &&
@@ -2828,9 +2837,7 @@ function handleViewportDoubleClick(event: MouseEvent) {
     return;
   }
 
-  const point = screenPoint(event);
-  const worldPoint = screenToWorld(point);
-  if (hitTestSectionTitle(worldPoint) || hitTestSectionBorder(worldPoint)) {
+  if (hitTestSectionBorder(worldPoint)) {
     return;
   }
   if (
@@ -4501,6 +4508,7 @@ onUnmounted(() => {
           :aria-label="t('Section headline')"
           @focus="selectOnlyShape(editingSectionShape.id)"
           @pointerdown.stop
+          @dblclick.stop
           @input="updateShapeText(editingSectionShape, ($event.target as HTMLInputElement).value)"
           @blur="finishSectionTitleEditing"
         >
