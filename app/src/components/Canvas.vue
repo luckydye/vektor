@@ -287,6 +287,7 @@ const CANVAS_TOOLS: ToolDef[] = [
 ];
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
+const sectionsRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
 const imagesRef = ref<HTMLCanvasElement | null>(null);
 const selectionRef = ref<HTMLCanvasElement | null>(null);
@@ -337,6 +338,9 @@ function removeUploadPlaceholder(id: string) {
 }
 const selectedShapeIds = ref<Set<string>>(new Set());
 const selectedStrokeIds = ref<Set<string>>(new Set());
+// Section chrome is painted on the canvas. This transient input only appears
+// while its title is actively being edited.
+const editingSectionTitleId = ref<string | null>(null);
 // Live screen-space rectangle while drag-selecting; null when not marqueeing.
 const marqueeRect = ref<Rect | null>(null);
 // Alignment guides shown while dragging shapes; empty when no edge/center of
@@ -775,16 +779,19 @@ const selectedShape = computed(() => {
 });
 
 // Text, file, and link shapes intentionally keep their existing move-only
-// interaction. Notes, sections, and media get full transform controls;
-// embedded documents expose only resize.
+// interaction. Notes, text, and media get full transform controls; sections
+// and embedded documents expose resize only.
 const selectedTransformShape = computed(() =>
   selectedShape.value &&
   (selectedShape.value.type === "note" ||
-    selectedShape.value.type === "section" ||
     selectedShape.value.type === "text" ||
     isMediaElementType(selectedShape.value.type))
     ? selectedShape.value
     : null,
+);
+
+const selectedResizableSection = computed(() =>
+  selectedShape.value?.type === "section" ? selectedShape.value : null,
 );
 
 const selectedResizableDocument = computed(() =>
@@ -811,16 +818,27 @@ function transformControlPositions(shape: CanvasShape) {
   };
 }
 
-// Non-GIF image shapes render on the images canvas — no DOM article needed.
-// All other shapes stay in the DOM permanently; content-visibility:auto in CSS
-// tells the browser to skip painting off-screen articles without JS involvement.
+// Non-GIF images and sections render on canvas layers. All other shapes stay in
+// the DOM permanently; content-visibility:auto in CSS tells the browser to
+// skip painting off-screen articles without JS involvement.
 const domShapes = computed(() =>
-  shapes.value.filter((shape) => shape.type !== "image" || isGifSrc(shape.src ?? "")),
+  shapes.value.filter(
+    (shape) =>
+      shape.type !== "section" &&
+      (shape.type !== "image" || isGifSrc(shape.src ?? "")),
+  ),
 );
 
 const sectionShapes = computed(() =>
   shapes.value.filter((shape) => shape.type === "section"),
 );
+
+const editingSectionShape = computed(() => {
+  const id = editingSectionTitleId.value;
+  if (!id) return null;
+  const shape = shapesById.value.get(id);
+  return shape?.type === "section" ? shape : null;
+});
 
 function sectionTitlePosition(shape: CanvasShape) {
   const screenGap = 32 / transform.value.scale;
@@ -1505,6 +1523,7 @@ function worldToScreen(point: { x: number; y: number }) {
 let cssGridMajor = "rgba(15, 23, 42, 0.13)";
 let cssGridMinor = "rgba(15, 23, 42, 0.07)";
 let cssInkColor = FREEHAND_STYLE.color;
+let cssSectionTitleText = "#1e3a8a";
 
 function canvasCssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -1516,6 +1535,7 @@ function refreshCssVars() {
   cssGridMajor = canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)");
   cssGridMinor = canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)");
   cssInkColor = canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
+  cssSectionTitleText = canvasCssVar("--canvas-section-title-text", "#1e3a8a");
 }
 
 function resolveDarkMode() {
@@ -1534,6 +1554,7 @@ function updateThemeMode() {
 function renderThemeChanged() {
   refreshCssVars();
   renderGrid();
+  renderSections();
   renderInk();
 }
 
@@ -1585,6 +1606,102 @@ function renderGrid() {
       },
     ],
   });
+}
+
+function roundedRectPath(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  const cornerRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + cornerRadius, y);
+  context.arcTo(x + width, y, x + width, y + height, cornerRadius);
+  context.arcTo(x + width, y + height, x, y + height, cornerRadius);
+  context.arcTo(x, y + height, x, y, cornerRadius);
+  context.arcTo(x, y, x + width, y, cornerRadius);
+  context.closePath();
+}
+
+function sectionTitleSize(shape: CanvasShape) {
+  const maxWidth = Math.max(1, shape.width * transform.value.scale);
+  const title = shape.text || t("Section");
+  // The canvas title uses the same 13px font and 8px horizontal padding as
+  // the inline editor. This approximation is also used for its canvas hitbox.
+  return {
+    width: Math.min(maxWidth, Math.max(40, title.length * 8 + 16)),
+    height: 22,
+  };
+}
+
+function renderSectionTitle(context: CanvasRenderingContext2D, shape: CanvasShape) {
+  if (editingSectionTitleId.value === shape.id) return;
+
+  const position = sectionTitlePosition(shape);
+  const size = sectionTitleSize(shape);
+  const title = shape.text || t("Section");
+
+  context.save();
+  context.translate(position.x, position.y);
+  context.rotate((shape.rotation * Math.PI) / 180);
+  roundedRectPath(context, 0, 0, size.width, size.height, 6);
+  context.fillStyle = shape.color;
+  context.globalAlpha = 0.1;
+  context.fill();
+  context.strokeStyle = shape.color;
+  context.globalAlpha = 0.48;
+  context.lineWidth = 1;
+  context.stroke();
+
+  context.save();
+  roundedRectPath(context, 0, 0, size.width, size.height, 6);
+  context.clip();
+  context.globalAlpha = 1;
+  context.fillStyle = cssSectionTitleText;
+  context.font = "750 13px system-ui, sans-serif";
+  context.textBaseline = "middle";
+  context.fillText(title, 8, size.height / 2, Math.max(0, size.width - 16));
+  context.restore();
+  context.restore();
+}
+
+// Sections are intentionally a dedicated canvas layer between the backdrop
+// grid and all content layers. Unlike DOM shapes, they can never establish a
+// stacking context above cards, media, strokes, or controls.
+function renderSections() {
+  const canvas = sectionsRef.value;
+  const context = canvas?.getContext("2d");
+  if (!canvas || !context) return;
+
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, screen.value.width, screen.value.height);
+
+  const scale = transform.value.scale;
+  for (const shape of sectionShapes.value) {
+    const width = shape.width * scale;
+    const height = shape.height * scale;
+    if (width <= 0 || height <= 0) continue;
+
+    const centerX = (shape.x + shape.width / 2) * scale + transform.value.dx;
+    const centerY = (shape.y + shape.height / 2) * scale + transform.value.dy;
+    context.save();
+    context.translate(centerX, centerY);
+    context.rotate((shape.rotation * Math.PI) / 180);
+    roundedRectPath(context, -width / 2, -height / 2, width, height, 10 * scale);
+    context.fillStyle = shape.color;
+    context.globalAlpha = 0.09;
+    context.fill();
+    context.strokeStyle = shape.color;
+    context.globalAlpha = 0.6;
+    context.lineWidth = 2 * scale;
+    context.stroke();
+    context.restore();
+
+    renderSectionTitle(context, shape);
+  }
 }
 
 // Returns the highest-quality already-loaded image for `src` across all tiers,
@@ -1764,6 +1881,13 @@ function resize() {
     canvas.style.width = `${screen.value.width}px`;
     canvas.style.height = `${screen.value.height}px`;
   }
+  const sections = sectionsRef.value;
+  if (sections) {
+    sections.width = Math.round(screen.value.width * dpr);
+    sections.height = Math.round(screen.value.height * dpr);
+    sections.style.width = `${screen.value.width}px`;
+    sections.style.height = `${screen.value.height}px`;
+  }
   const ink = inkRef.value;
   if (ink) {
     ink.width = Math.round(screen.value.width * dpr);
@@ -1786,6 +1910,7 @@ function resize() {
     selection.style.height = `${screen.value.height}px`;
   }
   renderGrid();
+  renderSections();
   renderInk();
   renderImages();
 }
@@ -2056,6 +2181,7 @@ function addShape(type: "note" | "text" | "section", at: { x: number; y: number 
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
+  if (type === "section") editingSectionTitleId.value = shape.id;
   nextTick(() => {
     const selector =
       type === "section"
@@ -2362,7 +2488,7 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || shape.type === "section") return;
   selectOnlyShape(shape.id);
   const bounds = shapeBounds(shape);
   dragState = {
@@ -2493,6 +2619,76 @@ function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | 
   return null;
 }
 
+function sectionLocalPoint(worldPoint: { x: number; y: number }, shape: CanvasShape) {
+  const center = {
+    x: shape.x + shape.width / 2,
+    y: shape.y + shape.height / 2,
+  };
+  const local = rotateVector(
+    { x: worldPoint.x - center.x, y: worldPoint.y - center.y },
+    -shape.rotation,
+  );
+  return { x: local.x + shape.width / 2, y: local.y + shape.height / 2 };
+}
+
+// Sections remain click-through in their interior. Only their painted border
+// can be grabbed, preserving access to content placed inside them.
+function hitTestSectionBorder(worldPoint: { x: number; y: number }): CanvasShape | null {
+  const edgeWidth = 6;
+  for (let i = sectionShapes.value.length - 1; i >= 0; i--) {
+    const shape = sectionShapes.value[i];
+    const local = sectionLocalPoint(worldPoint, shape);
+    const inExpandedBounds =
+      local.x >= -edgeWidth &&
+      local.x <= shape.width + edgeWidth &&
+      local.y >= -edgeWidth &&
+      local.y <= shape.height + edgeWidth;
+    const onEdge =
+      local.x <= edgeWidth ||
+      local.x >= shape.width - edgeWidth ||
+      local.y <= edgeWidth ||
+      local.y >= shape.height - edgeWidth;
+    if (inExpandedBounds && onEdge) return shape;
+  }
+  return null;
+}
+
+function hitTestSectionTitle(worldPoint: { x: number; y: number }): CanvasShape | null {
+  const screenPoint = worldToScreen(worldPoint);
+  for (let i = sectionShapes.value.length - 1; i >= 0; i--) {
+    const shape = sectionShapes.value[i];
+    const origin = sectionTitlePosition(shape);
+    const local = rotateVector(
+      { x: screenPoint.x - origin.x, y: screenPoint.y - origin.y },
+      -shape.rotation,
+    );
+    const size = sectionTitleSize(shape);
+    if (local.x >= 0 && local.x <= size.width && local.y >= 0 && local.y <= size.height) {
+      return shape;
+    }
+  }
+  return null;
+}
+
+function editSectionTitle(shape: CanvasShape) {
+  selectOnlyShape(shape.id);
+  editingSectionTitleId.value = shape.id;
+  renderSections();
+  void nextTick(() => {
+    const input = viewportRef.value?.querySelector<HTMLInputElement>(
+      `[data-section-title="${shape.id}"]`,
+    );
+    input?.focus();
+    input?.select();
+  });
+}
+
+function finishSectionTitleEditing() {
+  if (!editingSectionTitleId.value) return;
+  editingSectionTitleId.value = null;
+  renderSections();
+}
+
 function isPointInRect(point: { x: number; y: number }, rect: Rect) {
   return (
     point.x >= rect.x &&
@@ -2573,6 +2769,20 @@ function handleViewportPointerDown(event: PointerEvent) {
       event.preventDefault();
       return;
     }
+
+    const hitSectionTitle = hitTestSectionTitle(worldPoint);
+    if (hitSectionTitle) {
+      editSectionTitle(hitSectionTitle);
+      event.preventDefault();
+      return;
+    }
+
+    const hitSectionBorder = hitTestSectionBorder(worldPoint);
+    if (hitSectionBorder) {
+      startShapeDrag(hitSectionBorder, event);
+      return;
+    }
+
     // Empty space: touch leaves panning/zooming to the two-finger gesture
     // handler; mouse/pen drag-selects with a marquee.
     if (event.pointerType === "touch") {
@@ -2620,6 +2830,9 @@ function handleViewportDoubleClick(event: MouseEvent) {
 
   const point = screenPoint(event);
   const worldPoint = screenToWorld(point);
+  if (hitTestSectionTitle(worldPoint) || hitTestSectionBorder(worldPoint)) {
+    return;
+  }
   if (
     hitTestImageShape(worldPoint) ||
     hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale)
@@ -3559,13 +3772,17 @@ watch(
   () => {
     void nextTick(syncTextShapeObservers);
     void nextTick(syncLinkShapeObservers);
+    renderSections();
     renderImages();
     renderSelections();
   },
   { flush: "post" },
 );
 
-watch(selectedShapeIds, () => {
+watch(selectedShapeIds, (ids) => {
+  if (editingSectionTitleId.value && (ids.size !== 1 || !ids.has(editingSectionTitleId.value))) {
+    finishSectionTitleEditing();
+  }
   renderImages();
   renderSelections();
   updatePresence();
@@ -3590,6 +3807,9 @@ watch(shapes, () => {
   const editing = editingDocumentShape.value;
   if (editing && !shapesById.value.has(editing.shapeId)) {
     stopEmbeddedDocumentEdit();
+  }
+  if (editingSectionTitleId.value && !shapesById.value.has(editingSectionTitleId.value)) {
+    finishSectionTitleEditing();
   }
 });
 
@@ -3678,6 +3898,7 @@ watch(
   ],
   () => {
     renderGrid();
+    renderSections();
     renderInk();
     renderImages();
     updatePresence();
@@ -4016,6 +4237,7 @@ onUnmounted(() => {
       @drop="handleDrop"
     >
       <canvas ref="gridRef" class="canvas-grid"></canvas>
+      <canvas ref="sectionsRef" class="canvas-sections"></canvas>
       <canvas ref="imagesRef" class="canvas-images"></canvas>
       <canvas ref="inkRef" class="canvas-ink"></canvas>
       <canvas ref="selectionRef" class="canvas-selection"></canvas>
@@ -4040,31 +4262,12 @@ onUnmounted(() => {
               ? { '--canvas-text-font-size': `${TEXT_BASE_FONT_PX * (shape.fontScale ?? 1)}px` }
               : { width: `${shape.width}px`, height: `${shape.height}px` }),
             transform: `rotate(${shape.rotation}deg)`,
-            ...(shape.type === 'section' ? { '--canvas-section-color': shape.color } : {}),
             ...(shape.type === 'image' ? {} : { background: shape.color }),
           }"
           :data-shape-id="shape.id"
         >
-          <template v-if="shape.type === 'section'">
-            <div
-              class="canvas-section-edge top"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-            ></div>
-            <div
-              class="canvas-section-edge right"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-            ></div>
-            <div
-              class="canvas-section-edge bottom"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-            ></div>
-            <div
-              class="canvas-section-edge left"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-            ></div>
-          </template>
           <div
-            v-else-if="shape.type === 'note'"
+            v-if="shape.type === 'note'"
             class="canvas-shape-handle"
             @pointerdown.stop="startShapeDrag(shape, $event)"
           ></div>
@@ -4250,7 +4453,7 @@ onUnmounted(() => {
             </div>
           </a>
           <rich-text-editor
-            v-else-if="shape.type !== 'section'"
+            v-else
             class="canvas-shape-textwrap"
             headings
             :value="shape.text"
@@ -4279,26 +4482,27 @@ onUnmounted(() => {
       </div>
 
       <div
-        v-for="shape in sectionShapes"
-        :key="shape.id"
+        v-if="editingSectionShape"
         class="canvas-section-title-overlay"
         :style="{
-          left: `${sectionTitlePosition(shape).x}px`,
-          top: `${sectionTitlePosition(shape).y}px`,
-          width: `${Math.max(1, shape.width * transform.scale)}px`,
-          transform: `rotate(${shape.rotation}deg)`,
+          left: `${sectionTitlePosition(editingSectionShape).x}px`,
+          top: `${sectionTitlePosition(editingSectionShape).y}px`,
+          width: `${Math.max(1, editingSectionShape.width * transform.scale)}px`,
+          transform: `rotate(${editingSectionShape.rotation}deg)`,
+          '--canvas-section-color': editingSectionShape.color,
         }"
-        @pointerdown.stop="startShapeDrag(shape, $event)"
+        @pointerdown.stop
       >
         <input
           class="canvas-section-title"
-          :data-section-title="shape.id"
-          :value="shape.text"
+          :data-section-title="editingSectionShape.id"
+          :value="editingSectionShape.text"
           spellcheck="false"
           :aria-label="t('Section headline')"
-          @focus="selectOnlyShape(shape.id)"
+          @focus="selectOnlyShape(editingSectionShape.id)"
           @pointerdown.stop
-          @input="updateShapeText(shape, ($event.target as HTMLInputElement).value)"
+          @input="updateShapeText(editingSectionShape, ($event.target as HTMLInputElement).value)"
+          @blur="finishSectionTitleEditing"
         >
       </div>
 
@@ -4338,6 +4542,18 @@ onUnmounted(() => {
             transform: `translate(-50%, -50%) rotate(${selectedResizableDocument.rotation}deg)`,
           }"
           @pointerdown.stop="startShapeResize(selectedResizableDocument, $event)"
+        ></button>
+      </div>
+      <div v-if="selectedResizableSection" class="canvas-transform-controls">
+        <button
+          type="button"
+          class="canvas-transform-handle canvas-resize-handle"
+          :aria-label="`${t('Resize')} ${t('Section')}`"
+          :style="{
+            left: `${transformControlPositions(selectedResizableSection).resize.x}px`,
+            top: `${transformControlPositions(selectedResizableSection).resize.y}px`,
+          }"
+          @pointerdown.stop="startShapeResize(selectedResizableSection, $event)"
         ></button>
       </div>
       <div
@@ -4911,6 +5127,7 @@ onUnmounted(() => {
 }
 
 .canvas-grid,
+.canvas-sections,
 .canvas-images,
 .canvas-ink,
 .canvas-selection {
@@ -5088,61 +5305,6 @@ onUnmounted(() => {
   flex: 1;
   border: 0;
   background: #fff;
-}
-
-.canvas-shape.section {
-  content-visibility: visible;
-  overflow: visible;
-  border: 2px solid
-    color-mix(in srgb, var(--canvas-section-color, #60a5fa) 60%, transparent);
-  border-radius: 10px;
-  background: color-mix(
-    in srgb,
-    var(--canvas-section-color, #60a5fa) 9%,
-    transparent
-  ) !important;
-  box-shadow: none;
-  /* The inner fill is click-through; only the headline, border edges, and
-     resize handle select/drag the section. */
-  pointer-events: none;
-}
-
-.canvas-shape.section .canvas-section-title,
-.canvas-shape.section .canvas-section-edge {
-  pointer-events: auto;
-}
-
-.canvas-section-edge {
-  position: absolute;
-  cursor: move;
-}
-
-.canvas-section-edge.top {
-  top: -6px;
-  left: 0;
-  right: 0;
-  height: 12px;
-}
-
-.canvas-section-edge.bottom {
-  bottom: -6px;
-  left: 0;
-  right: 0;
-  height: 12px;
-}
-
-.canvas-section-edge.left {
-  top: 0;
-  bottom: 0;
-  left: -6px;
-  width: 12px;
-}
-
-.canvas-section-edge.right {
-  top: 0;
-  bottom: 0;
-  right: -6px;
-  width: 12px;
 }
 
 .canvas-shape-handle {

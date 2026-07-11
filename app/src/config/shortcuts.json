@@ -1,4 +1,5 @@
 {
+  "meta-shift-b": "ui:toggle:sidebar",
   "meta-k": [
     "ui:toggle:palatte",
     "format:link"
@@ -52,8 +53,6 @@
   "meta-shift-j": "format:align:justify",
   "ctrl-shift-j": "format:align:justify",
 
-  "meta-shift-b": "format:blockquote",
-  "ctrl-shift-b": "format:blockquote",
   "meta-alt-c": "format:codeblock",
   "ctrl-alt-c": "format:codeblock",
   "shift-enter": "format:hardbreak",
