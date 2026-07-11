@@ -89,6 +89,132 @@ Store and payment endpoints (cloud platform only, never called by an instance):
 An instance may deep-link a "Get more" button out to `vektorapp.org`, but the
 purchase itself never touches the instance.
 
+## Cosmetics — implementation
+
+### Trust boundary (the load-bearing decision)
+
+Presence today is client-authored: `useCollaboration.ts` builds the
+`PresenceUser` in the browser and `presence.ts` `join()` stores `join.user`
+verbatim, then broadcasts it. If cosmetics rode along in that client-sent
+payload, anyone could forge a paid frame by editing their own presence.
+
+So cosmetics are **stamped on the server, never trusted from the client.** At
+presence join the server already knows the authenticated `userId`; it resolves
+that user's verified email, looks up owned cosmetics from the cloud cache, and
+overwrites `presence.user.cosmetics` before storing/broadcasting. The browser's
+claimed cosmetics field is ignored. This is the single most important rule in
+the feature.
+
+### Cloud service (private repo)
+
+Data model (Postgres):
+
+- `products` — `id`, `type` (`cursor` | `emote` | `sticker` | `avatar_frame` |
+  `space_theme`), `asset_id`, `name`, `price`, `active`, preview metadata.
+- `entitlements` — `subject_hash` (`sha256(email + salt)`), `product_id`,
+  `source`, `created_at`. This is the ownership table.
+- `purchases` — Stripe session/payment records, for audit and refunds.
+
+Endpoints (instance-facing, read-only):
+
+- `GET /api/v1/cosmetics/catalog` — public. Products + immutable `asset_id`s +
+  preview data. Long cache TTL.
+- `GET /api/v1/cosmetics/owned?u=<subject_hash>` — returns the owned
+  `product_id`s for that hash, **signed** (Ed25519) with an issued-at timestamp.
+
+Endpoints (cloud storefront only, never called by an instance): `checkout`,
+`stripe/webhook` as above.
+
+Assets: each `asset_id` maps to an immutable, versioned file on the cloud CDN.
+Assets are a **constrained descriptor format** (SVG shapes / sprite sheets /
+theme token JSON) — never executable HTML/CSS/JS. The instance renders from a
+fixed set of descriptor fields; anything outside the schema is dropped.
+
+Signing: the cloud holds an Ed25519 private key; its public key is **pinned in
+the vektor binary**. Every `owned` response is signed so a malicious host or
+middlebox on the default HTTP endpoint cannot fabricate ownership.
+
+### Instance client
+
+New modules:
+
+- `app/src/cloud/client.ts` — base URL (`VEKTOR_CLOUD_URL`), short timeouts,
+  Ed25519 signature verification against the pinned key, fail-open on any error.
+- `app/src/cloud/cosmetics.ts` — fetch + cache `catalog` and per-user `owned`;
+  validate every `product_id`/`asset_id` against the signed catalog before use;
+  expose `resolveUserCosmetics(email)` and `resolveSpaceTheme(spaceId)`.
+
+New cache table (main SQLite DB, not per-space):
+
+- `cloud_cosmetics_cache` — `subject_hash`, `payload` (signed blob), `fetched_at`,
+  TTL. Serves as the offline fallback: stale-but-signed data still renders.
+
+Identity resolution happens **server-side only**: the instance hashes the
+authenticated user's verified email with the shared salt to form `subject_hash`.
+Raw email never leaves the instance; the browser never sees another user's hash.
+
+### Wiring into presence (user-scoped cosmetics)
+
+1. Extend `PresenceUser` in `app/src/utils/realtime.ts`:
+   `cosmetics?: { cursor?: string; frame?: string; emotePack?: string; stickerPack?: string }`
+   (values are validated `product_id`s).
+2. In `presence.ts` `join()`, after auth, call
+   `resolveUserCosmetics(userEmail)` and set `presence.user.cosmetics` on the
+   server side, discarding anything the client sent. Cached lookup, non-blocking:
+   if the cloud is unreachable, cosmetics are simply absent.
+3. Clients receive cosmetics in the existing presence snapshot/update broadcast —
+   no new realtime message type.
+
+### Space themes (space-scoped)
+
+Stored, not broadcast. When a space loads, resolve the theme once:
+
+- Add a space preference row (`preference` table in `db/schema/space.ts`), e.g.
+  `key = "cloud_space_theme"`, `value = <product_id>`, set by a space owner who
+  owns the theme entitlement (verified server-side at the moment they apply it).
+- On space load, the server reads that preference, validates the applying owner
+  still owns it (periodic revalidation, cached), and sends the theme token JSON
+  to all members. Theme is CSS custom properties from the descriptor — a fixed
+  token set, no arbitrary CSS.
+
+### Rendering surfaces
+
+- **Avatar frames** — `Avatar.vue` gains an optional `frame` prop; renders a
+  whitelisted overlay ring around the existing avatar. Used everywhere avatars
+  appear (presence stack, member lists, comments).
+- **Cursor / caret decorations & pets** — `Canvas.vue` (and the document caret
+  layer) render the remote user's `cosmetics.cursor` descriptor next to their
+  live cursor position, driven by the presence state already sent on move.
+- **Canvas emotes** — a new transient presence-state field (rides
+  `updatePresence`), rendered as a short-lived animation at the emitting user's
+  cursor for everyone in the room. Gated by owning the emote pack.
+- **Stickers** — placeable canvas elements chosen from owned sticker packs; the
+  sticker element stores only the `asset_id`, resolved to a CDN sprite on render.
+- **Space theme** — applied as CSS custom properties on the space root from the
+  resolved theme tokens.
+
+### Local UI (no purchasing)
+
+- A "Cosmetics" settings panel showing the user's owned items (from `owned`) and
+  which are equipped, plus a "Get more" deep-link to `vektorapp.org`. Equipping
+  is a local preference; ownership is authoritative from the cloud.
+- A `GET /api/v1/users/me/cosmetics` instance route returns the current user's
+  resolved owned + equipped set for that panel.
+
+### What we need
+
+- Cloud: private repo, Postgres, Stripe account + products, CDN bucket, Ed25519
+  keypair (public key pinned into the binary), the endpoints above.
+- Binary: `cloud/client.ts` + `cloud/cosmetics.ts`, the `cloud_cosmetics_cache`
+  table, `PresenceUser` extension, server-side stamping in `presence.ts`, space
+  preference for themes, and the render changes in `Avatar.vue` / `Canvas.vue` /
+  caret layer, plus the settings panel and `users/me/cosmetics` route.
+- Shared salt: a single global constant baked into the binary and the cloud so
+  `subject_hash` lines up everywhere. It is a pepper (obfuscation of raw email),
+  not a secret — any instance can compute any email's hash. That is acceptable
+  because ownership is cosmetic-only and the `owned` response is signed, so a
+  guessed hash still cannot forge ownership.
+
 ## Updates
 
 Updates are **on demand only**. The binary never checks for updates on startup,
