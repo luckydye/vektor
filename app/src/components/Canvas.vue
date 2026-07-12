@@ -59,6 +59,8 @@ import {
   isCanvasShapeType,
   isValidCanvasShape,
   minSizeForShape,
+  serializeCanvasShape,
+  shapePersistsSize,
 } from "#canvas/elements/registry.ts";
 import {
   type CanvasShapeLibraryItem,
@@ -836,8 +838,7 @@ function transformControlPositions(shape: CanvasShape) {
 const domShapes = computed(() =>
   shapes.value.filter(
     (shape) =>
-      shape.type !== "section" &&
-      (shape.type !== "image" || isGifSrc(shape.src ?? "")),
+      shape.type !== "section" && (shape.type !== "image" || isGifSrc(shape.src ?? "")),
   ),
 );
 
@@ -1213,7 +1214,8 @@ function observeLinkShapeSize(element: HTMLElement, shapeId: string) {
     linkShapeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const id = observedLinkShapes.get(entry.target);
-        if (id) fitLinkShapeHeight(id, linkCardContentHeight(entry.target as HTMLElement));
+        if (id)
+          fitLinkShapeHeight(id, linkCardContentHeight(entry.target as HTMLElement));
       }
     });
   }
@@ -1364,7 +1366,8 @@ function createShapeMap(shape: CanvasSerializedShape) {
   map.set("type", shape.type);
   map.set("x", shape.x);
   map.set("y", shape.y);
-  if (shape.type !== "text") {
+  // Font-scaled types (text) omit their box; the registry decides per type.
+  if (shapePersistsSize(shape.type)) {
     map.set("width", shape.width);
     map.set("height", shape.height);
   }
@@ -1382,9 +1385,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
 }
 
 function serializeShape(shape: CanvasShape): CanvasSerializedShape {
-  if (shape.type !== "text") return { ...shape };
-  const { width: _width, height: _height, ...rest } = shape;
-  return rest;
+  return serializeCanvasShape(shape);
 }
 
 function serializeSnapshot(): string {
@@ -2271,7 +2272,8 @@ function getSectionContents(section: CanvasShape, includeImmovable = false) {
     shapes: shapes.value
       .filter(
         (shape) =>
-          (includeImmovable || canMoveShape(shape)) && isShapeInsideSection(shape, section),
+          (includeImmovable || canMoveShape(shape)) &&
+          isShapeInsideSection(shape, section),
       )
       .map((shape) => ({ id: shape.id, x: shape.x, y: shape.y })),
     strokes: strokes.value
@@ -2394,9 +2396,10 @@ function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
   const currentShape = shapesById.value.get(id);
   if (changesTransform && currentShape && !canMoveShape(currentShape)) return;
   shape.set("updatedAt", Date.now());
-  const isTextShape = shape.get("type") === "text";
+  // Font-scaled types (text) never persist a width/height box.
+  const persistsSize = shapePersistsSize(shape.get("type") as CanvasShapeType);
   for (const [key, value] of Object.entries(patch)) {
-    if (isTextShape && (key === "width" || key === "height")) continue;
+    if (!persistsSize && (key === "width" || key === "height")) continue;
     shape.set(key, value);
   }
 }
@@ -2572,7 +2575,8 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
     minSize: minSizeForShape(shape.type),
     // Media and text keep their aspect ratio (text scales its font); notes and
     // sections resize freely.
-    aspect: (isMedia || isText) && bounds.height > 0 ? bounds.width / bounds.height : undefined,
+    aspect:
+      (isMedia || isText) && bounds.height > 0 ? bounds.width / bounds.height : undefined,
     isText,
     initialFontScale: shape.fontScale ?? 1,
     initial: {
@@ -2950,9 +2954,7 @@ function handleViewportDoubleClick(event: MouseEvent) {
   const target = event.target;
   if (
     target instanceof Element &&
-    target.closest(
-      ".canvas-shape, .canvas-transform-controls, .canvas-context-menu",
-    )
+    target.closest(".canvas-shape, .canvas-transform-controls, .canvas-context-menu")
   ) {
     return;
   }
@@ -4015,7 +4017,10 @@ watch(
 );
 
 watch(selectedShapeIds, (ids) => {
-  if (editingSectionTitleId.value && (ids.size !== 1 || !ids.has(editingSectionTitleId.value))) {
+  if (
+    editingSectionTitleId.value &&
+    (ids.size !== 1 || !ids.has(editingSectionTitleId.value))
+  ) {
     finishSectionTitleEditing();
   }
   renderImages();
@@ -4116,12 +4121,9 @@ watch(
 
 // Once a preview loads, its card renders the image/title; re-measure so the
 // shape grows to fit (the ResizeObserver alone won't catch content-only growth).
-watch(
-  linkPreviews.previews,
-  () => {
-    void nextTick(refitAllLinkShapes);
-  },
-);
+watch(linkPreviews.previews, () => {
+  void nextTick(refitAllLinkShapes);
+});
 
 watch(
   () => [
@@ -5591,7 +5593,7 @@ onUnmounted(() => {
 .canvas-link-image {
   flex: none;
   width: 100%;
-  aspect-ratio: 4/3;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background: var(--canvas-handle-bg);
 }

@@ -1,5 +1,9 @@
 import { canvasTextIcon } from "#assets/icons.ts";
-import type { CanvasElementExtension, CanvasShape } from "./types.ts";
+import type {
+  CanvasElementExtension,
+  CanvasSerializedShape,
+  CanvasShape,
+} from "./types.ts";
 
 export const textElement: CanvasElementExtension = {
   type: "text",
@@ -14,6 +18,12 @@ export const textElement: CanvasElementExtension = {
   autosize: "observe-dom",
   tool: { id: "text", label: "Text", shortcut: "T", icon: canvasTextIcon },
   create: (at) => createTextShape(at),
+  // Text auto-sizes to its content, so its box is never persisted — only
+  // fontScale is. Strip width/height on the way out.
+  serialize: (shape) => {
+    const { width: _width, height: _height, ...rest } = shape;
+    return rest as CanvasSerializedShape;
+  },
 };
 
 export function createTextShape(at: { x: number; y: number }): CanvasShape {

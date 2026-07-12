@@ -8,6 +8,7 @@ import { textElement } from "./text.ts";
 import type {
   CanvasElementExtension,
   CanvasElementTool,
+  CanvasSerializedShape,
   CanvasShape,
   CanvasShapeType,
 } from "./types.ts";
@@ -70,4 +71,21 @@ export function minSizeForShape(type: CanvasShapeType) {
 
 export function isValidCanvasShape(shape: CanvasShape): boolean {
   return getCanvasElementExtension(shape.type)?.isValid?.(shape) ?? true;
+}
+
+/**
+ * JSON serialization for a shape, applying any element-specific quirks (text
+ * strips its width/height). Defaults to a shallow copy.
+ */
+export function serializeCanvasShape(shape: CanvasShape): CanvasSerializedShape {
+  return getCanvasElementExtension(shape.type)?.serialize?.(shape) ?? { ...shape };
+}
+
+/**
+ * Whether a type persists an explicit width/height box. Font-scaled types
+ * (text) auto-size to their content and store fontScale instead, so their box
+ * is intentionally omitted from Yjs and snapshots.
+ */
+export function shapePersistsSize(type: CanvasShapeType): boolean {
+  return getCanvasElementExtension(type)?.transform.resize !== "font";
 }
