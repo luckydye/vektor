@@ -15,6 +15,7 @@ import {
   CanvasElementBase,
   dragOnPointerDown,
 } from "./CanvasElementBase.ts";
+import "./documentEditor.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";

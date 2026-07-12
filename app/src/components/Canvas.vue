@@ -174,7 +174,6 @@ import {
   type WorldRect,
   worldViewportBounds,
 } from "#viewport/index.ts";
-import CanvasDocumentEditor from "./CanvasDocumentEditor.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -388,9 +387,9 @@ const editingDocumentShape = ref<{
   address: string;
   toggleTaskIndex: number | null;
 } | null>(null);
-const embeddedDocumentEditor = shallowRef<InstanceType<
-  typeof CanvasDocumentEditor
-> | null>(null);
+// <canvas-document-editor> is a custom element exposing getHtml().
+type CanvasDocumentEditorEl = HTMLElement & { getHtml: () => string | null };
+const embeddedDocumentEditor = shallowRef<CanvasDocumentEditorEl | null>(null);
 
 const ydoc = props.ydoc;
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
@@ -2051,9 +2050,7 @@ function onDocumentShapeOpen(shape: CanvasShape, event: Event) {
 }
 
 function setEmbeddedDocumentEditorRef(instance: unknown) {
-  embeddedDocumentEditor.value = instance as InstanceType<
-    typeof CanvasDocumentEditor
-  > | null;
+  embeddedDocumentEditor.value = (instance as CanvasDocumentEditorEl | null) ?? null;
 }
 
 function canEditEmbeddedDocument(shape: CanvasShape): boolean {
@@ -4481,11 +4478,12 @@ onUnmounted(() => {
             @document-click="onDocumentShapeClick(shape, ($event as CustomEvent).detail)"
             @open-document="onDocumentShapeOpen(shape, $event)"
           />
-          <!-- elementTagForShape returns null for exactly two cases, which the
-               host keeps as Vue components rather than element custom elements:
-               a document card being edited inline, and a Twitter/X embed. -->
+          <!-- elementTagForShape returns null for exactly two cases the host
+               renders directly (they depend on host state the registry loop
+               doesn't carry): a document card being edited inline, and a
+               Twitter/X embed. Both are custom elements. -->
           <template v-else>
-            <CanvasDocumentEditor
+            <canvas-document-editor
               v-if="shape.type === 'document' && editingDocumentShape?.shapeId === shape.id"
               :ref="setEmbeddedDocumentEditorRef"
               class="canvas-shape-document-editor"
@@ -4493,9 +4491,9 @@ onUnmounted(() => {
               :document-id="editingDocumentShape.documentId"
               :title="documentLinks.shapeTitle(shape)"
               :toggle-task-index="editingDocumentShape.toggleTaskIndex"
-              @drag-start="startShapeDrag(shape, $event)"
-              @exit="stopEmbeddedDocumentEdit"
-            />
+              @drag-start="startShapeDrag(shape, ($event as CustomEvent).detail[0])"
+              @exit-edit="stopEmbeddedDocumentEdit"
+            ></canvas-document-editor>
             <div
               v-else-if="
               shape.type === 'link' &&
@@ -5384,6 +5382,89 @@ onUnmounted(() => {
 .canvas-shape-document-editor {
   width: 100%;
   height: 100%;
+}
+
+/* Body of the <canvas-document-editor> custom element (was the scoped styles of
+   CanvasDocumentEditor.vue). Descendant-scoped under .canvas-doc-editor so the
+   generic child class names don't leak now that the block is global. */
+.canvas-doc-editor {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: auto;
+  color: var(--canvas-text, #111827);
+  font: inherit;
+}
+
+.canvas-doc-editor .editor-header {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  padding: 10px 12px;
+  cursor: move;
+}
+
+.canvas-doc-editor .icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--canvas-doc-accent, #2563eb);
+}
+
+.canvas-doc-editor .title-wrap {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.canvas-doc-editor .title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.canvas-doc-editor .done {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: var(--canvas-doc-accent, #2563eb);
+  padding: 4px 10px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.canvas-doc-editor .editor-body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 14px 16px;
+  scrollbar-width: thin;
+}
+
+.canvas-doc-editor .editor-body document-view {
+  display: block;
+  min-width: 0;
+}
+
+.canvas-doc-editor .editor-hint {
+  margin: 0;
+  color: var(--canvas-muted, #6b7280);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .canvas-shape.link {
