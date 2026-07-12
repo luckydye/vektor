@@ -20,6 +20,7 @@ export const linkElement: CanvasElementExtension = {
   tag: "canvas-link",
   // Link cards fit their height to the preview content once it loads.
   transform: { move: true, resize: "none", rotate: false },
+  resolveData: (shape, host) => host.links.previewForShape(shape) ?? null,
 };
 
 export function createLinkShape(url: string, at: { x: number; y: number }): CanvasShape {

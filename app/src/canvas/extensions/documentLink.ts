@@ -52,6 +52,42 @@ export type DocumentLinkControllerOptions = {
   afterInsert?: () => void;
 };
 
+// Reactive view model resolved from the document-link preview controller and
+// handed to <canvas-document> via its `data` property.
+export type CanvasDocumentData = {
+  title: string;
+  type: string;
+  status: string;
+  content: string;
+  spaceId: string;
+  documentId: string;
+};
+
+// Ordinal of the checkbox the click landed on within the read-only card, or
+// null when the click wasn't on a task checkbox. Used to replay the toggle in
+// the editor the click is about to mount. The preview renders checkboxes as
+// non-interactive static HTML (the click actually lands on the card host), so
+// we hit-test the click point against the checkbox rects rather than the path.
+function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
+  const host = event.currentTarget as HTMLElement | null;
+  const view = host?.shadowRoot?.querySelector("document-view") as HTMLElement | null;
+  const root = view?.shadowRoot;
+  if (!root) return null;
+  const pad = 4;
+  const index = Array.from(
+    root.querySelectorAll<HTMLElement>('input[type="checkbox"]'),
+  ).findIndex((checkbox) => {
+    const rect = checkbox.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left - pad &&
+      event.clientX <= rect.right + pad &&
+      event.clientY >= rect.top - pad &&
+      event.clientY <= rect.bottom + pad
+    );
+  });
+  return index >= 0 ? index : null;
+}
+
 export const documentLinkElement: CanvasElementExtension = {
   type: "document",
   defaultText: "Untitled",
@@ -63,17 +99,49 @@ export const documentLinkElement: CanvasElementExtension = {
   tag: "canvas-document",
   // Embedded document cards resize but do not rotate.
   transform: { move: true, resize: "box", rotate: false },
-};
 
-// Reactive view model the host resolves from the document-link preview
-// controller and hands to <canvas-document> via its `data` property.
-export type CanvasDocumentData = {
-  title: string;
-  type: string;
-  status: string;
-  content: string;
-  spaceId: string;
-  documentId: string;
+  resolveData: (shape, host): CanvasDocumentData => ({
+    title: host.documents.shapeTitle(shape),
+    type: host.documents.shapeType(shape),
+    status: host.documents.shapeStatus(shape),
+    content: host.documents.shapeContent(shape),
+    spaceId: host.documents.documentSpaceIdForShape(shape) || host.spaceId,
+    documentId: host.isRemoteDocument(shape)
+      ? ""
+      : host.documents.documentIdForShape(shape) || "",
+  }),
+
+  // A plain click enters inline edit mode; modifier clicks stay reserved for
+  // multi-select, and a click that ended a drag is ignored. Inline editing only
+  // applies to editable rich-text documents of this space on this instance —
+  // remote/cross-space embeds stay read-only previews.
+  onActivate: (shape, host, event) => {
+    if (event.button !== 0) return;
+    if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (host.wasDragged() || shape.locked) return;
+    const documentId = host.documents.documentIdForShape(shape);
+    const address = host.documentAddress(shape);
+    if (!documentId || !address) return;
+    if (!host.canEditDocuments() || host.isRemoteDocument(shape)) return;
+    if (host.documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
+    if (!host.documents.inlineEditable(shape)) return;
+    host.beginEdit({
+      shapeId: shape.id,
+      documentId,
+      address,
+      toggleTaskIndex: clickedTaskCheckboxIndex(event),
+    });
+  },
+
+  onOpen: (shape, host, event) => {
+    event.preventDefault();
+    if (host.wasDragged()) return;
+    const requested =
+      event instanceof CustomEvent && typeof event.detail?.documentId === "string"
+        ? event.detail.documentId
+        : null;
+    host.openDocument(shape, requested);
+  },
 };
 
 // Static preview card. Delegates to the existing <document-attachment> custom
@@ -358,6 +426,9 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     shapeStatus,
     shapeType,
     shapeContent,
+    // Only plain rich-text docs with a loaded preview can be edited inline.
+    inlineEditable: (shape: CanvasShape) =>
+      previewSupportsInlineEditing(cachedPreview(shape)),
     setPreviewContent,
     insertDocumentLink,
   };

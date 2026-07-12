@@ -134,6 +134,48 @@ export type CanvasElementTool = {
   icon: string;
 };
 
+// An inline-edit session the host mounts (currently the document editor). Built
+// by an extension's onActivate and handed to CanvasExtensionHost.beginEdit; the
+// host owns the singleton editing slot.
+export type CanvasEditSession = {
+  shapeId: string;
+  documentId: string;
+  address: string;
+  toggleTaskIndex: number | null;
+};
+
+// Structural read access to the host-owned document-link preview controller,
+// used by the document extension's resolveData/onActivate. Defined structurally
+// (not imported) to avoid a module cycle with documentLink.ts.
+export interface DocumentPreviewAccess {
+  shapeTitle: (shape: CanvasShape) => string;
+  shapeType: (shape: CanvasShape) => string;
+  shapeStatus: (shape: CanvasShape) => string;
+  shapeContent: (shape: CanvasShape) => string;
+  documentIdForShape: (shape: CanvasShape) => string | undefined;
+  documentSpaceIdForShape: (shape: CanvasShape) => string | undefined;
+  inlineEditable: (shape: CanvasShape) => boolean;
+}
+
+export interface LinkPreviewAccess {
+  previewForShape: (shape: CanvasShape) => unknown;
+}
+
+// Host services + controllers passed to the extension-level hooks the host
+// dispatches (resolveData / onActivate / onOpen). Distinct from
+// CanvasElementContext, which is handed to the rendered element bodies.
+export interface CanvasExtensionHost {
+  spaceId: string;
+  wasDragged: () => boolean;
+  canEditDocuments: () => boolean;
+  isRemoteDocument: (shape: CanvasShape) => boolean;
+  documentAddress: (shape: CanvasShape) => string | undefined;
+  beginEdit: (session: CanvasEditSession) => void;
+  openDocument: (shape: CanvasShape, requestedDocumentId?: string | null) => void;
+  documents: DocumentPreviewAccess;
+  links: LinkPreviewAccess;
+}
+
 // Engine services passed to a canvas-drawn element's paint() hook. The host
 // owns the layer setup (transform, clear), image caching, selection overlays,
 // and the geometry it shares with hit-testing / the title-edit overlay; the
@@ -188,4 +230,13 @@ export interface CanvasElementExtension {
   // Element-specific JSON serialization (text strips its width/height). The
   // host's createShapeMap/serializeShape default to a shallow copy otherwise.
   serialize?: (shape: CanvasShape) => CanvasSerializedShape;
+
+  // --- interaction (host dispatches these; the host stays type-agnostic) ---
+  // Per-type reactive view model handed to the element via its `data` property.
+  resolveData?: (shape: CanvasShape, host: CanvasExtensionHost) => unknown;
+  // Primary activation (a plain click on the card body). Document cards enter
+  // inline edit here.
+  onActivate?: (shape: CanvasShape, host: CanvasExtensionHost, event: MouseEvent) => void;
+  // The element's "open" affordance fired (document-attachment's open button).
+  onOpen?: (shape: CanvasShape, host: CanvasExtensionHost, event: Event) => void;
 }

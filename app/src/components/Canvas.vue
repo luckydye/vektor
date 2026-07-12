@@ -17,7 +17,6 @@ import {
   type DocumentLinkReference,
   dragHasDocumentLink,
   droppedDocumentReference as getDroppedDocumentReference,
-  previewSupportsInlineEditing,
 } from "#canvas/extensions/documentLink.ts";
 import {
   addCanvasDrawingPoint,
@@ -75,6 +74,8 @@ import {
   SHAPE_LIBRARY,
 } from "#canvas/extensions/shape.ts";
 import type {
+  CanvasEditSession,
+  CanvasExtensionHost,
   CanvasPaintHelpers,
   CanvasSerializedShape,
   CanvasShape,
@@ -830,23 +831,56 @@ function elementTagForShape(shape: CanvasShape): string | null {
 }
 
 // Per-type reactive view model handed to an element via its `data` property.
-// Link cards need their loaded preview metadata; document cards need the
-// resolved preview fields; other types need nothing yet.
+// The extension resolves it from the host's controllers; the host stays generic.
 function elementDataForShape(shape: CanvasShape): unknown {
-  if (shape.type === "link") return linkPreviews.previewForShape(shape) ?? null;
-  if (shape.type === "document") {
-    return {
-      title: documentLinks.shapeTitle(shape),
-      type: documentLinks.shapeType(shape),
-      status: documentLinks.shapeStatus(shape),
-      content: documentLinks.shapeContent(shape),
-      spaceId: documentLinks.documentSpaceIdForShape(shape) || props.spaceId,
-      documentId: isRemoteDocumentShape(shape)
-        ? ""
-        : documentLinks.documentIdForShape(shape) || "",
-    };
+  return getCanvasElementExtension(shape.type)?.resolveData?.(shape, extHost) ?? null;
+}
+
+// Sets the host-owned inline-edit slot; the document extension calls this from
+// its onActivate after the can-edit checks.
+function beginEdit(session: CanvasEditSession) {
+  if (editingDocumentShape.value?.shapeId === session.shapeId) return;
+  stopEmbeddedDocumentEdit();
+  selectOnlyShape(session.shapeId);
+  editingDocumentShape.value = session;
+}
+
+// Opens a linked document: remote embeds open their href in a new tab; local
+// ones dispatch the app's view-document navigation event.
+function openDocument(shape: CanvasShape, requestedDocumentId?: string | null) {
+  const documentId = requestedDocumentId ?? documentLinks.documentIdForShape(shape);
+  if (!documentId) return;
+  const href = documentLinks.documentHrefForShape(shape);
+  if (isRemoteDocumentShape(shape) && href) {
+    window.open(href, "_blank", "noopener,noreferrer");
+    return;
   }
-  return null;
+  const spaceId = documentLinks.documentSpaceIdForShape(shape) || props.spaceId;
+  window.dispatchEvent(
+    new CustomEvent("view-document", { detail: { spaceId, documentId } }),
+  );
+}
+
+// Services + controllers handed to the extension-level hooks (resolveData /
+// onActivate / onOpen) the host dispatches, keeping the host type-agnostic.
+const extHost: CanvasExtensionHost = {
+  spaceId: props.spaceId,
+  wasDragged: () => dragMoved,
+  canEditDocuments: () => userCanEditDocuments.value,
+  isRemoteDocument: (shape) => isRemoteDocumentShape(shape),
+  documentAddress: (shape) => documentAddressForShape(shape),
+  beginEdit,
+  openDocument,
+  documents: documentLinks,
+  links: linkPreviews,
+};
+
+function onElementActivate(shape: CanvasShape, event: MouseEvent) {
+  getCanvasElementExtension(shape.type)?.onActivate?.(shape, extHost, event);
+}
+
+function onElementOpen(shape: CanvasShape, event: Event) {
+  getCanvasElementExtension(shape.type)?.onOpen?.(shape, extHost, event);
 }
 
 // Stable helpers/data handed to every element custom element via its
@@ -2043,101 +2077,12 @@ async function addDroppedCanvasFiles(
   }
 }
 
-function onDocumentShapeOpen(shape: CanvasShape, event: Event) {
-  event.preventDefault();
-  if (dragMoved) return;
-  const requestedDocumentId =
-    event instanceof CustomEvent && typeof event.detail?.documentId === "string"
-      ? event.detail.documentId
-      : null;
-  const documentId = requestedDocumentId ?? documentLinks.documentIdForShape(shape);
-  if (!documentId) return;
-  const href = documentLinks.documentHrefForShape(shape);
-  if (isRemoteDocumentShape(shape) && href) {
-    window.open(href, "_blank", "noopener,noreferrer");
-    return;
-  }
-  const spaceId = documentLinks.documentSpaceIdForShape(shape) || props.spaceId;
-  window.dispatchEvent(
-    new CustomEvent("view-document", {
-      detail: { spaceId, documentId },
-    }),
-  );
-}
-
 function setEmbeddedDocumentEditorRef(instance: unknown) {
   embeddedDocumentEditor.value = (instance as CanvasDocumentEditorEl | null) ?? null;
 }
 
-function canEditEmbeddedDocument(shape: CanvasShape): boolean {
-  if (!userCanEditDocuments.value) return false;
-  if (!documentLinks.documentIdForShape(shape)) return false;
-  // Inline editing joins the local collaboration room with the current
-  // space's permissions, so it only applies to documents of this space on
-  // this instance; remote and cross-space embeds stay read-only previews.
-  if (isRemoteDocumentShape(shape)) return false;
-  if (documentLinks.documentSpaceIdForShape(shape) !== props.spaceId) return false;
-  return previewSupportsInlineEditing(documentLinks.cachedPreview(shape));
-}
-
-// Ordinal of the checkbox the click landed on within the read-only card, or
-// null when the click wasn't on a task checkbox. Used to replay the toggle in
-// the editor that the click is about to mount. The preview renders checkboxes
-// as non-interactive static HTML (the click actually lands on the card host),
-// so we hit-test the click point against the checkbox rects rather than the
-// event path.
-function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
-  const host = event.currentTarget as HTMLElement | null;
-  const view = host?.shadowRoot?.querySelector("document-view") as HTMLElement | null;
-  const root = view?.shadowRoot;
-  if (!root) return null;
-
-  const checkboxes = Array.from(
-    root.querySelectorAll<HTMLElement>('input[type="checkbox"]'),
-  );
-  const pad = 4;
-  const index = checkboxes.findIndex((checkbox) => {
-    const rect = checkbox.getBoundingClientRect();
-    return (
-      event.clientX >= rect.left - pad &&
-      event.clientX <= rect.right + pad &&
-      event.clientY >= rect.top - pad &&
-      event.clientY <= rect.bottom + pad
-    );
-  });
-  return index >= 0 ? index : null;
-}
-
-// A plain click on a document card enters inline edit mode; modifier clicks
-// (shift/ctrl/meta) stay reserved for multi-select, and a click that ends a
-// drag is ignored via the dragMoved guard in startEmbeddedDocumentEdit.
-function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
-  if (event.button !== 0) return;
-  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-  startEmbeddedDocumentEdit(shape, clickedTaskCheckboxIndex(event));
-}
-
-function startEmbeddedDocumentEdit(
-  shape: CanvasShape,
-  toggleTaskIndex: number | null = null,
-) {
-  if (dragMoved || shape.locked) return;
-  if (editingDocumentShape.value?.shapeId === shape.id) return;
-  const documentId = documentLinks.documentIdForShape(shape);
-  const address = documentAddressForShape(shape);
-  if (!documentId || !address || !canEditEmbeddedDocument(shape)) return;
-  if (editingDocumentShape.value?.shapeId !== shape.id) {
-    stopEmbeddedDocumentEdit();
-  }
-  selectOnlyShape(shape.id);
-  editingDocumentShape.value = {
-    shapeId: shape.id,
-    documentId,
-    address,
-    toggleTaskIndex,
-  };
-}
-
+// Ends the host-owned inline-edit session, flushing the editor's html back into
+// the read-only card's cached preview.
 function stopEmbeddedDocumentEdit() {
   const editing = editingDocumentShape.value;
   if (!editing) return;
@@ -4467,8 +4412,8 @@ onUnmounted(() => {
             :context.prop="hostContext"
             :data.prop="elementDataForShape(shape)"
             @request-drag="startShapeDrag(shape, ($event as CustomEvent).detail)"
-            @document-click="onDocumentShapeClick(shape, ($event as CustomEvent).detail)"
-            @open-document="onDocumentShapeOpen(shape, $event)"
+            @document-click="onElementActivate(shape, ($event as CustomEvent).detail)"
+            @open-document="onElementOpen(shape, $event)"
           />
           <!-- elementTagForShape returns null for exactly two cases the host
                renders directly (they depend on host state the registry loop
