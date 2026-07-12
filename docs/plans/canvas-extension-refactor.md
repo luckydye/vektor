@@ -143,6 +143,37 @@ Each existing metadata module gains its custom element + hooks (co-located):
   multi-select marquee, remote presence — via the `/verify` skill + real app run.
 - No agent/model-driven tests (hits local Ollama). Use Bun, not npm.
 
+## Status (in progress)
+
+Branch `refactor/canvas-extensions`. Build green (`tsgo` at pre-existing baseline)
+after every commit. `.vue` templates are not type-checked by tsgo, so the host
+template wiring still needs a runtime pass.
+
+**Done:**
+- Extension contract + registry (+ `section` first-class). [`types.ts`, `registry.ts`, `section.ts`]
+- Serialization routed through the registry (`serializeCanvasShape` / `shapePersistsSize`,
+  text `serialize` hook); Yjs output byte-identical.
+- All DOM element types render via custom elements: `<canvas-note>`, `<canvas-text>`
+  (`CanvasRichTextElement`), `<canvas-image>` (GIF), `<canvas-video>`, `<canvas-audio>`,
+  `<canvas-file>`, `<canvas-link>` (card), `<canvas-document>` (preview). Host dispatches
+  via `<component :is="elementTagForShape(shape)">` with an inline fallback (also the SSR
+  path). Twitter/X links keep `<CanvasTwitterEmbed>`; the document inline editor keeps
+  `<CanvasDocumentEditor>` — both host-owned, selected by `elementTagForShape` returning null.
+- Tools (`CANVAS_TOOLS`), creation (`addShape` → `ext.create`), and transform capability
+  (`selectedTransformShape`, `startShapeResize` aspect/font, `startShapeRotation`) are
+  registry-driven.
+
+**Remaining (recommend doing with the app running to verify each step):**
+- **Task 4 — canvas paint/hit-test:** move `renderImages` (static image pixels) and
+  `renderSections` (frame + title) into `ext.paint`, and the image/section hit-testing into
+  `ext.hitTest`, with a `CanvasPaintHelpers` surface (imageCache, resizeImageUrl, selection
+  state, css vars, dark mode, transform). Heaviest host coupling — highest care.
+- **Task 5 cont. — paste/drop matchers:** replace the numbered `handlePaste`/`handleDrop`
+  branches with a loop over `ext.matchPaste`/`ext.matchDrop`.
+- **Task 6 — cleanup + verify:** delete the now-dead fallback template branches (note/text/
+  media/file/link-card/document-preview) once runtime-verified, leaving the host as the
+  engine only. Verify per type via `/verify` + a real app run (no model-driven tests — Ollama).
+
 ## 7. Commit sequence (single-pass, staged for reviewability)
 1. Extend contract in `types.ts` + registry aggregation (+ section extension), no host changes.
 2. Add serialization hooks; route `toShape`/`createShapeMap`/`serialize` through registry.
