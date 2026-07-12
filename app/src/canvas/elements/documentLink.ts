@@ -10,7 +10,7 @@ import {
   type DocumentPropertyValue,
   propertyValueToText,
 } from "#utils/documentProperties.ts";
-import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
+import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
 
@@ -46,13 +46,17 @@ export type DocumentLinkControllerOptions = {
   afterInsert?: () => void;
 };
 
-export const documentLinkElement: CanvasElementDefinition = {
+export const documentLinkElement: CanvasElementExtension = {
   type: "document",
   defaultText: "Untitled",
   defaultColor: "var(--canvas-doc-bg)",
   defaultSize: { width: 380, height: 280 },
   minSize: { width: 280, height: 180 },
   isValid: (shape) => Boolean(parseVektorDocumentAddress(shape.docAddress)),
+  surface: "dom",
+  tag: "canvas-document",
+  // Embedded document cards resize but do not rotate.
+  transform: { move: true, resize: "box", rotate: false },
 };
 
 export function documentLabel(doc: {

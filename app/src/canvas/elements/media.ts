@@ -4,35 +4,46 @@ import {
   mediaTypeForFile,
   toAbsoluteUploadUrl,
 } from "#utils/uploadFiles.ts";
-import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
+import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 const mediaMinSize = { width: 80, height: 60 };
 
-export const imageElement: CanvasElementDefinition = {
+export const imageElement: CanvasElementExtension = {
   type: "image",
   defaultText: "",
   defaultColor: "transparent",
   defaultSize: { width: 240, height: 150 },
   minSize: mediaMinSize,
+  // Static images paint their pixels on the canvas layer but keep a DOM hit
+  // target; GIFs render as a DOM <img> instead (see isGifSrc in the host).
+  surface: "dom+canvas",
+  tag: "canvas-image",
+  transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
 };
 
-export const videoElement: CanvasElementDefinition = {
+export const videoElement: CanvasElementExtension = {
   type: "video",
   defaultText: "",
   defaultColor: "#000000",
   defaultSize: { width: 240, height: 150 },
   minSize: mediaMinSize,
+  surface: "dom",
+  tag: "canvas-video",
+  transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
 };
 
 // Audio renders as a fixed-height native player bar, so it has no natural
 // pixel size and is not aspect-locked like image/video (see isMediaElementType).
 const audioMinSize = { width: 220, height: 54 };
-export const audioElement: CanvasElementDefinition = {
+export const audioElement: CanvasElementExtension = {
   type: "audio",
   defaultText: "",
   defaultColor: "transparent",
   defaultSize: { width: 320, height: 54 },
   minSize: audioMinSize,
+  surface: "dom",
+  tag: "canvas-audio",
+  transform: { move: true, resize: "none", rotate: false },
 };
 
 export function isMediaElementType(type: string): type is "image" | "video" {

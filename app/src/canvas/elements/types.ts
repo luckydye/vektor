@@ -1,3 +1,5 @@
+import type * as Y from "yjs";
+import type { TranslationKey } from "#utils/lang.ts";
 import type {
   FreehandPoint,
   FreehandStroke,
@@ -88,11 +90,119 @@ export type CanvasSize = {
   height: number;
 };
 
-export type CanvasElementDefinition = {
-  type: CanvasElementType;
+export type CanvasPoint = { x: number; y: number };
+
+// ---------------------------------------------------------------------------
+// Extension contract
+//
+// Each element TYPE is described by one `CanvasElementExtension`, mirroring the
+// rich-text-editor's Tiptap extensions. Canvas.vue is a host/engine that
+// delegates all per-type behavior to these objects via the registry, instead of
+// branching on `shape.type === "..."` inline. New fields are optional so the
+// contract can be populated incrementally; the host falls back to its built-in
+// behavior for anything an extension does not (yet) provide.
+// ---------------------------------------------------------------------------
+
+// Which render surface(s) an element uses. Most elements are plain DOM custom
+// elements; images paint their pixels on a canvas layer but keep a DOM hit
+// target (`dom+canvas`); sections are drawn entirely on a canvas layer.
+export type CanvasElementSurface = "dom" | "canvas" | "dom+canvas";
+
+// Declarative transform capability, replacing the host's
+// selectedTransformShape / selectedResizable* branches.
+export type CanvasElementTransform = {
+  move: boolean;
+  // "box" resizes width/height; "font" scales fontScale (text); "none" hides
+  // the resize handle entirely.
+  resize: "box" | "font" | "none";
+  rotate: boolean;
+  // Locks width/height ratio while resizing (image/video).
+  aspectLocked?: boolean;
+};
+
+// Context handed to `create()` so factories can read active toolbar state (the
+// note/section color pickers) without reaching into the host.
+export type CanvasElementCreateContext = {
+  color?: string;
+};
+
+// Optional toolbar entry contributed by an element. The host merges these with
+// its built-in tools (select/draw/shape).
+export type CanvasElementTool = {
+  id: CanvasTool;
+  label: TranslationKey;
+  shortcut: string;
+  icon: string;
+};
+
+// Reads a raw attribute from either a Yjs map or a plain serialized object.
+export type CanvasShapeAttrReader = (key: string) => unknown;
+
+// Helpers passed to canvas-drawn elements' paint()/hitTest() hooks. Extended as
+// painting moves out of the host (see the paint/hit-test commit).
+export interface CanvasPaintHelpers {
+  scale: number;
+  isDarkMode: boolean;
+  worldToScreen(point: CanvasPoint): CanvasPoint;
+  cssVar(name: string, fallback: string): string;
+  imageCache: Map<string, HTMLImageElement | "loading" | "error">;
+}
+
+export interface CanvasHitTestHelpers {
+  scale: number;
+  worldToScreen(point: CanvasPoint): CanvasPoint;
+}
+
+export interface CanvasElementExtension {
+  // --- metadata ---
+  type: CanvasShapeType;
   defaultText: string;
   defaultColor: string;
   defaultSize: CanvasSize;
   minSize: CanvasSize;
   isValid?: (shape: CanvasShape) => boolean;
-};
+
+  // --- creation ---
+  // Factory for tool-click / double-click creation. Upload/paste/drop-created
+  // types (media, file, document, link) omit this and are created through their
+  // own async flows instead.
+  create?: (at: CanvasPoint, ctx: CanvasElementCreateContext) => CanvasShape;
+  tool?: CanvasElementTool;
+
+  // --- rendering ---
+  surface: CanvasElementSurface;
+  // Custom-element tag for DOM surfaces (e.g. "canvas-note"). The host renders
+  // one of these per shape and feeds it `.shape` / `.context`.
+  tag?: string;
+  // Canvas-2d painter for canvas / dom+canvas surfaces.
+  paint?: (
+    ctx: CanvasRenderingContext2D,
+    shape: CanvasShape,
+    helpers: CanvasPaintHelpers,
+  ) => void;
+  // Hit test for canvas-drawn types (DOM elements hit-test via native events).
+  hitTest?: (
+    shape: CanvasShape,
+    worldPoint: CanvasPoint,
+    helpers: CanvasHitTestHelpers,
+  ) => boolean;
+
+  // --- geometry / transforms ---
+  transform: CanvasElementTransform;
+  // "observe-dom" opts the element into the host's DOM auto-size driver (text,
+  // link cards), which fits the shape to its measured content.
+  autosize?: "observe-dom" | "none";
+
+  // --- serialization quirks ---
+  // Writes element-specific fields when persisting to Yjs. Defaults to the
+  // host's generic field writer; text uses this to omit width/height.
+  writeYMap?: (map: Y.Map<unknown>, shape: CanvasSerializedShape) => void;
+  // Reads element-specific fields back from a Yjs map / serialized object.
+  readYMap?: (read: CanvasShapeAttrReader, base: CanvasShape) => Partial<CanvasShape>;
+  // Element-specific JSON serialization (text strips width/height).
+  serialize?: (shape: CanvasShape) => CanvasSerializedShape;
+}
+
+// Deprecated alias kept so existing element modules keep compiling while the
+// contract is populated. Prefer CanvasElementExtension in new code.
+export type CanvasElementDefinition = CanvasElementExtension;

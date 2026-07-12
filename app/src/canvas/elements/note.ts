@@ -1,4 +1,5 @@
-import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
+import { canvasNoteIcon } from "#assets/icons.ts";
+import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 export const NOTE_COLORS = [
   "#fef3c7",
@@ -8,12 +9,17 @@ export const NOTE_COLORS = [
   "#fee2e2",
 ] as const;
 
-export const noteElement: CanvasElementDefinition = {
+export const noteElement: CanvasElementExtension = {
   type: "note",
   defaultText: "Note",
   defaultColor: NOTE_COLORS[0],
   defaultSize: { width: 240, height: 150 },
   minSize: { width: 140, height: 96 },
+  surface: "dom",
+  tag: "canvas-note",
+  transform: { move: true, resize: "box", rotate: true },
+  tool: { id: "note", label: "Note", shortcut: "N", icon: canvasNoteIcon },
+  create: (at, ctx) => createNoteShape(at, ctx.color ?? noteElement.defaultColor),
 };
 
 export function createNoteShape(

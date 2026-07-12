@@ -1,17 +1,20 @@
 import "#editor/elements/file-attachment.ts";
 import { isMediaFile } from "#utils/uploadFiles.ts";
 import { uploadMediaFile } from "./media.ts";
-import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
+import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 const PDF_PREVIEW_SIZE = { width: 420, height: 560 };
 
-export const fileElement: CanvasElementDefinition = {
+export const fileElement: CanvasElementExtension = {
   type: "file",
   defaultText: "",
   defaultColor: "transparent",
   defaultSize: { width: 220, height: 150 },
   minSize: { width: 220, height: 150 },
   isValid: (shape) => Boolean(shape.src),
+  surface: "dom",
+  tag: "canvas-file",
+  transform: { move: true, resize: "none", rotate: false },
 };
 
 export function isCanvasFile(file: File) {

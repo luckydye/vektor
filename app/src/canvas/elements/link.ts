@@ -1,15 +1,20 @@
 import { ref } from "vue";
 import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
-import type { CanvasElementDefinition, CanvasShape } from "./types.ts";
+import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
-export const linkElement: CanvasElementDefinition = {
+export const linkElement: CanvasElementExtension = {
   type: "link",
   defaultText: "",
   defaultColor: "var(--canvas-link-bg, #ffffff)",
   defaultSize: { width: 320, height: 200 },
   minSize: { width: 200, height: 80 },
   isValid: (shape) => Boolean(shape.src),
+  surface: "dom",
+  tag: "canvas-link",
+  // Link cards fit their height to the preview content once it loads.
+  transform: { move: true, resize: "none", rotate: false },
+  autosize: "observe-dom",
 };
 
 export function createLinkShape(url: string, at: { x: number; y: number }): CanvasShape {
