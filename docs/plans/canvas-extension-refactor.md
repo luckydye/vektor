@@ -143,11 +143,11 @@ Each existing metadata module gains its custom element + hooks (co-located):
   multi-select marquee, remote presence — via the `/verify` skill + real app run.
 - No agent/model-driven tests (hits local Ollama). Use Bun, not npm.
 
-## Status (in progress)
+## Status — complete (pending runtime verification)
 
-Branch `refactor/canvas-extensions`. Build green (`tsgo` at pre-existing baseline)
-after every commit. `.vue` templates are not type-checked by tsgo, so the host
-template wiring still needs a runtime pass.
+Branch `refactor/canvas-extensions`. Build green (`tsgo` at the pre-existing baseline)
+after every commit. `.vue` templates are not type-checked by tsgo, so the host template
+wiring still needs one runtime pass in the app.
 
 **Done:**
 - Extension contract + registry (+ `section` first-class). [`types.ts`, `registry.ts`, `section.ts`]
@@ -155,24 +155,36 @@ template wiring still needs a runtime pass.
   text `serialize` hook); Yjs output byte-identical.
 - All DOM element types render via custom elements: `<canvas-note>`, `<canvas-text>`
   (`CanvasRichTextElement`), `<canvas-image>` (GIF), `<canvas-video>`, `<canvas-audio>`,
-  `<canvas-file>`, `<canvas-link>` (card), `<canvas-document>` (preview). Host dispatches
-  via `<component :is="elementTagForShape(shape)">` with an inline fallback (also the SSR
-  path). Twitter/X links keep `<CanvasTwitterEmbed>`; the document inline editor keeps
-  `<CanvasDocumentEditor>` — both host-owned, selected by `elementTagForShape` returning null.
+  `<canvas-file>`, `<canvas-link>` (card), `<canvas-document>` (preview). Host dispatches via
+  `<component :is="elementTagForShape(shape)">`; the fallback is reduced to the two host-owned
+  Vue renderings (`<CanvasDocumentEditor>` while editing, `<CanvasTwitterEmbed>`), selected by
+  `elementTagForShape` returning null.
+- Section painting (frame + title) moved into `sectionElement.paint`; host `renderSections`
+  just drives the layer + hook.
 - Tools (`CANVAS_TOOLS`), creation (`addShape` → `ext.create`), and transform capability
   (`selectedTransformShape`, `startShapeResize` aspect/font, `startShapeRotation`) are
-  registry-driven.
+  registry-driven. Dead per-type template branches + helpers removed.
 
-**Remaining (recommend doing with the app running to verify each step):**
-- **Task 4 — canvas paint/hit-test:** move `renderImages` (static image pixels) and
-  `renderSections` (frame + title) into `ext.paint`, and the image/section hit-testing into
-  `ext.hitTest`, with a `CanvasPaintHelpers` surface (imageCache, resizeImageUrl, selection
-  state, css vars, dark mode, transform). Heaviest host coupling — highest care.
-- **Task 5 cont. — paste/drop matchers:** replace the numbered `handlePaste`/`handleDrop`
-  branches with a loop over `ext.matchPaste`/`ext.matchDrop`.
-- **Task 6 — cleanup + verify:** delete the now-dead fallback template branches (note/text/
-  media/file/link-card/document-preview) once runtime-verified, leaving the host as the
-  engine only. Verify per type via `/verify` + a real app run (no model-driven tests — Ollama).
+**Deliberately host-owned (engine, not per-type — documented, not TODO):**
+- **Static-image pixel painting** (`renderImages`): image cache, resolution-tier selection,
+  and selection overlays are shared engine concerns; the per-type knowledge (aspect lock, GIF
+  routing) already lives in metadata. GIF images render via `<canvas-image>`.
+- **Hit-testing** (`hitTestImageShape` / `hitTestSectionBorder` / `hitTestSectionTitle`):
+  tightly ordered cross-type z-order logic (image → stroke → section title → section border)
+  that also feeds selection and the title-edit overlay; sections need a dual border/title
+  region a single `hitTest` boolean can't express.
+- **Paste/drop routing** (`handlePaste` / `handleDrop`): orchestration that consumes
+  recognizers already owned by the element modules (`dragHasCanvasFiles`,
+  `mediaFilesFromDataTransfer`, `parseCanvasClipboard*`, `getDroppedDocumentReference`); the
+  recognizers are the extension's concern, the ordering/async flow is the host's.
+- **Article wrapper** (position/rotation/selection class, text font-size var, image
+  no-background): host-owned layout for the positioned card; element bodies fill it.
+
+**Before merge:** verify per type via `/verify` + a real app run (no model-driven tests —
+Ollama): create/drag/resize/rotate a note & text; formatting toolbar on focus; empty text
+deletes on blur; paste image/URL/doc; drop a file; open a PDF; document card inline-edit +
+external open; GIF vs static image; section create + title edit + resize; multi-select
+marquee; remote presence.
 
 ## 7. Commit sequence (single-pass, staged for reviewability)
 1. Extend contract in `types.ts` + registry aggregation (+ section extension), no host changes.
