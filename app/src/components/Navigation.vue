@@ -185,7 +185,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
       class="flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]"
     >
       <nav class="@container flex flex-col gap-3xs">
-        <div class="px-4xs flex-none flex flex-col gap-0.5">
+        <div class="pl-4xs pr-2xs flex-none flex flex-col gap-0.5">
           <div class="flex items-center gap-px">
             <MenuLink
               class="flex-1"
@@ -226,7 +226,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         <!-- Extension Menu Links -->
         <div
           v-if="extensionMenuLinks.length > 0 && !isLoading"
-          class="px-4xs flex-none flex flex-col gap-0.5"
+          class="pl-4xs pr-2xs flex-none flex flex-col gap-0.5"
         >
           <MenuLink
             v-for="link in extensionMenuLinks"
