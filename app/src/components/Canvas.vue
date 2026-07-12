@@ -76,6 +76,7 @@ import {
 } from "#canvas/elements/shape.ts";
 import { shouldRemoveTextShape } from "#canvas/elements/text.ts";
 import type {
+  CanvasPaintHelpers,
   CanvasSerializedShape,
   CanvasShape,
   CanvasShapeType,
@@ -1658,24 +1659,6 @@ function renderGrid() {
   });
 }
 
-function roundedRectPath(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-) {
-  const cornerRadius = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + cornerRadius, y);
-  context.arcTo(x + width, y, x + width, y + height, cornerRadius);
-  context.arcTo(x + width, y + height, x, y + height, cornerRadius);
-  context.arcTo(x, y + height, x, y, cornerRadius);
-  context.arcTo(x, y, x + width, y, cornerRadius);
-  context.closePath();
-}
-
 function sectionTitleSize(shape: CanvasShape) {
   const maxWidth = Math.max(1, shape.width * transform.value.scale);
   const title = shape.text || t("Section");
@@ -1687,40 +1670,11 @@ function sectionTitleSize(shape: CanvasShape) {
   };
 }
 
-function renderSectionTitle(context: CanvasRenderingContext2D, shape: CanvasShape) {
-  if (editingSectionTitleId.value === shape.id) return;
-
-  const position = sectionTitlePosition(shape);
-  const size = sectionTitleSize(shape);
-  const title = shape.text || t("Section");
-
-  context.save();
-  context.translate(position.x, position.y);
-  context.rotate((shape.rotation * Math.PI) / 180);
-  roundedRectPath(context, 0, 0, size.width, size.height, 6);
-  context.fillStyle = shape.color;
-  context.globalAlpha = 0.1;
-  context.fill();
-  context.strokeStyle = shape.color;
-  context.globalAlpha = 0.48;
-  context.lineWidth = 1;
-  context.stroke();
-
-  context.save();
-  roundedRectPath(context, 0, 0, size.width, size.height, 6);
-  context.clip();
-  context.globalAlpha = 1;
-  context.fillStyle = cssSectionTitleText;
-  context.font = "750 13px system-ui, sans-serif";
-  context.textBaseline = "middle";
-  context.fillText(title, 8, size.height / 2, Math.max(0, size.width - 16));
-  context.restore();
-  context.restore();
-}
-
 // Sections are intentionally a dedicated canvas layer between the backdrop
 // grid and all content layers. Unlike DOM shapes, they can never establish a
-// stacking context above cards, media, strokes, or controls.
+// stacking context above cards, media, strokes, or controls. The frame/title
+// drawing lives on the section extension's paint() hook; the host owns the
+// layer, ordering, and the geometry shared with hit-testing / the title editor.
 function renderSections() {
   const canvas = sectionsRef.value;
   const context = canvas?.getContext("2d");
@@ -1729,28 +1683,20 @@ function renderSections() {
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, screen.value.width, screen.value.height);
 
-  const scale = transform.value.scale;
+  const paint = getCanvasElementExtension("section")?.paint;
+  if (!paint) return;
+  const helpers: CanvasPaintHelpers = {
+    scale: transform.value.scale,
+    dx: transform.value.dx,
+    dy: transform.value.dy,
+    t,
+    sectionTitleColor: cssSectionTitleText,
+    isEditingSectionTitle: (id) => editingSectionTitleId.value === id,
+    sectionTitlePosition,
+    sectionTitleSize,
+  };
   for (const shape of sectionShapes.value) {
-    const width = shape.width * scale;
-    const height = shape.height * scale;
-    if (width <= 0 || height <= 0) continue;
-
-    const centerX = (shape.x + shape.width / 2) * scale + transform.value.dx;
-    const centerY = (shape.y + shape.height / 2) * scale + transform.value.dy;
-    context.save();
-    context.translate(centerX, centerY);
-    context.rotate((shape.rotation * Math.PI) / 180);
-    roundedRectPath(context, -width / 2, -height / 2, width, height, 10 * scale);
-    context.fillStyle = shape.color;
-    context.globalAlpha = 0.09;
-    context.fill();
-    context.strokeStyle = shape.color;
-    context.globalAlpha = 0.6;
-    context.lineWidth = 2 * scale;
-    context.stroke();
-    context.restore();
-
-    renderSectionTitle(context, shape);
+    paint(context, shape, helpers);
   }
 }
 

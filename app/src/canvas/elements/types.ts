@@ -138,19 +138,22 @@ export type CanvasElementTool = {
 // Reads a raw attribute from either a Yjs map or a plain serialized object.
 export type CanvasShapeAttrReader = (key: string) => unknown;
 
-// Helpers passed to canvas-drawn elements' paint()/hitTest() hooks. Extended as
-// painting moves out of the host (see the paint/hit-test commit).
+// Engine services passed to a canvas-drawn element's paint() hook. The host
+// owns the layer setup (transform, clear), image caching, selection overlays,
+// and the geometry it shares with hit-testing / the title-edit overlay; the
+// hook receives what it needs to draw the shape's own content.
 export interface CanvasPaintHelpers {
   scale: number;
-  isDarkMode: boolean;
-  worldToScreen(point: CanvasPoint): CanvasPoint;
-  cssVar(name: string, fallback: string): string;
-  imageCache: Map<string, HTMLImageElement | "loading" | "error">;
-}
-
-export interface CanvasHitTestHelpers {
-  scale: number;
-  worldToScreen(point: CanvasPoint): CanvasPoint;
+  // World→screen translation of the shared viewport transform.
+  dx: number;
+  dy: number;
+  t: (key: TranslationKey) => string;
+  // Section title chrome (shared geometry stays host-owned so hit-testing and
+  // the inline title editor agree with what is painted).
+  sectionTitleColor: string;
+  isEditingSectionTitle: (id: string) => boolean;
+  sectionTitlePosition: (shape: CanvasShape) => CanvasPoint;
+  sectionTitleSize: (shape: CanvasShape) => CanvasSize;
 }
 
 export interface CanvasElementExtension {
@@ -174,18 +177,13 @@ export interface CanvasElementExtension {
   // Custom-element tag for DOM surfaces (e.g. "canvas-note"). The host renders
   // one of these per shape and feeds it `.shape` / `.context`.
   tag?: string;
-  // Canvas-2d painter for canvas / dom+canvas surfaces.
+  // Canvas-2d painter for canvas-surface types (sections). The host owns the
+  // layer, ordering, hit-testing, and selection overlays.
   paint?: (
     ctx: CanvasRenderingContext2D,
     shape: CanvasShape,
     helpers: CanvasPaintHelpers,
   ) => void;
-  // Hit test for canvas-drawn types (DOM elements hit-test via native events).
-  hitTest?: (
-    shape: CanvasShape,
-    worldPoint: CanvasPoint,
-    helpers: CanvasHitTestHelpers,
-  ) => boolean;
 
   // --- geometry / transforms ---
   transform: CanvasElementTransform;
