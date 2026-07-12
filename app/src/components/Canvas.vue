@@ -855,13 +855,31 @@ function elementTagForShape(shape: CanvasShape): string | null {
   ) {
     return null;
   }
+  // While a document card is being edited inline, the host swaps in the
+  // <CanvasDocumentEditor> Vue component (rendered from the fallback branch).
+  if (shape.type === "document" && editingDocumentShape.value?.shapeId === shape.id) {
+    return null;
+  }
   return tag;
 }
 
 // Per-type reactive view model handed to an element via its `data` property.
-// Link cards need their loaded preview metadata; other types need nothing yet.
+// Link cards need their loaded preview metadata; document cards need the
+// resolved preview fields; other types need nothing yet.
 function elementDataForShape(shape: CanvasShape): unknown {
   if (shape.type === "link") return linkPreviews.previewForShape(shape) ?? null;
+  if (shape.type === "document") {
+    return {
+      title: documentLinks.shapeTitle(shape),
+      type: documentLinks.shapeType(shape),
+      status: documentLinks.shapeStatus(shape),
+      content: documentLinks.shapeContent(shape),
+      spaceId: documentLinks.documentSpaceIdForShape(shape) || props.spaceId,
+      documentId: isRemoteDocumentShape(shape)
+        ? ""
+        : documentLinks.documentIdForShape(shape) || "",
+    };
+  }
   return null;
 }
 
@@ -4561,6 +4579,8 @@ onUnmounted(() => {
             @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
             @editor-focus="handleTextFocus(shape, $event)"
             @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
+            @document-click="onDocumentShapeClick(shape, ($event as CustomEvent).detail)"
+            @open-document="onDocumentShapeOpen(shape, $event)"
           />
           <template v-else>
             <div

@@ -10,6 +10,11 @@ import {
   type DocumentPropertyValue,
   propertyValueToText,
 } from "#utils/documentProperties.ts";
+import {
+  CANVAS_ELEMENT_EVENTS,
+  CanvasElementBase,
+  dragOnPointerDown,
+} from "./CanvasElementBase.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
@@ -58,6 +63,62 @@ export const documentLinkElement: CanvasElementExtension = {
   // Embedded document cards resize but do not rotate.
   transform: { move: true, resize: "box", rotate: false },
 };
+
+// Reactive view model the host resolves from the document-link preview
+// controller and hands to <canvas-document> via its `data` property.
+export type CanvasDocumentData = {
+  title: string;
+  type: string;
+  status: string;
+  content: string;
+  spaceId: string;
+  documentId: string;
+};
+
+// Static preview card. Delegates to the existing <document-attachment> custom
+// element; the inline editor (<CanvasDocumentEditor>, a Vue component) stays
+// host-owned and is swapped in by the host while a card is being edited. A
+// plain click bubbles up as `document-click` for the host to enter edit mode;
+// the card's own `open-document` event already bubbles (composed) to the host.
+class CanvasDocumentElement extends CanvasElementBase {
+  private card: HTMLElement | null = null;
+
+  protected mount() {
+    const card = document.createElement("document-attachment");
+    card.className = "canvas-shape-document";
+    dragOnPointerDown(card, (event) =>
+      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+    );
+    card.addEventListener("wheel", (event) => event.stopPropagation());
+    // Re-emit the click synchronously so the host handler still sees the
+    // original event (currentTarget === the card, for checkbox hit-testing).
+    card.addEventListener("click", (event) =>
+      this.emit(CANVAS_ELEMENT_EVENTS.documentClick, event),
+    );
+    this.appendChild(card);
+    this.card = card;
+  }
+
+  protected update() {
+    const data = this.extra as CanvasDocumentData | null;
+    const card = this.card;
+    if (!card || !data) return;
+    card.setAttribute("title", data.title);
+    card.setAttribute("type", data.type);
+    card.setAttribute("status", data.status);
+    card.setAttribute("content", data.content);
+    card.setAttribute("space-id", data.spaceId);
+    card.setAttribute("document-id", data.documentId);
+  }
+
+  protected teardown() {
+    this.card = null;
+  }
+}
+
+if (typeof customElements !== "undefined" && !customElements.get("canvas-document")) {
+  customElements.define("canvas-document", CanvasDocumentElement);
+}
 
 export function documentLabel(doc: {
   properties?: { title?: DocumentPropertyValue | null } | null;
