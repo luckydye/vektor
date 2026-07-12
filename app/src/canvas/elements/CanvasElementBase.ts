@@ -12,6 +12,10 @@ export interface CanvasElementContext {
   isGifSrc: (src: string) => boolean;
   getDomainFromUrl: (url: string) => string;
   spaceId: string;
+  // True when the pointer interaction that produced the current click was
+  // actually a drag — file/link cards use it to suppress navigation after a
+  // reposition (the host's `dragMoved` flag).
+  wasDragged: () => boolean;
 }
 
 // `class extends HTMLElement` is evaluated at module load. HTMLElement is
@@ -21,6 +25,22 @@ const HostElement: typeof HTMLElement =
   typeof HTMLElement !== "undefined"
     ? HTMLElement
     : (class {} as unknown as typeof HTMLElement);
+
+// Event names elements dispatch upward. The host binds these on the element tag
+// (e.g. `@request-drag`). Kept as a const map so element and host agree.
+/**
+ * Wire a pointerdown on `element` to `emit`, stopping propagation first so it
+ * never reaches the viewport marquee/deselect (the old `@pointerdown.stop`).
+ */
+export function dragOnPointerDown(
+  element: HTMLElement,
+  emit: (event: PointerEvent) => void,
+) {
+  element.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+    emit(event);
+  });
+}
 
 // Event names elements dispatch upward. The host binds these on the element tag
 // (e.g. `@request-drag`). Kept as a const map so element and host agree.

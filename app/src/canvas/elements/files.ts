@@ -1,5 +1,10 @@
 import "#editor/elements/file-attachment.ts";
 import { isMediaFile } from "#utils/uploadFiles.ts";
+import {
+  CANVAS_ELEMENT_EVENTS,
+  CanvasElementBase,
+  dragOnPointerDown,
+} from "./CanvasElementBase.ts";
 import { uploadMediaFile } from "./media.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
@@ -19,6 +24,94 @@ export const fileElement: CanvasElementExtension = {
 
 export function isCanvasFile(file: File) {
   return !isMediaFile(file);
+}
+
+// File body: PDFs get an inline <iframe> viewer with a drag header; everything
+// else renders the shared <file-attachment> card. PDF-ness is fixed for a given
+// file shape (its src/filename never change), so it's decided once at mount.
+class CanvasFileElement extends CanvasElementBase {
+  private isPdf = false;
+  private frame: HTMLIFrameElement | null = null;
+  private header: HTMLElement | null = null;
+  private attachment: HTMLElement | null = null;
+
+  protected mount() {
+    const shape = this.shapeData;
+    this.isPdf = isPdfFile(shape?.alt) || isPdfFile(shape?.src);
+
+    if (this.isPdf) {
+      const wrap = document.createElement("div");
+      wrap.className = "canvas-pdf-preview";
+      // The viewer keeps scroll/text-selection/toolbar events; only the header
+      // starts a drag.
+      wrap.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+      const header = document.createElement("div");
+      header.className = "canvas-pdf-preview-header";
+      dragOnPointerDown(header, (event) =>
+        this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+      );
+
+      const frame = document.createElement("iframe");
+      frame.className = "canvas-pdf-preview-frame";
+      frame.title = "PDF preview";
+
+      wrap.append(header, frame);
+      this.appendChild(wrap);
+      this.header = header;
+      this.frame = frame;
+      return;
+    }
+
+    const attachment = document.createElement("file-attachment");
+    attachment.className = "canvas-shape-file";
+    dragOnPointerDown(attachment, (event) =>
+      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+    );
+    // Capture-phase guard: a click that ended a drag must not navigate.
+    attachment.addEventListener(
+      "click",
+      (event) => {
+        if (this.context?.wasDragged()) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true,
+    );
+    this.appendChild(attachment);
+    this.attachment = attachment;
+  }
+
+  protected update() {
+    const shape = this.shapeData;
+    if (!shape) return;
+    const filename = shape.alt || shape.text || (this.isPdf ? "PDF" : "file");
+    if (this.isPdf) {
+      if (this.frame && shape.src && this.frame.getAttribute("src") !== shape.src) {
+        this.frame.src = shape.src;
+      }
+      if (this.header) {
+        this.header.textContent = filename;
+        this.header.title = shape.alt || "PDF";
+      }
+      return;
+    }
+    if (this.attachment && shape.src) {
+      this.attachment.setAttribute("src", shape.src);
+      this.attachment.setAttribute("filename", filename);
+    }
+  }
+
+  protected teardown() {
+    this.frame = null;
+    this.header = null;
+    this.attachment = null;
+  }
+}
+
+if (typeof customElements !== "undefined" && !customElements.get("canvas-file")) {
+  customElements.define("canvas-file", CanvasFileElement);
 }
 
 /** Whether a filename or upload URL points at a PDF. */

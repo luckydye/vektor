@@ -4,6 +4,11 @@ import {
   mediaTypeForFile,
   toAbsoluteUploadUrl,
 } from "#utils/uploadFiles.ts";
+import {
+  CANVAS_ELEMENT_EVENTS,
+  CanvasElementBase,
+  dragOnPointerDown,
+} from "./CanvasElementBase.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 const mediaMinSize = { width: 80, height: 60 };
@@ -48,6 +53,124 @@ export const audioElement: CanvasElementExtension = {
 
 export function isMediaElementType(type: string): type is "image" | "video" {
   return type === "image" || type === "video";
+}
+
+// GIFs render as a live <img> in the DOM (static images are painted on the
+// canvas layer instead, so they never reach this element).
+class CanvasImageElement extends CanvasElementBase {
+  private img: HTMLImageElement | null = null;
+
+  protected mount() {
+    const img = document.createElement("img");
+    img.className = "canvas-shape-image";
+    img.draggable = false;
+    img.decoding = "async";
+    dragOnPointerDown(img, (event) =>
+      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+    );
+    this.appendChild(img);
+    this.img = img;
+  }
+
+  protected update() {
+    const shape = this.shapeData;
+    if (!this.img || !shape) return;
+    if (shape.src && this.img.getAttribute("src") !== shape.src) this.img.src = shape.src;
+    this.img.alt = shape.alt || "";
+  }
+
+  protected teardown() {
+    this.img = null;
+  }
+}
+
+class CanvasVideoElement extends CanvasElementBase {
+  private video: HTMLVideoElement | null = null;
+
+  protected mount() {
+    const video = document.createElement("video");
+    video.className = "canvas-shape-image";
+    video.autoplay = true;
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.draggable = false;
+    dragOnPointerDown(video, (event) =>
+      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+    );
+    this.appendChild(video);
+    this.video = video;
+  }
+
+  protected update() {
+    const shape = this.shapeData;
+    if (!this.video || !shape) return;
+    if (shape.src && this.video.getAttribute("src") !== shape.src) {
+      this.video.src = shape.src;
+    }
+    this.video.setAttribute("aria-label", shape.alt || "");
+  }
+
+  protected teardown() {
+    this.video = null;
+  }
+}
+
+// Native audio player. The grip handles selection/drag; the player keeps its
+// own pointer events so its controls stay clickable.
+class CanvasAudioElement extends CanvasElementBase {
+  private audio: HTMLAudioElement | null = null;
+  private handle: HTMLElement | null = null;
+
+  protected mount() {
+    const wrap = document.createElement("div");
+    wrap.className = "canvas-shape-audio";
+    // The wrapper only stops propagation; dragging happens from the grip.
+    wrap.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+    const handle = document.createElement("div");
+    handle.className = "canvas-shape-audio-handle";
+    dragOnPointerDown(handle, (event) =>
+      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+    );
+
+    const audio = document.createElement("audio");
+    audio.className = "canvas-shape-audio-player";
+    audio.controls = true;
+    audio.preload = "metadata";
+
+    wrap.append(handle, audio);
+    this.appendChild(wrap);
+    this.handle = handle;
+    this.audio = audio;
+  }
+
+  protected update() {
+    const shape = this.shapeData;
+    if (!this.audio || !shape) return;
+    const label = shape.alt || shape.text || "Audio";
+    if (shape.src && this.audio.getAttribute("src") !== shape.src)
+      this.audio.src = shape.src;
+    this.audio.setAttribute("aria-label", label);
+    this.handle?.setAttribute("title", label);
+  }
+
+  protected teardown() {
+    this.audio = null;
+    this.handle = null;
+  }
+}
+
+if (typeof customElements !== "undefined") {
+  if (!customElements.get("canvas-image")) {
+    customElements.define("canvas-image", CanvasImageElement);
+  }
+  if (!customElements.get("canvas-video")) {
+    customElements.define("canvas-video", CanvasVideoElement);
+  }
+  if (!customElements.get("canvas-audio")) {
+    customElements.define("canvas-audio", CanvasAudioElement);
+  }
 }
 
 export function mediaFilesFromList(files: FileList | File[]) {

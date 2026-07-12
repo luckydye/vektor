@@ -11,6 +11,7 @@ import {
 } from "vue";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
+import type { CanvasElementContext } from "#canvas/elements/CanvasElementBase.ts";
 import {
   createDocumentLinkController,
   type DocumentLinkReference,
@@ -844,6 +845,16 @@ function elementTagForShape(shape: CanvasShape): string | null {
   }
   return tag;
 }
+
+// Stable helpers/data handed to every element custom element via its
+// `canvasContext` property. Per-shape reactive values flow through `shape`/`data`.
+const hostContext: CanvasElementContext = {
+  t,
+  isGifSrc,
+  getDomainFromUrl,
+  spaceId: props.spaceId,
+  wasDragged: () => dragMoved,
+};
 
 // Non-GIF images and sections render on canvas layers. All other shapes stay in
 // the DOM permanently; content-visibility:auto in CSS tells the browser to
@@ -4525,6 +4536,7 @@ onUnmounted(() => {
             :is="elementTagForShape(shape)"
             v-if="elementTagForShape(shape)"
             :shape.prop="shape"
+            :canvas-context.prop="hostContext"
             @request-drag="startShapeDrag(shape, ($event as CustomEvent).detail)"
             @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
             @editor-focus="handleTextFocus(shape, $event)"
