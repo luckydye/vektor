@@ -51,13 +51,13 @@ import {
 } from "#canvas/elements/link.ts";
 import {
   createUploadedMediaShape,
-  isMediaElementType,
   mediaFilesFromDataTransfer,
   mediaFilesFromList,
   uploadMediaFile,
 } from "#canvas/elements/media.ts";
-import { createNoteShape, NOTE_COLORS } from "#canvas/elements/note.ts";
+import { NOTE_COLORS } from "#canvas/elements/note.ts";
 import {
+  canvasElementTools,
   defaultColorForShape,
   defaultSizeForShape,
   defaultTextForShape,
@@ -68,13 +68,14 @@ import {
   serializeCanvasShape,
   shapePersistsSize,
 } from "#canvas/elements/registry.ts";
+import { SECTION_COLORS } from "#canvas/elements/section.ts";
 import {
   type CanvasShapeLibraryItem,
   createShapeStroke,
   getShapeLibraryItem,
   SHAPE_LIBRARY,
 } from "#canvas/elements/shape.ts";
-import { createTextShape, shouldRemoveTextShape } from "#canvas/elements/text.ts";
+import { shouldRemoveTextShape } from "#canvas/elements/text.ts";
 import type {
   CanvasSerializedShape,
   CanvasShape,
@@ -104,11 +105,8 @@ import { useUserProfile } from "#composeables/useUserProfile.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
   canvasFitViewIcon,
-  canvasNoteIcon,
-  canvasSectionIcon,
   canvasSelectIcon,
   canvasShapeIcon,
-  canvasTextIcon,
   clipboardDocumentIcon,
   copyIcon,
   lockIcon,
@@ -257,7 +255,6 @@ type Rect = { x: number; y: number; width: number; height: number };
 type LockedCanvasElement = { type: "shape" | "stroke"; id: string };
 
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
-const SECTION_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"] as const;
 type ToolDef = {
   id: CanvasTool;
   label: TranslationKey;
@@ -265,37 +262,13 @@ type ToolDef = {
   icon: string;
 };
 
+// Built-in engine tools plus the element-contributed tools (note/text/section)
+// collected from the registry, so adding an element type surfaces its tool
+// without editing the host.
 const CANVAS_TOOLS: ToolDef[] = [
-  {
-    id: "select",
-    label: "Select",
-    shortcut: "V",
-    icon: canvasSelectIcon,
-  },
-  {
-    id: "draw",
-    label: "Draw",
-    shortcut: "D",
-    icon: pencilIcon,
-  },
-  {
-    id: "note",
-    label: "Note",
-    shortcut: "N",
-    icon: canvasNoteIcon,
-  },
-  {
-    id: "text",
-    label: "Text",
-    shortcut: "T",
-    icon: canvasTextIcon,
-  },
-  {
-    id: "section",
-    label: "Section",
-    shortcut: "S",
-    icon: canvasSectionIcon,
-  },
+  { id: "select", label: "Select", shortcut: "V", icon: canvasSelectIcon },
+  { id: "draw", label: "Draw", shortcut: "D", icon: pencilIcon },
+  ...canvasElementTools(),
 ];
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
@@ -795,18 +768,15 @@ const selectedShape = computed(() => {
   return shapesById.value.get(id) ?? null;
 });
 
-// Text, file, and link shapes intentionally keep their existing move-only
-// interaction. Notes, text, and media get full transform controls; sections
-// and embedded documents expose resize only.
-const selectedTransformShape = computed(() =>
-  selectedShape.value &&
-  canMoveShape(selectedShape.value) &&
-  (selectedShape.value.type === "note" ||
-    selectedShape.value.type === "text" ||
-    isMediaElementType(selectedShape.value.type))
-    ? selectedShape.value
-    : null,
-);
+// Transform affordances are declared per type on the extension. Types that can
+// rotate get the full rotate+resize controls (note/text/media); sections and
+// embedded documents declare resize without rotate, so they expose resize only.
+// Everything else stays move-only.
+const selectedTransformShape = computed(() => {
+  const shape = selectedShape.value;
+  if (!shape || !canMoveShape(shape)) return null;
+  return getCanvasElementExtension(shape.type)?.transform.rotate ? shape : null;
+});
 
 const selectedResizableSection = computed(() => {
   const shape = selectedShape.value;
@@ -2243,22 +2213,16 @@ function placeShapeStroke(at: { x: number; y: number }) {
 }
 
 function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
-  const shape =
+  // The active swatch feeds the factory: notes/sections pick up their color
+  // picker, text has no fill.
+  const color =
     type === "note"
-      ? createNoteShape(at, noteColor.value)
-      : type === "text"
-        ? createTextShape(at)
-        : {
-            id: `shape-${crypto.randomUUID()}`,
-            type: "section",
-            x: Math.round(at.x),
-            y: Math.round(at.y),
-            ...defaultSizeForShape(type),
-            rotation: 0,
-            text: defaultTextForShape(type),
-            color: sectionColor.value,
-            updatedAt: Date.now(),
-          };
+      ? noteColor.value
+      : type === "section"
+        ? sectionColor.value
+        : undefined;
+  const shape = getCanvasElementExtension(type)?.create?.(at, { color });
+  if (!shape) return;
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
@@ -2629,18 +2593,18 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
   selectOnlyShape(shape.id);
   // Text auto-sizes to its content, so drive off its measured box.
   const bounds = shapeBounds(shape);
-  const isMedia = isMediaElementType(shape.type);
-  const isText = shape.type === "text";
+  const resizeMode = getCanvasElementExtension(shape.type)?.transform;
+  const isText = resizeMode?.resize === "font";
+  // Media locks its aspect ratio; text keeps it too so scaling its font stays
+  // proportional. Notes and sections resize freely.
+  const keepAspect = Boolean(resizeMode?.aspectLocked) || isText;
   dragState = {
     type: "resize",
     pointerId: event.pointerId,
     shapeId: shape.id,
     fixedTopLeft: rotatedShapeCorners(bounds)[0],
     minSize: minSizeForShape(shape.type),
-    // Media and text keep their aspect ratio (text scales its font); notes and
-    // sections resize freely.
-    aspect:
-      (isMedia || isText) && bounds.height > 0 ? bounds.width / bounds.height : undefined,
+    aspect: keepAspect && bounds.height > 0 ? bounds.width / bounds.height : undefined,
     isText,
     initialFontScale: shape.fontScale ?? 1,
     initial: {
@@ -2656,7 +2620,8 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || shape.type === "section" || !canMoveShape(shape)) return;
+  const canRotate = getCanvasElementExtension(shape.type)?.transform.rotate ?? false;
+  if (event.button !== 0 || !canRotate || !canMoveShape(shape)) return;
   selectOnlyShape(shape.id);
   const bounds = shapeBounds(shape);
   dragState = {
