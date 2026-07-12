@@ -179,10 +179,6 @@ export interface DocumentPreviewAccess {
   inlineEditable: (shape: CanvasShape) => boolean;
 }
 
-export interface LinkPreviewAccess {
-  previewForShape: (shape: CanvasShape) => unknown;
-}
-
 // Host services + controllers passed to the extension-level hooks the host
 // dispatches (resolveData / onActivate / onOpen). Distinct from
 // CanvasElementContext, which is handed to the rendered element bodies.
@@ -195,7 +191,6 @@ export interface CanvasExtensionHost {
   beginEdit: (session: CanvasEditSession) => void;
   openDocument: (shape: CanvasShape, requestedDocumentId?: string | null) => void;
   documents: DocumentPreviewAccess;
-  links: LinkPreviewAccess;
 }
 
 // Engine services passed to a canvas-drawn element's paint() hook. The host

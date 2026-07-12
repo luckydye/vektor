@@ -47,9 +47,9 @@ import {
   routeContextMenuPaste,
 } from "#canvas/extensions/inputs.ts";
 import {
-  createLinkPreviewController,
   createLinkShape,
   isTwitterLinkPreview,
+  linkPreviews,
 } from "#canvas/extensions/link.ts";
 import {
   createUploadedMediaShape,
@@ -407,7 +407,6 @@ const documentLinks = createDocumentLinkController({
     saveImmediately();
   },
 });
-const linkPreviews = createLinkPreviewController();
 
 // Tracks only local edits (default trackedOrigins = {null}); remote/agent
 // updates arrive with origin "remote" and are excluded, so undo/redo only
@@ -592,7 +591,7 @@ function insertLinkShape(url: string, at: { x: number; y: number }) {
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
-  void linkPreviews.loadPreview(url);
+  // The <canvas-link> element loads its own preview once mounted.
   saveImmediately();
 }
 
@@ -868,7 +867,6 @@ const extHost: CanvasExtensionHost = {
   beginEdit,
   openDocument,
   documents: documentLinks,
-  links: linkPreviews,
 };
 
 function onElementActivate(shape: CanvasShape, event: MouseEvent) {
@@ -3814,17 +3812,6 @@ const documentPreviewAddresses = computed(() =>
   ].sort(),
 );
 
-const linkPreviewUrls = computed(() =>
-  [
-    ...new Set(
-      shapes.value
-        .filter((shape) => shape.type === "link")
-        .map((shape) => shape.src)
-        .filter((url): url is string => Boolean(url)),
-    ),
-  ].sort(),
-);
-
 // Moving a card changes updatedAt and refreshes the shapes array. Watch a
 // stable key of the actual preview inputs instead, so those visual edits never
 // cause preview work. The loaders themselves remain responsible for caching.
@@ -3834,14 +3821,6 @@ watch(
     for (const address of documentPreviewAddresses.value) {
       void documentLinks.loadPreview({ address });
     }
-  },
-  { immediate: true },
-);
-
-watch(
-  () => linkPreviewUrls.value.join("\u001f"),
-  () => {
-    for (const url of linkPreviewUrls.value) void linkPreviews.loadPreview(url);
   },
   { immediate: true },
 );

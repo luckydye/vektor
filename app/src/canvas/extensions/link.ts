@@ -20,7 +20,7 @@ export const linkElement: CanvasElementExtension = {
   tag: "canvas-link",
   // Link cards fit their height to the preview content once it loads.
   transform: { move: true, resize: "none", rotate: false },
-  resolveData: (shape, host) => host.links.previewForShape(shape) ?? null,
+  resolveData: (shape) => linkPreviewForShape(shape) ?? null,
 };
 
 export function createLinkShape(url: string, at: { x: number; y: number }): CanvasShape {
@@ -92,7 +92,11 @@ class CanvasLinkElement extends CanvasElementBase {
     const shape = this.shapeData;
     const anchor = this.anchor;
     if (!shape || !anchor) return;
-    if (shape.src) anchor.href = shape.src;
+    if (shape.src) {
+      anchor.href = shape.src;
+      // Load our own preview; the reactive store drives the re-render via `data`.
+      void loadLinkPreview(shape.src);
+    }
 
     const metadata =
       (this.extra as LinkPreviewState | null | undefined)?.metadata ?? null;
@@ -168,32 +172,37 @@ if (typeof customElements !== "undefined" && !customElements.get("canvas-link"))
   customElements.define("canvas-link", CanvasLinkElement);
 }
 
-export function createLinkPreviewController() {
-  const previews = ref(new Map<string, LinkPreviewState>());
+// Link preview cache. This is extension-owned module state (link previews are
+// content-addressed by URL, and the only dependency is the api client), so the
+// canvas host neither creates nor owns it — the link element loads its own
+// preview and resolveData reads from here.
+const previews = ref(new Map<string, LinkPreviewState>());
 
-  function setPreview(url: string, state: LinkPreviewState) {
-    const next = new Map(previews.value);
-    next.set(url, state);
-    previews.value = next;
-  }
-
-  async function loadPreview(url: string) {
-    const existing = previews.value.get(url);
-    if (existing?.status === "loading" || existing?.status === "loaded") return;
-
-    setPreview(url, { status: "loading", metadata: null });
-
-    try {
-      const metadata = await api.linkPreview.get(url);
-      setPreview(url, { status: "loaded", metadata });
-    } catch {
-      setPreview(url, { status: "error", metadata: null });
-    }
-  }
-
-  function previewForShape(shape: CanvasShape): LinkPreviewState | undefined {
-    return shape.src ? previews.value.get(shape.src) : undefined;
-  }
-
-  return { previews, loadPreview, previewForShape };
+function setPreview(url: string, state: LinkPreviewState) {
+  const next = new Map(previews.value);
+  next.set(url, state);
+  previews.value = next;
 }
+
+async function loadLinkPreview(url: string) {
+  const existing = previews.value.get(url);
+  if (existing?.status === "loading" || existing?.status === "loaded") return;
+  setPreview(url, { status: "loading", metadata: null });
+  try {
+    setPreview(url, { status: "loaded", metadata: await api.linkPreview.get(url) });
+  } catch {
+    setPreview(url, { status: "error", metadata: null });
+  }
+}
+
+function linkPreviewForShape(shape: CanvasShape): LinkPreviewState | undefined {
+  return shape.src ? previews.value.get(shape.src) : undefined;
+}
+
+// Reactive read surface for the host's link-card auto-size machinery (which
+// measures card DOM and must not fit while a preview is still loading).
+export const linkPreviews = {
+  previews,
+  loadPreview: loadLinkPreview,
+  previewForShape: linkPreviewForShape,
+};
