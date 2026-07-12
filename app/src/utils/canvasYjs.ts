@@ -34,6 +34,7 @@ type RawShape = {
   docAddress?: unknown;
   docId?: unknown;
   docSpaceId?: unknown;
+  authorId?: unknown;
   locked?: unknown;
   updatedAt?: unknown;
 };
@@ -44,6 +45,7 @@ type RawStroke = {
   style?: unknown;
   kind?: unknown;
   rotation?: unknown;
+  authorId?: unknown;
   locked?: unknown;
   updatedAt?: unknown;
 };
@@ -69,6 +71,7 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   if (typeof shape.docAddress === "string") map.set("docAddress", shape.docAddress);
   if (typeof shape.docId === "string") map.set("docId", shape.docId);
   if (typeof shape.docSpaceId === "string") map.set("docSpaceId", shape.docSpaceId);
+  if (typeof shape.authorId === "string") map.set("authorId", shape.authorId);
   if (shape.locked === true) map.set("locked", true);
   map.set("updatedAt", typeof shape.updatedAt === "number" ? shape.updatedAt : 0);
   target.set(shape.id, map);
@@ -81,6 +84,7 @@ function seedStroke(target: Y.Map<Y.Map<unknown>>, stroke: RawStroke): void {
   map.set("style", stroke.style && typeof stroke.style === "object" ? stroke.style : {});
   if (stroke.kind === "shape") map.set("kind", "shape");
   if (typeof stroke.rotation === "number") map.set("rotation", stroke.rotation);
+  if (typeof stroke.authorId === "string") map.set("authorId", stroke.authorId);
   if (stroke.locked === true) map.set("locked", true);
   map.set("updatedAt", typeof stroke.updatedAt === "number" ? stroke.updatedAt : 0);
   target.set(stroke.id, map);

@@ -92,6 +92,7 @@ import { useDocument } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
   canvasFitViewIcon,
@@ -395,6 +396,8 @@ const { document: documentData, saveDocument } = useDocument(props.documentId, "
 // title/type metadata before the full preview loads.
 const { documents } = useDocuments();
 const { spaces, currentSpace } = useSpace();
+const currentUser = useUserProfile();
+const currentUserId = computed(() => currentUser.value?.id);
 const userCanEditDocuments = computed(() => canEdit(currentSpace.value?.userRole));
 // The one embedded document card currently in inline-edit mode. Only this
 // card mounts a collaborative editor; every other embed stays a static
@@ -789,6 +792,7 @@ const selectedShape = computed(() => {
 // and embedded documents expose resize only.
 const selectedTransformShape = computed(() =>
   selectedShape.value &&
+  canMoveShape(selectedShape.value) &&
   (selectedShape.value.type === "note" ||
     selectedShape.value.type === "text" ||
     isMediaElementType(selectedShape.value.type))
@@ -796,13 +800,15 @@ const selectedTransformShape = computed(() =>
     : null,
 );
 
-const selectedResizableSection = computed(() =>
-  selectedShape.value?.type === "section" ? selectedShape.value : null,
-);
+const selectedResizableSection = computed(() => {
+  const shape = selectedShape.value;
+  return shape?.type === "section" && canMoveShape(shape) ? shape : null;
+});
 
-const selectedResizableDocument = computed(() =>
-  selectedShape.value?.type === "document" ? selectedShape.value : null,
-);
+const selectedResizableDocument = computed(() => {
+  const shape = selectedShape.value;
+  return shape?.type === "document" && canMoveShape(shape) ? shape : null;
+});
 
 function transformControlPositions(shape: CanvasShape) {
   // Text auto-sizes, so anchor the handles to its measured box.
@@ -886,6 +892,21 @@ function isStrokeLocked(id: string): boolean {
   return strokesById.value.get(id)?.locked === true;
 }
 
+function canMoveUserScopedElement(authorId: string | undefined): boolean {
+  // `authorId` is an internal creation-time capability, not a user-facing
+  // canvas setting. Future cosmetic/sticker creators set it to the active
+  // user's id; every movement path below then honors that ownership.
+  return !authorId || authorId === currentUserId.value;
+}
+
+function canMoveShape(shape: CanvasShape): boolean {
+  return !shape.locked && canMoveUserScopedElement(shape.authorId);
+}
+
+function canMoveStroke(stroke: CanvasStroke): boolean {
+  return !stroke.locked && canMoveUserScopedElement(stroke.authorId);
+}
+
 const hoveredLockedElementPosition = computed(() => {
   const element = hoveredLockedElement.value;
   if (!element) return null;
@@ -907,7 +928,7 @@ const selectedBasicShapeStroke = computed(() => {
   if (selectedShapeIds.value.size > 0 || selectedStrokeIds.value.size !== 1) return null;
   const [id] = selectedStrokeIds.value;
   const stroke = strokesById.value.get(id);
-  return stroke?.kind === "shape" ? stroke : null;
+  return stroke?.kind === "shape" && canMoveStroke(stroke) ? stroke : null;
 });
 
 const selectedBasicShapeStrokeControls = computed(() => {
@@ -1275,6 +1296,7 @@ function toShape(
       docSpaceId: read("docSpaceId"),
       src,
     }),
+    authorId: typeof read("authorId") === "string" ? String(read("authorId")) : undefined,
     locked: read("locked") === true || undefined,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
   };
@@ -1353,6 +1375,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
   if (shape.src) map.set("src", resolveMediaSrc(shape.src));
   if (shape.alt) map.set("alt", shape.alt);
   if (shape.docAddress) map.set("docAddress", shape.docAddress);
+  if (shape.authorId) map.set("authorId", shape.authorId);
   if (shape.locked) map.set("locked", true);
   map.set("updatedAt", shape.updatedAt);
   return map;
@@ -1374,6 +1397,7 @@ function serializeSnapshot(): string {
       style: { ...stroke.style },
       kind: stroke.kind,
       rotation: stroke.rotation,
+      authorId: stroke.authorId,
       locked: stroke.locked,
       updatedAt: stroke.updatedAt,
     })),
@@ -2242,18 +2266,19 @@ function isStrokeInsideSection(stroke: CanvasStroke, section: CanvasShape) {
   );
 }
 
-function getSectionContents(section: CanvasShape, includeLocked = false) {
+function getSectionContents(section: CanvasShape, includeImmovable = false) {
   return {
     shapes: shapes.value
       .filter(
         (shape) =>
-          (includeLocked || !shape.locked) && isShapeInsideSection(shape, section),
+          (includeImmovable || canMoveShape(shape)) && isShapeInsideSection(shape, section),
       )
       .map((shape) => ({ id: shape.id, x: shape.x, y: shape.y })),
     strokes: strokes.value
       .filter(
         (stroke) =>
-          (includeLocked || !stroke.locked) && isStrokeInsideSection(stroke, section),
+          (includeImmovable || canMoveStroke(stroke)) &&
+          isStrokeInsideSection(stroke, section),
       )
       .map((stroke) => ({
         id: stroke.id,
@@ -2272,6 +2297,8 @@ function translateStroke(id: string, points: FreehandPoint[], dx: number, dy: nu
 function updateStrokePoints(id: string, points: FreehandPoint[], rotation?: number) {
   const stroke = yStrokes.get(id);
   if (!stroke) return;
+  const currentStroke = strokesById.value.get(id);
+  if (currentStroke && !canMoveStroke(currentStroke)) return;
   stroke.set("updatedAt", Date.now());
   stroke.set("points", points.map(cloneFreehandPoint));
   if (rotation !== undefined) stroke.set("rotation", rotation);
@@ -2342,6 +2369,7 @@ function fitLinkShapeHeight(id: string, height: number) {
   if (!Number.isFinite(height) || height <= 0) return;
   const shape = shapes.value.find((candidate) => candidate.id === id);
   if (!shape) return;
+  if (!canMoveShape(shape)) return;
   // Don't fit until the preview has settled: a card measured while its metadata
   // (and image) is still loading would persist a too-small height that never
   // corrects, since the observer won't re-fire once the box is fixed.
@@ -2356,6 +2384,15 @@ function fitLinkShapeHeight(id: string, height: number) {
 function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
   const shape = yShapes.get(id);
   if (!shape) return;
+  const changesTransform =
+    patch.x !== undefined ||
+    patch.y !== undefined ||
+    patch.width !== undefined ||
+    patch.height !== undefined ||
+    patch.rotation !== undefined ||
+    patch.fontScale !== undefined;
+  const currentShape = shapesById.value.get(id);
+  if (changesTransform && currentShape && !canMoveShape(currentShape)) return;
   shape.set("updatedAt", Date.now());
   const isTextShape = shape.get("type") === "text";
   for (const [key, value] of Object.entries(patch)) {
@@ -2386,9 +2423,8 @@ function lockSelectedElements() {
   const strokeIds = new Set(selectedStrokeIds.value);
 
   // A section acts as a container when it is locked: every element currently
-  // inside its bounds becomes locked with it. Include already-locked contents
-  // too so the operation is complete when a section is locked alongside other
-  // selected elements.
+  // inside its bounds becomes locked with it. Include all contents, including
+  // elements that are already locked or user-scoped to someone else.
   for (const id of selectedShapeIds.value) {
     const section = shapesById.value.get(id);
     if (section?.type !== "section") continue;
@@ -2462,7 +2498,7 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
 
   for (const id of selectedShapeIds.value) {
     const shape = shapesById.value.get(id);
-    if (!shape || shape.locked) continue;
+    if (!shape || !canMoveShape(shape)) continue;
     moveShapes.set(shape.id, { id: shape.id, x: shape.x, y: shape.y });
     if (shape.type === "section") {
       const contents = getSectionContents(shape);
@@ -2472,9 +2508,9 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
     }
   }
   for (const id of selectedStrokeIds.value) {
-    if (moveStrokes.has(id) || isStrokeLocked(id)) continue;
+    if (moveStrokes.has(id)) continue;
     const stroke = strokesById.value.get(id);
-    if (stroke) {
+    if (stroke && canMoveStroke(stroke)) {
       moveStrokes.set(id, { id, points: stroke.points.map(cloneFreehandPoint) });
     }
   }
@@ -2508,6 +2544,11 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
     selectOnlyShape(shape.id);
   }
 
+  if (!canMoveShape(shape)) {
+    if (shape.type !== "text") event.preventDefault();
+    return;
+  }
+
   dragMoved = false;
   dragState = buildShapeDragState(event);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2517,7 +2558,7 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeResize(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || shape.locked) return;
+  if (event.button !== 0 || !canMoveShape(shape)) return;
   selectOnlyShape(shape.id);
   // Text auto-sizes to its content, so drive off its measured box.
   const bounds = shapeBounds(shape);
@@ -2547,7 +2588,7 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || shape.type === "section" || shape.locked) return;
+  if (event.button !== 0 || shape.type === "section" || !canMoveShape(shape)) return;
   selectOnlyShape(shape.id);
   const bounds = shapeBounds(shape);
   dragState = {
@@ -2571,7 +2612,7 @@ function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startStrokeResize(stroke: CanvasStroke, event: PointerEvent) {
-  if (event.button !== 0 || stroke.locked) return;
+  if (event.button !== 0 || !canMoveStroke(stroke)) return;
   const bounds = strokeBounds(stroke);
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
   dragState = {
@@ -2587,7 +2628,7 @@ function startStrokeResize(stroke: CanvasStroke, event: PointerEvent) {
 }
 
 function startStrokeRotation(stroke: CanvasStroke, event: PointerEvent) {
-  if (event.button !== 0 || stroke.locked) return;
+  if (event.button !== 0 || !canMoveStroke(stroke)) return;
   const bounds = strokeBounds(stroke);
   if (!bounds) return;
   const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
@@ -2802,6 +2843,10 @@ function handleViewportPointerDown(event: PointerEvent) {
       } else if (!selectedShapeIds.value.has(hitImage.id)) {
         selectOnlyShape(hitImage.id);
       }
+      if (!canMoveShape(hitImage)) {
+        event.preventDefault();
+        return;
+      }
       dragMoved = false;
       dragState = buildShapeDragState(event);
       (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2832,6 +2877,11 @@ function handleViewportPointerDown(event: PointerEvent) {
       // grabbing an unselected stroke collapses to just it.
       if (!selectedStrokeIds.value.has(hitStroke)) {
         selectStroke(hitStroke, false);
+      }
+      const stroke = strokesById.value.get(hitStroke);
+      if (!stroke || !canMoveStroke(stroke)) {
+        event.preventDefault();
+        return;
       }
       dragMoved = false;
       dragState = buildShapeDragState(event);
@@ -3094,7 +3144,8 @@ function handlePointerMove(event: PointerEvent) {
 
   const world = screenToWorld(point);
   if (dragState.type === "resize") {
-    if (isShapeLocked(dragState.shapeId)) return;
+    const shape = shapesById.value.get(dragState.shapeId);
+    if (!shape || !canMoveShape(shape)) return;
     const resized = resizeRotatedShapeFromBottomRight({
       fixedTopLeft: dragState.fixedTopLeft,
       pointer: world,
@@ -3124,7 +3175,8 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   if (dragState.type === "rotate") {
-    if (isShapeLocked(dragState.shapeId)) return;
+    const shape = shapesById.value.get(dragState.shapeId);
+    if (!shape || !canMoveShape(shape)) return;
     const rawRotation = rotationFromPointer(dragState.center, world);
     const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
     updateShape(dragState.shapeId, { rotation: Math.round(rotation * 10) / 10 });
@@ -3132,7 +3184,8 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   if (dragState.type === "stroke-resize") {
-    if (isStrokeLocked(dragState.strokeId)) return;
+    const stroke = strokesById.value.get(dragState.strokeId);
+    if (!stroke || !canMoveStroke(stroke)) return;
     const resized = resizeRotatedShapeFromBottomRight({
       fixedTopLeft: dragState.fixedTopLeft,
       pointer: world,
@@ -3153,7 +3206,8 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   if (dragState.type === "stroke-rotate") {
-    if (isStrokeLocked(dragState.strokeId)) return;
+    const stroke = strokesById.value.get(dragState.strokeId);
+    if (!stroke || !canMoveStroke(stroke)) return;
     const rawRotation = rotationFromPointer(dragState.center, world);
     const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
     const delta = ((rotation - dragState.startRotation + 540) % 360) - 180;
@@ -3194,14 +3248,16 @@ function handlePointerMove(event: PointerEvent) {
   );
   ydoc.transact(() => {
     for (const moved of drag.shapes) {
-      if (isShapeLocked(moved.id)) continue;
+      const shape = shapesById.value.get(moved.id);
+      if (!shape || !canMoveShape(shape)) continue;
       updateShape(moved.id, {
         x: Math.round(moved.x + dx),
         y: Math.round(moved.y + dy),
       });
     }
     for (const stroke of drag.strokes) {
-      if (isStrokeLocked(stroke.id)) continue;
+      const currentStroke = strokesById.value.get(stroke.id);
+      if (!currentStroke || !canMoveStroke(currentStroke)) continue;
       translateStroke(stroke.id, stroke.points, dx, dy);
     }
   });
@@ -3238,11 +3294,13 @@ function refitLinkShape(id: string) {
 
 function cancelTransformDrag() {
   if (dragState?.type === "resize" || dragState?.type === "rotate") {
-    if (!isShapeLocked(dragState.shapeId)) {
+    const shape = shapesById.value.get(dragState.shapeId);
+    if (shape && canMoveShape(shape)) {
       updateShape(dragState.shapeId, dragState.initial);
     }
   } else if (dragState?.type === "stroke-resize" || dragState?.type === "stroke-rotate") {
-    if (!isStrokeLocked(dragState.strokeId)) {
+    const stroke = strokesById.value.get(dragState.strokeId);
+    if (stroke && canMoveStroke(stroke)) {
       updateStrokePoints(
         dragState.strokeId,
         dragState.initialPoints,
@@ -3491,6 +3549,7 @@ function collectSelection(): {
       style: { ...stroke.style },
       kind: stroke.kind,
       rotation: stroke.rotation,
+      authorId: stroke.authorId,
       locked: stroke.locked,
       updatedAt: stroke.updatedAt,
     }));
@@ -3613,6 +3672,9 @@ function pasteCanvasClipboard(
           id,
           x: Math.round(shape.x + dx),
           y: Math.round(shape.y + dy),
+          // A pasted personal element belongs to the person who pasted it,
+          // never the author of the source clipboard item.
+          authorId: shape.authorId ? currentUserId.value : undefined,
           updatedAt: now,
         }),
       );
@@ -3632,6 +3694,7 @@ function pasteCanvasClipboard(
           style: { ...stroke.style },
           kind: stroke.kind,
           rotation: stroke.rotation,
+          authorId: stroke.authorId ? currentUserId.value : undefined,
           updatedAt: now,
         }),
       );

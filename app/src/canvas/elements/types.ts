@@ -35,6 +35,10 @@ export type CanvasShape = {
   src?: string;
   alt?: string;
   docAddress?: string;
+  // Internal-only user scope for element creators (for example, cosmetics or
+  // stickers): set this to the creating user's id. Canvas UI deliberately does
+  // not expose a control for it. Shared elements omit the field.
+  authorId?: string;
   // Locked elements stay visible but cannot be selected or transformed until
   // explicitly unlocked from their hover control.
   locked?: boolean;
@@ -63,6 +67,8 @@ export type CanvasStrokeSnapshot = {
   // transform controls without changing freehand drawing behavior.
   kind?: "shape";
   rotation?: number;
+  // See CanvasShape.authorId. Strokes use the same internal-only scope.
+  authorId?: string;
   locked?: boolean;
   updatedAt: number;
 };
@@ -71,6 +77,8 @@ export type CanvasStroke = FreehandStroke & {
   id: string;
   kind?: "shape";
   rotation?: number;
+  // See CanvasShape.authorId. Strokes use the same internal-only scope.
+  authorId?: string;
   locked?: boolean;
   updatedAt: number;
 };

@@ -125,6 +125,7 @@ export function createStrokeMap(stroke: CanvasStrokeSnapshot) {
   map.set("style", { ...stroke.style });
   if (stroke.kind === "shape") map.set("kind", "shape");
   if (typeof stroke.rotation === "number") map.set("rotation", stroke.rotation);
+  if (stroke.authorId) map.set("authorId", stroke.authorId);
   if (stroke.locked) map.set("locked", true);
   map.set("updatedAt", stroke.updatedAt);
   return map;
@@ -142,6 +143,7 @@ export function toCanvasStroke(
     ? pointsValue.filter(isFreehandPoint).map(cloneFreehandPoint)
     : [];
   const style = strokeStyleFromUnknown(read("style"));
+  const authorId = read("authorId");
 
   // Persisted points already carry the widths computed while drawing.
   // Recomputing velocity widths here would depend on the viewer's current zoom
@@ -159,6 +161,7 @@ export function toCanvasStroke(
       typeof read("rotation") === "number" && Number.isFinite(read("rotation"))
         ? Number(read("rotation"))
         : undefined,
+    authorId: typeof authorId === "string" ? authorId : undefined,
     locked: read("locked") === true || undefined,
     updatedAt:
       typeof read("updatedAt") === "number" && Number.isFinite(read("updatedAt"))
