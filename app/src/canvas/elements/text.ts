@@ -1,4 +1,5 @@
 import { canvasTextIcon } from "#assets/icons.ts";
+import { CanvasRichTextElement } from "./CanvasElementBase.ts";
 import type {
   CanvasElementExtension,
   CanvasSerializedShape,
@@ -25,6 +26,17 @@ export const textElement: CanvasElementExtension = {
     return rest as CanvasSerializedShape;
   },
 };
+
+// Text body: just the rich-text editor, which doubles as the drag target when
+// it isn't focused for editing.
+class CanvasTextElement extends CanvasRichTextElement {
+  protected readonly showHandle = false;
+  protected readonly dragFromEditor = true;
+}
+
+if (typeof customElements !== "undefined" && !customElements.get("canvas-text")) {
+  customElements.define("canvas-text", CanvasTextElement);
+}
 
 export function createTextShape(at: { x: number; y: number }): CanvasShape {
   return {

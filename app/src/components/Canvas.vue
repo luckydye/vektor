@@ -56,6 +56,7 @@ import {
   defaultColorForShape,
   defaultSizeForShape,
   defaultTextForShape,
+  getCanvasElementExtension,
   isCanvasShapeType,
   isValidCanvasShape,
   minSizeForShape,
@@ -830,6 +831,18 @@ function transformControlPositions(shape: CanvasShape) {
       }),
     ),
   };
+}
+
+// Custom-element tag an extension renders its DOM body with, but only once that
+// element is actually registered. Types whose element isn't implemented yet
+// return null and fall back to the inline template branches below, so migration
+// can proceed one type at a time without breaking the canvas.
+function elementTagForShape(shape: CanvasShape): string | null {
+  const tag = getCanvasElementExtension(shape.type)?.tag;
+  if (!tag || typeof customElements === "undefined" || !customElements.get(tag)) {
+    return null;
+  }
+  return tag;
 }
 
 // Non-GIF images and sections render on canvas layers. All other shapes stay in
@@ -2221,7 +2234,10 @@ function updateShapeText(shape: CanvasShape, text: string) {
 function handleTextFocus(shape: CanvasShape, event: Event) {
   if (shape.locked) return;
   selectOnlyShape(shape.id);
-  const editorEl = event.currentTarget as CanvasTextEditorEl | null;
+  // The editor-focus event bubbles from the <rich-text-editor> through its
+  // wrapping custom element, so read the editor off event.target (the element
+  // that actually carries editorInstance) rather than currentTarget.
+  const editorEl = event.target as CanvasTextEditorEl | null;
   const toolbar = canvasToolbarRef.value;
   if (toolbar) toolbar.editor = editorEl?.editorInstance ?? null;
 }
@@ -4503,202 +4519,215 @@ onUnmounted(() => {
           }"
           :data-shape-id="shape.id"
         >
-          <div
-            v-if="shape.type === 'note'"
-            class="canvas-shape-handle"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-          ></div>
-          <img
-            v-if="shape.type === 'image' && shape.src && isGifSrc(shape.src)"
-            class="canvas-shape-image"
-            :src="shape.src"
-            :alt="shape.alt || ''"
-            draggable="false"
-            decoding="async"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-          >
-          <div
-            v-else-if="shape.type === 'image'"
-            class="canvas-shape-image"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
+          <!-- Extension-owned custom element (note, text, …). Falls back to the
+               inline branches below for types not yet migrated. -->
+          <component
+            :is="elementTagForShape(shape)"
+            v-if="elementTagForShape(shape)"
+            :shape.prop="shape"
+            @request-drag="startShapeDrag(shape, ($event as CustomEvent).detail)"
+            @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
+            @editor-focus="handleTextFocus(shape, $event)"
+            @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
           />
-          <video
-            v-else-if="shape.type === 'video' && shape.src"
-            class="canvas-shape-image"
-            :src="shape.src"
-            :aria-label="shape.alt || ''"
-            autoplay
-            muted
-            loop
-            playsinline
-            draggable="false"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-          ></video>
-          <!-- Native audio player. The grip handles selection/drag; the player
-               itself keeps its pointer events so its controls stay clickable. -->
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handle forwards pointer events to the canvas drag interaction. -->
-          <div
-            v-else-if="shape.type === 'audio' && shape.src"
-            class="canvas-shape-audio"
-            @pointerdown.stop
-          >
+          <template v-else>
             <div
-              class="canvas-shape-audio-handle"
-              :title="shape.alt || shape.text || 'Audio'"
+              v-if="shape.type === 'note'"
+              class="canvas-shape-handle"
               @pointerdown.stop="startShapeDrag(shape, $event)"
             ></div>
-            <!-- biome-ignore lint/a11y/useMediaCaption: User-uploaded audio has no caption track available. -->
-            <audio
-              class="canvas-shape-audio-player"
+            <img
+              v-if="shape.type === 'image' && shape.src && isGifSrc(shape.src)"
+              class="canvas-shape-image"
               :src="shape.src"
-              :aria-label="shape.alt || shape.text || 'Audio'"
-              controls
-              preload="metadata"
-            ></audio>
-          </div>
-          <!-- The header keeps selection and dragging available while the native
-               PDF viewer receives scroll, text-selection, and toolbar events. -->
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: This is the canvas drag handle for an embedded PDF viewer. -->
-          <div
-            v-else-if="isPdfFileShape(shape) && shape.src"
-            class="canvas-pdf-preview"
-            @pointerdown.stop
-          >
-            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
-            <div
-              class="canvas-pdf-preview-header"
-              :title="shape.alt || 'PDF'"
+              :alt="shape.alt || ''"
+              draggable="false"
+              decoding="async"
               @pointerdown.stop="startShapeDrag(shape, $event)"
             >
-              {{ shape.alt || shape.text || 'PDF' }}
-            </div>
-            <iframe
-              class="canvas-pdf-preview-frame"
+            <div
+              v-else-if="shape.type === 'image'"
+              class="canvas-shape-image"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            />
+            <video
+              v-else-if="shape.type === 'video' && shape.src"
+              class="canvas-shape-image"
               :src="shape.src"
-              title="PDF preview"
-            ></iframe>
-          </div>
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-          <file-attachment
-            v-else-if="shape.type === 'file' && shape.src"
-            class="canvas-shape-file"
-            :src="shape.src"
-            :filename="shape.alt || shape.text || 'file'"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @click.capture="onFileShapeClick"
-          ></file-attachment>
-          <CanvasDocumentEditor
-            v-else-if="shape.type === 'document' && editingDocumentShape?.shapeId === shape.id"
-            :ref="setEmbeddedDocumentEditorRef"
-            class="canvas-shape-document-editor"
-            :space-id="props.spaceId"
-            :document-id="editingDocumentShape.documentId"
-            :title="documentLinks.shapeTitle(shape)"
-            :toggle-task-index="editingDocumentShape.toggleTaskIndex"
-            @drag-start="startShapeDrag(shape, $event)"
-            @exit="stopEmbeddedDocumentEdit"
-          />
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-          <document-attachment
-            v-else-if="shape.type === 'document'"
-            class="canvas-shape-document"
-            :title="documentLinks.shapeTitle(shape)"
-            :type="documentLinks.shapeType(shape)"
-            :status="documentLinks.shapeStatus(shape)"
-            :content="documentLinks.shapeContent(shape)"
-            :space-id="documentLinks.documentSpaceIdForShape(shape) || props.spaceId"
-            :document-id="isRemoteDocumentShape(shape) ? '' : documentLinks.documentIdForShape(shape) || ''"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @wheel.stop
-            @click="onDocumentShapeClick(shape, $event)"
-            @open-document="onDocumentShapeOpen(shape, $event)"
-          ></document-attachment>
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
-          <div
-            v-else-if="
+              :aria-label="shape.alt || ''"
+              autoplay
+              muted
+              loop
+              playsinline
+              draggable="false"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+            ></video>
+            <!-- Native audio player. The grip handles selection/drag; the player
+               itself keeps its pointer events so its controls stay clickable. -->
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handle forwards pointer events to the canvas drag interaction. -->
+            <div
+              v-else-if="shape.type === 'audio' && shape.src"
+              class="canvas-shape-audio"
+              @pointerdown.stop
+            >
+              <div
+                class="canvas-shape-audio-handle"
+                :title="shape.alt || shape.text || 'Audio'"
+                @pointerdown.stop="startShapeDrag(shape, $event)"
+              ></div>
+              <!-- biome-ignore lint/a11y/useMediaCaption: User-uploaded audio has no caption track available. -->
+              <audio
+                class="canvas-shape-audio-player"
+                :src="shape.src"
+                :aria-label="shape.alt || shape.text || 'Audio'"
+                controls
+                preload="metadata"
+              ></audio>
+            </div>
+            <!-- The header keeps selection and dragging available while the native
+               PDF viewer receives scroll, text-selection, and toolbar events. -->
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: This is the canvas drag handle for an embedded PDF viewer. -->
+            <div
+              v-else-if="isPdfFileShape(shape) && shape.src"
+              class="canvas-pdf-preview"
+              @pointerdown.stop
+            >
+              <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
+              <div
+                class="canvas-pdf-preview-header"
+                :title="shape.alt || 'PDF'"
+                @pointerdown.stop="startShapeDrag(shape, $event)"
+              >
+                {{ shape.alt || shape.text || 'PDF' }}
+              </div>
+              <iframe
+                class="canvas-pdf-preview-frame"
+                :src="shape.src"
+                title="PDF preview"
+              ></iframe>
+            </div>
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+            <file-attachment
+              v-else-if="shape.type === 'file' && shape.src"
+              class="canvas-shape-file"
+              :src="shape.src"
+              :filename="shape.alt || shape.text || 'file'"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+              @click.capture="onFileShapeClick"
+            ></file-attachment>
+            <CanvasDocumentEditor
+              v-else-if="shape.type === 'document' && editingDocumentShape?.shapeId === shape.id"
+              :ref="setEmbeddedDocumentEditorRef"
+              class="canvas-shape-document-editor"
+              :space-id="props.spaceId"
+              :document-id="editingDocumentShape.documentId"
+              :title="documentLinks.shapeTitle(shape)"
+              :toggle-task-index="editingDocumentShape.toggleTaskIndex"
+              @drag-start="startShapeDrag(shape, $event)"
+              @exit="stopEmbeddedDocumentEdit"
+            />
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+            <document-attachment
+              v-else-if="shape.type === 'document'"
+              class="canvas-shape-document"
+              :title="documentLinks.shapeTitle(shape)"
+              :type="documentLinks.shapeType(shape)"
+              :status="documentLinks.shapeStatus(shape)"
+              :content="documentLinks.shapeContent(shape)"
+              :space-id="documentLinks.documentSpaceIdForShape(shape) || props.spaceId"
+              :document-id="isRemoteDocumentShape(shape) ? '' : documentLinks.documentIdForShape(shape) || ''"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+              @wheel.stop
+              @click="onDocumentShapeClick(shape, $event)"
+              @open-document="onDocumentShapeOpen(shape, $event)"
+            ></document-attachment>
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
+            <div
+              v-else-if="
               shape.type === 'link' &&
               shape.src &&
               linkPreviews.previewForShape(shape)?.metadata?.embed?.provider === 'twitter'
             "
-            class="canvas-twitter-shape"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @wheel.stop
-          >
-            <CanvasTwitterEmbed
-              :html="linkPreviews.previewForShape(shape)!.metadata!.embed!.html"
-              @resize="fitLinkShapeHeight(shape.id, $event)"
-            />
-          </div>
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
-          <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
-          <a
-            v-else-if="shape.type === 'link' && shape.src"
-            class="canvas-shape-link"
-            :data-link-shape-id="shape.id"
-            :href="shape.src"
-            target="_blank"
-            rel="noopener noreferrer"
-            draggable="false"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @click.capture="onFileShapeClick"
-          >
-            <div
-              v-if="linkPreviews.previewForShape(shape)?.metadata?.video || linkPreviews.previewForShape(shape)?.metadata?.image"
-              class="canvas-link-image"
+              class="canvas-twitter-shape"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+              @wheel.stop
             >
-              <video
-                v-if="linkPreviews.previewForShape(shape)?.metadata?.video"
-                :src="`/api/v1/proxy-media?url=${encodeURIComponent(linkPreviews.previewForShape(shape)!.metadata!.video!)}`"
-                autoplay
-                muted
-                loop
-                playsinline
-                draggable="false"
-              ></video>
-              <img
-                v-else
-                :src="linkPreviews.previewForShape(shape)!.metadata!.image!"
-                alt=""
-                draggable="false"
-                @error="($event.target as HTMLImageElement).style.display = 'none'"
-              >
+              <CanvasTwitterEmbed
+                :html="linkPreviews.previewForShape(shape)!.metadata!.embed!.html"
+                @resize="fitLinkShapeHeight(shape.id, $event)"
+              />
             </div>
-            <div class="canvas-link-body">
-              <div class="canvas-link-site">
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
+            <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
+            <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+            <a
+              v-else-if="shape.type === 'link' && shape.src"
+              class="canvas-shape-link"
+              :data-link-shape-id="shape.id"
+              :href="shape.src"
+              target="_blank"
+              rel="noopener noreferrer"
+              draggable="false"
+              @pointerdown.stop="startShapeDrag(shape, $event)"
+              @click.capture="onFileShapeClick"
+            >
+              <div
+                v-if="linkPreviews.previewForShape(shape)?.metadata?.video || linkPreviews.previewForShape(shape)?.metadata?.image"
+                class="canvas-link-image"
+              >
+                <video
+                  v-if="linkPreviews.previewForShape(shape)?.metadata?.video"
+                  :src="`/api/v1/proxy-media?url=${encodeURIComponent(linkPreviews.previewForShape(shape)!.metadata!.video!)}`"
+                  autoplay
+                  muted
+                  loop
+                  playsinline
+                  draggable="false"
+                ></video>
                 <img
-                  v-if="linkPreviews.previewForShape(shape)?.metadata?.favicon"
-                  :src="linkPreviews.previewForShape(shape)!.metadata!.favicon!"
-                  class="canvas-link-favicon"
-                  aria-hidden="true"
+                  v-else
+                  :src="linkPreviews.previewForShape(shape)!.metadata!.image!"
+                  alt=""
                   draggable="false"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
                 >
-                <span class="canvas-link-domain">
-                  {{ linkPreviews.previewForShape(shape)?.metadata?.siteName || getDomainFromUrl(shape.src) }}
-                </span>
               </div>
-              <div class="canvas-link-title">
-                {{ linkPreviews.previewForShape(shape)?.metadata?.title || shape.src }}
+              <div class="canvas-link-body">
+                <div class="canvas-link-site">
+                  <img
+                    v-if="linkPreviews.previewForShape(shape)?.metadata?.favicon"
+                    :src="linkPreviews.previewForShape(shape)!.metadata!.favicon!"
+                    class="canvas-link-favicon"
+                    aria-hidden="true"
+                    draggable="false"
+                    @error="($event.target as HTMLImageElement).style.display = 'none'"
+                  >
+                  <span class="canvas-link-domain">
+                    {{ linkPreviews.previewForShape(shape)?.metadata?.siteName || getDomainFromUrl(shape.src) }}
+                  </span>
+                </div>
+                <div class="canvas-link-title">
+                  {{ linkPreviews.previewForShape(shape)?.metadata?.title || shape.src }}
+                </div>
+                <div
+                  v-if="linkPreviews.previewForShape(shape)?.metadata?.description"
+                  class="canvas-link-desc"
+                >
+                  {{ linkPreviews.previewForShape(shape)!.metadata!.description }}
+                </div>
               </div>
-              <div
-                v-if="linkPreviews.previewForShape(shape)?.metadata?.description"
-                class="canvas-link-desc"
-              >
-                {{ linkPreviews.previewForShape(shape)!.metadata!.description }}
-              </div>
-            </div>
-          </a>
-          <rich-text-editor
-            v-else
-            class="canvas-shape-textwrap"
-            headings
-            :value="shape.text"
-            @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
-            @editor-focus="handleTextFocus(shape, $event)"
-            @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
-            @pointerdown.stop="shape.type === 'text' && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
-          />
+            </a>
+            <rich-text-editor
+              v-else
+              class="canvas-shape-textwrap"
+              headings
+              :value="shape.text"
+              @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
+              @editor-focus="handleTextFocus(shape, $event)"
+              @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
+              @pointerdown.stop="shape.type === 'text' && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
+            />
+          </template>
         </article>
 
         <!-- Local upload placeholders shown until each dropped/pasted file finishes uploading. -->

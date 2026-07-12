@@ -1,4 +1,5 @@
 import { canvasNoteIcon } from "#assets/icons.ts";
+import { CanvasRichTextElement } from "./CanvasElementBase.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 export const NOTE_COLORS = [
@@ -21,6 +22,16 @@ export const noteElement: CanvasElementExtension = {
   tool: { id: "note", label: "Note", shortcut: "N", icon: canvasNoteIcon },
   create: (at, ctx) => createNoteShape(at, ctx.color ?? noteElement.defaultColor),
 };
+
+// Note body: a drag grip plus the rich-text editor.
+class CanvasNoteElement extends CanvasRichTextElement {
+  protected readonly showHandle = true;
+  protected readonly dragFromEditor = false;
+}
+
+if (typeof customElements !== "undefined" && !customElements.get("canvas-note")) {
+  customElements.define("canvas-note", CanvasNoteElement);
+}
 
 export function createNoteShape(
   at: { x: number; y: number },
