@@ -1,3 +1,4 @@
+import type { TranslationKey } from "#utils/lang.ts";
 import { documentLinkElement } from "./documentLink.ts";
 import { drawTool } from "./drawing.ts";
 import { fileElement } from "./files.ts";
@@ -50,6 +51,28 @@ export function canvasElementTools(): CanvasElementTool[] {
   return elementExtensions
     .map((extension) => extension.tool)
     .filter((tool): tool is CanvasElementTool => Boolean(tool));
+}
+
+/** Color-swatch palettes contributed by extensions (note/section), in order. */
+export function canvasColorPalettes(): Array<{
+  type: CanvasShapeType;
+  label: TranslationKey;
+  palette: readonly string[];
+}> {
+  const out: Array<{
+    type: CanvasShapeType;
+    label: TranslationKey;
+    palette: readonly string[];
+  }> = [];
+  for (const extension of elementExtensions) {
+    if (!extension.palette || !extension.tool) continue;
+    out.push({
+      type: extension.type,
+      label: extension.tool.label,
+      palette: extension.palette,
+    });
+  }
+  return out;
 }
 
 // Standalone (non-element) tools. Element-creating tools are derived below.

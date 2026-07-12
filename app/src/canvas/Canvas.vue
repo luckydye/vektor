@@ -4,6 +4,7 @@ import {
   nextTick,
   onMounted,
   onUnmounted,
+  reactive,
   ref,
   shallowRef,
   toRaw,
@@ -11,6 +12,28 @@ import {
 } from "vue";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
+import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { useDocuments } from "#composeables/useDocuments.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
+import type { CanvasPresenceState } from "#editor/collaboration.ts";
+import {
+  canvasFitViewIcon,
+  canvasSelectIcon,
+  canvasShapeIcon,
+  clipboardDocumentIcon,
+  copyIcon,
+  lockIcon,
+  pencilIcon,
+  redoArrowIcon,
+  scissorsIcon,
+  trashIcon,
+  undoArrowIcon,
+  unlockIcon,
+  uploadIcon,
+} from "~/src/assets/icons.ts";
 import type { CanvasElementContext } from "./extensions/CanvasElementBase.ts";
 import {
   createDocumentLinkController,
@@ -56,8 +79,8 @@ import {
   mediaFilesFromList,
   uploadMediaFile,
 } from "./extensions/media.ts";
-import { NOTE_COLORS } from "./extensions/note.ts";
 import {
+  canvasColorPalettes,
   canvasElementTools,
   defaultColorForShape,
   defaultSizeForShape,
@@ -70,8 +93,12 @@ import {
   serializeCanvasShape,
   shapePersistsSize,
 } from "./extensions/registry.ts";
-import { SECTION_COLORS } from "./extensions/section.ts";
-import { type CanvasShapeLibraryItem, SHAPE_LIBRARY } from "./extensions/shape.ts";
+import {
+  activeShapeId,
+  type CanvasShapeLibraryItem,
+  SHAPE_LIBRARY,
+  setActiveShapeId,
+} from "./extensions/shape.ts";
 import type {
   CanvasEditSession,
   CanvasExtensionHost,
@@ -96,28 +123,6 @@ import {
   rotationFromPointer,
   snapRotation,
 } from "./geometry.ts";
-import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
-import { useDocument } from "#composeables/useDocument.ts";
-import { useDocuments } from "#composeables/useDocuments.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { useUserProfile } from "#composeables/useUserProfile.ts";
-import type { CanvasPresenceState } from "#editor/collaboration.ts";
-import {
-  canvasFitViewIcon,
-  canvasSelectIcon,
-  canvasShapeIcon,
-  clipboardDocumentIcon,
-  copyIcon,
-  lockIcon,
-  pencilIcon,
-  redoArrowIcon,
-  scissorsIcon,
-  trashIcon,
-  undoArrowIcon,
-  unlockIcon,
-  uploadIcon,
-} from "~/src/assets/icons.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
 import "@atrium-ui/elements/popover";
@@ -338,8 +343,6 @@ const SNAP_PROXIMITY_PX = 320;
 // hand during panning and a resting cursor otherwise.
 const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
-// Library entry the shape tool places next; the toolbar popover changes it.
-const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
 const shapePopoverRef = ref<(HTMLElement & { hide: () => void }) | null>(null);
 // Shared inline-formatting toolbar (<document-toolbar variant="canvas">),
 // retargeted to whichever text shape's editor is focused.
@@ -349,8 +352,13 @@ type CanvasFormatToolbarEl = HTMLElement & {
   reposition: () => void;
 };
 const canvasToolbarRef = ref<CanvasFormatToolbarEl | null>(null);
-const noteColor = ref<string>(NOTE_COLORS[0]);
-const sectionColor = ref<string>(SECTION_COLORS[0]);
+// Active swatch per color-capable element type (used when creating new shapes),
+// seeded from each extension's palette. Recoloring a selected shape writes here
+// too. Data-driven from the registry — no per-type refs.
+const colorPalettes = canvasColorPalettes();
+const activeColors = reactive<Record<string, string>>(
+  Object.fromEntries(colorPalettes.map((entry) => [entry.type, entry.palette[0]])),
+);
 const penColor = ref<string>(PEN_COLORS[0]);
 const cursorColor = ref<string>(readCanvasCursorColor());
 const drawStrokeMode = ref<DrawStrokeMode>("pen");
@@ -2090,7 +2098,6 @@ function stopEmbeddedDocumentEdit() {
 // Insertion/engine services the tool extensions (draw/shape/create) drive.
 const canvasToolContext: CanvasToolContext = {
   penColor: () => penColor.value,
-  activeShapeId: () => activeShapeId.value,
   startFreehand: (event) => startFreehand(event),
   insertStroke: (stroke) => yStrokes.set(stroke.id, createStrokeMap(stroke)),
   selectStroke: (id) => selectStroke(id, false),
@@ -2101,15 +2108,10 @@ const canvasToolContext: CanvasToolContext = {
 };
 
 function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
-  // The active swatch feeds the factory: notes/sections pick up their color
-  // picker, text has no fill.
-  const color =
-    type === "note"
-      ? noteColor.value
-      : type === "section"
-        ? sectionColor.value
-        : undefined;
-  const shape = getCanvasElementExtension(type)?.create?.(at, { color });
+  // The active swatch (if the type has a palette) feeds the factory; text has none.
+  const shape = getCanvasElementExtension(type)?.create?.(at, {
+    color: activeColors[type],
+  });
   if (!shape) return;
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
@@ -2201,22 +2203,33 @@ function updateStrokePoints(id: string, points: FreehandPoint[], rotation?: numb
   if (rotation !== undefined) stroke.set("rotation", rotation);
 }
 
-function setNoteColor(color: string) {
-  noteColor.value = color;
-  if (selectedShape.value?.type === "note") {
+// Sets the active swatch for a type and recolors the selected shape if it is
+// that type. Generic over the registry's color-capable extensions.
+function setElementColor(type: CanvasShapeType, color: string) {
+  activeColors[type] = color;
+  if (selectedShape.value?.type === type) {
     updateShape(selectedShape.value.id, { color });
   }
 }
 
-function setSectionColor(color: string) {
-  sectionColor.value = color;
-  if (selectedShape.value?.type === "section") {
-    updateShape(selectedShape.value.id, { color });
-  }
+// The swatch to highlight: the selected shape's color when one of that type is
+// selected, otherwise the active swatch for new shapes.
+function activeElementColor(type: CanvasShapeType): string | undefined {
+  return selectedShape.value?.type === type
+    ? selectedShape.value.color
+    : activeColors[type];
 }
+
+// Color pickers to show: the active tool's type, or the selected shape's type.
+const visibleColorPalettes = computed(() =>
+  colorPalettes.filter(
+    (entry) =>
+      activeTool.value === entry.type || selectedShape.value?.type === entry.type,
+  ),
+);
 
 function pickShapeLibraryItem(item: CanvasShapeLibraryItem) {
-  activeShapeId.value = item.id;
+  setActiveShapeId(item.id);
   activeTool.value = "shape";
   shapePopoverRef.value?.hide();
 }
@@ -3825,14 +3838,6 @@ watch(
   { immediate: true },
 );
 
-watch(
-  () => linkPreviewUrls.value.join("\u001f"),
-  () => {
-    for (const url of linkPreviewUrls.value) void linkPreviews.loadPreview(url);
-  },
-  { immediate: true },
-);
-
 // Once a preview loads, its card renders the image/title; re-measure so the
 // shape grows to fit (the ResizeObserver alone won't catch content-only growth).
 watch(linkPreviews.previews, () => {
@@ -4017,44 +4022,26 @@ onUnmounted(() => {
       </span>
       <span v-if="activeTool === 'draw'" class="canvas-divider"></span>
       <span
-        v-if="activeTool === 'note' || selectedShape?.type === 'note'"
+        v-for="cp in visibleColorPalettes"
+        :key="cp.type"
         class="canvas-note-colors"
-        :aria-label="t('Note color')"
+        :aria-label="`${t(cp.label)} color`"
       >
         <button
-          v-for="color in NOTE_COLORS"
+          v-for="color in cp.palette"
           :key="color"
           type="button"
           class="canvas-color-swatch"
-          :class="{ active: (selectedShape?.type === 'note' ? selectedShape.color : noteColor) === color }"
+          :class="{ active: activeElementColor(cp.type) === color }"
           :style="{ background: color }"
-          :aria-label="`${t('Set note color')} ${color}`"
-          @click="setNoteColor(color)"
-        ></button>
-      </span>
-      <span
-        v-if="activeTool === 'section' || selectedShape?.type === 'section'"
-        class="canvas-note-colors"
-        :aria-label="`${t('Section')} color`"
-      >
-        <button
-          v-for="color in SECTION_COLORS"
-          :key="color"
-          type="button"
-          class="canvas-color-swatch"
-          :class="{ active: (selectedShape?.type === 'section' ? selectedShape.color : sectionColor) === color }"
-          :style="{ background: color }"
-          :aria-label="`${t('Section')} color ${color}`"
-          @click="setSectionColor(color)"
+          :aria-label="`${t(cp.label)} color ${color}`"
+          @click="setElementColor(cp.type, color)"
         ></button>
       </span>
       <span
         v-if="
           (activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0) &&
-          (activeTool === 'note' ||
-            selectedShape?.type === 'note' ||
-            activeTool === 'section' ||
-            selectedShape?.type === 'section')
+          visibleColorPalettes.length > 0
         "
         class="canvas-divider"
       ></span>

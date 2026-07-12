@@ -115,6 +115,7 @@ export const sectionElement: CanvasElementExtension = {
   minSize: { width: 240, height: 160 },
   surface: "canvas",
   transform: { move: true, resize: "box", rotate: false },
+  palette: SECTION_COLORS,
   tool: { id: "section", label: "Section", shortcut: "S", icon: canvasSectionIcon },
   create: (at, ctx) => createSectionShape(at, ctx.color ?? sectionElement.defaultColor),
   paint: paintSection,

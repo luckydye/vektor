@@ -1,3 +1,4 @@
+import { ref } from "vue";
 import { shapeCircleIcon, shapeRectangleIcon } from "#assets/icons.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 import type { FreehandPoint } from "#viewport/index.ts";
@@ -115,12 +116,19 @@ export function createShapeStroke(
   };
 }
 
+// Extension-owned shape-tool state: which library item the tool stamps next.
+// The toolbar picker sets it; the host neither creates nor owns it.
+export const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
+export function setActiveShapeId(id: string) {
+  activeShapeId.value = id;
+}
+
 // The shape tool stamps the active library item at the click as a shape-stroke
 // on the ink layer, then returns to select.
 export const shapeTool: CanvasToolExtension = {
   id: "shape",
   onPointerDown: (at, event, ctx) => {
-    const item = getShapeLibraryItem(ctx.activeShapeId()) ?? SHAPE_LIBRARY[0];
+    const item = getShapeLibraryItem(activeShapeId.value) ?? SHAPE_LIBRARY[0];
     const stroke = createShapeStroke(item, at, ctx.penColor());
     ctx.insertStroke(stroke);
     ctx.selectStroke(stroke.id);

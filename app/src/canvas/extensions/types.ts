@@ -138,7 +138,6 @@ export type CanvasElementTool = {
 // the freehand/drag engine; tools drive them.
 export interface CanvasToolContext {
   penColor: () => string;
-  activeShapeId: () => string;
   // Begin a streaming freehand stroke from this pointerdown (engine-managed).
   startFreehand: (event: PointerEvent) => void;
   insertStroke: (stroke: CanvasStrokeSnapshot) => void;
@@ -262,6 +261,10 @@ export interface CanvasElementExtension {
 
   // --- geometry / transforms ---
   transform: CanvasElementTransform;
+
+  // Color swatches the toolbar offers for this type (note/section). The host
+  // renders them generically and recolors via a single setElementColor.
+  palette?: readonly string[];
 
   // --- serialization quirks ---
   // Element-specific JSON serialization (text strips its width/height). The

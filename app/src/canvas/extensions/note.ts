@@ -19,6 +19,7 @@ export const noteElement: CanvasElementExtension = {
   surface: "dom",
   tag: "canvas-note",
   transform: { move: true, resize: "box", rotate: true },
+  palette: NOTE_COLORS,
   tool: { id: "note", label: "Note", shortcut: "N", icon: canvasNoteIcon },
   create: (at, ctx) => createNoteShape(at, ctx.color ?? noteElement.defaultColor),
 };
