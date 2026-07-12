@@ -16,6 +16,17 @@ export interface CanvasElementContext {
   // actually a drag — file/link cards use it to suppress navigation after a
   // reposition (the host's `dragMoved` flag).
   wasDragged: () => boolean;
+
+  // --- host services ---
+  // Element bodies act on the canvas through these instead of emitting
+  // type-specific events the host has to interpret. The host owns the shape
+  // store, selection, and singleton chrome; extensions drive them.
+  setText: (shapeId: string, text: string) => void;
+  removeShape: (shapeId: string) => void;
+  selectShape: (shapeId: string) => void;
+  // Retarget the shared canvas formatting toolbar at a focused editor (or clear
+  // it with null). The toolbar is a host-level singleton.
+  setFormattingEditor: (editor: unknown | null) => void;
 }
 
 // `class extends HTMLElement` is evaluated at module load. HTMLElement is
@@ -66,7 +77,7 @@ export const CANVAS_ELEMENT_EVENTS = {
  */
 export abstract class CanvasElementBase extends HostElement {
   protected shapeData: CanvasShape | null = null;
-  protected context: CanvasElementContext | null = null;
+  protected services: CanvasElementContext | null = null;
   protected extra: unknown = null;
   private mounted = false;
   private renderQueued = false;
@@ -79,8 +90,11 @@ export abstract class CanvasElementBase extends HostElement {
     return this.shapeData;
   }
 
-  set canvasContext(value: CanvasElementContext | null) {
-    this.context = value;
+  // Single-word property name on purpose: Vue's HTML template lowercases kebab
+  // prop bindings, so a `:context.prop` binding reaches this setter while a
+  // camelCase/kebab one (e.g. canvasContext / canvas-context) silently would not.
+  set context(value: CanvasElementContext | null) {
+    this.services = value;
     this.scheduleRender();
   }
 
@@ -150,6 +164,9 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
   // (only when not being edited).
   protected abstract readonly showHandle: boolean;
   protected abstract readonly dragFromEditor: boolean;
+  // Text has nothing anchoring it, so an empty one is removed on blur; notes
+  // keep their box.
+  protected abstract readonly removeWhenEmpty: boolean;
 
   private editorEl: RichTextEditorElementApi | null = null;
 
@@ -169,11 +186,26 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
     editor.setAttribute("headings", "");
     // Set before connect so the editor mounts with the right initial content.
     editor.value = this.shapeData?.text ?? "";
-    // The editor's own content-change / editor-focus / editor-blur events are
-    // composed+bubbling, so they pass through this wrapper to the host as-is —
-    // no re-dispatch needed, and event.target stays the <rich-text-editor> so
-    // the shared formatting toolbar can read its editorInstance.
-    //
+
+    // Drive the host services directly rather than emitting type-specific events
+    // for the host to interpret.
+    editor.addEventListener("content-change", (event) => {
+      const id = this.shapeData?.id;
+      if (id) this.services?.setText(id, (event as CustomEvent).detail);
+    });
+    editor.addEventListener("editor-focus", () => {
+      const id = this.shapeData?.id;
+      if (!id) return;
+      this.services?.selectShape(id);
+      this.services?.setFormattingEditor(editor.editorInstance);
+    });
+    editor.addEventListener("editor-blur", (event) => {
+      const id = this.shapeData?.id;
+      if (!id) return;
+      const value = String((event as CustomEvent).detail ?? "");
+      if (this.removeWhenEmpty && value.trim() === "") this.services?.removeShape(id);
+    });
+
     // Match the original template: pointerdown on the editor always stops
     // propagation (so it never reaches the viewport marquee/deselect); text
     // additionally begins a drag when it isn't focused for editing.

@@ -72,7 +72,7 @@ class CanvasFileElement extends CanvasElementBase {
     attachment.addEventListener(
       "click",
       (event) => {
-        if (this.context?.wasDragged()) {
+        if (this.services?.wasDragged()) {
           event.preventDefault();
           event.stopPropagation();
         }

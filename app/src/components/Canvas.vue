@@ -74,7 +74,6 @@ import {
   getShapeLibraryItem,
   SHAPE_LIBRARY,
 } from "#canvas/extensions/shape.ts";
-import { shouldRemoveTextShape } from "#canvas/extensions/text.ts";
 import type {
   CanvasPaintHelpers,
   CanvasSerializedShape,
@@ -347,7 +346,6 @@ const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
 const shapePopoverRef = ref<(HTMLElement & { hide: () => void }) | null>(null);
 // Shared inline-formatting toolbar (<document-toolbar variant="canvas">),
 // retargeted to whichever text shape's editor is focused.
-type CanvasTextEditorEl = HTMLElement & { editorInstance?: unknown };
 type CanvasFormatToolbarEl = HTMLElement & {
   editor: unknown;
   dismiss: () => void;
@@ -859,6 +857,24 @@ const hostContext: CanvasElementContext = {
   getDomainFromUrl,
   spaceId: props.spaceId,
   wasDragged: () => dragMoved,
+  setText: (id, text) => {
+    const shape = shapesById.value.get(id);
+    if (!shape || shape.locked) return;
+    updateShape(id, { text });
+  },
+  removeShape: (id) => {
+    if (shapesById.value.get(id)?.locked) return;
+    yShapes.delete(id);
+    if (selectedShapeIds.value.has(id)) {
+      selectedShapeIds.value.delete(id);
+      selectedShapeIds.value = new Set(selectedShapeIds.value);
+    }
+  },
+  selectShape: (id) => selectOnlyShape(id),
+  setFormattingEditor: (editor) => {
+    const toolbar = canvasToolbarRef.value;
+    if (toolbar) toolbar.editor = editor;
+  },
 };
 
 // Non-GIF images and sections render on canvas layers. All other shapes stay in
@@ -2169,32 +2185,11 @@ function addShape(type: "note" | "text" | "section", at: { x: number; y: number 
   });
 }
 
+// Section title editing writes through here (a host-owned <input> overlay).
+// Note/text editing is owned by their extensions via hostContext.setText.
 function updateShapeText(shape: CanvasShape, text: string) {
   if (shape.locked) return;
   updateShape(shape.id, { text });
-}
-
-function handleTextFocus(shape: CanvasShape, event: Event) {
-  if (shape.locked) return;
-  selectOnlyShape(shape.id);
-  // The editor-focus event bubbles from the <rich-text-editor> through its
-  // wrapping custom element, so read the editor off event.target (the element
-  // that actually carries editorInstance) rather than currentTarget.
-  const editorEl = event.target as CanvasTextEditorEl | null;
-  const toolbar = canvasToolbarRef.value;
-  if (toolbar) toolbar.editor = editorEl?.editorInstance ?? null;
-}
-
-function handleTextBlur(shape: CanvasShape, value: string) {
-  // A text element with no content has nothing to anchor it, so remove it once
-  // editing ends. Notes and sections keep their box even when empty.
-  if (shape.type !== "text" || shape.locked) return;
-  if (!shouldRemoveTextShape(value)) return;
-  yShapes.delete(shape.id);
-  if (selectedShapeIds.value.has(shape.id)) {
-    selectedShapeIds.value.delete(shape.id);
-    selectedShapeIds.value = new Set(selectedShapeIds.value);
-  }
 }
 
 function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
@@ -4469,12 +4464,9 @@ onUnmounted(() => {
             :is="elementTagForShape(shape)"
             v-if="elementTagForShape(shape)"
             :shape.prop="shape"
-            :canvas-context.prop="hostContext"
+            :context.prop="hostContext"
             :data.prop="elementDataForShape(shape)"
             @request-drag="startShapeDrag(shape, ($event as CustomEvent).detail)"
-            @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
-            @editor-focus="handleTextFocus(shape, $event)"
-            @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
             @document-click="onDocumentShapeClick(shape, ($event as CustomEvent).detail)"
             @open-document="onDocumentShapeOpen(shape, $event)"
           />

@@ -77,7 +77,7 @@ class CanvasLinkElement extends CanvasElementBase {
     anchor.addEventListener(
       "click",
       (event) => {
-        if (this.context?.wasDragged()) {
+        if (this.services?.wasDragged()) {
           event.preventDefault();
           event.stopPropagation();
         }
@@ -145,7 +145,7 @@ class CanvasLinkElement extends CanvasElementBase {
     domain.className = "canvas-link-domain";
     domain.textContent =
       metadata?.siteName ||
-      (shape.src ? (this.context?.getDomainFromUrl(shape.src) ?? shape.src) : "");
+      (shape.src ? (this.services?.getDomainFromUrl(shape.src) ?? shape.src) : "");
     site.appendChild(domain);
 
     const title = document.createElement("div");

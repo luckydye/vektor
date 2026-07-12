@@ -27,6 +27,7 @@ export const noteElement: CanvasElementExtension = {
 class CanvasNoteElement extends CanvasRichTextElement {
   protected readonly showHandle = true;
   protected readonly dragFromEditor = false;
+  protected readonly removeWhenEmpty = false;
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-note")) {

@@ -32,6 +32,7 @@ export const textElement: CanvasElementExtension = {
 class CanvasTextElement extends CanvasRichTextElement {
   protected readonly showHandle = false;
   protected readonly dragFromEditor = true;
+  protected readonly removeWhenEmpty = true;
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-text")) {
