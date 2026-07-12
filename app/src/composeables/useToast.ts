@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { play } from "cuelume";
 
 export interface Toast {
   id: number;
@@ -22,6 +23,9 @@ export function useToast() {
     if (duration > 0) {
       setTimeout(() => remove(id), duration);
     }
+
+    play("success");
+    
     return id;
   }
 

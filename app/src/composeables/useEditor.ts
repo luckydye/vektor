@@ -4,6 +4,7 @@ import { supportsDocumentEditor } from "#utils/documentTypes.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useRevisions } from "./useRevisions.ts";
+import { useToast } from "./useToast.ts";
 
 export type SaveMode = "revision" | "suggestion";
 
@@ -96,6 +97,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     saveDocument,
   } = useDocument(documentId.value, documentType.value);
   const { saveRevision } = useRevisions(documentId.value);
+  const toast = useToast();
 
   let editorSession = 0;
   let saveStatusTimer: ReturnType<typeof setTimeout> | null = null;
@@ -142,6 +144,7 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
     }, 2000);
 
     if (mode === "suggestion") suggestionSavedCount.value++;
+    else toast.success("Document published");
   }
 
   function registerSaveActions() {
