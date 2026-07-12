@@ -1,10 +1,5 @@
 import { loadTwitterWidgets } from "#utils/twitterWidgets.ts";
-
-// SSR-safe base (see CanvasElementBase for the rationale).
-const HostElement: typeof HTMLElement =
-  typeof HTMLElement !== "undefined"
-    ? HTMLElement
-    : (class {} as unknown as typeof HTMLElement);
+import { HostElement } from "./CanvasElementBase.ts";
 
 // Renders an X/Twitter tweet embedded on the canvas. The server hands us the
 // script-free oEmbed blockquote (see `url-metadata.ts`); we inject it and let

@@ -16,7 +16,6 @@ export const textElement: CanvasElementExtension = {
   tag: "canvas-text",
   // Text auto-fits its content; resizing scales the font instead of a fixed box.
   transform: { move: true, resize: "font", rotate: true },
-  autosize: "observe-dom",
   tool: { id: "text", label: "Text", shortcut: "T", icon: canvasTextIcon },
   create: (at) => createTextShape(at),
   // Text auto-sizes to its content, so its box is never persisted — only

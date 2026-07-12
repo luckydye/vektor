@@ -31,8 +31,9 @@ export interface CanvasElementContext {
 
 // `class extends HTMLElement` is evaluated at module load. HTMLElement is
 // undefined during SSR, so fall back to a dummy base there; the guarded
-// customElements.define() calls never run on the server anyway.
-const HostElement: typeof HTMLElement =
+// customElements.define() calls never run on the server anyway. Exported so
+// standalone canvas custom elements (e.g. twitterEmbed) share the guard.
+export const HostElement: typeof HTMLElement =
   typeof HTMLElement !== "undefined"
     ? HTMLElement
     : (class {} as unknown as typeof HTMLElement);
@@ -53,17 +54,12 @@ export function dragOnPointerDown(
   });
 }
 
-// Event names elements dispatch upward. The host binds these on the element tag
-// (e.g. `@request-drag`). Kept as a const map so element and host agree.
+// Custom-event names elements dispatch upward for the host to handle (bound on
+// the element tag, e.g. `@request-drag`). Only events the host interprets go
+// here; editor content/focus/blur are handled inside the elements via services.
 export const CANVAS_ELEMENT_EVENTS = {
   requestDrag: "request-drag",
-  contentChange: "content-change",
-  editorFocus: "editor-focus",
-  editorBlur: "editor-blur",
-  fileClick: "file-click",
   documentClick: "document-click",
-  openDocument: "open-document",
-  resize: "element-resize",
 } as const;
 
 /**

@@ -37,8 +37,8 @@ export const videoElement: CanvasElementExtension = {
   transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
 };
 
-// Audio renders as a fixed-height native player bar, so it has no natural
-// pixel size and is not aspect-locked like image/video (see isMediaElementType).
+// Audio renders as a fixed-height native player bar, so it has no natural pixel
+// size and (unlike image/video) is not aspect-locked.
 const audioMinSize = { width: 220, height: 54 };
 export const audioElement: CanvasElementExtension = {
   type: "audio",
@@ -51,60 +51,57 @@ export const audioElement: CanvasElementExtension = {
   transform: { move: true, resize: "none", rotate: false },
 };
 
-export function isMediaElementType(type: string): type is "image" | "video" {
-  return type === "image" || type === "video";
-}
-
-// GIFs render as a live <img> in the DOM (static images are painted on the
-// canvas layer instead, so they never reach this element).
-class CanvasImageElement extends CanvasElementBase {
-  private img: HTMLImageElement | null = null;
+// A single media tag (img/video) that drags from its own body and tracks
+// shape.src/alt. GIF images render here as a live <img> (static images are
+// painted on the canvas layer instead, so they never reach this element).
+abstract class CanvasMediaTagElement extends CanvasElementBase {
+  private media: HTMLElement | null = null;
+  protected abstract createMedia(): HTMLElement;
+  protected abstract applyLabel(el: HTMLElement, alt: string): void;
 
   protected mount() {
-    const img = document.createElement("img");
-    img.className = "canvas-shape-image";
-    img.draggable = false;
-    img.decoding = "async";
-    dragOnPointerDown(img, (event) =>
+    const media = this.createMedia();
+    media.className = "canvas-shape-image";
+    (media as HTMLImageElement).draggable = false;
+    dragOnPointerDown(media, (event) =>
       this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
     );
-    this.appendChild(img);
-    this.img = img;
+    this.appendChild(media);
+    this.media = media;
   }
 
   protected update() {
     const shape = this.shapeData;
-    if (!this.img || !shape) return;
-    if (shape.src && this.img.getAttribute("src") !== shape.src) this.img.src = shape.src;
-    this.img.alt = shape.alt || "";
+    if (!this.media || !shape) return;
+    if (shape.src && this.media.getAttribute("src") !== shape.src) {
+      this.media.setAttribute("src", shape.src);
+    }
+    this.applyLabel(this.media, shape.alt || "");
   }
 }
 
-class CanvasVideoElement extends CanvasElementBase {
-  private video: HTMLVideoElement | null = null;
+class CanvasImageElement extends CanvasMediaTagElement {
+  protected createMedia() {
+    const img = document.createElement("img");
+    img.decoding = "async";
+    return img;
+  }
+  protected applyLabel(el: HTMLElement, alt: string) {
+    (el as HTMLImageElement).alt = alt;
+  }
+}
 
-  protected mount() {
+class CanvasVideoElement extends CanvasMediaTagElement {
+  protected createMedia() {
     const video = document.createElement("video");
-    video.className = "canvas-shape-image";
     video.autoplay = true;
     video.muted = true;
     video.loop = true;
     video.playsInline = true;
-    video.draggable = false;
-    dragOnPointerDown(video, (event) =>
-      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
-    );
-    this.appendChild(video);
-    this.video = video;
+    return video;
   }
-
-  protected update() {
-    const shape = this.shapeData;
-    if (!this.video || !shape) return;
-    if (shape.src && this.video.getAttribute("src") !== shape.src) {
-      this.video.src = shape.src;
-    }
-    this.video.setAttribute("aria-label", shape.alt || "");
+  protected applyLabel(el: HTMLElement, alt: string) {
+    el.setAttribute("aria-label", alt);
   }
 }
 

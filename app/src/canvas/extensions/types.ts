@@ -1,4 +1,3 @@
-import type * as Y from "yjs";
 import type { TranslationKey } from "#utils/lang.ts";
 import type {
   FreehandPoint,
@@ -135,9 +134,6 @@ export type CanvasElementTool = {
   icon: string;
 };
 
-// Reads a raw attribute from either a Yjs map or a plain serialized object.
-export type CanvasShapeAttrReader = (key: string) => unknown;
-
 // Engine services passed to a canvas-drawn element's paint() hook. The host
 // owns the layer setup (transform, clear), image caching, selection overlays,
 // and the geometry it shares with hit-testing / the title-edit overlay; the
@@ -187,20 +183,9 @@ export interface CanvasElementExtension {
 
   // --- geometry / transforms ---
   transform: CanvasElementTransform;
-  // "observe-dom" opts the element into the host's DOM auto-size driver (text,
-  // link cards), which fits the shape to its measured content.
-  autosize?: "observe-dom" | "none";
 
   // --- serialization quirks ---
-  // Writes element-specific fields when persisting to Yjs. Defaults to the
-  // host's generic field writer; text uses this to omit width/height.
-  writeYMap?: (map: Y.Map<unknown>, shape: CanvasSerializedShape) => void;
-  // Reads element-specific fields back from a Yjs map / serialized object.
-  readYMap?: (read: CanvasShapeAttrReader, base: CanvasShape) => Partial<CanvasShape>;
-  // Element-specific JSON serialization (text strips width/height).
+  // Element-specific JSON serialization (text strips its width/height). The
+  // host's createShapeMap/serializeShape default to a shallow copy otherwise.
   serialize?: (shape: CanvasShape) => CanvasSerializedShape;
 }
-
-// Deprecated alias kept so existing element modules keep compiling while the
-// contract is populated. Prefer CanvasElementExtension in new code.
-export type CanvasElementDefinition = CanvasElementExtension;

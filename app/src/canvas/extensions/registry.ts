@@ -41,11 +41,6 @@ export function getCanvasElementExtension(
   return extensionsByType.get(type);
 }
 
-/** All registered extensions, in registration order. */
-export function canvasElementExtensions(): readonly CanvasElementExtension[] {
-  return elementExtensions;
-}
-
 /** Toolbar entries contributed by extensions (note/text/section), in order. */
 export function canvasElementTools(): CanvasElementTool[] {
   return elementExtensions
