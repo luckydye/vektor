@@ -11,14 +11,14 @@ import {
 } from "vue";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
-import type { CanvasElementContext } from "#canvas/elements/CanvasElementBase.ts";
+import type { CanvasElementContext } from "#canvas/extensions/CanvasElementBase.ts";
 import {
   createDocumentLinkController,
   type DocumentLinkReference,
   dragHasDocumentLink,
   droppedDocumentReference as getDroppedDocumentReference,
   previewSupportsInlineEditing,
-} from "#canvas/elements/documentLink.ts";
+} from "#canvas/extensions/documentLink.ts";
 import {
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
@@ -35,26 +35,26 @@ import {
   startCanvasDrawingStroke,
   strokeStyleFromUnknown,
   toCanvasStroke,
-} from "#canvas/elements/drawing.ts";
-import { isFigmaClipboardHtml, pasteFigmaClipboard } from "#canvas/elements/figma.ts";
+} from "#canvas/extensions/drawing.ts";
+import { isFigmaClipboardHtml, pasteFigmaClipboard } from "#canvas/extensions/figma.ts";
 import {
   canvasFilesFromDataTransfer,
   canvasFilesFromList,
   createUploadedFileShape,
   dragHasCanvasFiles,
-} from "#canvas/elements/files.ts";
+} from "#canvas/extensions/files.ts";
 import {
   createLinkPreviewController,
   createLinkShape,
   isTwitterLinkPreview,
-} from "#canvas/elements/link.ts";
+} from "#canvas/extensions/link.ts";
 import {
   createUploadedMediaShape,
   mediaFilesFromDataTransfer,
   mediaFilesFromList,
   uploadMediaFile,
-} from "#canvas/elements/media.ts";
-import { NOTE_COLORS } from "#canvas/elements/note.ts";
+} from "#canvas/extensions/media.ts";
+import { NOTE_COLORS } from "#canvas/extensions/note.ts";
 import {
   canvasElementTools,
   defaultColorForShape,
@@ -66,15 +66,15 @@ import {
   minSizeForShape,
   serializeCanvasShape,
   shapePersistsSize,
-} from "#canvas/elements/registry.ts";
-import { SECTION_COLORS } from "#canvas/elements/section.ts";
+} from "#canvas/extensions/registry.ts";
+import { SECTION_COLORS } from "#canvas/extensions/section.ts";
 import {
   type CanvasShapeLibraryItem,
   createShapeStroke,
   getShapeLibraryItem,
   SHAPE_LIBRARY,
-} from "#canvas/elements/shape.ts";
-import { shouldRemoveTextShape } from "#canvas/elements/text.ts";
+} from "#canvas/extensions/shape.ts";
+import { shouldRemoveTextShape } from "#canvas/extensions/text.ts";
 import type {
   CanvasPaintHelpers,
   CanvasSerializedShape,
@@ -84,7 +84,7 @@ import type {
   CanvasStroke,
   CanvasStrokeSnapshot,
   CanvasTool,
-} from "#canvas/elements/types.ts";
+} from "#canvas/extensions/types.ts";
 import {
   normalizeRotation,
   pointInRotatedShape,

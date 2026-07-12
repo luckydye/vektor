@@ -2,7 +2,7 @@ import type { Editor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 import { getRelativeSelection } from "y-prosemirror";
 import * as Y from "yjs";
-import type { CanvasTool } from "#canvas/elements/types.ts";
+import type { CanvasTool } from "#canvas/extensions/types.ts";
 
 type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;
 
