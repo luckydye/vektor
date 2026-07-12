@@ -185,7 +185,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
       class="flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]"
     >
       <nav class="@container flex flex-col gap-3xs">
-        <div class="pl-4xs pr-2xs flex-none flex flex-col gap-0.5">
+        <div class="pl-4xs pr-2xs flex-none flex flex-col gap-0.5 pt-4xs">
           <div class="flex items-center gap-px">
             <MenuLink
               class="flex-1"
