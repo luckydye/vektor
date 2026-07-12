@@ -63,6 +63,7 @@ import {
   defaultSizeForShape,
   defaultTextForShape,
   getCanvasElementExtension,
+  getCanvasTool,
   isCanvasShapeType,
   isValidCanvasShape,
   minSizeForShape,
@@ -70,12 +71,7 @@ import {
   shapePersistsSize,
 } from "#canvas/extensions/registry.ts";
 import { SECTION_COLORS } from "#canvas/extensions/section.ts";
-import {
-  type CanvasShapeLibraryItem,
-  createShapeStroke,
-  getShapeLibraryItem,
-  SHAPE_LIBRARY,
-} from "#canvas/extensions/shape.ts";
+import { type CanvasShapeLibraryItem, SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
 import type {
   CanvasEditSession,
   CanvasExtensionHost,
@@ -87,6 +83,7 @@ import type {
   CanvasStroke,
   CanvasStrokeSnapshot,
   CanvasTool,
+  CanvasToolContext,
 } from "#canvas/extensions/types.ts";
 import {
   normalizeRotation,
@@ -2092,16 +2089,18 @@ function stopEmbeddedDocumentEdit() {
   editingDocumentShape.value = null;
 }
 
-// Stamps the active shape-library item at `at` as a regular freehand stroke,
-// so it lives on the ink layer with the same selection, move, recolor, and
-// undo behavior as drawn strokes.
-function placeShapeStroke(at: { x: number; y: number }) {
-  const item = getShapeLibraryItem(activeShapeId.value) ?? SHAPE_LIBRARY[0];
-  const stroke = createShapeStroke(item, at, penColor.value);
-  yStrokes.set(stroke.id, createStrokeMap(stroke));
-  selectStroke(stroke.id, false);
-  activeTool.value = "select";
-}
+// Insertion/engine services the tool extensions (draw/shape/create) drive.
+const canvasToolContext: CanvasToolContext = {
+  penColor: () => penColor.value,
+  activeShapeId: () => activeShapeId.value,
+  startFreehand: (event) => startFreehand(event),
+  insertStroke: (stroke) => yStrokes.set(stroke.id, createStrokeMap(stroke)),
+  selectStroke: (id) => selectStroke(id, false),
+  createElement: (type, at) => addShape(type as "note" | "text" | "section", at),
+  setActiveTool: (tool) => {
+    activeTool.value = tool;
+  },
+};
 
 function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
   // The active swatch feeds the factory: notes/sections pick up their color
@@ -2815,24 +2814,13 @@ function handleViewportPointerDown(event: PointerEvent) {
     return;
   }
 
-  if (activeTool.value === "draw") {
-    startFreehand(event);
-    return;
-  }
-
-  if (activeTool.value === "shape") {
-    placeShapeStroke(screenToWorld(point));
-    event.preventDefault();
-    return;
-  }
-
-  if (
-    activeTool.value === "note" ||
-    activeTool.value === "text" ||
-    activeTool.value === "section"
-  ) {
-    addShape(activeTool.value, screenToWorld(point));
-  }
+  // Non-select tools (draw / shape / note / text / section) dispatch to their
+  // tool extension.
+  getCanvasTool(activeTool.value)?.onPointerDown(
+    screenToWorld(point),
+    event,
+    canvasToolContext,
+  );
   event.preventDefault();
 }
 

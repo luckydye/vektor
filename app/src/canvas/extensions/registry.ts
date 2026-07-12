@@ -1,9 +1,11 @@
 import { documentLinkElement } from "./documentLink.ts";
+import { drawTool } from "./drawing.ts";
 import { fileElement } from "./files.ts";
 import { linkElement } from "./link.ts";
 import { audioElement, imageElement, videoElement } from "./media.ts";
 import { noteElement } from "./note.ts";
 import { sectionElement } from "./section.ts";
+import { shapeTool } from "./shape.ts";
 import { textElement } from "./text.ts";
 import type {
   CanvasElementExtension,
@@ -11,6 +13,8 @@ import type {
   CanvasSerializedShape,
   CanvasShape,
   CanvasShapeType,
+  CanvasTool,
+  CanvasToolExtension,
 } from "./types.ts";
 
 // The complete set of canvas element extensions. Order is the registration
@@ -46,6 +50,26 @@ export function canvasElementTools(): CanvasElementTool[] {
   return elementExtensions
     .map((extension) => extension.tool)
     .filter((tool): tool is CanvasElementTool => Boolean(tool));
+}
+
+// Standalone (non-element) tools. Element-creating tools are derived below.
+const standaloneTools: CanvasToolExtension[] = [drawTool, shapeTool];
+
+/**
+ * The tool handling a non-select pointerdown. draw/shape are their own tool
+ * extensions; note/text/section derive from their element extension's create().
+ */
+export function getCanvasTool(id: CanvasTool): CanvasToolExtension | undefined {
+  const standalone = standaloneTools.find((tool) => tool.id === id);
+  if (standalone) return standalone;
+  const element = elementExtensions.find((extension) => extension.tool?.id === id);
+  if (element) {
+    return {
+      id,
+      onPointerDown: (at, _event, ctx) => ctx.createElement(element.type, at),
+    };
+  }
+  return undefined;
 }
 
 export function defaultTextForShape(type: CanvasShapeType): string {

@@ -134,6 +134,28 @@ export type CanvasElementTool = {
   icon: string;
 };
 
+// Services a canvas tool uses to act. The host owns the stroke/shape stores and
+// the freehand/drag engine; tools drive them.
+export interface CanvasToolContext {
+  penColor: () => string;
+  activeShapeId: () => string;
+  // Begin a streaming freehand stroke from this pointerdown (engine-managed).
+  startFreehand: (event: PointerEvent) => void;
+  insertStroke: (stroke: CanvasStrokeSnapshot) => void;
+  selectStroke: (id: string) => void;
+  createElement: (type: CanvasShapeType, at: CanvasPoint) => void;
+  setActiveTool: (tool: CanvasTool) => void;
+}
+
+// A canvas tool (draw, shape, …). The host dispatches an empty-canvas pointerdown
+// for the active non-select tool to onPointerDown. `select` stays the engine
+// default; element-creating tools (note/text/section) are derived from their
+// element extension's `tool` + `create`.
+export interface CanvasToolExtension {
+  id: CanvasTool;
+  onPointerDown: (at: CanvasPoint, event: PointerEvent, ctx: CanvasToolContext) => void;
+}
+
 // An inline-edit session the host mounts (currently the document editor). Built
 // by an extension's onActivate and handed to CanvasExtensionHost.beginEdit; the
 // host owns the singleton editing slot.
