@@ -4777,7 +4777,15 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>
+<!--
+  Not scoped: element bodies (note handle, audio grip, link/pdf/document cards,
+  …) are built imperatively inside the canvas-* custom elements, so they don't
+  carry Vue's scope attribute and scoped rules would never match them. Every
+  selector here is .canvas-* prefixed and canvas-specific, so global scope is
+  safe. (Future cleanup: extract the element-body rules to a stylesheet
+  co-located with the element modules.)
+-->
+<style>
 .canvas-root {
   --canvas-bg: var(--color-neutral-50);
   --canvas-text: var(--color-neutral-900);

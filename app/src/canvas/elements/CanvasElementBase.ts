@@ -96,10 +96,15 @@ export abstract class CanvasElementBase extends HostElement {
     this.flush();
   }
 
-  disconnectedCallback() {
-    if (this.mounted) this.teardown();
-    this.mounted = false;
-  }
+  // Deliberately does NOT reset `mounted` or clear children. Vue reorders
+  // shapes by remove+reinsert (e.g. a drag bumps updatedAt, which re-sorts the
+  // shapes array), firing disconnect→connect on this same element instance.
+  // Rebuilding would duplicate our imperatively-created children; keeping the
+  // built DOM lets the element — and any child custom elements, which restore
+  // their own state on reconnect — survive the move intact. On a real removal
+  // (shape deleted) the element is dropped and garbage-collected, and its child
+  // custom elements clean themselves up via their own disconnectedCallback.
+  disconnectedCallback() {}
 
   // Coalesce the several property writes Vue performs per update into one
   // render, on a microtask so there is no visible lag.
@@ -115,6 +120,9 @@ export abstract class CanvasElementBase extends HostElement {
   private flush() {
     if (!this.shapeData) return;
     if (!this.mounted) {
+      // Clear any stray children before building so a mount is always
+      // idempotent, even if one somehow runs on an already-populated element.
+      this.replaceChildren();
       this.mount();
       this.mounted = true;
     }
@@ -130,8 +138,6 @@ export abstract class CanvasElementBase extends HostElement {
   // Patch child DOM from the current shape/data. Called after every mount and
   // on every subsequent property change.
   protected abstract update(): void;
-  // Optional cleanup on disconnect.
-  protected teardown(): void {}
 }
 
 /**
@@ -186,9 +192,5 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
 
   protected update() {
     if (this.editorEl && this.shapeData) this.editorEl.value = this.shapeData.text;
-  }
-
-  protected teardown() {
-    this.editorEl = null;
   }
 }

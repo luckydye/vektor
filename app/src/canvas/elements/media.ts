@@ -78,10 +78,6 @@ class CanvasImageElement extends CanvasElementBase {
     if (shape.src && this.img.getAttribute("src") !== shape.src) this.img.src = shape.src;
     this.img.alt = shape.alt || "";
   }
-
-  protected teardown() {
-    this.img = null;
-  }
 }
 
 class CanvasVideoElement extends CanvasElementBase {
@@ -109,10 +105,6 @@ class CanvasVideoElement extends CanvasElementBase {
       this.video.src = shape.src;
     }
     this.video.setAttribute("aria-label", shape.alt || "");
-  }
-
-  protected teardown() {
-    this.video = null;
   }
 }
 
@@ -153,11 +145,6 @@ class CanvasAudioElement extends CanvasElementBase {
       this.audio.src = shape.src;
     this.audio.setAttribute("aria-label", label);
     this.handle?.setAttribute("title", label);
-  }
-
-  protected teardown() {
-    this.audio = null;
-    this.handle = null;
   }
 }
 

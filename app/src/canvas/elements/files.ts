@@ -102,12 +102,6 @@ class CanvasFileElement extends CanvasElementBase {
       this.attachment.setAttribute("filename", filename);
     }
   }
-
-  protected teardown() {
-    this.frame = null;
-    this.header = null;
-    this.attachment = null;
-  }
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-file")) {

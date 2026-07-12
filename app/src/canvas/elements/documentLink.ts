@@ -110,10 +110,6 @@ class CanvasDocumentElement extends CanvasElementBase {
     card.setAttribute("space-id", data.spaceId);
     card.setAttribute("document-id", data.documentId);
   }
-
-  protected teardown() {
-    this.card = null;
-  }
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-document")) {

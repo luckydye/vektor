@@ -161,10 +161,6 @@ class CanvasLinkElement extends CanvasElementBase {
     }
     return body;
   }
-
-  protected teardown() {
-    this.anchor = null;
-  }
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("canvas-link")) {
