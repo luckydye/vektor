@@ -16,7 +16,6 @@ import {
   createDocumentLinkController,
   type DocumentLinkReference,
   dragHasDocumentLink,
-  droppedDocumentReference as getDroppedDocumentReference,
 } from "#canvas/extensions/documentLink.ts";
 import {
   addCanvasDrawingPoint,
@@ -35,13 +34,18 @@ import {
   strokeStyleFromUnknown,
   toCanvasStroke,
 } from "#canvas/extensions/drawing.ts";
-import { isFigmaClipboardHtml, pasteFigmaClipboard } from "#canvas/extensions/figma.ts";
+import { pasteFigmaClipboard } from "#canvas/extensions/figma.ts";
 import {
-  canvasFilesFromDataTransfer,
   canvasFilesFromList,
   createUploadedFileShape,
   dragHasCanvasFiles,
 } from "#canvas/extensions/files.ts";
+import {
+  type CanvasInputContext,
+  routeCanvasDrop,
+  routeCanvasPaste,
+  routeContextMenuPaste,
+} from "#canvas/extensions/inputs.ts";
 import {
   createLinkPreviewController,
   createLinkShape,
@@ -49,7 +53,6 @@ import {
 } from "#canvas/extensions/link.ts";
 import {
   createUploadedMediaShape,
-  mediaFilesFromDataTransfer,
   mediaFilesFromList,
   uploadMediaFile,
 } from "#canvas/extensions/media.ts";
@@ -125,13 +128,10 @@ import { useToast } from "#composeables/useToast.ts";
 import {
   CANVAS_CLIPBOARD_MIME,
   type CanvasClipboard,
-  canvasClipboardFromDataTransfer,
   canvasClipboardToDocumentHtml,
   canvasClipboardToPlainText,
   createCanvasClipboard,
   documentClipboardToCanvasShapes,
-  parseCanvasClipboardHtml,
-  parseCanvasClipboardJson,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
 import {
@@ -144,7 +144,6 @@ import {
   filenameFromUrl,
   IMAGE_RESIZE_TIERS,
   resizeImageUrl,
-  transformImageUrl,
 } from "#utils/imageUrlTransformers.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import { mediaTypeForFile } from "#utils/uploadFiles.ts";
@@ -3247,27 +3246,7 @@ function handleDragOver(event: DragEvent) {
 }
 
 function handleDrop(event: DragEvent) {
-  if (dragHasCanvasFiles(event.dataTransfer)) {
-    // Prevent the browser from navigating to the file even when the dropped
-    // files turn out not to be something we can place.
-    event.preventDefault();
-    const media = mediaFilesFromDataTransfer(event.dataTransfer);
-    const files = canvasFilesFromDataTransfer(event.dataTransfer);
-    const at = insertionPointFromEvent(event);
-    if (media.length > 0 || files.length > 0) {
-      void addDroppedCanvasFiles(media, files, at);
-    }
-    return;
-  }
-
-  // A document dragged from the sidebar or command palette becomes a link card.
-  const droppedRef = getDroppedDocumentReference(event.dataTransfer);
-  if (
-    droppedRef &&
-    documentLinks.insertDocumentLink(droppedRef, insertionPointFromEvent(event))
-  ) {
-    event.preventDefault();
-  }
+  routeCanvasDrop(event, canvasInputContext);
 }
 
 function selectContextMenuTarget(event: MouseEvent) {
@@ -3328,53 +3307,7 @@ async function pasteFromContextMenu() {
   const insertAt = contextMenuInsertWorld ?? insertionPointFromEvent();
   contextMenuPos.value = null;
   contextMenuInsertWorld = null;
-
-  const clipboard = await readSystemClipboard();
-  const payload =
-    parseCanvasClipboardJson(clipboard.canvasJson) ??
-    parseCanvasClipboardHtml(clipboard.html) ??
-    parseCanvasClipboardJson(clipboard.text);
-  if (payload) {
-    pasteCanvasClipboard(payload, insertAt);
-    return;
-  }
-
-  const trimmedText = clipboard.text.trim();
-  const documentRef =
-    /^https?:\/\//i.test(trimmedText) || trimmedText.startsWith("/")
-      ? documentUrlPartsFromUrl(trimmedText)
-      : null;
-  if (documentRef) {
-    void insertDocumentLinkFromUrl(trimmedText, insertAt);
-    return;
-  }
-
-  if (/^https?:\/\//i.test(trimmedText)) {
-    try {
-      new URL(trimmedText);
-      insertLinkShape(trimmedText, insertAt);
-      return;
-    } catch {
-      // not a valid URL, fall through
-    }
-  }
-
-  if (clipboard.html.trim()) {
-    const inserted = pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({
-        html: clipboard.html,
-        text: clipboard.text,
-        at: insertAt,
-      }),
-    );
-    if (inserted) return;
-  }
-
-  if (trimmedText) {
-    pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({ text: clipboard.text, at: insertAt }),
-    );
-  }
+  routeContextMenuPaste(await readSystemClipboard(), insertAt, canvasInputContext);
 }
 
 function uploadFromContextMenu() {
@@ -3655,120 +3588,56 @@ async function addImageFromUrl(
   await addMediaFile(file, at);
 }
 
+// Imports a pasted Figma selection (HTML blob with figmeta + kiwi scene data).
+function pasteFigma(html: string, at: { x: number; y: number }) {
+  saveState.value = "saving";
+  dispatchSaveStatus();
+  void pasteFigmaClipboard(html, at, {
+    uploadMediaFile: uploadCanvasMediaFile,
+    insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
+  }).then((result) => {
+    if (result.createdIds.length > 0) {
+      selectedShapeIds.value = new Set(result.createdIds);
+      activeTool.value = "select";
+    }
+    if (result.error) {
+      toast.error(
+        result.error instanceof Error ? result.error.message : String(result.error),
+      );
+    }
+    saveState.value = "idle";
+    dispatchSaveStatus();
+  });
+}
+
+// Insertion primitives handed to the paste/drop router (inputs.ts). The router
+// owns the recognition/ordering; the host owns these host-state-touching bits.
+const canvasInputContext: CanvasInputContext = {
+  insertionPoint: (event) => insertionPointFromEvent(event),
+  isDocumentUrl: (url) => documentUrlPartsFromUrl(url) !== null,
+  pasteCanvasClipboard: (payload, at) => pasteCanvasClipboard(payload, at),
+  addDroppedFiles: (media, files, at) => {
+    void addDroppedCanvasFiles(media, files, at);
+  },
+  insertDocumentUrl: (url, at) => {
+    void insertDocumentLinkFromUrl(url, at);
+  },
+  insertDocumentRef: (ref, at) => documentLinks.insertDocumentLink(ref, at),
+  insertImageUrl: (fetchUrl, originalUrl, at) => {
+    void addImageFromUrl(fetchUrl, originalUrl, at);
+  },
+  insertLink: (url, at) => insertLinkShape(url, at),
+  pasteRichHtml: (html, text, at) =>
+    pasteDocumentClipboardShapes(
+      documentClipboardToCanvasShapes(html.trim() ? { html, text, at } : { text, at }),
+    ),
+  pasteFigma: (html, at) => pasteFigma(html, at),
+};
+
 function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select, document-view")) return;
-
-  // The system clipboard is authoritative; it reflects the latest copy from
-  // anywhere, including other tabs and spaces.
-  const text = event.clipboardData?.getData("text/plain") ?? "";
-  const html = event.clipboardData?.getData("text/html") ?? "";
-
-  // 1. Our own canvas elements. Prefer custom/html metadata, but keep parsing
-  // legacy text/plain JSON from older copies.
-  const payload = canvasClipboardFromDataTransfer(event.clipboardData);
-  if (payload) {
-    event.preventDefault();
-    pasteCanvasClipboard(payload, insertionPointFromEvent());
-    return;
-  }
-
-  // 2. Files pasted from the clipboard. Images/video keep their native canvas
-  //    renderers; everything else uses the shared file attachment renderer.
-  const media = mediaFilesFromDataTransfer(event.clipboardData);
-  const files = canvasFilesFromDataTransfer(event.clipboardData);
-  if (media.length > 0 || files.length > 0) {
-    event.preventDefault();
-    void addDroppedCanvasFiles(media, files, insertionPointFromEvent());
-    return;
-  }
-
-  // 3. Figma selection — HTML blob with figmeta + kiwi binary scene data. Must
-  //    run before the plain-text bail below because Figma also populates text/plain.
-  if (isFigmaClipboardHtml(html)) {
-    event.preventDefault();
-    saveState.value = "saving";
-    dispatchSaveStatus();
-    void pasteFigmaClipboard(html, insertionPointFromEvent(), {
-      uploadMediaFile: uploadCanvasMediaFile,
-      insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
-    }).then((result) => {
-      if (result.createdIds.length > 0) {
-        selectedShapeIds.value = new Set(result.createdIds);
-        activeTool.value = "select";
-      }
-      if (result.error) {
-        toast.error(
-          result.error instanceof Error ? result.error.message : String(result.error),
-        );
-      }
-      saveState.value = "idle";
-      dispatchSaveStatus();
-    });
-    return;
-  }
-
-  const trimmedUrl = text.trim();
-
-  // 4. Internal Vektor document URL — resolve the target space/document and
-  //    insert the same document attachment card used for sidebar drops.
-  const documentRef =
-    /^https?:\/\//i.test(trimmedUrl) || trimmedUrl.startsWith("/")
-      ? documentUrlPartsFromUrl(trimmedUrl)
-      : null;
-  if (documentRef) {
-    event.preventDefault();
-    void insertDocumentLinkFromUrl(trimmedUrl, insertionPointFromEvent());
-    return;
-  }
-
-  // 5. Plain-text URL that resolves to an image — fetch and insert as a
-  //    canvas image shape. Must run before the non-empty text bail below
-  //    because an image URL is "real" text we still want to consume.
-  const imageUrl = transformImageUrl(trimmedUrl);
-  if (imageUrl) {
-    event.preventDefault();
-    void addImageFromUrl(imageUrl, trimmedUrl, insertionPointFromEvent());
-    return;
-  }
-
-  // 6. Plain-text HTTP(S) URL — insert as a link preview card.
-  if (/^https?:\/\//i.test(trimmedUrl)) {
-    try {
-      new URL(trimmedUrl);
-      event.preventDefault();
-      insertLinkShape(trimmedUrl, insertionPointFromEvent());
-      return;
-    } catch {
-      // not a valid URL, fall through
-    }
-  }
-
-  // 7. Rich document/web HTML — map supported nodes to canvas shapes.
-  if (html.trim()) {
-    const inserted = pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({
-        html,
-        text,
-        at: insertionPointFromEvent(),
-      }),
-    );
-    if (inserted) {
-      event.preventDefault();
-      return;
-    }
-  }
-
-  // 8. Plain text — create a text shape on the canvas.
-  if (text.trim().length > 0) {
-    event.preventDefault();
-    pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({ text, at: insertionPointFromEvent() }),
-    );
-    return;
-  }
-
-  // 8. The system clipboard gave us nothing usable.
+  routeCanvasPaste(event, canvasInputContext);
 }
 
 // The canvas renders full-bleed behind the fixed navigation sidebar, so the
