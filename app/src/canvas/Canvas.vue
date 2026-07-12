@@ -11,12 +11,12 @@ import {
 } from "vue";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
-import type { CanvasElementContext } from "#canvas/extensions/CanvasElementBase.ts";
+import type { CanvasElementContext } from "./extensions/CanvasElementBase.ts";
 import {
   createDocumentLinkController,
   type DocumentLinkReference,
   dragHasDocumentLink,
-} from "#canvas/extensions/documentLink.ts";
+} from "./extensions/documentLink.ts";
 import {
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
@@ -33,30 +33,30 @@ import {
   startCanvasDrawingStroke,
   strokeStyleFromUnknown,
   toCanvasStroke,
-} from "#canvas/extensions/drawing.ts";
-import { pasteFigmaClipboard } from "#canvas/extensions/figma.ts";
+} from "./extensions/drawing.ts";
+import { pasteFigmaClipboard } from "./extensions/figma.ts";
 import {
   canvasFilesFromList,
   createUploadedFileShape,
   dragHasCanvasFiles,
-} from "#canvas/extensions/files.ts";
+} from "./extensions/files.ts";
 import {
   type CanvasInputContext,
   routeCanvasDrop,
   routeCanvasPaste,
   routeContextMenuPaste,
-} from "#canvas/extensions/inputs.ts";
+} from "./extensions/inputs.ts";
 import {
   createLinkShape,
   isTwitterLinkPreview,
   linkPreviews,
-} from "#canvas/extensions/link.ts";
+} from "./extensions/link.ts";
 import {
   createUploadedMediaShape,
   mediaFilesFromList,
   uploadMediaFile,
-} from "#canvas/extensions/media.ts";
-import { NOTE_COLORS } from "#canvas/extensions/note.ts";
+} from "./extensions/media.ts";
+import { NOTE_COLORS } from "./extensions/note.ts";
 import {
   canvasElementTools,
   defaultColorForShape,
@@ -69,9 +69,9 @@ import {
   minSizeForShape,
   serializeCanvasShape,
   shapePersistsSize,
-} from "#canvas/extensions/registry.ts";
-import { SECTION_COLORS } from "#canvas/extensions/section.ts";
-import { type CanvasShapeLibraryItem, SHAPE_LIBRARY } from "#canvas/extensions/shape.ts";
+} from "./extensions/registry.ts";
+import { SECTION_COLORS } from "./extensions/section.ts";
+import { type CanvasShapeLibraryItem, SHAPE_LIBRARY } from "./extensions/shape.ts";
 import type {
   CanvasEditSession,
   CanvasExtensionHost,
@@ -85,7 +85,7 @@ import type {
   CanvasStrokeSnapshot,
   CanvasTool,
   CanvasToolContext,
-} from "#canvas/extensions/types.ts";
+} from "./extensions/types.ts";
 import {
   normalizeRotation,
   pointOnRotatedShape,
@@ -95,7 +95,7 @@ import {
   rotateVector,
   rotationFromPointer,
   snapRotation,
-} from "#canvas/geometry.ts";
+} from "./geometry.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { useDocuments } from "#composeables/useDocuments.ts";
@@ -3821,6 +3821,14 @@ watch(
     for (const address of documentPreviewAddresses.value) {
       void documentLinks.loadPreview({ address });
     }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => linkPreviewUrls.value.join("\u001f"),
+  () => {
+    for (const url of linkPreviewUrls.value) void linkPreviews.loadPreview(url);
   },
   { immediate: true },
 );
