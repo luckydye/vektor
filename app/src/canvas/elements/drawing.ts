@@ -125,6 +125,7 @@ export function createStrokeMap(stroke: CanvasStrokeSnapshot) {
   map.set("style", { ...stroke.style });
   if (stroke.kind === "shape") map.set("kind", "shape");
   if (typeof stroke.rotation === "number") map.set("rotation", stroke.rotation);
+  if (stroke.locked) map.set("locked", true);
   map.set("updatedAt", stroke.updatedAt);
   return map;
 }
@@ -158,6 +159,7 @@ export function toCanvasStroke(
       typeof read("rotation") === "number" && Number.isFinite(read("rotation"))
         ? Number(read("rotation"))
         : undefined,
+    locked: read("locked") === true || undefined,
     updatedAt:
       typeof read("updatedAt") === "number" && Number.isFinite(read("updatedAt"))
         ? Number(read("updatedAt"))

@@ -102,11 +102,13 @@ import {
   canvasTextIcon,
   clipboardDocumentIcon,
   copyIcon,
+  lockIcon,
   pencilIcon,
   redoArrowIcon,
   scissorsIcon,
   trashIcon,
   undoArrowIcon,
+  unlockIcon,
   uploadIcon,
 } from "~/src/assets/icons.ts";
 import "#editor/elements/rich-text-editor.ts";
@@ -243,6 +245,7 @@ type DragState =
     };
 
 type Rect = { x: number; y: number; width: number; height: number };
+type LockedCanvasElement = { type: "shape" | "stroke"; id: string };
 
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
 const SECTION_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"] as const;
@@ -338,6 +341,9 @@ function removeUploadPlaceholder(id: string) {
 }
 const selectedShapeIds = ref<Set<string>>(new Set());
 const selectedStrokeIds = ref<Set<string>>(new Set());
+// Locked elements are intentionally excluded from normal hit testing. Keep a
+// separate hover target so their small unlock control remains reachable.
+const hoveredLockedElement = ref<LockedCanvasElement | null>(null);
 // Section chrome is painted on the canvas. This transient input only appears
 // while its title is actively being edited.
 const editingSectionTitleId = ref<string | null>(null);
@@ -872,6 +878,31 @@ const selectedStrokeColor = computed(() => {
 const shapesById = computed(() => new Map(shapes.value.map((s) => [s.id, s])));
 const strokesById = computed(() => new Map(strokes.value.map((s) => [s.id, s])));
 
+function isShapeLocked(id: string): boolean {
+  return shapesById.value.get(id)?.locked === true;
+}
+
+function isStrokeLocked(id: string): boolean {
+  return strokesById.value.get(id)?.locked === true;
+}
+
+const hoveredLockedElementPosition = computed(() => {
+  const element = hoveredLockedElement.value;
+  if (!element) return null;
+
+  if (element.type === "shape") {
+    const shape = shapesById.value.get(element.id);
+    if (!shape?.locked) return null;
+    const bounds = shapeBounds(shape);
+    return worldToScreen(pointOnRotatedShape(bounds, { x: bounds.width, y: 0 }));
+  }
+
+  const stroke = strokesById.value.get(element.id);
+  const bounds = stroke ? strokeBounds(stroke) : null;
+  if (!stroke?.locked || !bounds) return null;
+  return worldToScreen({ x: bounds.x + bounds.width, y: bounds.y });
+});
+
 const selectedBasicShapeStroke = computed(() => {
   if (selectedShapeIds.value.size > 0 || selectedStrokeIds.value.size !== 1) return null;
   const [id] = selectedStrokeIds.value;
@@ -884,51 +915,8 @@ const selectedBasicShapeStrokeControls = computed(() => {
   return stroke ? strokeTransformControlPositions(stroke) : null;
 });
 
-// World-space bounding box of the current multi-selection. Does NOT depend on
-// the camera transform, so pan/zoom never triggers the O(n×points) loop — only
-// actual selection or position changes do.
-const selectionWorldBounds = computed(() => {
-  if (selectedShapeIds.value.size + selectedStrokeIds.value.size < 2) return null;
-
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-
-  for (const id of selectedShapeIds.value) {
-    const shape = shapesById.value.get(id);
-    if (!shape) continue;
-    const bounds = shapeAabb(shape);
-    minX = Math.min(minX, bounds.x);
-    minY = Math.min(minY, bounds.y);
-    maxX = Math.max(maxX, bounds.x + bounds.width);
-    maxY = Math.max(maxY, bounds.y + bounds.height);
-  }
-
-  for (const id of selectedStrokeIds.value) {
-    const stroke = strokesById.value.get(id);
-    if (!stroke || stroke.points.length === 0) continue;
-    for (const point of stroke.points) {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    }
-  }
-
-  if (!Number.isFinite(minX)) return null;
-  return { minX, minY, maxX, maxY };
-});
-
-// Screen-space top-center anchor for the multi-selection overlay. O(1) —
-// just projects the cached world bounds through the current transform.
-const selectionAnchorPos = computed(() => {
-  const b = selectionWorldBounds.value;
-  if (!b) return null;
-  return worldToScreen({ x: (b.minX + b.maxX) / 2, y: b.minY });
-});
-
 function selectOnlyShape(id: string) {
+  if (isShapeLocked(id)) return;
   selectedShapeIds.value = new Set([id]);
   if (selectedStrokeIds.value.size > 0) {
     selectedStrokeIds.value = new Set();
@@ -937,6 +925,7 @@ function selectOnlyShape(id: string) {
 }
 
 function selectStroke(id: string, additive: boolean) {
+  if (isStrokeLocked(id)) return;
   if (additive) {
     const next = new Set(selectedStrokeIds.value);
     if (next.has(id)) next.delete(id);
@@ -950,6 +939,7 @@ function selectStroke(id: string, additive: boolean) {
 }
 
 function toggleShapeSelection(id: string) {
+  if (isShapeLocked(id)) return;
   const next = new Set(selectedShapeIds.value);
   if (next.has(id)) next.delete(id);
   else next.add(id);
@@ -1285,6 +1275,7 @@ function toShape(
       docSpaceId: read("docSpaceId"),
       src,
     }),
+    locked: read("locked") === true || undefined,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
   };
 }
@@ -1317,7 +1308,8 @@ function syncShapesFromY() {
 
   let pruned = false;
   for (const id of selectedShapeIds.value) {
-    if (!yShapes.has(id)) {
+    const source = yShapes.get(id);
+    if (!source || toShape(id, source).locked) {
       selectedShapeIds.value.delete(id);
       pruned = true;
     }
@@ -1335,7 +1327,8 @@ function syncStrokesFromY() {
     .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
   let pruned = false;
   for (const id of selectedStrokeIds.value) {
-    if (!yStrokes.has(id)) {
+    const source = yStrokes.get(id);
+    if (!source || toStroke(id, source).locked) {
       selectedStrokeIds.value.delete(id);
       pruned = true;
     }
@@ -1360,6 +1353,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
   if (shape.src) map.set("src", resolveMediaSrc(shape.src));
   if (shape.alt) map.set("alt", shape.alt);
   if (shape.docAddress) map.set("docAddress", shape.docAddress);
+  if (shape.locked) map.set("locked", true);
   map.set("updatedAt", shape.updatedAt);
   return map;
 }
@@ -1380,6 +1374,7 @@ function serializeSnapshot(): string {
       style: { ...stroke.style },
       kind: stroke.kind,
       rotation: stroke.rotation,
+      locked: stroke.locked,
       updatedAt: stroke.updatedAt,
     })),
   };
@@ -2113,7 +2108,7 @@ function startEmbeddedDocumentEdit(
   shape: CanvasShape,
   toggleTaskIndex: number | null = null,
 ) {
-  if (dragMoved) return;
+  if (dragMoved || shape.locked) return;
   if (editingDocumentShape.value?.shapeId === shape.id) return;
   const documentId = documentLinks.documentIdForShape(shape);
   const address = documentAddressForShape(shape);
@@ -2194,10 +2189,12 @@ function addShape(type: "note" | "text" | "section", at: { x: number; y: number 
 }
 
 function updateShapeText(shape: CanvasShape, text: string) {
+  if (shape.locked) return;
   updateShape(shape.id, { text });
 }
 
 function handleTextFocus(shape: CanvasShape, event: Event) {
+  if (shape.locked) return;
   selectOnlyShape(shape.id);
   const editorEl = event.currentTarget as CanvasTextEditorEl | null;
   const toolbar = canvasToolbarRef.value;
@@ -2207,7 +2204,7 @@ function handleTextFocus(shape: CanvasShape, event: Event) {
 function handleTextBlur(shape: CanvasShape, value: string) {
   // A text element with no content has nothing to anchor it, so remove it once
   // editing ends. Notes and sections keep their box even when empty.
-  if (shape.type !== "text") return;
+  if (shape.type !== "text" || shape.locked) return;
   if (!shouldRemoveTextShape(value)) return;
   yShapes.delete(shape.id);
   if (selectedShapeIds.value.has(shape.id)) {
@@ -2245,13 +2242,19 @@ function isStrokeInsideSection(stroke: CanvasStroke, section: CanvasShape) {
   );
 }
 
-function getSectionContents(section: CanvasShape) {
+function getSectionContents(section: CanvasShape, includeLocked = false) {
   return {
     shapes: shapes.value
-      .filter((shape) => isShapeInsideSection(shape, section))
+      .filter(
+        (shape) =>
+          (includeLocked || !shape.locked) && isShapeInsideSection(shape, section),
+      )
       .map((shape) => ({ id: shape.id, x: shape.x, y: shape.y })),
     strokes: strokes.value
-      .filter((stroke) => isStrokeInsideSection(stroke, section))
+      .filter(
+        (stroke) =>
+          (includeLocked || !stroke.locked) && isStrokeInsideSection(stroke, section),
+      )
       .map((stroke) => ({
         id: stroke.id,
         points: stroke.points.map(cloneFreehandPoint),
@@ -2361,11 +2364,63 @@ function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
   }
 }
 
+function setShapeLocked(id: string, locked: boolean) {
+  const shape = yShapes.get(id);
+  if (!shape) return;
+  shape.set("updatedAt", Date.now());
+  if (locked) shape.set("locked", true);
+  else shape.delete("locked");
+}
+
+function setStrokeLocked(id: string, locked: boolean) {
+  const stroke = yStrokes.get(id);
+  if (!stroke) return;
+  stroke.set("updatedAt", Date.now());
+  if (locked) stroke.set("locked", true);
+  else stroke.delete("locked");
+}
+
+function lockSelectedElements() {
+  if (selectedShapeIds.value.size === 0 && selectedStrokeIds.value.size === 0) return;
+  const shapeIds = new Set(selectedShapeIds.value);
+  const strokeIds = new Set(selectedStrokeIds.value);
+
+  // A section acts as a container when it is locked: every element currently
+  // inside its bounds becomes locked with it. Include already-locked contents
+  // too so the operation is complete when a section is locked alongside other
+  // selected elements.
+  for (const id of selectedShapeIds.value) {
+    const section = shapesById.value.get(id);
+    if (section?.type !== "section") continue;
+    const contents = getSectionContents(section, true);
+    for (const shape of contents.shapes) shapeIds.add(shape.id);
+    for (const stroke of contents.strokes) strokeIds.add(stroke.id);
+  }
+
+  ydoc.transact(() => {
+    for (const id of shapeIds) setShapeLocked(id, true);
+    for (const id of strokeIds) setStrokeLocked(id, true);
+  });
+  clearSelection();
+}
+
+function unlockHoveredElement() {
+  const element = hoveredLockedElement.value;
+  if (!element) return;
+  if (element.type === "shape") setShapeLocked(element.id, false);
+  else setStrokeLocked(element.id, false);
+  hoveredLockedElement.value = null;
+}
+
 function deleteSelectedShape() {
   if (selectedShapeIds.value.size === 0 && selectedStrokeIds.value.size === 0) return;
   ydoc.transact(() => {
-    for (const id of selectedShapeIds.value) yShapes.delete(id);
-    for (const id of selectedStrokeIds.value) yStrokes.delete(id);
+    for (const id of selectedShapeIds.value) {
+      if (!isShapeLocked(id)) yShapes.delete(id);
+    }
+    for (const id of selectedStrokeIds.value) {
+      if (!isStrokeLocked(id)) yStrokes.delete(id);
+    }
   });
   selectedShapeIds.value = new Set();
   selectedStrokeIds.value = new Set();
@@ -2407,7 +2462,7 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
 
   for (const id of selectedShapeIds.value) {
     const shape = shapesById.value.get(id);
-    if (!shape) continue;
+    if (!shape || shape.locked) continue;
     moveShapes.set(shape.id, { id: shape.id, x: shape.x, y: shape.y });
     if (shape.type === "section") {
       const contents = getSectionContents(shape);
@@ -2417,7 +2472,7 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
     }
   }
   for (const id of selectedStrokeIds.value) {
-    if (moveStrokes.has(id)) continue;
+    if (moveStrokes.has(id) || isStrokeLocked(id)) continue;
     const stroke = strokesById.value.get(id);
     if (stroke) {
       moveStrokes.set(id, { id, points: stroke.points.map(cloneFreehandPoint) });
@@ -2435,6 +2490,10 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
 
 function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   if (event.button !== 0) return;
+  if (shape.locked) {
+    event.preventDefault();
+    return;
+  }
 
   // Shift toggles membership and does not begin a drag.
   if (event.shiftKey) {
@@ -2458,7 +2517,7 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeResize(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || shape.locked) return;
   selectOnlyShape(shape.id);
   // Text auto-sizes to its content, so drive off its measured box.
   const bounds = shapeBounds(shape);
@@ -2488,7 +2547,7 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || shape.type === "section") return;
+  if (event.button !== 0 || shape.type === "section" || shape.locked) return;
   selectOnlyShape(shape.id);
   const bounds = shapeBounds(shape);
   dragState = {
@@ -2512,7 +2571,7 @@ function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startStrokeResize(stroke: CanvasStroke, event: PointerEvent) {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || stroke.locked) return;
   const bounds = strokeBounds(stroke);
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
   dragState = {
@@ -2528,7 +2587,7 @@ function startStrokeResize(stroke: CanvasStroke, event: PointerEvent) {
 }
 
 function startStrokeRotation(stroke: CanvasStroke, event: PointerEvent) {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || stroke.locked) return;
   const bounds = strokeBounds(stroke);
   if (!bounds) return;
   const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
@@ -2589,6 +2648,7 @@ function applyMarqueeSelection(
 
   const shapeIds = new Set(state.additive ? state.baseShapeIds : []);
   for (const shape of shapes.value) {
+    if (shape.locked) continue;
     const bounds = shapeAabb(shape);
     const hit =
       shape.type === "section"
@@ -2599,6 +2659,7 @@ function applyMarqueeSelection(
 
   const strokeIds = new Set(state.additive ? state.baseStrokeIds : []);
   for (const stroke of strokes.value) {
+    if (stroke.locked) continue;
     if (stroke.points.some((point) => isPointInRect(point, worldRect))) {
       strokeIds.add(stroke.id);
     }
@@ -2671,6 +2732,7 @@ function hitTestSectionTitle(worldPoint: { x: number; y: number }): CanvasShape 
 }
 
 function editSectionTitle(shape: CanvasShape) {
+  if (shape.locked) return;
   selectOnlyShape(shape.id);
   editingSectionTitleId.value = shape.id;
   renderSections();
@@ -2731,6 +2793,10 @@ function handleViewportPointerDown(event: PointerEvent) {
 
     const hitImage = hitTestImageShape(worldPoint);
     if (hitImage) {
+      if (hitImage.locked) {
+        event.preventDefault();
+        return;
+      }
       if (additive) {
         toggleShapeSelection(hitImage.id);
       } else if (!selectedShapeIds.value.has(hitImage.id)) {
@@ -2749,6 +2815,10 @@ function handleViewportPointerDown(event: PointerEvent) {
       transform.value.scale,
     );
     if (hitStroke) {
+      if (isStrokeLocked(hitStroke)) {
+        event.preventDefault();
+        return;
+      }
       // Match regular shapes: Shift only changes selection membership, while
       // a normal pointerdown selects the stroke and starts a drag for the
       // current stroke selection.
@@ -2831,7 +2901,7 @@ function handleViewportDoubleClick(event: MouseEvent) {
   if (
     target instanceof Element &&
     target.closest(
-      ".canvas-shape, .canvas-transform-controls, .canvas-selection-overlay, .canvas-context-menu",
+      ".canvas-shape, .canvas-transform-controls, .canvas-context-menu",
     )
   ) {
     return;
@@ -2931,9 +3001,53 @@ function snapDragOffset(
   return { dx: dx + snap.dx, dy: dy + snap.dy };
 }
 
+function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null {
+  const target = event.target;
+  if (target instanceof Element) {
+    const shapeElement = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
+    const shapeId = shapeElement?.dataset.shapeId;
+    if (shapeId) {
+      return isShapeLocked(shapeId) ? { type: "shape", id: shapeId } : null;
+    }
+  }
+
+  const rect = cachedViewportRect;
+  if (
+    !rect ||
+    event.clientX < rect.left ||
+    event.clientX > rect.right ||
+    event.clientY < rect.top ||
+    event.clientY > rect.bottom
+  ) {
+    return null;
+  }
+
+  const worldPoint = screenToWorld(screenPoint(event));
+  const image = hitTestImageShape(worldPoint);
+  if (image?.locked) return { type: "shape", id: image.id };
+
+  const strokeId = hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale);
+  if (strokeId && isStrokeLocked(strokeId)) return { type: "stroke", id: strokeId };
+
+  const section = hitTestSectionTitle(worldPoint) ?? hitTestSectionBorder(worldPoint);
+  if (section?.locked) return { type: "shape", id: section.id };
+  return null;
+}
+
+function updateHoveredLockedElement(event: PointerEvent) {
+  const target = event.target;
+  if (target instanceof Element && target.closest(".canvas-unlock-button")) return;
+
+  const next = lockedElementAtPointer(event);
+  const current = hoveredLockedElement.value;
+  if (current?.type === next?.type && current?.id === next?.id) return;
+  hoveredLockedElement.value = next;
+}
+
 function handlePointerMove(event: PointerEvent) {
   const point = screenPoint(event);
   localPointer = screenToWorld(point);
+  updateHoveredLockedElement(event);
 
   if (drawingSession && drawingSession.pointerId === event.pointerId) {
     for (const coalesced of event.getCoalescedEvents()) {
@@ -2980,6 +3094,7 @@ function handlePointerMove(event: PointerEvent) {
 
   const world = screenToWorld(point);
   if (dragState.type === "resize") {
+    if (isShapeLocked(dragState.shapeId)) return;
     const resized = resizeRotatedShapeFromBottomRight({
       fixedTopLeft: dragState.fixedTopLeft,
       pointer: world,
@@ -3009,6 +3124,7 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   if (dragState.type === "rotate") {
+    if (isShapeLocked(dragState.shapeId)) return;
     const rawRotation = rotationFromPointer(dragState.center, world);
     const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
     updateShape(dragState.shapeId, { rotation: Math.round(rotation * 10) / 10 });
@@ -3016,6 +3132,7 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   if (dragState.type === "stroke-resize") {
+    if (isStrokeLocked(dragState.strokeId)) return;
     const resized = resizeRotatedShapeFromBottomRight({
       fixedTopLeft: dragState.fixedTopLeft,
       pointer: world,
@@ -3036,6 +3153,7 @@ function handlePointerMove(event: PointerEvent) {
   }
 
   if (dragState.type === "stroke-rotate") {
+    if (isStrokeLocked(dragState.strokeId)) return;
     const rawRotation = rotationFromPointer(dragState.center, world);
     const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
     const delta = ((rotation - dragState.startRotation + 540) % 360) - 180;
@@ -3076,12 +3194,14 @@ function handlePointerMove(event: PointerEvent) {
   );
   ydoc.transact(() => {
     for (const moved of drag.shapes) {
+      if (isShapeLocked(moved.id)) continue;
       updateShape(moved.id, {
         x: Math.round(moved.x + dx),
         y: Math.round(moved.y + dy),
       });
     }
     for (const stroke of drag.strokes) {
+      if (isStrokeLocked(stroke.id)) continue;
       translateStroke(stroke.id, stroke.points, dx, dy);
     }
   });
@@ -3118,13 +3238,17 @@ function refitLinkShape(id: string) {
 
 function cancelTransformDrag() {
   if (dragState?.type === "resize" || dragState?.type === "rotate") {
-    updateShape(dragState.shapeId, dragState.initial);
+    if (!isShapeLocked(dragState.shapeId)) {
+      updateShape(dragState.shapeId, dragState.initial);
+    }
   } else if (dragState?.type === "stroke-resize" || dragState?.type === "stroke-rotate") {
-    updateStrokePoints(
-      dragState.strokeId,
-      dragState.initialPoints,
-      dragState.type === "stroke-rotate" ? dragState.initialRotation : undefined,
-    );
+    if (!isStrokeLocked(dragState.strokeId)) {
+      updateStrokePoints(
+        dragState.strokeId,
+        dragState.initialPoints,
+        dragState.type === "stroke-rotate" ? dragState.initialRotation : undefined,
+      );
+    }
   } else {
     return false;
   }
@@ -3146,6 +3270,7 @@ function handlePointerCancel(event: PointerEvent) {
 
 function handlePointerLeave() {
   localPointer = null;
+  hoveredLockedElement.value = null;
   updatePresence();
 }
 
@@ -3185,6 +3310,43 @@ function handleDrop(event: DragEvent) {
   }
 }
 
+function selectContextMenuTarget(event: MouseEvent) {
+  const target = event.target;
+  if (target instanceof Element) {
+    const shapeElement = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
+    const shapeId = shapeElement?.dataset.shapeId;
+    if (shapeId) {
+      if (isShapeLocked(shapeId)) clearSelection();
+      else if (!selectedShapeIds.value.has(shapeId)) selectOnlyShape(shapeId);
+      return;
+    }
+  }
+
+  const worldPoint = screenToWorld(screenPoint(event));
+  const image = hitTestImageShape(worldPoint);
+  if (image) {
+    if (image.locked) clearSelection();
+    else if (!selectedShapeIds.value.has(image.id)) selectOnlyShape(image.id);
+    return;
+  }
+
+  const strokeId = hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale);
+  if (strokeId) {
+    if (isStrokeLocked(strokeId)) clearSelection();
+    else if (!selectedStrokeIds.value.has(strokeId)) selectStroke(strokeId, false);
+    return;
+  }
+
+  const section = hitTestSectionTitle(worldPoint) ?? hitTestSectionBorder(worldPoint);
+  if (section) {
+    if (section.locked) clearSelection();
+    else if (!selectedShapeIds.value.has(section.id)) selectOnlyShape(section.id);
+    return;
+  }
+
+  clearSelection();
+}
+
 function handleContextMenu(event: MouseEvent) {
   // Always prevent the native context menu / iOS callout.
   event.preventDefault();
@@ -3194,6 +3356,8 @@ function handleContextMenu(event: MouseEvent) {
   if (activeTool.value === "draw") return;
 
   dragState = null;
+  isPanning.value = false;
+  selectContextMenuTarget(event);
   const rect = viewportRef.value.getBoundingClientRect();
   const pos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
   contextMenuInsertWorld = screenToWorld(pos);
@@ -3317,16 +3481,17 @@ function collectSelection(): {
   strokes: CanvasStrokeSnapshot[];
 } {
   const selShapes = shapes.value
-    .filter((shape) => selectedShapeIds.value.has(shape.id))
+    .filter((shape) => selectedShapeIds.value.has(shape.id) && !shape.locked)
     .map(serializeShape);
   const selStrokes = strokes.value
-    .filter((stroke) => selectedStrokeIds.value.has(stroke.id))
+    .filter((stroke) => selectedStrokeIds.value.has(stroke.id) && !stroke.locked)
     .map((stroke) => ({
       id: stroke.id,
       points: stroke.points.map(cloneFreehandPoint),
       style: { ...stroke.style },
       kind: stroke.kind,
       rotation: stroke.rotation,
+      locked: stroke.locked,
       updatedAt: stroke.updatedAt,
     }));
   return { shapes: selShapes, strokes: selStrokes };
@@ -4593,6 +4758,21 @@ onUnmounted(() => {
         ></button>
       </div>
 
+      <button
+        v-if="hoveredLockedElementPosition"
+        type="button"
+        class="canvas-unlock-button"
+        :aria-label="t('Unlock')"
+        :data-tooltip="t('Unlock')"
+        :style="{
+          transform: `translate(${hoveredLockedElementPosition.x}px, ${hoveredLockedElementPosition.y}px) translate(-50%, -50%)`,
+        }"
+        @pointerdown.stop
+        @click.stop="unlockHoveredElement"
+      >
+        <div class="svg-icon" aria-hidden="true" v-html="unlockIcon" />
+      </button>
+
       <div
         v-for="presence in remoteCanvasPointerPresences"
         :key="presence.clientId"
@@ -4637,48 +4817,6 @@ onUnmounted(() => {
       ></div>
 
       <div
-        v-if="selectionAnchorPos"
-        class="canvas-selection-overlay"
-        :style="{
-          transform: `translate(${selectionAnchorPos.x}px, ${selectionAnchorPos.y}px) translate(-50%, calc(-100% - 10px))`,
-        }"
-        @pointerdown.stop
-      >
-        <button
-          type="button"
-          class="canvas-tool"
-          :aria-label="t('Copy')"
-          :data-tooltip="`${t('Copy')} · ⌘C`"
-          @click="copySelectionToClipboard"
-        >
-          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="copyIcon" />
-        </button>
-        <button
-          type="button"
-          class="canvas-tool"
-          :aria-label="t('Cut')"
-          :data-tooltip="`${t('Cut')} · ⌘X`"
-          @click="cutSelectionToClipboard"
-        >
-          <div
-            class="svg-icon canvas-tool-icon"
-            aria-hidden="true"
-            v-html="scissorsIcon"
-          />
-        </button>
-        <span class="canvas-divider"></span>
-        <button
-          type="button"
-          class="canvas-tool danger"
-          :aria-label="t('Delete')"
-          :data-tooltip="`${t('Delete')} · ⌫`"
-          @click="deleteSelectedShape"
-        >
-          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="trashIcon" />
-        </button>
-      </div>
-
-      <div
         v-if="contextMenuPos"
         class="canvas-context-menu"
         :style="{
@@ -4687,6 +4825,15 @@ onUnmounted(() => {
         @pointerdown.stop
       >
         <template v-if="selectedShapeIds.size > 0 || selectedStrokeIds.size > 0">
+          <button
+            type="button"
+            class="canvas-tool"
+            :aria-label="t('Lock')"
+            @click="lockSelectedElements(); contextMenuPos = null"
+          >
+            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="lockIcon" />
+          </button>
+          <span class="canvas-divider"></span>
           <button
             type="button"
             class="canvas-tool"
@@ -5012,22 +5159,37 @@ onUnmounted(() => {
   }
 }
 
-.canvas-selection-overlay {
+.canvas-unlock-button {
   position: absolute;
   top: 0;
   left: 0;
   z-index: 9;
-  display: flex;
-  align-items: center;
-  gap: 2px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
   border: 1px solid var(--canvas-toolbar-border);
-  border-radius: 10px;
+  border-radius: 999px;
   background: var(--canvas-toolbar-bg);
-  padding: 4px;
-  box-shadow: 0 6px 18px var(--canvas-toolbar-shadow);
-  backdrop-filter: blur(8px);
-  pointer-events: auto;
-  will-change: transform;
+  padding: 0;
+  color: var(--canvas-tool-text);
+  box-shadow: 0 3px 10px var(--canvas-toolbar-shadow);
+  cursor: pointer;
+}
+
+.canvas-unlock-button .svg-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.canvas-unlock-button:hover {
+  background: var(--canvas-tool-hover-bg);
+  color: var(--canvas-text);
+}
+
+.canvas-unlock-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .canvas-context-menu {

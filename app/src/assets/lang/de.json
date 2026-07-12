@@ -58,6 +58,8 @@
   "Remove Link": "Link entfernen",
   "Remove hyperlink from selection": "Hyperlink aus der Auswahl entfernen",
   "Undo": "Rückgängig",
+  "Lock": "Sperren",
+  "Unlock": "Entsperren",
   "Undo the last action": "Letzte Aktion rückgängig machen",
   "Redo": "Wiederholen",
   "Redo the last undone action": "Letzte rückgängig gemachte Aktion wiederholen",

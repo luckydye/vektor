@@ -35,6 +35,9 @@ export type CanvasShape = {
   src?: string;
   alt?: string;
   docAddress?: string;
+  // Locked elements stay visible but cannot be selected or transformed until
+  // explicitly unlocked from their hover control.
+  locked?: boolean;
   updatedAt: number;
 };
 
@@ -60,6 +63,7 @@ export type CanvasStrokeSnapshot = {
   // transform controls without changing freehand drawing behavior.
   kind?: "shape";
   rotation?: number;
+  locked?: boolean;
   updatedAt: number;
 };
 
@@ -67,6 +71,7 @@ export type CanvasStroke = FreehandStroke & {
   id: string;
   kind?: "shape";
   rotation?: number;
+  locked?: boolean;
   updatedAt: number;
 };
 
