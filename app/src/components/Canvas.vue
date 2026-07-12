@@ -44,7 +44,11 @@ import {
   dragHasCanvasFiles,
   isPdfFile,
 } from "#canvas/elements/files.ts";
-import { createLinkPreviewController, createLinkShape } from "#canvas/elements/link.ts";
+import {
+  createLinkPreviewController,
+  createLinkShape,
+  isTwitterLinkPreview,
+} from "#canvas/elements/link.ts";
 import {
   createUploadedMediaShape,
   isMediaElementType,
@@ -843,7 +847,22 @@ function elementTagForShape(shape: CanvasShape): string | null {
   if (!tag || typeof customElements === "undefined" || !customElements.get(tag)) {
     return null;
   }
+  // Twitter/X links keep the host-owned <CanvasTwitterEmbed> Vue component, so
+  // they render through the fallback branch rather than the generic link card.
+  if (
+    shape.type === "link" &&
+    isTwitterLinkPreview(linkPreviews.previewForShape(shape))
+  ) {
+    return null;
+  }
   return tag;
+}
+
+// Per-type reactive view model handed to an element via its `data` property.
+// Link cards need their loaded preview metadata; other types need nothing yet.
+function elementDataForShape(shape: CanvasShape): unknown {
+  if (shape.type === "link") return linkPreviews.previewForShape(shape) ?? null;
+  return null;
 }
 
 // Stable helpers/data handed to every element custom element via its
@@ -4537,6 +4556,7 @@ onUnmounted(() => {
             v-if="elementTagForShape(shape)"
             :shape.prop="shape"
             :canvas-context.prop="hostContext"
+            :data.prop="elementDataForShape(shape)"
             @request-drag="startShapeDrag(shape, ($event as CustomEvent).detail)"
             @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
             @editor-focus="handleTextFocus(shape, $event)"
