@@ -6,6 +6,7 @@ import {
   CanvasElementBase,
   dragOnPointerDown,
 } from "./CanvasElementBase.ts";
+import "./twitterEmbed.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 export const linkElement: CanvasElementExtension = {

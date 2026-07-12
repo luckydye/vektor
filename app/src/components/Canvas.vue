@@ -175,7 +175,6 @@ import {
   worldViewportBounds,
 } from "#viewport/index.ts";
 import CanvasDocumentEditor from "./CanvasDocumentEditor.vue";
-import CanvasTwitterEmbed from "./CanvasTwitterEmbed.vue";
 
 const props = defineProps<{
   spaceId: string;
@@ -4507,10 +4506,10 @@ onUnmounted(() => {
               @pointerdown.stop="startShapeDrag(shape, $event)"
               @wheel.stop
             >
-              <CanvasTwitterEmbed
-                :html="linkPreviews.previewForShape(shape)!.metadata!.embed!.html"
-                @resize="fitLinkShapeHeight(shape.id, $event)"
-              />
+              <canvas-twitter-embed
+                :value.prop="linkPreviews.previewForShape(shape)!.metadata!.embed!.html"
+                @embed-resize="fitLinkShapeHeight(shape.id, ($event as CustomEvent).detail)"
+              ></canvas-twitter-embed>
             </div>
           </template>
         </article>
@@ -5410,6 +5409,15 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   background: var(--canvas-link-bg);
   cursor: move;
+}
+
+/* Container built inside the <canvas-twitter-embed> custom element. */
+.canvas-twitter-embed {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .canvas-link-image {
