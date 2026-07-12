@@ -24,7 +24,14 @@ export function useToast() {
       setTimeout(() => remove(id), duration);
     }
 
-    play("success");
+    switch (type) {
+      case "success":
+        play("release");
+        break;
+      case "error":
+        play("bloom");
+        break;
+    }
     
     return id;
   }
