@@ -1,3 +1,4 @@
+import { pointInRotatedShape } from "#canvas/geometry.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import {
   isMediaFile,
@@ -24,6 +25,8 @@ export const imageElement: CanvasElementExtension = {
   surface: "dom+canvas",
   tag: "canvas-image",
   transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
+  // Canvas-painted (non-GIF) images hit-test against their rotated box.
+  hitTest: (shape, world) => (pointInRotatedShape(world, shape) ? "body" : null),
 };
 
 export const videoElement: CanvasElementExtension = {

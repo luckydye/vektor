@@ -75,6 +75,7 @@ import { type CanvasShapeLibraryItem, SHAPE_LIBRARY } from "#canvas/extensions/s
 import type {
   CanvasEditSession,
   CanvasExtensionHost,
+  CanvasHitTestHelpers,
   CanvasPaintHelpers,
   CanvasSerializedShape,
   CanvasShape,
@@ -87,7 +88,6 @@ import type {
 } from "#canvas/extensions/types.ts";
 import {
   normalizeRotation,
-  pointInRotatedShape,
   pointOnRotatedShape,
   resizeRotatedShapeFromBottomRight,
   rotatedShapeBounds,
@@ -2614,62 +2614,38 @@ function applyMarqueeSelection(
 }
 
 // Hit-tests canvas-rendered (non-GIF) image shapes in reverse paint order.
+// Shared geometry the canvas-painted extensions' hitTest hooks need. The host
+// keeps the z-order (below) and calls ext.hitTest per shape.
+const hitTestHelpers: CanvasHitTestHelpers = {
+  worldToScreen: (point) => worldToScreen(point),
+  sectionTitlePosition: (shape) => sectionTitlePosition(shape),
+  sectionTitleSize: (shape) => sectionTitleSize(shape),
+};
+
+// Canvas-painted (non-GIF) images, topmost first, via the image extension's hitTest.
 function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | null {
+  const hit = getCanvasElementExtension("image")?.hitTest;
+  if (!hit) return null;
   for (let i = shapes.value.length - 1; i >= 0; i--) {
     const shape = shapes.value[i];
     if (shape.type !== "image" || isGifSrc(shape.src ?? "")) continue;
-    if (pointInRotatedShape(worldPoint, shape)) return shape;
+    if (hit(shape, worldPoint, hitTestHelpers)) return shape;
   }
   return null;
 }
 
-function sectionLocalPoint(worldPoint: { x: number; y: number }, shape: CanvasShape) {
-  const center = {
-    x: shape.x + shape.width / 2,
-    y: shape.y + shape.height / 2,
-  };
-  const local = rotateVector(
-    { x: worldPoint.x - center.x, y: worldPoint.y - center.y },
-    -shape.rotation,
-  );
-  return { x: local.x + shape.width / 2, y: local.y + shape.height / 2 };
-}
-
-// Sections remain click-through in their interior. Only their painted border
-// can be grabbed, preserving access to content placed inside them.
-function hitTestSectionBorder(worldPoint: { x: number; y: number }): CanvasShape | null {
-  const edgeWidth = 6;
+// Sections, topmost first, via the section extension's hitTest. Returns which
+// region was hit (title = editable, border = grabbable; interior click-through).
+function hitTestSection(worldPoint: {
+  x: number;
+  y: number;
+}): { shape: CanvasShape; region: "title" | "border" } | null {
+  const hit = getCanvasElementExtension("section")?.hitTest;
+  if (!hit) return null;
   for (let i = sectionShapes.value.length - 1; i >= 0; i--) {
     const shape = sectionShapes.value[i];
-    const local = sectionLocalPoint(worldPoint, shape);
-    const inExpandedBounds =
-      local.x >= -edgeWidth &&
-      local.x <= shape.width + edgeWidth &&
-      local.y >= -edgeWidth &&
-      local.y <= shape.height + edgeWidth;
-    const onEdge =
-      local.x <= edgeWidth ||
-      local.x >= shape.width - edgeWidth ||
-      local.y <= edgeWidth ||
-      local.y >= shape.height - edgeWidth;
-    if (inExpandedBounds && onEdge) return shape;
-  }
-  return null;
-}
-
-function hitTestSectionTitle(worldPoint: { x: number; y: number }): CanvasShape | null {
-  const screenPoint = worldToScreen(worldPoint);
-  for (let i = sectionShapes.value.length - 1; i >= 0; i--) {
-    const shape = sectionShapes.value[i];
-    const origin = sectionTitlePosition(shape);
-    const local = rotateVector(
-      { x: screenPoint.x - origin.x, y: screenPoint.y - origin.y },
-      -shape.rotation,
-    );
-    const size = sectionTitleSize(shape);
-    if (local.x >= 0 && local.x <= size.width && local.y >= 0 && local.y <= size.height) {
-      return shape;
-    }
+    const region = hit(shape, worldPoint, hitTestHelpers);
+    if (region === "title" || region === "border") return { shape, region };
   }
   return null;
 }
@@ -2792,15 +2768,9 @@ function handleViewportPointerDown(event: PointerEvent) {
       return;
     }
 
-    const hitSectionTitle = hitTestSectionTitle(worldPoint);
-    if (hitSectionTitle) {
-      startShapeDrag(hitSectionTitle, event);
-      return;
-    }
-
-    const hitSectionBorder = hitTestSectionBorder(worldPoint);
-    if (hitSectionBorder) {
-      startShapeDrag(hitSectionBorder, event);
+    const hitSection = hitTestSection(worldPoint);
+    if (hitSection) {
+      startShapeDrag(hitSection.shape, event);
       return;
     }
 
@@ -2831,10 +2801,10 @@ function handleViewportDoubleClick(event: MouseEvent) {
 
   const point = screenPoint(event);
   const worldPoint = screenToWorld(point);
-  const hitSectionTitle = hitTestSectionTitle(worldPoint);
-  if (hitSectionTitle) {
+  const hitSection = hitTestSection(worldPoint);
+  if (hitSection?.region === "title") {
     event.preventDefault();
-    editSectionTitle(hitSectionTitle);
+    editSectionTitle(hitSection.shape);
     return;
   }
 
@@ -2846,7 +2816,7 @@ function handleViewportDoubleClick(event: MouseEvent) {
     return;
   }
 
-  if (hitTestSectionBorder(worldPoint)) {
+  if (hitSection?.region === "border") {
     return;
   }
   if (
@@ -2968,7 +2938,7 @@ function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null
   const strokeId = hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale);
   if (strokeId && isStrokeLocked(strokeId)) return { type: "stroke", id: strokeId };
 
-  const section = hitTestSectionTitle(worldPoint) ?? hitTestSectionBorder(worldPoint);
+  const section = hitTestSection(worldPoint)?.shape ?? null;
   if (section?.locked) return { type: "shape", id: section.id };
   return null;
 }
@@ -3264,7 +3234,7 @@ function selectContextMenuTarget(event: MouseEvent) {
     return;
   }
 
-  const section = hitTestSectionTitle(worldPoint) ?? hitTestSectionBorder(worldPoint);
+  const section = hitTestSection(worldPoint)?.shape ?? null;
   if (section) {
     if (section.locked) clearSelection();
     else if (!selectedShapeIds.value.has(section.id)) selectOnlyShape(section.id);

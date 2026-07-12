@@ -1,5 +1,24 @@
 import { canvasSectionIcon } from "#assets/icons.ts";
-import type { CanvasElementExtension, CanvasPaintHelpers, CanvasShape } from "./types.ts";
+import { rotateVector } from "#canvas/geometry.ts";
+import type {
+  CanvasElementExtension,
+  CanvasHitTestHelpers,
+  CanvasPaintHelpers,
+  CanvasShape,
+} from "./types.ts";
+
+// Sections are click-through in their interior; only the painted border (this
+// many world px) is grabbable, preserving access to content placed inside.
+const SECTION_BORDER = 6;
+
+function sectionLocalPoint(world: { x: number; y: number }, shape: CanvasShape) {
+  const center = { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
+  const local = rotateVector(
+    { x: world.x - center.x, y: world.y - center.y },
+    -shape.rotation,
+  );
+  return { x: local.x + shape.width / 2, y: local.y + shape.height / 2 };
+}
 
 function roundedRectPath(
   context: CanvasRenderingContext2D,
@@ -99,7 +118,45 @@ export const sectionElement: CanvasElementExtension = {
   tool: { id: "section", label: "Section", shortcut: "S", icon: canvasSectionIcon },
   create: (at, ctx) => createSectionShape(at, ctx.color ?? sectionElement.defaultColor),
   paint: paintSection,
+  hitTest: (shape, world, helpers) => hitTestSection(shape, world, helpers),
 };
+
+// The title (screen-space box above the frame) takes priority over the border
+// (world-space edge band); the interior is click-through (null).
+function hitTestSection(
+  shape: CanvasShape,
+  world: { x: number; y: number },
+  helpers: CanvasHitTestHelpers,
+): "title" | "border" | null {
+  const screen = helpers.worldToScreen(world);
+  const origin = helpers.sectionTitlePosition(shape);
+  const titleLocal = rotateVector(
+    { x: screen.x - origin.x, y: screen.y - origin.y },
+    -shape.rotation,
+  );
+  const size = helpers.sectionTitleSize(shape);
+  if (
+    titleLocal.x >= 0 &&
+    titleLocal.x <= size.width &&
+    titleLocal.y >= 0 &&
+    titleLocal.y <= size.height
+  ) {
+    return "title";
+  }
+
+  const local = sectionLocalPoint(world, shape);
+  const inBounds =
+    local.x >= -SECTION_BORDER &&
+    local.x <= shape.width + SECTION_BORDER &&
+    local.y >= -SECTION_BORDER &&
+    local.y <= shape.height + SECTION_BORDER;
+  const onEdge =
+    local.x <= SECTION_BORDER ||
+    local.x >= shape.width - SECTION_BORDER ||
+    local.y <= SECTION_BORDER ||
+    local.y >= shape.height - SECTION_BORDER;
+  return inBounds && onEdge ? "border" : null;
+}
 
 export function createSectionShape(
   at: { x: number; y: number },

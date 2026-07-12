@@ -216,6 +216,18 @@ export interface CanvasPaintHelpers {
   sectionTitleSize: (shape: CanvasShape) => CanvasSize;
 }
 
+// Which part of a canvas-painted shape a point hit. "body" = the shape itself
+// (images), "border"/"title" = a section's grabbable edge / editable title.
+export type CanvasHitRegion = "body" | "title" | "border";
+
+// Geometry a canvas-painted element's hitTest needs. The host keeps the z-order
+// (images above sections above the backdrop) and calls hitTest per shape.
+export interface CanvasHitTestHelpers {
+  worldToScreen: (point: CanvasPoint) => CanvasPoint;
+  sectionTitlePosition: (shape: CanvasShape) => CanvasPoint;
+  sectionTitleSize: (shape: CanvasShape) => CanvasSize;
+}
+
 export interface CanvasElementExtension {
   // --- metadata ---
   type: CanvasShapeType;
@@ -238,12 +250,20 @@ export interface CanvasElementExtension {
   // one of these per shape and feeds it `.shape` / `.context`.
   tag?: string;
   // Canvas-2d painter for canvas-surface types (sections). The host owns the
-  // layer, ordering, hit-testing, and selection overlays.
+  // layer, ordering, and selection overlays.
   paint?: (
     ctx: CanvasRenderingContext2D,
     shape: CanvasShape,
     helpers: CanvasPaintHelpers,
   ) => void;
+  // Hit geometry for canvas-painted types (image pixels, section edge/title).
+  // DOM elements hit-test via native events, so they omit this. The host calls
+  // it per shape in z-order.
+  hitTest?: (
+    shape: CanvasShape,
+    worldPoint: CanvasPoint,
+    helpers: CanvasHitTestHelpers,
+  ) => CanvasHitRegion | null;
 
   // --- geometry / transforms ---
   transform: CanvasElementTransform;
