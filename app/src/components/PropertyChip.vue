@@ -19,6 +19,7 @@ const props = defineProps<{
   readonly?: boolean;
   property?: Property | null;
   allowMultiple?: boolean;
+  showTooltip?: boolean;
   propertyValues?: (property: Property) => Promise<SelectMenuItem[]>;
 }>();
 
@@ -154,7 +155,7 @@ onMounted(() => {
     <button
       v-if="property"
       type="button"
-      :data-tooltip="property.name"
+      :data-tooltip="showTooltip === false ? undefined : property.name"
       :class="{
         'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
         'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',

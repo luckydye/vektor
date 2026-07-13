@@ -43,6 +43,7 @@ import {
 import { document as documentTable } from "#db/schema/space.ts";
 import { getSpace, getSpaceBySlug } from "#db/spaces.ts";
 import { sendSyncEvent } from "#db/ws.ts";
+import { getHeaderImageAspectRatio } from "#files/headerImageAspect.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#utils/documentContent.ts";
@@ -337,9 +338,14 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
+    const headerImageAspectRatio = await getHeaderImageAspectRatio(
+      spaceId,
+      document.properties.headerImage,
+    );
+
     return withCors(
       jsonResponse({
-        document,
+        document: { ...document, headerImageAspectRatio },
         space: {
           id: space.id,
           slug: space.slug,

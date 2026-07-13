@@ -65,6 +65,8 @@ export interface Document {
 export interface DocumentWithProperties extends Document {
   properties: Record<string, string | string[]>;
   mentionCount?: number;
+  /** Natural width/height ratio derived from the stored header image. */
+  headerImageAspectRatio?: number | null;
 }
 
 export interface DocumentMember {
