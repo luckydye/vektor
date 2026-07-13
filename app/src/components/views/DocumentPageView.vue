@@ -397,7 +397,7 @@ watchEffect(() => {
           </div>
 
           <div
-            class="flex flex-col gap-4 md:flex-row md:items-start md:gap-6 px-xs md:px-xl print:px-0 mt-4 mb-4"
+            class="flex flex-col gap-xl md:flex-row md:items-start px-xs md:px-xl print:px-0 mt-4 mb-4"
           >
             <HeaderImage
               class="w-full max-w-[320px] shrink-0"
