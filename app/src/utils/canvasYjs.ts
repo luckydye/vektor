@@ -21,19 +21,9 @@ export const CANVAS_STROKES_KEY = "canvas.strokes";
 type RawShape = {
   id?: unknown;
   type?: unknown;
-  x?: unknown;
-  y?: unknown;
-  width?: unknown;
-  height?: unknown;
-  rotation?: unknown;
-  fontScale?: unknown;
-  text?: unknown;
-  color?: unknown;
-  src?: unknown;
-  alt?: unknown;
-  docAddress?: unknown;
-  docId?: unknown;
-  docSpaceId?: unknown;
+  frame?: unknown;
+  style?: unknown;
+  data?: unknown;
   authorId?: unknown;
   locked?: unknown;
   updatedAt?: unknown;
@@ -58,19 +48,27 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   if (typeof shape.id !== "string") return;
   const map = new Y.Map<unknown>();
   map.set("type", typeof shape.type === "string" ? shape.type : "note");
-  map.set("x", typeof shape.x === "number" ? shape.x : 0);
-  map.set("y", typeof shape.y === "number" ? shape.y : 0);
-  map.set("width", typeof shape.width === "number" ? shape.width : 240);
-  map.set("height", typeof shape.height === "number" ? shape.height : 150);
-  map.set("rotation", typeof shape.rotation === "number" ? shape.rotation : 0);
-  if (typeof shape.fontScale === "number") map.set("fontScale", shape.fontScale);
-  map.set("text", typeof shape.text === "string" ? shape.text : "");
-  map.set("color", typeof shape.color === "string" ? shape.color : "#fef3c7");
-  if (typeof shape.src === "string") map.set("src", shape.src);
-  if (typeof shape.alt === "string") map.set("alt", shape.alt);
-  if (typeof shape.docAddress === "string") map.set("docAddress", shape.docAddress);
-  if (typeof shape.docId === "string") map.set("docId", shape.docId);
-  if (typeof shape.docSpaceId === "string") map.set("docSpaceId", shape.docSpaceId);
+  const rawFrame = shape.frame && typeof shape.frame === "object"
+    ? shape.frame as Record<string, unknown>
+    : {};
+  const frame = new Y.Map<unknown>();
+  frame.set("x", typeof rawFrame.x === "number" ? rawFrame.x : 0);
+  frame.set("y", typeof rawFrame.y === "number" ? rawFrame.y : 0);
+  if (typeof rawFrame.width === "number") frame.set("width", rawFrame.width);
+  if (typeof rawFrame.height === "number") frame.set("height", rawFrame.height);
+  frame.set("rotation", typeof rawFrame.rotation === "number" ? rawFrame.rotation : 0);
+  map.set("frame", frame);
+  const rawStyle = shape.style && typeof shape.style === "object"
+    ? shape.style as Record<string, unknown>
+    : {};
+  const style = new Y.Map<unknown>();
+  style.set("color", typeof rawStyle.color === "string" ? rawStyle.color : "#fef3c7");
+  map.set("style", style);
+  const data = new Y.Map<unknown>();
+  if (shape.data && typeof shape.data === "object") {
+    for (const [key, value] of Object.entries(shape.data)) data.set(key, value);
+  }
+  map.set("data", data);
   if (typeof shape.authorId === "string") map.set("authorId", shape.authorId);
   if (shape.locked === true) map.set("locked", true);
   map.set("updatedAt", typeof shape.updatedAt === "number" ? shape.updatedAt : 0);

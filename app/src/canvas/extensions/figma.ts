@@ -1,6 +1,6 @@
 import { figmaClipboardToFrames } from "#utils/clipboard.ts";
 import { createMediaShape } from "./media.ts";
-import type { CanvasShape } from "./types.ts";
+import type { CanvasInputHandler, CanvasShape } from "./types.ts";
 
 export type PasteFigmaClipboardOptions = {
   uploadMediaFile: (file: File) => Promise<string>;
@@ -16,6 +16,17 @@ export type PasteFigmaClipboardResult = {
 export function isFigmaClipboardHtml(html: string): boolean {
   return html.includes("(figmeta)") && html.includes("(figma)");
 }
+
+export const figmaPasteInput: CanvasInputHandler = {
+  priority: 80,
+  handle: (event, context) => {
+    const html = context.data?.getData("text/html") ?? "";
+    if (!isFigmaClipboardHtml(html)) return false;
+    event.preventDefault();
+    context.command("paste-figma", { html, at: context.at() });
+    return true;
+  },
+};
 
 // Pastes a Figma selection: each top-level node becomes its own image shape,
 // laid out to preserve the relative positions and sizes they had in Figma.
@@ -73,4 +84,21 @@ export async function pasteFigmaClipboard(
   } catch (error) {
     return { pasted: createdIds.length > 0, createdIds, error };
   }
+}
+
+export function pasteFigmaIntoCanvas(
+  html: string,
+  at: { x: number; y: number },
+  options: PasteFigmaClipboardOptions & {
+    setBusy: (busy: boolean) => void;
+    select: (ids: string[]) => void;
+    reportError: (error: unknown) => void;
+  },
+) {
+  options.setBusy(true);
+  void pasteFigmaClipboard(html, at, options).then((result) => {
+    if (result.createdIds.length > 0) options.select(result.createdIds);
+    if (result.error) options.reportError(result.error);
+    options.setBusy(false);
+  });
 }

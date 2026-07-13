@@ -1,180 +1,111 @@
-// Paste / drop input routing for the canvas. This is the priority pipeline that
-// recognizes what kind of thing the user pasted or dropped (our own clipboard,
-// files, a Figma selection, a document URL, an image URL, a link, rich HTML,
-// plain text) and dispatches it. The recognition/ordering — the type-awareness —
-// lives here so Canvas.vue stays a generic host: it only provides the insertion
-// primitives (which touch host UI state) via CanvasInputContext.
-import {
-  type CanvasClipboard,
-  canvasClipboardFromDataTransfer,
-  parseCanvasClipboardHtml,
-  parseCanvasClipboardJson,
-} from "#utils/clipboard.ts";
-import { transformImageUrl } from "#utils/imageUrlTransformers.ts";
-import { type DocumentLinkReference, droppedDocumentReference } from "./documentLink.ts";
-import { isFigmaClipboardHtml } from "./figma.ts";
-import { canvasFilesFromDataTransfer, dragHasCanvasFiles } from "./files.ts";
-import { mediaFilesFromDataTransfer } from "./media.ts";
-import type { CanvasPoint } from "./types.ts";
+import { ref } from "vue";
+import { canvasClipboardFromDataTransfer } from "#utils/clipboard.ts";
+import { canvasFilesFromList } from "./files.ts";
+import { mediaFilesFromList } from "./media.ts";
+import type {
+  CanvasInputHandler,
+  CanvasPoint,
+  CanvasShape,
+} from "./types.ts";
 
-// Insertion primitives the host owns (they touch shape store / upload
-// placeholders / save state / toast). Routing calls these; it never touches the
-// host directly.
-export interface CanvasInputContext {
-  insertionPoint: (event?: MouseEvent | DragEvent) => CanvasPoint;
-  // Host-coupled recognizer: does this URL resolve to an in-app document?
-  isDocumentUrl: (url: string) => boolean;
-  pasteCanvasClipboard: (payload: CanvasClipboard, at: CanvasPoint) => void;
-  addDroppedFiles: (media: File[], files: File[], at: CanvasPoint) => void;
-  insertDocumentUrl: (url: string, at: CanvasPoint) => void;
-  insertDocumentRef: (ref: DocumentLinkReference, at: CanvasPoint) => boolean;
-  insertImageUrl: (fetchUrl: string, originalUrl: string, at: CanvasPoint) => void;
-  insertLink: (url: string, at: CanvasPoint) => void;
-  // Rich document/web HTML → shapes; returns whether anything was inserted.
-  pasteRichHtml: (html: string, text: string, at: CanvasPoint) => boolean;
-  pasteFigma: (html: string, at: CanvasPoint) => void;
+type UploadShapeType = "image" | "video" | "audio" | "file";
+
+// Engine clipboard payloads are the only built-in input format rather than an
+// element contribution. Element-specific recognizers live with their extension.
+export const canvasClipboardInput: CanvasInputHandler = {
+  priority: 1000,
+  handle: (event, context) => {
+    const payload = canvasClipboardFromDataTransfer(context.data);
+    if (!payload) return false;
+    event.preventDefault();
+    context.command("paste-canvas", { payload, at: context.at() });
+    return true;
+  },
+};
+
+export function createUploadPlaceholderStore(options: {
+  sizeFor: (type: UploadShapeType) => { width: number; height: number };
+}) {
+  const items = ref<Array<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    filename: string;
+  }>>([]);
+  return {
+    items,
+    add(type: UploadShapeType, filename: string, at: CanvasPoint) {
+      const size = options.sizeFor(type);
+      const id = `upload-${crypto.randomUUID()}`;
+      items.value = [
+        ...items.value,
+        {
+          id,
+          x: Math.round(at.x - size.width / 2),
+          y: Math.round(at.y - size.height / 2),
+          width: size.width,
+          height: size.height,
+          filename,
+        },
+      ];
+      return id;
+    },
+    remove(id: string) {
+      items.value = items.value.filter((item) => item.id !== id);
+    },
+  };
 }
 
-function isHttpUrl(text: string): boolean {
-  if (!/^https?:\/\//i.test(text)) return false;
-  try {
-    new URL(text);
-    return true;
-  } catch {
-    return false;
-  }
+export function splitCanvasFiles(files: FileList | File[]) {
+  return { media: mediaFilesFromList(files), files: canvasFilesFromList(files) };
 }
 
-// Routes a native clipboard paste over the canvas. Returns true when it consumed
-// the event (and has already called preventDefault).
-export function routeCanvasPaste(
-  event: ClipboardEvent,
-  ctx: CanvasInputContext,
-): boolean {
-  const data = event.clipboardData;
-  const text = data?.getData("text/plain") ?? "";
-  const html = data?.getData("text/html") ?? "";
-  const at = () => ctx.insertionPoint();
-
-  // 1. Our own canvas elements (custom/html metadata, or legacy text/plain JSON).
-  const payload = canvasClipboardFromDataTransfer(data);
-  if (payload) {
-    event.preventDefault();
-    ctx.pasteCanvasClipboard(payload, at());
-    return true;
-  }
-
-  // 2. Files — images/video keep their canvas renderers; the rest are file cards.
-  const media = mediaFilesFromDataTransfer(data);
-  const files = canvasFilesFromDataTransfer(data);
-  if (media.length > 0 || files.length > 0) {
-    event.preventDefault();
-    ctx.addDroppedFiles(media, files, at());
-    return true;
-  }
-
-  // 3. Figma selection — HTML blob with figmeta + kiwi scene data. Must run
-  //    before the plain-text bail since Figma also populates text/plain.
-  if (isFigmaClipboardHtml(html)) {
-    event.preventDefault();
-    ctx.pasteFigma(html, at());
-    return true;
-  }
-
-  const url = text.trim();
-
-  // 4. Internal document URL → document-attachment card.
-  if ((isHttpUrl(url) || url.startsWith("/")) && ctx.isDocumentUrl(url)) {
-    event.preventDefault();
-    ctx.insertDocumentUrl(url, at());
-    return true;
-  }
-
-  // 5. Image URL → canvas image shape (before the text bail: it's "real" text).
-  const imageUrl = transformImageUrl(url);
-  if (imageUrl) {
-    event.preventDefault();
-    ctx.insertImageUrl(imageUrl, url, at());
-    return true;
-  }
-
-  // 6. Plain HTTP(S) URL → link preview card.
-  if (isHttpUrl(url)) {
-    event.preventDefault();
-    ctx.insertLink(url, at());
-    return true;
-  }
-
-  // 7. Rich document/web HTML → shapes.
-  if (html.trim() && ctx.pasteRichHtml(html, text, at())) {
-    event.preventDefault();
-    return true;
-  }
-
-  // 8. Plain text → a text shape.
-  if (text.trim().length > 0) {
-    event.preventDefault();
-    ctx.pasteRichHtml("", text, at());
-    return true;
-  }
-
-  return false;
-}
-
-// Routes the context-menu "Paste" (reads the system clipboard; no file access).
-export function routeContextMenuPaste(
-  clipboard: { canvasJson: string; html: string; text: string },
-  at: CanvasPoint,
-  ctx: CanvasInputContext,
-): void {
-  const payload =
-    parseCanvasClipboardJson(clipboard.canvasJson) ??
-    parseCanvasClipboardHtml(clipboard.html) ??
-    parseCanvasClipboardJson(clipboard.text);
-  if (payload) {
-    ctx.pasteCanvasClipboard(payload, at);
-    return;
-  }
-
-  const url = clipboard.text.trim();
-  if ((isHttpUrl(url) || url.startsWith("/")) && ctx.isDocumentUrl(url)) {
-    ctx.insertDocumentUrl(url, at);
-    return;
-  }
-  const imageUrl = transformImageUrl(url);
-  if (imageUrl) {
-    ctx.insertImageUrl(imageUrl, url, at);
-    return;
-  }
-  if (isHttpUrl(url)) {
-    ctx.insertLink(url, at);
-    return;
-  }
-  if (clipboard.html.trim() && ctx.pasteRichHtml(clipboard.html, clipboard.text, at)) {
-    return;
-  }
-  if (clipboard.text.trim().length > 0) ctx.pasteRichHtml("", clipboard.text, at);
-}
-
-// Routes a drop over the canvas. Returns true when it consumed the event.
-export function routeCanvasDrop(event: DragEvent, ctx: CanvasInputContext): boolean {
-  const data = event.dataTransfer;
-  if (dragHasCanvasFiles(data)) {
-    // Block the browser from navigating to the file even if we can't place it.
-    event.preventDefault();
-    const media = mediaFilesFromDataTransfer(data);
-    const files = canvasFilesFromDataTransfer(data);
-    if (media.length > 0 || files.length > 0) {
-      ctx.addDroppedFiles(media, files, ctx.insertionPoint(event));
+export function createCanvasFileInsertionQueue(options: {
+  createMedia: (file: File, at: CanvasPoint) => Promise<CanvasShape | null>;
+  createFile: (file: File, at: CanvasPoint) => Promise<CanvasShape | null>;
+  mediaType: (file: File) => Exclude<UploadShapeType, "file"> | null;
+  addPlaceholder: (type: UploadShapeType, filename: string, at: CanvasPoint) => string;
+  removePlaceholder: (id: string) => void;
+  insert: (shape: CanvasShape) => void;
+  select: (shapeId: string) => void;
+  setBusy: (busy: boolean) => void;
+  reportError: (error: unknown) => void;
+}) {
+  async function add(file: File, at: CanvasPoint, kind: "media" | "file") {
+    options.setBusy(true);
+    const type = kind === "media" ? options.mediaType(file) ?? "image" : "file";
+    const placeholder = options.addPlaceholder(type, file.name || "file", at);
+    try {
+      const shape = await (kind === "media"
+        ? options.createMedia(file, at)
+        : options.createFile(file, at));
+      options.removePlaceholder(placeholder);
+      if (!shape) return;
+      options.insert(shape);
+      options.select(shape.id);
+    } catch (error) {
+      options.removePlaceholder(placeholder);
+      options.reportError(error);
+    } finally {
+      options.setBusy(false);
     }
-    return true;
   }
 
-  // A document dragged from the sidebar / command palette becomes a link card.
-  const droppedRef = droppedDocumentReference(data);
-  if (droppedRef && ctx.insertDocumentRef(droppedRef, ctx.insertionPoint(event))) {
-    event.preventDefault();
-    return true;
-  }
-  return false;
+  return {
+    addMedia: (file: File, at: CanvasPoint) => add(file, at, "media"),
+    addFile: (file: File, at: CanvasPoint) => add(file, at, "file"),
+    async addDropped(media: File[], files: File[], at: CanvasPoint) {
+      let offset = 0;
+      for (const file of media) {
+        await add(file, { x: at.x + offset, y: at.y + offset }, "media");
+        offset += 24;
+      }
+      for (const file of files) {
+        await add(file, { x: at.x + offset, y: at.y + offset }, "file");
+        offset += 24;
+      }
+    },
+  };
 }

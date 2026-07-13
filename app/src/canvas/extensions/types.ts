@@ -5,53 +5,42 @@ import type {
   FreehandStrokeStyle,
 } from "#viewport/index.ts";
 
-export type CanvasTool = "select" | "draw" | "note" | "text" | "section" | "shape";
-export type CanvasElementType =
-  | "note"
-  | "text"
-  | "image"
-  | "video"
-  | "audio"
-  | "file"
-  | "document"
-  | "link";
-export type CanvasShapeType = CanvasElementType | "section";
+// Extension and tool identifiers are deliberately open strings. The manager
+// validates registrations at runtime; adding an extension must not require
+// editing a core union first.
+export type CanvasTool = string;
+export type CanvasShapeType = string;
 
 export type CanvasShape = {
   id: string;
   type: CanvasShapeType;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  // Clockwise degrees around the shape centre. Old documents omit this and
-  // are normalized to zero when read.
-  rotation: number;
-  // Proportional scale for text shapes (1 = intrinsic size). Text auto-fits its
-  // content, so resizing scales the font rather than a fixed box. Other shape
-  // types size via width/height and leave this at 1.
-  fontScale?: number;
-  text: string;
-  color: string;
-  src?: string;
-  alt?: string;
-  docAddress?: string;
-  // Internal-only user scope for element creators (for example, cosmetics or
-  // stickers): set this to the creating user's id. Canvas UI deliberately does
-  // not expose a control for it. Shared elements omit the field.
+  frame: CanvasFrame;
+  style: CanvasBaseStyle;
+  data: Record<string, unknown>;
   authorId?: string;
-  // Locked elements stay visible but cannot be selected or transformed until
-  // explicitly unlocked from their hover control.
   locked?: boolean;
   updatedAt: number;
 };
 
+export type CanvasFrame = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+};
+
+export type CanvasBaseStyle = {
+  color: string;
+};
+
 export type CanvasSerializedShape =
   | CanvasShape
-  | (Omit<CanvasShape, "height" | "width"> & {
-      type: "text";
-      height?: number;
-      width?: number;
+  | (Omit<CanvasShape, "frame"> & {
+      frame: Omit<CanvasFrame, "height" | "width"> & {
+        height?: number;
+        width?: number;
+      };
     });
 
 export type CanvasSnapshot = {
@@ -90,6 +79,7 @@ export type CanvasSize = {
 };
 
 export type CanvasPoint = { x: number; y: number };
+export type CanvasRect = CanvasPoint & CanvasSize;
 
 // ---------------------------------------------------------------------------
 // Extension contract
@@ -97,9 +87,8 @@ export type CanvasPoint = { x: number; y: number };
 // Each element TYPE is described by one `CanvasElementExtension`, mirroring the
 // rich-text-editor's Tiptap extensions. Canvas.vue is a host/engine that
 // delegates all per-type behavior to these objects via the registry, instead of
-// branching on `shape.type === "..."` inline. New fields are optional so the
-// contract can be populated incrementally; the host falls back to its built-in
-// behavior for anything an extension does not (yet) provide.
+// branching on `shape.type === "..."` inline. Optional fields describe
+// capabilities; they do not trigger element-specific host fallbacks.
 // ---------------------------------------------------------------------------
 
 // Which render surface(s) an element uses. Most elements are plain DOM custom
@@ -125,11 +114,9 @@ export type CanvasElementCreateContext = {
   color?: string;
 };
 
-// How a shape enters edit mode right after tool/double-click creation. "body"
-// focuses the element's own rich-text editor (note/text); "title" opens the
-// host-owned title overlay (section, which is canvas-painted and has no DOM body
-// to focus). Upload/paste-created types omit it.
-export type CanvasEditOnCreate = "body" | "title";
+// How a shape enters edit mode after creation. The host either focuses the
+// extension element itself or opens its registered painted-chrome editor.
+export type CanvasEditOnCreate = "element" | "chrome";
 
 // Optional toolbar entry contributed by an element. The host merges these with
 // its built-in tools (select/draw/shape).
@@ -161,47 +148,49 @@ export interface CanvasToolExtension {
   onPointerDown: (at: CanvasPoint, event: PointerEvent, ctx: CanvasToolContext) => void;
 }
 
+export type CanvasInputKind = "paste" | "drop";
+
+export interface CanvasInputHandlerContext {
+  data: DataTransfer | null;
+  at: () => CanvasPoint;
+  phase: "preview" | "commit";
+  command: (name: string, payload?: unknown) => unknown;
+}
+
+export interface CanvasInputHandler {
+  priority: number;
+  handle: (
+    event: ClipboardEvent | DragEvent,
+    context: CanvasInputHandlerContext,
+  ) => boolean;
+}
+
 // An inline-edit session the host mounts (currently the document editor). Built
 // by an extension's onActivate and handed to CanvasExtensionHost.beginEdit; the
 // host owns the singleton editing slot.
 export type CanvasEditSession = {
   shapeId: string;
-  documentId: string;
-  address: string;
-  toggleTaskIndex: number | null;
+  tag: string;
+  className?: string;
+  props: Record<string, unknown>;
+  finish?: (element: HTMLElement | null) => void;
 };
 
-// Structural read access to the host-owned document-link preview controller,
-// used by the document extension's resolveData/onActivate. Defined structurally
-// (not imported) to avoid a module cycle with documentLink.ts.
-export interface DocumentPreviewAccess {
-  shapeTitle: (shape: CanvasShape) => string;
-  shapeType: (shape: CanvasShape) => string;
-  shapeStatus: (shape: CanvasShape) => string;
-  shapeContent: (shape: CanvasShape) => string;
-  documentIdForShape: (shape: CanvasShape) => string | undefined;
-  documentSpaceIdForShape: (shape: CanvasShape) => string | undefined;
-  inlineEditable: (shape: CanvasShape) => boolean;
-}
-
-// Host services + controllers passed to the extension-level hooks the host
-// dispatches (resolveData / onActivate / onOpen). Distinct from
-// CanvasElementContext, which is handed to the rendered element bodies.
+// Minimal host surface shared by every extension. Feature-specific controllers
+// are registered as services by the registry runtime and remain typed inside
+// their owning extension module.
 export interface CanvasExtensionHost {
   spaceId: string;
   wasDragged: () => boolean;
-  canEditDocuments: () => boolean;
-  isRemoteDocument: (shape: CanvasShape) => boolean;
-  documentAddress: (shape: CanvasShape) => string | undefined;
   beginEdit: (session: CanvasEditSession) => void;
-  openDocument: (shape: CanvasShape, requestedDocumentId?: string | null) => void;
-  documents: DocumentPreviewAccess;
+  openUrl: (url: string) => void;
+  dispatch: (name: string, detail: unknown) => void;
+  service: <T>(key: symbol) => T;
 }
 
 // Engine services passed to a canvas-drawn element's paint() hook. The host
-// owns the layer setup (transform, clear), image caching, selection overlays,
-// and the geometry it shares with hit-testing / the title-edit overlay; the
-// hook receives what it needs to draw the shape's own content.
+// owns layer setup (transform, clear) and coordinate geometry; the extension
+// owns the shape's actual drawing and interaction regions.
 export interface CanvasPaintHelpers {
   scale: number;
   // World→screen translation of the shared viewport transform.
@@ -210,10 +199,21 @@ export interface CanvasPaintHelpers {
   t: (key: TranslationKey) => string;
   // Section title chrome (shared geometry stays host-owned so hit-testing and
   // the inline title editor agree with what is painted).
-  sectionTitleColor: string;
-  isEditingSectionTitle: (id: string) => boolean;
-  sectionTitlePosition: (shape: CanvasShape) => CanvasPoint;
-  sectionTitleSize: (shape: CanvasShape) => CanvasSize;
+  chromeTextColor: string;
+  isEditingChrome: (id: string) => boolean;
+  chromePosition: (shape: CanvasShape) => CanvasPoint;
+  chromeSize: (shape: CanvasShape) => CanvasSize;
+}
+
+// Engine state handed to a DOM+canvas element's raster painter. The element
+// owns its pixels, loading strategy, and placeholder; the
+// host owns only the shared layer and viewport traversal.
+export interface CanvasRasterPaintHelpers {
+  scale: number;
+  dx: number;
+  dy: number;
+  dpr: number;
+  invalidate: () => void;
 }
 
 // Which part of a canvas-painted shape a point hit. "body" = the shape itself
@@ -224,92 +224,92 @@ export type CanvasHitRegion = "body" | "title" | "border";
 // (images above sections above the backdrop) and calls hitTest per shape.
 export interface CanvasHitTestHelpers {
   worldToScreen: (point: CanvasPoint) => CanvasPoint;
-  sectionTitlePosition: (shape: CanvasShape) => CanvasPoint;
-  sectionTitleSize: (shape: CanvasShape) => CanvasSize;
+  chromePosition: (shape: CanvasShape) => CanvasPoint;
+  chromeSize: (shape: CanvasShape) => CanvasSize;
 }
 
 export interface CanvasElementExtension {
-  // --- metadata ---
   type: CanvasShapeType;
-  defaultText: string;
-  defaultColor: string;
-  defaultSize: CanvasSize;
-  minSize: CanvasSize;
+  defaults: {
+    size: CanvasSize;
+    minSize: CanvasSize;
+    style: CanvasBaseStyle;
+    data: Record<string, unknown>;
+  };
   isValid?: (shape: CanvasShape) => boolean;
-
-  // --- creation ---
-  // Factory for tool-click / double-click creation. Upload/paste/drop-created
-  // types (media, file, document, link) omit this and are created through their
-  // own async flows instead.
-  create?: (at: CanvasPoint, ctx: CanvasElementCreateContext) => CanvasShape;
-  tool?: CanvasElementTool;
-  // How a freshly-created shape enters edit mode (see CanvasEditOnCreate).
-  editOnCreate?: CanvasEditOnCreate;
-
-  // --- rendering ---
-  surface: CanvasElementSurface;
-  // For "dom+canvas" types, resolve per shape instance whether THIS shape
-  // rasterizes on the canvas image layer (true) or renders as a DOM element
-  // (false). Image uses it to keep GIFs animating in the DOM while still frames
-  // paint on the canvas layer. Static "dom"/"canvas" types omit it.
-  rendersOnCanvas?: (shape: CanvasShape) => boolean;
-  // Custom-element tag for DOM surfaces (e.g. "canvas-note"). The host renders
-  // one of these per shape and feeds it `.shape` / `.context`.
-  tag?: string;
-  // Whether the host `<article>` wrapper paints `shape.color` as its background.
-  // Types that render their own full-bleed visual (image) set this false so the
-  // card color doesn't show through. Defaults to true.
-  articleBackground?: boolean;
-  // Canvas-2d painter for canvas-surface types (sections). The host owns the
-  // layer, ordering, and selection overlays.
-  paint?: (
-    ctx: CanvasRenderingContext2D,
-    shape: CanvasShape,
-    helpers: CanvasPaintHelpers,
-  ) => void;
-  // Hit geometry for canvas-painted types (image pixels, section edge/title).
-  // DOM elements hit-test via native events, so they omit this. The host calls
-  // it per shape in z-order.
-  hitTest?: (
-    shape: CanvasShape,
-    worldPoint: CanvasPoint,
-    helpers: CanvasHitTestHelpers,
-  ) => CanvasHitRegion | null;
-
-  // --- geometry / transforms ---
-  transform: CanvasElementTransform;
-
-  // Stacking group. Shapes are ordered by this first (lower = further back),
-  // then by recency, so a whole type can sit behind others regardless of edit
-  // time. Sections use a negative value to stay behind their contents; omit for
-  // the default (0) layer.
-  zOrder?: number;
-
-  // Container types (sections) hold other elements: dragging one moves its
-  // contents, locking one locks its contents, and a marquee must fully enclose
-  // one to select it (rather than merely intersect). Defaults to false.
-  container?: boolean;
-
-  // The element's whole body is a live editor (text), so the host must not
-  // preventDefault its pointer interactions — native focus/caret placement has
-  // to go through. Types edited behind a handle (note) leave this false.
-  editableBody?: boolean;
-
-  // Color swatches the toolbar offers for this type (note/section). The host
-  // renders them generically and recolors via a single setElementColor.
-  palette?: readonly string[];
-
-  // --- serialization quirks ---
-  // Element-specific JSON serialization (text strips its width/height). The
-  // host's createShapeMap/serializeShape default to a shallow copy otherwise.
-  serialize?: (shape: CanvasShape) => CanvasSerializedShape;
-
-  // --- interaction (host dispatches these; the host stays type-agnostic) ---
-  // Per-type reactive view model handed to the element via its `data` property.
-  resolveData?: (shape: CanvasShape, host: CanvasExtensionHost) => unknown;
-  // Primary activation (a plain click on the card body). Document cards enter
-  // inline edit here.
-  onActivate?: (shape: CanvasShape, host: CanvasExtensionHost, event: MouseEvent) => void;
-  // The element's "open" affordance fired (document-attachment's open button).
-  onOpen?: (shape: CanvasShape, host: CanvasExtensionHost, event: Event) => void;
+  creation?: {
+    create: (at: CanvasPoint, ctx: CanvasElementCreateContext) => CanvasShape;
+    tool?: CanvasElementTool;
+    editOnCreate?: CanvasEditOnCreate;
+    doubleClick?: boolean;
+    palette?: readonly string[];
+  };
+  render: {
+    surface: CanvasElementSurface;
+    tag?: string;
+    rasterize?: (shape: CanvasShape) => boolean;
+    paint?: (
+      ctx: CanvasRenderingContext2D,
+      shape: CanvasShape,
+      helpers: CanvasPaintHelpers,
+    ) => void;
+    paintRaster?: (
+      ctx: CanvasRenderingContext2D,
+      shape: CanvasShape,
+      helpers: CanvasRasterPaintHelpers,
+    ) => void;
+    hitTest?: (
+      shape: CanvasShape,
+      point: CanvasPoint,
+      helpers: CanvasHitTestHelpers,
+    ) => CanvasHitRegion | null;
+    article?: {
+      background?: boolean;
+      style?: (shape: CanvasShape) => Record<string, string>;
+    };
+    chrome?: {
+      editorTag: string;
+      position: (
+        shape: CanvasShape,
+        helpers: { scale: number; worldToScreen: (point: CanvasPoint) => CanvasPoint },
+      ) => CanvasPoint;
+      size: (
+        shape: CanvasShape,
+        helpers: { scale: number; t: (key: TranslationKey) => string },
+      ) => CanvasSize;
+    };
+  };
+  behavior: {
+    transform: CanvasElementTransform;
+    zOrder?: number;
+    editableBody?: boolean;
+    measurement?: {
+      fallback?: (shape: CanvasShape) => CanvasSize;
+      normalize?: (
+        shape: CanvasShape,
+        size: Partial<CanvasSize>,
+      ) => Partial<CanvasSize> | null;
+    };
+    container?: {
+      containsBounds: (container: CanvasShape, bounds: CanvasRect) => boolean;
+      containsPoint: (container: CanvasShape, point: CanvasPoint) => boolean;
+    };
+  };
+  storage?: {
+    parseData?: (
+      data: Record<string, unknown>,
+      context: { currentOrigin: string; defaultSpaceId: string },
+    ) => Record<string, unknown>;
+    serializeData?: (data: Record<string, unknown>) => Record<string, unknown>;
+  };
+  events?: {
+    data?: (shape: CanvasShape, host: CanvasExtensionHost) => unknown;
+    activate?: (shape: CanvasShape, host: CanvasExtensionHost, event: MouseEvent) => void;
+    open?: (shape: CanvasShape, host: CanvasExtensionHost, event: Event) => void;
+    prepare?: {
+      key: (shape: CanvasShape, host: CanvasExtensionHost) => string | null;
+      run: (shape: CanvasShape, host: CanvasExtensionHost) => void;
+    };
+  };
+  input?: Partial<Record<CanvasInputKind, CanvasInputHandler | readonly CanvasInputHandler[]>>;
 }

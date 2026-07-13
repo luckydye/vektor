@@ -12,17 +12,20 @@ export const NOTE_COLORS = [
 
 export const noteElement: CanvasElementExtension = {
   type: "note",
-  defaultText: "Note",
-  defaultColor: NOTE_COLORS[0],
-  defaultSize: { width: 240, height: 150 },
-  minSize: { width: 140, height: 96 },
-  surface: "dom",
-  tag: "canvas-note",
-  transform: { move: true, resize: "box", rotate: true },
-  palette: NOTE_COLORS,
-  tool: { id: "note", label: "Note", shortcut: "N", icon: canvasNoteIcon },
-  editOnCreate: "body",
-  create: (at, ctx) => createNoteShape(at, ctx.color ?? noteElement.defaultColor),
+  defaults: {
+    size: { width: 240, height: 150 },
+    minSize: { width: 140, height: 96 },
+    style: { color: NOTE_COLORS[0] },
+    data: { text: "Note" },
+  },
+  creation: {
+    palette: NOTE_COLORS,
+    tool: { id: "note", label: "Note", shortcut: "N", icon: canvasNoteIcon },
+    editOnCreate: "element",
+    create: (at, ctx) => createNoteShape(at, ctx.color ?? noteElement.defaults.style.color),
+  },
+  render: { surface: "dom", tag: "canvas-note" },
+  behavior: { transform: { move: true, resize: "box", rotate: true } },
 };
 
 // Note body: a drag grip plus the rich-text editor.
@@ -39,18 +42,20 @@ if (typeof customElements !== "undefined" && !customElements.get("canvas-note"))
 
 export function createNoteShape(
   at: { x: number; y: number },
-  color = noteElement.defaultColor,
+  color = noteElement.defaults.style.color,
 ): CanvasShape {
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "note",
-    x: Math.round(at.x),
-    y: Math.round(at.y),
-    width: noteElement.defaultSize.width,
-    height: noteElement.defaultSize.height,
-    rotation: 0,
-    text: noteElement.defaultText,
-    color,
+    frame: {
+      x: Math.round(at.x),
+      y: Math.round(at.y),
+      width: noteElement.defaults.size.width,
+      height: noteElement.defaults.size.height,
+      rotation: 0,
+    },
+    style: { color },
+    data: { ...noteElement.defaults.data },
     updatedAt: Date.now(),
   };
 }

@@ -5,22 +5,71 @@ import {
   CanvasElementBase,
   dragOnPointerDown,
 } from "./CanvasElementBase.ts";
-import { uploadMediaFile } from "./media.ts";
-import type { CanvasElementExtension, CanvasShape } from "./types.ts";
+import { mediaFilesFromDataTransfer, uploadMediaFile } from "./media.ts";
+import type { CanvasElementExtension, CanvasInputHandler, CanvasShape } from "./types.ts";
 
 const PDF_PREVIEW_SIZE = { width: 420, height: 560 };
 
+function fileSource(shape: CanvasShape) {
+  return typeof shape.data.src === "string" ? shape.data.src : "";
+}
+
+function fileName(shape: CanvasShape) {
+  return typeof shape.data.alt === "string" ? shape.data.alt : "";
+}
+
 export const fileElement: CanvasElementExtension = {
   type: "file",
-  defaultText: "",
-  defaultColor: "transparent",
-  defaultSize: { width: 220, height: 150 },
-  minSize: { width: 220, height: 150 },
-  isValid: (shape) => Boolean(shape.src),
-  surface: "dom",
-  tag: "canvas-file",
-  transform: { move: true, resize: "none", rotate: false },
+  defaults: {
+    size: { width: 220, height: 150 },
+    minSize: { width: 220, height: 150 },
+    style: { color: "transparent" },
+    data: { text: "" },
+  },
+  isValid: (shape) => Boolean(fileSource(shape)),
+  render: { surface: "dom", tag: "canvas-file" },
+  behavior: { transform: { move: true, resize: "none", rotate: false } },
+  storage: {
+    parseData: (data, context) => {
+      const src = data.src;
+      return {
+        ...data,
+        src:
+          typeof src === "string" && src.startsWith("/")
+            ? `${context.currentOrigin}${src}`
+            : src,
+      };
+    },
+  },
+  input: {
+    paste: {
+      priority: 90,
+      handle: (event, context) => handleFileInput(event, context, false),
+    },
+    drop: {
+      priority: 100,
+      handle: (event, context) => handleFileInput(event, context, true),
+    },
+  },
 };
+
+function handleFileInput(
+  event: ClipboardEvent | DragEvent,
+  context: Parameters<CanvasInputHandler["handle"]>[1],
+  acceptMetadataOnly: boolean,
+) {
+  if (!context.data || !dragHasCanvasFiles(context.data)) return false;
+  const media = mediaFilesFromDataTransfer(context.data);
+  const files = canvasFilesFromDataTransfer(context.data);
+  if (media.length === 0 && files.length === 0 && !acceptMetadataOnly) return false;
+  event.preventDefault();
+  if (context.data) context.data.dropEffect = "copy";
+  if (context.phase === "preview") return true;
+  if (media.length > 0 || files.length > 0) {
+    context.command("insert-files", { media, files, at: context.at() });
+  }
+  return true;
+}
 
 export function isCanvasFile(file: File) {
   return !isMediaFile(file);
@@ -37,7 +86,7 @@ class CanvasFileElement extends CanvasElementBase {
 
   protected mount() {
     const shape = this.shapeData;
-    this.isPdf = isPdfFile(shape?.alt) || isPdfFile(shape?.src);
+    this.isPdf = Boolean(shape && (isPdfFile(fileName(shape)) || isPdfFile(fileSource(shape))));
 
     if (this.isPdf) {
       const wrap = document.createElement("div");
@@ -86,19 +135,21 @@ class CanvasFileElement extends CanvasElementBase {
   protected update() {
     const shape = this.shapeData;
     if (!shape) return;
-    const filename = shape.alt || shape.text || (this.isPdf ? "PDF" : "file");
+    const text = typeof shape.data.text === "string" ? shape.data.text : "";
+    const filename = fileName(shape) || text || (this.isPdf ? "PDF" : "file");
+    const src = fileSource(shape);
     if (this.isPdf) {
-      if (this.frame && shape.src && this.frame.getAttribute("src") !== shape.src) {
-        this.frame.src = shape.src;
+      if (this.frame && src && this.frame.getAttribute("src") !== src) {
+        this.frame.src = src;
       }
       if (this.header) {
         this.header.textContent = filename;
-        this.header.title = shape.alt || "PDF";
+        this.header.title = fileName(shape) || "PDF";
       }
       return;
     }
-    if (this.attachment && shape.src) {
-      this.attachment.setAttribute("src", shape.src);
+    if (this.attachment && src) {
+      this.attachment.setAttribute("src", src);
       this.attachment.setAttribute("filename", filename);
     }
   }
@@ -158,19 +209,19 @@ export function createFileShape(params: {
   const size =
     isPdfFile(params.filename) || isPdfFile(params.src)
       ? PDF_PREVIEW_SIZE
-      : fileElement.defaultSize;
+      : fileElement.defaults.size;
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "file",
-    x: Math.round(origin === "center" ? params.at.x - size.width / 2 : params.at.x),
-    y: Math.round(origin === "center" ? params.at.y - size.height / 2 : params.at.y),
-    width: size.width,
-    height: size.height,
-    rotation: 0,
-    text: fileElement.defaultText,
-    color: fileElement.defaultColor,
-    src: params.src,
-    alt: params.filename,
+    frame: {
+      x: Math.round(origin === "center" ? params.at.x - size.width / 2 : params.at.x),
+      y: Math.round(origin === "center" ? params.at.y - size.height / 2 : params.at.y),
+      width: size.width,
+      height: size.height,
+      rotation: 0,
+    },
+    style: { ...fileElement.defaults.style },
+    data: { ...fileElement.defaults.data, src: params.src, alt: params.filename },
     updatedAt: Date.now(),
   };
 }

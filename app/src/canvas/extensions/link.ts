@@ -9,32 +9,66 @@ import {
 import "./twitterEmbed.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
+function linkSource(shape: CanvasShape) {
+  return typeof shape.data.src === "string" ? shape.data.src : "";
+}
+
 export const linkElement: CanvasElementExtension = {
   type: "link",
-  defaultText: "",
-  defaultColor: "var(--canvas-link-bg, #ffffff)",
-  defaultSize: { width: 320, height: 200 },
-  minSize: { width: 200, height: 80 },
-  isValid: (shape) => Boolean(shape.src),
-  surface: "dom",
-  tag: "canvas-link",
-  // Link cards fit their height to the preview content once it loads.
-  transform: { move: true, resize: "none", rotate: false },
-  resolveData: (shape) => linkPreviewForShape(shape) ?? null,
+  defaults: {
+    size: { width: 320, height: 200 },
+    minSize: { width: 200, height: 80 },
+    style: { color: "var(--canvas-link-bg, #ffffff)" },
+    data: { text: "" },
+  },
+  isValid: (shape) => Boolean(linkSource(shape)),
+  render: { surface: "dom", tag: "canvas-link" },
+  behavior: {
+    transform: { move: true, resize: "none", rotate: false },
+    measurement: {
+      normalize: (shape, size) => {
+        if (size.height === undefined || !Number.isFinite(size.height) || size.height <= 0) return null;
+        const src = linkSource(shape);
+        const preview = src ? linkPreviews.previews.value.get(src) : undefined;
+        if (!preview || preview.status === "loading") return null;
+        const height = Math.max(linkElement.defaults.minSize.height, Math.round(size.height));
+        return Math.abs(height - shape.frame.height) <= 2 ? null : { height };
+      },
+    },
+  },
+  events: { data: (shape) => linkPreviewForShape(shape) ?? null },
+  input: {
+    paste: {
+      priority: 50,
+      handle: (event, context) => {
+        const url = context.data?.getData("text/plain").trim() ?? "";
+        if (!/^https?:\/\//i.test(url)) return false;
+        try {
+          new URL(url);
+        } catch {
+          return false;
+        }
+        event.preventDefault();
+        context.command("insert-link", { url, at: context.at() });
+        return true;
+      },
+    },
+  },
 };
 
 export function createLinkShape(url: string, at: { x: number; y: number }): CanvasShape {
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "link",
-    x: Math.round(at.x - linkElement.defaultSize.width / 2),
-    y: Math.round(at.y - linkElement.defaultSize.height / 2),
-    width: linkElement.defaultSize.width,
-    height: linkElement.defaultSize.height,
-    rotation: 0,
-    text: "",
-    color: linkElement.defaultColor,
-    src: url,
+    frame: {
+      x: Math.round(at.x - linkElement.defaults.size.width / 2),
+      y: Math.round(at.y - linkElement.defaults.size.height / 2),
+      width: linkElement.defaults.size.width,
+      height: linkElement.defaults.size.height,
+      rotation: 0,
+    },
+    style: { ...linkElement.defaults.style },
+    data: { ...linkElement.defaults.data, src: url },
     updatedAt: Date.now(),
   };
 }
@@ -74,11 +108,12 @@ class CanvasLinkElement extends CanvasElementBase {
     const shape = this.shapeData;
     if (!shape) return;
     // Load our own preview; the reactive store drives the re-render via `data`.
-    if (shape.src) void loadLinkPreview(shape.src);
+    const src = linkSource(shape);
+    if (src) void loadLinkPreview(src);
 
     const preview = this.extra as LinkPreviewState | null | undefined;
     const mode: "card" | "twitter" =
-      shape.src && isTwitterLinkPreview(preview) ? "twitter" : "card";
+      src && isTwitterLinkPreview(preview) ? "twitter" : "card";
     if (mode !== this.mode) this.buildMode(mode);
 
     if (this.mode === "twitter") {
@@ -89,7 +124,7 @@ class CanvasLinkElement extends CanvasElementBase {
 
     const anchor = this.anchor;
     if (!anchor) return;
-    anchor.href = shape.src ?? "";
+    anchor.href = src;
     const metadata = preview?.metadata ?? null;
     anchor.replaceChildren(this.buildImage(metadata), this.buildBody(shape, metadata));
     this.fitToContent();
@@ -150,7 +185,7 @@ class CanvasLinkElement extends CanvasElementBase {
     wrap.addEventListener("wheel", (event) => event.stopPropagation());
     wrap.addEventListener("embed-resize", (event) => {
       const id = this.shapeData?.id;
-      if (id) this.services?.fitHeight(id, (event as CustomEvent).detail);
+      if (id) this.services?.reportSize(id, { height: (event as CustomEvent).detail });
     });
     const embed = document.createElement("canvas-twitter-embed") as HTMLElement & {
       value: string;
@@ -170,7 +205,7 @@ class CanvasLinkElement extends CanvasElementBase {
     for (const child of Array.from(anchor.children)) {
       total += (child as HTMLElement).offsetHeight;
     }
-    this.services?.fitHeight(id, total);
+    this.services?.reportSize(id, { height: total });
   }
 
   private buildImage(metadata: LinkMetadata | null): DocumentFragment {
@@ -219,12 +254,12 @@ class CanvasLinkElement extends CanvasElementBase {
     domain.className = "canvas-link-domain";
     domain.textContent =
       metadata?.siteName ||
-      (shape.src ? (this.services?.getDomainFromUrl(shape.src) ?? shape.src) : "");
+      (linkSource(shape) ? domainFromUrl(linkSource(shape)) : "");
     site.appendChild(domain);
 
     const title = document.createElement("div");
     title.className = "canvas-link-title";
-    title.textContent = metadata?.title || shape.src || "";
+    title.textContent = metadata?.title || linkSource(shape);
 
     body.append(site, title);
 
@@ -235,6 +270,14 @@ class CanvasLinkElement extends CanvasElementBase {
       body.appendChild(desc);
     }
     return body;
+  }
+}
+
+function domainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
   }
 }
 
@@ -266,11 +309,11 @@ async function loadLinkPreview(url: string) {
 }
 
 function linkPreviewForShape(shape: CanvasShape): LinkPreviewState | undefined {
-  return shape.src ? previews.value.get(shape.src) : undefined;
+  const src = linkSource(shape);
+  return src ? previews.value.get(src) : undefined;
 }
 
-// Reactive read surface for the host's link-card auto-size machinery (which
-// measures card DOM and must not fit while a preview is still loading).
+// Reactive preview state used by this extension's data and measurement hooks.
 export const linkPreviews = {
   previews,
   loadPreview: loadLinkPreview,

@@ -9,7 +9,6 @@ import type { CanvasShape } from "./types.ts";
 // CANVAS_ELEMENT_EVENTS), mirroring how <rich-text-editor> reports upward.
 export interface CanvasElementContext {
   t: (key: TranslationKey) => string;
-  getDomainFromUrl: (url: string) => string;
   spaceId: string;
   // True when the pointer interaction that produced the current click was
   // actually a drag — file/link cards use it to suppress navigation after a
@@ -20,18 +19,20 @@ export interface CanvasElementContext {
   // Element bodies act on the canvas through these instead of emitting
   // type-specific events the host has to interpret. The host owns the shape
   // store, selection, and singleton chrome; extensions drive them.
-  setText: (shapeId: string, text: string) => void;
+  updateData: (shapeId: string, patch: Record<string, unknown>) => void;
   removeShape: (shapeId: string) => void;
   selectShape: (shapeId: string) => void;
   // Retarget the shared canvas formatting toolbar at a focused editor (or clear
   // it with null). The toolbar is a host-level singleton.
   setFormattingEditor: (editor: unknown | null) => void;
 
-  // --- auto-size (elements measure their own content and report it) ---
-  // Text: cache the intrinsic measured box (drives geometry; not persisted).
-  setMeasuredSize: (shapeId: string, size: { width: number; height: number }) => void;
-  // Link cards: fit the shape's height to the measured content height.
-  fitHeight: (shapeId: string, contentHeight: number) => void;
+  // Elements report intrinsic dimensions; the host decides from extension
+  // metadata whether they are ephemeral geometry (font-resized text) or a
+  // persisted box (link cards). Omitted axes remain unchanged.
+  reportSize: (
+    shapeId: string,
+    size: { width?: number; height?: number },
+  ) => void;
 }
 
 // `class extends HTMLElement` is evaluated at module load. HTMLElement is
@@ -203,13 +204,14 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
     editor.className = "canvas-shape-textwrap";
     editor.setAttribute("headings", "");
     // Set before connect so the editor mounts with the right initial content.
-    editor.value = this.shapeData?.text ?? "";
+    editor.value =
+      typeof this.shapeData?.data.text === "string" ? this.shapeData.data.text : "";
 
     // Drive the host services directly rather than emitting type-specific events
     // for the host to interpret.
     editor.addEventListener("content-change", (event) => {
       const id = this.shapeData?.id;
-      if (id) this.services?.setText(id, (event as CustomEvent).detail);
+      if (id) this.services?.updateData(id, { text: (event as CustomEvent).detail });
     });
     editor.addEventListener("editor-focus", () => {
       const id = this.shapeData?.id;
@@ -248,8 +250,15 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
   }
 
   protected update() {
-    if (this.editorEl && this.shapeData) this.editorEl.value = this.shapeData.text;
+    if (this.editorEl && this.shapeData) {
+      this.editorEl.value =
+        typeof this.shapeData.data.text === "string" ? this.shapeData.data.text : "";
+    }
     if (this.autoSize) this.measure();
+  }
+
+  focus(options?: FocusOptions) {
+    this.editorEl?.focus(options);
   }
 
   // Intrinsic content size of the text, measured by cloning the editor's laid-
@@ -290,7 +299,7 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
     const extra = this.parentElement
       ? borderBoxExtra(this.parentElement)
       : { width: 0, height: 0 };
-    this.services?.setMeasuredSize(id, {
+    this.services?.reportSize(id, {
       width: Math.ceil(width + extra.width),
       height: Math.ceil(height + extra.height),
     });

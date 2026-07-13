@@ -1,6 +1,7 @@
 import { type Ref, ref } from "vue";
 import "#editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
+import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
 import {
   createVektorDocumentAddress,
   type ParsedVektorDocumentAddress,
@@ -18,13 +19,156 @@ import {
   dragOnPointerDown,
 } from "./CanvasElementBase.ts";
 import "./documentEditor.ts";
-import type { CanvasElementExtension, CanvasShape } from "./types.ts";
+import type {
+  CanvasElementExtension,
+  CanvasExtensionHost,
+  CanvasShape,
+} from "./types.ts";
 
 export const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
+
+function shapeDocumentAddress(shape: CanvasShape) {
+  return typeof shape.data.docAddress === "string" ? shape.data.docAddress : undefined;
+}
+
+function shapeSource(shape: CanvasShape) {
+  return typeof shape.data.src === "string" ? shape.data.src : undefined;
+}
+
+function shapeText(shape: CanvasShape) {
+  return typeof shape.data.text === "string" ? shape.data.text : "";
+}
 
 export type DocumentLinkReference = {
   address: VektorDocumentAddress;
 };
+
+export async function resolveDocumentReferenceFromUrl(
+  rawUrl: string,
+  options: {
+    currentOrigin: string;
+    defaultSpaceId: string;
+    spaces: ReadonlyArray<{ id: string; slug?: string | null }> | undefined;
+    loadSpaces: () => Promise<ReadonlyArray<{ id: string; slug?: string | null }>>;
+  },
+): Promise<DocumentLinkReference | null> {
+  const parts = documentUrlPartsFromUrl(rawUrl, {
+    currentOrigin: options.currentOrigin,
+    defaultSpaceId: options.defaultSpaceId,
+  });
+  if (!parts) return null;
+  if (parts.spaceId) {
+    return {
+      address: createVektorDocumentAddress({
+        origin: new URL(parts.url).origin,
+        spaceId: parts.spaceId,
+        documentId: parts.documentId,
+        href: parts.url,
+      }),
+    };
+  }
+  if (isRemoteDocumentUrl(parts.url, options.currentOrigin)) return null;
+  const spaces = options.spaces ?? (await options.loadSpaces());
+  const space = spaces.find((entry) => entry.slug === parts.spaceSlug);
+  if (!space) return null;
+  return {
+    address: createVektorDocumentAddress({
+      origin: options.currentOrigin,
+      spaceId: space.id,
+      documentId: parts.documentId,
+      href: parts.url,
+    }),
+  };
+}
+
+export async function insertDocumentReference(
+  ref: DocumentLinkReference,
+  at: { x: number; y: number },
+  options: {
+    fetchDocument: (ref: ParsedVektorDocumentAddress) => Promise<LoadedDocumentPreviewSource>;
+    insertDocument: (
+      ref: DocumentLinkReference,
+      at: { x: number; y: number },
+      source: Pick<LoadedDocumentPreviewSource, "properties">,
+    ) => void;
+    fallbackToLink?: (url: string, at: { x: number; y: number }) => void;
+    reportError: (error: unknown) => void;
+  },
+) {
+  try {
+    const parsed = parseVektorDocumentAddress(ref.address);
+    if (!parsed) throw new Error("Invalid document address");
+    const document = await options.fetchDocument(parsed);
+    options.insertDocument(
+      {
+        address: createVektorDocumentAddress({
+          origin: parsed.origin,
+          spaceId: parsed.spaceId,
+          documentId: document.id,
+          href: parsed.href,
+        }),
+      },
+      at,
+      document,
+    );
+  } catch (error) {
+    const href = parseVektorDocumentAddress(ref.address)?.href;
+    if (href && options.fallbackToLink) options.fallbackToLink(href, at);
+    else options.reportError(error);
+  }
+}
+
+export async function insertDocumentUrl(
+  url: string,
+  at: { x: number; y: number },
+  options: {
+    currentOrigin: string;
+    defaultSpaceId: string;
+    spaces: ReadonlyArray<{ id: string; slug?: string | null }> | undefined;
+    loadSpaces: () => Promise<ReadonlyArray<{ id: string; slug?: string | null }>>;
+    fetchDocument: (ref: ParsedVektorDocumentAddress) => Promise<LoadedDocumentPreviewSource>;
+    fetchMetadata: (url: string) => Promise<LinkMetadata | null>;
+    insertDocument: (
+      ref: DocumentLinkReference,
+      at: { x: number; y: number },
+      source: Pick<LoadedDocumentPreviewSource, "properties">,
+    ) => void;
+    insertLink: (url: string, at: { x: number; y: number }) => void;
+    reportError: (error: unknown) => void;
+  },
+) {
+  const ref = await resolveDocumentReferenceFromUrl(url, options);
+  if (ref) {
+    await insertDocumentReference(ref, at, {
+      fetchDocument: options.fetchDocument,
+      insertDocument: options.insertDocument,
+      fallbackToLink: options.insertLink,
+      reportError: options.reportError,
+    });
+    return;
+  }
+
+  const metadata = await options.fetchMetadata(url);
+  const remote = metadata?.vektorDocument;
+  if (!metadata || !remote) {
+    options.insertLink(url, at);
+    return;
+  }
+  options.insertDocument(
+    {
+      address:
+        remote.address ??
+        createVektorDocumentAddress({
+          origin: new URL(metadata.url || url).origin,
+          spaceId: remote.spaceId,
+          documentId: remote.documentId,
+          href: metadata.url || url,
+        }),
+    },
+    at,
+    { properties: { title: metadata.title ?? remote.documentSlug } },
+  );
+}
 
 export type DocumentPreviewState = {
   status: "loading" | "loaded" | "error";
@@ -65,6 +209,18 @@ export type CanvasDocumentData = {
   documentId: string;
 };
 
+export const DOCUMENT_CANVAS_SERVICE = Symbol("canvas-document-service");
+
+export type DocumentCanvasService = ReturnType<typeof createDocumentLinkController> & {
+  canEdit: () => boolean;
+  isRemote: (shape: CanvasShape) => boolean;
+  address: (shape: CanvasShape) => string | undefined;
+};
+
+function documentService(host: CanvasExtensionHost) {
+  return host.service<DocumentCanvasService>(DOCUMENT_CANVAS_SERVICE);
+}
+
 // Ordinal of the checkbox the click landed on within the read-only card, or
 // null when the click wasn't on a task checkbox. Used to replay the toggle in
 // the editor the click is about to mount. The preview renders checkboxes as
@@ -92,57 +248,110 @@ function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
 
 export const documentLinkElement: CanvasElementExtension = {
   type: "document",
-  defaultText: "Untitled",
-  defaultColor: "var(--canvas-doc-bg)",
-  defaultSize: { width: 380, height: 280 },
-  minSize: { width: 280, height: 180 },
-  isValid: (shape) => Boolean(parseVektorDocumentAddress(shape.docAddress)),
-  surface: "dom",
-  tag: "canvas-document",
-  // Embedded document cards resize but do not rotate.
-  transform: { move: true, resize: "box", rotate: false },
-
-  resolveData: (shape, host): CanvasDocumentData => ({
-    title: host.documents.shapeTitle(shape),
-    type: host.documents.shapeType(shape),
-    status: host.documents.shapeStatus(shape),
-    content: host.documents.shapeContent(shape),
-    spaceId: host.documents.documentSpaceIdForShape(shape) || host.spaceId,
-    documentId: host.isRemoteDocument(shape)
-      ? ""
-      : host.documents.documentIdForShape(shape) || "",
-  }),
-
-  // A plain click enters inline edit mode; modifier clicks stay reserved for
-  // multi-select, and a click that ended a drag is ignored. Inline editing only
-  // applies to editable rich-text documents of this space on this instance —
-  // remote/cross-space embeds stay read-only previews.
-  onActivate: (shape, host, event) => {
-    if (event.button !== 0) return;
-    if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (host.wasDragged() || shape.locked) return;
-    const documentId = host.documents.documentIdForShape(shape);
-    const address = host.documentAddress(shape);
-    if (!documentId || !address) return;
-    if (!host.canEditDocuments() || host.isRemoteDocument(shape)) return;
-    if (host.documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
-    if (!host.documents.inlineEditable(shape)) return;
-    host.beginEdit({
-      shapeId: shape.id,
-      documentId,
-      address,
-      toggleTaskIndex: clickedTaskCheckboxIndex(event),
-    });
+  defaults: {
+    size: { width: 380, height: 280 },
+    minSize: { width: 280, height: 180 },
+    style: { color: "var(--canvas-doc-bg)" },
+    data: { text: "Untitled" },
   },
-
-  onOpen: (shape, host, event) => {
-    event.preventDefault();
-    if (host.wasDragged()) return;
-    const requested =
-      event instanceof CustomEvent && typeof event.detail?.documentId === "string"
-        ? event.detail.documentId
-        : null;
-    host.openDocument(shape, requested);
+  isValid: (shape) => Boolean(parseVektorDocumentAddress(shapeDocumentAddress(shape))),
+  render: { surface: "dom", tag: "canvas-document" },
+  behavior: { transform: { move: true, resize: "box", rotate: false } },
+  storage: {
+    parseData: (data) => ({ ...data }),
+  },
+  events: {
+    prepare: {
+      key: (shape) => documentAddressForShape(shape) ?? null,
+      run: (shape, host) => {
+        const address = documentAddressForShape(shape);
+        if (address) void documentService(host).loadPreview(address);
+      },
+    },
+    data: (shape, host): CanvasDocumentData => {
+      const documents = documentService(host);
+      return {
+        title: documents.shapeTitle(shape),
+        type: documents.shapeType(shape),
+        status: documents.shapeStatus(shape),
+        content: documents.shapeContent(shape),
+        spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
+        documentId: documents.isRemote(shape) ? "" : documents.documentIdForShape(shape) || "",
+      };
+    },
+    activate: (shape, host, event) => {
+      if (event.button !== 0) return;
+      if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (host.wasDragged() || shape.locked) return;
+      const documents = documentService(host);
+      const documentId = documents.documentIdForShape(shape);
+      const address = documents.address(shape);
+      if (!documentId || !address) return;
+      if (!documents.canEdit() || documents.isRemote(shape)) return;
+      if (documents.documentSpaceIdForShape(shape) !== host.spaceId) return;
+      if (!documents.inlineEditable(shape)) return;
+      host.beginEdit({
+        shapeId: shape.id,
+        tag: "canvas-document-editor",
+        className: "canvas-shape-document-editor",
+        props: {
+          spaceId: host.spaceId,
+          documentId,
+          title: documents.shapeTitle(shape),
+          toggleTaskIndex: clickedTaskCheckboxIndex(event),
+        },
+        finish: (element) => {
+          const html = (element as (HTMLElement & { getHtml?: () => string | null }) | null)
+            ?.getHtml?.();
+          if (typeof html === "string") documents.setPreviewContent(address, html);
+        },
+      });
+    },
+    open: (shape, host, event) => {
+      event.preventDefault();
+      if (host.wasDragged()) return;
+      const requested =
+        event instanceof CustomEvent && typeof event.detail?.documentId === "string"
+          ? event.detail.documentId
+          : null;
+      const documents = documentService(host);
+      const documentId = requested ?? documents.documentIdForShape(shape);
+      if (!documentId) return;
+      const href = documents.documentHrefForShape(shape);
+      if (documents.isRemote(shape) && href) {
+        host.openUrl(href);
+        return;
+      }
+      host.dispatch("view-document", {
+        spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
+        documentId,
+      });
+    },
+  },
+  input: {
+    paste: {
+      priority: 70,
+      handle: (event, context) => {
+        const url = context.data?.getData("text/plain").trim() ?? "";
+        if ((!/^https?:\/\//i.test(url) && !url.startsWith("/")) ||
+          context.command("is-document-url", url) !== true) return false;
+        event.preventDefault();
+        context.command("insert-document-url", { url, at: context.at() });
+        return true;
+      },
+    },
+    drop: {
+      priority: 90,
+      handle: (event, context) => {
+        const reference = droppedDocumentReference(context.data);
+        if (!reference) return false;
+        event.preventDefault();
+        if (context.data) context.data.dropEffect = "move";
+        if (context.phase === "preview") return true;
+        context.command("insert-document-ref", { reference, at: context.at() });
+        return true;
+      },
+    },
   },
 };
 
@@ -207,15 +416,20 @@ export function createDocumentLinkShape(
   return {
     id: `shape-${crypto.randomUUID()}`,
     type: "document",
-    x: Math.round(at.x - documentLinkElement.defaultSize.width / 2),
-    y: Math.round(at.y - documentLinkElement.defaultSize.height / 2),
-    width: documentLinkElement.defaultSize.width,
-    height: documentLinkElement.defaultSize.height,
-    rotation: 0,
-    text: doc ? documentLabel(doc) : documentLinkElement.defaultText,
-    color: documentLinkElement.defaultColor,
-    docAddress: parsed.address,
-    src: parsed.href,
+    frame: {
+      x: Math.round(at.x - documentLinkElement.defaults.size.width / 2),
+      y: Math.round(at.y - documentLinkElement.defaults.size.height / 2),
+      width: documentLinkElement.defaults.size.width,
+      height: documentLinkElement.defaults.size.height,
+      rotation: 0,
+    },
+    style: { ...documentLinkElement.defaults.style },
+    data: {
+      ...documentLinkElement.defaults.data,
+      text: doc ? documentLabel(doc) : documentLinkElement.defaults.data.text,
+      docAddress: parsed.address,
+      src: parsed.href,
+    },
     updatedAt: Date.now(),
   };
 }
@@ -234,22 +448,22 @@ export function initialDocumentPreview(
 }
 
 export function documentIdForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shape.docAddress)?.documentId;
+  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.documentId;
 }
 
 export function documentSpaceIdForShape(
   shape: CanvasShape,
   fallbackSpaceId: string,
 ): string | undefined {
-  return parseVektorDocumentAddress(shape.docAddress)?.spaceId || fallbackSpaceId;
+  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.spaceId || fallbackSpaceId;
 }
 
 export function documentHrefForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shape.docAddress)?.href ?? shape.src;
+  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.href ?? shapeSource(shape);
 }
 
 export function documentAddressForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shape.docAddress)?.address;
+  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.address;
 }
 
 // A document address (or bare URL) whose origin differs from this instance —
@@ -415,7 +629,7 @@ export function documentShapeTitle(
   shape: CanvasShape,
   preview?: DocumentPreviewState,
 ): string {
-  return preview?.title || shape.text || "Untitled";
+  return preview?.title || shapeText(shape) || "Untitled";
 }
 
 export function normalizeDocumentReference(
@@ -480,7 +694,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
   }
 
   function referenceForShape(shape: CanvasShape): DocumentLinkReference | null {
-    return normalizeDocumentReference(shape.docAddress);
+    return normalizeDocumentReference(shapeDocumentAddress(shape));
   }
 
   async function loadPreview(refInput: string | DocumentLinkReference) {
