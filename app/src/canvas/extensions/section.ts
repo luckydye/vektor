@@ -115,6 +115,9 @@ export const sectionElement: CanvasElementExtension = {
   minSize: { width: 240, height: 160 },
   surface: "canvas",
   transform: { move: true, resize: "box", rotate: false },
+  // Sections are backdrops: they render behind every other shape so content
+  // dropped inside them stays on top.
+  zOrder: -1,
   palette: SECTION_COLORS,
   tool: { id: "section", label: "Section", shortcut: "S", icon: canvasSectionIcon },
   create: (at, ctx) => createSectionShape(at, ctx.color ?? sectionElement.defaultColor),

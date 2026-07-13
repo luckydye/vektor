@@ -160,3 +160,8 @@ export function shapeRendersInDom(shape: CanvasShape): boolean {
 export function shapePaintHook(type: CanvasShapeType) {
   return getCanvasElementExtension(type)?.paint;
 }
+
+/** Stacking group for a type (lower = further back). Defaults to 0. */
+export function shapeZOrder(type: CanvasShapeType): number {
+  return getCanvasElementExtension(type)?.zOrder ?? 0;
+}

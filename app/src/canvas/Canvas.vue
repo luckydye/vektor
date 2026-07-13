@@ -95,6 +95,7 @@ import {
   shapePersistsSize,
   shapeRastersOnCanvas,
   shapeRendersInDom,
+  shapeZOrder,
 } from "./extensions/registry.ts";
 import {
   activeShapeId,
@@ -1218,11 +1219,12 @@ function syncShapesFromY() {
   shapes.value = [...yShapes.entries()]
     .map(([id, value]) => toShape(id, value))
     .filter(isValidCanvasShape)
-    .sort((a, b) => {
-      if (a.type === "section" && b.type !== "section") return -1;
-      if (a.type !== "section" && b.type === "section") return 1;
-      return a.updatedAt - b.updatedAt || a.id.localeCompare(b.id);
-    });
+    .sort(
+      (a, b) =>
+        shapeZOrder(a.type) - shapeZOrder(b.type) ||
+        a.updatedAt - b.updatedAt ||
+        a.id.localeCompare(b.id),
+    );
 
   let pruned = false;
   for (const id of selectedShapeIds.value) {

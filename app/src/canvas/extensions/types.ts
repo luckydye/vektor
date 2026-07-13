@@ -267,6 +267,12 @@ export interface CanvasElementExtension {
   // --- geometry / transforms ---
   transform: CanvasElementTransform;
 
+  // Stacking group. Shapes are ordered by this first (lower = further back),
+  // then by recency, so a whole type can sit behind others regardless of edit
+  // time. Sections use a negative value to stay behind their contents; omit for
+  // the default (0) layer.
+  zOrder?: number;
+
   // Color swatches the toolbar offers for this type (note/section). The host
   // renders them generically and recolors via a single setElementColor.
   palette?: readonly string[];
