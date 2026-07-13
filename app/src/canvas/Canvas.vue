@@ -76,11 +76,7 @@ import {
   routeCanvasPaste,
   routeContextMenuPaste,
 } from "./extensions/inputs.ts";
-import {
-  createLinkShape,
-  isTwitterLinkPreview,
-  linkPreviews,
-} from "./extensions/link.ts";
+import { createLinkShape, linkPreviews } from "./extensions/link.ts";
 import {
   createUploadedMediaShape,
   mediaFilesFromList,
@@ -694,17 +690,11 @@ function elementTagForShape(shape: CanvasShape): string | null {
   if (!tag || typeof customElements === "undefined" || !customElements.get(tag)) {
     return null;
   }
-  // Twitter/X links keep the host-owned <CanvasTwitterEmbed> Vue component, so
-  // they render through the fallback branch rather than the generic link card.
-  if (
-    shape.type === "link" &&
-    isTwitterLinkPreview(linkPreviews.previewForShape(shape))
-  ) {
-    return null;
-  }
-  // While a document card is being edited inline, the host swaps in the
-  // <CanvasDocumentEditor> Vue component (rendered from the fallback branch).
-  if (shape.type === "document" && editingDocumentShape.value?.shapeId === shape.id) {
+  // While a card is being edited inline, the host swaps in its own
+  // <canvas-document-editor> (rendered from the fallback branch). The editing
+  // slot is only ever set for a document shape, so keying on the shape id alone
+  // is enough — no type check needed.
+  if (editingDocumentShape.value?.shapeId === shape.id) {
     return null;
   }
   return tag;
@@ -3918,38 +3908,22 @@ onUnmounted(() => {
             @document-click="onElementActivate(shape, ($event as CustomEvent).detail)"
             @open-document="onElementOpen(shape, $event)"
           />
-          <!-- elementTagForShape returns null for exactly two cases the host
-               renders directly (they depend on host state the registry loop
-               doesn't carry): a document card being edited inline, and a
-               Twitter/X embed. Both are custom elements. -->
-          <template v-else>
-            <canvas-document-editor
-              v-if="shape.type === 'document' && editingDocumentShape?.shapeId === shape.id"
-              :ref="setEmbeddedDocumentEditorRef"
-              class="canvas-shape-document-editor"
-              :space-id="props.spaceId"
-              :document-id="editingDocumentShape.documentId"
-              :title="documentLinks.shapeTitle(shape)"
-              :toggle-task-index="editingDocumentShape.toggleTaskIndex"
-              @drag-start="startShapeDrag(shape, ($event as CustomEvent).detail[0])"
-              @exit-edit="stopEmbeddedDocumentEdit"
-            ></canvas-document-editor>
-            <div
-              v-else-if="
-              shape.type === 'link' &&
-              shape.src &&
-              linkPreviews.previewForShape(shape)?.metadata?.embed?.provider === 'twitter'
-            "
-              class="canvas-twitter-shape"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-              @wheel.stop
-            >
-              <canvas-twitter-embed
-                :value.prop="linkPreviews.previewForShape(shape)!.metadata!.embed!.html"
-                @embed-resize="fitLinkShapeHeight(shape.id, ($event as CustomEvent).detail)"
-              ></canvas-twitter-embed>
-            </div>
-          </template>
+          <!-- elementTagForShape returns null only while a card is being edited
+               inline: the host swaps in its own inline editor, which depends on
+               host editing state (save/exit orchestration) the element can't
+               carry. The editing slot is keyed by shape id and only ever set for
+               a document, so no type check is needed here. -->
+          <canvas-document-editor
+            v-else-if="editingDocumentShape?.shapeId === shape.id"
+            :ref="setEmbeddedDocumentEditorRef"
+            class="canvas-shape-document-editor"
+            :space-id="props.spaceId"
+            :document-id="editingDocumentShape.documentId"
+            :title="documentLinks.shapeTitle(shape)"
+            :toggle-task-index="editingDocumentShape.toggleTaskIndex"
+            @drag-start="startShapeDrag(shape, ($event as CustomEvent).detail[0])"
+            @exit-edit="stopEmbeddedDocumentEdit"
+          ></canvas-document-editor>
         </article>
 
         <!-- Local upload placeholders shown until each dropped/pasted file finishes uploading. -->

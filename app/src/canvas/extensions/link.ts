@@ -44,10 +44,9 @@ export type LinkPreviewState = {
   metadata: LinkMetadata | null;
 };
 
-// True for links whose preview resolved to a Twitter/X embed. Those keep the
-// host-owned <CanvasTwitterEmbed> Vue component instead of the generic card, so
-// the host renders them via the fallback branch.
-export function isTwitterLinkPreview(preview: LinkPreviewState | undefined): boolean {
+// True for links whose preview resolved to a Twitter/X embed. Those render the
+// live <canvas-twitter-embed> instead of the generic card.
+function isTwitterLinkPreview(preview: LinkPreviewState | null | undefined): boolean {
   return preview?.metadata?.embed?.provider === "twitter";
 }
 
@@ -57,21 +56,64 @@ function hideOnError(img: HTMLImageElement) {
   });
 }
 
-// Generic link preview card: optional media, then site/title/description. Built
-// as an <a> so a plain click navigates; a click that ended a drag is suppressed
-// via hostContext.wasDragged. The card carries data-link-shape-id so the host's
-// auto-size observer fits the shape height to the loaded content.
+// Renders a pasted link as either a Twitter/X embed (when its preview resolves
+// to one) or a generic preview card. Both modes are owned here so the host
+// stays type-agnostic; the mode is rebuilt only when it changes so the tweet
+// isn't re-hydrated on every update.
 class CanvasLinkElement extends CanvasElementBase {
+  private mode: "card" | "twitter" | null = null;
   private anchor: HTMLAnchorElement | null = null;
+  private embed: (HTMLElement & { value: string }) | null = null;
   private sizeObserver: ResizeObserver | null = null;
 
   protected mount() {
+    // Built lazily by update() once the preview determines the render mode.
+  }
+
+  protected update() {
+    const shape = this.shapeData;
+    if (!shape) return;
+    // Load our own preview; the reactive store drives the re-render via `data`.
+    if (shape.src) void loadLinkPreview(shape.src);
+
+    const preview = this.extra as LinkPreviewState | null | undefined;
+    const mode: "card" | "twitter" =
+      shape.src && isTwitterLinkPreview(preview) ? "twitter" : "card";
+    if (mode !== this.mode) this.buildMode(mode);
+
+    if (this.mode === "twitter") {
+      const html = preview?.metadata?.embed?.html;
+      if (this.embed && html) this.embed.value = html;
+      return;
+    }
+
+    const anchor = this.anchor;
+    if (!anchor) return;
+    anchor.href = shape.src ?? "";
+    const metadata = preview?.metadata ?? null;
+    anchor.replaceChildren(this.buildImage(metadata), this.buildBody(shape, metadata));
+    this.fitToContent();
+  }
+
+  private buildMode(mode: "card" | "twitter") {
+    this.mode = mode;
+    this.sizeObserver?.disconnect();
+    this.sizeObserver = null;
+    this.anchor = null;
+    this.embed = null;
+    this.replaceChildren();
+    if (mode === "twitter") this.buildTwitter();
+    else this.buildCard();
+  }
+
+  // Generic card: optional media, then site/title/description. An <a> so a plain
+  // click navigates; a click that ended a drag is suppressed via wasDragged.
+  private buildCard() {
     const anchor = document.createElement("a");
     anchor.className = "canvas-shape-link";
     anchor.target = "_blank";
     anchor.rel = "noopener noreferrer";
     anchor.draggable = false;
-    if (this.shapeData) anchor.dataset.linkShapeId = this.shapeData.id;
     dragOnPointerDown(anchor, (event) =>
       this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
     );
@@ -88,29 +130,34 @@ class CanvasLinkElement extends CanvasElementBase {
     this.appendChild(anchor);
     this.anchor = anchor;
 
-    // Link cards fit their height to the preview content (image keeps a 4/3
-    // ratio, so content height depends on card width). Observe the card box for
-    // width-driven reflow; update() also re-measures when preview data arrives.
+    // Cards fit their height to the preview content (image keeps a 4/3 ratio, so
+    // content height depends on card width). Observe the card box for width-
+    // driven reflow; update() also re-measures when preview data arrives.
     if (typeof ResizeObserver !== "undefined") {
       this.sizeObserver = new ResizeObserver(() => this.fitToContent());
       this.sizeObserver.observe(anchor);
     }
   }
 
-  protected update() {
-    const shape = this.shapeData;
-    const anchor = this.anchor;
-    if (!shape || !anchor) return;
-    if (shape.src) {
-      anchor.href = shape.src;
-      // Load our own preview; the reactive store drives the re-render via `data`.
-      void loadLinkPreview(shape.src);
-    }
-
-    const metadata =
-      (this.extra as LinkPreviewState | null | undefined)?.metadata ?? null;
-    anchor.replaceChildren(this.buildImage(metadata), this.buildBody(shape, metadata));
-    this.fitToContent();
+  // Live tweet embed. The embed reports its natural height via `embed-resize`,
+  // which we forward to the host's height-fit so the shape grows to fit.
+  private buildTwitter() {
+    const wrap = document.createElement("div");
+    wrap.className = "canvas-twitter-shape";
+    dragOnPointerDown(wrap, (event) =>
+      this.emit(CANVAS_ELEMENT_EVENTS.requestDrag, event),
+    );
+    wrap.addEventListener("wheel", (event) => event.stopPropagation());
+    wrap.addEventListener("embed-resize", (event) => {
+      const id = this.shapeData?.id;
+      if (id) this.services?.fitHeight(id, (event as CustomEvent).detail);
+    });
+    const embed = document.createElement("canvas-twitter-embed") as HTMLElement & {
+      value: string;
+    };
+    wrap.appendChild(embed);
+    this.appendChild(wrap);
+    this.embed = embed;
   }
 
   // Sum of the card's stacked children — the true content height, independent of
