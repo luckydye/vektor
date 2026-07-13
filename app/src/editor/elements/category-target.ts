@@ -95,18 +95,21 @@ customElements.define(
       if (!e.dataTransfer) return;
 
       const structured = e.dataTransfer.getData(DOCUMENT_LINK_MIME);
-      let address: unknown = null;
+      let payload: { address?: unknown; documentId?: unknown } | null = null;
       try {
-        address = structured.trim()
-          ? (JSON.parse(structured) as { address?: unknown }).address
+        payload = structured.trim()
+          ? (JSON.parse(structured) as { address?: unknown; documentId?: unknown })
           : null;
       } catch {
         return;
       }
 
       const parsedAddress =
-        typeof address === "string" ? parseVektorDocumentAddress(address) : null;
-      const draggedDocumentId = parsedAddress?.documentId;
+        typeof payload?.address === "string"
+          ? parseVektorDocumentAddress(payload.address)
+          : null;
+      const draggedDocumentId =
+        typeof payload?.documentId === "string" ? payload.documentId : null;
       const targetCategoryId = this.getAttribute("data-category-id");
       const targetSpaceId = this.getAttribute("data-space-id");
 
