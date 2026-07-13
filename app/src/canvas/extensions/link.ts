@@ -63,6 +63,7 @@ function hideOnError(img: HTMLImageElement) {
 // auto-size observer fits the shape height to the loaded content.
 class CanvasLinkElement extends CanvasElementBase {
   private anchor: HTMLAnchorElement | null = null;
+  private sizeObserver: ResizeObserver | null = null;
 
   protected mount() {
     const anchor = document.createElement("a");
@@ -86,6 +87,14 @@ class CanvasLinkElement extends CanvasElementBase {
     );
     this.appendChild(anchor);
     this.anchor = anchor;
+
+    // Link cards fit their height to the preview content (image keeps a 4/3
+    // ratio, so content height depends on card width). Observe the card box for
+    // width-driven reflow; update() also re-measures when preview data arrives.
+    if (typeof ResizeObserver !== "undefined") {
+      this.sizeObserver = new ResizeObserver(() => this.fitToContent());
+      this.sizeObserver.observe(anchor);
+    }
   }
 
   protected update() {
@@ -101,6 +110,20 @@ class CanvasLinkElement extends CanvasElementBase {
     const metadata =
       (this.extra as LinkPreviewState | null | undefined)?.metadata ?? null;
     anchor.replaceChildren(this.buildImage(metadata), this.buildBody(shape, metadata));
+    this.fitToContent();
+  }
+
+  // Sum of the card's stacked children — the true content height, independent of
+  // the (possibly clipping) shape box, so the shape can shrink as well as grow.
+  private fitToContent() {
+    const id = this.shapeData?.id;
+    const anchor = this.anchor;
+    if (!id || !anchor) return;
+    let total = 0;
+    for (const child of Array.from(anchor.children)) {
+      total += (child as HTMLElement).offsetHeight;
+    }
+    this.services?.fitHeight(id, total);
   }
 
   private buildImage(metadata: LinkMetadata | null): DocumentFragment {

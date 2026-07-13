@@ -778,14 +778,13 @@ const selectedTransformShape = computed(() => {
   return getCanvasElementExtension(shape.type)?.transform.rotate ? shape : null;
 });
 
-const selectedResizableSection = computed(() => {
+// Types that resize but don't rotate (section, embedded document) get a lone
+// resize handle — derived from transform metadata, not a type list.
+const selectedResizeOnlyShape = computed(() => {
   const shape = selectedShape.value;
-  return shape?.type === "section" && canMoveShape(shape) ? shape : null;
-});
-
-const selectedResizableDocument = computed(() => {
-  const shape = selectedShape.value;
-  return shape?.type === "document" && canMoveShape(shape) ? shape : null;
+  if (!shape || !canMoveShape(shape)) return null;
+  const transform = getCanvasElementExtension(shape.type)?.transform;
+  return transform && transform.resize !== "none" && !transform.rotate ? shape : null;
 });
 
 function transformControlPositions(shape: CanvasShape) {
@@ -911,6 +910,22 @@ const hostContext: CanvasElementContext = {
     const toolbar = canvasToolbarRef.value;
     if (toolbar) toolbar.editor = editor;
   },
+  // Text elements measure their intrinsic content and report it here; the host
+  // caches it (clamped to the type minimum) as the shape's geometry — never
+  // persisted, only used to size selection/transform overlays and hit-testing.
+  setMeasuredSize: (id, size) => {
+    if (!yShapes.has(id)) return;
+    const minSize = minSizeForShape("text");
+    const width = Math.max(minSize.width, size.width);
+    const height = Math.max(minSize.height, size.height);
+    const current = textShapeSizes.value.get(id);
+    if (current?.width === width && current?.height === height) return;
+    const next = new Map(textShapeSizes.value);
+    next.set(id, { width, height });
+    textShapeSizes.value = next;
+    renderSelections();
+  },
+  fitHeight: (id, contentHeight) => fitLinkShapeHeight(id, contentHeight),
 };
 
 // Non-GIF images and sections render on canvas layers. All other shapes stay in
@@ -1148,195 +1163,6 @@ function strokeTransformControlPositions(stroke: CanvasStroke) {
   };
 }
 
-// Text shapes lay themselves out from their content. Width/height are local
-// measured bounds for canvas geometry, not persisted shape data.
-let textShapeObserver: ResizeObserver | null = null;
-const observedTextShapes = new Map<Element, string>();
-
-type RichTextEditorWithElement = HTMLElement & { el?: HTMLElement | null };
-
-function cssPixels(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function borderBoxExtra(element: HTMLElement) {
-  const style = getComputedStyle(element);
-  return {
-    width: cssPixels(style.borderLeftWidth) + cssPixels(style.borderRightWidth),
-    height: cssPixels(style.borderTopWidth) + cssPixels(style.borderBottomWidth),
-  };
-}
-
-function measureIntrinsicTextShapeSize(element: HTMLElement) {
-  const editorElement =
-    element.querySelector<RichTextEditorWithElement>("rich-text-editor");
-  const editorContent =
-    editorElement?.el ?? editorElement?.shadowRoot?.querySelector<HTMLElement>(".tiptap");
-  const shadowRoot = editorElement?.shadowRoot;
-  if (!editorContent || !shadowRoot) return null;
-
-  const clone = editorContent.cloneNode(true) as HTMLElement;
-  clone.removeAttribute("contenteditable");
-  clone.removeAttribute("tabindex");
-  Object.assign(clone.style, {
-    position: "fixed",
-    left: "-100000px",
-    top: "-100000px",
-    visibility: "hidden",
-    pointerEvents: "none",
-    width: "max-content",
-    minWidth: "0",
-    maxWidth: "none",
-    height: "auto",
-    whiteSpace: "pre-wrap",
-    wordBreak: "normal",
-    overflowWrap: "normal",
-  });
-
-  shadowRoot.append(clone);
-  const contentWidth = Math.max(clone.scrollWidth, clone.offsetWidth);
-  const contentHeight = Math.max(clone.scrollHeight, clone.offsetHeight);
-  clone.remove();
-
-  const extra = borderBoxExtra(element);
-  return {
-    width: Math.ceil(contentWidth + extra.width),
-    height: Math.ceil(contentHeight + extra.height),
-  };
-}
-
-function syncTextShapeSize(id: string, element: HTMLElement) {
-  if (!yShapes.has(id)) return;
-
-  const minSize = minSizeForShape("text");
-  const intrinsicSize = measureIntrinsicTextShapeSize(element);
-  const width = Math.max(
-    minSize.width,
-    intrinsicSize?.width ?? Math.ceil(element.offsetWidth),
-  );
-  const height = Math.max(
-    minSize.height,
-    intrinsicSize?.height ?? Math.ceil(element.offsetHeight),
-  );
-  const current = textShapeSizes.value.get(id);
-  if (current?.width === width && current?.height === height) {
-    return;
-  }
-
-  const next = new Map(textShapeSizes.value);
-  next.set(id, { width, height });
-  textShapeSizes.value = next;
-  renderSelections();
-}
-
-function observeTextShapeSize(element: HTMLElement, shapeId: string) {
-  if (observedTextShapes.get(element) === shapeId) return;
-  if (!textShapeObserver && typeof ResizeObserver !== "undefined") {
-    textShapeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const id = observedTextShapes.get(entry.target);
-        if (id) syncTextShapeSize(id, entry.target as HTMLElement);
-      }
-    });
-  }
-  observedTextShapes.set(element, shapeId);
-  textShapeObserver?.observe(element);
-}
-
-function syncTextShapeObservers() {
-  const viewport = viewportRef.value;
-  if (!viewport) return;
-
-  const currentElements = new Set<Element>();
-  for (const element of viewport.querySelectorAll<HTMLElement>(
-    ".canvas-shape.text[data-shape-id]",
-  )) {
-    const shapeId = element.dataset.shapeId;
-    if (!shapeId) continue;
-    currentElements.add(element);
-    observeTextShapeSize(element, shapeId);
-  }
-
-  for (const [element] of observedTextShapes) {
-    if (!currentElements.has(element) || !element.isConnected) {
-      const shapeId = observedTextShapes.get(element);
-      textShapeObserver?.unobserve(element);
-      observedTextShapes.delete(element);
-      if (shapeId) {
-        const next = new Map(textShapeSizes.value);
-        next.delete(shapeId);
-        textShapeSizes.value = next;
-      }
-    }
-  }
-}
-
-// Link preview cards (image + title + description) have a content height that
-// depends on the card width (the image keeps a 4/3 ratio) rather than a fixed
-// box, so a fixed shape height clips the body. We observe each card and fit the
-// shape height to its content — mirroring the text-shape auto-size machinery.
-let linkShapeObserver: ResizeObserver | null = null;
-const observedLinkShapes = new Map<Element, string>();
-
-/** Sum of the card's stacked children — the true content height, independent
- *  of the (possibly clipping) shape box, so the shape can shrink as well as grow. */
-function linkCardContentHeight(element: HTMLElement): number {
-  let total = 0;
-  for (const child of Array.from(element.children)) {
-    total += (child as HTMLElement).offsetHeight;
-  }
-  return total;
-}
-
-function observeLinkShapeSize(element: HTMLElement, shapeId: string) {
-  if (observedLinkShapes.get(element) === shapeId) return;
-  if (!linkShapeObserver && typeof ResizeObserver !== "undefined") {
-    linkShapeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const id = observedLinkShapes.get(entry.target);
-        if (id)
-          fitLinkShapeHeight(id, linkCardContentHeight(entry.target as HTMLElement));
-      }
-    });
-  }
-  observedLinkShapes.set(element, shapeId);
-  linkShapeObserver?.observe(element);
-}
-
-function syncLinkShapeObservers() {
-  const viewport = viewportRef.value;
-  if (!viewport) return;
-
-  const currentElements = new Set<Element>();
-  for (const element of viewport.querySelectorAll<HTMLElement>(
-    ".canvas-shape-link[data-link-shape-id]",
-  )) {
-    const shapeId = element.dataset.linkShapeId;
-    if (!shapeId) continue;
-    currentElements.add(element);
-    observeLinkShapeSize(element, shapeId);
-  }
-
-  for (const [element] of observedLinkShapes) {
-    if (!currentElements.has(element) || !element.isConnected) {
-      linkShapeObserver?.unobserve(element);
-      observedLinkShapes.delete(element);
-    }
-  }
-}
-
-/** Re-measure every observed link card. The ResizeObserver only fires on the
- *  card's own box, not on content changes, so this is triggered when preview
- *  metadata loads (image/title appear) to grow cards to their real height. */
-function refitAllLinkShapes() {
-  for (const [element, id] of observedLinkShapes) {
-    if (element.isConnected) {
-      fitLinkShapeHeight(id, linkCardContentHeight(element as HTMLElement));
-    }
-  }
-}
-
 function isGifSrc(src: string): boolean {
   return /\.gif($|\?)/i.test(src);
 }
@@ -1423,6 +1249,22 @@ function syncShapesFromY() {
   if (removedInvalid) {
     if (isReady) scheduleSave();
     else savePrunedInvalidShapesWhenReady = true;
+  }
+
+  // Drop cached measured sizes for shapes that no longer exist (text elements
+  // report their intrinsic size via setMeasuredSize; the element can't clean up
+  // after itself once it's gone).
+  if (textShapeSizes.value.size > 0) {
+    const live = new Set(shapes.value.map((shape) => shape.id));
+    let changed = false;
+    const next = new Map(textShapeSizes.value);
+    for (const id of next.keys()) {
+      if (!live.has(id)) {
+        next.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) textShapeSizes.value = next;
   }
 }
 
@@ -3145,21 +2987,8 @@ function handlePointerUp(event: PointerEvent) {
       activeSnapGuides = [];
       renderInk();
     }
-    // Height fitting is suppressed during a manual resize; once it ends, snap a
-    // link card back to its content height for the new width.
-    const resizedShapeId = dragState.type === "resize" ? dragState.shapeId : null;
     dragState = null;
-    if (resizedShapeId) void nextTick(() => refitLinkShape(resizedShapeId));
   }
-}
-
-/** Re-measure a link card and fit its shape height (used after a manual resize,
- *  when the ResizeObserver is intentionally ignored). */
-function refitLinkShape(id: string) {
-  const element = viewportRef.value?.querySelector<HTMLElement>(
-    `.canvas-shape-link[data-link-shape-id="${id}"]`,
-  );
-  if (element) fitLinkShapeHeight(id, linkCardContentHeight(element));
 }
 
 function cancelTransformDrag() {
@@ -3745,8 +3574,6 @@ function handleKeydown(event: KeyboardEvent) {
 watch(
   shapes,
   () => {
-    void nextTick(syncTextShapeObservers);
-    void nextTick(syncLinkShapeObservers);
     renderSections();
     renderImages();
     renderSelections();
@@ -3838,12 +3665,6 @@ watch(
   { immediate: true },
 );
 
-// Once a preview loads, its card renders the image/title; re-measure so the
-// shape grows to fit (the ResizeObserver alone won't catch content-only growth).
-watch(linkPreviews.previews, () => {
-  void nextTick(refitAllLinkShapes);
-});
-
 watch(
   () => [
     camera.value.centerX,
@@ -3889,8 +3710,6 @@ onMounted(() => {
   });
   syncShapesFromY();
   syncStrokesFromY();
-  void nextTick(syncTextShapeObservers);
-  void nextTick(syncLinkShapeObservers);
   resize();
 
   viewportControls = createViewportControls({
@@ -3953,10 +3772,6 @@ onMounted(() => {
 onUnmounted(() => {
   viewportControls?.dispose();
   resizeObserver?.disconnect();
-  textShapeObserver?.disconnect();
-  observedTextShapes.clear();
-  linkShapeObserver?.disconnect();
-  observedLinkShapes.clear();
   themeObserver?.disconnect();
   colorSchemeMedia?.removeEventListener("change", updateThemeMode);
   emit("presence", []);
@@ -4318,29 +4133,17 @@ onUnmounted(() => {
           @pointerdown.stop="startShapeResize(selectedTransformShape, $event)"
         ></button>
       </div>
-      <div v-if="selectedResizableDocument" class="canvas-transform-controls">
+      <div v-if="selectedResizeOnlyShape" class="canvas-transform-controls">
         <button
           type="button"
           class="canvas-transform-handle canvas-resize-handle"
-          :aria-label="`${t('Resize')} document`"
+          :aria-label="`${t('Resize')} ${selectedResizeOnlyShape.type}`"
           :style="{
-            left: `${transformControlPositions(selectedResizableDocument).resize.x}px`,
-            top: `${transformControlPositions(selectedResizableDocument).resize.y}px`,
-            transform: `translate(-50%, -50%) rotate(${selectedResizableDocument.rotation}deg)`,
+            left: `${transformControlPositions(selectedResizeOnlyShape).resize.x}px`,
+            top: `${transformControlPositions(selectedResizeOnlyShape).resize.y}px`,
+            transform: `translate(-50%, -50%) rotate(${selectedResizeOnlyShape.rotation}deg)`,
           }"
-          @pointerdown.stop="startShapeResize(selectedResizableDocument, $event)"
-        ></button>
-      </div>
-      <div v-if="selectedResizableSection" class="canvas-transform-controls">
-        <button
-          type="button"
-          class="canvas-transform-handle canvas-resize-handle"
-          :aria-label="`${t('Resize')} ${t('Section')}`"
-          :style="{
-            left: `${transformControlPositions(selectedResizableSection).resize.x}px`,
-            top: `${transformControlPositions(selectedResizableSection).resize.y}px`,
-          }"
-          @pointerdown.stop="startShapeResize(selectedResizableSection, $event)"
+          @pointerdown.stop="startShapeResize(selectedResizeOnlyShape, $event)"
         ></button>
       </div>
       <div

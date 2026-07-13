@@ -27,6 +27,12 @@ export interface CanvasElementContext {
   // Retarget the shared canvas formatting toolbar at a focused editor (or clear
   // it with null). The toolbar is a host-level singleton.
   setFormattingEditor: (editor: unknown | null) => void;
+
+  // --- auto-size (elements measure their own content and report it) ---
+  // Text: cache the intrinsic measured box (drives geometry; not persisted).
+  setMeasuredSize: (shapeId: string, size: { width: number; height: number }) => void;
+  // Link cards: fit the shape's height to the measured content height.
+  fitHeight: (shapeId: string, contentHeight: number) => void;
 }
 
 // `class extends HTMLElement` is evaluated at module load. HTMLElement is
@@ -61,6 +67,19 @@ export const CANVAS_ELEMENT_EVENTS = {
   requestDrag: "request-drag",
   documentClick: "document-click",
 } as const;
+
+function cssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function borderBoxExtra(element: HTMLElement) {
+  const style = getComputedStyle(element);
+  return {
+    width: cssPixels(style.borderLeftWidth) + cssPixels(style.borderRightWidth),
+    height: cssPixels(style.borderTopWidth) + cssPixels(style.borderBottomWidth),
+  };
+}
 
 /**
  * Base class for canvas element custom elements. Subclasses build their DOM
@@ -163,8 +182,12 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
   // Text has nothing anchoring it, so an empty one is removed on blur; notes
   // keep their box.
   protected abstract readonly removeWhenEmpty: boolean;
+  // Text auto-sizes to its content (measured, not persisted); notes have a
+  // fixed box.
+  protected abstract readonly autoSize: boolean;
 
   private editorEl: RichTextEditorElementApi | null = null;
+  private sizeObserver: ResizeObserver | null = null;
 
   protected mount() {
     if (this.showHandle) {
@@ -216,9 +239,61 @@ export abstract class CanvasRichTextElement extends CanvasElementBase {
     });
     this.appendChild(editor);
     this.editorEl = editor;
+
+    // Text measures its own content and reports it; the host caches it for
+    // geometry. The editor's box changes as content wraps, so observe it.
+    if (this.autoSize && typeof ResizeObserver !== "undefined") {
+      this.sizeObserver = new ResizeObserver(() => this.measure());
+      this.sizeObserver.observe(editor);
+    }
   }
 
   protected update() {
     if (this.editorEl && this.shapeData) this.editorEl.value = this.shapeData.text;
+    if (this.autoSize) this.measure();
+  }
+
+  // Intrinsic content size of the text, measured by cloning the editor's laid-
+  // out content at max-content width in its shadow root. Reported to the host,
+  // which caches it as the text shape's geometry (never persisted).
+  private measure() {
+    const id = this.shapeData?.id;
+    const editor = this.editorEl;
+    if (!id || !editor) return;
+    const content = editor.el ?? editor.shadowRoot?.querySelector<HTMLElement>(".tiptap");
+    const shadowRoot = editor.shadowRoot;
+    if (!content || !shadowRoot) return;
+
+    const clone = content.cloneNode(true) as HTMLElement;
+    clone.removeAttribute("contenteditable");
+    clone.removeAttribute("tabindex");
+    Object.assign(clone.style, {
+      position: "fixed",
+      left: "-100000px",
+      top: "-100000px",
+      visibility: "hidden",
+      pointerEvents: "none",
+      width: "max-content",
+      minWidth: "0",
+      maxWidth: "none",
+      height: "auto",
+      whiteSpace: "pre-wrap",
+      wordBreak: "normal",
+      overflowWrap: "normal",
+    });
+    shadowRoot.append(clone);
+    const width = Math.max(clone.scrollWidth, clone.offsetWidth);
+    const height = Math.max(clone.scrollHeight, clone.offsetHeight);
+    clone.remove();
+
+    // The positioned box is the wrapping .canvas-shape article (this element is
+    // display:contents), so its border adds to the shape's box.
+    const extra = this.parentElement
+      ? borderBoxExtra(this.parentElement)
+      : { width: 0, height: 0 };
+    this.services?.setMeasuredSize(id, {
+      width: Math.ceil(width + extra.width),
+      height: Math.ceil(height + extra.height),
+    });
   }
 }
