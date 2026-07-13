@@ -248,6 +248,10 @@ export interface CanvasElementExtension {
   // Custom-element tag for DOM surfaces (e.g. "canvas-note"). The host renders
   // one of these per shape and feeds it `.shape` / `.context`.
   tag?: string;
+  // Whether the host `<article>` wrapper paints `shape.color` as its background.
+  // Types that render their own full-bleed visual (image) set this false so the
+  // card color doesn't show through. Defaults to true.
+  articleBackground?: boolean;
   // Canvas-2d painter for canvas-surface types (sections). The host owns the
   // layer, ordering, and selection overlays.
   paint?: (

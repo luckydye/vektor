@@ -838,6 +838,27 @@ function elementDataForShape(shape: CanvasShape): unknown {
   return getCanvasElementExtension(shape.type)?.resolveData?.(shape, extHost) ?? null;
 }
 
+// Inline style for a shape's <article> wrapper, driven by extension metadata
+// rather than type-name checks. Font-resize types (text) auto-size to their
+// content, so they set a font-size variable instead of a fixed box; types that
+// paint their own visual (image) opt out of the card background.
+function articleStyle(shape: CanvasShape): Record<string, string> {
+  const extension = getCanvasElementExtension(shape.type);
+  const style: Record<string, string> = {
+    left: `${shape.x}px`,
+    top: `${shape.y}px`,
+    transform: `rotate(${shape.rotation}deg)`,
+  };
+  if (extension?.transform.resize === "font") {
+    style["--canvas-text-font-size"] = `${TEXT_BASE_FONT_PX * (shape.fontScale ?? 1)}px`;
+  } else {
+    style.width = `${shape.width}px`;
+    style.height = `${shape.height}px`;
+  }
+  if (extension?.articleBackground !== false) style.background = shape.color;
+  return style;
+}
+
 // Sets the host-owned inline-edit slot; the document extension calls this from
 // its onActivate after the can-edit checks.
 function beginEdit(session: CanvasEditSession) {
@@ -4001,15 +4022,7 @@ onUnmounted(() => {
             shape.type,
             { selected: selectedShapeIds.has(shape.id) },
           ]"
-          :style="{
-            left: `${shape.x}px`,
-            top: `${shape.y}px`,
-            ...(shape.type === 'text'
-              ? { '--canvas-text-font-size': `${TEXT_BASE_FONT_PX * (shape.fontScale ?? 1)}px` }
-              : { width: `${shape.width}px`, height: `${shape.height}px` }),
-            transform: `rotate(${shape.rotation}deg)`,
-            ...(shape.type === 'image' ? {} : { background: shape.color }),
-          }"
+          :style="articleStyle(shape)"
           :data-shape-id="shape.id"
         >
           <!-- Extension-owned custom element (note, text, …). Falls back to the

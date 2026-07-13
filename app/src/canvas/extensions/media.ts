@@ -32,6 +32,8 @@ export const imageElement: CanvasElementExtension = {
   surface: "dom+canvas",
   rendersOnCanvas: (shape) => !isGifSrc(shape.src ?? ""),
   tag: "canvas-image",
+  // A GIF fills its article; the card color would only show at the edges.
+  articleBackground: false,
   transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
   // Canvas-painted (non-GIF) images hit-test against their rotated box.
   hitTest: (shape, world) => (pointInRotatedShape(world, shape) ? "body" : null),
