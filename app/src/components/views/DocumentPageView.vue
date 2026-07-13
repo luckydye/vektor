@@ -170,6 +170,26 @@ const title = computed(() =>
     : doc.value?.properties?.title || "Untitled Document",
 );
 
+// Header image + its orientation, read from the server-rendered properties so
+// the layout is decided during SSR (no client-side image measurement needed).
+const headerImageSrc = computed(() =>
+  optionalPropertyValueToText(doc.value?.properties?.headerImage),
+);
+const headerImageAspectRatio = computed(() => {
+  const raw = optionalPropertyValueToText(doc.value?.properties?.headerImageAspect);
+  const ratio = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : null;
+});
+// A portrait header switches to a two-column layout (image beside the title).
+// Without a known aspect ratio we keep the existing full-width banner.
+const isPortraitHeader = computed(
+  () =>
+    !isDraft.value &&
+    !!headerImageSrc.value &&
+    headerImageAspectRatio.value !== null &&
+    headerImageAspectRatio.value < 1,
+);
+
 const defaultLayout = computed(() =>
   documentType.value === "document" ? "document" : "full",
 );
@@ -364,6 +384,64 @@ watchEffect(() => {
                 :initialCategory="null"
               />
             </inset-view>
+          </div>
+        </template>
+
+        <!-- Portrait header image: image column beside the title/properties -->
+        <template v-else-if="!isApp && isPortraitHeader">
+          <div class="px-xs md:px-xl mt-4 min-h-7">
+            <Breadcrumbs
+              v-if="!isDraft"
+              :category="docCategory"
+              :parents="parentBreadcrumbs"
+              :currentTitle="title"
+            />
+          </div>
+
+          <div
+            class="flex flex-col gap-4 md:flex-row md:items-start md:gap-6 px-xs md:px-xl print:px-0 mt-4 mb-4"
+          >
+            <HeaderImage
+              class="w-full max-w-[320px] shrink-0"
+              orientation="portrait"
+              :aspectRatio="headerImageAspectRatio"
+              :documentId="doc.id"
+              :initialSrc="headerImageSrc"
+            />
+
+            <div class="flex min-w-0 flex-1 flex-col">
+              <inset-view
+                :class="twMerge(
+                                'flex flex-row justify-between gap-6 py-3xs md:gap-4 print:px-0',
+                                'bg-neutral-10',
+                                'sticky top-0 z-10',
+                            )"
+              >
+                <div class="flex items-start justify-between w-full">
+                  <TitleEditor
+                    :initialEditMode="isDraft"
+                    :title="title"
+                    :documentId="doc?.id"
+                    :spaceId="currentSpace.id"
+                    :canEdit="userCanEdit"
+                  />
+                </div>
+                <DocumentActions :title="title" />
+              </inset-view>
+
+              <inset-view
+                id="document-properties"
+                :class="twMerge('block print:px-0 mb-l')"
+              >
+                <DocumentProperties
+                  :documentId="doc?.id"
+                  :documentType="documentType"
+                  :readonly="!userCanEdit"
+                  :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
+                  :initialCategory="null"
+                />
+              </inset-view>
+            </div>
           </div>
         </template>
 

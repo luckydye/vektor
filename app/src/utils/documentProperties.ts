@@ -7,6 +7,7 @@ export const HIDDEN_DOCUMENT_PROPERTY_KEYS = [
   "gridtype",
   "parentid",
   "headerimage",
+  "headerimageaspect",
 ];
 
 export function isHiddenDocumentPropertyKey(key: string): boolean {

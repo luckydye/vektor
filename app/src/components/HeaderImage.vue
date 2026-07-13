@@ -4,7 +4,25 @@ import { useDocument } from "#composeables/useDocument.ts";
 import { uploadingDocumentId } from "#composeables/useHeaderImage.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
 
-const props = defineProps<{ documentId: string; initialSrc?: string | null }>();
+const props = defineProps<{
+  documentId: string;
+  initialSrc?: string | null;
+  /**
+   * Layout orientation, derived from the image aspect ratio by the parent.
+   * "portrait" renders a narrow column sized by `aspectRatio`; "landscape"
+   * (default) keeps the full-width banner.
+   */
+  orientation?: "landscape" | "portrait";
+  /** Aspect ratio (width / height) used to size the portrait column. */
+  aspectRatio?: number | null;
+}>();
+
+const isPortrait = computed(() => props.orientation === "portrait");
+const aspectStyle = computed(() =>
+  isPortrait.value && props.aspectRatio && props.aspectRatio > 0
+    ? { aspectRatio: String(props.aspectRatio) }
+    : undefined,
+);
 
 const { document, isLoading } = useDocument(props.documentId);
 
@@ -30,11 +48,22 @@ const showSkeleton = computed(
 </script>
 
 <template>
-  <div v-if="src || showSkeleton" class="print:px-0 px-xs md:px-xl">
+  <div v-if="src || showSkeleton" :class="isPortrait ? '' : 'print:px-0 px-xs md:px-xl'">
     <div
       v-if="showSkeleton && !src"
-      class="w-full h-[240px] rounded-lg animate-pulse bg-neutral-50"
+      :class="isPortrait
+        ? 'w-full rounded-lg animate-pulse bg-neutral-50'
+        : 'w-full h-[240px] rounded-lg animate-pulse bg-neutral-50'"
+      :style="aspectStyle"
     />
-    <img v-if="src" :src="src" alt="" class="w-full h-[240px] object-cover rounded-lg">
+    <img
+      v-if="src"
+      :src="src"
+      alt=""
+      :class="isPortrait
+        ? 'w-full h-auto object-cover rounded-lg'
+        : 'w-full h-[240px] object-cover rounded-lg'"
+      :style="aspectStyle"
+    >
   </div>
 </template>
