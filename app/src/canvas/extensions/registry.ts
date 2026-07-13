@@ -131,3 +131,32 @@ export function serializeCanvasShape(shape: CanvasShape): CanvasSerializedShape 
 export function shapePersistsSize(type: CanvasShapeType): boolean {
   return getCanvasElementExtension(type)?.transform.resize !== "font";
 }
+
+/**
+ * Whether a shape rasterizes on the host's canvas image layer (still images).
+ * Canvas-only surfaces (sections) paint via their `paint` hook instead, so they
+ * are not part of this layer.
+ */
+export function shapeRastersOnCanvas(shape: CanvasShape): boolean {
+  const extension = getCanvasElementExtension(shape.type);
+  return (
+    extension?.surface === "dom+canvas" && (extension.rendersOnCanvas?.(shape) ?? true)
+  );
+}
+
+/**
+ * Whether a shape is rendered as a DOM element (an `<article>` custom element).
+ * Canvas-only surfaces never are; `dom+canvas` shapes are in the DOM unless the
+ * instance rasterizes on the canvas layer (a still image).
+ */
+export function shapeRendersInDom(shape: CanvasShape): boolean {
+  const extension = getCanvasElementExtension(shape.type);
+  if (!extension) return true;
+  if (extension.surface === "canvas") return false;
+  return !shapeRastersOnCanvas(shape);
+}
+
+/** The canvas-2d painter for a shape's type, if it paints on a canvas layer. */
+export function shapePaintHook(type: CanvasShapeType) {
+  return getCanvasElementExtension(type)?.paint;
+}

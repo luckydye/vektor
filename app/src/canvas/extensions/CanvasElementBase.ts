@@ -9,7 +9,6 @@ import type { CanvasShape } from "./types.ts";
 // CANVAS_ELEMENT_EVENTS), mirroring how <rich-text-editor> reports upward.
 export interface CanvasElementContext {
   t: (key: TranslationKey) => string;
-  isGifSrc: (src: string) => boolean;
   getDomainFromUrl: (url: string) => string;
   spaceId: string;
   // True when the pointer interaction that produced the current click was

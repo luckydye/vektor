@@ -14,15 +14,23 @@ import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 const mediaMinSize = { width: 80, height: 60 };
 
+// GIFs must animate, so they render as a live DOM <img>; every other image is a
+// still frame the host rasterizes on the canvas layer. Owned here (not the
+// host) since it is image-type knowledge.
+export function isGifSrc(src: string): boolean {
+  return /\.gif($|\?)/i.test(src);
+}
+
 export const imageElement: CanvasElementExtension = {
   type: "image",
   defaultText: "",
   defaultColor: "transparent",
   defaultSize: { width: 240, height: 150 },
   minSize: mediaMinSize,
-  // Static images paint their pixels on the canvas layer but keep a DOM hit
-  // target; GIFs render as a DOM <img> instead (see isGifSrc in the host).
+  // Still images paint their pixels on the canvas layer but keep a DOM hit
+  // target; GIFs render as a live DOM <img> instead.
   surface: "dom+canvas",
+  rendersOnCanvas: (shape) => !isGifSrc(shape.src ?? ""),
   tag: "canvas-image",
   transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
   // Canvas-painted (non-GIF) images hit-test against their rotated box.

@@ -240,6 +240,11 @@ export interface CanvasElementExtension {
 
   // --- rendering ---
   surface: CanvasElementSurface;
+  // For "dom+canvas" types, resolve per shape instance whether THIS shape
+  // rasterizes on the canvas image layer (true) or renders as a DOM element
+  // (false). Image uses it to keep GIFs animating in the DOM while still frames
+  // paint on the canvas layer. Static "dom"/"canvas" types omit it.
+  rendersOnCanvas?: (shape: CanvasShape) => boolean;
   // Custom-element tag for DOM surfaces (e.g. "canvas-note"). The host renders
   // one of these per shape and feeds it `.shape` / `.context`.
   tag?: string;

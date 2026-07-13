@@ -91,7 +91,10 @@ import {
   isValidCanvasShape,
   minSizeForShape,
   serializeCanvasShape,
+  shapePaintHook,
   shapePersistsSize,
+  shapeRastersOnCanvas,
+  shapeRendersInDom,
 } from "./extensions/registry.ts";
 import {
   activeShapeId,
@@ -718,16 +721,12 @@ const remoteCanvasSelections = computed(() =>
 );
 
 const remoteCanvasDomSelections = computed(() =>
-  remoteCanvasSelections.value.filter(
-    (selection) =>
-      selection.bounds.type !== "image" || isGifSrc(selection.bounds.src ?? ""),
-  ),
+  remoteCanvasSelections.value.filter((selection) => shapeRendersInDom(selection.bounds)),
 );
 
 const remoteCanvasImageSelections = computed(() =>
-  remoteCanvasSelections.value.filter(
-    (selection) =>
-      selection.bounds.type === "image" && !isGifSrc(selection.bounds.src ?? ""),
+  remoteCanvasSelections.value.filter((selection) =>
+    shapeRastersOnCanvas(selection.bounds),
   ),
 );
 
@@ -888,7 +887,6 @@ function onElementOpen(shape: CanvasShape, event: Event) {
 // `canvasContext` property. Per-shape reactive values flow through `shape`/`data`.
 const hostContext: CanvasElementContext = {
   t,
-  isGifSrc,
   getDomainFromUrl,
   spaceId: props.spaceId,
   wasDragged: () => dragMoved,
@@ -928,18 +926,14 @@ const hostContext: CanvasElementContext = {
   fitHeight: (id, contentHeight) => fitLinkShapeHeight(id, contentHeight),
 };
 
-// Non-GIF images and sections render on canvas layers. All other shapes stay in
+// Still images and sections render on canvas layers. All other shapes stay in
 // the DOM permanently; content-visibility:auto in CSS tells the browser to
 // skip painting off-screen articles without JS involvement.
-const domShapes = computed(() =>
-  shapes.value.filter(
-    (shape) =>
-      shape.type !== "section" && (shape.type !== "image" || isGifSrc(shape.src ?? "")),
-  ),
-);
+const domShapes = computed(() => shapes.value.filter(shapeRendersInDom));
 
-const sectionShapes = computed(() =>
-  shapes.value.filter((shape) => shape.type === "section"),
+// Shapes painted via a canvas-2d `paint` hook (sections), drawn behind the DOM.
+const paintedShapes = computed(() =>
+  shapes.value.filter((shape) => shapePaintHook(shape.type)),
 );
 
 const editingSectionShape = computed(() => {
@@ -954,15 +948,12 @@ function sectionTitlePosition(shape: CanvasShape) {
   return worldToScreen(pointOnRotatedShape(shape, { x: 0, y: -screenGap }));
 }
 
-// Canvas-rendered image shapes within the current viewport. Used only by
+// Canvas-rasterized shapes within the current viewport. Used only by
 // renderImages() to avoid drawImage calls for off-screen images.
-const visibleImageShapes = computed(() => {
+const visibleRasterShapes = computed(() => {
   const vr = worldViewportBounds(camera.value, screen.value, FIT_REFERENCE, 400);
   return shapes.value.filter(
-    (shape) =>
-      shape.type === "image" &&
-      !isGifSrc(shape.src ?? "") &&
-      rectsIntersect(vr, shapeAabb(shape)),
+    (shape) => shapeRastersOnCanvas(shape) && rectsIntersect(vr, shapeAabb(shape)),
   );
 });
 
@@ -1161,10 +1152,6 @@ function strokeTransformControlPositions(stroke: CanvasStroke) {
       y: bounds.y + bounds.height + resizeOffset,
     }),
   };
-}
-
-function isGifSrc(src: string): boolean {
-  return /\.gif($|\?)/i.test(src);
 }
 
 function resolveMediaSrc(src: string): string {
@@ -1575,8 +1562,6 @@ function renderSections() {
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, screen.value.width, screen.value.height);
 
-  const paint = getCanvasElementExtension("section")?.paint;
-  if (!paint) return;
   const helpers: CanvasPaintHelpers = {
     scale: transform.value.scale,
     dx: transform.value.dx,
@@ -1587,8 +1572,8 @@ function renderSections() {
     sectionTitlePosition,
     sectionTitleSize,
   };
-  for (const shape of sectionShapes.value) {
-    paint(context, shape, helpers);
+  for (const shape of paintedShapes.value) {
+    shapePaintHook(shape.type)?.(context, shape, helpers);
   }
 }
 
@@ -1612,8 +1597,8 @@ function renderImages() {
   ctx.clearRect(0, 0, screen.value.width, screen.value.height);
 
   const t = transform.value;
-  for (const shape of visibleImageShapes.value) {
-    if (shape.type !== "image" || !shape.src || isGifSrc(shape.src)) continue;
+  for (const shape of visibleRasterShapes.value) {
+    if (!shape.src) continue;
     const sx = shape.x * t.scale + t.dx;
     const sy = shape.y * t.scale + t.dy;
     const sw = shape.width * t.scale;
@@ -2475,29 +2460,35 @@ const hitTestHelpers: CanvasHitTestHelpers = {
   sectionTitleSize: (shape) => sectionTitleSize(shape),
 };
 
-// Canvas-painted (non-GIF) images, topmost first, via the image extension's hitTest.
-function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | null {
-  const hit = getCanvasElementExtension("image")?.hitTest;
-  if (!hit) return null;
+// Canvas-rasterized shapes (still images), topmost first, via each shape's own
+// hitTest hook. DOM shapes hit-test through native events, so they are skipped.
+function hitTestRasterShape(worldPoint: { x: number; y: number }): CanvasShape | null {
   for (let i = shapes.value.length - 1; i >= 0; i--) {
     const shape = shapes.value[i];
-    if (shape.type !== "image" || isGifSrc(shape.src ?? "")) continue;
-    if (hit(shape, worldPoint, hitTestHelpers)) return shape;
+    if (!shapeRastersOnCanvas(shape)) continue;
+    if (
+      getCanvasElementExtension(shape.type)?.hitTest?.(shape, worldPoint, hitTestHelpers)
+    ) {
+      return shape;
+    }
   }
   return null;
 }
 
-// Sections, topmost first, via the section extension's hitTest. Returns which
-// region was hit (title = editable, border = grabbable; interior click-through).
+// Canvas-painted shapes (sections), topmost first, via each shape's own hitTest
+// hook. Returns which region was hit (title = editable, border = grabbable;
+// interior click-through).
 function hitTestSection(worldPoint: {
   x: number;
   y: number;
 }): { shape: CanvasShape; region: "title" | "border" } | null {
-  const hit = getCanvasElementExtension("section")?.hitTest;
-  if (!hit) return null;
-  for (let i = sectionShapes.value.length - 1; i >= 0; i--) {
-    const shape = sectionShapes.value[i];
-    const region = hit(shape, worldPoint, hitTestHelpers);
+  for (let i = paintedShapes.value.length - 1; i >= 0; i--) {
+    const shape = paintedShapes.value[i];
+    const region = getCanvasElementExtension(shape.type)?.hitTest?.(
+      shape,
+      worldPoint,
+      hitTestHelpers,
+    );
     if (region === "title" || region === "border") return { shape, region };
   }
   return null;
@@ -2563,7 +2554,7 @@ function handleViewportPointerDown(event: PointerEvent) {
     const additive = event.shiftKey;
     const worldPoint = screenToWorld(point);
 
-    const hitImage = hitTestImageShape(worldPoint);
+    const hitImage = hitTestRasterShape(worldPoint);
     if (hitImage) {
       if (hitImage.locked) {
         event.preventDefault();
@@ -2673,7 +2664,7 @@ function handleViewportDoubleClick(event: MouseEvent) {
     return;
   }
   if (
-    hitTestImageShape(worldPoint) ||
+    hitTestRasterShape(worldPoint) ||
     hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale)
   ) {
     return;
@@ -2785,7 +2776,7 @@ function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null
   }
 
   const worldPoint = screenToWorld(screenPoint(event));
-  const image = hitTestImageShape(worldPoint);
+  const image = hitTestRasterShape(worldPoint);
   if (image?.locked) return { type: "shape", id: image.id };
 
   const strokeId = hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale);
@@ -3060,7 +3051,7 @@ function selectContextMenuTarget(event: MouseEvent) {
   }
 
   const worldPoint = screenToWorld(screenPoint(event));
-  const image = hitTestImageShape(worldPoint);
+  const image = hitTestRasterShape(worldPoint);
   if (image) {
     if (image.locked) clearSelection();
     else if (!selectedShapeIds.value.has(image.id)) selectOnlyShape(image.id);
