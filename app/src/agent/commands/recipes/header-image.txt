@@ -1,0 +1,15 @@
+---
+title: Find and set a document header image
+keywords: header, image, cover, poster, artwork, upload, document
+---
+
+1. Read the target with `get_current_document` (current page) or `read_document` so the image search is based on the document's actual title and context.
+2. Find a suitable image. Prefer an authoritative or clearly identified source, and download the original image rather than a thumbnail when possible.
+3. Run `recipes upload`, then upload the local image:
+   upload poster.jpg
+4. Copy the `url` from the upload result into the document's `headerImage` property:
+   {"documentId":"<document-id>","properties":{"headerImage":"<uploaded-url>"}}
+   Use `update_document_properties` for this call. Do not PATCH an undocumented top-level `headerImage` field.
+5. Read the document again and verify that `properties.headerImage` is the uploaded URL.
+
+Do not set `headerImageAspectRatio` as a property; Vektor derives the rendered header aspect ratio from the uploaded image. Set `headerImage` to `null` to remove an existing header.
