@@ -5,16 +5,18 @@ import { type PartialToolCall, parseSSE } from "./utils.ts";
  * Providers that speak the OpenAI `/chat/completions` wire format. They share
  * a single streaming implementation and only differ by base URL.
  *
+ * - `openai`: https://api.openai.com — OpenAI's first-party API
  * - `openrouter`: https://openrouter.ai
  * - `opencode-zen`: https://opencode.ai/zen — the opencode Zen model gateway
  */
 export type OpenAICompatibleProvider = {
-  provider: "openrouter" | "opencode-zen";
+  provider: "openai" | "openrouter" | "opencode-zen";
   apiKey: string;
   model: string;
 };
 
 const CHAT_COMPLETIONS_URLS: Record<OpenAICompatibleProvider["provider"], string> = {
+  openai: "https://api.openai.com/v1/chat/completions",
   openrouter: "https://openrouter.ai/api/v1/chat/completions",
   "opencode-zen": "https://opencode.ai/zen/v1/chat/completions",
 };

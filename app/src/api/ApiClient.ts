@@ -2157,7 +2157,7 @@ export class ApiClient {
       spaceId: string,
       body:
         | {
-            provider: "anthropic" | "openrouter" | "opencode-zen";
+            provider: "anthropic" | "openai" | "openrouter" | "opencode-zen";
             model: string;
             apiKey: string;
           }

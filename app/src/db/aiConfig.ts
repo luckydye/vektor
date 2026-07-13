@@ -39,6 +39,7 @@ export async function getAIProvider(spaceId: string): Promise<AIProvider> {
 
   if (
     provider === "anthropic" ||
+    provider === "openai" ||
     provider === "openrouter" ||
     provider === "opencode-zen"
   ) {

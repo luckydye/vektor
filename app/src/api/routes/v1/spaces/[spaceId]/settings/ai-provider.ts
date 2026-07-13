@@ -55,12 +55,13 @@ export const PUT: ApiRouteHandler = (context) =>
       );
     } else if (
       provider === "anthropic" ||
+      provider === "openai" ||
       provider === "openrouter" ||
       provider === "opencode-zen"
     ) {
       if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
         throw badRequestResponse(
-          "apiKey is required for anthropic, openrouter and opencode-zen providers",
+          "apiKey is required for anthropic, openai, openrouter and opencode-zen providers",
         );
       }
       await setAIConfig(
@@ -70,7 +71,7 @@ export const PUT: ApiRouteHandler = (context) =>
       );
     } else {
       throw badRequestResponse(
-        `Unknown provider "${provider}". Valid values: anthropic, openrouter, opencode-zen, ollama`,
+        `Unknown provider "${provider}". Valid values: anthropic, openai, openrouter, opencode-zen, ollama`,
       );
     }
 
