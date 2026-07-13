@@ -23,6 +23,8 @@
 </template>
 
 <script setup lang="ts">
+import { play } from 'cuelume';
+
 defineProps<{
   modelValue: boolean;
   disabled?: boolean;
@@ -34,6 +36,7 @@ const emit = defineEmits<{
 }>();
 
 function handleChange(event: Event) {
+  play("toggle");
   emit("update:modelValue", (event.target as HTMLInputElement).checked);
 }
 </script>

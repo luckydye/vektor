@@ -41,6 +41,28 @@ function snapScreenLine(value: number, lineWidth: number) {
   return Math.round(value) + (lineWidth % 2 === 1 ? 0.5 : 0);
 }
 
+// Opacity for a level based on its on-screen cell spacing, fading it out over a
+// band as the spacing approaches the min/max cutoff instead of popping. Below
+// min (or above max) it is fully hidden; the fade band spans one threshold
+// width, so a level dissolves smoothly while zooming.
+function levelFadeAlpha(
+  screenSpacing: number,
+  minScreenSpacing?: number,
+  maxScreenSpacing?: number,
+): number {
+  let alpha = 1;
+  if (minScreenSpacing !== undefined) {
+    if (screenSpacing <= minScreenSpacing) return 0;
+    alpha = Math.min(alpha, (screenSpacing - minScreenSpacing) / minScreenSpacing);
+  }
+  if (maxScreenSpacing !== undefined) {
+    if (screenSpacing >= maxScreenSpacing) return 0;
+    // Fade over the top half of the visible range up to the cutoff.
+    alpha = Math.min(alpha, ((maxScreenSpacing - screenSpacing) / maxScreenSpacing) * 2);
+  }
+  return Math.max(0, Math.min(1, alpha));
+}
+
 export function drawWorldGrid(
   ctx: CanvasRenderingContext2D,
   transform: WorldTransform,
@@ -63,12 +85,12 @@ export function drawWorldGrid(
     if (level.size <= 0) continue;
 
     const screenSpacing = level.size * transform.scale;
-    if (level.minScreenSpacing !== undefined && screenSpacing < level.minScreenSpacing) {
-      continue;
-    }
-    if (level.maxScreenSpacing !== undefined && screenSpacing > level.maxScreenSpacing) {
-      continue;
-    }
+    const alpha = levelFadeAlpha(
+      screenSpacing,
+      level.minScreenSpacing,
+      level.maxScreenSpacing,
+    );
+    if (alpha <= 0) continue;
 
     const lineWidth = level.lineWidth ?? DEFAULT_GRID_LINE_WIDTH;
     const startX = Math.floor(bounds.minX / level.size) * level.size;
@@ -88,6 +110,7 @@ export function drawWorldGrid(
       ctx.lineTo(screen.width, sy);
     }
 
+    ctx.globalAlpha = alpha;
     ctx.strokeStyle = level.color ?? DEFAULT_GRID_COLOR;
     ctx.lineWidth = lineWidth;
     ctx.stroke();
@@ -171,6 +194,7 @@ function drawWorldDotsAsPaths(
   size: number,
   color: string,
   radius: number,
+  alpha = 1,
 ): void {
   const bounds = visibleWorldBounds(screen, transform);
   const startX = Math.floor(bounds.minX / size) * size;
@@ -179,6 +203,7 @@ function drawWorldDotsAsPaths(
   const endY = Math.ceil(bounds.maxY / size) * size;
 
   ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
   ctx.beginPath();
   for (let x = startX; x <= endX; x += size) {
@@ -205,12 +230,8 @@ export function drawWorldDots(
   if (size <= 0) return;
 
   const screenSpacing = size * transform.scale;
-  if (
-    options.minScreenSpacing !== undefined &&
-    screenSpacing < options.minScreenSpacing
-  ) {
-    return;
-  }
+  const alpha = levelFadeAlpha(screenSpacing, options.minScreenSpacing);
+  if (alpha <= 0) return;
 
   const radius = options.radius ?? DEFAULT_DOT_RADIUS;
   const color = options.color ?? DEFAULT_GRID_COLOR;
@@ -226,7 +247,7 @@ export function drawWorldDots(
   if (!pattern) {
     const created = ctx.createPattern(patternTile, "repeat");
     if (!created) {
-      drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius);
+      drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius, alpha);
       return;
     }
     pattern = created;
@@ -238,7 +259,7 @@ export function drawWorldDots(
   }
 
   if (typeof pattern.setTransform !== "function" || typeof DOMMatrix !== "function") {
-    drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius);
+    drawWorldDotsAsPaths(ctx, transform, screen, size, color, radius, alpha);
     return;
   }
 
@@ -251,6 +272,7 @@ export function drawWorldDots(
   );
 
   ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = pattern;
   ctx.fillRect(0, 0, screen.width, screen.height);
   ctx.restore();

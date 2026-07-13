@@ -4,6 +4,7 @@ import {
   nextTick,
   onMounted,
   onUnmounted,
+  reactive,
   ref,
   shallowRef,
   toRaw,
@@ -11,14 +12,29 @@ import {
 } from "vue";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
+import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
+import { useDocument } from "#composeables/useDocument.ts";
+import { canEdit } from "#composeables/usePermissions.ts";
+import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
+import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
-  createDocumentLinkController,
-  type DocumentLinkReference,
-  dragHasDocumentLink,
-  droppedDocumentReference as getDroppedDocumentReference,
-  previewSupportsInlineEditing,
-} from "#canvas/elements/documentLink.ts";
+  canvasFitViewIcon,
+  canvasSelectIcon,
+  canvasShapeIcon,
+  clipboardDocumentIcon,
+  copyIcon,
+  lockIcon,
+  pencilIcon,
+  redoArrowIcon,
+  scissorsIcon,
+  trashIcon,
+  undoArrowIcon,
+  unlockIcon,
+  uploadIcon,
+} from "~/src/assets/icons.ts";
 import {
+  type CanvasElementContext,
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
   cloneFreehandPoint,
@@ -34,40 +50,20 @@ import {
   startCanvasDrawingStroke,
   strokeStyleFromUnknown,
   toCanvasStroke,
-} from "#canvas/elements/drawing.ts";
-import { isFigmaClipboardHtml, pasteFigmaClipboard } from "#canvas/elements/figma.ts";
-import {
-  canvasFilesFromDataTransfer,
-  canvasFilesFromList,
-  createUploadedFileShape,
-  dragHasCanvasFiles,
-  isPdfFile,
-} from "#canvas/elements/files.ts";
-import { createLinkPreviewController, createLinkShape } from "#canvas/elements/link.ts";
-import {
-  createUploadedMediaShape,
-  isMediaElementType,
-  mediaFilesFromDataTransfer,
-  mediaFilesFromList,
-  uploadMediaFile,
-} from "#canvas/elements/media.ts";
-import { createNoteShape, NOTE_COLORS } from "#canvas/elements/note.ts";
-import {
-  defaultColorForShape,
-  defaultSizeForShape,
-  defaultTextForShape,
-  isCanvasShapeType,
-  isValidCanvasShape,
-  minSizeForShape,
-} from "#canvas/elements/registry.ts";
-import {
+  activeShapeId,
+  createCanvasExtensionManager,
   type CanvasShapeLibraryItem,
-  createShapeStroke,
-  getShapeLibraryItem,
   SHAPE_LIBRARY,
-} from "#canvas/elements/shape.ts";
-import { createTextShape, shouldRemoveTextShape } from "#canvas/elements/text.ts";
+  setActiveShapeId,
+} from "./extensions/registry.ts";
 import type {
+  CanvasEditSession,
+  CanvasElementExtension,
+  CanvasFrame,
+  CanvasHitTestHelpers,
+  CanvasInputKind,
+  CanvasPaintHelpers,
+  CanvasPoint,
   CanvasSerializedShape,
   CanvasShape,
   CanvasShapeType,
@@ -75,10 +71,11 @@ import type {
   CanvasStroke,
   CanvasStrokeSnapshot,
   CanvasTool,
-} from "#canvas/elements/types.ts";
+  CanvasToolContext,
+  CanvasToolExtension,
+} from "./extensions/types.ts";
 import {
   normalizeRotation,
-  pointInRotatedShape,
   pointOnRotatedShape,
   resizeRotatedShapeFromBottomRight,
   rotatedShapeBounds,
@@ -86,32 +83,7 @@ import {
   rotateVector,
   rotationFromPointer,
   snapRotation,
-} from "#canvas/geometry.ts";
-import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
-import { useDocument } from "#composeables/useDocument.ts";
-import { useDocuments } from "#composeables/useDocuments.ts";
-import { canEdit } from "#composeables/usePermissions.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { useUserProfile } from "#composeables/useUserProfile.ts";
-import type { CanvasPresenceState } from "#editor/collaboration.ts";
-import {
-  canvasFitViewIcon,
-  canvasNoteIcon,
-  canvasSectionIcon,
-  canvasSelectIcon,
-  canvasShapeIcon,
-  canvasTextIcon,
-  clipboardDocumentIcon,
-  copyIcon,
-  lockIcon,
-  pencilIcon,
-  redoArrowIcon,
-  scissorsIcon,
-  trashIcon,
-  undoArrowIcon,
-  unlockIcon,
-  uploadIcon,
-} from "~/src/assets/icons.ts";
+} from "./geometry.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
 import "@atrium-ui/elements/popover";
@@ -119,29 +91,13 @@ import { useToast } from "#composeables/useToast.ts";
 import {
   CANVAS_CLIPBOARD_MIME,
   type CanvasClipboard,
-  canvasClipboardFromDataTransfer,
   canvasClipboardToDocumentHtml,
   canvasClipboardToPlainText,
   createCanvasClipboard,
   documentClipboardToCanvasShapes,
-  parseCanvasClipboardHtml,
-  parseCanvasClipboardJson,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
-import {
-  createVektorDocumentAddress,
-  type ParsedVektorDocumentAddress,
-  parseVektorDocumentAddress,
-} from "#utils/documentAddress.ts";
-import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
-import {
-  filenameFromUrl,
-  IMAGE_RESIZE_TIERS,
-  resizeImageUrl,
-  transformImageUrl,
-} from "#utils/imageUrlTransformers.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
-import { mediaTypeForFile } from "#utils/uploadFiles.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   CANVAS_CURSOR_COLOR_STORAGE_KEY,
@@ -168,14 +124,14 @@ import {
   type WorldRect,
   worldViewportBounds,
 } from "#viewport/index.ts";
-import CanvasDocumentEditor from "./CanvasDocumentEditor.vue";
-import CanvasTwitterEmbed from "./CanvasTwitterEmbed.vue";
 
 const props = defineProps<{
   spaceId: string;
   documentId?: string;
   ydoc: Y.Doc;
   presenceProfiles?: CollaborationPresenceProfile<CanvasPresenceState>[];
+  extensions?: readonly CanvasElementExtension[];
+  tools?: readonly CanvasToolExtension[];
 }>();
 
 const emit = defineEmits<{
@@ -201,17 +157,16 @@ type DragState =
       minSize: { width: number; height: number };
       // Locked width/height ratio for media; undefined lets the axes move freely.
       aspect?: number;
-      // Text scales its font instead of a fixed box.
-      isText?: boolean;
-      initialFontScale?: number;
-      initial: Pick<CanvasShape, "x" | "y" | "width" | "height" | "rotation">;
+      resizeMode: "box" | "font";
+      initialScale?: number;
+      initial: CanvasFrame;
     }
   | {
       type: "rotate";
       pointerId: number;
       shapeId: string;
       center: { x: number; y: number };
-      initial: Pick<CanvasShape, "x" | "y" | "width" | "height" | "rotation">;
+      initial: CanvasFrame;
     }
   | {
       type: "stroke-resize";
@@ -249,7 +204,6 @@ type Rect = { x: number; y: number; width: number; height: number };
 type LockedCanvasElement = { type: "shape" | "stroke"; id: string };
 
 const FIT_REFERENCE: FitReference = { x: -1200, y: -900, width: 2400, height: 1800 };
-const SECTION_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"] as const;
 type ToolDef = {
   id: CanvasTool;
   label: TranslationKey;
@@ -257,89 +211,27 @@ type ToolDef = {
   icon: string;
 };
 
+const extensionManager = createCanvasExtensionManager({
+  elements: props.extensions,
+  tools: props.tools,
+});
+
+// Built-in engine tools plus element-contributed tools
+// collected from the registry, so adding an element type surfaces its tool
+// without editing the host.
 const CANVAS_TOOLS: ToolDef[] = [
-  {
-    id: "select",
-    label: "Select",
-    shortcut: "V",
-    icon: canvasSelectIcon,
-  },
-  {
-    id: "draw",
-    label: "Draw",
-    shortcut: "D",
-    icon: pencilIcon,
-  },
-  {
-    id: "note",
-    label: "Note",
-    shortcut: "N",
-    icon: canvasNoteIcon,
-  },
-  {
-    id: "text",
-    label: "Text",
-    shortcut: "T",
-    icon: canvasTextIcon,
-  },
-  {
-    id: "section",
-    label: "Section",
-    shortcut: "S",
-    icon: canvasSectionIcon,
-  },
+  { id: "select", label: "Select", shortcut: "V", icon: canvasSelectIcon },
+  { id: "draw", label: "Draw", shortcut: "D", icon: pencilIcon },
+  ...extensionManager.elementTools(),
 ];
 const viewportRef = ref<HTMLElement | null>(null);
 const gridRef = ref<HTMLCanvasElement | null>(null);
-const sectionsRef = ref<HTMLCanvasElement | null>(null);
+const paintedShapesRef = ref<HTMLCanvasElement | null>(null);
 const inkRef = ref<HTMLCanvasElement | null>(null);
-const imagesRef = ref<HTMLCanvasElement | null>(null);
+const rasterShapesRef = ref<HTMLCanvasElement | null>(null);
 const selectionRef = ref<HTMLCanvasElement | null>(null);
-const imageCache = new Map<string, HTMLImageElement | "loading" | "error">();
 const shapes = shallowRef<CanvasShape[]>([]);
 const strokes = shallowRef<CanvasStroke[]>([]);
-// Local-only placeholders shown on the canvas while a dropped/pasted file
-// uploads. They are never written to Yjs, so they are not persisted or shared
-// with other collaborators; the real shape replaces the placeholder once the
-// upload finishes.
-type UploadPlaceholder = {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  filename: string;
-  kind: "image" | "video" | "audio" | "file";
-};
-const uploadPlaceholders = ref<UploadPlaceholder[]>([]);
-
-function addUploadPlaceholder(
-  kind: UploadPlaceholder["kind"],
-  filename: string,
-  at: { x: number; y: number },
-): string {
-  const size = defaultSizeForShape(kind);
-  const id = `upload-${crypto.randomUUID()}`;
-  uploadPlaceholders.value = [
-    ...uploadPlaceholders.value,
-    {
-      id,
-      x: Math.round(at.x - size.width / 2),
-      y: Math.round(at.y - size.height / 2),
-      width: size.width,
-      height: size.height,
-      filename,
-      kind,
-    },
-  ];
-  return id;
-}
-
-function removeUploadPlaceholder(id: string) {
-  uploadPlaceholders.value = uploadPlaceholders.value.filter(
-    (placeholder) => placeholder.id !== id,
-  );
-}
 const selectedShapeIds = ref<Set<string>>(new Set());
 const selectedStrokeIds = ref<Set<string>>(new Set());
 // Locked elements are intentionally excluded from normal hit testing. Keep a
@@ -347,7 +239,7 @@ const selectedStrokeIds = ref<Set<string>>(new Set());
 const hoveredLockedElement = ref<LockedCanvasElement | null>(null);
 // Section chrome is painted on the canvas. This transient input only appears
 // while its title is actively being edited.
-const editingSectionTitleId = ref<string | null>(null);
+const editingChromeId = ref<string | null>(null);
 // Live screen-space rectangle while drag-selecting; null when not marqueeing.
 const marqueeRect = ref<Rect | null>(null);
 // Alignment guides shown while dragging shapes; empty when no edge/center of
@@ -363,20 +255,22 @@ const SNAP_PROXIMITY_PX = 320;
 // hand during panning and a resting cursor otherwise.
 const isPanning = ref(false);
 const activeTool = ref<CanvasTool>("select");
-// Library entry the shape tool places next; the toolbar popover changes it.
-const activeShapeId = ref<string>(SHAPE_LIBRARY[0].id);
 const shapePopoverRef = ref<(HTMLElement & { hide: () => void }) | null>(null);
 // Shared inline-formatting toolbar (<document-toolbar variant="canvas">),
 // retargeted to whichever text shape's editor is focused.
-type CanvasTextEditorEl = HTMLElement & { editorInstance?: unknown };
 type CanvasFormatToolbarEl = HTMLElement & {
   editor: unknown;
   dismiss: () => void;
   reposition: () => void;
 };
 const canvasToolbarRef = ref<CanvasFormatToolbarEl | null>(null);
-const noteColor = ref<string>(NOTE_COLORS[0]);
-const sectionColor = ref<string>(SECTION_COLORS[0]);
+// Active swatch per color-capable element type (used when creating new shapes),
+// seeded from each extension's palette. Recoloring a selected shape writes here
+// too. Data-driven from the registry — no per-type refs.
+const colorPalettes = extensionManager.colorPalettes();
+const activeColors = reactive<Record<string, string>>(
+  Object.fromEntries(colorPalettes.map((entry) => [entry.type, entry.palette[0]])),
+);
 const penColor = ref<string>(PEN_COLORS[0]);
 const cursorColor = ref<string>(readCanvasCursorColor());
 const drawStrokeMode = ref<DrawStrokeMode>("pen");
@@ -392,304 +286,39 @@ let localPointer: { x: number; y: number } | null = null;
 const camera = ref<ViewportCamera>({ centerX: 0, centerY: 0, zoom: 1 });
 const screen = ref<ScreenSize>({ width: 1, height: 1 });
 const { document: documentData, saveDocument } = useDocument(props.documentId, "canvas");
-// Used to resolve dropped/inserted same-space document ids to best-effort local
-// title/type metadata before the full preview loads.
-const { documents } = useDocuments();
-const { spaces, currentSpace } = useSpace();
+const { currentSpace } = useSpace();
 const currentUser = useUserProfile();
 const currentUserId = computed(() => currentUser.value?.id);
-const userCanEditDocuments = computed(() => canEdit(currentSpace.value?.userRole));
-// The one embedded document card currently in inline-edit mode. Only this
-// card mounts a collaborative editor; every other embed stays a static
-// preview so we never join Yjs/presence rooms for idle embeds.
-const editingDocumentShape = ref<{
-  shapeId: string;
-  documentId: string;
-  address: string;
-  toggleTaskIndex: number | null;
-} | null>(null);
-const embeddedDocumentEditor = shallowRef<InstanceType<
-  typeof CanvasDocumentEditor
-> | null>(null);
+const userCanEditCanvas = computed(() => canEdit(currentSpace.value?.userRole));
+// Singleton extension-owned editor session. The host only mounts the supplied
+// tag/props and invokes its finish callback.
+const activeEditSession = ref<CanvasEditSession | null>(null);
+const activeEditorElement = shallowRef<HTMLElement | null>(null);
 
 const ydoc = props.ydoc;
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
-const documentLinks = createDocumentLinkController({
-  documents,
-  currentOrigin:
-    typeof window === "undefined" ? "http://localhost" : window.location.origin,
-  currentSpaceId: props.spaceId,
-  fetchDocument: async (ref) => {
-    if (isRemoteDocumentAddress(ref.address)) {
-      return fetchRemoteDocumentByAddress(ref);
-    }
-    return api.document.get(ref.spaceId, ref.documentId);
-  },
-  insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
-  selectShape: (shapeId) => selectOnlyShape(shapeId),
-  afterInsert: () => {
-    activeTool.value = "select";
-    saveImmediately();
-  },
-});
-const linkPreviews = createLinkPreviewController();
+
+const currentOrigin =
+  typeof window === "undefined" ? "http://localhost" : window.location.origin;
 
 // Tracks only local edits (default trackedOrigins = {null}); remote/agent
 // updates arrive with origin "remote" and are excluded, so undo/redo only
 // reverts this user's own changes.
 const undoManager = new Y.UndoManager([yShapes, yStrokes]);
 
-function getDomainFromUrl(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
-function isRemoteDocumentUrl(url: string | undefined): url is string {
-  if (!url || typeof window === "undefined") return false;
-  try {
-    return new URL(url, window.location.origin).origin !== window.location.origin;
-  } catch {
-    return false;
-  }
-}
-
-function isRemoteDocumentShape(shape: CanvasShape): boolean {
-  return (
-    shape.type === "document" && isRemoteDocumentAddress(documentAddressForShape(shape))
-  );
-}
-
-function isRemoteDocumentAddress(address: string | undefined): address is string {
-  const origin = parseVektorDocumentAddress(address)?.origin;
-  return Boolean(
-    origin && typeof window !== "undefined" && origin !== window.location.origin,
-  );
-}
-
-function documentAddressForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shape.docAddress)?.address;
-}
-
-function legacyDocumentAddress(input: {
-  docAddress?: unknown;
-  docId?: unknown;
-  docSpaceId?: unknown;
-  src?: string;
-}): string | undefined {
-  if (typeof input.docAddress === "string") {
-    const parsed = parseVektorDocumentAddress(input.docAddress);
-    if (parsed) return parsed.address;
-  }
-  if (typeof input.docId !== "string" || typeof window === "undefined") return undefined;
-  const href = input.src;
-  let origin = window.location.origin;
-  if (href) {
-    try {
-      origin = new URL(href, window.location.origin).origin;
-    } catch {
-      origin = window.location.origin;
-    }
-  }
-  return createVektorDocumentAddress({
-    origin,
-    spaceId: typeof input.docSpaceId === "string" ? input.docSpaceId : props.spaceId,
-    documentId: input.docId,
-    href,
-  });
-}
-
-async function fetchRemoteDocumentByAddress(ref: ParsedVektorDocumentAddress) {
-  const response = await fetch(
-    `${ref.origin}/api/v1/spaces/${encodeURIComponent(ref.spaceId)}/documents/${encodeURIComponent(ref.documentId)}`,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch remote document: ${response.status}`);
-  }
-  const data = (await response.json()) as { document?: unknown };
-  const document = data.document as
-    | {
-        id?: unknown;
-        slug?: unknown;
-        properties?: unknown;
-        type?: unknown;
-        content?: unknown;
-      }
-    | undefined;
-  if (!document || typeof document.id !== "string") {
-    throw new Error("Invalid remote document response");
-  }
-  const properties =
-    document.properties && typeof document.properties === "object"
-      ? (document.properties as Record<string, string | string[]>)
-      : {};
-  return {
-    id: document.id,
-    properties,
-    type: typeof document.type === "string" ? document.type : "document",
-    content:
-      typeof document.content === "string"
-        ? sanitizeVektorDocumentPreviewHtml(document.content)
-        : "",
-  };
-}
-
-function documentUrlPartsFromUrl(
-  rawUrl: string,
-): { documentId: string; spaceId?: string; spaceSlug?: string; url: string } | null {
-  const trimmed = rawUrl.trim();
-  if (!trimmed) return null;
-
-  let url: URL;
-  try {
-    url = new URL(trimmed, window.location.origin);
-  } catch {
-    return null;
-  }
-
-  const pathParts = url.pathname.split("/").filter(Boolean);
-  if (pathParts.length < 2) return null;
-
-  let spaceId: string | undefined;
-  let spaceSlug: string | undefined;
-  let documentPath = "";
-
-  if (pathParts[0] === "doc" && pathParts[1]) {
-    spaceId = props.spaceId;
-    documentPath = pathParts.slice(1).join("/");
-  } else if (pathParts[1] === "doc" && pathParts[2]) {
-    spaceSlug = pathParts[0];
-    documentPath = pathParts.slice(2).join("/");
-  }
-
-  if ((!spaceId && !spaceSlug) || !documentPath) return null;
-  let documentId: string;
-  try {
-    documentId = decodeURIComponent(documentPath);
-  } catch {
-    return null;
-  }
-
-  return {
-    documentId,
-    ...(spaceId ? { spaceId } : {}),
-    ...(spaceSlug ? { spaceSlug } : {}),
-    url: url.href,
-  };
-}
-
-async function documentReferenceFromUrl(
-  rawUrl: string,
-): Promise<DocumentLinkReference | null> {
-  const parts = documentUrlPartsFromUrl(rawUrl);
-  if (!parts) return null;
-  if (parts.spaceId) {
-    return {
-      address: createVektorDocumentAddress({
-        origin: new URL(parts.url).origin,
-        spaceId: parts.spaceId,
-        documentId: parts.documentId,
-        href: parts.url,
-      }),
-    };
-  }
-
-  if (isRemoteDocumentUrl(parts.url)) return null;
-
-  const availableSpaces = spaces.value ?? (await api.spaces.get());
-  const space = availableSpaces.find((entry) => entry.slug === parts.spaceSlug);
-  if (!space) return null;
-
-  return {
-    address: createVektorDocumentAddress({
-      origin: window.location.origin,
-      spaceId: space.id,
-      documentId: parts.documentId,
-      href: parts.url,
-    }),
-  };
-}
-
-function insertLinkShape(url: string, at: { x: number; y: number }) {
-  const shape = createLinkShape(url, at);
+function insertNewShape(shape: CanvasShape) {
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
-  void linkPreviews.loadPreview(url);
   saveImmediately();
-}
-
-async function insertDocumentLinkFromReference(
-  ref: DocumentLinkReference,
-  at: { x: number; y: number },
-  options: { fallbackToLink?: boolean } = {},
-) {
-  try {
-    const parsed = parseVektorDocumentAddress(ref.address);
-    if (!parsed) throw new Error("Invalid document address");
-    const doc = isRemoteDocumentAddress(ref.address)
-      ? await fetchRemoteDocumentByAddress(parsed)
-      : await api.document.get(parsed.spaceId, parsed.documentId);
-    documentLinks.insertDocumentLink(
-      {
-        address: createVektorDocumentAddress({
-          origin: parsed.origin,
-          spaceId: parsed.spaceId,
-          documentId: doc.id,
-          href: parsed.href,
-        }),
-      },
-      at,
-      doc,
-    );
-  } catch (err) {
-    const href = parseVektorDocumentAddress(ref.address)?.href;
-    if (options.fallbackToLink && href) {
-      insertLinkShape(href, at);
-      return;
-    }
-    toast.error(err instanceof Error ? err.message : String(err));
-  }
-}
-
-async function insertDocumentLinkFromUrl(url: string, at: { x: number; y: number }) {
-  const ref = await documentReferenceFromUrl(url);
-  if (!ref) {
-    const metadata = await api.linkPreview.get(url).catch(() => null);
-    const remoteDocument = metadata?.vektorDocument;
-    if (metadata && remoteDocument) {
-      documentLinks.insertDocumentLink(
-        {
-          address:
-            remoteDocument.address ??
-            createVektorDocumentAddress({
-              origin: new URL(metadata.url || url).origin,
-              spaceId: remoteDocument.spaceId,
-              documentId: remoteDocument.documentId,
-              href: metadata.url || url,
-            }),
-        },
-        at,
-        {
-          properties: { title: metadata.title ?? remoteDocument.documentSlug },
-        },
-      );
-      return;
-    }
-    insertLinkShape(url, at);
-    return;
-  }
-  await insertDocumentLinkFromReference(ref, at, { fallbackToLink: true });
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saveStateTimer: ReturnType<typeof setTimeout> | null = null;
 let dragState: DragState | null = null;
-// True once a shape drag has actually moved the selection. Document-link cards
-// read this to tell a click (open the document) from a drag (just reposition).
+// True once a shape drag has actually moved the selection. Interactive
+// extensions use it to distinguish activation from repositioning.
 let dragMoved = false;
 let drawingSession: CanvasDrawingSession | null = null;
 let activeFreehandStroke: FreehandStroke | null = null;
@@ -704,7 +333,33 @@ let resizeObserver: ResizeObserver | null = null;
 let themeObserver: MutationObserver | null = null;
 let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
-const textShapeSizes = shallowRef(new Map<string, { width: number; height: number }>());
+const intrinsicShapeSizes = shallowRef(new Map<string, { width: number; height: number }>());
+
+const extensionRuntime = extensionManager.createRuntime({
+  spaceId: props.spaceId,
+  documentId: props.documentId,
+  currentOrigin,
+  persistShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
+  insertNewShape,
+  selectShape: selectOnlyShape,
+  selectShapes: (ids) => {
+    selectedShapeIds.value = new Set(ids);
+  },
+  setActiveTool: (tool) => {
+    activeTool.value = tool;
+  },
+  setBusy: (busy) => {
+    saveState.value = busy ? "saving" : "idle";
+    dispatchSaveStatus();
+  },
+  commitInsertion: saveImmediately,
+  canEdit: () => userCanEditCanvas.value,
+  wasDragged: () => dragMoved,
+  beginEdit,
+  reportError: (error) =>
+    toast.error(error instanceof Error ? error.message : String(error)),
+});
+const uploadPlaceholders = extensionRuntime.uploadPlaceholders;
 
 const remoteCanvasPresences = computed(() => props.presenceProfiles ?? []);
 
@@ -734,20 +389,6 @@ const remoteCanvasSelections = computed(() =>
       ];
     });
   }),
-);
-
-const remoteCanvasDomSelections = computed(() =>
-  remoteCanvasSelections.value.filter(
-    (selection) =>
-      selection.bounds.type !== "image" || isGifSrc(selection.bounds.src ?? ""),
-  ),
-);
-
-const remoteCanvasImageSelections = computed(() =>
-  remoteCanvasSelections.value.filter(
-    (selection) =>
-      selection.bounds.type === "image" && !isGifSrc(selection.bounds.src ?? ""),
-  ),
 );
 
 const remoteCanvasStrokeSelections = computed(() =>
@@ -787,27 +428,22 @@ const selectedShape = computed(() => {
   return shapesById.value.get(id) ?? null;
 });
 
-// Text, file, and link shapes intentionally keep their existing move-only
-// interaction. Notes, text, and media get full transform controls; sections
-// and embedded documents expose resize only.
-const selectedTransformShape = computed(() =>
-  selectedShape.value &&
-  canMoveShape(selectedShape.value) &&
-  (selectedShape.value.type === "note" ||
-    selectedShape.value.type === "text" ||
-    isMediaElementType(selectedShape.value.type))
-    ? selectedShape.value
-    : null,
-);
-
-const selectedResizableSection = computed(() => {
+// Transform affordances are declared per type on the extension. Types that can
+// rotate get the full rotate+resize controls (note/text/media); sections and
+// embedded documents declare resize without rotate, so they expose resize only.
+// Everything else stays move-only.
+const selectedTransformShape = computed(() => {
   const shape = selectedShape.value;
-  return shape?.type === "section" && canMoveShape(shape) ? shape : null;
+  if (!shape || !canMoveShape(shape)) return null;
+  return extensionManager.get(shape.type).behavior.transform.rotate ? shape : null;
 });
 
-const selectedResizableDocument = computed(() => {
+// Types that resize but don't rotate get a lone resize handle.
+const selectedResizeOnlyShape = computed(() => {
   const shape = selectedShape.value;
-  return shape?.type === "document" && canMoveShape(shape) ? shape : null;
+  if (!shape || !canMoveShape(shape)) return null;
+  const transform = extensionManager.get(shape.type).behavior.transform;
+  return transform && transform.resize !== "none" && !transform.rotate ? shape : null;
 });
 
 function transformControlPositions(shape: CanvasShape) {
@@ -830,42 +466,165 @@ function transformControlPositions(shape: CanvasShape) {
   };
 }
 
-// Non-GIF images and sections render on canvas layers. All other shapes stay in
-// the DOM permanently; content-visibility:auto in CSS tells the browser to
-// skip painting off-screen articles without JS involvement.
-const domShapes = computed(() =>
-  shapes.value.filter(
-    (shape) =>
-      shape.type !== "section" &&
-      (shape.type !== "image" || isGifSrc(shape.src ?? "")),
-  ),
-);
-
-const sectionShapes = computed(() =>
-  shapes.value.filter((shape) => shape.type === "section"),
-);
-
-const editingSectionShape = computed(() => {
-  const id = editingSectionTitleId.value;
-  if (!id) return null;
-  const shape = shapesById.value.get(id);
-  return shape?.type === "section" ? shape : null;
-});
-
-function sectionTitlePosition(shape: CanvasShape) {
-  const screenGap = 32 / transform.value.scale;
-  return worldToScreen(pointOnRotatedShape(shape, { x: 0, y: -screenGap }));
+// Custom-element tag registered by an extension for its DOM body.
+function elementTagForShape(shape: CanvasShape): string | null {
+  const tag = extensionManager.get(shape.type).render.tag;
+  if (!tag || typeof customElements === "undefined" || !customElements.get(tag)) {
+    return null;
+  }
+  // While an extension edits inline, the host swaps in the editor supplied by
+  // that extension's active edit session.
+  if (activeEditSession.value?.shapeId === shape.id) {
+    return null;
+  }
+  return tag;
 }
 
-// Canvas-rendered image shapes within the current viewport. Used only by
-// renderImages() to avoid drawImage calls for off-screen images.
-const visibleImageShapes = computed(() => {
+// Per-type reactive view model handed to an element via its `data` property.
+// The extension resolves it from the host's controllers; the host stays generic.
+function elementDataForShape(shape: CanvasShape): unknown {
+  return extensionManager.get(shape.type).events?.data?.(shape, extHost) ?? null;
+}
+
+// Inline style for a shape's <article> wrapper, driven by extension metadata
+// rather than type-name checks. Font-resize types (text) auto-size to their
+// content, so they set a font-size variable instead of a fixed box; types that
+// paint their own visual (image) opt out of the card background.
+function articleStyle(shape: CanvasShape): Record<string, string> {
+  const extension = extensionManager.get(shape.type);
+  const frame = shape.frame;
+  const style: Record<string, string> = {
+    left: `${frame.x}px`,
+    top: `${frame.y}px`,
+    transform: `rotate(${frame.rotation}deg)`,
+  };
+  if (extension.behavior.transform.resize !== "font") {
+    style.width = `${frame.width}px`;
+    style.height = `${frame.height}px`;
+  }
+  if (extension.render.article?.background !== false) style.background = shape.style.color;
+  return { ...style, ...extension.render.article?.style?.(shape) };
+}
+
+// Sets the host-owned singleton slot for an extension-supplied editor.
+function beginEdit(session: CanvasEditSession) {
+  if (activeEditSession.value?.shapeId === session.shapeId) return;
+  stopActiveEdit();
+  selectOnlyShape(session.shapeId);
+  activeEditSession.value = session;
+}
+
+const extHost = extensionRuntime.host;
+
+function onElementActivate(shape: CanvasShape, event: MouseEvent) {
+  extensionManager.get(shape.type).events?.activate?.(shape, extHost, event);
+}
+
+function onElementOpen(shape: CanvasShape, event: Event) {
+  extensionManager.get(shape.type).events?.open?.(shape, extHost, event);
+}
+
+// Stable helpers/data handed to every element custom element via its
+// `canvasContext` property. Per-shape reactive values flow through `shape`/`data`.
+const hostContext: CanvasElementContext = {
+  t,
+  spaceId: props.spaceId,
+  wasDragged: () => dragMoved,
+  updateData: (id, patch) => {
+    const shape = shapesById.value.get(id);
+    if (!shape || shape.locked) return;
+    updateShapeData(id, patch);
+  },
+  removeShape: (id) => {
+    if (shapesById.value.get(id)?.locked) return;
+    yShapes.delete(id);
+    if (selectedShapeIds.value.has(id)) {
+      selectedShapeIds.value.delete(id);
+      selectedShapeIds.value = new Set(selectedShapeIds.value);
+    }
+  },
+  selectShape: (id) => selectOnlyShape(id),
+  setFormattingEditor: (editor) => {
+    const toolbar = canvasToolbarRef.value;
+    if (toolbar) toolbar.editor = editor;
+  },
+  reportSize: (id, size) => {
+    const shape = shapesById.value.get(id);
+    if (!shape || !yShapes.has(id)) return;
+    const extension = extensionManager.get(shape.type);
+    const minimum = extension.defaults.minSize;
+    if (extension.behavior.transform.resize === "font") {
+      if (size.width === undefined || size.height === undefined) return;
+      const measured = {
+        width: Math.max(minimum.width, size.width),
+        height: Math.max(minimum.height, size.height),
+      };
+      const current = intrinsicShapeSizes.value.get(id);
+      if (current?.width === measured.width && current?.height === measured.height) return;
+      const next = new Map(intrinsicShapeSizes.value);
+      next.set(id, measured);
+      intrinsicShapeSizes.value = next;
+      renderSelections();
+      return;
+    }
+    if (!userCanEditCanvas.value || dragState?.shapeId === id || !canMoveShape(shape)) {
+      return;
+    }
+    const normalized = extension.behavior.measurement?.normalize
+      ? extension.behavior.measurement.normalize(shape, size)
+      : size;
+    if (!normalized) return;
+    const patch: Partial<Pick<CanvasFrame, "width" | "height">> = {};
+    if (normalized.width !== undefined) {
+      patch.width = Math.max(minimum.width, normalized.width);
+    }
+    if (normalized.height !== undefined) {
+      patch.height = Math.max(minimum.height, normalized.height);
+    }
+    if (patch.width !== undefined || patch.height !== undefined) updateShapeFrame(id, patch);
+  },
+};
+
+// DOM-surface elements stay mounted; content-visibility lets the browser skip
+// off-screen painting.
+const domShapes = computed(() => shapes.value.filter((shape) => extensionManager.rendersInDom(shape)));
+
+// Shapes painted via a canvas-2d extension hook, drawn behind the DOM.
+const paintedShapes = computed(() =>
+  shapes.value.filter((shape) => extensionManager.paint(shape.type)),
+);
+
+const editingChromeShape = computed(() => {
+  const id = editingChromeId.value;
+  if (!id) return null;
+  const shape = shapesById.value.get(id);
+  return shape && extensionManager.get(shape.type).render.chrome ? shape : null;
+});
+
+function editorTagForShape(shape: CanvasShape) {
+  return extensionManager.get(shape.type).render.chrome?.editorTag;
+}
+
+function elementChromePosition(shape: CanvasShape) {
+  return extensionManager.get(shape.type).render.chrome?.position(shape, {
+    scale: transform.value.scale,
+    worldToScreen,
+  }) ?? worldToScreen({ x: shape.frame.x, y: shape.frame.y });
+}
+
+function elementChromeSize(shape: CanvasShape) {
+  return extensionManager.get(shape.type).render.chrome?.size(shape, {
+    scale: transform.value.scale,
+    t,
+  }) ?? { width: 1, height: 1 };
+}
+
+// Canvas-rasterized shapes within the current viewport. Used only by
+// raster rendering to avoid paint calls for off-screen elements.
+const visibleRasterShapes = computed(() => {
   const vr = worldViewportBounds(camera.value, screen.value, FIT_REFERENCE, 400);
   return shapes.value.filter(
-    (shape) =>
-      shape.type === "image" &&
-      !isGifSrc(shape.src ?? "") &&
-      rectsIntersect(vr, shapeAabb(shape)),
+    (shape) => extensionManager.rasters(shape) && rectsIntersect(vr, shapeAabb(shape)),
   );
 });
 
@@ -1008,29 +767,39 @@ function toNumber(value: unknown, fallback: number) {
 
 const MIN_FONT_SCALE = 0.3;
 const MAX_FONT_SCALE = 10;
-const TEXT_BASE_FONT_PX = 15;
 
 function clampFontScale(value: number) {
   return Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, value));
 }
 
-function textShapeFallbackSize(shape: CanvasShape) {
-  const minSize = minSizeForShape("text");
-  const lines = (shape.text || defaultTextForShape("text")).split(/\n/);
-  const longestLineLength = Math.max(1, ...lines.map((line) => line.length));
-  return {
-    width: Math.max(minSize.width, Math.ceil(longestLineLength * 8.5 + 26)),
-    height: Math.max(minSize.height, Math.ceil(lines.length * 20.25 + 22)),
-  };
+function intrinsicShapeSize(shape: CanvasShape) {
+  return (
+    intrinsicShapeSizes.value.get(shape.id) ??
+    extensionManager.get(shape.type).behavior.measurement?.fallback?.(shape) ??
+    extensionManager.get(shape.type).defaults.size
+  );
 }
 
-function textShapeSize(shape: CanvasShape) {
-  return textShapeSizes.value.get(shape.id) ?? textShapeFallbackSize(shape);
+// Auto-sizing (font-resize) shapes report a measured box that the host caches;
+// their persisted width/height is a placeholder, so geometry uses the cache.
+// Every other type is sized by its stored box.
+function shapeBounds(shape: CanvasShape) {
+  const frame =
+    extensionManager.get(shape.type).behavior.transform.resize === "font"
+      ? { ...shape.frame, ...intrinsicShapeSize(shape) }
+      : shape.frame;
+  return { ...frame, id: shape.id, type: shape.type };
 }
 
-function shapeBounds(shape: CanvasShape): CanvasShape {
-  if (shape.type !== "text") return shape;
-  return { ...shape, ...textShapeSize(shape) };
+// Container extensions cascade drag/lock/marquee to their contents.
+function isContainerShape(shape: CanvasShape | undefined): boolean {
+  return Boolean(shape && extensionManager.get(shape.type).behavior.container);
+}
+
+// Whether the host should preventDefault a shape's pointer interaction. Types
+// whose whole body is a live editor (text) opt out so native focus/caret works.
+function suppressesNativePointer(shape: CanvasShape): boolean {
+  return !extensionManager.get(shape.type).behavior.editableBody;
 }
 
 function shapeAabb(shape: CanvasShape): Rect {
@@ -1066,240 +835,67 @@ function strokeTransformControlPositions(stroke: CanvasStroke) {
   };
 }
 
-// Text shapes lay themselves out from their content. Width/height are local
-// measured bounds for canvas geometry, not persisted shape data.
-let textShapeObserver: ResizeObserver | null = null;
-const observedTextShapes = new Map<Element, string>();
-
-type RichTextEditorWithElement = HTMLElement & { el?: HTMLElement | null };
-
-function cssPixels(value: string): number {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function borderBoxExtra(element: HTMLElement) {
-  const style = getComputedStyle(element);
-  return {
-    width: cssPixels(style.borderLeftWidth) + cssPixels(style.borderRightWidth),
-    height: cssPixels(style.borderTopWidth) + cssPixels(style.borderBottomWidth),
-  };
-}
-
-function measureIntrinsicTextShapeSize(element: HTMLElement) {
-  const editorElement =
-    element.querySelector<RichTextEditorWithElement>("rich-text-editor");
-  const editorContent =
-    editorElement?.el ?? editorElement?.shadowRoot?.querySelector<HTMLElement>(".tiptap");
-  const shadowRoot = editorElement?.shadowRoot;
-  if (!editorContent || !shadowRoot) return null;
-
-  const clone = editorContent.cloneNode(true) as HTMLElement;
-  clone.removeAttribute("contenteditable");
-  clone.removeAttribute("tabindex");
-  Object.assign(clone.style, {
-    position: "fixed",
-    left: "-100000px",
-    top: "-100000px",
-    visibility: "hidden",
-    pointerEvents: "none",
-    width: "max-content",
-    minWidth: "0",
-    maxWidth: "none",
-    height: "auto",
-    whiteSpace: "pre-wrap",
-    wordBreak: "normal",
-    overflowWrap: "normal",
-  });
-
-  shadowRoot.append(clone);
-  const contentWidth = Math.max(clone.scrollWidth, clone.offsetWidth);
-  const contentHeight = Math.max(clone.scrollHeight, clone.offsetHeight);
-  clone.remove();
-
-  const extra = borderBoxExtra(element);
-  return {
-    width: Math.ceil(contentWidth + extra.width),
-    height: Math.ceil(contentHeight + extra.height),
-  };
-}
-
-function syncTextShapeSize(id: string, element: HTMLElement) {
-  if (!yShapes.has(id)) return;
-
-  const minSize = minSizeForShape("text");
-  const intrinsicSize = measureIntrinsicTextShapeSize(element);
-  const width = Math.max(
-    minSize.width,
-    intrinsicSize?.width ?? Math.ceil(element.offsetWidth),
-  );
-  const height = Math.max(
-    minSize.height,
-    intrinsicSize?.height ?? Math.ceil(element.offsetHeight),
-  );
-  const current = textShapeSizes.value.get(id);
-  if (current?.width === width && current?.height === height) {
-    return;
-  }
-
-  const next = new Map(textShapeSizes.value);
-  next.set(id, { width, height });
-  textShapeSizes.value = next;
-  renderSelections();
-}
-
-function observeTextShapeSize(element: HTMLElement, shapeId: string) {
-  if (observedTextShapes.get(element) === shapeId) return;
-  if (!textShapeObserver && typeof ResizeObserver !== "undefined") {
-    textShapeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const id = observedTextShapes.get(entry.target);
-        if (id) syncTextShapeSize(id, entry.target as HTMLElement);
-      }
-    });
-  }
-  observedTextShapes.set(element, shapeId);
-  textShapeObserver?.observe(element);
-}
-
-function syncTextShapeObservers() {
-  const viewport = viewportRef.value;
-  if (!viewport) return;
-
-  const currentElements = new Set<Element>();
-  for (const element of viewport.querySelectorAll<HTMLElement>(
-    ".canvas-shape.text[data-shape-id]",
-  )) {
-    const shapeId = element.dataset.shapeId;
-    if (!shapeId) continue;
-    currentElements.add(element);
-    observeTextShapeSize(element, shapeId);
-  }
-
-  for (const [element] of observedTextShapes) {
-    if (!currentElements.has(element) || !element.isConnected) {
-      const shapeId = observedTextShapes.get(element);
-      textShapeObserver?.unobserve(element);
-      observedTextShapes.delete(element);
-      if (shapeId) {
-        const next = new Map(textShapeSizes.value);
-        next.delete(shapeId);
-        textShapeSizes.value = next;
-      }
-    }
-  }
-}
-
-// Link preview cards (image + title + description) have a content height that
-// depends on the card width (the image keeps a 4/3 ratio) rather than a fixed
-// box, so a fixed shape height clips the body. We observe each card and fit the
-// shape height to its content — mirroring the text-shape auto-size machinery.
-let linkShapeObserver: ResizeObserver | null = null;
-const observedLinkShapes = new Map<Element, string>();
-
-/** Sum of the card's stacked children — the true content height, independent
- *  of the (possibly clipping) shape box, so the shape can shrink as well as grow. */
-function linkCardContentHeight(element: HTMLElement): number {
-  let total = 0;
-  for (const child of Array.from(element.children)) {
-    total += (child as HTMLElement).offsetHeight;
-  }
-  return total;
-}
-
-function observeLinkShapeSize(element: HTMLElement, shapeId: string) {
-  if (observedLinkShapes.get(element) === shapeId) return;
-  if (!linkShapeObserver && typeof ResizeObserver !== "undefined") {
-    linkShapeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const id = observedLinkShapes.get(entry.target);
-        if (id) fitLinkShapeHeight(id, linkCardContentHeight(entry.target as HTMLElement));
-      }
-    });
-  }
-  observedLinkShapes.set(element, shapeId);
-  linkShapeObserver?.observe(element);
-}
-
-function syncLinkShapeObservers() {
-  const viewport = viewportRef.value;
-  if (!viewport) return;
-
-  const currentElements = new Set<Element>();
-  for (const element of viewport.querySelectorAll<HTMLElement>(
-    ".canvas-shape-link[data-link-shape-id]",
-  )) {
-    const shapeId = element.dataset.linkShapeId;
-    if (!shapeId) continue;
-    currentElements.add(element);
-    observeLinkShapeSize(element, shapeId);
-  }
-
-  for (const [element] of observedLinkShapes) {
-    if (!currentElements.has(element) || !element.isConnected) {
-      linkShapeObserver?.unobserve(element);
-      observedLinkShapes.delete(element);
-    }
-  }
-}
-
-/** Re-measure every observed link card. The ResizeObserver only fires on the
- *  card's own box, not on content changes, so this is triggered when preview
- *  metadata loads (image/title appear) to grow cards to their real height. */
-function refitAllLinkShapes() {
-  for (const [element, id] of observedLinkShapes) {
-    if (element.isConnected) {
-      fitLinkShapeHeight(id, linkCardContentHeight(element as HTMLElement));
-    }
-  }
-}
-
-function isGifSrc(src: string): boolean {
-  return /\.gif($|\?)/i.test(src);
-}
-
-function resolveMediaSrc(src: string): string {
-  return src.startsWith("/") ? `${window.location.origin}${src}` : src;
-}
-
 function toShape(
   id: string,
   source: Y.Map<unknown> | CanvasSerializedShape,
-): CanvasShape {
+): CanvasShape | null {
   const read = (key: string) => (source instanceof Y.Map ? source.get(key) : source[key]);
 
   const typeValue = read("type");
-  const type: CanvasShapeType = isCanvasShapeType(typeValue) ? typeValue : "note";
-  const defaultSize = defaultSizeForShape(type);
-  const minSize = minSizeForShape(type);
-  const src =
-    typeof read("src") === "string" ? resolveMediaSrc(String(read("src"))) : undefined;
-  return {
+  if (!extensionManager.has(typeValue)) return null;
+  const type = typeValue;
+  const extension = extensionManager.get(type);
+  const defaultSize = extension.defaults.size;
+  const minSize = extension.defaults.minSize;
+  const frameValue = read("frame");
+  const styleValue = read("style");
+  const dataValue = read("data");
+  const readNested = (value: unknown, key: string) => {
+    if (value instanceof Y.Map) return value.get(key);
+    if (value && typeof value === "object") {
+      return (value as Record<string, unknown>)[key];
+    }
+    return undefined;
+  };
+  const storedData =
+    dataValue instanceof Y.Map
+      ? Object.fromEntries(dataValue.entries())
+      : dataValue && typeof dataValue === "object"
+        ? { ...(dataValue as Record<string, unknown>) }
+        : {};
+  const rawData = { ...extension.defaults.data, ...storedData };
+  const base: CanvasShape = {
     id,
     type,
-    x: toNumber(read("x"), 0),
-    y: toNumber(read("y"), 0),
-    width: Math.max(minSize.width, toNumber(read("width"), defaultSize.width)),
-    height: Math.max(minSize.height, toNumber(read("height"), defaultSize.height)),
-    rotation: normalizeRotation(toNumber(read("rotation"), 0)),
-    fontScale: clampFontScale(toNumber(read("fontScale"), 1)),
-    text: typeof read("text") === "string" ? String(read("text")) : "",
-    color:
-      typeof read("color") === "string"
-        ? String(read("color"))
-        : defaultColorForShape(type),
-    src,
-    alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
-    docAddress: legacyDocumentAddress({
-      docAddress: read("docAddress"),
-      docId: read("docId"),
-      docSpaceId: read("docSpaceId"),
-      src,
-    }),
+    frame: {
+      x: toNumber(readNested(frameValue, "x"), 0),
+      y: toNumber(readNested(frameValue, "y"), 0),
+      width: Math.max(
+        minSize.width,
+        toNumber(readNested(frameValue, "width"), defaultSize.width),
+      ),
+      height: Math.max(
+        minSize.height,
+        toNumber(readNested(frameValue, "height"), defaultSize.height),
+      ),
+      rotation: normalizeRotation(toNumber(readNested(frameValue, "rotation"), 0)),
+    },
+    style: {
+      color:
+        typeof readNested(styleValue, "color") === "string"
+          ? String(readNested(styleValue, "color"))
+          : extension.defaults.style.color,
+    },
+    data:
+      extension.storage?.parseData?.(rawData, {
+        currentOrigin,
+        defaultSpaceId: props.spaceId,
+      }) ?? rawData,
     authorId: typeof read("authorId") === "string" ? String(read("authorId")) : undefined,
     locked: read("locked") === true || undefined,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
   };
+  return base;
 }
 
 function toStroke(
@@ -1313,7 +909,7 @@ function syncShapesFromY() {
   let removedInvalid = false;
   for (const [id, value] of yShapes.entries()) {
     const shape = toShape(id, value);
-    if (!isValidCanvasShape(shape)) {
+    if (!shape || !extensionManager.isValid(shape)) {
       yShapes.delete(id);
       removedInvalid = true;
     }
@@ -1321,17 +917,19 @@ function syncShapesFromY() {
 
   shapes.value = [...yShapes.entries()]
     .map(([id, value]) => toShape(id, value))
-    .filter(isValidCanvasShape)
-    .sort((a, b) => {
-      if (a.type === "section" && b.type !== "section") return -1;
-      if (a.type !== "section" && b.type === "section") return 1;
-      return a.updatedAt - b.updatedAt || a.id.localeCompare(b.id);
-    });
+    .filter((shape): shape is CanvasShape => Boolean(shape && extensionManager.isValid(shape)))
+    .sort(
+      (a, b) =>
+        extensionManager.zOrder(a.type) - extensionManager.zOrder(b.type) ||
+        a.updatedAt - b.updatedAt ||
+        a.id.localeCompare(b.id),
+    );
 
   let pruned = false;
   for (const id of selectedShapeIds.value) {
     const source = yShapes.get(id);
-    if (!source || toShape(id, source).locked) {
+    const shape = source ? toShape(id, source) : null;
+    if (!shape || shape.locked) {
       selectedShapeIds.value.delete(id);
       pruned = true;
     }
@@ -1340,6 +938,22 @@ function syncShapesFromY() {
   if (removedInvalid) {
     if (isReady) scheduleSave();
     else savePrunedInvalidShapesWhenReady = true;
+  }
+
+  // Drop cached measured sizes for shapes that no longer exist (text elements
+  // report their intrinsic size via reportSize; the element can't clean up
+  // after itself once it's gone).
+  if (intrinsicShapeSizes.value.size > 0) {
+    const live = new Set(shapes.value.map((shape) => shape.id));
+    let changed = false;
+    const next = new Map(intrinsicShapeSizes.value);
+    for (const id of next.keys()) {
+      if (!live.has(id)) {
+        next.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) intrinsicShapeSizes.value = next;
   }
 }
 
@@ -1362,19 +976,25 @@ function syncStrokesFromY() {
 function createShapeMap(shape: CanvasSerializedShape) {
   const map = new Y.Map<unknown>();
   map.set("type", shape.type);
-  map.set("x", shape.x);
-  map.set("y", shape.y);
-  if (shape.type !== "text") {
-    map.set("width", shape.width);
-    map.set("height", shape.height);
+  const frame = new Y.Map<unknown>();
+  frame.set("x", shape.frame.x);
+  frame.set("y", shape.frame.y);
+  if (extensionManager.persistsSize(shape.type)) {
+    frame.set("width", shape.frame.width);
+    frame.set("height", shape.frame.height);
   }
-  map.set("rotation", shape.rotation);
-  if (typeof shape.fontScale === "number") map.set("fontScale", shape.fontScale);
-  map.set("text", shape.text);
-  map.set("color", shape.color);
-  if (shape.src) map.set("src", resolveMediaSrc(shape.src));
-  if (shape.alt) map.set("alt", shape.alt);
-  if (shape.docAddress) map.set("docAddress", shape.docAddress);
+  frame.set("rotation", shape.frame.rotation);
+  map.set("frame", frame);
+  const style = new Y.Map<unknown>();
+  style.set("color", shape.style.color);
+  map.set("style", style);
+  const data = new Y.Map<unknown>();
+  const serializedData =
+    extensionManager.get(shape.type).storage?.serializeData?.(shape.data) ?? shape.data;
+  for (const [key, value] of Object.entries(serializedData)) {
+    if (value !== undefined) data.set(key, value);
+  }
+  map.set("data", data);
   if (shape.authorId) map.set("authorId", shape.authorId);
   if (shape.locked) map.set("locked", true);
   map.set("updatedAt", shape.updatedAt);
@@ -1382,9 +1002,7 @@ function createShapeMap(shape: CanvasSerializedShape) {
 }
 
 function serializeShape(shape: CanvasShape): CanvasSerializedShape {
-  if (shape.type !== "text") return { ...shape };
-  const { width: _width, height: _height, ...rest } = shape;
-  return rest;
+  return extensionManager.serialize(shape);
 }
 
 function serializeSnapshot(): string {
@@ -1542,7 +1160,7 @@ function worldToScreen(point: { x: number; y: number }) {
 let cssGridMajor = "rgba(15, 23, 42, 0.13)";
 let cssGridMinor = "rgba(15, 23, 42, 0.07)";
 let cssInkColor = FREEHAND_STYLE.color;
-let cssSectionTitleText = "#1e3a8a";
+let cssChromeText = "#1e3a8a";
 
 function canvasCssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -1554,7 +1172,7 @@ function refreshCssVars() {
   cssGridMajor = canvasCssVar("--canvas-grid-major", "rgba(15, 23, 42, 0.13)");
   cssGridMinor = canvasCssVar("--canvas-grid-minor", "rgba(15, 23, 42, 0.07)");
   cssInkColor = canvasCssVar("--canvas-ink-color", FREEHAND_STYLE.color);
-  cssSectionTitleText = canvasCssVar("--canvas-section-title-text", "#1e3a8a");
+  cssChromeText = canvasCssVar("--canvas-section-title-text", "#1e3a8a");
 }
 
 function resolveDarkMode() {
@@ -1573,7 +1191,7 @@ function updateThemeMode() {
 function renderThemeChanged() {
   refreshCssVars();
   renderGrid();
-  renderSections();
+  renderPaintedShapes();
   renderInk();
 }
 
@@ -1627,195 +1245,50 @@ function renderGrid() {
   });
 }
 
-function roundedRectPath(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-) {
-  const cornerRadius = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + cornerRadius, y);
-  context.arcTo(x + width, y, x + width, y + height, cornerRadius);
-  context.arcTo(x + width, y + height, x, y + height, cornerRadius);
-  context.arcTo(x, y + height, x, y, cornerRadius);
-  context.arcTo(x, y, x + width, y, cornerRadius);
-  context.closePath();
-}
-
-function sectionTitleSize(shape: CanvasShape) {
-  const maxWidth = Math.max(1, shape.width * transform.value.scale);
-  const title = shape.text || t("Section");
-  // The canvas title uses the same 13px font and 8px horizontal padding as
-  // the inline editor. This approximation is also used for its canvas hitbox.
-  return {
-    width: Math.min(maxWidth, Math.max(40, title.length * 8 + 16)),
-    height: 22,
-  };
-}
-
-function renderSectionTitle(context: CanvasRenderingContext2D, shape: CanvasShape) {
-  if (editingSectionTitleId.value === shape.id) return;
-
-  const position = sectionTitlePosition(shape);
-  const size = sectionTitleSize(shape);
-  const title = shape.text || t("Section");
-
-  context.save();
-  context.translate(position.x, position.y);
-  context.rotate((shape.rotation * Math.PI) / 180);
-  roundedRectPath(context, 0, 0, size.width, size.height, 6);
-  context.fillStyle = shape.color;
-  context.globalAlpha = 0.1;
-  context.fill();
-  context.strokeStyle = shape.color;
-  context.globalAlpha = 0.48;
-  context.lineWidth = 1;
-  context.stroke();
-
-  context.save();
-  roundedRectPath(context, 0, 0, size.width, size.height, 6);
-  context.clip();
-  context.globalAlpha = 1;
-  context.fillStyle = cssSectionTitleText;
-  context.font = "750 13px system-ui, sans-serif";
-  context.textBaseline = "middle";
-  context.fillText(title, 8, size.height / 2, Math.max(0, size.width - 16));
-  context.restore();
-  context.restore();
-}
-
 // Sections are intentionally a dedicated canvas layer between the backdrop
 // grid and all content layers. Unlike DOM shapes, they can never establish a
-// stacking context above cards, media, strokes, or controls.
-function renderSections() {
-  const canvas = sectionsRef.value;
+// stacking context above cards, media, strokes, or controls. The frame/title
+// drawing lives on the section extension's paint() hook; the host owns the
+// layer, ordering, and the geometry shared with hit-testing / the title editor.
+function renderPaintedShapes() {
+  const canvas = paintedShapesRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, screen.value.width, screen.value.height);
 
-  const scale = transform.value.scale;
-  for (const shape of sectionShapes.value) {
-    const width = shape.width * scale;
-    const height = shape.height * scale;
-    if (width <= 0 || height <= 0) continue;
-
-    const centerX = (shape.x + shape.width / 2) * scale + transform.value.dx;
-    const centerY = (shape.y + shape.height / 2) * scale + transform.value.dy;
-    context.save();
-    context.translate(centerX, centerY);
-    context.rotate((shape.rotation * Math.PI) / 180);
-    roundedRectPath(context, -width / 2, -height / 2, width, height, 10 * scale);
-    context.fillStyle = shape.color;
-    context.globalAlpha = 0.09;
-    context.fill();
-    context.strokeStyle = shape.color;
-    context.globalAlpha = 0.6;
-    context.lineWidth = 2 * scale;
-    context.stroke();
-    context.restore();
-
-    renderSectionTitle(context, shape);
+  const helpers: CanvasPaintHelpers = {
+    scale: transform.value.scale,
+    dx: transform.value.dx,
+    dy: transform.value.dy,
+    t,
+    chromeTextColor: cssChromeText,
+    isEditingChrome: (id) => editingChromeId.value === id,
+    chromePosition: elementChromePosition,
+    chromeSize: elementChromeSize,
+  };
+  for (const shape of paintedShapes.value) {
+    extensionManager.paint(shape.type)?.(context, shape, helpers);
   }
 }
 
-// Returns the highest-quality already-loaded image for `src` across all tiers,
-// used as a backdrop while the target tier is still decoding.
-function getCachedFallback(src: string): HTMLImageElement | null {
-  for (let i = IMAGE_RESIZE_TIERS.length - 1; i >= 0; i--) {
-    const cached = imageCache.get(resizeImageUrl(src, IMAGE_RESIZE_TIERS[i]));
-    if (cached instanceof HTMLImageElement) return cached;
-  }
-  const cached = imageCache.get(src);
-  return cached instanceof HTMLImageElement ? cached : null;
-}
-
-function renderImages() {
-  const canvas = imagesRef.value;
+function renderRasterShapes() {
+  const canvas = rasterShapesRef.value;
   const ctx = canvas?.getContext("2d");
   if (!canvas || !ctx) return;
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, screen.value.width, screen.value.height);
 
-  const t = transform.value;
-  for (const shape of visibleImageShapes.value) {
-    if (shape.type !== "image" || !shape.src || isGifSrc(shape.src)) continue;
-    const sx = shape.x * t.scale + t.dx;
-    const sy = shape.y * t.scale + t.dy;
-    const sw = shape.width * t.scale;
-    const sh = shape.height * t.scale;
-    if (sw <= 0 || sh <= 0) continue;
-
-    // Physical pixel width the image occupies on screen — used to pick the
-    // smallest resolution tier that still renders crisply.
-    const targetPx = Math.ceil(sw * dpr);
-    const tieredSrc = resizeImageUrl(shape.src, targetPx);
-
-    const cached = imageCache.get(tieredSrc);
-    if (!cached) {
-      imageCache.set(tieredSrc, "loading");
-      const img = new Image();
-      img.src = tieredSrc;
-      // decode() resolves after the image is fully decoded off the main thread,
-      // so drawImage() never has to block to decode inline.
-      img
-        .decode()
-        .then(() => {
-          imageCache.set(tieredSrc, img);
-          renderImages();
-        })
-        .catch(() => {
-          imageCache.set(tieredSrc, "error");
-          renderImages();
-        });
-    }
-
-    // While the correctly-sized version is still loading, paint any lower-res
-    // cached version so the image doesn't flash back to a placeholder on zoom.
-    const displayImg =
-      cached instanceof HTMLImageElement ? cached : getCachedFallback(shape.src);
-
-    const centerX = sx + sw / 2;
-    const centerY = sy + sh / 2;
-    const angle = (shape.rotation * Math.PI) / 180;
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(angle);
-    if (!displayImg) {
-      ctx.fillStyle = "rgba(128,128,128,0.15)";
-      ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
-    } else {
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(displayImg, -sw / 2, -sh / 2, sw, sh);
-    }
-    ctx.restore();
-
-    for (const selection of remoteCanvasImageSelections.value) {
-      if (selection.bounds.id !== shape.id) continue;
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(angle);
-      ctx.strokeStyle = selection.cursorColor;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-sw / 2 - 2, -sh / 2 - 2, sw + 4, sh + 4);
-      ctx.restore();
-    }
-
-    if (selectedShapeIds.value.has(shape.id)) {
-      ctx.save();
-      ctx.translate(centerX, centerY);
-      ctx.rotate(angle);
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-sw / 2 - 2, -sh / 2 - 2, sw + 4, sh + 4);
-      ctx.restore();
-    }
+  for (const shape of visibleRasterShapes.value) {
+    extensionManager.get(shape.type).render.paintRaster?.(ctx, shape, {
+      scale: transform.value.scale,
+      dx: transform.value.dx,
+      dy: transform.value.dy,
+      dpr,
+      invalidate: renderRasterShapes,
+    });
   }
 }
 
@@ -1873,7 +1346,7 @@ function renderSelections() {
       .map((id) => shapesById.value.get(id))
       .filter((s) => s != null)
       .map(shapeBounds),
-    remoteSelectedShapeBounds: remoteCanvasDomSelections.value.map((s) => ({
+    remoteSelectedShapeBounds: remoteCanvasSelections.value.map((s) => ({
       x: s.bounds.x,
       y: s.bounds.y,
       width: s.bounds.width,
@@ -1900,7 +1373,7 @@ function resize() {
     canvas.style.width = `${screen.value.width}px`;
     canvas.style.height = `${screen.value.height}px`;
   }
-  const sections = sectionsRef.value;
+  const sections = paintedShapesRef.value;
   if (sections) {
     sections.width = Math.round(screen.value.width * dpr);
     sections.height = Math.round(screen.value.height * dpr);
@@ -1914,7 +1387,7 @@ function resize() {
     ink.style.width = `${screen.value.width}px`;
     ink.style.height = `${screen.value.height}px`;
   }
-  const images = imagesRef.value;
+  const images = rasterShapesRef.value;
   if (images) {
     images.width = Math.round(screen.value.width * dpr);
     images.height = Math.round(screen.value.height * dpr);
@@ -1929,9 +1402,9 @@ function resize() {
     selection.style.height = `${screen.value.height}px`;
   }
   renderGrid();
-  renderSections();
+  renderPaintedShapes();
   renderInk();
-  renderImages();
+  renderRasterShapes();
 }
 
 function presenceState(): CanvasPresenceState {
@@ -1967,318 +1440,71 @@ function insertionPointFromEvent(event?: DragEvent | PointerEvent) {
   });
 }
 
-async function addMediaFile(file: File, at: { x: number; y: number }) {
-  saveState.value = "saving";
-  dispatchSaveStatus();
-
-  // The progress/success/error toast is driven by the upload manager (via
-  // createUploadedMediaShape); the canvas only owns the on-canvas placeholder.
-  const placeholderId = addUploadPlaceholder(
-    mediaTypeForFile(file) ?? "image",
-    file.name || "file",
-    at,
-  );
-  try {
-    const shape = await createUploadedMediaShape(file, at, {
-      spaceId: props.spaceId,
-      documentId: props.documentId,
-    });
-    removeUploadPlaceholder(placeholderId);
-    if (!shape) {
-      saveState.value = "idle";
-      dispatchSaveStatus();
-      return;
-    }
-    yShapes.set(shape.id, createShapeMap(shape));
-    selectOnlyShape(shape.id);
-    activeTool.value = "select";
-    saveState.value = "idle";
-    dispatchSaveStatus();
-  } catch (_err) {
-    removeUploadPlaceholder(placeholderId);
-    saveState.value = "idle";
-    dispatchSaveStatus();
-  }
+function setActiveEditorRef(instance: unknown) {
+  activeEditorElement.value = (instance as HTMLElement | null) ?? null;
 }
 
-function uploadCanvasMediaFile(file: File): Promise<string> {
-  return uploadMediaFile(file, {
-    spaceId: props.spaceId,
-    documentId: props.documentId,
-  });
+function stopActiveEdit() {
+  const session = activeEditSession.value;
+  if (!session) return;
+  session.finish?.(activeEditorElement.value);
+  activeEditSession.value = null;
+  activeEditorElement.value = null;
 }
 
-async function addCanvasFile(file: File, at: { x: number; y: number }) {
-  saveState.value = "saving";
-  dispatchSaveStatus();
+// Insertion/engine services the tool extensions (draw/shape/create) drive.
+const canvasToolContext: CanvasToolContext = {
+  penColor: () => penColor.value,
+  startFreehand: (event) => startFreehand(event),
+  insertStroke: (stroke) => yStrokes.set(stroke.id, createStrokeMap(stroke)),
+  selectStroke: (id) => selectStroke(id, false),
+  createElement: (type, at) => addShape(type, at),
+  setActiveTool: (tool) => {
+    activeTool.value = tool;
+  },
+};
 
-  const placeholderId = addUploadPlaceholder("file", file.name || "file", at);
-  try {
-    const shape = await createUploadedFileShape(file, at, {
-      spaceId: props.spaceId,
-      documentId: props.documentId,
-    });
-    removeUploadPlaceholder(placeholderId);
-    if (!shape) {
-      saveState.value = "idle";
-      dispatchSaveStatus();
-      return;
-    }
-    yShapes.set(shape.id, createShapeMap(shape));
-    selectOnlyShape(shape.id);
-    activeTool.value = "select";
-    saveState.value = "idle";
-    dispatchSaveStatus();
-  } catch (_err) {
-    removeUploadPlaceholder(placeholderId);
-    saveState.value = "idle";
-    dispatchSaveStatus();
-  }
-}
-
-async function addDroppedCanvasFiles(
-  media: File[],
-  files: File[],
-  at: { x: number; y: number },
-) {
-  let offset = 0;
-  for (const file of media) {
-    await addMediaFile(file, { x: at.x + offset, y: at.y + offset });
-    offset += 24;
-  }
-  for (const file of files) {
-    await addCanvasFile(file, { x: at.x + offset, y: at.y + offset });
-    offset += 24;
-  }
-}
-
-function onDocumentShapeOpen(shape: CanvasShape, event: Event) {
-  event.preventDefault();
-  if (dragMoved) return;
-  const requestedDocumentId =
-    event instanceof CustomEvent && typeof event.detail?.documentId === "string"
-      ? event.detail.documentId
-      : null;
-  const documentId = requestedDocumentId ?? documentLinks.documentIdForShape(shape);
-  if (!documentId) return;
-  const href = documentLinks.documentHrefForShape(shape);
-  if (isRemoteDocumentShape(shape) && href) {
-    window.open(href, "_blank", "noopener,noreferrer");
-    return;
-  }
-  const spaceId = documentLinks.documentSpaceIdForShape(shape) || props.spaceId;
-  window.dispatchEvent(
-    new CustomEvent("view-document", {
-      detail: { spaceId, documentId },
-    }),
-  );
-}
-
-function setEmbeddedDocumentEditorRef(instance: unknown) {
-  embeddedDocumentEditor.value = instance as InstanceType<
-    typeof CanvasDocumentEditor
-  > | null;
-}
-
-function canEditEmbeddedDocument(shape: CanvasShape): boolean {
-  if (!userCanEditDocuments.value) return false;
-  if (!documentLinks.documentIdForShape(shape)) return false;
-  // Inline editing joins the local collaboration room with the current
-  // space's permissions, so it only applies to documents of this space on
-  // this instance; remote and cross-space embeds stay read-only previews.
-  if (isRemoteDocumentShape(shape)) return false;
-  if (documentLinks.documentSpaceIdForShape(shape) !== props.spaceId) return false;
-  return previewSupportsInlineEditing(documentLinks.cachedPreview(shape));
-}
-
-// Ordinal of the checkbox the click landed on within the read-only card, or
-// null when the click wasn't on a task checkbox. Used to replay the toggle in
-// the editor that the click is about to mount. The preview renders checkboxes
-// as non-interactive static HTML (the click actually lands on the card host),
-// so we hit-test the click point against the checkbox rects rather than the
-// event path.
-function clickedTaskCheckboxIndex(event: MouseEvent): number | null {
-  const host = event.currentTarget as HTMLElement | null;
-  const view = host?.shadowRoot?.querySelector("document-view") as HTMLElement | null;
-  const root = view?.shadowRoot;
-  if (!root) return null;
-
-  const checkboxes = Array.from(
-    root.querySelectorAll<HTMLElement>('input[type="checkbox"]'),
-  );
-  const pad = 4;
-  const index = checkboxes.findIndex((checkbox) => {
-    const rect = checkbox.getBoundingClientRect();
-    return (
-      event.clientX >= rect.left - pad &&
-      event.clientX <= rect.right + pad &&
-      event.clientY >= rect.top - pad &&
-      event.clientY <= rect.bottom + pad
-    );
-  });
-  return index >= 0 ? index : null;
-}
-
-// A plain click on a document card enters inline edit mode; modifier clicks
-// (shift/ctrl/meta) stay reserved for multi-select, and a click that ends a
-// drag is ignored via the dragMoved guard in startEmbeddedDocumentEdit.
-function onDocumentShapeClick(shape: CanvasShape, event: MouseEvent) {
-  if (event.button !== 0) return;
-  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-  startEmbeddedDocumentEdit(shape, clickedTaskCheckboxIndex(event));
-}
-
-function startEmbeddedDocumentEdit(
-  shape: CanvasShape,
-  toggleTaskIndex: number | null = null,
-) {
-  if (dragMoved || shape.locked) return;
-  if (editingDocumentShape.value?.shapeId === shape.id) return;
-  const documentId = documentLinks.documentIdForShape(shape);
-  const address = documentAddressForShape(shape);
-  if (!documentId || !address || !canEditEmbeddedDocument(shape)) return;
-  if (editingDocumentShape.value?.shapeId !== shape.id) {
-    stopEmbeddedDocumentEdit();
-  }
-  selectOnlyShape(shape.id);
-  editingDocumentShape.value = {
-    shapeId: shape.id,
-    documentId,
-    address,
-    toggleTaskIndex,
-  };
-}
-
-function stopEmbeddedDocumentEdit() {
-  const editing = editingDocumentShape.value;
-  if (!editing) return;
-  const html = embeddedDocumentEditor.value?.getHtml();
-  if (typeof html === "string") {
-    documentLinks.setPreviewContent(editing.address, html);
-  }
-  editingDocumentShape.value = null;
-}
-
-function onFileShapeClick(event: MouseEvent) {
-  if (!dragMoved) return;
-  event.preventDefault();
-  event.stopPropagation();
-}
-
-function isPdfFileShape(shape: CanvasShape): boolean {
-  return shape.type === "file" && (isPdfFile(shape.alt) || isPdfFile(shape.src));
-}
-
-// Stamps the active shape-library item at `at` as a regular freehand stroke,
-// so it lives on the ink layer with the same selection, move, recolor, and
-// undo behavior as drawn strokes.
-function placeShapeStroke(at: { x: number; y: number }) {
-  const item = getShapeLibraryItem(activeShapeId.value) ?? SHAPE_LIBRARY[0];
-  const stroke = createShapeStroke(item, at, penColor.value);
-  yStrokes.set(stroke.id, createStrokeMap(stroke));
-  selectStroke(stroke.id, false);
-  activeTool.value = "select";
-}
-
-function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
-  const shape =
-    type === "note"
-      ? createNoteShape(at, noteColor.value)
-      : type === "text"
-        ? createTextShape(at)
-        : {
-            id: `shape-${crypto.randomUUID()}`,
-            type: "section",
-            x: Math.round(at.x),
-            y: Math.round(at.y),
-            ...defaultSizeForShape(type),
-            rotation: 0,
-            text: defaultTextForShape(type),
-            color: sectionColor.value,
-            updatedAt: Date.now(),
-          };
+function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
+  const extension = extensionManager.get(type);
+  // The active swatch (if the type has a palette) feeds the factory; text has none.
+  const shape = extension.creation?.create(at, { color: activeColors[type] });
+  if (!shape) return;
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
-  if (type === "section") editingSectionTitleId.value = shape.id;
-  nextTick(() => {
-    const selector =
-      type === "section"
-        ? `[data-section-title="${shape.id}"]`
-        : `.canvas-shape[data-shape-id="${shape.id}"] rich-text-editor`;
-    const el = document.querySelector<HTMLElement>(selector);
-    el?.focus();
-    (el as HTMLInputElement | HTMLTextAreaElement | null)?.select?.();
-  });
-}
 
-function updateShapeText(shape: CanvasShape, text: string) {
-  if (shape.locked) return;
-  updateShape(shape.id, { text });
-}
-
-function handleTextFocus(shape: CanvasShape, event: Event) {
-  if (shape.locked) return;
-  selectOnlyShape(shape.id);
-  const editorEl = event.currentTarget as CanvasTextEditorEl | null;
-  const toolbar = canvasToolbarRef.value;
-  if (toolbar) toolbar.editor = editorEl?.editorInstance ?? null;
-}
-
-function handleTextBlur(shape: CanvasShape, value: string) {
-  // A text element with no content has nothing to anchor it, so remove it once
-  // editing ends. Notes and sections keep their box even when empty.
-  if (shape.type !== "text" || shape.locked) return;
-  if (!shouldRemoveTextShape(value)) return;
-  yShapes.delete(shape.id);
-  if (selectedShapeIds.value.has(shape.id)) {
-    selectedShapeIds.value.delete(shape.id);
-    selectedShapeIds.value = new Set(selectedShapeIds.value);
+  // Enter edit mode per the extension: a canvas-painted title overlay, or the
+  // element's own rich-text editor.
+  if (extension.creation?.editOnCreate === "chrome") {
+    editElementChrome(shape);
+  } else if (extension.creation?.editOnCreate === "element") {
+    nextTick(() => {
+      document
+        .querySelector<HTMLElement>(
+          `.canvas-shape[data-shape-id="${shape.id}"] > *`,
+        )
+        ?.focus();
+    });
   }
 }
 
-function isShapeInsideSection(shape: CanvasShape, section: CanvasShape) {
-  if (shape.id === section.id) return false;
-  const bounds = shapeAabb(shape);
-  const sectionBounds = shapeAabb(section);
-  return (
-    bounds.x >= sectionBounds.x &&
-    bounds.y >= sectionBounds.y &&
-    bounds.x + bounds.width <= sectionBounds.x + sectionBounds.width &&
-    bounds.y + bounds.height <= sectionBounds.y + sectionBounds.height
-  );
-}
-
-function isPointInsideSection(point: FreehandPoint, section: CanvasShape) {
-  const bounds = shapeAabb(section);
-  return (
-    point.x >= bounds.x &&
-    point.y >= bounds.y &&
-    point.x <= bounds.x + bounds.width &&
-    point.y <= bounds.y + bounds.height
-  );
-}
-
-function isStrokeInsideSection(stroke: CanvasStroke, section: CanvasShape) {
-  return (
-    stroke.points.length > 0 &&
-    stroke.points.every((point) => isPointInsideSection(point, section))
-  );
-}
-
-function getSectionContents(section: CanvasShape, includeImmovable = false) {
+function getContainerContents(container: CanvasShape, includeImmovable = false) {
+  const extension = extensionManager.get(container.type);
   return {
     shapes: shapes.value
       .filter(
         (shape) =>
-          (includeImmovable || canMoveShape(shape)) && isShapeInsideSection(shape, section),
+          shape.id !== container.id &&
+          (includeImmovable || canMoveShape(shape)) &&
+          extension.behavior.container?.containsBounds(container, shapeAabb(shape)),
       )
-      .map((shape) => ({ id: shape.id, x: shape.x, y: shape.y })),
+      .map((shape) => ({ id: shape.id, x: shape.frame.x, y: shape.frame.y })),
     strokes: strokes.value
       .filter(
         (stroke) =>
           (includeImmovable || canMoveStroke(stroke)) &&
-          isStrokeInsideSection(stroke, section),
+          stroke.points.length > 0 &&
+          stroke.points.every((point) => extension.behavior.container?.containsPoint(container, point)),
       )
       .map((stroke) => ({
         id: stroke.id,
@@ -2304,22 +1530,33 @@ function updateStrokePoints(id: string, points: FreehandPoint[], rotation?: numb
   if (rotation !== undefined) stroke.set("rotation", rotation);
 }
 
-function setNoteColor(color: string) {
-  noteColor.value = color;
-  if (selectedShape.value?.type === "note") {
-    updateShape(selectedShape.value.id, { color });
+// Sets the active swatch for a type and recolors the selected shape if it is
+// that type. Generic over the registry's color-capable extensions.
+function setElementColor(type: CanvasShapeType, color: string) {
+  activeColors[type] = color;
+  if (selectedShape.value?.type === type) {
+    updateShapeStyle(selectedShape.value.id, { color });
   }
 }
 
-function setSectionColor(color: string) {
-  sectionColor.value = color;
-  if (selectedShape.value?.type === "section") {
-    updateShape(selectedShape.value.id, { color });
-  }
+// The swatch to highlight: the selected shape's color when one of that type is
+// selected, otherwise the active swatch for new shapes.
+function activeElementColor(type: CanvasShapeType): string | undefined {
+  return selectedShape.value?.type === type
+    ? selectedShape.value.style.color
+    : activeColors[type];
 }
+
+// Color pickers to show: the active tool's type, or the selected shape's type.
+const visibleColorPalettes = computed(() =>
+  colorPalettes.filter(
+    (entry) =>
+      activeTool.value === entry.type || selectedShape.value?.type === entry.type,
+  ),
+);
 
 function pickShapeLibraryItem(item: CanvasShapeLibraryItem) {
-  activeShapeId.value = item.id;
+  setActiveShapeId(item.id);
   activeTool.value = "shape";
   shapePopoverRef.value?.hide();
 }
@@ -2358,46 +1595,43 @@ function handleStorageChange(event: StorageEvent) {
   }
 }
 
-// Fit a link shape's height to its rendered content (a generic preview card or
-// a hydrated tweet) so nothing clips. Content height is deterministic per
-// width, so collaborators converge on the same value and stop writing; a small
-// threshold avoids churn from sub-pixel jitter, and we never fight an in-flight
-// manual resize of the same shape.
-function fitLinkShapeHeight(id: string, height: number) {
-  if (!userCanEditDocuments.value) return;
-  if (dragState?.shapeId === id) return;
-  if (!Number.isFinite(height) || height <= 0) return;
-  const shape = shapes.value.find((candidate) => candidate.id === id);
-  if (!shape) return;
-  if (!canMoveShape(shape)) return;
-  // Don't fit until the preview has settled: a card measured while its metadata
-  // (and image) is still loading would persist a too-small height that never
-  // corrects, since the observer won't re-fire once the box is fixed.
-  const preview = shape.src ? linkPreviews.previews.value.get(shape.src) : undefined;
-  if (!preview || preview.status === "loading") return;
-  const minHeight = minSizeForShape("link").height;
-  const target = Math.max(minHeight, Math.round(height));
-  if (Math.abs(target - shape.height) <= 2) return;
-  updateShape(id, { height: target });
-}
-
-function updateShape(id: string, patch: Partial<Omit<CanvasShape, "id">>) {
+function updateShapeFrame(id: string, patch: Partial<CanvasFrame>) {
   const shape = yShapes.get(id);
   if (!shape) return;
-  const changesTransform =
-    patch.x !== undefined ||
-    patch.y !== undefined ||
-    patch.width !== undefined ||
-    patch.height !== undefined ||
-    patch.rotation !== undefined ||
-    patch.fontScale !== undefined;
   const currentShape = shapesById.value.get(id);
-  if (changesTransform && currentShape && !canMoveShape(currentShape)) return;
+  if (currentShape && !canMoveShape(currentShape)) return;
   shape.set("updatedAt", Date.now());
-  const isTextShape = shape.get("type") === "text";
+  const persistsSize = extensionManager.persistsSize(shape.get("type") as CanvasShapeType);
+  const frame = shape.get("frame");
+  if (!(frame instanceof Y.Map)) return;
   for (const [key, value] of Object.entries(patch)) {
-    if (isTextShape && (key === "width" || key === "height")) continue;
-    shape.set(key, value);
+    if (!persistsSize && (key === "width" || key === "height")) continue;
+    frame.set(key, value);
+  }
+}
+
+function updateShapeStyle(id: string, patch: Partial<CanvasShape["style"]>) {
+  const shape = yShapes.get(id);
+  const style = shape?.get("style");
+  if (!shape || !(style instanceof Y.Map)) return;
+  shape.set("updatedAt", Date.now());
+  for (const [key, value] of Object.entries(patch)) style.set(key, value);
+}
+
+function updateShapeData(
+  id: string,
+  patch: Record<string, unknown>,
+  options: { transform?: boolean } = {},
+) {
+  const shape = yShapes.get(id);
+  const data = shape?.get("data");
+  if (!shape || !(data instanceof Y.Map)) return;
+  const currentShape = shapesById.value.get(id);
+  if (options.transform && currentShape && !canMoveShape(currentShape)) return;
+  shape.set("updatedAt", Date.now());
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) data.delete(key);
+    else data.set(key, value);
   }
 }
 
@@ -2422,13 +1656,13 @@ function lockSelectedElements() {
   const shapeIds = new Set(selectedShapeIds.value);
   const strokeIds = new Set(selectedStrokeIds.value);
 
-  // A section acts as a container when it is locked: every element currently
+  // A container cascades locking to every element currently
   // inside its bounds becomes locked with it. Include all contents, including
   // elements that are already locked or user-scoped to someone else.
   for (const id of selectedShapeIds.value) {
-    const section = shapesById.value.get(id);
-    if (section?.type !== "section") continue;
-    const contents = getSectionContents(section, true);
+    const container = shapesById.value.get(id);
+    if (!isContainerShape(container) || !container) continue;
+    const contents = getContainerContents(container, true);
     for (const shape of contents.shapes) shapeIds.add(shape.id);
     for (const stroke of contents.strokes) strokeIds.add(stroke.id);
   }
@@ -2499,9 +1733,9 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
   for (const id of selectedShapeIds.value) {
     const shape = shapesById.value.get(id);
     if (!shape || !canMoveShape(shape)) continue;
-    moveShapes.set(shape.id, { id: shape.id, x: shape.x, y: shape.y });
-    if (shape.type === "section") {
-      const contents = getSectionContents(shape);
+    moveShapes.set(shape.id, { id: shape.id, x: shape.frame.x, y: shape.frame.y });
+    if (isContainerShape(shape)) {
+      const contents = getContainerContents(shape);
       for (const s of contents.shapes) if (!moveShapes.has(s.id)) moveShapes.set(s.id, s);
       for (const s of contents.strokes)
         if (!moveStrokes.has(s.id)) moveStrokes.set(s.id, s);
@@ -2534,7 +1768,7 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   // Shift toggles membership and does not begin a drag.
   if (event.shiftKey) {
     toggleShapeSelection(shape.id);
-    if (shape.type !== "text") event.preventDefault();
+    if (suppressesNativePointer(shape)) event.preventDefault();
     return;
   }
 
@@ -2545,14 +1779,14 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   }
 
   if (!canMoveShape(shape)) {
-    if (shape.type !== "text") event.preventDefault();
+    if (suppressesNativePointer(shape)) event.preventDefault();
     return;
   }
 
   dragMoved = false;
   dragState = buildShapeDragState(event);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  if (shape.type !== "text") {
+  if (suppressesNativePointer(shape)) {
     event.preventDefault();
   }
 }
@@ -2562,25 +1796,24 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
   selectOnlyShape(shape.id);
   // Text auto-sizes to its content, so drive off its measured box.
   const bounds = shapeBounds(shape);
-  const isMedia = isMediaElementType(shape.type);
-  const isText = shape.type === "text";
+  const resizeMode = extensionManager.get(shape.type).behavior.transform;
+  const usesIntrinsicScale = resizeMode?.resize === "font";
+  const keepAspect = Boolean(resizeMode?.aspectLocked) || usesIntrinsicScale;
   dragState = {
     type: "resize",
     pointerId: event.pointerId,
     shapeId: shape.id,
     fixedTopLeft: rotatedShapeCorners(bounds)[0],
-    minSize: minSizeForShape(shape.type),
-    // Media and text keep their aspect ratio (text scales its font); notes and
-    // sections resize freely.
-    aspect: (isMedia || isText) && bounds.height > 0 ? bounds.width / bounds.height : undefined,
-    isText,
-    initialFontScale: shape.fontScale ?? 1,
+    minSize: extensionManager.get(shape.type).defaults.minSize,
+    aspect: keepAspect && bounds.height > 0 ? bounds.width / bounds.height : undefined,
+    resizeMode: usesIntrinsicScale ? "font" : "box",
+    initialScale: Number(shape.data.fontScale) || 1,
     initial: {
-      x: shape.x,
-      y: shape.y,
+      x: shape.frame.x,
+      y: shape.frame.y,
       width: bounds.width,
       height: bounds.height,
-      rotation: shape.rotation,
+      rotation: shape.frame.rotation,
     },
   };
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2588,7 +1821,8 @@ function startShapeResize(shape: CanvasShape, event: PointerEvent) {
 }
 
 function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
-  if (event.button !== 0 || shape.type === "section" || !canMoveShape(shape)) return;
+  const canRotate = extensionManager.get(shape.type).behavior.transform.rotate;
+  if (event.button !== 0 || !canRotate || !canMoveShape(shape)) return;
   selectOnlyShape(shape.id);
   const bounds = shapeBounds(shape);
   dragState = {
@@ -2596,15 +1830,15 @@ function startShapeRotation(shape: CanvasShape, event: PointerEvent) {
     pointerId: event.pointerId,
     shapeId: shape.id,
     center: {
-      x: shape.x + bounds.width / 2,
-      y: shape.y + bounds.height / 2,
+      x: shape.frame.x + bounds.width / 2,
+      y: shape.frame.y + bounds.height / 2,
     },
     initial: {
-      x: shape.x,
-      y: shape.y,
+      x: shape.frame.x,
+      y: shape.frame.y,
       width: bounds.width,
       height: bounds.height,
-      rotation: shape.rotation,
+      rotation: shape.frame.rotation,
     },
   };
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2691,10 +1925,9 @@ function applyMarqueeSelection(
   for (const shape of shapes.value) {
     if (shape.locked) continue;
     const bounds = shapeAabb(shape);
-    const hit =
-      shape.type === "section"
-        ? rectContains(worldRect, bounds)
-        : rectsIntersect(worldRect, bounds);
+    const hit = isContainerShape(shape)
+      ? rectContains(worldRect, bounds)
+      : rectsIntersect(worldRect, bounds);
     if (hit) shapeIds.add(shape.id);
   }
 
@@ -2712,84 +1945,64 @@ function applyMarqueeSelection(
 }
 
 // Hit-tests canvas-rendered (non-GIF) image shapes in reverse paint order.
-function hitTestImageShape(worldPoint: { x: number; y: number }): CanvasShape | null {
+// Shared geometry the canvas-painted extensions' hitTest hooks need. The host
+// keeps the z-order (below) and calls ext.hitTest per shape.
+const hitTestHelpers: CanvasHitTestHelpers = {
+  worldToScreen: (point) => worldToScreen(point),
+  chromePosition: elementChromePosition,
+  chromeSize: elementChromeSize,
+};
+
+// Canvas-rasterized shapes (still images), topmost first, via each shape's own
+// hitTest hook. DOM shapes hit-test through native events, so they are skipped.
+function hitTestRasterShape(worldPoint: { x: number; y: number }): CanvasShape | null {
   for (let i = shapes.value.length - 1; i >= 0; i--) {
     const shape = shapes.value[i];
-    if (shape.type !== "image" || isGifSrc(shape.src ?? "")) continue;
-    if (pointInRotatedShape(worldPoint, shape)) return shape;
-  }
-  return null;
-}
-
-function sectionLocalPoint(worldPoint: { x: number; y: number }, shape: CanvasShape) {
-  const center = {
-    x: shape.x + shape.width / 2,
-    y: shape.y + shape.height / 2,
-  };
-  const local = rotateVector(
-    { x: worldPoint.x - center.x, y: worldPoint.y - center.y },
-    -shape.rotation,
-  );
-  return { x: local.x + shape.width / 2, y: local.y + shape.height / 2 };
-}
-
-// Sections remain click-through in their interior. Only their painted border
-// can be grabbed, preserving access to content placed inside them.
-function hitTestSectionBorder(worldPoint: { x: number; y: number }): CanvasShape | null {
-  const edgeWidth = 6;
-  for (let i = sectionShapes.value.length - 1; i >= 0; i--) {
-    const shape = sectionShapes.value[i];
-    const local = sectionLocalPoint(worldPoint, shape);
-    const inExpandedBounds =
-      local.x >= -edgeWidth &&
-      local.x <= shape.width + edgeWidth &&
-      local.y >= -edgeWidth &&
-      local.y <= shape.height + edgeWidth;
-    const onEdge =
-      local.x <= edgeWidth ||
-      local.x >= shape.width - edgeWidth ||
-      local.y <= edgeWidth ||
-      local.y >= shape.height - edgeWidth;
-    if (inExpandedBounds && onEdge) return shape;
-  }
-  return null;
-}
-
-function hitTestSectionTitle(worldPoint: { x: number; y: number }): CanvasShape | null {
-  const screenPoint = worldToScreen(worldPoint);
-  for (let i = sectionShapes.value.length - 1; i >= 0; i--) {
-    const shape = sectionShapes.value[i];
-    const origin = sectionTitlePosition(shape);
-    const local = rotateVector(
-      { x: screenPoint.x - origin.x, y: screenPoint.y - origin.y },
-      -shape.rotation,
-    );
-    const size = sectionTitleSize(shape);
-    if (local.x >= 0 && local.x <= size.width && local.y >= 0 && local.y <= size.height) {
+    if (!extensionManager.rasters(shape)) continue;
+    if (
+      extensionManager.get(shape.type).render.hitTest?.(shape, worldPoint, hitTestHelpers)
+    ) {
       return shape;
     }
   }
   return null;
 }
 
-function editSectionTitle(shape: CanvasShape) {
+// Canvas-painted shapes (sections), topmost first, via each shape's own hitTest
+// hook. Returns which region was hit (title = editable, border = grabbable;
+// interior click-through).
+function hitTestPaintedShape(worldPoint: {
+  x: number;
+  y: number;
+}): { shape: CanvasShape; region: "title" | "border" } | null {
+  for (let i = paintedShapes.value.length - 1; i >= 0; i--) {
+    const shape = paintedShapes.value[i];
+    const region = extensionManager.get(shape.type).render.hitTest?.(
+      shape,
+      worldPoint,
+      hitTestHelpers,
+    );
+    if (region === "title" || region === "border") return { shape, region };
+  }
+  return null;
+}
+
+function editElementChrome(shape: CanvasShape) {
   if (shape.locked) return;
   selectOnlyShape(shape.id);
-  editingSectionTitleId.value = shape.id;
-  renderSections();
+  editingChromeId.value = shape.id;
+  renderPaintedShapes();
   void nextTick(() => {
-    const input = viewportRef.value?.querySelector<HTMLInputElement>(
-      `[data-section-title="${shape.id}"]`,
-    );
-    input?.focus();
-    input?.select();
+    viewportRef.value
+      ?.querySelector<HTMLElement>(`[data-editor-shape-id="${shape.id}"]`)
+      ?.focus();
   });
 }
 
-function finishSectionTitleEditing() {
-  if (!editingSectionTitleId.value) return;
-  editingSectionTitleId.value = null;
-  renderSections();
+function finishChromeEditing() {
+  if (!editingChromeId.value) return;
+  editingChromeId.value = null;
+  renderPaintedShapes();
 }
 
 function isPointInRect(point: { x: number; y: number }, rect: Rect) {
@@ -2832,7 +2045,7 @@ function handleViewportPointerDown(event: PointerEvent) {
     const additive = event.shiftKey;
     const worldPoint = screenToWorld(point);
 
-    const hitImage = hitTestImageShape(worldPoint);
+    const hitImage = hitTestRasterShape(worldPoint);
     if (hitImage) {
       if (hitImage.locked) {
         event.preventDefault();
@@ -2890,15 +2103,9 @@ function handleViewportPointerDown(event: PointerEvent) {
       return;
     }
 
-    const hitSectionTitle = hitTestSectionTitle(worldPoint);
-    if (hitSectionTitle) {
-      startShapeDrag(hitSectionTitle, event);
-      return;
-    }
-
-    const hitSectionBorder = hitTestSectionBorder(worldPoint);
-    if (hitSectionBorder) {
-      startShapeDrag(hitSectionBorder, event);
+    const paintedHit = hitTestPaintedShape(worldPoint);
+    if (paintedHit) {
+      startShapeDrag(paintedHit.shape, event);
       return;
     }
 
@@ -2912,24 +2119,13 @@ function handleViewportPointerDown(event: PointerEvent) {
     return;
   }
 
-  if (activeTool.value === "draw") {
-    startFreehand(event);
-    return;
-  }
-
-  if (activeTool.value === "shape") {
-    placeShapeStroke(screenToWorld(point));
-    event.preventDefault();
-    return;
-  }
-
-  if (
-    activeTool.value === "note" ||
-    activeTool.value === "text" ||
-    activeTool.value === "section"
-  ) {
-    addShape(activeTool.value, screenToWorld(point));
-  }
+  // Non-select tools (draw / shape / note / text / section) dispatch to their
+  // tool extension.
+  extensionManager.tool(activeTool.value)?.onPointerDown(
+    screenToWorld(point),
+    event,
+    canvasToolContext,
+  );
   event.preventDefault();
 }
 
@@ -2940,35 +2136,34 @@ function handleViewportDoubleClick(event: MouseEvent) {
 
   const point = screenPoint(event);
   const worldPoint = screenToWorld(point);
-  const hitSectionTitle = hitTestSectionTitle(worldPoint);
-  if (hitSectionTitle) {
+  const paintedHit = hitTestPaintedShape(worldPoint);
+  if (paintedHit?.region === "title") {
     event.preventDefault();
-    editSectionTitle(hitSectionTitle);
+    editElementChrome(paintedHit.shape);
     return;
   }
 
   const target = event.target;
   if (
     target instanceof Element &&
-    target.closest(
-      ".canvas-shape, .canvas-transform-controls, .canvas-context-menu",
-    )
+    target.closest(".canvas-shape, .canvas-transform-controls, .canvas-context-menu")
   ) {
     return;
   }
 
-  if (hitTestSectionBorder(worldPoint)) {
+  if (paintedHit?.region === "border") {
     return;
   }
   if (
-    hitTestImageShape(worldPoint) ||
+    hitTestRasterShape(worldPoint) ||
     hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale)
   ) {
     return;
   }
 
   event.preventDefault();
-  addShape("text", worldPoint);
+  const type = extensionManager.doubleClickType();
+  if (type) addShape(type, worldPoint);
 }
 
 // World-space bounding box of everything moving in a shape drag, at its
@@ -3073,14 +2268,14 @@ function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null
   }
 
   const worldPoint = screenToWorld(screenPoint(event));
-  const image = hitTestImageShape(worldPoint);
+  const image = hitTestRasterShape(worldPoint);
   if (image?.locked) return { type: "shape", id: image.id };
 
   const strokeId = hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale);
   if (strokeId && isStrokeLocked(strokeId)) return { type: "stroke", id: strokeId };
 
-  const section = hitTestSectionTitle(worldPoint) ?? hitTestSectionBorder(worldPoint);
-  if (section?.locked) return { type: "shape", id: section.id };
+  const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
+  if (paintedShape?.locked) return { type: "shape", id: paintedShape.id };
   return null;
 }
 
@@ -3153,19 +2348,19 @@ function handlePointerMove(event: PointerEvent) {
       minSize: dragState.minSize,
       aspect: dragState.aspect,
     });
-    if (dragState.isText) {
+    if (dragState.resizeMode === "font") {
       // Text has no stored box; translate the drag into a proportional font
       // scale and let the node re-measure its own width/height. Top-left stays
       // put, so it grows toward the corner being dragged.
       const ratio =
         dragState.initial.width > 0 ? resized.width / dragState.initial.width : 1;
-      const nextScale = clampFontScale((dragState.initialFontScale ?? 1) * ratio);
-      updateShape(dragState.shapeId, {
+      const nextScale = clampFontScale((dragState.initialScale ?? 1) * ratio);
+      updateShapeData(dragState.shapeId, {
         fontScale: Math.round(nextScale * 1000) / 1000,
-      });
+      }, { transform: true });
       return;
     }
-    updateShape(dragState.shapeId, {
+    updateShapeFrame(dragState.shapeId, {
       x: Math.round(resized.x),
       y: Math.round(resized.y),
       width: Math.round(resized.width),
@@ -3179,7 +2374,7 @@ function handlePointerMove(event: PointerEvent) {
     if (!shape || !canMoveShape(shape)) return;
     const rawRotation = rotationFromPointer(dragState.center, world);
     const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
-    updateShape(dragState.shapeId, { rotation: Math.round(rotation * 10) / 10 });
+    updateShapeFrame(dragState.shapeId, { rotation: Math.round(rotation * 10) / 10 });
     return;
   }
 
@@ -3250,7 +2445,7 @@ function handlePointerMove(event: PointerEvent) {
     for (const moved of drag.shapes) {
       const shape = shapesById.value.get(moved.id);
       if (!shape || !canMoveShape(shape)) continue;
-      updateShape(moved.id, {
+      updateShapeFrame(moved.id, {
         x: Math.round(moved.x + dx),
         y: Math.round(moved.y + dy),
       });
@@ -3275,28 +2470,15 @@ function handlePointerUp(event: PointerEvent) {
       activeSnapGuides = [];
       renderInk();
     }
-    // Height fitting is suppressed during a manual resize; once it ends, snap a
-    // link card back to its content height for the new width.
-    const resizedShapeId = dragState.type === "resize" ? dragState.shapeId : null;
     dragState = null;
-    if (resizedShapeId) void nextTick(() => refitLinkShape(resizedShapeId));
   }
-}
-
-/** Re-measure a link card and fit its shape height (used after a manual resize,
- *  when the ResizeObserver is intentionally ignored). */
-function refitLinkShape(id: string) {
-  const element = viewportRef.value?.querySelector<HTMLElement>(
-    `.canvas-shape-link[data-link-shape-id="${id}"]`,
-  );
-  if (element) fitLinkShapeHeight(id, linkCardContentHeight(element));
 }
 
 function cancelTransformDrag() {
   if (dragState?.type === "resize" || dragState?.type === "rotate") {
     const shape = shapesById.value.get(dragState.shapeId);
     if (shape && canMoveShape(shape)) {
-      updateShape(dragState.shapeId, dragState.initial);
+      updateShapeFrame(dragState.shapeId, dragState.initial);
     }
   } else if (dragState?.type === "stroke-resize" || dragState?.type === "stroke-rotate") {
     const stroke = strokesById.value.get(dragState.strokeId);
@@ -3333,39 +2515,11 @@ function handlePointerLeave() {
 }
 
 function handleDragOver(event: DragEvent) {
-  const hasFiles = dragHasCanvasFiles(event.dataTransfer);
-  if (!hasFiles && !dragHasDocumentLink(event.dataTransfer)) return;
-  event.preventDefault();
-  if (event.dataTransfer) {
-    // Document drags from the sidebar/palette advertise effectAllowed "move";
-    // a mismatched "copy" dropEffect makes the browser reject the drop, so we
-    // mirror "move" for those. OS file drops carry copy semantics.
-    event.dataTransfer.dropEffect = hasFiles ? "copy" : "move";
-  }
+  routeExtensionInput("drop", event, event.dataTransfer, insertionPointFromEvent(event), "preview");
 }
 
 function handleDrop(event: DragEvent) {
-  if (dragHasCanvasFiles(event.dataTransfer)) {
-    // Prevent the browser from navigating to the file even when the dropped
-    // files turn out not to be something we can place.
-    event.preventDefault();
-    const media = mediaFilesFromDataTransfer(event.dataTransfer);
-    const files = canvasFilesFromDataTransfer(event.dataTransfer);
-    const at = insertionPointFromEvent(event);
-    if (media.length > 0 || files.length > 0) {
-      void addDroppedCanvasFiles(media, files, at);
-    }
-    return;
-  }
-
-  // A document dragged from the sidebar or command palette becomes a link card.
-  const droppedRef = getDroppedDocumentReference(event.dataTransfer);
-  if (
-    droppedRef &&
-    documentLinks.insertDocumentLink(droppedRef, insertionPointFromEvent(event))
-  ) {
-    event.preventDefault();
-  }
+  routeExtensionInput("drop", event, event.dataTransfer, insertionPointFromEvent(event));
 }
 
 function selectContextMenuTarget(event: MouseEvent) {
@@ -3381,7 +2535,7 @@ function selectContextMenuTarget(event: MouseEvent) {
   }
 
   const worldPoint = screenToWorld(screenPoint(event));
-  const image = hitTestImageShape(worldPoint);
+  const image = hitTestRasterShape(worldPoint);
   if (image) {
     if (image.locked) clearSelection();
     else if (!selectedShapeIds.value.has(image.id)) selectOnlyShape(image.id);
@@ -3395,10 +2549,10 @@ function selectContextMenuTarget(event: MouseEvent) {
     return;
   }
 
-  const section = hitTestSectionTitle(worldPoint) ?? hitTestSectionBorder(worldPoint);
-  if (section) {
-    if (section.locked) clearSelection();
-    else if (!selectedShapeIds.value.has(section.id)) selectOnlyShape(section.id);
+  const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
+  if (paintedShape) {
+    if (paintedShape.locked) clearSelection();
+    else if (!selectedShapeIds.value.has(paintedShape.id)) selectOnlyShape(paintedShape.id);
     return;
   }
 
@@ -3426,53 +2580,26 @@ async function pasteFromContextMenu() {
   const insertAt = contextMenuInsertWorld ?? insertionPointFromEvent();
   contextMenuPos.value = null;
   contextMenuInsertWorld = null;
-
   const clipboard = await readSystemClipboard();
-  const payload =
-    parseCanvasClipboardJson(clipboard.canvasJson) ??
-    parseCanvasClipboardHtml(clipboard.html) ??
-    parseCanvasClipboardJson(clipboard.text);
-  if (payload) {
-    pasteCanvasClipboard(payload, insertAt);
-    return;
-  }
-
-  const trimmedText = clipboard.text.trim();
-  const documentRef =
-    /^https?:\/\//i.test(trimmedText) || trimmedText.startsWith("/")
-      ? documentUrlPartsFromUrl(trimmedText)
-      : null;
-  if (documentRef) {
-    void insertDocumentLinkFromUrl(trimmedText, insertAt);
-    return;
-  }
-
-  if (/^https?:\/\//i.test(trimmedText)) {
-    try {
-      new URL(trimmedText);
-      insertLinkShape(trimmedText, insertAt);
-      return;
-    } catch {
-      // not a valid URL, fall through
-    }
-  }
-
-  if (clipboard.html.trim()) {
-    const inserted = pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({
-        html: clipboard.html,
-        text: clipboard.text,
-        at: insertAt,
-      }),
-    );
-    if (inserted) return;
-  }
-
-  if (trimmedText) {
-    pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({ text: clipboard.text, at: insertAt }),
-    );
-  }
+  const data = {
+    getData: (type: string) =>
+      type === CANVAS_CLIPBOARD_MIME
+        ? clipboard.canvasJson
+        : type === "text/html"
+          ? clipboard.html
+          : type === "text/plain"
+            ? clipboard.text
+            : "",
+    files: [] as unknown as FileList,
+    items: [] as unknown as DataTransferItemList,
+    types: [CANVAS_CLIPBOARD_MIME, "text/html", "text/plain"],
+  } as DataTransfer;
+  routeExtensionInput(
+    "paste",
+    { preventDefault: () => {} } as ClipboardEvent,
+    data,
+    insertAt,
+  );
 }
 
 function uploadFromContextMenu() {
@@ -3488,11 +2615,8 @@ function uploadFromContextMenu() {
     const files = input.files;
     if (!files?.length) return;
 
-    void addDroppedCanvasFiles(
-      mediaFilesFromList(files),
-      canvasFilesFromList(files),
-      insertAt,
-    );
+    const split = extensionRuntime.input.splitFiles(files);
+    void extensionRuntime.input.addDroppedFiles(split.media, split.files, insertAt);
   };
 
   input.click();
@@ -3647,11 +2771,11 @@ function pasteCanvasClipboard(
   at: { x: number; y: number },
 ): void {
   const xs = [
-    ...payload.shapes.map((shape) => shape.x),
+    ...payload.shapes.map((shape) => shape.frame.x),
     ...payload.strokes.flatMap((stroke) => stroke.points.map((point) => point.x)),
   ];
   const ys = [
-    ...payload.shapes.map((shape) => shape.y),
+    ...payload.shapes.map((shape) => shape.frame.y),
     ...payload.strokes.flatMap((stroke) => stroke.points.map((point) => point.y)),
   ];
   if (xs.length === 0 || ys.length === 0) return;
@@ -3670,8 +2794,11 @@ function pasteCanvasClipboard(
         createShapeMap({
           ...shape,
           id,
-          x: Math.round(shape.x + dx),
-          y: Math.round(shape.y + dy),
+          frame: {
+            ...shape.frame,
+            x: Math.round(shape.frame.x + dx),
+            y: Math.round(shape.frame.y + dy),
+          },
           // A pasted personal element belongs to the person who pasted it,
           // never the author of the source clipboard item.
           authorId: shape.authorId ? currentUserId.value : undefined,
@@ -3707,7 +2834,7 @@ function pasteCanvasClipboard(
   renderInk();
 }
 
-function pasteDocumentClipboardShapes(nextShapes: CanvasShape[]): boolean {
+function insertConvertedShapes(nextShapes: CanvasShape[]): boolean {
   if (nextShapes.length === 0) return false;
   const pastedShapeIds = new Set<string>();
 
@@ -3727,146 +2854,47 @@ function pasteDocumentClipboardShapes(nextShapes: CanvasShape[]): boolean {
   selectedShapeIds.value = pastedShapeIds;
   selectedStrokeIds.value = new Set();
   activeTool.value = "select";
-  renderImages();
+  renderRasterShapes();
   return true;
 }
 
-async function addImageFromUrl(
-  fetchUrl: string,
-  originalUrl: string,
+function routeExtensionInput(
+  kind: CanvasInputKind,
+  event: ClipboardEvent | DragEvent,
+  data: DataTransfer | null,
   at: { x: number; y: number },
+  phase: "preview" | "commit" = "commit",
 ) {
-  let file: File;
-  try {
-    const response = await fetch(fetchUrl);
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.startsWith("image/")) throw new Error("URL did not return an image");
-    const blob = await response.blob();
-    file = new File([blob], filenameFromUrl(originalUrl), { type: blob.type });
-  } catch (err) {
-    toast.error(
-      `Could not fetch image: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-  await addMediaFile(file, at);
+  return extensionManager.handleInput(kind, event, {
+    data,
+    at: () => at,
+    phase,
+    command: (name, payload) => {
+      const value = payload as Record<string, unknown> | undefined;
+      if (name === "paste-canvas") {
+        pasteCanvasClipboard(value?.payload as CanvasClipboard, value?.at as CanvasPoint);
+        return true;
+      }
+      if (name === "paste-rich") {
+        const html = String(value?.html ?? "");
+        const text = String(value?.text ?? "");
+        return insertConvertedShapes(
+          documentClipboardToCanvasShapes(
+            html.trim()
+              ? { html, text, at: value?.at as CanvasPoint }
+              : { text, at: value?.at as CanvasPoint },
+          ),
+        );
+      }
+      return extensionRuntime.command(name, payload);
+    },
+  });
 }
 
 function handlePaste(event: ClipboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("textarea, input, select, document-view")) return;
-
-  // The system clipboard is authoritative; it reflects the latest copy from
-  // anywhere, including other tabs and spaces.
-  const text = event.clipboardData?.getData("text/plain") ?? "";
-  const html = event.clipboardData?.getData("text/html") ?? "";
-
-  // 1. Our own canvas elements. Prefer custom/html metadata, but keep parsing
-  // legacy text/plain JSON from older copies.
-  const payload = canvasClipboardFromDataTransfer(event.clipboardData);
-  if (payload) {
-    event.preventDefault();
-    pasteCanvasClipboard(payload, insertionPointFromEvent());
-    return;
-  }
-
-  // 2. Files pasted from the clipboard. Images/video keep their native canvas
-  //    renderers; everything else uses the shared file attachment renderer.
-  const media = mediaFilesFromDataTransfer(event.clipboardData);
-  const files = canvasFilesFromDataTransfer(event.clipboardData);
-  if (media.length > 0 || files.length > 0) {
-    event.preventDefault();
-    void addDroppedCanvasFiles(media, files, insertionPointFromEvent());
-    return;
-  }
-
-  // 3. Figma selection — HTML blob with figmeta + kiwi binary scene data. Must
-  //    run before the plain-text bail below because Figma also populates text/plain.
-  if (isFigmaClipboardHtml(html)) {
-    event.preventDefault();
-    saveState.value = "saving";
-    dispatchSaveStatus();
-    void pasteFigmaClipboard(html, insertionPointFromEvent(), {
-      uploadMediaFile: uploadCanvasMediaFile,
-      insertShape: (shape) => yShapes.set(shape.id, createShapeMap(shape)),
-    }).then((result) => {
-      if (result.createdIds.length > 0) {
-        selectedShapeIds.value = new Set(result.createdIds);
-        activeTool.value = "select";
-      }
-      if (result.error) {
-        toast.error(
-          result.error instanceof Error ? result.error.message : String(result.error),
-        );
-      }
-      saveState.value = "idle";
-      dispatchSaveStatus();
-    });
-    return;
-  }
-
-  const trimmedUrl = text.trim();
-
-  // 4. Internal Vektor document URL — resolve the target space/document and
-  //    insert the same document attachment card used for sidebar drops.
-  const documentRef =
-    /^https?:\/\//i.test(trimmedUrl) || trimmedUrl.startsWith("/")
-      ? documentUrlPartsFromUrl(trimmedUrl)
-      : null;
-  if (documentRef) {
-    event.preventDefault();
-    void insertDocumentLinkFromUrl(trimmedUrl, insertionPointFromEvent());
-    return;
-  }
-
-  // 5. Plain-text URL that resolves to an image — fetch and insert as a
-  //    canvas image shape. Must run before the non-empty text bail below
-  //    because an image URL is "real" text we still want to consume.
-  const imageUrl = transformImageUrl(trimmedUrl);
-  if (imageUrl) {
-    event.preventDefault();
-    void addImageFromUrl(imageUrl, trimmedUrl, insertionPointFromEvent());
-    return;
-  }
-
-  // 6. Plain-text HTTP(S) URL — insert as a link preview card.
-  if (/^https?:\/\//i.test(trimmedUrl)) {
-    try {
-      new URL(trimmedUrl);
-      event.preventDefault();
-      insertLinkShape(trimmedUrl, insertionPointFromEvent());
-      return;
-    } catch {
-      // not a valid URL, fall through
-    }
-  }
-
-  // 7. Rich document/web HTML — map supported nodes to canvas shapes.
-  if (html.trim()) {
-    const inserted = pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({
-        html,
-        text,
-        at: insertionPointFromEvent(),
-      }),
-    );
-    if (inserted) {
-      event.preventDefault();
-      return;
-    }
-  }
-
-  // 8. Plain text — create a text shape on the canvas.
-  if (text.trim().length > 0) {
-    event.preventDefault();
-    pasteDocumentClipboardShapes(
-      documentClipboardToCanvasShapes({ text, at: insertionPointFromEvent() }),
-    );
-    return;
-  }
-
-  // 8. The system clipboard gave us nothing usable.
+  routeExtensionInput("paste", event, event.clipboardData, insertionPointFromEvent());
 }
 
 // The canvas renders full-bleed behind the fixed navigation sidebar, so the
@@ -3993,11 +3021,10 @@ function handleKeydown(event: KeyboardEvent) {
     return;
   }
 
-  if (key === "v") activeTool.value = "select";
-  if (key === "d") activeTool.value = "draw";
-  if (key === "n") activeTool.value = "note";
-  if (key === "t") activeTool.value = "text";
-  if (key === "s") activeTool.value = "section";
+  const shortcutTool = CANVAS_TOOLS.find(
+    (tool) => tool.shortcut.toLowerCase() === key,
+  );
+  if (shortcutTool) activeTool.value = shortcutTool.id;
   if (key === "r") activeTool.value = "shape";
   if (key === "f") fitView();
 }
@@ -4005,20 +3032,20 @@ function handleKeydown(event: KeyboardEvent) {
 watch(
   shapes,
   () => {
-    void nextTick(syncTextShapeObservers);
-    void nextTick(syncLinkShapeObservers);
-    renderSections();
-    renderImages();
+    renderPaintedShapes();
+    renderRasterShapes();
     renderSelections();
   },
   { flush: "post" },
 );
 
 watch(selectedShapeIds, (ids) => {
-  if (editingSectionTitleId.value && (ids.size !== 1 || !ids.has(editingSectionTitleId.value))) {
-    finishSectionTitleEditing();
+  if (
+    editingChromeId.value &&
+    (ids.size !== 1 || !ids.has(editingChromeId.value))
+  ) {
+    finishChromeEditing();
   }
-  renderImages();
   renderSelections();
   updatePresence();
 });
@@ -4027,24 +3054,24 @@ watch(selectedShapeIds, (ids) => {
 // selection — clicking the canvas, selecting another shape, or deleting the
 // card all funnel through here and tear the editor (and its presence) down.
 watch(selectedShapeIds, (ids) => {
-  const editing = editingDocumentShape.value;
+  const editing = activeEditSession.value;
   if (!editing) return;
   if (ids.size !== 1 || !ids.has(editing.shapeId)) {
-    stopEmbeddedDocumentEdit();
+    stopActiveEdit();
   }
 });
 
 watch(activeTool, (tool) => {
-  if (tool !== "select") stopEmbeddedDocumentEdit();
+  if (tool !== "select") stopActiveEdit();
 });
 
 watch(shapes, () => {
-  const editing = editingDocumentShape.value;
+  const editing = activeEditSession.value;
   if (editing && !shapesById.value.has(editing.shapeId)) {
-    stopEmbeddedDocumentEdit();
+    stopActiveEdit();
   }
-  if (editingSectionTitleId.value && !shapesById.value.has(editingSectionTitleId.value)) {
-    finishSectionTitleEditing();
+  if (editingChromeId.value && !shapesById.value.has(editingChromeId.value)) {
+    finishChromeEditing();
   }
 });
 
@@ -4053,16 +3080,12 @@ watch(selectedStrokeIds, () => {
   updatePresence();
 });
 
-watch(remoteCanvasDomSelections, () => {
-  renderSelections();
-});
-
 watch(remoteCanvasStrokeSelections, () => {
   renderSelections();
 });
 
-watch(remoteCanvasImageSelections, () => {
-  renderImages();
+watch(remoteCanvasSelections, () => {
+  renderSelections();
 });
 
 watch(
@@ -4071,56 +3094,29 @@ watch(
   { immediate: true },
 );
 
-const documentPreviewAddresses = computed(() =>
-  [
-    ...new Set(
-      shapes.value
-        .filter((shape) => shape.type === "document")
-        .map(documentAddressForShape)
-        .filter((address): address is string => Boolean(address)),
-    ),
-  ].sort(),
-);
-
-const linkPreviewUrls = computed(() =>
-  [
-    ...new Set(
-      shapes.value
-        .filter((shape) => shape.type === "link")
-        .map((shape) => shape.src)
-        .filter((url): url is string => Boolean(url)),
-    ),
-  ].sort(),
+const extensionPreparationKey = computed(() =>
+  shapes.value
+    .map((shape) => {
+      const extension = extensionManager.get(shape.type);
+      const key = extension.events?.prepare?.key(shape, extHost);
+      return key ? `${shape.id}\u001e${key}` : null;
+    })
+    .filter((key): key is string => Boolean(key))
+    .sort()
+    .join("\u001f"),
 );
 
 // Moving a card changes updatedAt and refreshes the shapes array. Watch a
 // stable key of the actual preview inputs instead, so those visual edits never
 // cause preview work. The loaders themselves remain responsible for caching.
 watch(
-  () => documentPreviewAddresses.value.join("\u001f"),
+  extensionPreparationKey,
   () => {
-    for (const address of documentPreviewAddresses.value) {
-      void documentLinks.loadPreview({ address });
+    for (const shape of shapes.value) {
+      extensionManager.get(shape.type).events?.prepare?.run(shape, extHost);
     }
   },
   { immediate: true },
-);
-
-watch(
-  () => linkPreviewUrls.value.join("\u001f"),
-  () => {
-    for (const url of linkPreviewUrls.value) void linkPreviews.loadPreview(url);
-  },
-  { immediate: true },
-);
-
-// Once a preview loads, its card renders the image/title; re-measure so the
-// shape grows to fit (the ResizeObserver alone won't catch content-only growth).
-watch(
-  linkPreviews.previews,
-  () => {
-    void nextTick(refitAllLinkShapes);
-  },
 );
 
 watch(
@@ -4133,9 +3129,9 @@ watch(
   ],
   () => {
     renderGrid();
-    renderSections();
+    renderPaintedShapes();
     renderInk();
-    renderImages();
+    renderRasterShapes();
     updatePresence();
   },
   { flush: "post" },
@@ -4168,8 +3164,6 @@ onMounted(() => {
   });
   syncShapesFromY();
   syncStrokesFromY();
-  void nextTick(syncTextShapeObservers);
-  void nextTick(syncLinkShapeObservers);
   resize();
 
   viewportControls = createViewportControls({
@@ -4232,10 +3226,6 @@ onMounted(() => {
 onUnmounted(() => {
   viewportControls?.dispose();
   resizeObserver?.disconnect();
-  textShapeObserver?.disconnect();
-  observedTextShapes.clear();
-  linkShapeObserver?.disconnect();
-  observedLinkShapes.clear();
   themeObserver?.disconnect();
   colorSchemeMedia?.removeEventListener("change", updateThemeMode);
   emit("presence", []);
@@ -4252,7 +3242,6 @@ onUnmounted(() => {
     handleCursorColorPreferenceChange,
   );
   window.removeEventListener("storage", handleStorageChange);
-  imageCache.clear();
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
@@ -4301,44 +3290,26 @@ onUnmounted(() => {
       </span>
       <span v-if="activeTool === 'draw'" class="canvas-divider"></span>
       <span
-        v-if="activeTool === 'note' || selectedShape?.type === 'note'"
+        v-for="cp in visibleColorPalettes"
+        :key="cp.type"
         class="canvas-note-colors"
-        :aria-label="t('Note color')"
+        :aria-label="`${t(cp.label)} color`"
       >
         <button
-          v-for="color in NOTE_COLORS"
+          v-for="color in cp.palette"
           :key="color"
           type="button"
           class="canvas-color-swatch"
-          :class="{ active: (selectedShape?.type === 'note' ? selectedShape.color : noteColor) === color }"
+          :class="{ active: activeElementColor(cp.type) === color }"
           :style="{ background: color }"
-          :aria-label="`${t('Set note color')} ${color}`"
-          @click="setNoteColor(color)"
-        ></button>
-      </span>
-      <span
-        v-if="activeTool === 'section' || selectedShape?.type === 'section'"
-        class="canvas-note-colors"
-        :aria-label="`${t('Section')} color`"
-      >
-        <button
-          v-for="color in SECTION_COLORS"
-          :key="color"
-          type="button"
-          class="canvas-color-swatch"
-          :class="{ active: (selectedShape?.type === 'section' ? selectedShape.color : sectionColor) === color }"
-          :style="{ background: color }"
-          :aria-label="`${t('Section')} color ${color}`"
-          @click="setSectionColor(color)"
+          :aria-label="`${t(cp.label)} color ${color}`"
+          @click="setElementColor(cp.type, color)"
         ></button>
       </span>
       <span
         v-if="
           (activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0) &&
-          (activeTool === 'note' ||
-            selectedShape?.type === 'note' ||
-            activeTool === 'section' ||
-            selectedShape?.type === 'section')
+          visibleColorPalettes.length > 0
         "
         class="canvas-divider"
       ></span>
@@ -4472,8 +3443,8 @@ onUnmounted(() => {
       @drop="handleDrop"
     >
       <canvas ref="gridRef" class="canvas-grid"></canvas>
-      <canvas ref="sectionsRef" class="canvas-sections"></canvas>
-      <canvas ref="imagesRef" class="canvas-images"></canvas>
+      <canvas ref="paintedShapesRef" class="canvas-painted-shapes"></canvas>
+      <canvas ref="rasterShapesRef" class="canvas-raster-shapes"></canvas>
       <canvas ref="inkRef" class="canvas-ink"></canvas>
       <canvas ref="selectionRef" class="canvas-selection"></canvas>
       <div
@@ -4490,212 +3461,34 @@ onUnmounted(() => {
             shape.type,
             { selected: selectedShapeIds.has(shape.id) },
           ]"
-          :style="{
-            left: `${shape.x}px`,
-            top: `${shape.y}px`,
-            ...(shape.type === 'text'
-              ? { '--canvas-text-font-size': `${TEXT_BASE_FONT_PX * (shape.fontScale ?? 1)}px` }
-              : { width: `${shape.width}px`, height: `${shape.height}px` }),
-            transform: `rotate(${shape.rotation}deg)`,
-            ...(shape.type === 'image' ? {} : { background: shape.color }),
-          }"
+          :style="articleStyle(shape)"
           :data-shape-id="shape.id"
         >
-          <div
-            v-if="shape.type === 'note'"
-            class="canvas-shape-handle"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-          ></div>
-          <img
-            v-if="shape.type === 'image' && shape.src && isGifSrc(shape.src)"
-            class="canvas-shape-image"
-            :src="shape.src"
-            :alt="shape.alt || ''"
-            draggable="false"
-            decoding="async"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-          >
-          <div
-            v-else-if="shape.type === 'image'"
-            class="canvas-shape-image"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
+          <!-- Extension-owned custom element (note, text, …). Falls back to the
+               inline branches below for types not yet migrated. -->
+          <component
+            :is="elementTagForShape(shape)"
+            v-if="elementTagForShape(shape)"
+            :shape.prop="shape"
+            :context.prop="hostContext"
+            :data.prop="elementDataForShape(shape)"
+            @request-drag="startShapeDrag(shape, ($event as CustomEvent).detail)"
+            @document-click="onElementActivate(shape, ($event as CustomEvent).detail)"
+            @open-document="onElementOpen(shape, $event)"
           />
-          <video
-            v-else-if="shape.type === 'video' && shape.src"
-            class="canvas-shape-image"
-            :src="shape.src"
-            :aria-label="shape.alt || ''"
-            autoplay
-            muted
-            loop
-            playsinline
-            draggable="false"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-          ></video>
-          <!-- Native audio player. The grip handles selection/drag; the player
-               itself keeps its pointer events so its controls stay clickable. -->
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handle forwards pointer events to the canvas drag interaction. -->
-          <div
-            v-else-if="shape.type === 'audio' && shape.src"
-            class="canvas-shape-audio"
-            @pointerdown.stop
-          >
-            <div
-              class="canvas-shape-audio-handle"
-              :title="shape.alt || shape.text || 'Audio'"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-            ></div>
-            <!-- biome-ignore lint/a11y/useMediaCaption: User-uploaded audio has no caption track available. -->
-            <audio
-              class="canvas-shape-audio-player"
-              :src="shape.src"
-              :aria-label="shape.alt || shape.text || 'Audio'"
-              controls
-              preload="metadata"
-            ></audio>
-          </div>
-          <!-- The header keeps selection and dragging available while the native
-               PDF viewer receives scroll, text-selection, and toolbar events. -->
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: This is the canvas drag handle for an embedded PDF viewer. -->
-          <div
-            v-else-if="isPdfFileShape(shape) && shape.src"
-            class="canvas-pdf-preview"
-            @pointerdown.stop
-          >
-            <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
-            <div
-              class="canvas-pdf-preview-header"
-              :title="shape.alt || 'PDF'"
-              @pointerdown.stop="startShapeDrag(shape, $event)"
-            >
-              {{ shape.alt || shape.text || 'PDF' }}
-            </div>
-            <iframe
-              class="canvas-pdf-preview-frame"
-              :src="shape.src"
-              title="PDF preview"
-            ></iframe>
-          </div>
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-          <file-attachment
-            v-else-if="shape.type === 'file' && shape.src"
-            class="canvas-shape-file"
-            :src="shape.src"
-            :filename="shape.alt || shape.text || 'file'"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @click.capture="onFileShapeClick"
-          ></file-attachment>
-          <CanvasDocumentEditor
-            v-else-if="shape.type === 'document' && editingDocumentShape?.shapeId === shape.id"
-            :ref="setEmbeddedDocumentEditorRef"
-            class="canvas-shape-document-editor"
-            :space-id="props.spaceId"
-            :document-id="editingDocumentShape.documentId"
-            :title="documentLinks.shapeTitle(shape)"
-            :toggle-task-index="editingDocumentShape.toggleTaskIndex"
-            @drag-start="startShapeDrag(shape, $event)"
-            @exit="stopEmbeddedDocumentEdit"
-          />
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-          <document-attachment
-            v-else-if="shape.type === 'document'"
-            class="canvas-shape-document"
-            :title="documentLinks.shapeTitle(shape)"
-            :type="documentLinks.shapeType(shape)"
-            :status="documentLinks.shapeStatus(shape)"
-            :content="documentLinks.shapeContent(shape)"
-            :space-id="documentLinks.documentSpaceIdForShape(shape) || props.spaceId"
-            :document-id="isRemoteDocumentShape(shape) ? '' : documentLinks.documentIdForShape(shape) || ''"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @wheel.stop
-            @click="onDocumentShapeClick(shape, $event)"
-            @open-document="onDocumentShapeOpen(shape, $event)"
-          ></document-attachment>
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The header forwards pointer events to the canvas drag interaction. -->
-          <div
-            v-else-if="
-              shape.type === 'link' &&
-              shape.src &&
-              linkPreviews.previewForShape(shape)?.metadata?.embed?.provider === 'twitter'
-            "
-            class="canvas-twitter-shape"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @wheel.stop
-          >
-            <CanvasTwitterEmbed
-              :html="linkPreviews.previewForShape(shape)!.metadata!.embed!.html"
-              @resize="fitLinkShapeHeight(shape.id, $event)"
-            />
-          </div>
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
-          <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
-          <a
-            v-else-if="shape.type === 'link' && shape.src"
-            class="canvas-shape-link"
-            :data-link-shape-id="shape.id"
-            :href="shape.src"
-            target="_blank"
-            rel="noopener noreferrer"
-            draggable="false"
-            @pointerdown.stop="startShapeDrag(shape, $event)"
-            @click.capture="onFileShapeClick"
-          >
-            <div
-              v-if="linkPreviews.previewForShape(shape)?.metadata?.video || linkPreviews.previewForShape(shape)?.metadata?.image"
-              class="canvas-link-image"
-            >
-              <video
-                v-if="linkPreviews.previewForShape(shape)?.metadata?.video"
-                :src="`/api/v1/proxy-media?url=${encodeURIComponent(linkPreviews.previewForShape(shape)!.metadata!.video!)}`"
-                autoplay
-                muted
-                loop
-                playsinline
-                draggable="false"
-              ></video>
-              <img
-                v-else
-                :src="linkPreviews.previewForShape(shape)!.metadata!.image!"
-                alt=""
-                draggable="false"
-                @error="($event.target as HTMLImageElement).style.display = 'none'"
-              >
-            </div>
-            <div class="canvas-link-body">
-              <div class="canvas-link-site">
-                <img
-                  v-if="linkPreviews.previewForShape(shape)?.metadata?.favicon"
-                  :src="linkPreviews.previewForShape(shape)!.metadata!.favicon!"
-                  class="canvas-link-favicon"
-                  aria-hidden="true"
-                  draggable="false"
-                  @error="($event.target as HTMLImageElement).style.display = 'none'"
-                >
-                <span class="canvas-link-domain">
-                  {{ linkPreviews.previewForShape(shape)?.metadata?.siteName || getDomainFromUrl(shape.src) }}
-                </span>
-              </div>
-              <div class="canvas-link-title">
-                {{ linkPreviews.previewForShape(shape)?.metadata?.title || shape.src }}
-              </div>
-              <div
-                v-if="linkPreviews.previewForShape(shape)?.metadata?.description"
-                class="canvas-link-desc"
-              >
-                {{ linkPreviews.previewForShape(shape)!.metadata!.description }}
-              </div>
-            </div>
-          </a>
-          <rich-text-editor
-            v-else
-            class="canvas-shape-textwrap"
-            headings
-            :value="shape.text"
-            @content-change="updateShapeText(shape, ($event as CustomEvent).detail)"
-            @editor-focus="handleTextFocus(shape, $event)"
-            @editor-blur="handleTextBlur(shape, ($event as CustomEvent).detail)"
-            @pointerdown.stop="shape.type === 'text' && !($event.currentTarget as Element).matches(':focus-within') && startShapeDrag(shape, $event)"
+          <!-- elementTagForShape returns null only while a card is being edited
+               inline: the host swaps in its own inline editor, which depends on
+               host editing state (save/exit orchestration) the element can't
+               carry. The editing slot is keyed by shape id and only ever set for
+               a document, so no type check is needed here. -->
+          <component
+            :is="activeEditSession?.tag"
+            v-else-if="activeEditSession?.shapeId === shape.id"
+            :ref="setActiveEditorRef"
+            :class="activeEditSession?.className"
+            v-bind="activeEditSession.props"
+            @drag-start="startShapeDrag(shape, ($event as CustomEvent).detail[0])"
+            @exit-edit="stopActiveEdit"
           />
         </article>
 
@@ -4717,29 +3510,24 @@ onUnmounted(() => {
       </div>
 
       <div
-        v-if="editingSectionShape"
+        v-if="editingChromeShape"
         class="canvas-section-title-overlay"
         :style="{
-          left: `${sectionTitlePosition(editingSectionShape).x}px`,
-          top: `${sectionTitlePosition(editingSectionShape).y}px`,
-          width: `${Math.max(1, editingSectionShape.width * transform.scale)}px`,
-          transform: `rotate(${editingSectionShape.rotation}deg)`,
-          '--canvas-section-color': editingSectionShape.color,
+          left: `${elementChromePosition(editingChromeShape).x}px`,
+          top: `${elementChromePosition(editingChromeShape).y}px`,
+          width: `${Math.max(1, editingChromeShape.frame.width * transform.scale)}px`,
+          transform: `rotate(${editingChromeShape.frame.rotation}deg)`,
+          '--canvas-section-color': editingChromeShape.style.color,
         }"
         @pointerdown.stop
       >
-        <input
-          class="canvas-section-title"
-          :data-section-title="editingSectionShape.id"
-          :value="editingSectionShape.text"
-          spellcheck="false"
-          :aria-label="t('Section headline')"
-          @focus="selectOnlyShape(editingSectionShape.id)"
-          @pointerdown.stop
-          @dblclick.stop
-          @input="updateShapeText(editingSectionShape, ($event.target as HTMLInputElement).value)"
-          @blur="finishSectionTitleEditing"
-        >
+        <component
+          :is="editorTagForShape(editingChromeShape)"
+          :data-editor-shape-id="editingChromeShape.id"
+          :shape.prop="editingChromeShape"
+          :context.prop="hostContext"
+          @finish-edit="finishChromeEditing"
+        />
       </div>
 
       <div v-if="selectedTransformShape" class="canvas-transform-controls">
@@ -4762,34 +3550,22 @@ onUnmounted(() => {
           :style="{
             left: `${transformControlPositions(selectedTransformShape).resize.x}px`,
             top: `${transformControlPositions(selectedTransformShape).resize.y}px`,
-            transform: `translate(-50%, -50%) rotate(${selectedTransformShape.rotation}deg)`,
+            transform: `translate(-50%, -50%) rotate(${selectedTransformShape.frame.rotation}deg)`,
           }"
           @pointerdown.stop="startShapeResize(selectedTransformShape, $event)"
         ></button>
       </div>
-      <div v-if="selectedResizableDocument" class="canvas-transform-controls">
+      <div v-if="selectedResizeOnlyShape" class="canvas-transform-controls">
         <button
           type="button"
           class="canvas-transform-handle canvas-resize-handle"
-          :aria-label="`${t('Resize')} document`"
+          :aria-label="`${t('Resize')} ${selectedResizeOnlyShape.type}`"
           :style="{
-            left: `${transformControlPositions(selectedResizableDocument).resize.x}px`,
-            top: `${transformControlPositions(selectedResizableDocument).resize.y}px`,
-            transform: `translate(-50%, -50%) rotate(${selectedResizableDocument.rotation}deg)`,
+            left: `${transformControlPositions(selectedResizeOnlyShape).resize.x}px`,
+            top: `${transformControlPositions(selectedResizeOnlyShape).resize.y}px`,
+            transform: `translate(-50%, -50%) rotate(${selectedResizeOnlyShape.frame.rotation}deg)`,
           }"
-          @pointerdown.stop="startShapeResize(selectedResizableDocument, $event)"
-        ></button>
-      </div>
-      <div v-if="selectedResizableSection" class="canvas-transform-controls">
-        <button
-          type="button"
-          class="canvas-transform-handle canvas-resize-handle"
-          :aria-label="`${t('Resize')} ${t('Section')}`"
-          :style="{
-            left: `${transformControlPositions(selectedResizableSection).resize.x}px`,
-            top: `${transformControlPositions(selectedResizableSection).resize.y}px`,
-          }"
-          @pointerdown.stop="startShapeResize(selectedResizableSection, $event)"
+          @pointerdown.stop="startShapeResize(selectedResizeOnlyShape, $event)"
         ></button>
       </div>
       <div
@@ -4961,7 +3737,15 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>
+<!--
+  Not scoped: element bodies (note handle, audio grip, link/pdf/document cards,
+  …) are built imperatively inside the canvas-* custom elements, so they don't
+  carry Vue's scope attribute and scoped rules would never match them. Every
+  selector here is .canvas-* prefixed and canvas-specific, so global scope is
+  safe. (Future cleanup: extract the element-body rules to a stylesheet
+  co-located with the element modules.)
+-->
+<style>
 .canvas-root {
   --canvas-bg: var(--color-neutral-50);
   --canvas-text: var(--color-neutral-900);
@@ -5356,18 +4140,41 @@ onUnmounted(() => {
 .canvas-world {
   position: absolute;
   inset: 0;
+  z-index: 4;
   transform-origin: 0 0;
 }
 
 .canvas-grid,
-.canvas-sections,
-.canvas-images,
+.canvas-painted-shapes,
+.canvas-raster-shapes,
 .canvas-ink,
 .canvas-selection {
   position: absolute;
   inset: 0;
   display: block;
   pointer-events: none;
+}
+
+.canvas-grid {
+  z-index: 0;
+}
+
+.canvas-painted-shapes {
+  z-index: 1;
+}
+
+.canvas-raster-shapes {
+  z-index: 2;
+}
+
+.canvas-ink {
+  z-index: 3;
+}
+
+/* All local and remote selection outlines share this screen-space overlay.
+   It sits above the transformed DOM world while remaining interaction-transparent. */
+.canvas-selection {
+  z-index: 5;
 }
 
 .canvas-shape {
@@ -5563,6 +4370,89 @@ onUnmounted(() => {
   height: 100%;
 }
 
+/* Body of the <canvas-document-editor> custom element (was the scoped styles of
+   CanvasDocumentEditor.vue). Descendant-scoped under .canvas-doc-editor so the
+   generic child class names don't leak now that the block is global. */
+.canvas-doc-editor {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: auto;
+  color: var(--canvas-text, #111827);
+  font: inherit;
+}
+
+.canvas-doc-editor .editor-header {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  padding: 10px 12px;
+  cursor: move;
+}
+
+.canvas-doc-editor .icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--canvas-doc-accent, #2563eb);
+}
+
+.canvas-doc-editor .title-wrap {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.canvas-doc-editor .title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.canvas-doc-editor .done {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: var(--canvas-doc-accent, #2563eb);
+  padding: 4px 10px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.canvas-doc-editor .editor-body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 12px 14px 16px;
+  scrollbar-width: thin;
+}
+
+.canvas-doc-editor .editor-body document-view {
+  display: block;
+  min-width: 0;
+}
+
+.canvas-doc-editor .editor-hint {
+  margin: 0;
+  color: var(--canvas-muted, #6b7280);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .canvas-shape.link {
   background: var(--canvas-link-bg) !important;
   cursor: move;
@@ -5588,10 +4478,19 @@ onUnmounted(() => {
   cursor: move;
 }
 
+/* Container built inside the <canvas-twitter-embed> custom element. */
+.canvas-twitter-embed {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  overflow: hidden;
+}
+
 .canvas-link-image {
   flex: none;
   width: 100%;
-  aspect-ratio: 4/3;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background: var(--canvas-handle-bg);
 }

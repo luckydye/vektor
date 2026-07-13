@@ -73,7 +73,6 @@
                 <SwitchToggle
                   :model-value="ext.enabled"
                   :disabled="isUpdating"
-                  :label="ext.enabled ? 'Enabled' : 'Disabled'"
                   @update:model-value="handleToggle(ext.id, $event)"
                 />
               </td>

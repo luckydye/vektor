@@ -121,6 +121,15 @@ function canvasSnapshotFromDoc(doc: Y.Doc): {
  * ignored. Must run inside a transaction.
  */
 function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): void {
+  const toYValue = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(toYValue);
+    if (!value || typeof value !== "object") return value;
+    const map = new Y.Map<unknown>();
+    for (const [key, child] of Object.entries(value)) map.set(key, toYValue(child));
+    return map;
+  };
+  const comparable = (value: unknown) =>
+    value instanceof Y.Map || value instanceof Y.Array ? value.toJSON() : value;
   const byId = new Map<string, Record<string, unknown>>();
   if (Array.isArray(items)) {
     for (const item of items) {
@@ -146,8 +155,8 @@ function syncCanvasCollection(target: Y.Map<Y.Map<unknown>>, items: unknown): vo
     }
     for (const [key, value] of Object.entries(item)) {
       if (key === "id" || value === undefined) continue;
-      if (JSON.stringify(map.get(key)) !== JSON.stringify(value)) {
-        map.set(key, value);
+      if (JSON.stringify(comparable(map.get(key))) !== JSON.stringify(value)) {
+        map.set(key, toYValue(value));
       }
     }
     for (const key of [...map.keys()]) {
@@ -435,10 +444,13 @@ function changedCanvasShapes(
     const id = typeof shape.id === "string" ? shape.id : null;
     if (!id) continue;
     if (beforeById.get(id) === JSON.stringify(shape)) continue; // unchanged
+    const frame = shape.frame && typeof shape.frame === "object"
+      ? shape.frame as Record<string, unknown>
+      : {};
     result.push({
       id,
-      x: typeof shape.x === "number" ? shape.x : 0,
-      y: typeof shape.y === "number" ? shape.y : 0,
+      x: typeof frame.x === "number" ? frame.x : 0,
+      y: typeof frame.y === "number" ? frame.y : 0,
     });
   }
   return result;
