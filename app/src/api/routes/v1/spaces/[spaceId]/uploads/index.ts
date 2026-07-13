@@ -17,7 +17,7 @@ import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
-const MAX_FILE_SIZE = 250 * 1024 * 1024; // 250MB
+const MAX_FILE_SIZE = 1280 * 1024 * 1024; // 1.25GB
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(
