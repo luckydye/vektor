@@ -435,7 +435,7 @@ watchEffect(() => {
           <button
             slot="trigger"
             type="button"
-            class="flex items-center justify-center border-l border-primary-700 px-4xs button-primary-pointer"
+            class="flex items-center justify-center border-l border-primary-300 px-4xs button-primary-pointer"
             :disabled="isSaving"
             aria-label="Publish options"
           >
