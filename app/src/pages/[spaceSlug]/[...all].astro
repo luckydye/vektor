@@ -2,6 +2,7 @@
 import SpaceApp from "#components/SpaceApp.vue";
 import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
 import { getDocument, getDocumentBySlug } from "#db/documents.ts";
+import { getHeaderImageAspectRatio } from "#files/headerImageAspect.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
 import {
@@ -49,7 +50,7 @@ if (docSlugMatch && !documentRecord) {
   }
 }
 
-const initialDocument = documentRecord
+let initialDocument = documentRecord
   ? JSON.parse(JSON.stringify(documentRecord))
   : undefined;
 
@@ -76,6 +77,13 @@ if (initialDocument) {
 if (!hasDirectDocumentAccess) {
   const accessDenied = await requireSpaceViewer(Astro, space);
   if (accessDenied) return accessDenied;
+}
+
+if (initialDocument) {
+  initialDocument.headerImageAspectRatio = await getHeaderImageAspectRatio(
+    space.id,
+    initialDocument.properties.headerImage,
+  );
 }
 
 if (Astro.locals.session) {

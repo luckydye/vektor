@@ -170,16 +170,14 @@ const title = computed(() =>
     : doc.value?.properties?.title || "Untitled Document",
 );
 
-// Header image + its orientation, read from the server-rendered properties so
-// the layout is decided during SSR (no client-side image measurement needed).
+// Header image + its server-derived orientation. The API reads dimensions from
+// storage so the layout is already decided during SSR.
 const headerImageSrc = computed(() =>
   optionalPropertyValueToText(doc.value?.properties?.headerImage),
 );
-const headerImageAspectRatio = computed(() => {
-  const raw = optionalPropertyValueToText(doc.value?.properties?.headerImageAspect);
-  const ratio = raw ? Number(raw) : Number.NaN;
-  return Number.isFinite(ratio) && ratio > 0 ? ratio : null;
-});
+const headerImageAspectRatio = computed(
+  () => doc.value?.headerImageAspectRatio ?? null,
+);
 // A portrait header switches to a two-column layout (image beside the title).
 // Without a known aspect ratio we keep the existing full-width banner.
 const isPortraitHeader = computed(
@@ -436,6 +434,7 @@ watchEffect(() => {
                 <DocumentProperties
                   :documentId="doc?.id"
                   :documentType="documentType"
+                  layout="labeled"
                   :readonly="!userCanEdit"
                   :initialProperties="isDraft ? (draftCategory ? { category: draftCategory } : {}) : { ...doc.properties, parentId: doc.parentId }"
                   :initialCategory="null"

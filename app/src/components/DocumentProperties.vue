@@ -30,6 +30,7 @@ import {
 const props = defineProps<{
   documentId?: string;
   documentType?: string;
+  layout?: "inline" | "labeled";
   readonly?: boolean;
   initialProperties: Record<string, string | string[] | null | undefined> | undefined;
   initialCategory?: { name: string; slug: string; color?: string; icon?: string } | null;
@@ -220,6 +221,12 @@ const getPropertyVariant = (property: Property): "default" | "special" => {
     : "default";
 };
 
+const getPropertyName = (property: Property): string =>
+  property.name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .replace(/^./, (character) => character.toUpperCase());
+
 const getPropertyValues = async (property: Property) => {
   if (property.name?.toLowerCase() === "category") {
     return categories.value.map((cat) => {
@@ -329,37 +336,57 @@ const availableNewProperties = computed(() => {
 </script>
 
 <template>
-  <div class="flex items-center gap-3">
-    <div class="flex flex-wrap items-center gap-3xs">
+  <div
+    :class="
+      layout === 'labeled'
+        ? 'flex flex-col items-start gap-3xs'
+        : 'flex flex-wrap items-center gap-3xs'
+    "
+  >
+    <div
+      v-for="property in properties"
+      :key="property.id"
+      :class="layout === 'labeled' ? 'flex min-h-8 items-center gap-3xs' : ''"
+    >
+      <span
+        v-if="layout === 'labeled'"
+        class="w-28 shrink-0 truncate text-interactive text-neutral-700"
+        :title="getPropertyName(property)"
+      >
+        {{ getPropertyName(property) }}
+      </span>
+
       <PropertyChip
-        v-for="(property) in properties"
-        :key="property.id"
         :label="getPropertyLabel(property)"
         :value-labels="getPropertyValueLabels(property)"
         :icon="getPropertyIcon(property)"
         :variant="getPropertyVariant(property)"
         :readonly="readonly"
         :property="property as any"
+        :show-tooltip="layout !== 'labeled'"
         :allow-multiple="property.type === 'multi-select' || Array.isArray(property.value)"
         :property-values="getPropertyValues"
         v-bind="readonly ? {} : { onUpdate: handleUpdateProperty, onDelete: handleDeleteProperty }"
       />
+    </div>
 
-      <div v-if="!readonly" class="relative">
-        <ButtonIconSmall
-          :icon="plusIcon"
-          aria-label="New property"
-          @click="toggleCreatePopover"
-        />
+    <div
+      v-if="!readonly"
+      :class="layout === 'labeled' ? 'relative ml-28 pl-3xs' : 'relative'"
+    >
+      <ButtonIconSmall
+        :icon="plusIcon"
+        aria-label="New property"
+        @click="toggleCreatePopover"
+      />
 
-        <PropertyPopover
-          :is-open="isCreatePopoverOpen"
-          :property-types="propertyTypes"
-          :space-properties="availableNewProperties"
-          @update:is-open="(val) => (isCreatePopoverOpen = val)"
-          @create="handleCreate"
-        />
-      </div>
+      <PropertyPopover
+        :is-open="isCreatePopoverOpen"
+        :property-types="propertyTypes"
+        :space-properties="availableNewProperties"
+        @update:is-open="(val) => (isCreatePopoverOpen = val)"
+        @create="handleCreate"
+      />
     </div>
   </div>
 </template>
