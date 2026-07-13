@@ -2,8 +2,9 @@ import { computed, inject, type Ref, ref } from "vue";
 import { api, type Space } from "#api/client.ts";
 import { useMutation, useQuery } from "./query.ts";
 
-export function useSpace() {
-  const activeSpaceId = inject<Ref<string | null>>("space:activeId", ref(null));
+export function useSpace(activeSpaceIdOverride?: Ref<string | null>) {
+  const activeSpaceId =
+    activeSpaceIdOverride ?? inject<Ref<string | null>>("space:activeId", ref(null));
 
   const { data: spaces, isPending } = useQuery({
     queryKey: ["wiki_spaces"],

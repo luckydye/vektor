@@ -178,7 +178,9 @@ if (props.initialSpace && props.initialDocument) {
 }
 
 const { pathname } = useRoute();
-const { currentSpaceId, currentSpace, spaceNotFound } = useSpace();
+// A component cannot inject a value it provides itself, so pass the active ID
+// directly here. Descendants continue to receive it through provide().
+const { currentSpaceId, currentSpace, spaceNotFound } = useSpace(activeSpaceId);
 const documentContext = provideDocumentContext();
 const isMobileSidebarOpen = ref(false);
 
