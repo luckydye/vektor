@@ -29,7 +29,7 @@ import {
   unregisterFormattingActions,
 } from "#utils/formattingActions.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import Canvas from "./Canvas.vue";
+import Canvas from "../canvas/Canvas.vue";
 import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "#editor/elements/table-view.ts";

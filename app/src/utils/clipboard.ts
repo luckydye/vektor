@@ -2,7 +2,7 @@ import type {
   CanvasSerializedShape,
   CanvasShape,
   CanvasStrokeSnapshot,
-} from "#canvas/elements/types.ts";
+} from "#canvas/extensions/types.ts";
 import { htmlToMarkdown } from "./documentMarkdown.ts";
 import { messageMarkdownToHtml } from "./messageMarkdown.ts";
 
@@ -39,9 +39,14 @@ function escapeAttribute(value: string): string {
 }
 
 function shapeSortKey(shape: CanvasSerializedShape) {
-  return `${String(Math.round(shape.y)).padStart(8, "0")}:${String(
-    Math.round(shape.x),
+  return `${String(Math.round(shape.frame.y)).padStart(8, "0")}:${String(
+    Math.round(shape.frame.x),
   ).padStart(8, "0")}`;
+}
+
+function shapeDataString(shape: CanvasSerializedShape, key: string) {
+  const value = shape.data[key];
+  return typeof value === "string" ? value : "";
 }
 
 function supportedShapes(payload: CanvasClipboard) {
@@ -103,21 +108,24 @@ export function canvasClipboardFromDataTransfer(
 export function canvasClipboardToPlainText(payload: CanvasClipboard): string {
   const lines: string[] = [];
   for (const shape of supportedShapes(payload)) {
+    const text = shapeDataString(shape, "text");
+    const src = shapeDataString(shape, "src");
+    const alt = shapeDataString(shape, "alt");
     if (
       (shape.type === "text" || shape.type === "note" || shape.type === "section") &&
-      shape.text.trim()
+      text.trim()
     ) {
-      lines.push(shape.text.trim());
+      lines.push(text.trim());
     } else if (
       shape.type === "image" ||
       shape.type === "video" ||
       shape.type === "file"
     ) {
-      lines.push(shape.alt || shape.src || shape.type);
-    } else if (shape.type === "link" && shape.src) {
-      lines.push(shape.text || shape.src);
-    } else if (shape.type === "document" && shape.text.trim()) {
-      lines.push(shape.text.trim());
+      lines.push(alt || src || shape.type);
+    } else if (shape.type === "link" && src) {
+      lines.push(text || src);
+    } else if (shape.type === "document" && text.trim()) {
+      lines.push(text.trim());
     }
   }
   return lines.join("\n\n");
@@ -138,55 +146,57 @@ export function canvasClipboardToDocumentHtml(
   }
 
   for (const shape of supportedShapes(payload)) {
+    const text = shapeDataString(shape, "text");
+    const src = shapeDataString(shape, "src");
+    const alt = shapeDataString(shape, "alt");
     if (shape.type === "text" || shape.type === "note") {
-      const rendered = messageMarkdownToHtml(shape.text || "");
+      const rendered = messageMarkdownToHtml(text);
       if (rendered.trim()) html.push(rendered);
       continue;
     }
 
     if (shape.type === "section") {
-      const text = shape.text.trim();
-      if (text) html.push(`<h2>${escapeHtml(text)}</h2>`);
+      if (text.trim()) html.push(`<h2>${escapeHtml(text.trim())}</h2>`);
       continue;
     }
 
-    if (shape.type === "image" && shape.src) {
+    if (shape.type === "image" && src) {
       html.push(
-        `<img src="${escapeAttribute(shape.src)}" alt="${escapeAttribute(
-          shape.alt ?? "",
-        )}" width="${Math.round(shape.width)}" height="${Math.round(shape.height)}">`,
+        `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(
+          alt,
+        )}" width="${Math.round(shape.frame.width ?? 0)}" height="${Math.round(shape.frame.height ?? 0)}">`,
       );
       continue;
     }
 
-    if (shape.type === "video" && shape.src) {
+    if (shape.type === "video" && src) {
       html.push(
-        `<video src="${escapeAttribute(shape.src)}" controls width="${Math.round(
-          shape.width,
-        )}" height="${Math.round(shape.height)}"></video>`,
+        `<video src="${escapeAttribute(src)}" controls width="${Math.round(
+          shape.frame.width ?? 0,
+        )}" height="${Math.round(shape.frame.height ?? 0)}"></video>`,
       );
       continue;
     }
 
-    if (shape.type === "file" && shape.src) {
+    if (shape.type === "file" && src) {
       html.push(
-        `<file-attachment src="${escapeAttribute(shape.src)}" filename="${escapeAttribute(
-          shape.alt || shape.text || "file",
+        `<file-attachment src="${escapeAttribute(src)}" filename="${escapeAttribute(
+          alt || text || "file",
         )}"></file-attachment>`,
       );
       continue;
     }
 
-    if (shape.type === "link" && shape.src) {
-      const label = shape.text || shape.src;
+    if (shape.type === "link" && src) {
+      const label = text || src;
       html.push(
-        `<p><a href="${escapeAttribute(shape.src)}">${escapeHtml(label)}</a></p>`,
+        `<p><a href="${escapeAttribute(src)}">${escapeHtml(label)}</a></p>`,
       );
       continue;
     }
 
-    if (shape.type === "document" && shape.text.trim()) {
-      html.push(`<p>${escapeHtml(shape.text.trim())}</p>`);
+    if (shape.type === "document" && text.trim()) {
+      html.push(`<p>${escapeHtml(text.trim())}</p>`);
     }
   }
 
@@ -307,13 +317,15 @@ function flushTextShape(
   shapes.push({
     id: `shape-${crypto.randomUUID()}`,
     type: "text",
-    x: Math.round(at.x),
-    y: Math.round(cursorY.value),
-    width: TEXT_SIZE.width,
-    height: TEXT_SIZE.height,
-    rotation: 0,
-    text: markdown,
-    color: "#ffffff",
+    frame: {
+      x: Math.round(at.x),
+      y: Math.round(cursorY.value),
+      width: TEXT_SIZE.width,
+      height: TEXT_SIZE.height,
+      rotation: 0,
+    },
+    style: { color: "#ffffff" },
+    data: { text: markdown, fontScale: 1 },
     updatedAt: Date.now(),
   });
   cursorY.value += TEXT_SIZE.height + PASTE_GAP;
@@ -349,15 +361,15 @@ export function documentClipboardToCanvasShapes(params: {
         shapes.push({
           id: `shape-${crypto.randomUUID()}`,
           type: unit.type,
-          x: Math.round(params.at.x),
-          y: Math.round(cursorY.value),
-          width: unit.width,
-          height: unit.height,
-          rotation: 0,
-          text: "",
-          color: unit.type === "video" ? "#000000" : "transparent",
-          src: unit.src,
-          alt: unit.alt,
+          frame: {
+            x: Math.round(params.at.x),
+            y: Math.round(cursorY.value),
+            width: unit.width,
+            height: unit.height,
+            rotation: 0,
+          },
+          style: { color: unit.type === "video" ? "#000000" : "transparent" },
+          data: { text: "", src: unit.src, alt: unit.alt },
           updatedAt: Date.now(),
         });
         cursorY.value += unit.height + PASTE_GAP;
@@ -367,15 +379,15 @@ export function documentClipboardToCanvasShapes(params: {
       shapes.push({
         id: `shape-${crypto.randomUUID()}`,
         type: "file",
-        x: Math.round(params.at.x),
-        y: Math.round(cursorY.value),
-        width: FILE_SIZE.width,
-        height: FILE_SIZE.height,
-        rotation: 0,
-        text: "",
-        color: "transparent",
-        src: unit.src,
-        alt: unit.filename,
+        frame: {
+          x: Math.round(params.at.x),
+          y: Math.round(cursorY.value),
+          width: FILE_SIZE.width,
+          height: FILE_SIZE.height,
+          rotation: 0,
+        },
+        style: { color: "transparent" },
+        data: { text: "", src: unit.src, alt: unit.filename },
         updatedAt: Date.now(),
       });
       cursorY.value += FILE_SIZE.height + PASTE_GAP;
@@ -388,13 +400,15 @@ export function documentClipboardToCanvasShapes(params: {
     shapes.push({
       id: `shape-${crypto.randomUUID()}`,
       type: "text",
-      x: Math.round(params.at.x),
-      y: Math.round(params.at.y),
-      width: TEXT_SIZE.width,
-      height: TEXT_SIZE.height,
-      rotation: 0,
-      text: params.text.trim(),
-      color: "#ffffff",
+      frame: {
+        x: Math.round(params.at.x),
+        y: Math.round(params.at.y),
+        width: TEXT_SIZE.width,
+        height: TEXT_SIZE.height,
+        rotation: 0,
+      },
+      style: { color: "#ffffff" },
+      data: { text: params.text.trim(), fontScale: 1 },
       updatedAt: Date.now(),
     });
   }

@@ -12,7 +12,7 @@ const isOwner = computed(() => canAccessSettings(currentSpace.value?.userRole));
 <template>
   <inset-view
     v-if="currentSpace"
-    class="block pt-m pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-xl md:ml-(--inset-left) md:mr-(--inset-right)"
+    class="block pt-xs pb-20 lg:pb-8 h-full print:px-0 px-xs lg:px-m md:ml-(--inset-left) md:mr-(--inset-right)"
   >
     <SpaceSettings v-if="isOwner" />
     <NoAccess v-else />

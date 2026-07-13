@@ -16,7 +16,14 @@ import {
   type SnapGuide,
   type WorldTransform,
 } from "#viewport/index.ts";
-import type { CanvasStroke, CanvasStrokeSnapshot } from "./types.ts";
+import type { CanvasStroke, CanvasStrokeSnapshot, CanvasToolExtension } from "./types.ts";
+
+// The freehand draw tool. Placement is a streaming interaction, so it just
+// hands the pointerdown to the host's engine-managed drawing session.
+export const drawTool: CanvasToolExtension = {
+  id: "draw",
+  onPointerDown: (_at, event, ctx) => ctx.startFreehand(event),
+};
 
 export type DrawStrokeMode = "pencil" | "pen";
 export type CanvasDrawingSession = {
