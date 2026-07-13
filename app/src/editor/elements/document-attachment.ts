@@ -261,7 +261,15 @@ if (
       private workflowPreview: WorkflowPreviewState = { status: "idle" };
 
       static get observedAttributes() {
-        return ["title", "type", "content", "status", "space-id", "document-id"];
+        return [
+          "title",
+          "header-image",
+          "type",
+          "content",
+          "status",
+          "space-id",
+          "document-id",
+        ];
       }
 
       constructor() {
@@ -279,6 +287,7 @@ if (
 
       render() {
         const title = this.getAttribute("title") || "Untitled";
+        const headerImage = this.getAttribute("header-image") || "";
         const type = this.getAttribute("type") || "document";
         const content = this.getAttribute("content") || "";
         const status = (this.getAttribute("status") ||
@@ -369,6 +378,25 @@ if (
               color: var(--canvas-doc-content, #374151);
               cursor: move;
               scrollbar-width: thin;
+            }
+            .header-image-frame {
+              display: flex;
+              width: 100%;
+              aspect-ratio: 16 / 9;
+              flex: 0 0 auto;
+              align-items: center;
+              justify-content: center;
+              border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+              background: var(--canvas-tool-hover-bg, #f3f4f6);
+              overflow: hidden;
+            }
+            .header-image {
+              display: block;
+              width: auto;
+              height: auto;
+              max-width: 100%;
+              max-height: 100%;
+              object-fit: contain;
             }
             .body document-view {
               display: block;
@@ -542,6 +570,11 @@ if (
               <span class="open-icon">${chevronRightThinIcon}</span>
             </button>
           </div>
+          ${
+            headerImage
+              ? `<div class="header-image-frame"><img class="header-image" src="${escapeHtml(headerImage)}" alt=""></div>`
+              : ""
+          }
           <div class="body">
             ${
               shouldRenderDocumentView({ status, type, content })

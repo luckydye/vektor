@@ -24,6 +24,7 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { optionalPropertyValueToText } from "#utils/documentProperties.ts";
 import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
+import { spacePath } from "#utils/utils.ts";
 
 const props = defineProps<{
   documentSlug?: string;
@@ -101,6 +102,11 @@ const categoriesQuery = useQuery({
 });
 
 const doc = computed(() => docQuery.data.value);
+const titleDragUrl = computed(() =>
+  doc.value?.slug
+    ? spacePath(currentSpace.value?.slug, `/doc/${doc.value.slug}`)
+    : undefined,
+);
 
 // Redirect /doc/documentId → /doc/documentSlug once the document resolves.
 watch(
@@ -359,13 +365,21 @@ watchEffect(() => {
                         )"
             >
               <div class="flex items-start justify-between w-full">
-                <TitleEditor
-                  :initialEditMode="isDraft"
-                  :title="title"
-                  :documentId="doc?.id"
-                  :spaceId="currentSpace.id"
-                  :canEdit="userCanEdit"
-                />
+                <component
+                  :is="isDraft ? 'div' : 'page-target'"
+                  class="block min-w-0 flex-1 [&[data-dragging]]:opacity-50"
+                  :data-document-id="doc?.id"
+                  :data-space-id="currentSpace.id"
+                  :data-document-url="titleDragUrl"
+                >
+                  <TitleEditor
+                    :initialEditMode="isDraft"
+                    :title="title"
+                    :documentId="doc?.id"
+                    :spaceId="currentSpace.id"
+                    :canEdit="userCanEdit"
+                  />
+                </component>
               </div>
               <DocumentActions :title="title" />
             </inset-view>
@@ -416,13 +430,21 @@ watchEffect(() => {
                             )"
               >
                 <div class="flex items-start justify-between w-full">
-                  <TitleEditor
-                    :initialEditMode="isDraft"
-                    :title="title"
-                    :documentId="doc?.id"
-                    :spaceId="currentSpace.id"
-                    :canEdit="userCanEdit"
-                  />
+                  <component
+                    :is="isDraft ? 'div' : 'page-target'"
+                    class="block min-w-0 flex-1 [&[data-dragging]]:opacity-50"
+                    :data-document-id="doc?.id"
+                    :data-space-id="currentSpace.id"
+                    :data-document-url="titleDragUrl"
+                  >
+                    <TitleEditor
+                      :initialEditMode="isDraft"
+                      :title="title"
+                      :documentId="doc?.id"
+                      :spaceId="currentSpace.id"
+                      :canEdit="userCanEdit"
+                    />
+                  </component>
                 </div>
                 <DocumentActions :title="title" />
               </inset-view>
@@ -470,13 +492,21 @@ watchEffect(() => {
                     )"
           >
             <div class="flex items-start justify-between w-full">
-              <TitleEditor
-                :initialEditMode="isDraft"
-                :title="title"
-                :documentId="doc?.id"
-                :spaceId="currentSpace.id"
-                :canEdit="userCanEdit"
-              />
+              <component
+                :is="isDraft ? 'div' : 'page-target'"
+                class="block min-w-0 flex-1 [&[data-dragging]]:opacity-50"
+                :data-document-id="doc?.id"
+                :data-space-id="currentSpace.id"
+                :data-document-url="titleDragUrl"
+              >
+                <TitleEditor
+                  :initialEditMode="isDraft"
+                  :title="title"
+                  :documentId="doc?.id"
+                  :spaceId="currentSpace.id"
+                  :canEdit="userCanEdit"
+                />
+              </component>
             </div>
             <DocumentActions :title="title" />
           </inset-view>

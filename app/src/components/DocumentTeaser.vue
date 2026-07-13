@@ -36,66 +36,73 @@ function docTags(doc: DocumentWithProperties): string[] {
 </script>
 
 <template>
-  <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
-  <a
-    :href="doc.fileUrl ?? spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
-    :target="doc.fileUrl ? '_blank' : undefined"
-    :rel="doc.fileUrl ? 'noopener noreferrer' : undefined"
-    class="group flex-none w-60 block pr-4"
+  <page-target
+    :data-document-id="doc.id"
+    :data-space-id="currentSpace?.id"
+    :data-document-url="spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
+    class="block flex-none w-60 pr-4 [&[data-dragging]]:opacity-50"
   >
-    <!-- Thumbnail -->
-    <div
-      class="relative aspect-video rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center"
+    <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+    <a
+      :href="doc.fileUrl ?? spacePath(currentSpace?.slug, `/doc/${doc.slug}`)"
+      :target="doc.fileUrl ? '_blank' : undefined"
+      :rel="doc.fileUrl ? 'noopener noreferrer' : undefined"
+      class="group block"
     >
-      <img
-        v-if="docHeaderImage(doc)"
-        :src="teaserImageUrl(docHeaderImage(doc)!)"
-        class="absolute inset-0 w-full h-full object-cover"
-        alt=""
-      >
-      <span v-else class="text-neutral-400 text-sm font-medium select-none">
-        {{ doc.type ? doc.type.toUpperCase() : "DOC" }}
-      </span>
+      <!-- Thumbnail -->
       <div
-        v-if="docTags(doc).length > 0"
-        class="absolute bottom-3 left-3 right-3 flex gap-1.5 min-w-0 max-w-full"
+        class="relative aspect-video rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center"
       >
-        <span
-          v-for="(tag, i) in docTags(doc).slice(0, 1)"
-          :key="i"
-          class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm min-w-0 max-w-full truncate"
-          :title="tag"
+        <img
+          v-if="docHeaderImage(doc)"
+          :src="teaserImageUrl(docHeaderImage(doc)!)"
+          class="absolute inset-0 w-full h-full object-cover"
+          alt=""
         >
-          {{ tag }}
+        <span v-else class="text-neutral-400 text-sm font-medium select-none">
+          {{ doc.type ? doc.type.toUpperCase() : "DOC" }}
         </span>
-        <span
-          v-if="docTags(doc).length > 1"
-          class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm shrink-0"
+        <div
+          v-if="docTags(doc).length > 0"
+          class="absolute bottom-3 left-3 right-3 flex gap-1.5 min-w-0 max-w-full"
         >
-          +{{ docTags(doc).length - 1 }}
-        </span>
+          <span
+            v-for="(tag, i) in docTags(doc).slice(0, 1)"
+            :key="i"
+            class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm min-w-0 max-w-full truncate"
+            :title="tag"
+          >
+            {{ tag }}
+          </span>
+          <span
+            v-if="docTags(doc).length > 1"
+            class="px-2.5 py-1 rounded-full bg-neutral-10 text-neutral-700 text-[11px] font-medium shadow-sm shrink-0"
+          >
+            +{{ docTags(doc).length - 1 }}
+          </span>
+        </div>
       </div>
-    </div>
 
-    <!-- Body -->
-    <div class="mt-3">
-      <p class="text-[11px] font-semibold text-neutral-500 tabular-nums mb-1">
-        {{ formatDate(doc.updatedAt) }}
-      </p>
-      <h4
-        class="doc-title text-size-medium font-bold italic leading-snug line-clamp-3 transition-colors"
-      >
-        {{ docTitle(doc) }}
-      </h4>
-      <p
-        v-if="docTags(doc).length > 0"
-        class="mt-1.5 text-size-small text-neutral-400 line-clamp-2 min-w-0 break-words"
-        :title="docTags(doc).join(' | ')"
-      >
-        {{ docTags(doc).join(" | ") }}
-      </p>
-    </div>
-  </a>
+      <!-- Body -->
+      <div class="mt-3">
+        <p class="text-[11px] font-semibold text-neutral-500 tabular-nums mb-1">
+          {{ formatDate(doc.updatedAt) }}
+        </p>
+        <h4
+          class="doc-title text-size-medium font-bold italic leading-snug line-clamp-3 transition-colors"
+        >
+          {{ docTitle(doc) }}
+        </h4>
+        <p
+          v-if="docTags(doc).length > 0"
+          class="mt-1.5 text-size-small text-neutral-400 line-clamp-2 min-w-0 break-words"
+          :title="docTags(doc).join(' | ')"
+        >
+          {{ docTags(doc).join(" | ") }}
+        </p>
+      </div>
+    </a>
+  </page-target>
 </template>
 
 <style scoped>

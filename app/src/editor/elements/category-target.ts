@@ -1,3 +1,7 @@
+import { parseVektorDocumentAddress } from "#utils/documentAddress.ts";
+
+const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
+
 /**
  * category-target
  *
@@ -35,18 +39,23 @@ customElements.define(
   class extends HTMLElement {
     dragCounter = 0;
 
+    private readonly onDragEnter = this.handleDragEnter.bind(this);
+    private readonly onDragLeave = this.handleDragLeave.bind(this);
+    private readonly onDragOver = this.handleDragOver.bind(this);
+    private readonly onDrop = this.handleDrop.bind(this);
+
     connectedCallback() {
-      this.addEventListener("dragenter", this.handleDragEnter.bind(this));
-      this.addEventListener("dragleave", this.handleDragLeave.bind(this));
-      this.addEventListener("dragover", this.handleDragOver.bind(this));
-      this.addEventListener("drop", this.handleDrop.bind(this));
+      this.addEventListener("dragenter", this.onDragEnter);
+      this.addEventListener("dragleave", this.onDragLeave);
+      this.addEventListener("dragover", this.onDragOver);
+      this.addEventListener("drop", this.onDrop);
     }
 
     disconnectedCallback() {
-      this.removeEventListener("dragenter", this.handleDragEnter.bind(this));
-      this.removeEventListener("dragleave", this.handleDragLeave.bind(this));
-      this.removeEventListener("dragover", this.handleDragOver.bind(this));
-      this.removeEventListener("drop", this.handleDrop.bind(this));
+      this.removeEventListener("dragenter", this.onDragEnter);
+      this.removeEventListener("dragleave", this.onDragLeave);
+      this.removeEventListener("dragover", this.onDragOver);
+      this.removeEventListener("drop", this.onDrop);
     }
 
     handleDragEnter(e: DragEvent) {
@@ -85,11 +94,30 @@ customElements.define(
 
       if (!e.dataTransfer) return;
 
-      const draggedDocumentId = e.dataTransfer.getData("text/plain");
-      const targetCategoryId = this.getAttribute("data-category-id");
+      const structured = e.dataTransfer.getData(DOCUMENT_LINK_MIME);
+      let address: unknown = null;
+      try {
+        address = structured.trim()
+          ? (JSON.parse(structured) as { address?: unknown }).address
+          : null;
+      } catch {
+        return;
+      }
 
-      if (!draggedDocumentId || !targetCategoryId) {
+      const parsedAddress =
+        typeof address === "string" ? parseVektorDocumentAddress(address) : null;
+      const draggedDocumentId = parsedAddress?.documentId;
+      const targetCategoryId = this.getAttribute("data-category-id");
+      const targetSpaceId = this.getAttribute("data-space-id");
+
+      if (!draggedDocumentId || !targetCategoryId || !parsedAddress) {
         throw new Error("Missing document or category ID");
+      }
+      if (
+        parsedAddress.origin !== window.location.origin ||
+        (targetSpaceId && parsedAddress.spaceId !== targetSpaceId)
+      ) {
+        return;
       }
 
       this.dispatchEvent(

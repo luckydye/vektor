@@ -40,6 +40,7 @@ const CanvasDocumentEditorElement = defineCustomElement(
       spaceId: { type: String, default: "" },
       documentId: { type: String, default: "" },
       title: { type: String, default: "" },
+      headerImage: { type: String, default: "" },
       // When the edit session was started by clicking a checkbox on the
       // read-only card, this is that checkbox's ordinal so the toggle is
       // replayed in the editor (the read-only preview can't persist it).
@@ -243,6 +244,16 @@ const CanvasDocumentEditorElement = defineCustomElement(
                 ),
               ],
             ),
+            props.headerImage
+              ? h("div", { class: "editor-header-image-frame" }, [
+                  h("img", {
+                    class: "editor-header-image",
+                    src: props.headerImage,
+                    alt: "",
+                    draggable: false,
+                  }),
+                ])
+              : null,
             h("div", { class: "editor-body" }, [
               status.value === "connecting"
                 ? h("p", { class: "editor-hint" }, "Connecting…")

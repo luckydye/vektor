@@ -4432,6 +4432,27 @@ onUnmounted(() => {
   font-weight: 650;
 }
 
+.canvas-doc-editor .editor-header-image-frame {
+  display: flex;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--canvas-doc-divider, #e5e7eb);
+  background: var(--canvas-tool-hover-bg, #f3f4f6);
+}
+
+.canvas-doc-editor .editor-header-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 .canvas-doc-editor .editor-body {
   min-width: 0;
   min-height: 0;

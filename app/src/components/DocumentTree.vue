@@ -544,6 +544,7 @@ defineExpose({ isEditMode, toggleEditMode });
           <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
           <category-target
             :data-category-id="category.id"
+            :data-space-id="currentSpace?.id"
             class="block [&[data-drag-over]]:bg-neutral-100"
             :draggable="isEditMode"
             @dragstart="isEditMode && handleDragStart($event, category)"

@@ -173,6 +173,7 @@ export async function insertDocumentUrl(
 export type DocumentPreviewState = {
   status: "loading" | "loaded" | "error";
   title: string;
+  headerImage?: string;
   type?: string | null;
   content: string;
   readonly?: boolean;
@@ -202,6 +203,7 @@ export type DocumentLinkControllerOptions = {
 // handed to <canvas-document> via its `data` property.
 export type CanvasDocumentData = {
   title: string;
+  headerImage: string;
   type: string;
   status: string;
   content: string;
@@ -272,6 +274,7 @@ export const documentLinkElement: CanvasElementExtension = {
       const documents = documentService(host);
       return {
         title: documents.shapeTitle(shape),
+        headerImage: documents.shapeHeaderImage(shape),
         type: documents.shapeType(shape),
         status: documents.shapeStatus(shape),
         content: documents.shapeContent(shape),
@@ -298,6 +301,7 @@ export const documentLinkElement: CanvasElementExtension = {
           spaceId: host.spaceId,
           documentId,
           title: documents.shapeTitle(shape),
+          headerImage: documents.shapeHeaderImage(shape),
           toggleTaskIndex: clickedTaskCheckboxIndex(event),
         },
         finish: (element) => {
@@ -343,11 +347,17 @@ export const documentLinkElement: CanvasElementExtension = {
     drop: {
       priority: 90,
       handle: (event, context) => {
+        if (context.phase === "preview") {
+          if (!dragHasDocumentLink(context.data)) return false;
+          event.preventDefault();
+          if (context.data) context.data.dropEffect = "move";
+          return true;
+        }
+
         const reference = droppedDocumentReference(context.data);
         if (!reference) return false;
         event.preventDefault();
         if (context.data) context.data.dropEffect = "move";
-        if (context.phase === "preview") return true;
         context.command("insert-document-ref", { reference, at: context.at() });
         return true;
       },
@@ -384,6 +394,8 @@ class CanvasDocumentElement extends CanvasElementBase {
     const card = this.card;
     if (!card || !data) return;
     card.setAttribute("title", data.title);
+    if (data.headerImage) card.setAttribute("header-image", data.headerImage);
+    else card.removeAttribute("header-image");
     card.setAttribute("type", data.type);
     card.setAttribute("status", data.status);
     card.setAttribute("content", data.content);
@@ -402,6 +414,13 @@ export function documentLabel(doc: {
   const title = doc.properties?.title;
   const text = title ? propertyValueToText(title).trim() : "";
   return text || "Untitled";
+}
+
+function documentHeaderImage(doc: {
+  properties?: { headerImage?: DocumentPropertyValue | null } | null;
+}): string | undefined {
+  const value = doc.properties?.headerImage;
+  return Array.isArray(value) ? value[0] : value || undefined;
 }
 
 export function createDocumentLinkShape(
@@ -442,6 +461,7 @@ export function initialDocumentPreview(
   return {
     status: "loading",
     title: doc ? documentLabel(doc) : "Untitled",
+    headerImage: doc ? documentHeaderImage(doc) : undefined,
     type: doc?.type,
     content: "",
   };
@@ -715,6 +735,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
       setPreview(key, {
         status: "loaded",
         title: initialDocumentPreview(parsed.documentId, [doc]).title,
+        headerImage: documentHeaderImage(doc),
         type: doc.type,
         content: typeof doc.content === "string" ? doc.content : "",
         readonly: Boolean(doc.readonly),
@@ -735,6 +756,10 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
 
   function shapeStatus(shape: CanvasShape): DocumentPreviewState["status"] {
     return cachedPreview(shape)?.status ?? "loading";
+  }
+
+  function shapeHeaderImage(shape: CanvasShape): string {
+    return cachedPreview(shape)?.headerImage ?? "";
   }
 
   function shapeType(shape: CanvasShape): string {
@@ -791,6 +816,7 @@ export function createDocumentLinkController(options: DocumentLinkControllerOpti
     documentSpaceIdForShape: (shape: CanvasShape) =>
       documentSpaceIdForShape(shape, options.currentSpaceId),
     shapeTitle,
+    shapeHeaderImage,
     shapeStatus,
     shapeType,
     shapeContent,
