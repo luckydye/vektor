@@ -125,6 +125,12 @@ export type CanvasElementCreateContext = {
   color?: string;
 };
 
+// How a shape enters edit mode right after tool/double-click creation. "body"
+// focuses the element's own rich-text editor (note/text); "title" opens the
+// host-owned title overlay (section, which is canvas-painted and has no DOM body
+// to focus). Upload/paste-created types omit it.
+export type CanvasEditOnCreate = "body" | "title";
+
 // Optional toolbar entry contributed by an element. The host merges these with
 // its built-in tools (select/draw/shape).
 export type CanvasElementTool = {
@@ -237,6 +243,8 @@ export interface CanvasElementExtension {
   // own async flows instead.
   create?: (at: CanvasPoint, ctx: CanvasElementCreateContext) => CanvasShape;
   tool?: CanvasElementTool;
+  // How a freshly-created shape enters edit mode (see CanvasEditOnCreate).
+  editOnCreate?: CanvasEditOnCreate;
 
   // --- rendering ---
   surface: CanvasElementSurface;
@@ -276,6 +284,16 @@ export interface CanvasElementExtension {
   // time. Sections use a negative value to stay behind their contents; omit for
   // the default (0) layer.
   zOrder?: number;
+
+  // Container types (sections) hold other elements: dragging one moves its
+  // contents, locking one locks its contents, and a marquee must fully enclose
+  // one to select it (rather than merely intersect). Defaults to false.
+  container?: boolean;
+
+  // The element's whole body is a live editor (text), so the host must not
+  // preventDefault its pointer interactions — native focus/caret placement has
+  // to go through. Types edited behind a handle (note) leave this false.
+  editableBody?: boolean;
 
   // Color swatches the toolbar offers for this type (note/section). The host
   // renders them generically and recolors via a single setElementColor.

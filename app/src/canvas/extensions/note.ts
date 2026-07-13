@@ -21,6 +21,7 @@ export const noteElement: CanvasElementExtension = {
   transform: { move: true, resize: "box", rotate: true },
   palette: NOTE_COLORS,
   tool: { id: "note", label: "Note", shortcut: "N", icon: canvasNoteIcon },
+  editOnCreate: "body",
   create: (at, ctx) => createNoteShape(at, ctx.color ?? noteElement.defaultColor),
 };
 

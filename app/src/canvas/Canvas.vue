@@ -993,8 +993,8 @@ function clampFontScale(value: number) {
 }
 
 function textShapeFallbackSize(shape: CanvasShape) {
-  const minSize = minSizeForShape("text");
-  const lines = (shape.text || defaultTextForShape("text")).split(/\n/);
+  const minSize = minSizeForShape(shape.type);
+  const lines = (shape.text || defaultTextForShape(shape.type)).split(/\n/);
   const longestLineLength = Math.max(1, ...lines.map((line) => line.length));
   return {
     width: Math.max(minSize.width, Math.ceil(longestLineLength * 8.5 + 26)),
@@ -1006,9 +1006,23 @@ function textShapeSize(shape: CanvasShape) {
   return textShapeSizes.value.get(shape.id) ?? textShapeFallbackSize(shape);
 }
 
+// Auto-sizing (font-resize) shapes report a measured box that the host caches;
+// their persisted width/height is a placeholder, so geometry uses the cache.
+// Every other type is sized by its stored box.
 function shapeBounds(shape: CanvasShape): CanvasShape {
-  if (shape.type !== "text") return shape;
+  if (getCanvasElementExtension(shape.type)?.transform.resize !== "font") return shape;
   return { ...shape, ...textShapeSize(shape) };
+}
+
+// Container types (sections) cascade drag/lock/marquee to the elements inside.
+function isContainerShape(shape: CanvasShape | undefined): boolean {
+  return Boolean(shape && getCanvasElementExtension(shape.type)?.container);
+}
+
+// Whether the host should preventDefault a shape's pointer interaction. Types
+// whose whole body is a live editor (text) opt out so native focus/caret works.
+function suppressesNativePointer(shape: CanvasShape): boolean {
+  return !getCanvasElementExtension(shape.type)?.editableBody;
 }
 
 function shapeAabb(shape: CanvasShape): Rect {
@@ -1829,24 +1843,27 @@ const canvasToolContext: CanvasToolContext = {
 };
 
 function addShape(type: "note" | "text" | "section", at: { x: number; y: number }) {
+  const extension = getCanvasElementExtension(type);
   // The active swatch (if the type has a palette) feeds the factory; text has none.
-  const shape = getCanvasElementExtension(type)?.create?.(at, {
-    color: activeColors[type],
-  });
+  const shape = extension?.create?.(at, { color: activeColors[type] });
   if (!shape) return;
   yShapes.set(shape.id, createShapeMap(shape));
   selectOnlyShape(shape.id);
   activeTool.value = "select";
-  if (type === "section") editingSectionTitleId.value = shape.id;
-  nextTick(() => {
-    const selector =
-      type === "section"
-        ? `[data-section-title="${shape.id}"]`
-        : `.canvas-shape[data-shape-id="${shape.id}"] rich-text-editor`;
-    const el = document.querySelector<HTMLElement>(selector);
-    el?.focus();
-    (el as HTMLInputElement | HTMLTextAreaElement | null)?.select?.();
-  });
+
+  // Enter edit mode per the extension: a canvas-painted title overlay, or the
+  // element's own rich-text editor.
+  if (extension?.editOnCreate === "title") {
+    editSectionTitle(shape);
+  } else if (extension?.editOnCreate === "body") {
+    nextTick(() => {
+      document
+        .querySelector<HTMLElement>(
+          `.canvas-shape[data-shape-id="${shape.id}"] rich-text-editor`,
+        )
+        ?.focus();
+    });
+  }
 }
 
 // Section title editing writes through here (a host-owned <input> overlay).
@@ -2059,7 +2076,7 @@ function lockSelectedElements() {
   // elements that are already locked or user-scoped to someone else.
   for (const id of selectedShapeIds.value) {
     const section = shapesById.value.get(id);
-    if (section?.type !== "section") continue;
+    if (!isContainerShape(section) || !section) continue;
     const contents = getSectionContents(section, true);
     for (const shape of contents.shapes) shapeIds.add(shape.id);
     for (const stroke of contents.strokes) strokeIds.add(stroke.id);
@@ -2132,7 +2149,7 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
     const shape = shapesById.value.get(id);
     if (!shape || !canMoveShape(shape)) continue;
     moveShapes.set(shape.id, { id: shape.id, x: shape.x, y: shape.y });
-    if (shape.type === "section") {
+    if (isContainerShape(shape)) {
       const contents = getSectionContents(shape);
       for (const s of contents.shapes) if (!moveShapes.has(s.id)) moveShapes.set(s.id, s);
       for (const s of contents.strokes)
@@ -2166,7 +2183,7 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   // Shift toggles membership and does not begin a drag.
   if (event.shiftKey) {
     toggleShapeSelection(shape.id);
-    if (shape.type !== "text") event.preventDefault();
+    if (suppressesNativePointer(shape)) event.preventDefault();
     return;
   }
 
@@ -2177,14 +2194,14 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   }
 
   if (!canMoveShape(shape)) {
-    if (shape.type !== "text") event.preventDefault();
+    if (suppressesNativePointer(shape)) event.preventDefault();
     return;
   }
 
   dragMoved = false;
   dragState = buildShapeDragState(event);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  if (shape.type !== "text") {
+  if (suppressesNativePointer(shape)) {
     event.preventDefault();
   }
 }
@@ -2325,10 +2342,9 @@ function applyMarqueeSelection(
   for (const shape of shapes.value) {
     if (shape.locked) continue;
     const bounds = shapeAabb(shape);
-    const hit =
-      shape.type === "section"
-        ? rectContains(worldRect, bounds)
-        : rectsIntersect(worldRect, bounds);
+    const hit = isContainerShape(shape)
+      ? rectContains(worldRect, bounds)
+      : rectsIntersect(worldRect, bounds);
     if (hit) shapeIds.add(shape.id);
   }
 

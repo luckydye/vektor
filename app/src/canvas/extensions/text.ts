@@ -17,6 +17,9 @@ export const textElement: CanvasElementExtension = {
   // Text auto-fits its content; resizing scales the font instead of a fixed box.
   transform: { move: true, resize: "font", rotate: true },
   tool: { id: "text", label: "Text", shortcut: "T", icon: canvasTextIcon },
+  editOnCreate: "body",
+  // The whole card is the editor, so host pointer handlers must not preventDefault.
+  editableBody: true,
   create: (at) => createTextShape(at),
   // Text auto-sizes to its content, so its box is never persisted — only
   // fontScale is. Strip width/height on the way out.

@@ -118,8 +118,11 @@ export const sectionElement: CanvasElementExtension = {
   // Sections are backdrops: they render behind every other shape so content
   // dropped inside them stays on top.
   zOrder: -1,
+  // Sections contain the elements placed inside them (drag/lock/marquee cascade).
+  container: true,
   palette: SECTION_COLORS,
   tool: { id: "section", label: "Section", shortcut: "S", icon: canvasSectionIcon },
+  editOnCreate: "title",
   create: (at, ctx) => createSectionShape(at, ctx.color ?? sectionElement.defaultColor),
   paint: paintSection,
   hitTest: (shape, world, helpers) => hitTestSection(shape, world, helpers),
