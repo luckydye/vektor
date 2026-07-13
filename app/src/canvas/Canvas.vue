@@ -38,7 +38,14 @@ import type { CanvasElementContext } from "./extensions/CanvasElementBase.ts";
 import {
   createDocumentLinkController,
   type DocumentLinkReference,
+  documentAddressForShape,
+  documentUrlPartsFromUrl,
   dragHasDocumentLink,
+  fetchRemoteDocumentByAddress,
+  isRemoteDocumentAddress,
+  isRemoteDocumentShape,
+  isRemoteDocumentUrl,
+  legacyDocumentAddress,
 } from "./extensions/documentLink.ts";
 import {
   addCanvasDrawingPoint,
@@ -142,10 +149,8 @@ import {
 } from "#utils/clipboard.ts";
 import {
   createVektorDocumentAddress,
-  type ParsedVektorDocumentAddress,
   parseVektorDocumentAddress,
 } from "#utils/documentAddress.ts";
-import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
 import {
   filenameFromUrl,
   IMAGE_RESIZE_TIERS,
@@ -401,13 +406,19 @@ const embeddedDocumentEditor = shallowRef<CanvasDocumentEditorEl | null>(null);
 const ydoc = props.ydoc;
 const yShapes = ydoc.getMap<Y.Map<unknown>>("canvas.shapes");
 const yStrokes = ydoc.getMap<Y.Map<unknown>>("canvas.strokes");
+
+// Document address/URL resolution lives in documentLink.ts; the host binds the
+// current origin + space so those pure helpers stay instance-agnostic.
+const currentOrigin =
+  typeof window === "undefined" ? "http://localhost" : window.location.origin;
+const documentAddressContext = { currentOrigin, defaultSpaceId: props.spaceId };
+
 const documentLinks = createDocumentLinkController({
   documents,
-  currentOrigin:
-    typeof window === "undefined" ? "http://localhost" : window.location.origin,
+  currentOrigin,
   currentSpaceId: props.spaceId,
   fetchDocument: async (ref) => {
-    if (isRemoteDocumentAddress(ref.address)) {
+    if (isRemoteDocumentAddress(ref.address, currentOrigin)) {
       return fetchRemoteDocumentByAddress(ref);
     }
     return api.document.get(ref.spaceId, ref.documentId);
@@ -433,143 +444,10 @@ function getDomainFromUrl(url: string): string {
   }
 }
 
-function isRemoteDocumentUrl(url: string | undefined): url is string {
-  if (!url || typeof window === "undefined") return false;
-  try {
-    return new URL(url, window.location.origin).origin !== window.location.origin;
-  } catch {
-    return false;
-  }
-}
-
-function isRemoteDocumentShape(shape: CanvasShape): boolean {
-  return (
-    shape.type === "document" && isRemoteDocumentAddress(documentAddressForShape(shape))
-  );
-}
-
-function isRemoteDocumentAddress(address: string | undefined): address is string {
-  const origin = parseVektorDocumentAddress(address)?.origin;
-  return Boolean(
-    origin && typeof window !== "undefined" && origin !== window.location.origin,
-  );
-}
-
-function documentAddressForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shape.docAddress)?.address;
-}
-
-function legacyDocumentAddress(input: {
-  docAddress?: unknown;
-  docId?: unknown;
-  docSpaceId?: unknown;
-  src?: string;
-}): string | undefined {
-  if (typeof input.docAddress === "string") {
-    const parsed = parseVektorDocumentAddress(input.docAddress);
-    if (parsed) return parsed.address;
-  }
-  if (typeof input.docId !== "string" || typeof window === "undefined") return undefined;
-  const href = input.src;
-  let origin = window.location.origin;
-  if (href) {
-    try {
-      origin = new URL(href, window.location.origin).origin;
-    } catch {
-      origin = window.location.origin;
-    }
-  }
-  return createVektorDocumentAddress({
-    origin,
-    spaceId: typeof input.docSpaceId === "string" ? input.docSpaceId : props.spaceId,
-    documentId: input.docId,
-    href,
-  });
-}
-
-async function fetchRemoteDocumentByAddress(ref: ParsedVektorDocumentAddress) {
-  const response = await fetch(
-    `${ref.origin}/api/v1/spaces/${encodeURIComponent(ref.spaceId)}/documents/${encodeURIComponent(ref.documentId)}`,
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch remote document: ${response.status}`);
-  }
-  const data = (await response.json()) as { document?: unknown };
-  const document = data.document as
-    | {
-        id?: unknown;
-        slug?: unknown;
-        properties?: unknown;
-        type?: unknown;
-        content?: unknown;
-      }
-    | undefined;
-  if (!document || typeof document.id !== "string") {
-    throw new Error("Invalid remote document response");
-  }
-  const properties =
-    document.properties && typeof document.properties === "object"
-      ? (document.properties as Record<string, string | string[]>)
-      : {};
-  return {
-    id: document.id,
-    properties,
-    type: typeof document.type === "string" ? document.type : "document",
-    content:
-      typeof document.content === "string"
-        ? sanitizeVektorDocumentPreviewHtml(document.content)
-        : "",
-  };
-}
-
-function documentUrlPartsFromUrl(
-  rawUrl: string,
-): { documentId: string; spaceId?: string; spaceSlug?: string; url: string } | null {
-  const trimmed = rawUrl.trim();
-  if (!trimmed) return null;
-
-  let url: URL;
-  try {
-    url = new URL(trimmed, window.location.origin);
-  } catch {
-    return null;
-  }
-
-  const pathParts = url.pathname.split("/").filter(Boolean);
-  if (pathParts.length < 2) return null;
-
-  let spaceId: string | undefined;
-  let spaceSlug: string | undefined;
-  let documentPath = "";
-
-  if (pathParts[0] === "doc" && pathParts[1]) {
-    spaceId = props.spaceId;
-    documentPath = pathParts.slice(1).join("/");
-  } else if (pathParts[1] === "doc" && pathParts[2]) {
-    spaceSlug = pathParts[0];
-    documentPath = pathParts.slice(2).join("/");
-  }
-
-  if ((!spaceId && !spaceSlug) || !documentPath) return null;
-  let documentId: string;
-  try {
-    documentId = decodeURIComponent(documentPath);
-  } catch {
-    return null;
-  }
-
-  return {
-    documentId,
-    ...(spaceId ? { spaceId } : {}),
-    ...(spaceSlug ? { spaceSlug } : {}),
-    url: url.href,
-  };
-}
-
 async function documentReferenceFromUrl(
   rawUrl: string,
 ): Promise<DocumentLinkReference | null> {
-  const parts = documentUrlPartsFromUrl(rawUrl);
+  const parts = documentUrlPartsFromUrl(rawUrl, documentAddressContext);
   if (!parts) return null;
   if (parts.spaceId) {
     return {
@@ -582,7 +460,7 @@ async function documentReferenceFromUrl(
     };
   }
 
-  if (isRemoteDocumentUrl(parts.url)) return null;
+  if (isRemoteDocumentUrl(parts.url, currentOrigin)) return null;
 
   const availableSpaces = spaces.value ?? (await api.spaces.get());
   const space = availableSpaces.find((entry) => entry.slug === parts.spaceSlug);
@@ -615,7 +493,7 @@ async function insertDocumentLinkFromReference(
   try {
     const parsed = parseVektorDocumentAddress(ref.address);
     if (!parsed) throw new Error("Invalid document address");
-    const doc = isRemoteDocumentAddress(ref.address)
+    const doc = isRemoteDocumentAddress(ref.address, currentOrigin)
       ? await fetchRemoteDocumentByAddress(parsed)
       : await api.document.get(parsed.spaceId, parsed.documentId);
     documentLinks.insertDocumentLink(
@@ -874,7 +752,7 @@ function openDocument(shape: CanvasShape, requestedDocumentId?: string | null) {
   const documentId = requestedDocumentId ?? documentLinks.documentIdForShape(shape);
   if (!documentId) return;
   const href = documentLinks.documentHrefForShape(shape);
-  if (isRemoteDocumentShape(shape) && href) {
+  if (isRemoteDocumentShape(shape, currentOrigin) && href) {
     window.open(href, "_blank", "noopener,noreferrer");
     return;
   }
@@ -890,7 +768,7 @@ const extHost: CanvasExtensionHost = {
   spaceId: props.spaceId,
   wasDragged: () => dragMoved,
   canEditDocuments: () => userCanEditDocuments.value,
-  isRemoteDocument: (shape) => isRemoteDocumentShape(shape),
+  isRemoteDocument: (shape) => isRemoteDocumentShape(shape, currentOrigin),
   documentAddress: (shape) => documentAddressForShape(shape),
   beginEdit,
   openDocument,
@@ -1208,12 +1086,15 @@ function toShape(
         : defaultColorForShape(type),
     src,
     alt: typeof read("alt") === "string" ? String(read("alt")) : undefined,
-    docAddress: legacyDocumentAddress({
-      docAddress: read("docAddress"),
-      docId: read("docId"),
-      docSpaceId: read("docSpaceId"),
-      src,
-    }),
+    docAddress: legacyDocumentAddress(
+      {
+        docAddress: read("docAddress"),
+        docId: read("docId"),
+        docSpaceId: read("docSpaceId"),
+        src,
+      },
+      documentAddressContext,
+    ),
     authorId: typeof read("authorId") === "string" ? String(read("authorId")) : undefined,
     locked: read("locked") === true || undefined,
     updatedAt: toNumber(read("updatedAt"), Date.now()),
@@ -3426,7 +3307,7 @@ function pasteFigma(html: string, at: { x: number; y: number }) {
 // owns the recognition/ordering; the host owns these host-state-touching bits.
 const canvasInputContext: CanvasInputContext = {
   insertionPoint: (event) => insertionPointFromEvent(event),
-  isDocumentUrl: (url) => documentUrlPartsFromUrl(url) !== null,
+  isDocumentUrl: (url) => documentUrlPartsFromUrl(url, documentAddressContext) !== null,
   pasteCanvasClipboard: (payload, at) => pasteCanvasClipboard(payload, at),
   addDroppedFiles: (media, files, at) => {
     void addDroppedCanvasFiles(media, files, at);

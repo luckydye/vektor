@@ -2,10 +2,12 @@ import { type Ref, ref } from "vue";
 import "#editor/elements/document-attachment.ts";
 import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import {
+  createVektorDocumentAddress,
   type ParsedVektorDocumentAddress,
   parseVektorDocumentAddress,
   type VektorDocumentAddress,
 } from "#utils/documentAddress.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
 import {
   type DocumentPropertyValue,
   propertyValueToText,
@@ -244,6 +246,158 @@ export function documentSpaceIdForShape(
 
 export function documentHrefForShape(shape: CanvasShape): string | undefined {
   return parseVektorDocumentAddress(shape.docAddress)?.href ?? shape.src;
+}
+
+export function documentAddressForShape(shape: CanvasShape): string | undefined {
+  return parseVektorDocumentAddress(shape.docAddress)?.address;
+}
+
+// A document address (or bare URL) whose origin differs from this instance —
+// its content lives on another Vektor deployment and is fetched cross-origin.
+export function isRemoteDocumentAddress(
+  address: string | undefined,
+  currentOrigin: string,
+): address is string {
+  const origin = parseVektorDocumentAddress(address)?.origin;
+  return Boolean(origin && origin !== currentOrigin);
+}
+
+export function isRemoteDocumentShape(
+  shape: CanvasShape,
+  currentOrigin: string,
+): boolean {
+  return (
+    shape.type === "document" &&
+    isRemoteDocumentAddress(documentAddressForShape(shape), currentOrigin)
+  );
+}
+
+export function isRemoteDocumentUrl(
+  url: string | undefined,
+  currentOrigin: string,
+): url is string {
+  if (!url) return false;
+  try {
+    return new URL(url, currentOrigin).origin !== currentOrigin;
+  } catch {
+    return false;
+  }
+}
+
+// Older canvases stored a document link as separate docId/docSpaceId/src fields
+// instead of a single address. Reconstruct the canonical address from whichever
+// form is present.
+export function legacyDocumentAddress(
+  input: { docAddress?: unknown; docId?: unknown; docSpaceId?: unknown; src?: string },
+  context: { currentOrigin: string; defaultSpaceId: string },
+): string | undefined {
+  if (typeof input.docAddress === "string") {
+    const parsed = parseVektorDocumentAddress(input.docAddress);
+    if (parsed) return parsed.address;
+  }
+  if (typeof input.docId !== "string") return undefined;
+  const href = input.src;
+  let origin = context.currentOrigin;
+  if (href) {
+    try {
+      origin = new URL(href, context.currentOrigin).origin;
+    } catch {
+      origin = context.currentOrigin;
+    }
+  }
+  return createVektorDocumentAddress({
+    origin,
+    spaceId:
+      typeof input.docSpaceId === "string" ? input.docSpaceId : context.defaultSpaceId,
+    documentId: input.docId,
+    href,
+  });
+}
+
+// Fetches a document that lives on another Vektor origin, shaped like the
+// controller's fetchDocument result (its preview HTML sanitized for embedding).
+export async function fetchRemoteDocumentByAddress(
+  ref: ParsedVektorDocumentAddress,
+): Promise<LoadedDocumentPreviewSource> {
+  const response = await fetch(
+    `${ref.origin}/api/v1/spaces/${encodeURIComponent(ref.spaceId)}/documents/${encodeURIComponent(ref.documentId)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch remote document: ${response.status}`);
+  }
+  const data = (await response.json()) as { document?: unknown };
+  const document = data.document as
+    | {
+        id?: unknown;
+        slug?: unknown;
+        properties?: unknown;
+        type?: unknown;
+        content?: unknown;
+      }
+    | undefined;
+  if (!document || typeof document.id !== "string") {
+    throw new Error("Invalid remote document response");
+  }
+  const properties =
+    document.properties && typeof document.properties === "object"
+      ? (document.properties as Record<string, string | string[]>)
+      : {};
+  return {
+    id: document.id,
+    properties,
+    type: typeof document.type === "string" ? document.type : "document",
+    content:
+      typeof document.content === "string"
+        ? sanitizeVektorDocumentPreviewHtml(document.content)
+        : "",
+  };
+}
+
+// Parses a Vektor document URL (…/doc/<id> or …/<space-slug>/doc/<id>) into its
+// document id + space locator. Returns null for anything that isn't one.
+export function documentUrlPartsFromUrl(
+  rawUrl: string,
+  context: { currentOrigin: string; defaultSpaceId: string },
+): { documentId: string; spaceId?: string; spaceSlug?: string; url: string } | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  let url: URL;
+  try {
+    url = new URL(trimmed, context.currentOrigin);
+  } catch {
+    return null;
+  }
+
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  if (pathParts.length < 2) return null;
+
+  let spaceId: string | undefined;
+  let spaceSlug: string | undefined;
+  let documentPath = "";
+
+  if (pathParts[0] === "doc" && pathParts[1]) {
+    spaceId = context.defaultSpaceId;
+    documentPath = pathParts.slice(1).join("/");
+  } else if (pathParts[1] === "doc" && pathParts[2]) {
+    spaceSlug = pathParts[0];
+    documentPath = pathParts.slice(2).join("/");
+  }
+
+  if ((!spaceId && !spaceSlug) || !documentPath) return null;
+  let documentId: string;
+  try {
+    documentId = decodeURIComponent(documentPath);
+  } catch {
+    return null;
+  }
+
+  return {
+    documentId,
+    ...(spaceId ? { spaceId } : {}),
+    ...(spaceSlug ? { spaceSlug } : {}),
+    url: url.href,
+  };
 }
 
 // Only plain rich-text documents can be edited inline on the canvas. Other
