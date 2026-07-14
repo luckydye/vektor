@@ -344,8 +344,9 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
         </button>
 
         <!-- Group rows -->
-        <div
-          v-if="!collapsed.has(group.id)"
+        <a-expandable
+          :opened="!collapsed.has(group.id)"
+          :inert="collapsed.has(group.id)"
           class="border border-neutral-100 rounded-lg overflow-hidden"
         >
           <page-target
@@ -368,7 +369,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
                 type="checkbox"
                 :checked="selectedIds.has(doc.id)"
                 @click="toggleSelect(doc.id, $event)"
-                class="w-3.5 h-3.5 accent-primary-500 cursor-pointer opacity-0 group-hover/row:opacity-100 transition-opacity"
+                class="w-3.5 h-3.5 accent-primary-500 cursor-pointer opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity"
                 :class="selectedIds.has(doc.id) ? '!opacity-100' : ''"
               >
             </div>
@@ -420,7 +421,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
               <slot name="row-actions" :doc="doc" />
             </div>
           </page-target>
-        </div>
+        </a-expandable>
       </div>
     </div>
   </div>
