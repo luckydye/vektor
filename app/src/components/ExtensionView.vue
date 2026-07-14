@@ -49,7 +49,7 @@ onMounted(() => {
 
 // Re-render if props change
 watch(
-  () => [props.extensionId, props.routePath, props.spaceId, containerRef.value?.root],
+  () => [props.extensionId, props.routePath, props.spaceId],
   () => {
     renderView();
   },
