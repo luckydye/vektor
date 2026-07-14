@@ -8,6 +8,7 @@ import {
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
 } from "#utils/documentProperties.ts";
+import { currentLang, t } from "#utils/lang.ts";
 import { getTextColor } from "#utils/utils.ts";
 import {
   calendarIcon,
@@ -38,9 +39,9 @@ const props = defineProps<{
 
 // Backdrop grid options for canvas documents, mirroring the layout picker.
 const GRID_TYPE_OPTIONS = [
-  { id: "grid", label: "Grid", icon: gridGridIcon },
-  { id: "clean", label: "Clean", icon: gridCleanIcon },
-  { id: "dots", label: "Dots", icon: gridDotsIcon },
+  { id: "grid", label: t("Grid"), icon: gridGridIcon },
+  { id: "clean", label: t("Clean"), icon: gridCleanIcon },
+  { id: "dots", label: t("Dots"), icon: gridDotsIcon },
 ];
 
 const { categories } = useCategories();
@@ -62,7 +63,7 @@ const isCanvasType = computed(() => effectiveDocumentType.value === "canvas");
 
 function requireDocumentId(): string {
   if (!props.documentId) {
-    throw new Error("Cannot update properties before the document exists");
+    throw new Error(t("Cannot update properties before the document exists"));
   }
   return props.documentId;
 }
@@ -122,7 +123,7 @@ const getCategoryIcon = (categorySlug: string | undefined) => {
 const getPropertyLabel = (property: Property) => {
   if (property.name?.toLowerCase() === "category") {
     const categorySlug = propertyValueToScalar(property.value);
-    if (!categorySlug) return "Category";
+    if (!categorySlug) return t("Category");
 
     const category =
       categories.value.find((c) => c.slug === categorySlug || c.name === categorySlug) ||
@@ -136,15 +137,15 @@ const getPropertyLabel = (property: Property) => {
 
   if (property.name?.toLowerCase() === "layout") {
     const value = propertyValueToScalar(property.value);
-    if (!value) return "Layout";
-    return value === "full" ? "Full Width" : "Document";
+    if (!value) return t("Layout");
+    return value === "full" ? t("Full Width") : t("Document");
   }
 
   if (property.name?.toLowerCase() === "gridtype") {
     const option = GRID_TYPE_OPTIONS.find(
       (o) => o.id === propertyValueToScalar(property.value),
     );
-    return option?.label ?? "Dots";
+    return option?.label ?? t("Dots");
   }
 
   const value = propertyValueToScalar(property.value);
@@ -161,7 +162,7 @@ const getPropertyLabel = (property: Property) => {
     // Format date as readable string (e.g., "Jan 15, 2024")
     const date = new Date(value);
     if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleDateString("en-US", {
+      return date.toLocaleDateString(currentLang(), {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -221,11 +222,17 @@ const getPropertyVariant = (property: Property): "default" | "special" => {
     : "default";
 };
 
-const getPropertyName = (property: Property): string =>
-  property.name
+const getPropertyName = (property: Property): string => {
+  const normalizedName = property.name.toLowerCase();
+  if (normalizedName === "category") return t("Category");
+  if (normalizedName === "layout") return t("Layout");
+  if (normalizedName === "gridtype") return t("Grid");
+
+  return property.name
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[-_]+/g, " ")
     .replace(/^./, (character) => character.toUpperCase());
+};
 
 const getPropertyValues = async (property: Property) => {
   if (property.name?.toLowerCase() === "category") {
@@ -237,8 +244,8 @@ const getPropertyValues = async (property: Property) => {
 
   if (property.name?.toLowerCase() === "layout") {
     return [
-      { id: "document", label: "Document", icon: layoutDocumentIcon },
-      { id: "full", label: "Full Width", icon: layoutFullIcon },
+      { id: "document", label: t("Document"), icon: layoutDocumentIcon },
+      { id: "full", label: t("Full Width"), icon: layoutFullIcon },
     ];
   }
 
@@ -251,7 +258,7 @@ const getPropertyValues = async (property: Property) => {
       .filter((member) => member.userId)
       .map((member) => {
         const user = member.user;
-        const userName = user?.name || user?.email || member.userId || "Unknown User";
+        const userName = user?.name || user?.email || member.userId || t("Unknown user");
         return {
           id: member.userId!,
           label: userName,
@@ -319,10 +326,10 @@ const properties = computed((): Property[] => {
 });
 
 const propertyTypes = [
-  { id: "text", label: "Text", icon: plusIcon },
-  { id: "multi-select", label: "Multi Select", icon: plusIcon },
-  { id: "date", label: "Date", icon: plusIcon },
-  { id: "user", label: "User", icon: peopleIcon },
+  { id: "text", label: t("Text"), icon: plusIcon },
+  { id: "multi-select", label: t("Multi Select"), icon: plusIcon },
+  { id: "date", label: t("Date"), icon: plusIcon },
+  { id: "user", label: t("User"), icon: peopleIcon },
 ];
 
 const availableNewProperties = computed(() => {
@@ -358,6 +365,7 @@ const availableNewProperties = computed(() => {
 
       <PropertyChip
         :label="getPropertyLabel(property)"
+        :name-label="getPropertyName(property)"
         :value-labels="getPropertyValueLabels(property)"
         :icon="getPropertyIcon(property)"
         :variant="getPropertyVariant(property)"
@@ -376,7 +384,7 @@ const availableNewProperties = computed(() => {
     >
       <ButtonIconSmall
         :icon="plusIcon"
-        aria-label="New property"
+        :aria-label="t('New property')"
         @click="toggleCreatePopover"
       />
 

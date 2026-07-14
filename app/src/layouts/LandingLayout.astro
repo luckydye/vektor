@@ -3,9 +3,13 @@ import "#styles/index.css";
 
 export interface Props {
   title?: string;
+  lang?: string;
 }
 
-const { title = "Vektor" } = Astro.props;
+const {
+  title = "Vektor",
+  lang = Astro.preferredLocale || "en",
+} = Astro.props;
 const publicEnv = Astro.locals.publicEnv;
 const isDev = import.meta.env.DEV;
 
@@ -17,7 +21,7 @@ let faviconFilename = {
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={lang}>
   <head>
     <meta charset="utf-8">
     <link

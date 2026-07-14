@@ -4,10 +4,11 @@ import { type AuditLog, api } from "#api/client.ts";
 import { chevronRightThinIcon, documentIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { currentLang, t } from "#utils/lang.ts";
 import {
   formatActivityTime,
   formatPropertyKey,
-  getAuditEventLabel,
+  getAuditEventAction,
   hasPropertyChange,
 } from "#utils/auditActivity.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
@@ -111,14 +112,14 @@ function getUser(userId?: string | null): User | undefined {
 }
 
 function getUserName(userId?: string | null): string {
-  if (!userId) return "Unknown user";
+  if (!userId) return t("Unknown user");
   const user = data.value?.usersMap.get(userId);
   return user?.name || user?.email || userId;
 }
 
 function getDocumentName(docId: string): string {
-  if (docId === props.spaceId) return "Home";
-  return data.value?.docsMap.get(docId)?.slug ?? "Unknown document";
+  if (docId === props.spaceId) return t("Home");
+  return data.value?.docsMap.get(docId)?.slug ?? t("Unknown document");
 }
 
 function getDocumentHref(docId: string): string | undefined {
@@ -129,7 +130,7 @@ function getDocumentHref(docId: string): string | undefined {
 }
 
 function getActivityDate(entry: AuditLog): string {
-  return normalizeTimestamp(entry.createdAt as string).toLocaleDateString("en-US", {
+  return normalizeTimestamp(entry.createdAt as string).toLocaleDateString(currentLang(), {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -148,9 +149,9 @@ function getActivityBucketLabel(dateString: string | Date): string {
     );
 
     if (diffDays === 0) return formatActivityTime(date);
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return date.toLocaleDateString("en-US", { weekday: "long" });
-    return date.toLocaleDateString("en-US", {
+    if (diffDays === 1) return t("Yesterday");
+    if (diffDays < 7) return date.toLocaleDateString(currentLang(), { weekday: "long" });
+    return date.toLocaleDateString(currentLang(), {
       month: "short",
       day: "numeric",
       year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
@@ -177,21 +178,7 @@ function getCardUserInitials(userId: string | null): string {
 }
 
 function getEntryAction(entry: AuditLog): string {
-  const actions: Record<string, string> = {
-    publish: "published",
-    unpublish: "unpublished",
-    delete: "deleted",
-    archive: "archived",
-    create: "created",
-    restore: "restored",
-    lock: "locked",
-    unlock: "unlocked",
-    save: "edited",
-    property_update: "edited",
-    property_delete: "edited",
-  };
-
-  return actions[entry.event] ?? getAuditEventLabel(entry.event).toLowerCase();
+  return getAuditEventAction(entry.event);
 }
 
 function getCompactActivityBatches(items: AuditLog[]): CompactActivityBatch[] {
@@ -221,15 +208,15 @@ function getEntryChangeLabel(entry: AuditLog): string | null {
   if (hasPropertyChange(entry)) return formatPropertyKey(entry.details?.propertyKey);
 
   const labels: Record<string, string> = {
-    save: "Content",
-    publish: "Page published",
-    unpublish: "Page unpublished",
-    create: "Page created",
-    delete: "Page deleted",
-    archive: "Page archived",
-    restore: "Page restored",
-    lock: "Page locked",
-    unlock: "Page unlocked",
+    save: t("Content"),
+    publish: t("Page published"),
+    unpublish: t("Page unpublished"),
+    create: t("Page created"),
+    delete: t("Page deleted"),
+    archive: t("Page archived"),
+    restore: t("Page restored"),
+    lock: t("Page locked"),
+    unlock: t("Page unlocked"),
   };
 
   return labels[entry.event] ?? null;
@@ -254,7 +241,7 @@ function getBatchChangeCount(batch: CompactActivityBatch): number {
 }
 
 function getChangeCountLabel(count: number): string {
-  return `${count} ${count === 1 ? "change" : "changes"}`;
+  return `${count} ${count === 1 ? t("change") : t("changes")}`;
 }
 
 function activityTimeMs(dateString: string | Date): number {
@@ -299,7 +286,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-size-label">Space Activity</h2>
+      <h2 class="text-size-label">{{ t("Space Activity") }}</h2>
     </div>
 
     <div v-if="error" class="text-red-600 p-4 border border-red-200 rounded-sm bg-red-50">
@@ -324,7 +311,7 @@ const activityGroups = computed((): CompactActivityGroup[] => {
     </div>
 
     <div v-else-if="activities.length === 0" class="text-center py-8 text-neutral-400">
-      No recent activity
+      {{ t("No recent activity") }}
     </div>
 
     <div v-else class="@container space-y-4">

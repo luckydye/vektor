@@ -1,9 +1,30 @@
 ---
 import Login from "#components/Login.vue";
 import LandingLayout from "#layouts/LandingLayout.astro";
+import { t } from "#utils/lang.ts";
+
+const lang = Astro.preferredLocale || "en";
+const features = [
+  {
+    label: t("Real-time collaboration across your whole team", lang),
+    d: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 3.13a4 4 0 0 1 0 7.75",
+  },
+  {
+    label: t("Multiple spaces to organize teams and projects", lang),
+    d: "M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z",
+  },
+  {
+    label: t("Rich editor with embeds, tables, and extensions", lang),
+    d: "M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z",
+  },
+  {
+    label: t("Self-hosted, ships as a single binary", lang),
+    d: "M22 12h-4l-3 9L9 3l-3 9H2",
+  },
+];
 ---
 
-<LandingLayout title="Vektor">
+<LandingLayout title="Vektor" lang={lang}>
   <div class="min-h-screen flex">
     <!-- Left: branded marketing panel -->
     <aside
@@ -43,35 +64,18 @@ import LandingLayout from "#layouts/LandingLayout.astro";
           class="font-bold text-white mb-4"
           style="font-size: 2.3rem; line-height: 1.18; letter-spacing: -0.03em"
         >
-          Your team's knowledge,<br>organized.
+          {t("Your team's knowledge,", lang)}<br>{t("organized.", lang)}
         </h1>
         <p
           class="mb-10 leading-relaxed"
           style="font-size: 14px; color: #c2b6d4; line-height: 1.75"
         >
-          A self-hosted documentation platform with real-time collaboration,<br>
-          rich editing, and zero external dependencies.
+          {t("A self-hosted documentation platform with real-time collaboration,", lang)}<br>
+          {t("rich editing, and zero external dependencies.", lang)}
         </p>
 
         <ul class="space-y-3">
-          {[
-              {
-                label: "Real-time collaboration across your whole team",
-                d: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 3.13a4 4 0 0 1 0 7.75",
-              },
-              {
-                label: "Multiple spaces to organize teams and projects",
-                d: "M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z",
-              },
-              {
-                label: "Rich editor with embeds, tables, and extensions",
-                d: "M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z",
-              },
-              {
-                label: "Self-hosted, ships as a single binary",
-                d: "M22 12h-4l-3 9L9 3l-3 9H2",
-              },
-            ].map((f) => (
+          {features.map((f) => (
               <li class="flex items-center gap-3">
                 <div
                   class="w-8 h-8 rounded-lg flex-none flex items-center justify-center"
@@ -100,7 +104,7 @@ import LandingLayout from "#layouts/LandingLayout.astro";
       <!-- Footer -->
       <div class="relative z-10">
         <p style="font-size: 11.5px; color: #56295f; letter-spacing: 0.02em">
-          Open source · Self-hosted · Privacy-first
+          {t("Open source · Self-hosted · Privacy-first", lang)}
         </p>
       </div>
     </aside>
@@ -132,7 +136,7 @@ import LandingLayout from "#layouts/LandingLayout.astro";
           >
         </div>
 
-        <Login client:load />
+        <Login client:load lang={lang} />
       </div>
     </div>
   </div>

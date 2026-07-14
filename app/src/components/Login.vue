@@ -2,12 +2,19 @@
 import { ref } from "vue";
 import { authClient } from "#composeables/auth-client.ts";
 import { config } from "#config";
+import { t, type TranslationKey } from "#utils/lang.ts";
 import {
   ButtonPrimary,
   ButtonSecondary,
   FormField,
   Input,
 } from "~/src/components/index.ts";
+
+const props = defineProps<{
+  lang?: string;
+}>();
+
+const translate = (key: TranslationKey) => t(key, props.lang);
 
 const conf = config();
 const showPasswordLogin = conf.AUTH_LOGIN !== "false";
@@ -48,12 +55,12 @@ async function onGoogleLogin() {
 
 async function onEmailLogin() {
   if (!email.value || !password.value) {
-    error.value = "Email and password are required, mate!";
+    error.value = translate("Email and password are required, mate!");
     return;
   }
 
   if (isSignUp.value && !name.value) {
-    error.value = "Name is required for sign up";
+    error.value = translate("Name is required for sign up");
     return;
   }
 
@@ -76,7 +83,7 @@ async function onEmailLogin() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.message || "Sign up failed");
+        throw new Error(data.message || translate("Sign up failed"));
       }
 
       window.location.href = "/";
@@ -90,11 +97,13 @@ async function onEmailLogin() {
       if (!result.error) {
         window.location.href = "/";
       } else {
-        throw new Error(result.error.message || "Sign in failed");
+        throw new Error(result.error.message || translate("Sign in failed"));
       }
     }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Authentication failed, mate!";
+    error.value = err instanceof Error
+      ? err.message
+      : translate("Authentication failed, mate!");
   } finally {
     loading.value = false;
   }
@@ -113,28 +122,37 @@ function toggleMode() {
         class="font-semibold text-neutral-900"
         style="font-size: 1.6rem; line-height: 1.2; letter-spacing: -0.02em"
       >
-        {{ isSignUp ? "Create an account" : "Welcome back" }}
+        {{ isSignUp ? translate("Create an account") : translate("Welcome back") }}
       </h2>
       <p class="text-size-medium text-neutral-500 mt-1.5">
-        {{ isSignUp ? "Set up your Vektor workspace" : "Sign in to your workspace" }}
+        {{
+          isSignUp
+            ? translate("Set up your Vektor workspace")
+            : translate("Sign in to your workspace")
+        }}
       </p>
     </div>
 
     <form v-if="showPasswordLogin" @submit.prevent="onEmailLogin" class="space-y-4">
-      <FormField v-if="isSignUp" label="Name">
-        <Input v-model="name" placeholder="Your Name" type="text" :disabled="loading" />
+      <FormField v-if="isSignUp" :label="translate('Name')">
+        <Input
+          v-model="name"
+          :placeholder="translate('Your Name')"
+          type="text"
+          :disabled="loading"
+        />
       </FormField>
 
-      <FormField label="Email">
+      <FormField :label="translate('Email')">
         <Input
           v-model="email"
-          placeholder="your.email@example.com"
+          :placeholder="translate('your.email@example.com')"
           type="email"
           :disabled="loading"
         />
       </FormField>
 
-      <FormField label="Password">
+      <FormField :label="translate('Password')">
         <Input
           v-model="password"
           placeholder="••••••••"
@@ -148,7 +166,13 @@ function toggleMode() {
       </div>
 
       <ButtonPrimary
-        :text="loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')"
+        :text="
+          loading
+            ? translate('Loading...')
+            : isSignUp
+              ? translate('Sign Up')
+              : translate('Sign In')
+        "
         class="w-full px-6 py-3 text-base justify-center"
         type="submit"
         :disabled="loading"
@@ -160,7 +184,11 @@ function toggleMode() {
         class="w-full text-size-medium text-neutral-500 hover:text-neutral-700 transition-colors"
         :disabled="loading"
       >
-        {{ isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up" }}
+        {{
+          isSignUp
+            ? translate("Already have an account? Sign in")
+            : translate("Need an account? Sign up")
+        }}
       </button>
     </form>
 
@@ -169,13 +197,13 @@ function toggleMode() {
         <div class="w-full border-t border-neutral"></div>
       </div>
       <div class="relative flex justify-center text-size-medium">
-        <span class="px-2 bg-background text-neutral">Or</span>
+        <span class="px-2 bg-background text-neutral">{{ translate("Or") }}</span>
       </div>
     </div>
 
     <ButtonSecondary
       v-if="showGoogleLogin"
-      text="Continue with Google"
+      :text="translate('Continue with Google')"
       class="w-full px-6 py-3 text-base justify-center"
       @click="onGoogleLogin"
       :disabled="loading"
@@ -183,7 +211,7 @@ function toggleMode() {
 
     <ButtonSecondary
       v-if="showSsoLogin"
-      text="Continue with SSO"
+      :text="translate('Continue with SSO')"
       class="w-full px-6 py-3 text-base justify-center"
       @click="onOAuthLogin"
       :disabled="loading"
@@ -193,7 +221,7 @@ function toggleMode() {
       v-if="!showPasswordLogin && !showSsoLogin && !showGoogleLogin"
       class="text-size-medium text-center text-neutral"
     >
-      No login method configured.
+      {{ translate("No login method configured.") }}
     </div>
   </div>
 </template>

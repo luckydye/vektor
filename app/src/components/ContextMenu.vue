@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ButtonSecondary from "./ButtonSecondary.vue";
 import Icon from "./Icon.vue";
+import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/popover";
 import "@atrium-ui/elements/list";
 
@@ -11,7 +12,7 @@ function handleSubmit(e: CustomEvent<{ detail: { selected: HTMLElement } }>) {
 
 <template>
   <a-popover-trigger class="group relative z-10 flex-none">
-    <ButtonSecondary slot="trigger" aria-label="Document actions">
+    <ButtonSecondary slot="trigger" :aria-label="t('Document actions')">
       <Icon name="more" />
     </ButtonSecondary>
 

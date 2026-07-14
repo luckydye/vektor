@@ -2,6 +2,7 @@
 import { ref, watch } from "vue";
 import homeIcon from "#assets/icons/home.svg?raw";
 import settingsIcon from "#assets/icons/settings.svg?raw";
+import { t } from "#utils/lang.ts";
 import ButtonPrimary from "./ButtonPrimary.vue";
 import ButtonSecondary from "./ButtonSecondary.vue";
 import Icon from "./Icon.vue";
@@ -45,6 +46,11 @@ const currentSpace = computed(() => {
   return props.spaces?.[0] || null;
 });
 
+const memberCountLabel = computed(() => {
+  const count = currentSpace.value?.members || 0;
+  return `${count} ${count === 1 ? t("Member") : t("Members")}`;
+});
+
 const handleSpaceSelect = (space: Space, event: MouseEvent) => {
   emit("update:modelValue", space.id);
   emit("select", space);
@@ -84,7 +90,12 @@ const handleCreateDoc = (event: Event) => {
     </div>
 
     <a-popover-trigger v-else class="block w-full group relative z-10 overflow-hidden">
-      <button type="button" slot="trigger" class="w-full">
+      <button
+        type="button"
+        slot="trigger"
+        class="w-full"
+        :aria-label="t('Select Space')"
+      >
         <div
           class="flex items-center gap-3xs px-4xs py-4xs rounded-md transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50"
         >
@@ -114,13 +125,12 @@ const handleCreateDoc = (event: Event) => {
                 <div
                   class="whitespace-nowrap text-base leading-[1.35em] font-normal text-foreground overflow-hidden text-ellipsis"
                 >
-                  {{ currentSpace?.name || spaceName || 'Select Space' }}
+                  {{ currentSpace?.name || spaceName || t("Select Space") }}
                 </div>
                 <div
                   class="whitespace-nowrap text-label leading-[1.35em] text-neutral-600 overflow-hidden text-ellipsis"
                 >
-                  {{ currentSpace?.members || 0 }}
-                  Members
+                  {{ memberCountLabel }}
                 </div>
               </div>
             </div>
@@ -184,7 +194,7 @@ const handleCreateDoc = (event: Event) => {
                 >
                   <Icon name="plus" />
                   <span class="text-interactive leading-none font-medium">
-                    Create new space
+                    {{ t("Create new Space") }}
                   </span>
                 </button>
               </div>
@@ -198,7 +208,7 @@ const handleCreateDoc = (event: Event) => {
     <div class="@max-sm:hidden flex items-center gap-2xs flex-none py-5xs pr-3xs">
       <ButtonSecondary
         v-if="props.canCreateDocs"
-        aria-label="New document"
+        :aria-label="t('New document')"
         @click="handleCreateDoc"
       >
         <Icon name="plus" class="-mx-1" />

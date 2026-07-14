@@ -1,5 +1,6 @@
 import de from "#assets/lang/de.json";
 import en from "#assets/lang/en.json";
+import { hasInjectionContext, inject, type InjectionKey } from "vue";
 
 const FALLBACK_LANG = "en";
 
@@ -12,21 +13,29 @@ export type TranslationKey = keyof typeof en;
 // than Vite's `import.meta.glob`) keep this working under plain runtimes such
 // as `bun test`, where `import.meta.glob` is undefined.
 const translations: Record<string, Record<string, string>> = { de, en };
+export const languageInjectionKey: InjectionKey<string> = Symbol("language");
 
 function normalizeLang(lang: string): string {
   return lang.split("-")[0] || FALLBACK_LANG;
 }
 
-function currentLang(): string {
+export function currentLang(): string {
+  if (hasInjectionContext()) {
+    const injectedLang = inject(languageInjectionKey, undefined);
+    if (injectedLang) {
+      return normalizeLang(injectedLang);
+    }
+  }
+
   if (typeof navigator !== "undefined" && navigator.language) {
     return normalizeLang(navigator.language);
   }
   return FALLBACK_LANG;
 }
 
-// `lang` lets server-rendered callers (Astro pages, where `navigator` is
-// undefined) pass the resolved locale explicitly, e.g. `Astro.preferredLocale`.
-// On the client it is omitted and the browser language is used.
+// `lang` lets server-rendered callers (where `navigator` is undefined) pass
+// their resolved locale explicitly. On the client it is otherwise omitted and
+// the browser language is used.
 export function t(key: TranslationKey, lang?: string): string {
   const code = lang ? normalizeLang(lang) : currentLang();
   return translations[code]?.[key] ?? translations[FALLBACK_LANG]?.[key] ?? key;

@@ -4,6 +4,7 @@ import { computed } from "vue";
 import { api } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import DocumentTeaser from "./DocumentTeaser.vue";
 
@@ -30,7 +31,7 @@ const docs = computed(() => docsData.value ?? []);
 
 <template>
   <div>
-    <h2 class="text-size-label mb-4">Recently Modified</h2>
+    <h2 class="text-size-label mb-4">{{ t("Recently Modified") }}</h2>
 
     <div class="h-60">
       <!-- Skeleton -->
@@ -46,7 +47,7 @@ const docs = computed(() => docsData.value ?? []);
       </div>
 
       <div v-else-if="docs.length === 0" class="h-full text-size-small text-neutral-400">
-        No documents yet.
+        {{ t("No documents yet.") }}
       </div>
 
       <!-- Slider -->
@@ -64,7 +65,7 @@ const docs = computed(() => docsData.value ?? []);
           >
             <span
               class="text-neutral-400 group-hover:text-neutral-500 transition-colors text-sm font-medium"
-              >View all →</span
+              >{{ t("View all") }} →</span
             >
           </div>
           <div class="mt-3">
@@ -72,7 +73,7 @@ const docs = computed(() => docsData.value ?? []);
               class="text-size-medium font-bold italic leading-snug"
               style="color: var(--color-primary-700)"
             >
-              Browse all documents
+              {{ t("Browse all documents") }}
             </h4>
           </div>
         </a>

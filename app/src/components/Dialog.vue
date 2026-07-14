@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, useSlots, watch } from "vue";
+import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
 import { closeIcon } from "~/src/assets/icons.ts";
 import ClientOnly from "./ClientOnly.vue";
@@ -84,7 +85,7 @@ onBeforeUnmount(() => applyScrollLock(false));
           <button
             type="button"
             class="dialog-backdrop absolute inset-0 border-0 bg-black/40 md:bg-black/50"
-            aria-label="Close dialog"
+            :aria-label="t('Close dialog')"
             @click="onDismiss"
           />
 
@@ -115,7 +116,7 @@ onBeforeUnmount(() => applyScrollLock(false));
               <button
                 type="button"
                 class="p-1 -mr-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-md transition-colors flex-none"
-                aria-label="Close"
+                :aria-label="t('Close')"
                 @click="close"
               >
                 <div class="svg-icon w-4 h-4" v-html="closeIcon" />

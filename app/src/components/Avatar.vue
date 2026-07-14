@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, toRef } from "vue";
 import { useUser } from "#composeables/useUsers.ts";
+import { t } from "#utils/lang.ts";
 
 interface Props {
   user?: {
@@ -60,7 +61,7 @@ const userInitials = computed(() => {
     <img
       v-if="resolvedUser?.image"
       :src="resolvedUser.image"
-      :alt="resolvedUser.name || 'User profile'"
+      :alt="resolvedUser.name || t('User profile')"
       class="object-cover"
     >
     <div

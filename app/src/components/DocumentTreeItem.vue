@@ -11,7 +11,7 @@
         v-if="hasChildren"
         @click="$emit('toggle', doc.id)"
         class="p-0.5 hover:bg-neutral-300 active:bg-neutral-200 rounded-sm"
-        :aria-label="isExpanded ? 'Collapse' : 'Expand'"
+        :aria-label="isExpanded ? t('Collapse') : t('Expand')"
       >
         <div
           class="svg-icon w-3 h-3 transition-transform text-neutral"
@@ -69,6 +69,7 @@
 <script setup>
 import { computed } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
+import { t } from "#utils/lang.ts";
 import {
   propertyValueIncludes,
   propertyValueToScalar,
@@ -102,7 +103,7 @@ const { currentSpace } = useSpace();
 
 function docTitle(doc) {
   const title = doc.properties?.title;
-  return title ? propertyValueToText(title) : "Untitled";
+  return title ? propertyValueToText(title) : t("Untitled");
 }
 
 const children = computed(() => {

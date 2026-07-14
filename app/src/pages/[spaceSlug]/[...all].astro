@@ -107,6 +107,7 @@ const initialSpace = JSON.parse(
 const initialSidebarWidth = parseSidebarWidth(
   Astro.cookies.get(SIDEBAR_WIDTH_KEY)?.value,
 );
+const lang = Astro.preferredLocale || "en";
 ---
 
 <BaseLayout
@@ -121,5 +122,6 @@ const initialSidebarWidth = parseSidebarWidth(
     initialDocument={initialDocument}
     initialSidebarWidth={initialSidebarWidth}
     replicaScope={Astro.locals.user?.id ? `user:${Astro.locals.user.id}` : "public"}
+    lang={lang}
   />
 </BaseLayout>

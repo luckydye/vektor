@@ -1,3 +1,5 @@
+import { currentLang } from "#utils/lang.ts";
+
 function hexToHsl(color: string): [number, number, number] {
   const hex = color.replace("#", "");
   const r = parseInt(hex.substring(0, 2), 16);
@@ -159,15 +161,21 @@ export function formatDate(dateString: string | number | Date) {
   const now = new Date();
   const diffInMs = now.getTime() - date.getTime();
   const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+  const locale = currentLang();
+  const relativeTime = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const formatRelativeDay = (days: number) => {
+    const value = relativeTime.format(-days, "day");
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
 
   if (diffInDays === 0) {
-    return "Today";
+    return formatRelativeDay(0);
   } else if (diffInDays === 1) {
-    return "Yesterday";
+    return formatRelativeDay(1);
   } else if (diffInDays < 7) {
-    return `${diffInDays} days ago`;
+    return formatRelativeDay(diffInDays);
   } else {
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(locale);
   }
 }
 
@@ -179,11 +187,15 @@ export function formatRelativeTime(timestamp: number) {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
+  const relativeTime = new Intl.RelativeTimeFormat(currentLang(), {
+    numeric: "auto",
+    style: "short",
+  });
 
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
-  return "Just now";
+  if (days > 0) return relativeTime.format(-days, "day");
+  if (hours > 0) return relativeTime.format(-hours, "hour");
+  if (minutes > 0) return relativeTime.format(-minutes, "minute");
+  return relativeTime.format(0, "second");
 }
 
 export function getUserInitials(userId: string) {

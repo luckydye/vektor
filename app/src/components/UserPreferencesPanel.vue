@@ -8,6 +8,7 @@ import {
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { t } from "#utils/lang.ts";
 import {
   DEFAULT_CANVAS_CURSOR_COLOR,
   readCanvasCursorColor,
@@ -35,8 +36,8 @@ const emit = defineEmits<{
 }>();
 
 const tabs = [
-  { id: "appearance", label: "Appearance" },
-  { id: "integrations", label: "Integrations" },
+  { id: "appearance", label: t("Appearance") },
+  { id: "integrations", label: t("Integrations") },
 ];
 
 const activeSpaceName = computed(() => currentSpace.value?.name || null);
@@ -94,7 +95,7 @@ const loadIntegrations = async () => {
     integrationConnections.value = response.connections || [];
   } catch (error) {
     integrationsError.value =
-      error instanceof Error ? error.message : "Failed to load integrations";
+      error instanceof Error ? error.message : t("Failed to load integrations");
     integrationConnections.value = [];
   } finally {
     isLoadingIntegrations.value = false;
@@ -115,14 +116,14 @@ const handleConnectIntegration = async (provider: OAuthIntegrationProvider) => {
     window.location.href = response.authorizeUrl;
   } catch (error) {
     integrationsError.value =
-      error instanceof Error ? error.message : "Failed to start OAuth flow";
+      error instanceof Error ? error.message : t("Failed to start OAuth flow");
     connectingProvider.value = null;
   }
 };
 
 const handleDisconnectIntegration = async (provider: OAuthIntegrationProvider) => {
   if (!currentSpace.value?.id) return;
-  if (!confirm(`Disconnect ${provider}?`)) return;
+  if (!confirm(t("Disconnect {provider}?").replace("{provider}", provider))) return;
   disconnectingProvider.value = provider;
   integrationsError.value = null;
   integrationsMessage.value = null;
@@ -132,7 +133,7 @@ const handleDisconnectIntegration = async (provider: OAuthIntegrationProvider) =
     await loadIntegrations();
   } catch (error) {
     integrationsError.value =
-      error instanceof Error ? error.message : "Failed to disconnect integration";
+      error instanceof Error ? error.message : t("Failed to disconnect integration");
   } finally {
     disconnectingProvider.value = null;
   }
@@ -153,9 +154,12 @@ onMounted(() => {
   const integrationName = url.searchParams.get("integration");
   const integrationMessage = url.searchParams.get("message");
   if (integrationStatus === "connected" && integrationName) {
-    integrationsMessage.value = `${integrationName} connected successfully`;
+    integrationsMessage.value = t("{provider} connected successfully").replace(
+      "{provider}",
+      integrationName,
+    );
   } else if (integrationStatus === "error") {
-    integrationsError.value = integrationMessage || "Integration OAuth failed";
+    integrationsError.value = integrationMessage || t("Integration OAuth failed");
   }
 
   loadIntegrations();
@@ -176,11 +180,11 @@ watch(
       type="button"
       @click="emit('close')"
       class="inline-flex items-center justify-center w-7 h-7 rounded-md text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 transition-colors"
-      aria-label="Back to profile menu"
+      :aria-label="t('Back to profile menu')"
     >
       <div class="svg-icon w-4 h-4" v-html="chevronLeftLargeIcon" />
     </button>
-    <p class="text-base font-medium text-foreground">Preferences</p>
+    <p class="text-base font-medium text-foreground">{{ t("Preferences") }}</p>
   </div>
 
   <!-- Tabbed settings layout -->
@@ -188,28 +192,30 @@ watch(
     <!-- Appearance tab -->
     <template #appearance>
       <section>
-        <p class="text-size-small font-medium text-neutral-700 mb-1.5">Theme</p>
+        <p class="text-size-small font-medium text-neutral-700 mb-1.5">
+          {{ t("Theme") }}
+        </p>
         <select
           :value="themePreference"
           @change="handleThemeChange"
           class="w-full px-2.5 py-1.5 rounded-md border border-neutral-100 bg-background text-size-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
         >
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
+          <option value="system">{{ t("System") }}</option>
+          <option value="light">{{ t("Light") }}</option>
+          <option value="dark">{{ t("Dark") }}</option>
         </select>
       </section>
 
       <section class="mt-4">
         <p class="text-size-small font-medium text-neutral-700 mb-1.5">
-          Canvas cursor color
+          {{ t("Canvas cursor color") }}
         </p>
         <a-popover-trigger>
           <button
             slot="trigger"
             type="button"
             class="w-full px-2.5 py-1.5 rounded-md border border-neutral-100 bg-background text-size-medium text-foreground hover:bg-neutral-50 transition-colors flex items-center justify-between gap-3"
-            aria-label="Canvas cursor color"
+            :aria-label="t('Canvas cursor color')"
           >
             <span>{{ cursorColor }}</span>
             <span
@@ -241,8 +247,8 @@ watch(
     <template #integrations>
       <section>
         <p class="text-size-small text-neutral-500 mb-2">
-          Space:
-          <span class="font-medium text-foreground">{{ activeSpaceName || "None" }}</span>
+          {{ t("Space:") }}
+          <span class="font-medium text-foreground">{{ activeSpaceName || t("None") }}</span>
         </p>
 
         <div
@@ -259,10 +265,10 @@ watch(
         </div>
 
         <div v-if="!currentSpace?.id" class="text-size-small text-neutral-500">
-          Open a space to manage integrations.
+          {{ t("Open a space to manage integrations.") }}
         </div>
         <div v-else-if="isLoadingIntegrations" class="text-size-small text-neutral-500">
-          Loading...
+          {{ t("Loading...") }}
         </div>
         <div v-else class="space-y-1.5">
           <div
@@ -275,17 +281,18 @@ watch(
             </p>
             <p class="text-label text-neutral-500 mt-0.5">
               <template v-if="getIntegrationConnection(provider)?.connected">
-                Connected as
+                {{ t("Connected as") }}
                 {{ getIntegrationConnection(provider)?.externalUsername ||
                   getIntegrationConnection(provider)?.externalAccountId }}
               </template>
-              <template v-else>Not connected</template>
+              <template v-else>{{ t("Not connected") }}</template>
             </p>
             <p
               v-if="getIntegrationConnection(provider)?.configured === false"
               class="text-label text-amber-700 mt-0.5"
             >
-              Missing: {{ getIntegrationConnection(provider)?.missingConfig.join(", ") }}
+              {{ t("Missing:") }}
+              {{ getIntegrationConnection(provider)?.missingConfig.join(", ") }}
             </p>
             <p
               v-if="getIntegrationConnection(provider)?.instanceUrl"
@@ -301,7 +308,11 @@ watch(
                 @click="handleDisconnectIntegration(provider)"
                 class="px-2 py-0.5 text-label font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
               >
-                {{ disconnectingProvider === provider ? "Disconnecting…" : "Disconnect" }}
+                {{
+                  disconnectingProvider === provider
+                    ? t("Disconnecting…")
+                    : t("Disconnect")
+                }}
               </button>
               <button
                 v-else
@@ -310,7 +321,7 @@ watch(
                 @click="handleConnectIntegration(provider)"
                 class="px-2 py-0.5 text-label font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
-                {{ connectingProvider === provider ? "Redirecting…" : "Connect" }}
+                {{ connectingProvider === provider ? t("Redirecting…") : t("Connect") }}
               </button>
             </div>
           </div>

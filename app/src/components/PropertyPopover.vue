@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watchEffect } from "vue";
+import { t } from "#utils/lang.ts";
 import ButtonPrimary from "./ButtonPrimary.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";
@@ -50,7 +51,7 @@ const spacePropertyItems = computed<SelectMenuItem[]>(() => {
         label: sp.name,
         icon: "",
       })),
-    { id: "__new__", label: "New Property", icon: plusIcon },
+    { id: "__new__", label: t("New Property"), icon: plusIcon },
   ];
 });
 
@@ -135,7 +136,7 @@ onMounted(() => {
     <!-- Select Mode: Choose existing property or create new -->
     <template v-if="mode === 'select'">
       <div class="text-size-small font-medium text-neutral-600 px-4xs mt-4xs">
-        Add Property
+        {{ t("Add Property") }}
       </div>
       <SelectMenu
         :items="spacePropertyItems"
@@ -147,13 +148,15 @@ onMounted(() => {
     <!-- Create Mode: Property name input and type selection -->
     <template v-else-if="mode === 'create'">
       <div class="flex items-center justify-between px-4xs mt-4xs">
-        <div class="text-size-small font-medium text-neutral-600">New Property</div>
+        <div class="text-size-small font-medium text-neutral-600">
+          {{ t("New Property") }}
+        </div>
         <button
           type="button"
           @click="handleBack"
           class="text-size-small text-neutral-500 hover:text-neutral-700"
         >
-          Back
+          {{ t("Back") }}
         </button>
       </div>
 
@@ -163,7 +166,7 @@ onMounted(() => {
             v-model="propertyName"
             ref="inputElement"
             class="bg-transparent border-none outline-none text-interactive w-full px-5xs"
-            placeholder="Property name"
+            :placeholder="t('Property name')"
           >
         </div>
       </div>
@@ -175,7 +178,7 @@ onMounted(() => {
       />
 
       <ButtonPrimary
-        text="Create"
+        :text="t('Create')"
         class="justify-center"
         :disabled="!propertyName.trim() || !selectedType"
         @click="handleCreate"

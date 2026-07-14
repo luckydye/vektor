@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { twMerge } from "tailwind-merge";
 import { computed, onMounted, ref } from "vue";
+import { t } from "#utils/lang.ts";
 import Icon from "./Icon.vue";
 import type { Property } from "./property.ts";
 import type { SelectMenuItem } from "./SelectMenu.vue";
@@ -13,6 +14,7 @@ const inputElement = ref();
 
 const props = defineProps<{
   label?: string;
+  nameLabel?: string;
   valueLabels?: string[];
   icon?: string;
   variant?: "default" | "special";
@@ -78,7 +80,13 @@ const filteredValueOptions = computed(() => {
     item.label?.toLowerCase().includes(searchTerm),
   );
   if (items.length === 0) {
-    return [{ id: "__new__", label: `Add ${searchInput.value}`, icon: plusIcon }];
+    return [
+      {
+        id: "__new__",
+        label: t("Add {value}").replace("{value}", searchInput.value),
+        icon: plusIcon,
+      },
+    ];
   }
   return items;
 });
@@ -155,7 +163,7 @@ onMounted(() => {
     <button
       v-if="property"
       type="button"
-      :data-tooltip="showTooltip === false ? undefined : property.name"
+      :data-tooltip="showTooltip === false ? undefined : nameLabel || property.name"
       :class="{
         'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
         'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
@@ -249,7 +257,7 @@ onMounted(() => {
             ref="inputElement"
             v-model="searchInput"
             class="bg-transparent border-none outline-none text-interactive w-[150px]"
-            :placeholder="property.name || 'Property name'"
+            :placeholder="nameLabel || property.name || t('Property name')"
           >
           <span v-else class="text-interactive">
             {{ property.name }}
@@ -258,6 +266,7 @@ onMounted(() => {
         <button
           type="button"
           class="shrink-0 transition-opacity hover:opacity-70 cursor-pointer text-neutral-950"
+          :aria-label="t('Delete property')"
           @click="handleDelete"
         >
           <Icon name="trash" class="w-[18px] h-[18px]" />

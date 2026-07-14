@@ -56,7 +56,16 @@ export default defineConfig({
 
   i18n: {
     defaultLocale: "en",
-    locales: ["de", "en"],
+    locales: [
+      {
+        path: "de",
+        codes: ["de", "de-DE", "de-AT", "de-CH", "de-LI", "de-LU"],
+      },
+      {
+        path: "en",
+        codes: ["en", "en-US", "en-GB", "en-CA", "en-AU", "en-NZ", "en-IE"],
+      },
+    ],
   },
 
   integrations: [

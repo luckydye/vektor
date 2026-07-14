@@ -6,6 +6,7 @@ import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { currentLang, t } from "#utils/lang.ts";
 import {
   propertyValueIncludes,
   propertyValueToText,
@@ -72,14 +73,14 @@ const expandedCategorySlugs = computed(() => {
 // Use the composable with all expanded category slugs
 const { documentsBySlug } = useCategoryDocuments(expandedCategorySlugs);
 
-const documentTitleCollator = new Intl.Collator(undefined, {
+const documentTitleCollator = new Intl.Collator(currentLang(), {
   numeric: true,
   sensitivity: "base",
 });
 
 function documentTitle(doc) {
   const title = doc.properties?.title;
-  return title ? propertyValueToText(title) : "Untitled";
+  return title ? propertyValueToText(title) : t("Untitled");
 }
 
 const categoriesWithDocs = computed(() => {
@@ -333,7 +334,7 @@ async function handleSave() {
 
     resetForm();
   } catch (err) {
-    formError.value = err instanceof Error ? err.message : "Failed to save category";
+    formError.value = err instanceof Error ? err.message : t("Failed to save category");
   } finally {
     isSaving.value = false;
   }
@@ -374,7 +375,7 @@ async function handleDrop(e, index) {
   try {
     await reorderCategories(newOrder);
   } catch (err) {
-    formError.value = "Failed to reorder categories";
+    formError.value = t("Failed to reorder categories");
   } finally {
     draggedCategory.value = null;
   }
@@ -402,7 +403,7 @@ async function confirmDelete() {
     await deleteCategory(category.id);
     deleteTarget.value = null;
   } catch (err) {
-    deleteError.value = err instanceof Error ? err.message : "Failed to delete category";
+    deleteError.value = err instanceof Error ? err.message : t("Failed to delete category");
   } finally {
     deletingIds.value.delete(category.id);
   }
@@ -421,7 +422,7 @@ async function handleDocumentParentChange(event) {
   const { documentId, newParentId } = event.detail;
 
   if (!currentSpace.value) {
-    throw new Error("No space selected");
+    throw new Error(t("No space selected"));
   }
 
   await api.document.patch(currentSpace.value.id, documentId, {
@@ -440,13 +441,13 @@ async function handleDocumentCategoryChange(event) {
   const { documentId, newCategoryId } = event.detail;
 
   if (!currentSpace.value) {
-    throw new Error("No space selected");
+    throw new Error(t("No space selected"));
   }
 
   // Find the category to get its slug
   const targetCategory = categories.value.find((c) => c.id === newCategoryId);
   if (!targetCategory) {
-    throw new Error("Target category not found");
+    throw new Error(t("Target category not found"));
   }
 
   // First, clear the parentId
@@ -518,9 +519,11 @@ defineExpose({ isEditMode, toggleEditMode });
         >
           <div class="svg-icon w-6 h-6 text-neutral-400" v-html="categoryIcon" />
           <div>
-            <p class="text-size-medium font-medium text-neutral-900">No categories yet</p>
+            <p class="text-size-medium font-medium text-neutral-900">
+              {{ t("No categories yet") }}
+            </p>
             <p class="text-size-small text-neutral-500 mt-0.5">
-              Group your documents into categories to organize this space.
+              {{ t("Group your documents into categories to organize this space.") }}
             </p>
           </div>
           <button
@@ -529,11 +532,11 @@ defineExpose({ isEditMode, toggleEditMode });
             class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
           >
             <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
-            <span>Create category</span>
+            <span>{{ t("Create category") }}</span>
           </button>
         </div>
         <p v-else class="px-3 py-4 text-center text-size-medium text-neutral-500">
-          No categories yet
+          {{ t("No categories yet") }}
         </p>
       </div>
 
@@ -601,7 +604,7 @@ defineExpose({ isEditMode, toggleEditMode });
                 <a
                   :href="spacePath(currentSpace?.slug, `/new?category=${category.slug}`)"
                   class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
-                  title="New document in this category"
+                  :title="t('New document in this category')"
                   @click.stop
                 >
                   <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
@@ -610,8 +613,8 @@ defineExpose({ isEditMode, toggleEditMode });
                   type="button"
                   class="p-1 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200 rounded-sm transition-colors flex items-center"
                   :class="{ 'text-neutral-900 bg-neutral-200': contextMenu?.category?.id === category.id }"
-                  title="Category options"
-                  aria-label="Category options"
+                  :title="t('Category options')"
+                  :aria-label="t('Category options')"
                   @click.stop="handleMenuButton($event, category)"
                 >
                   <div class="svg-icon w-3.5 h-3.5" v-html="dotsVerticalIcon" />
@@ -622,7 +625,7 @@ defineExpose({ isEditMode, toggleEditMode });
               <div
                 v-if="isEditMode"
                 class="flex items-center shrink-0 pr-2 text-neutral-400"
-                title="Drag to reorder"
+                :title="t('Drag to reorder')"
               >
                 <div class="svg-icon w-4 h-4" v-html="dragDotsIcon" />
               </div>
@@ -653,7 +656,7 @@ defineExpose({ isEditMode, toggleEditMode });
           class="w-full flex items-center gap-3 px-3 py-2 text-size-medium text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
         >
           <div class="svg-icon w-4 h-4 shrink-0" v-html="plusSmallIcon" />
-          <span>Add category</span>
+          <span>{{ t("Add category") }}</span>
         </button>
       </div>
 
@@ -685,7 +688,7 @@ defineExpose({ isEditMode, toggleEditMode });
               class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
             >
               <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
-              <span>New document</span>
+              <span>{{ t("New document") }}</span>
             </button>
             <button
               type="button"
@@ -693,7 +696,7 @@ defineExpose({ isEditMode, toggleEditMode });
               class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
             >
               <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
-              <span>Edit category</span>
+              <span>{{ t("Edit category") }}</span>
             </button>
 
             <div class="my-5xs h-px bg-neutral-100" />
@@ -704,7 +707,7 @@ defineExpose({ isEditMode, toggleEditMode });
               class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
             >
               <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
-              <span>New category</span>
+              <span>{{ t("New category") }}</span>
             </button>
             <button
               type="button"
@@ -712,7 +715,7 @@ defineExpose({ isEditMode, toggleEditMode });
               class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
             >
               <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
-              <span>Rearrange categories</span>
+              <span>{{ t("Rearrange categories") }}</span>
             </button>
 
             <div class="my-5xs h-px bg-neutral-100" />
@@ -724,7 +727,7 @@ defineExpose({ isEditMode, toggleEditMode });
               class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
             >
               <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
-              <span>Delete category</span>
+              <span>{{ t("Delete category") }}</span>
             </button>
           </div>
         </div>
@@ -733,30 +736,30 @@ defineExpose({ isEditMode, toggleEditMode });
       <!-- Create/Edit Category Dialog -->
       <Dialog
         :show="showAddForm || !!editingId"
-        :title="editingId ? 'Edit Category' : 'New Category'"
+        :title="editingId ? t('Edit category') : t('New category')"
         :close-on-backdrop="!isSaving"
         @update:show="(v) => { if (!v) cancelEdit(); }"
       >
         <form id="category-form" @submit.prevent="handleSave" class="space-y-4">
           <div>
             <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-            <label class="block text-size-small font-medium text-neutral-900 mb-1"
-              >Name</label
-            >
+            <label class="block text-size-small font-medium text-neutral-900 mb-1">
+              {{ t("Name") }}
+            </label>
             <input
               v-model="formData.name"
               type="text"
               required
               class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Category name"
+              :placeholder="t('Category name')"
             >
           </div>
 
           <div>
             <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-            <label class="block text-size-small font-medium text-neutral-900 mb-1"
-              >Slug</label
-            >
+            <label class="block text-size-small font-medium text-neutral-900 mb-1">
+              {{ t("Slug") }}
+            </label>
             <input
               v-model="formData.slug"
               type="text"
@@ -766,28 +769,28 @@ defineExpose({ isEditMode, toggleEditMode });
               placeholder="slug-name"
             >
             <p class="mt-1 text-size-small text-neutral">
-              Lowercase, numbers, hyphens only
+              {{ t("Lowercase, numbers, hyphens only") }}
             </p>
           </div>
 
           <div>
             <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-            <label class="block text-size-small font-medium text-neutral-900 mb-1"
-              >Description</label
-            >
+            <label class="block text-size-small font-medium text-neutral-900 mb-1">
+              {{ t("Description") }}
+            </label>
             <textarea
               v-model="formData.description"
               rows="2"
               class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Description (optional)"
+              :placeholder="t('Description (optional)')"
             />
           </div>
 
           <div>
             <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-            <label class="block text-size-small font-medium text-neutral-900 mb-2"
-              >Color</label
-            >
+            <label class="block text-size-small font-medium text-neutral-900 mb-2">
+              {{ t("Color") }}
+            </label>
             <div class="flex gap-2 items-center">
               <input
                 v-model="formData.color"
@@ -806,15 +809,15 @@ defineExpose({ isEditMode, toggleEditMode });
 
           <div>
             <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
-            <label class="block text-size-small font-medium text-neutral-900 mb-1"
-              >Icon</label
-            >
+            <label class="block text-size-small font-medium text-neutral-900 mb-1">
+              {{ t("Icon") }}
+            </label>
             <input
               v-model="formData.icon"
               type="text"
               maxlength="10"
               class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Icon (emoji or text)"
+              :placeholder="t('Icon (emoji or text)')"
             >
           </div>
 
@@ -831,7 +834,7 @@ defineExpose({ isEditMode, toggleEditMode });
               :disabled="isSaving"
               class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
             >
-              Cancel
+              {{ t("Cancel") }}
             </button>
             <button
               type="submit"
@@ -839,7 +842,7 @@ defineExpose({ isEditMode, toggleEditMode });
               :disabled="isSaving"
               class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {{ isSaving ? 'Saving...' : (editingId ? 'Update' : 'Create') }}
+              {{ isSaving ? t("Saving...") : (editingId ? t("Update") : t("Create")) }}
             </button>
           </div>
         </template>
@@ -848,14 +851,17 @@ defineExpose({ isEditMode, toggleEditMode });
       <!-- Delete Category Confirmation -->
       <Dialog
         :show="!!deleteTarget"
-        title="Delete category"
+        :title="t('Delete category')"
         :close-on-backdrop="!isDeleting"
         @update:show="(v) => { if (!v) cancelDelete(); }"
       >
         <p class="text-size-medium text-neutral-700">
-          Delete
-          <span class="font-semibold text-neutral-900">"{{ deleteTarget?.name }}"</span>?
-          Documents in this category will not be deleted.
+          {{
+            t('Delete "{name}"? Documents in this category will not be deleted.').replace(
+              "{name}",
+              deleteTarget?.name ?? "",
+            )
+          }}
         </p>
 
         <div
@@ -873,7 +879,7 @@ defineExpose({ isEditMode, toggleEditMode });
               :disabled="isDeleting"
               class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-background border border-neutral-100 rounded-md hover:bg-neutral-100 transition-colors disabled:opacity-50"
             >
-              Cancel
+              {{ t("Cancel") }}
             </button>
             <button
               type="button"
@@ -881,7 +887,7 @@ defineExpose({ isEditMode, toggleEditMode });
               :disabled="isDeleting"
               class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {{ isDeleting ? 'Deleting...' : 'Delete' }}
+              {{ isDeleting ? t("Deleting...") : t("Delete") }}
             </button>
           </div>
         </template>

@@ -6,6 +6,7 @@ import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
 import { authClient } from "#composeables/auth-client.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { t } from "#utils/lang.ts";
 
 const profileUser = useUserProfile();
 const isMounted = ref(false);
@@ -70,10 +71,10 @@ onMounted(() => {
               <div class="flex items-center gap-3">
                 <div class="flex-1 min-w-0">
                   <p class="text-base font-medium text-foreground truncate">
-                    {{ user?.name || 'Anonymous User' }}
+                    {{ user?.name || t("Anonymous User") }}
                   </p>
                   <p class="text-label text-neutral-600 truncate">
-                    {{ user?.email || 'No email' }}
+                    {{ user?.email || t("No email") }}
                   </p>
                 </div>
               </div>
@@ -87,21 +88,21 @@ onMounted(() => {
                 class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="cogIcon" />
-                <span class="leading-none font-medium">Preferences</span>
+                <span class="leading-none font-medium">{{ t("Preferences") }}</span>
               </button>
               <a
                 href="mailto:t.havlicek@s-v.de"
                 class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="mailIcon" />
-                <span class="leading-none font-medium">Send feedback</span>
+                <span class="leading-none font-medium">{{ t("Send feedback") }}</span>
               </a>
               <a
                 href="https://github.com/luckydye/vektor"
                 class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="archiveBoxIcon" />
-                <span class="leading-none font-medium">Source</span>
+                <span class="leading-none font-medium">{{ t("Source") }}</span>
               </a>
               <button
                 type="button"
@@ -109,7 +110,7 @@ onMounted(() => {
                 class="w-full text-left px-3xs py-3xs text-interactive text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="signOutIcon" />
-                <span class="leading-none font-medium">Sign Out</span>
+                <span class="leading-none font-medium">{{ t("Sign Out") }}</span>
               </button>
             </div>
           </template>

@@ -2,9 +2,11 @@
 import { computed, ref } from "vue";
 import type { AuditLog } from "#api/client.ts";
 import { checkCircleOutlineIcon, editOutlineIcon, plusIcon } from "#assets/icons.ts";
+import { currentLang, t } from "#utils/lang.ts";
 import {
   formatActivityTime,
   formatPropertyKey,
+  getAuditEventAction,
   getAuditEventLabel,
   hasPropertyChange,
 } from "#utils/auditActivity.ts";
@@ -33,7 +35,7 @@ const props = defineProps<{
 const expandedGroups = ref(new Set<string>());
 
 function getActivityDate(entry: AuditLog): string {
-  return normalizeTimestamp(entry.createdAt as string).toLocaleDateString("en-US", {
+  return normalizeTimestamp(entry.createdAt as string).toLocaleDateString(currentLang(), {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -52,9 +54,9 @@ function getActivityBucketLabel(dateString: string | Date): string {
     );
 
     if (diffDays === 0) return formatActivityTime(date);
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return date.toLocaleDateString("en-US", { weekday: "long" });
-    return date.toLocaleDateString("en-US", {
+    if (diffDays === 1) return t("Yesterday");
+    if (diffDays < 7) return date.toLocaleDateString(currentLang(), { weekday: "long" });
+    return date.toLocaleDateString(currentLang(), {
       month: "short",
       day: "numeric",
       year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
@@ -81,40 +83,26 @@ function getCardUserInitials(userId: string | null): string {
 }
 
 function getEntryAction(entry: AuditLog): string {
-  const actions: Record<string, string> = {
-    publish: "published",
-    unpublish: "unpublished",
-    delete: "deleted",
-    archive: "archived",
-    create: "created",
-    restore: "restored",
-    lock: "locked",
-    unlock: "unlocked",
-    save: "edited",
-    property_update: "edited",
-    property_delete: "edited",
-  };
-
-  return actions[entry.event] ?? getAuditEventLabel(entry.event).toLowerCase();
+  return getAuditEventAction(entry.event);
 }
 
 function getGroupAction(items: AuditLog[]): string {
-  return items[0] ? getEntryAction(items[0]) : "updated";
+  return items[0] ? getEntryAction(items[0]) : t("updated");
 }
 
 function getEntryChangeLabel(entry: AuditLog): string | null {
   if (hasPropertyChange(entry)) return formatPropertyKey(entry.details?.propertyKey);
 
   const labels: Record<string, string> = {
-    save: "Content",
-    publish: "Page published",
-    unpublish: "Page unpublished",
-    create: "Page created",
-    delete: "Page deleted",
-    archive: "Page archived",
-    restore: "Page restored",
-    lock: "Page locked",
-    unlock: "Page unlocked",
+    save: t("Content"),
+    publish: t("Page published"),
+    unpublish: t("Page unpublished"),
+    create: t("Page created"),
+    delete: t("Page deleted"),
+    archive: t("Page archived"),
+    restore: t("Page restored"),
+    lock: t("Page locked"),
+    unlock: t("Page unlocked"),
   };
 
   return labels[entry.event] ?? null;
@@ -135,7 +123,7 @@ function getHiddenDocumentEntryCount(items: AuditLog[]): number {
 }
 
 function getMoreChangesLabel(count: number): string {
-  return `${count} more ${count === 1 ? "change" : "changes"}`;
+  return `${count} ${count === 1 ? t("more change") : t("more changes")}`;
 }
 
 function isVisibleDocumentEntry(entry: AuditLog): boolean {
@@ -295,7 +283,7 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
                     v-if="entry.event === 'property_delete'"
                     class="shrink-0 text-red-500"
                   >
-                    removed
+                    {{ t("removed") }}
                   </span>
                   <span
                     v-else-if="entry.details?.newValue"
@@ -323,7 +311,7 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
                 />
                 <span>
                   {{ isGroupExpanded(group.id)
-                      ? "Show fewer changes"
+                      ? t("Show fewer changes")
                       : getMoreChangesLabel(getHiddenDocumentEntryCount(group.items)) }}
                 </span>
               </button>

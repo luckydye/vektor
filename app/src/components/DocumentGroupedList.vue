@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from "vue";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToScalar, propertyValueToText } from "#utils/documentProperties.ts";
+import { currentLang, t } from "#utils/lang.ts";
 import { formatDate, normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import {
   calendarIcon,
@@ -48,7 +49,11 @@ const dateRangeEnd = ref<Date | null>(null);
 const dateRangeLabel = computed(() => {
   if (!dateRangeStart.value && !dateRangeEnd.value) return null;
   const fmt = (d: Date) =>
-    d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    d.toLocaleDateString(currentLang(), {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   if (dateRangeStart.value && dateRangeEnd.value) {
     return `${fmt(dateRangeStart.value)} – ${fmt(dateRangeEnd.value)}`;
   }
@@ -94,14 +99,16 @@ const filtered = computed(() => {
 // ── Time grouping ────────────────────────────────────────────────────────────
 
 const GROUP_ORDER = [
-  "Today",
-  "Yesterday",
-  "Earlier this week",
-  "Earlier this month",
-  "Older",
-];
+  "today",
+  "yesterday",
+  "earlier-this-week",
+  "earlier-this-month",
+  "older",
+] as const;
 
-function getTimeGroup(date: Date | string | number): string {
+type TimeGroup = (typeof GROUP_ORDER)[number];
+
+function getTimeGroup(date: Date | string | number): TimeGroup {
   const d = normalizeTimestamp(date);
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -112,22 +119,29 @@ function getTimeGroup(date: Date | string | number): string {
   const monthStart = new Date(todayStart);
   monthStart.setDate(monthStart.getDate() - 30);
 
-  if (d >= todayStart) return "Today";
-  if (d >= yesterdayStart) return "Yesterday";
-  if (d >= weekStart) return "Earlier this week";
-  if (d >= monthStart) return "Earlier this month";
-  return "Older";
+  if (d >= todayStart) return "today";
+  if (d >= yesterdayStart) return "yesterday";
+  if (d >= weekStart) return "earlier-this-week";
+  if (d >= monthStart) return "earlier-this-month";
+  return "older";
 }
 
 const groups = computed(() => {
-  const map = new Map<string, DocumentWithProperties[]>();
+  const map = new Map<TimeGroup, DocumentWithProperties[]>();
   for (const doc of filtered.value) {
     const g = getTimeGroup(doc.updatedAt);
     if (!map.has(g)) map.set(g, []);
     map.get(g)?.push(doc);
   }
   return GROUP_ORDER.filter((g) => map.has(g)).map((g) => ({
-    label: g,
+    id: g,
+    label: {
+      today: t("Today"),
+      yesterday: t("Yesterday"),
+      "earlier-this-week": t("Earlier this week"),
+      "earlier-this-month": t("Earlier this month"),
+      older: t("Older"),
+    }[g],
     docs: map.get(g)!,
   }));
 });
@@ -173,11 +187,11 @@ function deselectAll() {
 
 // ── Collapsed groups ─────────────────────────────────────────────────────────
 
-const collapsed = ref(new Set<string>());
-function toggleCollapse(label: string) {
+const collapsed = ref(new Set<TimeGroup>());
+function toggleCollapse(groupId: TimeGroup) {
   const next = new Set(collapsed.value);
-  if (next.has(label)) next.delete(label);
-  else next.add(label);
+  if (next.has(groupId)) next.delete(groupId);
+  else next.add(groupId);
   collapsed.value = next;
 }
 
@@ -185,7 +199,7 @@ function toggleCollapse(label: string) {
 
 function docTitle(doc: DocumentWithProperties) {
   const title = doc.properties?.title ?? doc.properties?.name;
-  return title ? propertyValueToText(title) : "Untitled";
+  return title ? propertyValueToText(title) : t("Untitled");
 }
 
 function docCategoryName(doc: DocumentWithProperties): string | null {
@@ -209,7 +223,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
           :class="dateRangeLabel ? 'border-primary-300 text-primary-700' : 'border-neutral-200 text-neutral-700'"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="calendarIcon" />
-          <span>{{ dateRangeLabel ?? 'Date range' }}</span>
+          <span>{{ dateRangeLabel ?? t("Date range") }}</span>
           <button
             v-if="dateRangeLabel"
             type="button"
@@ -247,13 +261,13 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
       <template v-if="selectedIds.size > 0">
         <span class="text-size-small text-neutral-500"
           >{{ selectedIds.size }}
-          selected</span
+          {{ t("selected") }}</span
         >
         <button
           type="button"
           @click="deselectAll"
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
-          title="Deselect all"
+          :title="t('Deselect all')"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
         </button>
@@ -273,13 +287,13 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
       <template v-if="selectedIds.size > 0">
         <span class="text-size-small text-neutral-500"
           >{{ selectedIds.size }}
-          selected</span
+          {{ t("selected") }}</span
         >
         <button
           type="button"
           @click="deselectAll"
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
-          title="Deselect all"
+          :title="t('Deselect all')"
         >
           <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
         </button>
@@ -296,17 +310,21 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
       v-if="filtered.length === 0"
       class="py-12 text-center text-size-small text-neutral-400"
     >
-      {{ items.length === 0 ? (emptyText ?? 'No documents') : 'No documents in the selected date range' }}
+      {{
+        items.length === 0
+          ? (emptyText ?? t("No documents"))
+          : t("No documents in the selected date range")
+      }}
     </div>
 
     <!-- Groups -->
     <div v-else class="space-y-4">
-      <div v-for="group in groups" :key="group.label">
+      <div v-for="group in groups" :key="group.id">
         <!-- Group header -->
         <button
           type="button"
           class="flex items-center gap-2 w-full text-left mb-2"
-          @click="toggleCollapse(group.label)"
+          @click="toggleCollapse(group.id)"
         >
           <div class="svg-icon w-3.5 h-3.5 text-neutral-400" v-html="clockIcon" />
           <span class="text-size-small font-semibold text-neutral-700"
@@ -320,14 +338,14 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
           <div class="flex-1" />
           <div
             class="svg-icon w-4 h-4 text-neutral-400 transition-transform"
-            :class="collapsed.has(group.label) ? '-rotate-90' : ''"
+            :class="collapsed.has(group.id) ? '-rotate-90' : ''"
             v-html="chevronDownIcon"
           />
         </button>
 
         <!-- Group rows -->
         <div
-          v-if="!collapsed.has(group.label)"
+          v-if="!collapsed.has(group.id)"
           class="border border-neutral-100 rounded-lg overflow-hidden"
         >
           <page-target
@@ -374,7 +392,7 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
                 </p>
                 <p class="text-[11px] text-neutral-400 truncate">
                   <span v-if="docCategoryName(doc)">{{ docCategoryName(doc) }} • </span>
-                  <span class="capitalize">{{ doc.type || "Document" }}</span>
+                  <span class="capitalize">{{ doc.type || t("Document") }}</span>
                 </p>
               </div>
 

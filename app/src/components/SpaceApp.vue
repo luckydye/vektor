@@ -15,6 +15,7 @@ import shortcuts from "#config/shortcuts.json";
 import { Actions } from "#utils/actions.js";
 import { extensions } from "#utils/extensions.ts";
 import { history } from "#utils/history.ts";
+import { currentLang, languageInjectionKey } from "#utils/lang.ts";
 import { parseSidebarWidth } from "#utils/sidebarState.ts";
 import AIChatPanel from "./AIChatPanel.vue";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
@@ -44,7 +45,10 @@ const props = defineProps<{
   initialDocument?: Record<string, unknown>;
   initialSidebarWidth?: number;
   replicaScope?: string;
+  lang?: string;
 }>();
+
+provide(languageInjectionKey, props.lang ?? currentLang());
 
 const isServer = typeof window === "undefined";
 

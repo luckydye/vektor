@@ -4,6 +4,7 @@
  */
 
 import type { AuditLog } from "#api/client.ts";
+import { currentLang, t, type TranslationKey } from "#utils/lang.ts";
 import {
   closeCircleIcon,
   documentIcon,
@@ -28,9 +29,10 @@ import { normalizeTimestamp } from "./utils.ts";
  * Short verb form shown as the action in an activity entry header.
  * E.g. "Published", "Edited", "Created".
  */
-export const auditEventLabels: Record<string, string> = {
+const auditEventLabels: Record<string, TranslationKey> = {
   view: "Viewed",
   save: "Edited",
+  suggest: "Suggested",
   publish: "Published",
   unpublish: "Unpublished",
   restore: "Restored",
@@ -44,7 +46,28 @@ export const auditEventLabels: Record<string, string> = {
 };
 
 export function getAuditEventLabel(event: string): string {
-  return auditEventLabels[event] ?? event;
+  const key = auditEventLabels[event];
+  return key ? t(key) : event;
+}
+
+const auditEventActionKeys: Record<string, TranslationKey> = {
+  publish: "published",
+  unpublish: "unpublished",
+  delete: "deleted",
+  archive: "archived",
+  create: "created",
+  restore: "restored",
+  lock: "locked",
+  unlock: "unlocked",
+  save: "edited",
+  suggest: "suggested",
+  property_update: "edited",
+  property_delete: "edited",
+};
+
+export function getAuditEventAction(event: string): string {
+  const key = auditEventActionKeys[event];
+  return key ? t(key) : getAuditEventLabel(event).toLocaleLowerCase(currentLang());
 }
 
 /**
@@ -120,7 +143,7 @@ export function hasPropertyChange(activity: AuditLog): boolean {
  * "Title Case" label. E.g. "due_date" → "Due Date".
  */
 export function formatPropertyKey(key?: string): string {
-  if (!key) return "Property";
+  if (!key) return t("Property");
   return key
     .replace(/_/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -144,13 +167,15 @@ export function formatActivityTime(dateString: string | Date): string {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
+    const locale = currentLang();
+    const relativeTime = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
 
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
-    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
-    if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
+    if (diffMins < 1) return relativeTime.format(0, "second");
+    if (diffMins < 60) return relativeTime.format(-diffMins, "minute");
+    if (diffHours < 24) return relativeTime.format(-diffHours, "hour");
+    if (diffDays < 30) return relativeTime.format(-diffDays, "day");
 
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(locale);
   } catch {
     return String(dateString);
   }
