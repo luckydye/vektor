@@ -60,6 +60,7 @@ const routerBase = props.initialSpace?.slug ? `/${props.initialSpace.slug}/` : "
 
 const router = createRouter({
   history: isServer ? createMemoryHistory(routerBase) : createWebHistory(routerBase),
+  scrollBehavior: (_to, _from, savedPosition) => savedPosition ?? { left: 0, top: 0 },
   routes: [
     { path: "/", component: SpaceHomeView },
     { path: "/search", component: SpaceSearchView },
