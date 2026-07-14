@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref, Teleport } from "vue";
+import "@atrium-ui/elements/popover";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import { useCategories } from "#composeables/useCategories.ts";
 import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
@@ -146,6 +147,7 @@ const formData = ref({
 
 // Context menu state (opened via right-click on desktop or long-press on touch)
 const contextMenu = ref(null);
+const categoryPopoverTrigger = ref(null);
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_TOLERANCE = 10;
 let longPressTimer = null;
@@ -154,27 +156,23 @@ let longPressFired = false;
 
 const canManageCategories = computed(() => canEdit(currentSpace.value?.userRole));
 
-function openContextMenu(clientX, clientY, category) {
+async function openContextMenu(clientX, clientY, category) {
   if (!canManageCategories.value || isEditMode.value) return;
 
-  // Clamp to the viewport so the menu never renders off-screen.
-  const MENU_WIDTH = 224;
-  const MENU_HEIGHT = 240;
-  const x = Math.min(clientX, window.innerWidth - MENU_WIDTH - 8);
-  const y = Math.min(clientY, window.innerHeight - MENU_HEIGHT - 8);
-
-  contextMenu.value = { x: Math.max(8, x), y: Math.max(8, y), category };
+  contextMenu.value = { x: clientX, y: clientY, category };
+  await nextTick();
+  categoryPopoverTrigger.value?.show?.();
 }
 
 function closeContextMenu() {
+  categoryPopoverTrigger.value?.hide?.();
   contextMenu.value = null;
 }
 
-// Open the menu anchored under the hover "⋯" button, right-aligned to it.
+// Open the menu beside the hover "⋯" button with both top edges aligned.
 function handleMenuButton(event, category) {
   const rect = event.currentTarget.getBoundingClientRect();
-  const MENU_WIDTH = 224;
-  openContextMenu(rect.right - MENU_WIDTH, rect.bottom + 4, category);
+  openContextMenu(rect.right + 4, rect.top, category);
 }
 
 function clearLongPress() {
@@ -558,6 +556,7 @@ defineExpose({ isEditMode, toggleEditMode });
             @touchmove.passive="handleTouchMove($event)"
             @touchend="handleTouchEnd($event)"
             @touchcancel="clearLongPress()"
+            @contextmenu.prevent="openContextMenu($event.clientX, $event.clientY, category)"
           >
             <div
               class="group/category flex items-center gap-2 text-size-medium text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
@@ -595,7 +594,7 @@ defineExpose({ isEditMode, toggleEditMode });
               <!-- Hover actions: new document + options menu (hidden in edit mode, editors only) -->
               <div
                 v-if="!isEditMode && canManageCategories"
-                class="flex items-center gap-0.5 shrink-0 mr-2 opacity-0 group-hover/category:opacity-100 transition-opacity"
+                class="flex items-center gap-0.5 shrink-0 mr-2 opacity-0 group-hover/category:opacity-100 group-focus-within/category:opacity-100 transition-opacity"
                 :class="{ 'opacity-100': contextMenu?.category?.id === category.id }"
               >
                 <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
@@ -660,78 +659,92 @@ defineExpose({ isEditMode, toggleEditMode });
         </button>
       </div>
 
-      <!-- Category Context Menu (right-click on desktop, long-press on touch) -->
-      <Teleport to="body">
-        <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-        <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
-        <div
-          v-if="contextMenu"
-          class="fixed inset-0 z-50"
-          @click="closeContextMenu"
-          @contextmenu.prevent="closeContextMenu"
+      <!-- Category Context Menu (options button, right-click, or long-press) -->
+      <a-popover-trigger
+        ref="categoryPopoverTrigger"
+        class="fixed z-50 h-px w-px"
+        :style="{
+          left: `${contextMenu?.x ?? -10000}px`,
+          top: `${contextMenu?.y ?? -10000}px`,
+        }"
+        @hide="contextMenu = null"
+      >
+        <button
+          slot="trigger"
+          type="button"
+          class="block h-px w-px opacity-0 pointer-events-none"
+          tabindex="-1"
+          aria-hidden="true"
+        />
+
+        <a-popover
+          class="group"
+          placements="right-start,left-start"
+          @exit="closeContextMenu"
         >
-          <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-          <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
           <div
-            class="absolute min-w-[224px] bg-background border border-neutral-100 rounded-lg p-5xs shadow-large"
-            :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-            @click.stop
-            @contextmenu.prevent.stop
+            class="category-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
           >
-            <div class="px-3xs py-5xs text-size-small text-neutral-500 truncate">
-              {{ contextMenu.category.name }}
+            <div
+              v-if="contextMenu"
+              class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100"
+              @contextmenu.prevent
+            >
+              <div class="px-3xs py-5xs text-size-small text-neutral-500 truncate">
+                {{ contextMenu.category.name }}
+              </div>
+
+              <button
+                type="button"
+                @click="contextNewDocument(contextMenu.category)"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+              >
+                <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
+                <span>{{ t("New document") }}</span>
+              </button>
+              <button
+                type="button"
+                @click="contextEditCategory(contextMenu.category)"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+              >
+                <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
+                <span>{{ t("Edit category") }}</span>
+              </button>
+
+              <div class="my-5xs h-px bg-neutral-100" />
+
+              <button
+                type="button"
+                @click="contextNewCategory()"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+              >
+                <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
+                <span>{{ t("New category") }}</span>
+              </button>
+              <button
+                type="button"
+                @click="contextRearrange()"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+              >
+                <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
+                <span>{{ t("Rearrange categories") }}</span>
+              </button>
+
+              <div class="my-5xs h-px bg-neutral-100" />
+
+              <button
+                type="button"
+                @click="contextDeleteCategory(contextMenu.category)"
+                :disabled="deletingIds.has(contextMenu.category.id)"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+              >
+                <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
+                <span>{{ t("Delete category") }}</span>
+              </button>
             </div>
-
-            <button
-              type="button"
-              @click="contextNewDocument(contextMenu.category)"
-              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
-            >
-              <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
-              <span>{{ t("New document") }}</span>
-            </button>
-            <button
-              type="button"
-              @click="contextEditCategory(contextMenu.category)"
-              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
-            >
-              <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
-              <span>{{ t("Edit category") }}</span>
-            </button>
-
-            <div class="my-5xs h-px bg-neutral-100" />
-
-            <button
-              type="button"
-              @click="contextNewCategory()"
-              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
-            >
-              <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
-              <span>{{ t("New category") }}</span>
-            </button>
-            <button
-              type="button"
-              @click="contextRearrange()"
-              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
-            >
-              <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
-              <span>{{ t("Rearrange categories") }}</span>
-            </button>
-
-            <div class="my-5xs h-px bg-neutral-100" />
-
-            <button
-              type="button"
-              @click="contextDeleteCategory(contextMenu.category)"
-              :disabled="deletingIds.has(contextMenu.category.id)"
-              class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
-            >
-              <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
-              <span>{{ t("Delete category") }}</span>
-            </button>
           </div>
-        </div>
-      </Teleport>
+        </a-popover>
+      </a-popover-trigger>
 
       <!-- Create/Edit Category Dialog -->
       <Dialog
@@ -895,3 +908,13 @@ defineExpose({ isEditMode, toggleEditMode });
     </template>
   </div>
 </template>
+
+<style scoped>
+.category-context-menu[data-placement^="right"] .category-context-panel {
+  transform-origin: top left;
+}
+
+.category-context-menu[data-placement^="left"] .category-context-panel {
+  transform-origin: top right;
+}
+</style>
