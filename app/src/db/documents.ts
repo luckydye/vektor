@@ -597,16 +597,35 @@ export async function listDocuments(
   }));
 
   if (!type || type === "file") {
-    syncFileIndex(spaceId, db).catch(() => {});
+    await syncFileIndex(spaceId, db).catch(() => {});
 
-    const standaloneFiles = await db
+    let visibleFiles = await db
       .select()
       .from(fileTable)
-      .where(sql`${fileTable.documentId} IS NULL`)
       .orderBy(desc(fileTable.updatedAt))
       .all();
 
-    const fileResults = standaloneFiles.map(fileRowToDocument);
+    if (viewer) {
+      const parentDocumentIds = [
+        ...new Set(
+          visibleFiles
+            .map((file) => file.documentId)
+            .filter((documentId): documentId is string => documentId !== null),
+        ),
+      ];
+      const readableParentIds = await filterReadableResources(
+        spaceId,
+        ResourceType.DOCUMENT,
+        parentDocumentIds,
+        viewer.userId,
+        viewer.userGroups,
+      );
+      visibleFiles = visibleFiles.filter(
+        (file) => file.documentId === null || readableParentIds.has(file.documentId),
+      );
+    }
+
+    const fileResults = visibleFiles.map(fileRowToDocument);
 
     if (type === "file") {
       return { documents: fileResults, total: fileResults.length, nextCursor: null };
@@ -1231,6 +1250,11 @@ export async function getAllPropertiesWithValues(
     .map((d) => d.type || "document")
     .filter((v, i, a) => a.indexOf(v) === i)
     .sort();
+
+  if (!typeValues.includes("file")) {
+    typeValues.push("file");
+    typeValues.sort();
+  }
 
   const result: PropertyInfo[] = [{ name: "type", type: "select", values: typeValues }];
   for (const [key, data] of Object.entries(propertyMap)) {

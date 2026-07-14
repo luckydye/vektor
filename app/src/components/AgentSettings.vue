@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-size-medium font-semibold text-neutral-900">AI Provider</h2>
+      <h2 class="text-size-large font-semibold text-neutral-900 mb-4">AI Provider</h2>
     </div>
 
     <div

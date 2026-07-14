@@ -141,11 +141,10 @@
 
 /* Text Style Utilities */
 @utility text-label {
-  font-size: var(--text-size-extra-small);
+  font-size: var(--text-size-medium);
   font-weight: 400;
-  line-height: var(--line-height-small);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  line-height: var(--line-height-medium);
+  letter-spacing: 0;
 }
 @utility text-interactive {
   font-size: var(--text-size-normal);

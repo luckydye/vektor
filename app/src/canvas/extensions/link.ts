@@ -215,7 +215,12 @@ class CanvasLinkElement extends CanvasElementBase {
     for (const child of Array.from(anchor.children)) {
       total += (child as HTMLElement).offsetHeight;
     }
-    this.services?.reportSize(id, { height: total });
+    const hostStyle = this.parentElement ? getComputedStyle(this.parentElement) : null;
+    const borderHeight = hostStyle
+      ? (Number.parseFloat(hostStyle.borderTopWidth) || 0) +
+        (Number.parseFloat(hostStyle.borderBottomWidth) || 0)
+      : 0;
+    this.services?.reportSize(id, { height: Math.ceil(total + borderHeight) });
   }
 
   private buildImage(metadata: LinkMetadata | null): DocumentFragment {
@@ -309,7 +314,9 @@ function setPreview(url: string, state: LinkPreviewState) {
 
 async function loadLinkPreview(url: string) {
   const existing = previews.value.get(url);
-  if (existing?.status === "loading" || existing?.status === "loaded") return;
+  // Error states are cached too. Retrying from every reactive canvas update
+  // creates an unbounded request loop for URLs the endpoint cannot resolve.
+  if (existing) return;
   setPreview(url, { status: "loading", metadata: null });
   try {
     setPreview(url, { status: "loaded", metadata: await api.linkPreview.get(url) });

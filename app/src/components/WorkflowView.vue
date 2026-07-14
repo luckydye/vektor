@@ -451,19 +451,31 @@ const statusBadgeClass: Record<string, string> = {
 
     <!-- Tabs: Results / Run Details / History -->
     <a-tabs>
-      <a-tabs-list class="border-b border-neutral-100">
+      <a-tabs-list class="block h-[51px] py-4xs">
         <a-tabs-tab
-          class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
-          >Results</a-tabs-tab
+          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label text-black hover:[&_span]:bg-gray-200 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >
+          <span
+            class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
+            >Results</span
+          >
+        </a-tabs-tab>
         <a-tabs-tab
-          class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
-          >Run Details</a-tabs-tab
+          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label text-black hover:[&_span]:bg-gray-200 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >
+          <span
+            class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
+            >Run Details</span
+          >
+        </a-tabs-tab>
         <a-tabs-tab
-          class="px-4 py-2.5 text-size-medium text-neutral-500 border-b-2 border-transparent [&[selected]]:text-neutral-900 [&[selected]]:border-neutral-900"
-          >History</a-tabs-tab
+          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label text-black hover:[&_span]:bg-gray-200 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >
+          <span
+            class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
+            >History</span
+          >
+        </a-tabs-tab>
       </a-tabs-list>
 
       <!-- Results panel -->
