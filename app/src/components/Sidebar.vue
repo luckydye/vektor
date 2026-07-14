@@ -221,7 +221,7 @@ onUnmounted(() => {
       ref="sidebarRef"
       :style="{
             width: `${displayWidth}px`,
-            '--color-background': 'var(--color-neutral-10)'
+            '--color-background': 'var(--color-neutral-25)'
         }"
       :class="[
             '@container sidebar p-1.5 flex',

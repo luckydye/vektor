@@ -63,7 +63,8 @@
   --color-primary-900: #33153e;
   --color-primary-950: #100613;
   --color-neutral-10: #ffffff;
-  --color-neutral-50: #f5f5f5;
+  --color-neutral-25: #f5f5f5;
+  --color-neutral-50: #f9f9f9;
   --color-neutral-100: #e8e8e8;
   --color-neutral-200: #d1d1d1;
   --color-neutral-300: #b0b0b0;
@@ -107,6 +108,7 @@
     --color-primary-950: #d5cee1;
     --color-neutral-10: #151515;
     --color-neutral-50: #212121;
+    --color-neutral-25: #202020;
     --color-neutral-100: #222222;
     --color-neutral-200: #2f2f2f;
     --color-neutral-300: #515151;

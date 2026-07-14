@@ -99,6 +99,8 @@ class CanvasLinkElement extends CanvasElementBase {
   private anchor: HTMLAnchorElement | null = null;
   private embed: (HTMLElement & { value: string }) | null = null;
   private sizeObserver: ResizeObserver | null = null;
+  private renderedSrc: string | null = null;
+  private renderedPreview: LinkPreviewState | null | undefined = null;
 
   protected mount() {
     // Built lazily by update() once the preview determines the render mode.
@@ -107,11 +109,19 @@ class CanvasLinkElement extends CanvasElementBase {
   protected update() {
     const shape = this.shapeData;
     if (!shape) return;
-    // Load our own preview; the reactive store drives the re-render via `data`.
     const src = linkSource(shape);
+    const preview = this.extra as LinkPreviewState | null | undefined;
+
+    // Canvas mutations recreate the reactive shape objects, including this one
+    // when only another shape changed. Keep the preview DOM intact unless one
+    // of its actual inputs changed; rebuilding it reloads media and embeds.
+    if (src === this.renderedSrc && preview === this.renderedPreview) return;
+    this.renderedSrc = src;
+    this.renderedPreview = preview;
+
+    // Load our own preview; the reactive store drives the re-render via `data`.
     if (src) void loadLinkPreview(src);
 
-    const preview = this.extra as LinkPreviewState | null | undefined;
     const mode: "card" | "twitter" =
       src && isTwitterLinkPreview(preview) ? "twitter" : "card";
     if (mode !== this.mode) this.buildMode(mode);
