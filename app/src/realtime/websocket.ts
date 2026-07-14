@@ -20,7 +20,7 @@ import {
 import {
   getRoom,
   loadYDoc,
-  persistYRoomDraft,
+  persistYRoomDraftBestEffort,
   scheduleYRoomDraftPersist,
   yRooms,
 } from "#utils/yjsRooms.ts";
@@ -226,7 +226,7 @@ async function handleRealtimeWebSocket(
     for (const roomKey of yjsRooms) {
       const room = yRooms.get(roomKey);
       if (!room) continue;
-      void persistYRoomDraft(roomKey);
+      persistYRoomDraftBestEffort(roomKey);
       room.clients.delete(websocket);
       if (room.clients.size === 0 && room.presences.size === 0) {
         yRooms.delete(roomKey);

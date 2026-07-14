@@ -79,7 +79,16 @@ const spaceDbPreparation: Map<string, Promise<void>> = (() => {
   return new Map();
 })();
 
+// In-memory databases have no file-existence check, so remember deletions to
+// prevent background work that outlives a space from recreating it. Space IDs
+// are unique and are never reused within a process.
+const deletedSpaceDbIds = new Set<string>();
+
 export async function getSpaceDb(spaceId: string) {
+  if (deletedSpaceDbIds.has(spaceId)) {
+    throw new Error(`Space database not found: ${spaceId}`);
+  }
+
   const cached = spaceDbCache.get(spaceId);
   if (cached) {
     return cached;
@@ -101,6 +110,12 @@ export async function getSpaceDb(spaceId: string) {
     return spaceDbCache.get(spaceId)!;
   }
 
+  const spaceDir = join(DATA_DIR, "spaces");
+  const spacePath = join(spaceDir, `${spaceId}.db`);
+  if (!existsSync(spacePath)) {
+    throw new Error(`Space database not found: ${spaceId}`);
+  }
+
   let preparation = spaceDbPreparation.get(spaceId);
   if (!preparation) {
     preparation = prepareSpaceDb(spaceId);
@@ -108,15 +123,13 @@ export async function getSpaceDb(spaceId: string) {
   }
   await preparation;
 
-  const spaceDir = join(DATA_DIR, "spaces");
-
   if (!existsSync(spaceDir)) {
     mkdirSync(spaceDir, { recursive: true });
   }
 
   const spaceDb = drizzle({
     connection: {
-      source: path.resolve(spaceDir, `${spaceId}.db`),
+      source: path.resolve(spacePath),
       create: true,
       readwrite: true,
     },
@@ -133,9 +146,12 @@ export async function getSpaceDb(spaceId: string) {
 }
 
 export function closeSpaceDb(spaceId: string) {
-  if (spaceDbCache.has(spaceId)) {
-    spaceDbCache.delete(spaceId);
-  }
+  spaceDbCache.delete(spaceId);
+  // Preparation belongs to the database instance/file represented by the
+  // cached connection. Keeping a resolved promise here can make a later access
+  // open a newly-created, empty SQLite file without applying the schema.
+  spaceDbPreparation.delete(spaceId);
+  if (isInMemoryDb()) deletedSpaceDbIds.add(spaceId);
 }
 
 /** Returns the IDs of all spaces currently registered in the in-memory cache. */

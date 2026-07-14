@@ -282,7 +282,7 @@ Actions.register("ui:toggle:palatte", {
                     :class="index === selectedIndex ? 'text-primary-600' : 'text-neutral-400'"
                     v-html="result.type === 'document' ? documentIcon : boltIcon"
                   />
-                  <div class="flex-1 min-w-0 flex flex-col py-1.5 gap-2">
+                  <div class="flex-1 min-w-0 flex flex-col py-1.5 gap-5xs">
                     <span class="text-size-medium truncate font-normal">
                       {{ result.type === "document"
                         ? documentTitle(result.data)

@@ -7,6 +7,7 @@ import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-pro
 import * as Y from "yjs";
 import { getDocument, updateDocument } from "#db/documents.ts";
 import { contentExtensions } from "#editor/extensions.ts";
+import { appLogger } from "#observability/logger.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -272,13 +273,20 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   await updateDocument(ids.spaceId, ids.documentId, content, undefined, dbDoc.type);
 }
 
+/** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
+export function persistYRoomDraftBestEffort(key: string): void {
+  void persistYRoomDraft(key).catch((error) => {
+    appLogger.warn("Failed to persist realtime room draft", { error, roomKey: key });
+  });
+}
+
 export function scheduleYRoomDraftPersist(key: string): void {
   const existing = persistTimers.get(key);
   if (existing) clearTimeout(existing);
 
   const timer = setTimeout(() => {
     persistTimers.delete(key);
-    void persistYRoomDraft(key);
+    persistYRoomDraftBestEffort(key);
   }, PERSIST_DEBOUNCE_MS);
   timer.unref?.();
   persistTimers.set(key, timer);
