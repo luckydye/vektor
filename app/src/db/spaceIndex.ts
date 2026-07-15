@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { isInMemoryDb } from "#inMemoryDb";
 import {
   closeDatabase,
@@ -37,6 +37,17 @@ function databaseRecordId(): string {
   return `database_${crypto.randomUUID()}`;
 }
 
+function canonicalRemoteDatabaseEndpoint(databaseUrl: string): string {
+  const parsed = new URL(withoutDatabaseCredentials(databaseUrl));
+  const secure =
+    parsed.protocol === "libsql:"
+      ? parsed.searchParams.get("tls") !== "0"
+      : parsed.protocol === "https:" || parsed.protocol === "wss:";
+  const protocol = secure ? "https:" : "http:";
+
+  return new URL(`${protocol}//${parsed.host}${parsed.pathname}`).toString();
+}
+
 function asActiveSpace(
   record: SpaceIndexRecord | undefined,
 ): ActiveSpaceIndexRecord | null {
@@ -67,10 +78,48 @@ function sanitizeRemoteSpaceDatabaseUrl(databaseUrl: string): string {
   ) {
     throw new Error("A remote libSQL database URL is required");
   }
-  if (sanitizedUrl === withoutDatabaseCredentials(getAuthDatabaseUrl())) {
+  if (
+    canonicalRemoteDatabaseEndpoint(sanitizedUrl) ===
+    canonicalRemoteDatabaseEndpoint(getAuthDatabaseUrl())
+  ) {
     throw new Error("The auth database cannot be registered as a space database");
   }
   return sanitizedUrl;
+}
+
+async function inspectSpaceDatabase(
+  databaseUrl: string,
+): Promise<IndexedSpaceMetadata | null> {
+  const database = createDatabase(databaseUrl);
+  try {
+    const schemaObjects = await database.all<{ name: string }>(
+      sql.raw(
+        "SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'",
+      ),
+    );
+    if (schemaObjects.length === 0) return null;
+    if (!schemaObjects.some(({ name }) => name === "space_metadata")) {
+      throw new Error(
+        "The database is not empty and does not contain space metadata; recreate it before enabling",
+      );
+    }
+
+    const [metadata, ...additionalMetadata] = await database
+      .select()
+      .from(spaceMetadata)
+      .all();
+    if (!metadata) {
+      throw new Error(
+        "The database contains a partially initialized space schema; recreate it before enabling",
+      );
+    }
+    if (additionalMetadata.length > 0) {
+      throw new Error("The database contains metadata for multiple spaces");
+    }
+    return metadata;
+  } finally {
+    closeDatabase(database);
+  }
 }
 
 export async function registerAvailableSpaceDatabase(
@@ -179,6 +228,41 @@ export async function enableSpaceDatabase(
     throw new Error(
       `Only claimed or disabled database records can be enabled; current status is "${existing.status}"`,
     );
+  }
+
+  const metadata = await inspectSpaceDatabase(existing.databaseUrl);
+  if (metadata) {
+    const indexedForSpace = await authDb
+      .select({ id: spaceIndex.id })
+      .from(spaceIndex)
+      .where(eq(spaceIndex.spaceId, metadata.id))
+      .get();
+    if (indexedForSpace && indexedForSpace.id !== existing.id) {
+      throw new Error(`Space is already assigned to another database: ${metadata.id}`);
+    }
+
+    const activated = await authDb
+      .update(spaceIndex)
+      .set({
+        status: "active",
+        spaceId: metadata.id,
+        name: metadata.name,
+        slug: metadata.slug,
+        createdBy: metadata.createdBy,
+        createdAt: metadata.createdAt,
+        updatedAt: metadata.updatedAt,
+      })
+      .where(
+        and(eq(spaceIndex.id, existing.id), eq(spaceIndex.status, existing.status)),
+      )
+      .returning()
+      .get();
+    if (!activated) {
+      throw new Error(
+        `Database record changed while it was being enabled: ${recordId}`,
+      );
+    }
+    return activated;
   }
 
   const enabled = await authDb
@@ -408,15 +492,16 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
       path.basename(databasePath, ".db"),
     );
     const database = createDatabase(databaseUrl);
+    let metadata: IndexedSpaceMetadata | undefined;
     try {
-      const metadata = await database.select().from(spaceMetadata).get();
-      if (metadata) await indexLocalSpace(databaseUrl, metadata);
+      metadata = await database.select().from(spaceMetadata).get();
     } catch {
       // Ignore files that are not initialized space databases. They remain on
       // disk for an operator to inspect and are never added to the live index.
     } finally {
       closeDatabase(database);
     }
+    if (metadata) await indexLocalSpace(databaseUrl, metadata);
   }
 
   const indexedDatabases = await getAuthDb()

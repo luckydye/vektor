@@ -39,9 +39,12 @@ available, space creation returns HTTP 503.
 
 If initialization of a claimed database fails, Vektor marks that record
 `disabled` so it cannot be handed to another space accidentally. After the
-database has been repaired or recreated externally, return it to the pool with
-`vektor space enable <database-id>`. The same command can recover a record left
-`claimed` when the Vektor process stopped before initialization completed.
+database has been recreated externally, return the empty database to the pool
+with `vektor space enable <database-id>`. The same command recovers a record
+left `claimed` when the Vektor process stopped during initialization: a database
+that already contains space metadata is reactivated as that space, while a
+partially initialized database without metadata must be recreated before it can
+be enabled.
 
 To attach a space database that already contains Vektor data (for example one
 created by importing an existing `data/spaces/<space-id>.db`), use `attach`

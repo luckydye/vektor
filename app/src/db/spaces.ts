@@ -12,6 +12,7 @@ import {
   listUserPermissions,
   ResourceType,
 } from "./acl.ts";
+import { getDatabaseFilePath } from "./connection.ts";
 import {
   closeSpaceDb,
   createAllocatedSpaceDb,
@@ -33,7 +34,6 @@ import {
 } from "./spaceIndex.ts";
 
 const DATA_DIR = "./data";
-const SPACES_DIR = join(DATA_DIR, "spaces");
 const DELETED_DIR = join(DATA_DIR, "deleted");
 const UPLOADS_DIR = join(DATA_DIR, "uploads");
 
@@ -351,8 +351,8 @@ export async function deleteSpace(id: string): Promise<boolean> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   let databaseExisted = true;
 
-  if (!isInMemoryDb() && databaseRecord.databaseUrl.startsWith("file:")) {
-    const spacePath = join(SPACES_DIR, `${id}.db`);
+  const spacePath = getDatabaseFilePath(databaseRecord.databaseUrl);
+  if (!isInMemoryDb() && spacePath) {
     databaseExisted = existsSync(spacePath);
     if (databaseExisted) {
       const deletedSpacesDir = join(DELETED_DIR, "spaces");
