@@ -1,4 +1,5 @@
 import { Editor, type EditorOptions, Extension, type Extensions } from "@tiptap/core";
+import type { Slice } from "@tiptap/pm/model";
 import {
   NodeSelection,
   Plugin,
@@ -6,6 +7,7 @@ import {
   Selection,
   TextSelection,
 } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import {
   canvasClipboardFromDataTransfer,
   canvasClipboardToDocumentHtml,
@@ -58,6 +60,9 @@ export type EditorContext = {
 
 export type BaseEditorOptions = Partial<EditorOptions> & Pick<EditorOptions, "element">;
 
+const LIST_ITEM_CLIPBOARD_MIME = "application/x-vektor-list-item";
+const LIST_ITEM_CLIPBOARD_ATTRIBUTE = "data-vektor-list-item";
+
 function selectNearestParentNode(editor: Editor) {
   const { state, view } = editor;
   const { selection } = state;
@@ -91,10 +96,94 @@ function currentListItemRange(editor: Editor) {
     if (node.type.name !== "listItem" && node.type.name !== "taskItem") continue;
 
     const from = $from.before(depth);
+    const to = from + node.nodeSize;
+    const listDepth = depth - 1;
+    const list = $from.node(listDepth);
+
+    if (list.type.spec.group?.split(/\s+/).includes("list") && list.childCount === 1) {
+      const deleteFrom = $from.before(listDepth);
+      return {
+        from,
+        to,
+        deleteFrom,
+        deleteTo: deleteFrom + list.nodeSize,
+      };
+    }
+
+    return { from, to, deleteFrom: from, deleteTo: to };
+  }
+
+  return null;
+}
+
+function currentParentNodeRange(editor: Editor) {
+  const { $from } = editor.state.selection;
+
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth);
+    if (!NodeSelection.isSelectable(node)) continue;
+
+    const from = $from.before(depth);
     return { from, to: from + node.nodeSize };
   }
 
   return null;
+}
+
+function writeSliceToClipboard(
+  view: EditorView,
+  event: ClipboardEvent,
+  slice: Slice,
+  listItem: boolean,
+) {
+  if (!event.clipboardData) return false;
+
+  const { dom, text } = view.serializeForClipboard(slice);
+  if (listItem) {
+    dom.firstElementChild?.setAttribute(LIST_ITEM_CLIPBOARD_ATTRIBUTE, "");
+  }
+
+  event.preventDefault();
+  event.clipboardData.clearData();
+  if (listItem) event.clipboardData.setData(LIST_ITEM_CLIPBOARD_MIME, "1");
+  event.clipboardData.setData("text/html", dom.innerHTML);
+  event.clipboardData.setData("text/plain", text);
+  return true;
+}
+
+function moveListItemPasteToTextEnd(editor: Editor, event: ClipboardEvent) {
+  const { state, view } = editor;
+  const { selection } = state;
+  const { $from } = selection;
+
+  if (
+    !(selection instanceof TextSelection) ||
+    !selection.empty ||
+    $from.parentOffset !== 0 ||
+    $from.parent.type.name !== "paragraph"
+  ) {
+    return;
+  }
+
+  const html = event.clipboardData?.getData("text/html") ?? "";
+  const isListItemCut =
+    event.clipboardData?.getData(LIST_ITEM_CLIPBOARD_MIME) === "1" ||
+    /<(?:ul|ol)\b[^>]*\bdata-vektor-list-item(?:\s|=|>)/i.test(html);
+  if (!isListItemCut) return;
+
+  for (let depth = $from.depth - 1; depth > 0; depth--) {
+    const node = $from.node(depth);
+    if (node.type.name !== "listItem" && node.type.name !== "taskItem") continue;
+    if ($from.index(depth) !== 0) return;
+
+    const textEnd = $from.end($from.depth);
+    if (textEnd !== selection.from) {
+      view.dispatch(
+        state.tr.setSelection(TextSelection.create(state.doc, textEnd)).scrollIntoView(),
+      );
+    }
+    return;
+  }
 }
 
 function joinEmptyParagraphWithPreviousList(editor: Editor) {
@@ -142,9 +231,56 @@ const BaseSelectionShortcuts = Extension.create({
 
     return [
       new Plugin({
-        key: new PluginKey("cutCurrentBlock"),
+        key: new PluginKey("blockClipboard"),
         props: {
           handleDOMEvents: {
+            paste(_view, domEvent) {
+              moveListItemPasteToTextEnd(editor, domEvent as ClipboardEvent);
+              return false;
+            },
+            copy(view, domEvent) {
+              if (!view.state.selection.empty) return false;
+
+              const event = domEvent as ClipboardEvent;
+              const listItemRange = currentListItemRange(editor);
+              if (listItemRange) {
+                const { from, to, deleteFrom } = listItemRange;
+                if (!event.clipboardData) {
+                  view.dispatch(
+                    view.state.tr.setSelection(
+                      NodeSelection.create(view.state.doc, deleteFrom),
+                    ),
+                  );
+                  return false;
+                }
+
+                return writeSliceToClipboard(
+                  view,
+                  event,
+                  view.state.doc.slice(from, to, true),
+                  true,
+                );
+              }
+
+              const nodeRange = currentParentNodeRange(editor);
+              if (!nodeRange) return false;
+
+              const nodeSelection = NodeSelection.create(
+                view.state.doc,
+                nodeRange.from,
+              );
+              if (!event.clipboardData) {
+                view.dispatch(view.state.tr.setSelection(nodeSelection));
+                return false;
+              }
+
+              return writeSliceToClipboard(
+                view,
+                event,
+                nodeSelection.content(),
+                false,
+              );
+            },
             cut(view, domEvent) {
               if (!view.state.selection.empty) return false;
 
@@ -155,23 +291,23 @@ const BaseSelectionShortcuts = Extension.create({
               }
 
               const event = domEvent as ClipboardEvent;
-              const { from, to } = listItemRange;
+              const { from, to, deleteFrom, deleteTo } = listItemRange;
               if (!event.clipboardData) {
                 view.dispatch(
-                  view.state.tr.setSelection(NodeSelection.create(view.state.doc, from)),
+                  view.state.tr.setSelection(
+                    NodeSelection.create(view.state.doc, deleteFrom),
+                  ),
                 );
                 return false;
               }
 
               const slice = view.state.doc.slice(from, to, true);
-              const { dom, text } = view.serializeForClipboard(slice);
-
-              event.preventDefault();
-              event.clipboardData.clearData();
-              event.clipboardData.setData("text/html", dom.innerHTML);
-              event.clipboardData.setData("text/plain", text);
+              writeSliceToClipboard(view, event, slice, true);
               view.dispatch(
-                view.state.tr.delete(from, to).scrollIntoView().setMeta("uiEvent", "cut"),
+                view.state.tr
+                  .delete(deleteFrom, deleteTo)
+                  .scrollIntoView()
+                  .setMeta("uiEvent", "cut"),
               );
               return true;
             },

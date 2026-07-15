@@ -30,7 +30,6 @@ h6 {
 
 ul[data-type="taskList"] {
   @apply pl-0;
-  margin-bottom: 1.5rem;
 }
 
 ul[data-type="taskList"] li {

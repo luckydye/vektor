@@ -146,6 +146,7 @@ if (
       private bgColorActive = false;
       private tableActive = false;
       private tableSelectionPointerDown = false;
+      private editorSelectionPointerDown = false;
       private cellBackgroundColor = "transparent";
       private cellBackgroundActive = false;
       private copiedRow: unknown = null;
@@ -207,7 +208,9 @@ if (
           );
         }
         window.addEventListener("resize", this.updatePosition, { passive: true });
+        document.addEventListener("pointerdown", this.handlePointerDown, true);
         document.addEventListener("pointerup", this.handlePointerUp);
+        document.addEventListener("pointercancel", this.handlePointerUp);
         document.addEventListener("scroll", this.updatePosition, {
           passive: true,
           capture: true,
@@ -231,8 +234,11 @@ if (
           this.unbindEditorEvents();
         }
         window.removeEventListener("resize", this.updatePosition);
+        document.removeEventListener("pointerdown", this.handlePointerDown, true);
         document.removeEventListener("pointerup", this.handlePointerUp);
+        document.removeEventListener("pointercancel", this.handlePointerUp);
         document.removeEventListener("scroll", this.updatePosition);
+        this.editorSelectionPointerDown = false;
       }
 
       private bindEditorEvents() {
@@ -269,6 +275,7 @@ if (
         this.unbindEditorEvents();
         this._editor = undefined;
         this.shouldShow = false;
+        this.editorSelectionPointerDown = false;
         this.paint();
       };
 
@@ -288,6 +295,7 @@ if (
         this.shouldShow = false;
         this.tableActive = false;
         this.tableSelectionPointerDown = false;
+        this.editorSelectionPointerDown = false;
         this.secondaryOpen = false;
         this.interacting = false;
         this.imageActive = false;
@@ -310,10 +318,23 @@ if (
         this.shouldShow = false;
         this.tableActive = false;
         this.tableSelectionPointerDown = false;
+        this.editorSelectionPointerDown = false;
         this.secondaryOpen = false;
         this.interacting = false;
         this.paint();
       }
+
+      private handlePointerDown = (event: PointerEvent) => {
+        if (event.button !== 0) return;
+
+        const editor = this.getEditor();
+        if (!editorReady(editor) || !event.composedPath().includes(editor.view.dom)) {
+          return;
+        }
+
+        this.editorSelectionPointerDown = true;
+        this.paint();
+      };
 
       openTextColorPicker() {
         this.root.querySelector<HTMLElement>("[data-color-trigger='text']")?.click();
@@ -324,6 +345,11 @@ if (
       }
 
       private handlePointerUp = (event: PointerEvent) => {
+        if (this.editorSelectionPointerDown) {
+          this.editorSelectionPointerDown = false;
+          this.paint();
+        }
+
         const target = event.target;
         const targetNode = target instanceof Node ? target : null;
         if (targetNode && this.menu?.contains(targetNode)) return;
@@ -1114,7 +1140,7 @@ if (
       private renderCanvasToolbar() {
         return html`
           <div
-            class="floating-menu"
+            class=${`floating-menu${this.editorSelectionPointerDown ? " toolbar-hidden" : ""}`}
             style=${this.floatingStyle}
             @mousedown=${() => {
               this.interacting = true;
@@ -1191,7 +1217,7 @@ if (
 
         return html`
           <div
-            class=${`floating-menu${this.tableSelectionPointerDown ? " toolbar-hidden" : ""}`}
+            class=${`floating-menu${this.tableSelectionPointerDown || this.editorSelectionPointerDown ? " toolbar-hidden" : ""}`}
             style=${this.floatingStyle}
             @mousedown=${() => {
               this.interacting = true;
