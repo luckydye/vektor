@@ -11,9 +11,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Keep the Linux native ABI baseline older than supported production
-          # hosts. ubuntu-latest can raise its glibc requirement without notice.
-          - runner: ubuntu-22.04
+          # ONNX Runtime rc.12 uses glibc's C23 conversion symbols, available in
+          # the Ubuntu 24.04 runtime baseline.
+          - runner: ubuntu-24.04
             artifact: vektor-linux-x64
           - runner: macos-latest
             artifact: vektor-darwin-arm64

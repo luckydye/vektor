@@ -152,6 +152,7 @@ tasks:
 
   docker:build:
     desc: Build a Docker image for the host architecture with the vektor binary baked in.
+    deps: [compile]
     cmds:
       - docker build -t luckydye/vektor .
 

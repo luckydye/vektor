@@ -1,40 +1,4 @@
-FROM debian:12-slim AS build
-
-ARG TARGETARCH
-
-RUN apt-get update \
-    && apt-get -y --no-install-recommends install \
-        build-essential \
-        ca-certificates \
-        curl \
-        git \
-        python3 \
-    && rm -rf /var/lib/apt/lists/*
-
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-ENV MISE_DATA_DIR="/mise"
-ENV MISE_CONFIG_DIR="/mise"
-ENV MISE_CACHE_DIR="/mise/cache"
-ENV MISE_INSTALL_PATH="/usr/local/bin/mise"
-ENV PATH="/mise/shims:$PATH"
-
-RUN curl https://mise.run | sh
-
-WORKDIR /app
-
-COPY . .
-
-RUN mise trust && mise install && mise reshim
-
-ENV CARGO_BUILD_JOBS=1
-ENV RUST_MIN_STACK=16777216
-RUN bun i && cd app && bun i
-RUN task native:image
-RUN task native:exec
-RUN task native:embedding
-RUN cd app && bunx --bun astro build && bun run ./build.ts
-
-FROM debian:12-slim
+FROM ubuntu:24.04
 
 ARG TARGETARCH
 
@@ -59,12 +23,13 @@ RUN PANDOC_ARCH=$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "amd64") \
 
 WORKDIR /app
 
-COPY --from=build /app/app/vektor /app/vektor
+# The binary is compiled natively before the image build so Rust, ONNX Runtime,
+# Astro, and Bun compilation can use the CI/local build cache.
+COPY app/vektor /app/vektor
 
 RUN mkdir -p /app/data
 
-# Verify the embedded addons against the libraries in the actual runtime image,
-# not only the build stage. This catches glibc and shared-library mismatches.
+# Validate the prebuilt binary against the actual runtime libraries.
 RUN ./vektor __native-self-test
 
 EXPOSE 8080

@@ -3,45 +3,39 @@ include:
 
 stages:
   - build
+  - package
   - deploy
 
 build:
-  image: docker:latest
   stage: build
-  services:
-    - docker:dind
-  before_script:
-    - echo noop
   script:
-    # Compile against the same Debian baseline as the deployed runtime. Native
-    # addons built on the GitLab runner may otherwise require a newer glibc.
-    - docker build . --tag vektor-runtime --platform linux/amd64
-    - container_id="$(docker create vektor-runtime)"
-    - docker cp "$container_id:/app/vektor" ./app/vektor
-    - docker rm "$container_id"
+    - apt-get update -qq && apt-get install -y -qq build-essential
+    - bun i
+    - cd app && bun i
+    - task compile
   artifacts:
     paths:
       - app/vektor
     expire_in: 1 week
 
-# Only needed when system dependencies (pandoc, jq, etc.) change.
-build-runtime:
+image:
   image: docker:latest
-  stage: build
-  when: manual
+  stage: package
+  needs: [build]
   services:
     - docker:dind
   before_script:
     - echo noop
   script:
-    - docker login --username gitlab-ci-token --password $CI_JOB_TOKEN registry.s-v.de
-    - docker build . --tag registry.s-v.de/tihav/wiki --platform linux/amd64
-    - docker push registry.s-v.de/tihav/wiki
+    - docker login --username gitlab-ci-token --password $CI_JOB_TOKEN $CI_REGISTRY
+    - docker build . --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE:latest --platform linux/amd64
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
 
 deploy:
   stage: deploy
   when: manual
-  needs: [build]
+  needs: [image]
   script:
     - mkdir -p ~/.ssh
     - cat $SSH_KNOWN_HOST >> ~/.ssh/known_hosts
@@ -51,10 +45,8 @@ deploy:
     - scp -v -i $SSH_DEPLOY_KEY $DEST_ENV $DEST_HOST_USER@$DEST_HOST:$DEST_HOST_DIR/env
     - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST docker compose -f $DEST_HOST_DIR/compose.yaml down
     - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST "docker login $CI_REGISTRY -u gitlab-ci-token -p $CI_JOB_TOKEN"
-    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST docker compose -f $DEST_HOST_DIR/compose.yaml pull
-    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST "mkdir -p $DEST_HOST_DIR/bin"
-    - scp -O -i $SSH_DEPLOY_KEY ./app/vektor $DEST_HOST_USER@$DEST_HOST:$DEST_HOST_DIR/bin/vektor
-    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST docker compose -f $DEST_HOST_DIR/compose.yaml up -d
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST "VEKTOR_IMAGE=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA docker compose -f $DEST_HOST_DIR/compose.yaml pull"
+    - ssh -i $SSH_DEPLOY_KEY $DEST_HOST_USER@$DEST_HOST "VEKTOR_IMAGE=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA docker compose -f $DEST_HOST_DIR/compose.yaml up -d"
 
 shutdown:
   stage: deploy
