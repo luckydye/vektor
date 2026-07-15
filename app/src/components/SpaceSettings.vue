@@ -90,14 +90,11 @@
                       </svg>
                     </div>
                   </label>
-                  <button
+                  <ButtonSecondary
                     v-if="localLogoSvg"
-                    type="button"
+                    text="Remove"
                     @click="localLogoSvg = ''"
-                    class="text-[11px] text-neutral-400 hover:text-red-500 transition-colors leading-none pb-0.5"
-                  >
-                    Remove
-                  </button>
+                  />
                 </div>
 
                 <p
@@ -157,13 +154,11 @@
               {{ error }}
             </div>
             <div class="mt-6 flex justify-end">
-              <button
+              <ButtonPrimary
                 type="submit"
                 :disabled="isSaving"
-                class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors"
-              >
-                {{ isSaving ? 'Saving…' : 'Save Changes' }}
-              </button>
+                :text="isSaving ? 'Saving…' : 'Save Changes'"
+              />
             </div>
           </form>
         </div>
@@ -187,13 +182,11 @@
                 All documents and data will be archived. This cannot be undone.
               </p>
             </div>
-            <button
-              type="button"
+            <ButtonPrimary
+              tone="danger"
+              text="Delete Space"
               @click="showDeleteConfirm = true"
-              class="shrink-0 px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
-            >
-              Delete Space
-            </button>
+            />
           </div>
         </div>
 
@@ -835,21 +828,18 @@
         {{ deleteError }}
       </div>
       <div class="flex gap-2">
-        <button
-          type="button"
+        <ButtonSecondary
+          text="Cancel"
           @click="showDeleteConfirm = false; deleteConfirmText = ''; deleteError = null;"
-          class="flex-1 px-3 py-1.5 text-size-medium font-medium text-neutral-700 bg-neutral-100 rounded-md hover:bg-neutral-200"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
+          class="flex-1"
+        />
+        <ButtonPrimary
+          tone="danger"
+          :text="isDeleting ? 'Deleting...' : 'Delete Space'"
           @click="handleDeleteSpace"
           :disabled="deleteConfirmText !== currentSpace?.slug || isDeleting"
-          class="flex-1 px-3 py-1.5 text-size-medium font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {{ isDeleting ? 'Deleting...' : 'Delete Space' }}
-        </button>
+          class="flex-1"
+        />
       </div>
     </div>
   </div>
@@ -860,6 +850,7 @@ import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref, watch } from "vue";
 import { config } from "#config";
+import { ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
 import AgentSettings from "./AgentSettings.vue";
 import ArchivedDocuments from "./ArchivedDocuments.vue";
 import ExtensionSettings from "./ExtensionSettings.vue";

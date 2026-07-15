@@ -15,8 +15,12 @@ import {
   documentIcon,
 } from "~/src/assets/icons.ts";
 
+type DocumentListItem = DocumentWithProperties & {
+  snippet?: string;
+};
+
 const props = defineProps<{
-  items: DocumentWithProperties[];
+  items: DocumentListItem[];
   categories?: Category[];
   emptyText?: string;
   showToolbar?: boolean;
@@ -127,7 +131,7 @@ function getTimeGroup(date: Date | string | number): TimeGroup {
 }
 
 const groups = computed(() => {
-  const map = new Map<TimeGroup, DocumentWithProperties[]>();
+  const map = new Map<TimeGroup, DocumentListItem[]>();
   for (const doc of filtered.value) {
     const g = getTimeGroup(doc.updatedAt);
     if (!map.has(g)) map.set(g, []);
@@ -197,12 +201,12 @@ function toggleCollapse(groupId: TimeGroup) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function docTitle(doc: DocumentWithProperties) {
+function docTitle(doc: DocumentListItem) {
   const title = doc.properties?.title ?? doc.properties?.name;
   return title ? propertyValueToText(title) : t("Untitled");
 }
 
-function docCategoryName(doc: DocumentWithProperties): string | null {
+function docCategoryName(doc: DocumentListItem): string | null {
   const category = doc.properties?.category;
   const slug = propertyValueToScalar(category) ?? "";
   if (!slug) return null;
@@ -393,6 +397,13 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
                   <span v-if="docCategoryName(doc)">{{ docCategoryName(doc) }} • </span>
                   <span class="capitalize">{{ doc.type || t("Document") }}</span>
                 </p>
+                <!-- Search snippets are escaped by the search service; only its
+                     generated <mark> elements are rendered as HTML here. -->
+                <p
+                  v-if="doc.snippet"
+                  class="mt-1 line-clamp-2 text-size-small leading-relaxed text-neutral-500 [&_mark]:rounded-xs [&_mark]:bg-primary-100 [&_mark]:px-0.5 [&_mark]:text-neutral-800"
+                  v-html="doc.snippet"
+                />
               </div>
 
               <span

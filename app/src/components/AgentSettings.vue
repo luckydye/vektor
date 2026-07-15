@@ -118,13 +118,11 @@
         </div>
 
         <div class="flex justify-end">
-          <button
+          <ButtonPrimary
             type="submit"
             :disabled="isSaving"
-            class="px-4 py-1.5 text-size-medium font-medium text-neutral-10 bg-neutral-900 rounded-md hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500 disabled:opacity-50 transition-colors"
-          >
-            {{ isSaving ? 'Saving…' : 'Save' }}
-          </button>
+            :text="isSaving ? 'Saving…' : 'Save'"
+          />
         </div>
       </form>
     </div>
@@ -135,6 +133,7 @@
 import { computed, ref, watch } from "vue";
 import { type AIConfigMeta, api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { ButtonPrimary } from "~/src/components/index.ts";
 
 const { currentSpace } = useSpace();
 

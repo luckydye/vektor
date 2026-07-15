@@ -10,6 +10,7 @@ import {
   usersGroupIcon,
   usersIcon,
 } from "~/src/assets/icons.ts";
+import { ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
 
 const { currentSpace } = useSpace();
 const user = useUserProfile();
@@ -365,13 +366,10 @@ async function copyMemberId(memberId) {
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h2 class="text-size-large font-semibold text-neutral-900">Members</h2>
-      <button
-        type="button"
+      <ButtonPrimary
+        text="Invite People"
         @click="showAddMember = true"
-        class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        Invite People
-      </button>
+      />
     </div>
 
     <!-- Loading State -->
@@ -658,20 +656,17 @@ async function copyMemberId(memberId) {
         </div>
 
         <div class="flex gap-3">
-          <button
-            type="button"
+          <ButtonSecondary
+            text="Cancel"
             @click="showAddMember = false; addMemberError = null; newMemberId = ''; newMemberEmail = ''; newMemberType = 'user'; newMemberRole = 'viewer'; newMemberScope = 'space'; newMemberCategoryId = '';"
-            class="flex-1 px-4 py-2 text-size-medium font-medium text-neutral-900 bg-neutral-100 rounded-md hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-500"
-          >
-            Cancel
-          </button>
-          <button
+            class="flex-1"
+          />
+          <ButtonPrimary
             type="submit"
             :disabled="addingMember"
-            class="flex-1 px-4 py-2 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {{ addingMember ? 'Adding...' : 'Invite People' }}
-          </button>
+            :text="addingMember ? 'Adding...' : 'Invite People'"
+            class="flex-1"
+          />
         </div>
       </form>
     </div>

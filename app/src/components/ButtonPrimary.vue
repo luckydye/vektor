@@ -4,6 +4,7 @@ import ChevronDownIcon from "#assets/icons/chevron-down.svg?raw";
 
 interface Props {
   variant?: "default" | "with-context";
+  tone?: "primary" | "danger";
   text?: string;
   icon?: string;
   shortcut?: string;
@@ -12,6 +13,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   variant: "default",
+  tone: "primary",
 });
 
 const emit = defineEmits<{
@@ -32,6 +34,7 @@ const handleClick = (event: MouseEvent) => {
     :class="{
         'px-3xs': !showContextMenu,
         'pl-3xs': showContextMenu,
+        '!border-red-600 !bg-red-600 enabled:hover:!bg-red-700 enabled:active:!bg-red-800': tone === 'danger',
       }"
     :disabled="disabled"
     @click="handleClick"
