@@ -145,7 +145,7 @@ describe("Permission Utilities", () => {
       // Editor defaults
       expect(hasFeature("editor", "comment")).toBe(true);
       expect(hasFeature("editor", "view_history")).toBe(true);
-      expect(hasFeature("editor", "view_audit")).toBe(false);
+      expect(hasFeature("editor", "view_audit")).toBe(true);
       expect(hasFeature("editor", "manage_extensions")).toBe(false);
 
       // Viewer defaults
@@ -213,9 +213,9 @@ describe("Permission Utilities", () => {
   });
 
   describe("canViewAudit", () => {
-    it("should return true for owner only by default", () => {
+    it("should return true for owners and editors by default", () => {
       expect(canViewAudit("owner")).toBe(true);
-      expect(canViewAudit("editor")).toBe(false);
+      expect(canViewAudit("editor")).toBe(true);
       expect(canViewAudit("viewer")).toBe(false);
     });
 
@@ -254,10 +254,10 @@ describe("Permission Utilities", () => {
       expect(canManageExtensions("owner")).toBe(true);
     });
 
-    it("should give editor comment and view_history by default", () => {
+    it("should give editors collaboration and activity features by default", () => {
       expect(canComment("editor")).toBe(true);
       expect(canViewHistory("editor")).toBe(true);
-      expect(canViewAudit("editor")).toBe(false);
+      expect(canViewAudit("editor")).toBe(true);
       expect(canManageExtensions("editor")).toBe(false);
     });
 

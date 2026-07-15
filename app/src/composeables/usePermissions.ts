@@ -13,7 +13,7 @@ const FEATURE_DEFAULTS: Record<Permission, Record<Feature, boolean>> = {
   editor: {
     comment: true,
     view_history: true,
-    view_audit: false,
+    view_audit: true,
     manage_extensions: false,
   },
   viewer: {

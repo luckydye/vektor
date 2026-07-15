@@ -2234,7 +2234,7 @@ describe("Permissions API - Get Current User Permissions", () => {
     expect(data.features).toBeDefined();
     expect(data.features.comment).toBe(true);
     expect(data.features.view_history).toBe(true);
-    expect(data.features.view_audit).toBe(false);
+    expect(data.features.view_audit).toBe(true);
     expect(data.features.manage_extensions).toBe(false);
   });
 
@@ -2442,24 +2442,28 @@ describe("Permissions API - Audit Logs Feature", () => {
     expect(data.auditLogs).toBeDefined();
   });
 
-  it("should deny editor from viewing space audit logs by default", async () => {
+  it("should allow editor to view space audit logs by default", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${featuresTestSpaceId}/audit-logs`,
       session2Token,
     );
 
-    expect(response.ok).toBe(false);
-    expect(response.status).toBe(403);
+    expect(response.ok).toBe(true);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.auditLogs).toBeDefined();
   });
 
-  it("should deny editor from viewing document audit logs by default", async () => {
+  it("should allow editor to view document audit logs by default", async () => {
     const response = await apiRequest(
       `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
       session2Token,
     );
 
-    expect(response.ok).toBe(false);
-    expect(response.status).toBe(403);
+    expect(response.ok).toBe(true);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.auditLogs).toBeDefined();
   });
 
   it("should deny viewer from viewing space audit logs", async () => {
