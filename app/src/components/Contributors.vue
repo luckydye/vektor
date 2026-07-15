@@ -10,186 +10,150 @@ interface Props {
   max?: number;
 }
 
+interface Collaborator {
+  key: string;
+  user: {
+    name: string;
+    email?: string;
+    image?: string | null;
+  };
+  isPresent: boolean;
+}
+
 const props = withDefaults(defineProps<Props>(), {
   max: 5,
 });
 
 const collaboration = useActiveCollaboration();
-const { contributors, isLoading, error } = useContributors(props.documentId);
+const { contributors } = useContributors(props.documentId);
 
-const displayContributors = computed(() => {
-  return contributors.value.slice(0, props.max);
+const collaborators = computed(() => {
+  const collaboratorsByUser = new Map<string, Collaborator>();
+
+  for (const contributor of contributors.value) {
+    collaboratorsByUser.set(contributor.userId, {
+      key: contributor.userId,
+      user: contributor,
+      isPresent: false,
+    });
+  }
+
+  for (const profile of collaboration.value?.roomPresenceProfiles.value ?? []) {
+    const key = profile.user.id || profile.clientId;
+    const contributor = collaboratorsByUser.get(key);
+
+    collaboratorsByUser.set(key, {
+      key,
+      user: contributor ? { ...contributor.user, ...profile.user } : profile.user,
+      isPresent: true,
+    });
+  }
+
+  return [...collaboratorsByUser.values()].sort(
+    (left, right) => Number(right.isPresent) - Number(left.isPresent),
+  );
 });
+
+const displayCollaborators = computed(() => collaborators.value.slice(0, props.max));
 
 const remainingCount = computed(() => {
-  return Math.max(0, contributors.value.length - props.max);
-});
-
-const presentUsers = computed(() => {
-  const users = new Map(
-    (collaboration.value?.roomPresenceProfiles.value ?? []).map((profile) => {
-      const key = profile.user.id || profile.clientId;
-      return [key, { key, user: profile.user }] as const;
-    }),
-  );
-  return [...users.values()];
-});
-
-const displayPresentUsers = computed(() => {
-  return presentUsers.value.slice(0, props.max);
-});
-
-const remainingPresentCount = computed(() => {
-  return Math.max(0, presentUsers.value.length - props.max);
+  return Math.max(0, collaborators.value.length - props.max);
 });
 </script>
 
 <template>
-  <div class="flex items-center gap-3xs">
-    <a-popover-trigger
-      v-if="presentUsers.length > 0"
-      showdelay="200"
-      hidedelay="100"
-      class="group relative z-20"
+  <a-popover-trigger
+    v-if="collaborators.length > 0"
+    showdelay="200"
+    hidedelay="100"
+    class="group relative z-20"
+  >
+    <button
+      slot="trigger"
+      type="button"
+      class="flex items-center"
+      data-tooltip="Collaborators"
     >
-      <button
-        slot="trigger"
-        type="button"
-        class="flex items-center"
-        data-tooltip="Present now"
-      >
-        <div
-          v-for="(presentUser, index) in displayPresentUsers"
-          :key="presentUser.key"
-          class="relative"
+      <TransitionGroup name="collaborator" tag="span" class="flex items-center">
+        <span
+          v-for="(collaborator, index) in displayCollaborators"
+          :key="collaborator.key"
+          class="relative block"
+          :class="{ 'z-10': collaborator.isPresent }"
           :style="{
             marginLeft: index > 0 ? `-18px` : '0',
-            zIndex: displayPresentUsers.length - index,
+            zIndex: displayCollaborators.length - index,
           }"
-          :title="presentUser.user.name"
+          :title="collaborator.user.name"
         >
-          <Avatar size="small" :user="presentUser.user" />
           <span
+            class="block rounded-full transition-shadow duration-200"
+            :class="{ 'ring-2 ring-green-500 ring-offset-1 ring-offset-background': collaborator.isPresent }"
+          >
+            <Avatar size="small" :user="collaborator.user" />
+          </span>
+          <span
+            v-if="collaborator.isPresent"
             class="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-green-500"
             aria-hidden="true"
           />
-        </div>
-        <div
-          v-if="remainingPresentCount > 0"
-          class="relative flex items-center justify-center rounded-full bg-green-100 text-label font-medium text-green-700 border-2 border-background"
-          :style="{
-            width: `32px`,
-            height: `32px`,
-            marginLeft: `-18px`,
-            zIndex: 0,
-          }"
-        >
-          +{{ remainingPresentCount }}
-        </div>
-      </button>
-
-      <a-popover class="group" placements="bottom-center">
-        <div
-          class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs"
-        >
-          <a-popover-arrow>
-            <div class="contributors-arrow" />
-          </a-popover-arrow>
-          <div
-            class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]"
-          >
-            <div class="text-size-small font-medium text-neutral-600 px-4xs">
-              Present now
-            </div>
-            <div class="overflow-y-auto max-h-[240px] flex flex-col">
-              <div
-                v-for="presentUser in presentUsers"
-                :key="presentUser.key"
-                class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
-              >
-                <div class="relative">
-                  <Avatar size="small" :user="presentUser.user" />
-                  <span
-                    class="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-green-500"
-                    aria-hidden="true"
-                  />
-                </div>
-                <span class="text-interactive text-neutral-950 truncate"
-                  >{{ presentUser.user.name }}</span
-                >
-              </div>
-            </div>
-          </div>
-        </div>
-      </a-popover>
-    </a-popover-trigger>
-
-    <a-popover-trigger
-      v-if="!isLoading && !error && contributors.length > 0"
-      showdelay="200"
-      hidedelay="100"
-      class="group relative z-10"
-    >
-      <button
-        slot="trigger"
-        type="button"
-        class="flex items-center"
-        data-tooltip="Authors"
-      >
-        <div
-          v-for="(contributor, index) in displayContributors"
-          :key="contributor.id"
-          class="relative"
-          :style="{
-          marginLeft: index > 0 ? `-18px` : '0',
-          zIndex: displayContributors.length - index
+        </span>
+      </TransitionGroup>
+      <div
+        v-if="remainingCount > 0"
+        class="relative flex items-center justify-center rounded-full bg-primary-100 text-label text-primary-400 font-medium border-2 border-background"
+        :style="{
+          width: `32px`,
+          height: `32px`,
+          marginLeft: `-18px`,
+          zIndex: 0,
         }"
-          :title="contributor.name"
-        >
-          <Avatar size="small" :user="contributor" />
-        </div>
-        <div
-          v-if="remainingCount > 0"
-          class="relative flex items-center justify-center rounded-full bg-primary-100 text-label text-primary-400 font-medium border-2 border-background"
-          :style="{
-            width: `32px`,
-            height: `32px`,
-            marginLeft: `-18px`,
-            zIndex: 0
-          }"
-        >
-          +{{ remainingCount }}
-        </div>
-      </button>
+      >
+        +{{ remainingCount }}
+      </div>
+    </button>
 
-      <a-popover class="group" placements="bottom-center">
+    <a-popover class="group" placements="bottom-center">
+      <div
+        class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs"
+      >
+        <a-popover-arrow>
+          <div class="contributors-arrow" />
+        </a-popover-arrow>
         <div
-          class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs"
+          class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[200px]"
         >
-          <a-popover-arrow>
-            <div class="contributors-arrow" />
-          </a-popover-arrow>
-          <div
-            class="bg-neutral-10 border border-neutral-100 rounded-lg p-4xs flex flex-col gap-1 shadow-large min-w-[180px]"
-          >
-            <div class="text-size-small font-medium text-neutral-600 px-4xs">Authors</div>
-            <div class="overflow-y-auto max-h-[240px] flex flex-col">
-              <div
-                v-for="contributor in contributors"
-                :key="contributor.id"
-                class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
-              >
-                <Avatar size="small" :user="contributor" />
-                <span class="text-interactive text-neutral-950 truncate"
-                  >{{ contributor.name }}</span
-                >
-              </div>
-            </div>
+          <div class="text-size-small font-medium text-neutral-600 px-4xs">
+            Collaborators
           </div>
+          <TransitionGroup
+            name="collaborator-row"
+            tag="div"
+            class="overflow-y-auto max-h-[240px] flex flex-col"
+          >
+            <div
+              v-for="collaborator in collaborators"
+              :key="collaborator.key"
+              class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
+            >
+              <div class="relative">
+                <Avatar size="small" :user="collaborator.user" />
+                <span
+                  v-if="collaborator.isPresent"
+                  class="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-green-500"
+                  role="img"
+                  aria-label="Present"
+                />
+              </div>
+              <span class="min-w-0 flex-1 text-interactive text-neutral-950 truncate">
+                {{ collaborator.user.name }}
+              </span>
+            </div>
+          </TransitionGroup>
         </div>
-      </a-popover>
-    </a-popover-trigger>
-  </div>
+      </div>
+    </a-popover>
+  </a-popover-trigger>
 </template>
 
 <style>
@@ -209,5 +173,44 @@ a-popover-arrow {
 
 [data-placement="top"] .contributors-arrow {
   transform: rotate(225deg);
+}
+
+.collaborator-move,
+.collaborator-row-move,
+.collaborator-enter-active,
+.collaborator-leave-active,
+.collaborator-row-enter-active,
+.collaborator-row-leave-active {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.collaborator-enter-from,
+.collaborator-leave-to {
+  opacity: 0;
+  transform: scale(0.75);
+}
+
+.collaborator-row-enter-from,
+.collaborator-row-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.collaborator-leave-active,
+.collaborator-row-leave-active {
+  position: absolute;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collaborator-move,
+  .collaborator-row-move,
+  .collaborator-enter-active,
+  .collaborator-leave-active,
+  .collaborator-row-enter-active,
+  .collaborator-row-leave-active {
+    transition: none;
+  }
 }
 </style>
