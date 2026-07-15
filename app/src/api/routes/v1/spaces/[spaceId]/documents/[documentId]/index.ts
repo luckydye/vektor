@@ -37,9 +37,9 @@ import { enqueueDocumentPublishedEmails } from "#db/emailNotifications.ts";
 import {
   createRevision,
   createSuggestion,
-  getPublishedContent,
   getRevisionContent,
   getRevisionMetadata,
+  resolvePublishedDocumentContent,
 } from "#db/revisions.ts";
 import { document as documentTable } from "#db/schema/space.ts";
 import { getSpace, getSpaceBySlug } from "#db/spaces.ts";
@@ -353,13 +353,7 @@ export const GET: ApiRouteHandler = (context) =>
         ),
       };
     } else if (!draft && document.publishedRev !== null) {
-      const publishedContent = await getPublishedContent(spaceId, id);
-      if (publishedContent) {
-        document = {
-          ...document,
-          content: publishedContent,
-        };
-      }
+      document = await resolvePublishedDocumentContent(spaceId, document);
     }
 
     const accept = context.req.raw.headers.get("Accept") ?? "";

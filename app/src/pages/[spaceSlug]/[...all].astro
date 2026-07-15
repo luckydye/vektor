@@ -2,6 +2,7 @@
 import SpaceApp from "#components/SpaceApp.vue";
 import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
 import { getDocument, getDocumentBySlug } from "#db/documents.ts";
+import { resolvePublishedDocumentContent } from "#db/revisions.ts";
 import { getHeaderImageAspectRatio } from "#files/headerImageAspect.ts";
 import BaseLayout from "#layouts/BaseLayout.astro";
 import { parseSidebarWidth, SIDEBAR_WIDTH_KEY } from "#utils/sidebarState.ts";
@@ -36,11 +37,11 @@ if (settingsPath) {
   }
 }
 
-const documentRecord = docSlugMatch
+const storedDocumentRecord = docSlugMatch
   ? await getDocumentBySlug(space.id, docSlugMatch[1])
   : null;
 
-if (docSlugMatch && !documentRecord) {
+if (docSlugMatch && !storedDocumentRecord) {
   // A document addressed by its ID redirects to its canonical slug URL, matching
   // the dedicated doc page this catch-all replaced. Prevents ID-guessing from
   // rendering the shell for a document whose slug the URL never resolved.
@@ -50,16 +51,12 @@ if (docSlugMatch && !documentRecord) {
   }
 }
 
-let initialDocument = documentRecord
-  ? JSON.parse(JSON.stringify(documentRecord))
-  : undefined;
-
 let hasDirectDocumentAccess = false;
-if (initialDocument) {
+if (storedDocumentRecord) {
   try {
     await verifyDocumentRole(
       space.id,
-      initialDocument.id,
+      storedDocumentRecord.id,
       Astro.locals.user?.id ?? null,
       "viewer",
     );
@@ -78,6 +75,13 @@ if (!hasDirectDocumentAccess) {
   const accessDenied = await requireSpaceViewer(Astro, space);
   if (accessDenied) return accessDenied;
 }
+
+const documentRecord = storedDocumentRecord
+  ? await resolvePublishedDocumentContent(space.id, storedDocumentRecord)
+  : null;
+let initialDocument = documentRecord
+  ? JSON.parse(JSON.stringify(documentRecord))
+  : undefined;
 
 if (initialDocument) {
   initialDocument.headerImageAspectRatio = await getHeaderImageAspectRatio(

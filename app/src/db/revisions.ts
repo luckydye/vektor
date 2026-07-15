@@ -270,19 +270,32 @@ export async function getRevisionContent(
   }
 }
 
+export async function resolvePublishedDocumentContent<
+  T extends {
+    id: string;
+    content: string;
+    publishedRev: number | null;
+  },
+>(spaceId: string, document: T): Promise<T> {
+  if (document.publishedRev === null) return document;
+
+  const content = await getRevisionContent(spaceId, document.id, document.publishedRev);
+  return content === null ? document : { ...document, content };
+}
+
 export async function getPublishedContent(
   spaceId: string,
   documentId: string,
 ): Promise<string | null> {
   const db = await getSpaceDb(spaceId);
+  const storedDocument = await db
+    .select({ publishedRev: document.publishedRev })
+    .from(document)
+    .where(eq(document.id, documentId))
+    .get();
 
-  const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
-
-  if (!doc || doc.publishedRev === null) {
-    return null;
-  }
-
-  return getRevisionContent(spaceId, documentId, doc.publishedRev);
+  if (!storedDocument || storedDocument.publishedRev === null) return null;
+  return getRevisionContent(spaceId, documentId, storedDocument.publishedRev);
 }
 
 export async function restoreRevision(
