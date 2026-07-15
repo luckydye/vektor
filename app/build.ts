@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 
 const appDir = join(import.meta.dir);
@@ -170,4 +170,20 @@ if (!result.success) {
   process.exit(1);
 }
 
-console.log(`[compile] ${result.outputs[0]?.path}`);
+const executablePath = result.outputs[0]?.path;
+if (!executablePath) {
+  throw new Error("Compiled executable path is unavailable");
+}
+
+console.log(`[compile] ${executablePath}`);
+
+const nativeSelfTest = Bun.spawnSync([executablePath, "__native-self-test"], {
+  cwd: appDir,
+  stdio: ["ignore", "inherit", "inherit"],
+});
+if (nativeSelfTest.exitCode !== 0) {
+  await rm(executablePath, { force: true });
+  throw new Error(
+    `Compiled executable failed native addon self-test (exit ${nativeSelfTest.exitCode})`,
+  );
+}

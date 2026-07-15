@@ -120,6 +120,24 @@ Env vars:
 `);
 }
 
+async function verifyNativeAddons(): Promise<void> {
+  const [{ getNativeEmbedding }, { getNativeImage }, { getNativeExec }] =
+    await Promise.all([
+      import("./src/embeddings/native.ts"),
+      import("./src/files/native.ts"),
+      import("./src/exec/native.ts"),
+    ]);
+
+  await getNativeEmbedding();
+  const nativeImage = await getNativeImage();
+  if (!nativeImage) {
+    throw new Error("Native image runtime unavailable");
+  }
+  await getNativeExec();
+
+  console.log("[native-self-test] embedding, image, and exec loaded");
+}
+
 async function main(): Promise<void> {
   let argv = Bun.argv.slice(2);
 
@@ -129,6 +147,11 @@ async function main(): Promise<void> {
   argv = argvAfterSpace;
 
   const [command, ...rest] = argv;
+
+  if (command === "__native-self-test") {
+    await verifyNativeAddons();
+    return;
+  }
 
   if (command === "--version" || command === "-v") {
     const { version } = await import("./package.json");

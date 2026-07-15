@@ -1,6 +1,5 @@
-interface NativeAddonExportOptions {
+interface NativeAddonOptions {
   addonName: string;
-  exportName: string;
   requiredFunction: string;
   moduleUrl: string;
 }
@@ -39,19 +38,15 @@ function readProperty(value: unknown, property: string): unknown {
   }
 }
 
-export function getNativeAddonExport<T>(
+export function getNativeAddon<T>(
   nativeModule: unknown,
-  options: NativeAddonExportOptions,
+  options: NativeAddonOptions,
 ): T {
-  const nativeExport = readProperty(nativeModule, options.exportName);
-  const requiredFunction = readProperty(nativeExport, options.requiredFunction);
+  const requiredFunction = readProperty(nativeModule, options.requiredFunction);
 
   if (typeof requiredFunction !== "function") {
-    const message =
-      `Native ${options.addonName} addon export does not expose ` +
-      `${options.requiredFunction}()`;
     throw new TypeError(
-      message,
+      `Native ${options.addonName} addon does not expose ${options.requiredFunction}()`,
       {
         cause: {
           platform: process.platform,
@@ -60,20 +55,14 @@ export function getNativeAddonExport<T>(
           napiVersion: process.versions.napi,
           compiled: options.moduleUrl.startsWith("file:///$bunfs/"),
           moduleUrl: options.moduleUrl,
-          exportName: options.exportName,
           requiredFunction: options.requiredFunction,
           moduleType: valueType(nativeModule),
           moduleProperties: ownPropertyNames(nativeModule),
-          moduleRequiredFunctionType: valueType(
-            readProperty(nativeModule, options.requiredFunction),
-          ),
-          nativeExportType: valueType(nativeExport),
-          nativeExportProperties: ownPropertyNames(nativeExport),
-          nativeExportRequiredFunctionType: valueType(requiredFunction),
+          moduleRequiredFunctionType: valueType(requiredFunction),
         },
       },
     );
   }
 
-  return nativeExport as T;
+  return nativeModule as T;
 }
