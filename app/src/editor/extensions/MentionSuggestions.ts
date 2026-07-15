@@ -33,9 +33,7 @@ type EditorMentionState = {
 // Using `object` because the Editor type isn't importable without a side-effectful import.
 const editorState = new WeakMap<object, EditorMentionState>();
 
-export const MentionSuggestons = Mentions.extend<MentionOptions>({
-  name: "mention-suggestons",
-
+export const MentionSuggestions = Mentions.extend<MentionOptions>({
   addOptions() {
     return {
       ...this.parent?.(),

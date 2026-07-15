@@ -60,6 +60,10 @@ function serializeNode(node: JSONContent, depth = 0): string {
   const inline = () => children.map((child) => serializeNode(child, depth)).join("");
 
   switch (node.type) {
+    case "mention": {
+      const label = String(node.attrs?.label ?? node.attrs?.id ?? "").replace(/^@/, "");
+      return label ? `@${escapeMarkdownText(label)}` : "";
+    }
     case "doc":
       return children.map((child) => serializeNode(child, depth)).join("\n\n");
     case "paragraph":

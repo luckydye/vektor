@@ -32,6 +32,10 @@ const props = withDefaults(
     isUploading?: boolean;
     /** Upload error message from parent */
     uploadError?: string;
+    /** Enable people and document @mention suggestions. */
+    mentions?: boolean;
+    spaceId?: string;
+    documentId?: string;
   }>(),
   {
     placeholder: "",
@@ -43,6 +47,7 @@ const props = withDefaults(
     attachments: false,
     isUploading: false,
     uploadError: "",
+    mentions: false,
   },
 );
 
@@ -312,6 +317,9 @@ defineExpose({
         ref="editorElementRef"
         :value="modelValue"
         :placeholder="placeholder"
+        :mentions="mentions ? '' : undefined"
+        :space-id="spaceId"
+        :document-id="documentId"
         :class="autoGrow ? 'max-h-40' : ''"
         class="flex-1 min-w-0 overflow-y-auto bg-transparent text-size-medium text-neutral-800 leading-5"
         :style="{ '--editor-min-height': `${Math.max(1, rows) * 1.25}rem` }"

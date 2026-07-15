@@ -1,5 +1,33 @@
 import { describe, expect, it } from "bun:test";
+import { generateHTML } from "@tiptap/html";
 import { extractMentionsFromHtml, getUniqueMentionedEmails } from "#db/mentions.ts";
+import { contentExtensions } from "#editor/extensions.ts";
+
+describe("Mention document schema", () => {
+  it("serializes mention nodes from collaborative documents", () => {
+    const html = generateHTML(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "mention",
+                attrs: { id: "john@example.com", label: "John Doe" },
+              },
+            ],
+          },
+        ],
+      },
+      contentExtensions(),
+    );
+
+    expect(html).toContain(
+      '<user-mention email="john@example.com">@John Doe</user-mention>',
+    );
+  });
+});
 
 describe("Mention extraction", () => {
   it("extracts mentions from HTML with user-mention elements", () => {

@@ -20,6 +20,8 @@ export interface Comment {
 }
 
 const props = defineProps<{
+  spaceId: string;
+  documentId: string;
   comments: Comment[];
   activeReference?: string | null;
   isSubmitting?: boolean;
@@ -168,6 +170,9 @@ watch(
       <div class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-lg">
         <MessageInput
           v-model="newCommentContent"
+          mentions
+          :space-id="spaceId"
+          :document-id="documentId"
           placeholder="Reply..."
           :rows="2"
           submit-key="ctrl+enter"

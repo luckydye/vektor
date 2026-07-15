@@ -332,6 +332,8 @@ defineExpose({ commentsForOverlays, handleMoveThread });
         : { top: `${threadPosition}px`, right: '1rem' }"
     >
       <CommentThread
+        :space-id="spaceId"
+        :document-id="documentId"
         :comments="commentsForThread"
         :activeReference="activeReference"
         :isSubmitting="isSubmitting"
@@ -350,6 +352,8 @@ defineExpose({ commentsForOverlays, handleMoveThread });
       :style="{ top: `${addingCommentY}px` }"
     >
       <CommentThread
+        :space-id="spaceId"
+        :document-id="documentId"
         :comments="[]"
         :activeReference="addingCommentRef"
         :isSubmitting="isSubmitting"
@@ -368,6 +372,8 @@ defineExpose({ commentsForOverlays, handleMoveThread });
       :style="{ top: `${tooltipPos.top}px`, left: `${tooltipPos.left}px` }"
     >
       <CommentThread
+        :space-id="spaceId"
+        :document-id="documentId"
         :comments="clickedAnchorComments"
         :activeReference="clickedAnchorRef"
         :isSubmitting="isSubmitting"

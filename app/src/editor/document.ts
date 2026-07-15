@@ -22,7 +22,7 @@ import {
   insertImageFilesAt,
 } from "./extensions/ImageUpload.ts";
 import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
-import { MentionSuggestons } from "./extensions/MentionSuggestons.ts";
+import { MentionSuggestions } from "./extensions/MentionSuggestions.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
 import {
   createBaseEditor,
@@ -325,7 +325,13 @@ function createEditor(
       cleanupBlockDropIndicator();
     },
     extensions: [
-      ...documentExtensions(context),
+      ...documentExtensions(
+        context,
+        MentionSuggestions.configure({
+          spaceId: context.spaceId ?? "",
+          documentId: context.documentId,
+        }),
+      ),
 
       TrailingNodePlus.configure({
         spaceId: context.spaceId ?? "",
@@ -367,11 +373,6 @@ function createEditor(
         width: 2,
         class: "wiki-dropcursor",
       }),
-      MentionSuggestons.configure({
-        spaceId: context.spaceId ?? "",
-        documentId: context.documentId,
-      }),
-
       ExtensionSuggestions,
       InlineSuggestions,
 

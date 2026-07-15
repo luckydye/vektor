@@ -147,7 +147,10 @@ export function createBaseEditor(options: BaseEditorOptions): Editor {
   });
 }
 
-export function documentExtensions(context: EditorContext = {}): Extensions {
+export function documentExtensions(
+  context: EditorContext = {},
+  mentions: Extensions[number] = Mentions,
+): Extensions {
   const { spaceId = "", documentId } = context;
 
   return [
@@ -201,7 +204,7 @@ export function documentExtensions(context: EditorContext = {}): Extensions {
     HtmlBlock,
     DatePicker,
     FigmaEmbed,
-    Mentions,
+    mentions,
   ];
 }
 

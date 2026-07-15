@@ -1,6 +1,7 @@
 import { type Editor, Extension } from "@tiptap/core";
 import { Placeholder } from "@tiptap/extensions";
 import { Heading } from "#editor/extensions/baseExtensions.ts";
+import { MentionSuggestions } from "#editor/extensions/MentionSuggestions.ts";
 import { createBaseEditor } from "#editor/extensions.ts";
 import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "#utils/messageMarkdown.ts";
 
@@ -84,6 +85,10 @@ const SHADOW_STYLES = `
   .tiptap ol { list-style-type: decimal; padding-left: 1.5rem; margin: 0.25rem 0; }
   .tiptap li { display: list-item; margin: 0.125rem 0; }
   .tiptap li > p { display: inline; }
+  .tiptap user-mention {
+    color: var(--color-primary-600, #7c3aed);
+    font-weight: 500;
+  }
 `;
 
 if (
@@ -100,7 +105,7 @@ if (
       private _mount: HTMLDivElement;
 
       static get observedAttributes() {
-        return ["placeholder"];
+        return ["placeholder", "mentions", "space-id", "document-id"];
       }
 
       constructor() {
@@ -117,7 +122,12 @@ if (
       attributeChangedCallback(name: string) {
         if (name === "placeholder") {
           this.syncEditorAttributes();
+          return;
         }
+        if (!this.editor) return;
+        this.editor.destroy();
+        this.editor = null;
+        this.mountEditor();
       }
 
       connectedCallback() {
@@ -182,6 +192,10 @@ if (
         return this.hasAttribute("headings");
       }
 
+      private get mentionsEnabled() {
+        return this.hasAttribute("mentions") && Boolean(this.getAttribute("space-id"));
+      }
+
       private mountEditor() {
         const headingsEnabled = this.headingsEnabled;
 
@@ -218,6 +232,14 @@ if (
             // Opt-in (canvas text/notes): enables the `## `→H2 markdown input
             // rule and heading nodes. Chat input leaves this off.
             ...(headingsEnabled ? [Heading.configure({ levels: [1, 2, 3, 4] })] : []),
+            ...(this.mentionsEnabled
+              ? [
+                  MentionSuggestions.configure({
+                    spaceId: this.getAttribute("space-id") ?? "",
+                    documentId: this.getAttribute("document-id") ?? undefined,
+                  }),
+                ]
+              : []),
           ],
           editorProps: {
             attributes: {

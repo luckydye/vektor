@@ -33,6 +33,26 @@ describe("message markdown", () => {
     ).toBe("**important**\n\n1. *first*");
   });
 
+  test("serializes mentions without dropping their label", () => {
+    expect(
+      tiptapJsonToMarkdown({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "mention",
+                attrs: { id: "jane@example.com", label: "Jane Doe" },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe("Hello @Jane Doe");
+  });
+
   test("renders formatting and blocks unsafe HTML and links", () => {
     const html = renderMessageMarkdown(
       "**safe** [unsafe](javascript:alert(1)) <script>alert(1)</script>",
