@@ -1,5 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, join, relative, sep } from "node:path";
+import { familySync, MUSL } from "detect-libc";
 
 const appDir = join(import.meta.dir);
 const clientDir = join(appDir, "dist/client");
@@ -64,6 +66,41 @@ export async function generateClientAssetsModule() {
 
   await mkdir(dirname(outputFile), { recursive: true });
   await writeFile(outputFile, content);
+}
+
+function getLibsqlNativeTarget(): string {
+  if (process.platform === "darwin") {
+    if (process.arch === "arm64" || process.arch === "x64") {
+      return `darwin-${process.arch}`;
+    }
+  }
+
+  if (process.platform === "linux") {
+    const isMusl = familySync() === MUSL;
+    if (process.arch === "x64" || process.arch === "arm64") {
+      return `linux-${process.arch}-${isMusl ? "musl" : "gnu"}`;
+    }
+    if (process.arch === "arm") {
+      return `linux-arm-${isMusl ? "musleabihf" : "gnueabihf"}`;
+    }
+  }
+
+  if (process.platform === "win32" && process.arch === "x64") {
+    return "win32-x64-msvc";
+  }
+
+  throw new Error(
+    `Unsupported libSQL native target: ${process.platform}-${process.arch}`,
+  );
+}
+
+function getLibsqlNativeAddonPath(): string {
+  const nativePackage = `@libsql/${getLibsqlNativeTarget()}`;
+  const clientRequire = createRequire(import.meta.resolve("@libsql/client"));
+  const libsqlRequire = createRequire(clientRequire.resolve("libsql"));
+  const nativeAddonPath = libsqlRequire.resolve(nativePackage);
+  console.log(`[libsql] embedding ${nativePackage}`);
+  return nativeAddonPath;
 }
 
 await generateClientAssetsModule();
@@ -153,6 +190,8 @@ if (!existsSync(embeddingShimPath)) {
 }
 console.log(`[native-embedding] embedding ${embeddingAddonFilename}`);
 
+const libsqlNativeAddonPath = getLibsqlNativeAddonPath();
+
 const result = await Bun.build({
   entrypoints: ["./vektor.ts"],
   compile: true,
@@ -163,6 +202,30 @@ const result = await Bun.build({
   // cannot resolve. It's pulled in transitively by Astro's SSR output but
   // is not actually used at runtime — marking it external skips bundling it.
   external: ["lightningcss"],
+  plugins: [
+    {
+      name: "embed-libsql-native-addon",
+      setup(build) {
+        build.onLoad(
+          { filter: /[/\\]node_modules[/\\]libsql[/\\]index\.js$/ },
+          async (args) => {
+            const source = await Bun.file(args.path).text();
+            const dynamicRequire = "return require(`@libsql/${target}`);";
+            if (!source.includes(dynamicRequire)) {
+              throw new Error(`Unable to patch libSQL native loader: ${args.path}`);
+            }
+            return {
+              contents: source.replace(
+                dynamicRequire,
+                `return require(${JSON.stringify(libsqlNativeAddonPath)});`,
+              ),
+              loader: "js",
+            };
+          },
+        );
+      },
+    },
+  ],
 });
 
 if (!result.success) {

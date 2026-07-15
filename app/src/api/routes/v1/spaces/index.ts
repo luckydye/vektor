@@ -3,6 +3,7 @@ import { findSpaceForToken } from "#db/accessTokens.ts";
 import {
   badRequestResponse,
   createdResponse,
+  errorResponse,
   extractAccessToken,
   jsonResponse,
   parseJsonBody,
@@ -57,6 +58,12 @@ export const POST: ApiRouteHandler = (context) =>
       onError: (error) => {
         if (error instanceof Error && error.message.includes("already exists")) {
           return badRequestResponse(error.message);
+        }
+        if (
+          error instanceof Error &&
+          error.message.includes("No hosted space database is available")
+        ) {
+          return errorResponse(error.message, 503);
         }
         return undefined;
       },

@@ -1,22 +1,15 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { Feature, hasFeature } from "#db/acl.ts";
-import { createSpace } from "#db/spaces.ts";
+import { createSpace, deleteSpace } from "#db/spaces.ts";
 import { LOCAL_USER_ID } from "#noAuth";
-
-const DATA_DIR = "./data";
 
 const createdSpaceIds: string[] = [];
 
-afterAll(() => {
+afterAll(async () => {
   delete process.env.VEKTOR_NO_AUTH;
 
   for (const spaceId of createdSpaceIds) {
-    const spacePath = join(DATA_DIR, "spaces", `${spaceId}.db`);
-    if (existsSync(spacePath)) {
-      rmSync(spacePath, { force: true });
-    }
+    await deleteSpace(spaceId);
   }
 });
 

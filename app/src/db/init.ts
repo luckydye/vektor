@@ -1,17 +1,11 @@
-import { existsSync, mkdirSync } from "node:fs";
-import path, { join } from "node:path";
 import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-
-type BunSQLiteDatabase = ReturnType<typeof drizzle>;
+import type { Database } from "./connection.ts";
 
 import * as authSchema from "./schema/auth.ts";
 import * as spaceSchema from "./schema/space.ts";
 import { generateCreateTableSQL } from "./schemaUtils.ts";
 
-const DATA_DIR = "./data";
-
-export async function getExistingColumnNames(db: BunSQLiteDatabase, tableName: string) {
+export async function getExistingColumnNames(db: Database, tableName: string) {
   const rows = await db.all<{ name: string }>(
     sql.raw(`SELECT name FROM pragma_table_info('${tableName}')`),
   );
@@ -19,7 +13,7 @@ export async function getExistingColumnNames(db: BunSQLiteDatabase, tableName: s
 }
 
 export async function ensureColumnExists(
-  db: BunSQLiteDatabase,
+  db: Database,
   tableName: string,
   columnName: string,
   columnDefinition: string,
@@ -34,22 +28,25 @@ export async function ensureColumnExists(
   );
 }
 
-export async function prepateAuthDb(authDb: BunSQLiteDatabase) {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-
+export async function prepareAuthDb(authDb: Database) {
   // Generate CREATE TABLE statements from Drizzle schemas
   const userSQL = generateCreateTableSQL(authSchema.user);
   const sessionSQL = generateCreateTableSQL(authSchema.session);
   const accountSQL = generateCreateTableSQL(authSchema.account);
   const verificationSQL = generateCreateTableSQL(authSchema.verification);
+  const spaceIndexSQL = generateCreateTableSQL(authSchema.spaceIndex);
 
   // Execute table creation
   await authDb.run(sql.raw(userSQL));
   await authDb.run(sql.raw(sessionSQL));
   await authDb.run(sql.raw(accountSQL));
   await authDb.run(sql.raw(verificationSQL));
+  await authDb.run(sql.raw(spaceIndexSQL));
+  await authDb.run(
+    sql.raw(
+      "CREATE UNIQUE INDEX IF NOT EXISTS space_index_active_slug_unique ON space_index (slug) WHERE status = 'active'",
+    ),
+  );
 
   // Auth database initialized
 }
@@ -58,7 +55,7 @@ export async function prepateAuthDb(authDb: BunSQLiteDatabase) {
  * Run all DDL migrations on a space database instance.
  * Works for both file-backed and in-memory SQLite databases.
  */
-export async function applySpaceDbPragmas(spaceDb: BunSQLiteDatabase) {
+export async function applySpaceDbPragmas(spaceDb: Database) {
   // WAL mode: concurrent reads don't block writes, and writes batch into the
   // WAL file without per-transaction fsyncs (synchronous=NORMAL handles this).
   await spaceDb.run(sql.raw("PRAGMA journal_mode = WAL"));
@@ -67,8 +64,11 @@ export async function applySpaceDbPragmas(spaceDb: BunSQLiteDatabase) {
   await spaceDb.run(sql.raw("PRAGMA wal_autocheckpoint = 1000"));
 }
 
-export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
-  await applySpaceDbPragmas(spaceDb);
+export async function initSpaceDbSchema(
+  spaceDb: Database,
+  options: { local: boolean },
+) {
+  if (options.local) await applySpaceDbPragmas(spaceDb);
 
   const metadataSQL = generateCreateTableSQL(spaceSchema.spaceMetadata);
   const documentSQL = generateCreateTableSQL(spaceSchema.document);
@@ -224,24 +224,4 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
   await spaceDb.run(sql.raw("DROP TABLE IF EXISTS document_fts"));
 
   // Space database initialized
-}
-
-export async function prepareSpaceDb(spaceId: string) {
-  const spacePath = join(DATA_DIR, "spaces", `${spaceId}.db`);
-  const spaceDir = join(DATA_DIR, "spaces");
-
-  if (!existsSync(spaceDir)) {
-    mkdirSync(spaceDir, { recursive: true });
-  }
-
-  const spaceDb = drizzle({
-    connection: {
-      source: path.resolve(spacePath),
-      create: true,
-      readwrite: true,
-    },
-  });
-
-  await applySpaceDbPragmas(spaceDb);
-  await initSpaceDbSchema(spaceDb);
 }

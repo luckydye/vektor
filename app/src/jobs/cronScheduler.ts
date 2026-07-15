@@ -1,15 +1,13 @@
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
 import { getSpaceDb } from "#db/db.ts";
 import { getExtensionPackage, listExtensions } from "#db/extensions.ts";
 import { failStaleJobRuns } from "#db/jobRuns.ts";
 import { claimDueJobSchedules, parseJobScheduleInputs } from "#db/jobSchedules.ts";
 import type { JobSchedule } from "#db/schema/space.ts";
+import { listActiveSpaceIds } from "#db/spaceIndex.ts";
 import { appLogger } from "#observability/logger.ts";
 import { resolveJobSandbox } from "./sandbox.ts";
 import { runJob } from "./scheduler.ts";
 
-const SPACES_DIR = join("./data", "spaces");
 const TICK_INTERVAL_MS = 30_000;
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -41,20 +39,8 @@ export function stopCronScheduler(): void {
   }
 }
 
-async function listSpaceIds(): Promise<string[]> {
-  try {
-    const entries = await readdir(SPACES_DIR);
-    return entries
-      .filter((name) => name.endsWith(".db"))
-      .map((name) => name.slice(0, -".db".length));
-  } catch {
-    // Spaces directory does not exist yet — nothing to schedule.
-    return [];
-  }
-}
-
 async function cleanupStaleRuns(cutoff: Date): Promise<void> {
-  for (const spaceId of await listSpaceIds()) {
+  for (const spaceId of await listActiveSpaceIds()) {
     const count = await failStaleJobRuns(spaceId, cutoff);
     if (count > 0) {
       appLogger.warn("Marked stale job runs as failed after restart", {
@@ -71,7 +57,7 @@ async function tick(): Promise<void> {
 
   try {
     const now = new Date();
-    for (const spaceId of await listSpaceIds()) {
+    for (const spaceId of await listActiveSpaceIds()) {
       try {
         const db = await getSpaceDb(spaceId);
         const due = await claimDueJobSchedules(db, now);

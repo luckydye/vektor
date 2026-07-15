@@ -8,6 +8,7 @@ The CLI is a single Bun-compiled binary built from `vektor.ts`. All commands are
 vektor.ts               routing, global flag parsing, help text
 src/cli/document.ts     cat, write, set, ls, query
 src/cli/category.ts     category ls/create/edit/rm
+src/cli/space.ts        space register/attach/enable/ls (direct auth database access)
 src/cli/upload.ts       upload
 src/cli/workflow.ts     workflow run/logs
 src/cli/agent.ts        agent (ACP chat client)
@@ -87,6 +88,12 @@ const headers = token ? { Authorization: `Bearer ${token}` } : {};
 `--space <id>` is stripped before routing and injected into `VEKTOR_SPACE_ID`. Any new global flag should be handled the same way with `stripFlag()`.
 
 Do not add `--url`, `--space`, or `--token` to individual commands — they are env-var only.
+
+The `space` commands are the exception to the HTTP-oriented command pattern:
+they use `VEKTOR_DATABASE_URL` to update the auth database directly. A
+positional URL is a space database being registered or attached, not the Vektor
+server URL. It is sanitized before storage and inherits the auth token from
+`VEKTOR_DATABASE_URL` when Vektor opens it.
 
 ## Output Format
 

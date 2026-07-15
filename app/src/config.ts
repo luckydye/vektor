@@ -44,6 +44,12 @@ export function config() {
       DEFAULT_SPACE: process.env.VEKTOR_DEFAULT_SPACE,
       NO_AUTH: process.env.VEKTOR_NO_AUTH,
       IN_MEMORY_DB: process.env.VEKTOR_IN_MEMORY_DB,
+      /**
+       * Auth database connection URL. The URL scheme selects the database mode:
+       * file: for local storage, libsql:/https: for hosted libSQL.
+       * Remote credentials may be supplied with the authToken query parameter.
+       */
+      DATABASE_URL: process.env.VEKTOR_DATABASE_URL,
       NODE_ENV: process.env.NODE_ENV,
 
       /**
