@@ -18,7 +18,7 @@ build:
       - app/vektor
     expire_in: 1 week
 
-image:
+package-image:
   image: docker:latest
   stage: package
   needs: [build]
@@ -35,7 +35,7 @@ image:
 deploy:
   stage: deploy
   when: manual
-  needs: [image]
+  needs: [package-image]
   script:
     - mkdir -p ~/.ssh
     - cat $SSH_KNOWN_HOST >> ~/.ssh/known_hosts
