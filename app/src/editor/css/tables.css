@@ -1,29 +1,39 @@
-/* Global Table Styles */
-
-/* Table editor */
+/* Document tables */
 .tableWrapper {
+  max-width: 100%;
   margin-bottom: 1.5rem;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
 }
 
-/* Table-specific styling */
 table {
-  border-collapse: collapse;
-  margin: 0;
-  overflow: auto;
+  border: 1px solid var(--color-neutral-100);
+  border-collapse: separate;
+  border-radius: var(--radius-md);
+  border-spacing: 0;
   table-layout: fixed;
   width: auto;
   margin-bottom: 1.5rem;
+  overflow: hidden;
+
+  /* The editor wrapper owns spacing and horizontal overflow. */
+  .tableWrapper & {
+    margin-bottom: 0;
+  }
 
   td,
   th {
-    border: 1px solid var(--color-neutral-300);
+    border: 0;
+    border-right: 1px solid var(--color-neutral-100);
+    border-bottom: 1px solid var(--color-neutral-100);
     box-sizing: border-box;
     min-width: 1em;
-    padding: 6px 8px;
+    padding: 0.625rem 0.75rem;
     position: relative;
     vertical-align: top;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.45;
 
     > * {
       margin-top: 0;
@@ -31,22 +41,32 @@ table {
     }
   }
 
+  tr > :last-child {
+    border-right: 0;
+  }
+
+  tr:last-child > * {
+    border-bottom: 0;
+  }
+
   th {
-    background-color: var(--color-neutral-100);
-    font-weight: bold;
+    background-color: var(--color-neutral-50);
+    color: var(--color-neutral-700);
+    font-weight: 600;
     text-align: left;
   }
 
   .selectedCell:before {
-    background: var(--color-neutral-200);
+    background: color-mix(in srgb, var(--color-primary-100) 55%, transparent);
     content: "";
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
+    inset: 0;
     pointer-events: none;
     position: absolute;
     z-index: -1;
+  }
+
+  .selectedCell {
+    isolation: isolate;
   }
 
   .selectedCell,
@@ -61,13 +81,13 @@ table {
   }
 
   .column-resize-handle {
-    background-color: blue;
-    bottom: -2px;
+    background-color: var(--color-primary-500);
+    bottom: 0;
     pointer-events: none;
     position: absolute;
-    right: -2px;
+    right: -1px;
     top: 0;
-    width: 4px;
+    width: 2px;
   }
 }
 

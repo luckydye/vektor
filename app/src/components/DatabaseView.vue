@@ -170,7 +170,7 @@ async function onCsvFileChange(event: Event) {
   <div class="relative flex flex-col h-full min-h-0 overflow-hidden px-xs lg:px-xl">
     <!-- Toolbar -->
     <div
-      class="flex items-center justify-between gap-3 px-4 h-10 border-b border-neutral-100 bg-neutral-50 shrink-0"
+      class="flex items-center justify-between gap-3 px-4 h-10 border border-b-0 border-neutral-100 rounded-t-md bg-neutral-50 shrink-0"
     >
       <span class="text-size-small text-neutral-500">{{ rows.length }} rows</span>
       <div class="flex items-center gap-1.5">
@@ -205,14 +205,14 @@ async function onCsvFileChange(event: Event) {
 
       <table
         v-else
-        class="text-size-medium border-collapse"
+        class="database-table text-size-medium"
         style="table-layout: fixed; width: max-content; min-width: 100%;"
       >
         <thead>
           <tr class="bg-neutral-50 text-left">
             <!-- Name column header -->
             <th
-              class="relative px-3 py-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide border-b border-r border-neutral-100 whitespace-nowrap"
+              class="relative px-3 py-2.5 text-size-small font-semibold text-neutral-700 whitespace-nowrap"
               :style="{ width: `${NAME_COL_WIDTH}px` }"
             >
               Name
@@ -222,7 +222,7 @@ async function onCsvFileChange(event: Event) {
             <th
               v-for="col in derivedColumns"
               :key="col.name"
-              class="group px-3 py-2 text-size-small font-medium text-neutral-500 uppercase tracking-wide border-b border-r border-neutral-100 whitespace-nowrap"
+              class="group px-3 py-2.5 text-size-small font-semibold text-neutral-700 whitespace-nowrap"
               :style="{ width: `${DEFAULT_COL_WIDTH}px` }"
             >
               <div class="flex items-center justify-between gap-1">
@@ -239,7 +239,7 @@ async function onCsvFileChange(event: Event) {
             </th>
 
             <!-- Add column button -->
-            <th class="border-b border-neutral-100 px-2" :style="{ width: '48px' }">
+            <th class="px-2" :style="{ width: '48px' }">
               <a-popover-trigger ref="addColumnTriggerRef">
                 <button
                   type="button"
@@ -296,11 +296,11 @@ async function onCsvFileChange(event: Event) {
           <tr
             v-for="row in rows"
             :key="row.id"
-            class="border-b border-neutral-100 hover:bg-neutral-50 transition-colors group"
+            class="group"
           >
             <!-- Name cell — links to document -->
             <td
-              class="px-3 py-2 border-r border-neutral-100 align-top"
+              class="px-3 py-2.5 align-top"
               :style="{ width: `${NAME_COL_WIDTH}px` }"
             >
               <div
@@ -348,7 +348,7 @@ async function onCsvFileChange(event: Event) {
             <td
               v-for="col in derivedColumns"
               :key="col.name"
-              class="px-3 py-2 border-r border-neutral-100 align-top"
+              class="px-3 py-2.5 align-top"
               :style="{ width: `${DEFAULT_COL_WIDTH}px` }"
               @click="startEdit(row.id, col.name, cellValue(row.properties, col.name))"
             >
@@ -378,7 +378,7 @@ async function onCsvFileChange(event: Event) {
             </td>
 
             <!-- Row actions -->
-            <td class="px-2 py-2 align-top" :style="{ width: '48px' }">
+            <td class="px-2 py-2.5 align-top" :style="{ width: '48px' }">
               <button
                 type="button"
                 class="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-all"
@@ -484,3 +484,27 @@ async function onCsvFileChange(event: Event) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.database-table {
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-100);
+  border-collapse: separate;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-spacing: 0;
+}
+
+.database-table :is(th, td) {
+  border-right: 1px solid var(--color-neutral-100);
+  border-bottom: 1px solid var(--color-neutral-100);
+  line-height: 1.45;
+}
+
+.database-table tr > :last-child {
+  border-right: 0;
+}
+
+.database-table tbody tr:last-child > td {
+  border-bottom: 0;
+}
+</style>

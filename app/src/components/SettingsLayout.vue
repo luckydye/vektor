@@ -107,7 +107,7 @@ onMounted(async () => {
         <a-tabs-tab
           v-for="tab in tabs"
           :key="tab.id"
-          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label text-black hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
+          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >
           <span
             class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
