@@ -3,10 +3,14 @@ import { documentLinkElement } from "./documentLink.ts";
 import { drawTool } from "./drawing.ts";
 import { figmaPasteInput } from "./figma.ts";
 import { fileElement } from "./files.ts";
+import { canvasClipboardInput } from "./inputs.ts";
 import { linkElement } from "./link.ts";
 import { audioElement, imageElement, videoElement } from "./media.ts";
 import { noteElement } from "./note.ts";
-import { canvasClipboardInput } from "./inputs.ts";
+import {
+  type CanvasExtensionRuntimeOptions,
+  createCanvasExtensionRuntime,
+} from "./runtime.ts";
 import { sectionElement } from "./section.ts";
 import { shapeTool } from "./shape.ts";
 import { textElement } from "./text.ts";
@@ -22,10 +26,7 @@ import type {
   CanvasTool,
   CanvasToolExtension,
 } from "./types.ts";
-import {
-  createCanvasExtensionRuntime,
-  type CanvasExtensionRuntimeOptions,
-} from "./runtime.ts";
+
 export type { CanvasElementContext } from "./CanvasElementBase.ts";
 export {
   addCanvasDrawingPoint,
@@ -84,13 +85,16 @@ export class CanvasExtensionManager {
     for (const extension of options.elements ?? []) this.registerElement(extension);
     for (const tool of options.tools ?? []) this.registerTool(tool);
     for (const kind of ["paste", "drop"] as const) {
-      for (const handler of options.inputs?.[kind] ?? []) this.registerInput(kind, handler);
+      for (const handler of options.inputs?.[kind] ?? [])
+        this.registerInput(kind, handler);
     }
   }
 
   registerElement(extension: CanvasElementExtension) {
     if (this.#elements.has(extension.type)) {
-      throw new Error(`Canvas element extension is already registered: ${extension.type}`);
+      throw new Error(
+        `Canvas element extension is already registered: ${extension.type}`,
+      );
     }
     const toolId = extension.creation?.tool?.id;
     if (toolId && this.#tools.has(toolId)) {
@@ -106,8 +110,7 @@ export class CanvasExtensionManager {
     if (toolId) {
       this.#tools.set(toolId, {
         id: toolId,
-        onPointerDown: (at, _event, context) =>
-          context.createElement(extension.type, at),
+        onPointerDown: (at, _event, context) => context.createElement(extension.type, at),
       });
     }
     return this;
@@ -145,7 +148,8 @@ export class CanvasExtensionManager {
 
   get(type: CanvasShapeType) {
     const extension = this.#elements.get(type);
-    if (!extension) throw new Error(`Canvas element extension is not registered: ${type}`);
+    if (!extension)
+      throw new Error(`Canvas element extension is not registered: ${type}`);
     return extension;
   }
 
@@ -159,11 +163,13 @@ export class CanvasExtensionManager {
     return [...this.#elements.values()].flatMap((extension) => {
       const creation = extension.creation;
       if (!creation?.palette || !creation.tool) return [];
-      return [{
-        type: extension.type,
-        label: creation.tool.label,
-        palette: creation.palette,
-      }];
+      return [
+        {
+          type: extension.type,
+          label: creation.tool.label,
+          palette: creation.palette,
+        },
+      ];
     });
   }
 
@@ -221,7 +227,9 @@ export class CanvasExtensionManager {
   }
 }
 
-export function createCanvasExtensionManager(options: CanvasExtensionManagerOptions = {}) {
+export function createCanvasExtensionManager(
+  options: CanvasExtensionManagerOptions = {},
+) {
   return new CanvasExtensionManager({
     elements: [...builtInCanvasElementExtensions, ...(options.elements ?? [])],
     tools: [drawTool, shapeTool, ...(options.tools ?? [])],

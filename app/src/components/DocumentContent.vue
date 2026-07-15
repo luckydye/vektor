@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/core";
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import type * as Y from "yjs";
 import { api } from "#api/client.ts";
+import Canvas from "#canvas/Canvas.vue";
 import { useQuery } from "#composeables/query.ts";
 import {
   type CollaborationPresenceProfile,
@@ -29,7 +30,6 @@ import {
   unregisterFormattingActions,
 } from "#utils/formattingActions.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import Canvas from "../canvas/Canvas.vue";
 import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "#editor/elements/table-view.ts";

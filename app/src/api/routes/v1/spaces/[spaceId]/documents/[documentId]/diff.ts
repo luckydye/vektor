@@ -1,5 +1,5 @@
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { createPatch } from "diff";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { ResourceType } from "#db/acl.ts";
 import {
   authenticateRequest,

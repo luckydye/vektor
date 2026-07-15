@@ -22,7 +22,9 @@ export const GET: ApiRouteHandler = (context) =>
     // Verify user has audit log viewing feature access
     await verifyFeatureAccess(spaceId, Feature.VIEW_AUDIT, user.id);
 
-    const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams);
+    const { limit, offset } = parsePaginationParams(
+      new URL(context.req.url).searchParams,
+    );
 
     const db = await getSpaceDb(spaceId);
     const { rows, total } = await getRecentAuditLogs(db, limit, offset);

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import path, { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { isInMemoryDb } from "#inMemoryDb";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
@@ -146,7 +146,11 @@ export async function getSpace(id: string): Promise<Space | null> {
   }
 
   // Load preferences
-  const prefs = await spaceDb.select().from(preference).all();
+  const prefs = await spaceDb
+    .select()
+    .from(preference)
+    .where(isNull(preference.userId))
+    .all();
 
   const preferences: Record<string, string> = {};
   for (const pref of prefs) {
@@ -306,7 +310,7 @@ export async function updateSpace(
       const existingPref = await spaceDb
         .select()
         .from(preference)
-        .where(eq(preference.key, key))
+        .where(and(eq(preference.key, key), isNull(preference.userId)))
         .get();
 
       if (existingPref) {

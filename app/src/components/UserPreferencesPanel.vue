@@ -248,7 +248,9 @@ watch(
       <section>
         <p class="text-size-small text-neutral-500 mb-2">
           {{ t("Space:") }}
-          <span class="font-medium text-foreground">{{ activeSpaceName || t("None") }}</span>
+          <span class="font-medium text-foreground"
+            >{{ activeSpaceName || t("None") }}</span
+          >
         </p>
 
         <div
@@ -308,11 +310,9 @@ watch(
                 @click="handleDisconnectIntegration(provider)"
                 class="px-2 py-0.5 text-label font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
               >
-                {{
-                  disconnectingProvider === provider
+                {{ disconnectingProvider === provider
                     ? t("Disconnecting…")
-                    : t("Disconnect")
-                }}
+                    : t("Disconnect") }}
               </button>
               <button
                 v-else

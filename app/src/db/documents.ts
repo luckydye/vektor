@@ -19,6 +19,7 @@ import {
 } from "./acl.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
+import { deleteDocumentEmailPreferences } from "./emailNotificationPreferences.ts";
 import { createId } from "./ids.ts";
 import { extractMentionsFromHtml } from "./mentions.ts";
 import { createRevision, decompressHtml } from "./revisions.ts";
@@ -381,6 +382,7 @@ export async function deleteDocument(
     });
   }
 
+  await deleteDocumentEmailPreferences(spaceId, id);
   await db.delete(document).where(eq(document.id, id));
 
   return true;

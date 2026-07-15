@@ -222,6 +222,36 @@ export const auditLog = sqliteTable("audit_log", {
 export type AuditLog = typeof auditLog.$inferSelect;
 export type AuditLogInsert = typeof auditLog.$inferInsert;
 
+export const emailNotificationOutbox = sqliteTable(
+  "email_notification_outbox",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    sourceId: text("source_id").notNull(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => document.id, { onDelete: "cascade" }),
+    actorId: text("actor_id").notNull(),
+    recipientUserId: text("recipient_user_id").notNull(),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    availableAt: integer("available_at", { mode: "timestamp" }).notNull(),
+    lastError: text("last_error"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+    sentAt: integer("sent_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    uniqueIndex("email_notification_outbox_event_recipient_unique").on(
+      table.kind,
+      table.sourceId,
+      table.recipientUserId,
+    ),
+  ],
+);
+
+export type EmailNotificationOutbox = typeof emailNotificationOutbox.$inferSelect;
+
 export const accessToken = sqliteTable("access_token", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

@@ -90,12 +90,7 @@ const handleCreateDoc = (event: Event) => {
     </div>
 
     <a-popover-trigger v-else class="block w-full group relative z-10 overflow-hidden">
-      <button
-        type="button"
-        slot="trigger"
-        class="w-full"
-        :aria-label="t('Select Space')"
-      >
+      <button type="button" slot="trigger" class="w-full" :aria-label="t('Select Space')">
         <div
           class="flex items-center gap-3xs px-4xs py-4xs rounded-md transition-colors hover:bg-primary-100 group-[[opened]]:bg-primary-50"
         >

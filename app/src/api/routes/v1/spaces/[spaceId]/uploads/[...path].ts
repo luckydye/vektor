@@ -2,8 +2,8 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Readable } from "node:stream";
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { eq } from "drizzle-orm";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { requireParam, withApiErrorHandling } from "#db/api.ts";
 import { getSpaceDb } from "#db/db.ts";
 import { file as fileTable } from "#db/schema/space.ts";
@@ -71,7 +71,10 @@ export const GET: ApiRouteHandler = (context) =>
       // If transform params are present, serve via the transform+cache path.
       // This bypasses redirectUrl so the server can read, transform, and cache
       // the result locally regardless of the storage backend.
-      const transformParams = parseTransformParams(new URL(context.req.url).searchParams, extension);
+      const transformParams = parseTransformParams(
+        new URL(context.req.url).searchParams,
+        extension,
+      );
       if (transformParams) {
         return serveTransformed(spaceId, path, transformParams, storage);
       }

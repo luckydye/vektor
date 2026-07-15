@@ -315,10 +315,13 @@ export interface OAuthIntegrationConnection {
 
 export type AuditEvent =
   | "view"
+  | "comment"
   | "save"
+  | "suggest"
   | "publish"
   | "unpublish"
   | "restore"
+  | "archive"
   | "delete"
   | "acl_grant"
   | "acl_revoke"
@@ -338,6 +341,9 @@ export interface AuditDetails {
   permission?: string;
   propertyKey?: string;
   propertyType?: string;
+  commentId?: string;
+  parentId?: string | null;
+  reference?: string | null;
 }
 
 export interface AuditLog {
@@ -1516,6 +1522,21 @@ export class ApiClient {
   };
 
   document = {
+    getEmailPreference: async (spaceId: string, documentId: string) => {
+      return await this.apiGet<{ muted: boolean }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/email-preference`,
+      );
+    },
+
+    setEmailMuted: async (spaceId: string, documentId: string, muted: boolean) => {
+      return await this.apiPatch<{ muted: boolean }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/documents/${documentId}/email-preference`,
+        { muted },
+      );
+    },
+
     /**
      * Get a document by ID
      */

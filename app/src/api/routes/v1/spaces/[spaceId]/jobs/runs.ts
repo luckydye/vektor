@@ -24,9 +24,12 @@ export const GET: ApiRouteHandler = (context) =>
 
     await verifySpaceRole(spaceId, user.id, "viewer");
 
-    const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams);
+    const { limit, offset } = parsePaginationParams(
+      new URL(context.req.url).searchParams,
+    );
     const jobId = new URL(context.req.url).searchParams.get("jobId") ?? undefined;
-    const scheduleId = new URL(context.req.url).searchParams.get("scheduleId") ?? undefined;
+    const scheduleId =
+      new URL(context.req.url).searchParams.get("scheduleId") ?? undefined;
 
     const { runs, total } = await listJobRuns(spaceId, {
       jobId,

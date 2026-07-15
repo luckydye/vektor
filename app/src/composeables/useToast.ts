@@ -1,5 +1,5 @@
-import { ref } from "vue";
 import { play } from "cuelume";
+import { ref } from "vue";
 
 export interface Toast {
   id: number;
@@ -32,7 +32,7 @@ export function useToast() {
         play("bloom");
         break;
     }
-    
+
     return id;
   }
 

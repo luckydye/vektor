@@ -35,7 +35,9 @@ export type { SuggestionItem, SuggestionProvider };
  * }
  * ```
  */
-export type ViewRenderFn = (container: HTMLElement) => undefined | (() => void);
+export type ViewRenderFn = (
+  container: HTMLElement,
+) => void | (() => void) | Promise<void | (() => void)>;
 
 export type VektorGlobal = Omit<ExtensionContext, "extensionId"> & {
   /** All loaded extensions in the current space */
@@ -530,7 +532,7 @@ export class Extensions {
     }
 
     try {
-      const cleanup = render(container);
+      const cleanup = await render(container);
       if (typeof cleanup === "function") {
         loaded.viewCleanup = cleanup;
       }
@@ -590,7 +592,7 @@ export class Extensions {
     }
 
     try {
-      const cleanup = renderFn(container);
+      const cleanup = await renderFn(container);
       return typeof cleanup === "function" ? cleanup : () => {};
     } catch (err) {
       console.error(

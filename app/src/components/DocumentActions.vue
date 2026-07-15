@@ -9,6 +9,7 @@ import { useEditor } from "#composeables/useEditor.ts";
 import { useHeaderImage } from "#composeables/useHeaderImage.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { type ActionOptions, Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
 import {
@@ -30,6 +31,7 @@ const props = defineProps<{
 
 const router = useRouter();
 const { currentSpaceId, currentSpace } = useSpace();
+const currentUser = useUserProfile();
 const { toggle: toggleDockedWindow } = useDockedWindows();
 const {
   supportsHeaderImage,
@@ -49,6 +51,8 @@ const documentType = computed(() => documentContext.value.documentType);
 
 const isCreatingToken = ref(false);
 const showShareDialog = ref(false);
+const emailMuted = ref(false);
+const emailPreferenceLoaded = ref(false);
 const isSaving = computed(() => saveStatus.value === "saving");
 const canPublishCurrentDraft = computed(
   () => !documentId.value || !hasPublishedVersion.value || hasChanges.value,
@@ -215,12 +219,64 @@ onMounted(async () => {
 onUnmounted(() => {
   Actions.unregister("document:edit");
   Actions.unregister("document:share");
+  Actions.unregister("document:mute-email");
+  Actions.unregister("document:unmute-email");
 });
 
 function runContextMenuAction(e: Event, name: string) {
   Actions.run(name);
   e.target?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
 }
+
+watchEffect((onCleanup) => {
+  const spaceId = currentSpaceId.value;
+  const currentDocumentId = documentId.value;
+  emailPreferenceLoaded.value = false;
+  if (!spaceId || !currentDocumentId || !currentUser.value) return;
+
+  let current = true;
+  void api.document
+    .getEmailPreference(spaceId, currentDocumentId)
+    .then(({ muted }) => {
+      if (!current) return;
+      emailMuted.value = muted;
+      emailPreferenceLoaded.value = true;
+    })
+    .catch((error) => console.error("Failed to load document email preference", error));
+
+  onCleanup(() => {
+    current = false;
+  });
+});
+
+watchEffect(() => {
+  Actions.unregister("document:mute-email");
+  Actions.unregister("document:unmute-email");
+
+  const spaceId = currentSpaceId.value;
+  const currentDocumentId = documentId.value;
+  if (!spaceId || !currentDocumentId || !emailPreferenceLoaded.value) return;
+
+  const muted = emailMuted.value;
+  const actionName = muted ? "document:unmute-email" : "document:mute-email";
+  Actions.register(actionName, {
+    title: muted ? "Enable email notifications" : "Mute email notifications",
+    icon: () => "mail",
+    description: muted
+      ? "Receive publication and comment emails for this document"
+      : "Stop publication and comment emails for this document",
+    group: "document",
+    order: 35,
+    run: async () => {
+      const response = await api.document.setEmailMuted(
+        spaceId,
+        currentDocumentId,
+        !muted,
+      );
+      emailMuted.value = response.muted;
+    },
+  });
+});
 
 watchEffect(() => {
   Actions.unregister("document:pin");

@@ -60,6 +60,12 @@ export function config() {
 
       EMAIL_AUTH: process.env.VEKTOR_EMAIL_AUTH,
       REQUIRE_EMAIL_VERIFICATION: process.env.VEKTOR_REQUIRE_EMAIL_VERIFICATION,
+      EMAIL_FROM: process.env.VEKTOR_EMAIL_FROM,
+      SMTP_HOST: process.env.VEKTOR_SMTP_HOST,
+      SMTP_PORT: process.env.VEKTOR_SMTP_PORT,
+      SMTP_SECURE: process.env.VEKTOR_SMTP_SECURE,
+      SMTP_USER: process.env.VEKTOR_SMTP_USER,
+      SMTP_PASSWORD: process.env.VEKTOR_SMTP_PASSWORD,
       /** Comma-separated allowlist of OAuth group claims the IdP may assign. */
       OAUTH_ALLOWED_GROUPS: process.env.OAUTH_ALLOWED_GROUPS,
 

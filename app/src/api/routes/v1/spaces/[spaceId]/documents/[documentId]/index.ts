@@ -1,5 +1,5 @@
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { eq } from "drizzle-orm";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getTokenUserId } from "#db/accessTokens.ts";
 import { ResourceType } from "#db/acl.ts";
 import {
@@ -33,6 +33,7 @@ import {
   updateDocument,
   updateDocumentProperty,
 } from "#db/documents.ts";
+import { enqueueDocumentPublishedEmails } from "#db/emailNotifications.ts";
 import {
   createRevision,
   createSuggestion,
@@ -45,6 +46,7 @@ import { getSpace, getSpaceBySlug } from "#db/spaces.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { getHeaderImageAspectRatio } from "#files/headerImageAspect.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
+import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#utils/documentContent.ts";
 import { htmlToMarkdown } from "#utils/documentMarkdown.ts";
@@ -158,12 +160,29 @@ async function handlePublishedRevisionPatch(
   const revToPublish = publishedRev === null ? null : publishedRev;
 
   const db = await getSpaceDb(spaceId);
+  const existing = await db
+    .select({ publishedRev: documentTable.publishedRev })
+    .from(documentTable)
+    .where(eq(documentTable.id, documentId))
+    .get();
+  if (existing?.publishedRev === revToPublish) {
+    return;
+  }
+
+  const revisionContent =
+    revToPublish === null
+      ? null
+      : await getRevisionContent(spaceId, documentId, revToPublish);
+  if (revToPublish !== null && !revisionContent) {
+    throw notFoundResponse("Revision");
+  }
+
   await db
     .update(documentTable)
     .set({ publishedRev: revToPublish })
     .where(eq(documentTable.id, documentId));
 
-  await createAuditLog(db, {
+  const auditEntry = await createAuditLog(db, {
     spaceId,
     docId: documentId,
     revisionId: revToPublish || undefined,
@@ -181,10 +200,7 @@ async function handlePublishedRevisionPatch(
     return;
   }
 
-  const revisionContent = await getRevisionContent(spaceId, documentId, revToPublish);
-  if (!revisionContent || revisionContent === null) {
-    throw notFoundResponse("Revision");
-  }
+  if (!revisionContent) throw notFoundResponse("Revision");
 
   // Publishing a revision also loads it into the draft, so the editor (which
   // always reads doc.content) reflects the revision that is now published.
@@ -192,6 +208,24 @@ async function handlePublishedRevisionPatch(
     .update(documentTable)
     .set({ content: revisionContent })
     .where(eq(documentTable.id, documentId));
+
+  try {
+    await enqueueDocumentPublishedEmails({
+      spaceId,
+      documentId,
+      publicationId: auditEntry.id,
+      revision: revToPublish,
+      publishedHtml: revisionContent,
+      actorId: userId,
+    });
+  } catch (error) {
+    appLogger.error("Failed to enqueue document publication emails", {
+      error,
+      spaceId,
+      documentId,
+      revision: revToPublish,
+    });
+  }
 }
 
 async function handleReadonlyPatch(

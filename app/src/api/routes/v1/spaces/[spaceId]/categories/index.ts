@@ -21,7 +21,10 @@ import { createCategory, listCategories, reorderCategories } from "#db/categorie
 import { getSpace } from "#db/spaces.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 
-async function visibleCategoryIds(context: Parameters<ApiRouteHandler>[0], spaceId: string) {
+async function visibleCategoryIds(
+  context: Parameters<ApiRouteHandler>[0],
+  spaceId: string,
+) {
   if (context.req.raw.headers.get("X-Job-Token")) {
     await authenticateSpaceAccess(context, spaceId, "viewer");
     return null;

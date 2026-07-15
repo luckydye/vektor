@@ -65,7 +65,8 @@ const docs = computed(() => docsData.value ?? []);
           >
             <span
               class="text-neutral-400 group-hover:text-neutral-500 transition-colors text-sm font-medium"
-              >{{ t("View all") }} →</span
+              >{{ t("View all") }}
+              →</span
             >
           </div>
           <div class="mt-3">

@@ -23,7 +23,10 @@ import type {
 
 const mediaMinSize = { width: 80, height: 60 };
 
-function parseMediaData(data: Record<string, unknown>, context: { currentOrigin: string }) {
+function parseMediaData(
+  data: Record<string, unknown>,
+  context: { currentOrigin: string },
+) {
   const src = data.src;
   return {
     ...data,
@@ -114,7 +117,12 @@ export function isGifSrc(src: string): boolean {
 
 export const imageElement: CanvasElementExtension = {
   type: "image",
-  defaults: { size: { width: 240, height: 150 }, minSize: mediaMinSize, style: { color: "transparent" }, data: { text: "" } },
+  defaults: {
+    size: { width: 240, height: 150 },
+    minSize: mediaMinSize,
+    style: { color: "transparent" },
+    data: { text: "" },
+  },
   render: {
     surface: "dom+canvas",
     rasterize: (shape) => !isGifSrc(mediaSource(shape)),
@@ -123,7 +131,9 @@ export const imageElement: CanvasElementExtension = {
     paintRaster: paintStaticImage,
     hitTest: (shape, world) => (pointInRotatedShape(world, shape.frame) ? "body" : null),
   },
-  behavior: { transform: { move: true, resize: "box", rotate: true, aspectLocked: true } },
+  behavior: {
+    transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
+  },
   storage: { parseData: parseMediaData },
   input: {
     paste: {
@@ -146,9 +156,16 @@ export const imageElement: CanvasElementExtension = {
 
 export const videoElement: CanvasElementExtension = {
   type: "video",
-  defaults: { size: { width: 240, height: 150 }, minSize: mediaMinSize, style: { color: "#000000" }, data: { text: "" } },
+  defaults: {
+    size: { width: 240, height: 150 },
+    minSize: mediaMinSize,
+    style: { color: "#000000" },
+    data: { text: "" },
+  },
   render: { surface: "dom", tag: "canvas-video" },
-  behavior: { transform: { move: true, resize: "box", rotate: true, aspectLocked: true } },
+  behavior: {
+    transform: { move: true, resize: "box", rotate: true, aspectLocked: true },
+  },
   storage: { parseData: parseMediaData },
 };
 
@@ -157,7 +174,12 @@ export const videoElement: CanvasElementExtension = {
 const audioMinSize = { width: 220, height: 54 };
 export const audioElement: CanvasElementExtension = {
   type: "audio",
-  defaults: { size: { width: 320, height: 54 }, minSize: audioMinSize, style: { color: "transparent" }, data: { text: "" } },
+  defaults: {
+    size: { width: 320, height: 54 },
+    minSize: audioMinSize,
+    style: { color: "transparent" },
+    data: { text: "" },
+  },
   render: { surface: "dom", tag: "canvas-audio" },
   behavior: { transform: { move: true, resize: "none", rotate: false } },
   storage: { parseData: parseMediaData },

@@ -52,7 +52,9 @@ export const GET: ApiRouteHandler = (context) =>
     };
 
     const documentId = new URL(context.req.url).searchParams.get("documentId");
-    const sourceExtensionId = new URL(context.req.url).searchParams.get("sourceExtensionId");
+    const sourceExtensionId = new URL(context.req.url).searchParams.get(
+      "sourceExtensionId",
+    );
     const filterDocumentId =
       new URL(context.req.url).searchParams.get("filterDocumentId") ?? undefined;
 
@@ -67,10 +69,13 @@ export const GET: ApiRouteHandler = (context) =>
       return jsonResponse({ runId, status: run.status });
     }
 
-    const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams, {
-      defaultLimit: 20,
-      maxLimit: 200,
-    });
+    const { limit, offset } = parsePaginationParams(
+      new URL(context.req.url).searchParams,
+      {
+        defaultLimit: 20,
+        maxLimit: 200,
+      },
+    );
 
     // List runs for this space, newest first. filterDocumentId narrows to one document.
     const spaceRuns = (

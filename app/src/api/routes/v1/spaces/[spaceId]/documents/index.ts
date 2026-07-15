@@ -54,10 +54,12 @@ export const GET: ApiRouteHandler = (context) =>
     const limit =
       Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 500) : 50;
     const cursor = new URL(context.req.url).searchParams.get("cursor") || undefined;
-    const typeParam = new URL(context.req.url).searchParams.get("type")?.trim() || undefined;
+    const typeParam =
+      new URL(context.req.url).searchParams.get("type")?.trim() || undefined;
     const categorySlugsParam = new URL(context.req.url).searchParams.get("categorySlugs");
     const grouped = new URL(context.req.url).searchParams.get("grouped") === "true";
-    const parentIdParam = new URL(context.req.url).searchParams.get("parentId")?.trim() || undefined;
+    const parentIdParam =
+      new URL(context.req.url).searchParams.get("parentId")?.trim() || undefined;
 
     const categorySlugs = categorySlugsParam
       ? categorySlugsParam

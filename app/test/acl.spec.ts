@@ -2274,6 +2274,19 @@ describe("Permissions API - Comments Feature", () => {
     const data = await response.json();
     expect(data.comment).toBeDefined();
     expect(data.comment.content).toBe("Owner comment test");
+
+    const auditResponse = await apiRequest(
+      `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/audit-logs`,
+      session1Token,
+    );
+    expect(auditResponse.ok).toBe(true);
+    const auditData = await auditResponse.json();
+    const commentAudit = auditData.auditLogs.find(
+      (entry: { event: string; details?: { commentId?: string } }) =>
+        entry.event === "comment" && entry.details?.commentId === data.comment.id,
+    );
+    expect(commentAudit).toBeDefined();
+    expect(commentAudit.details.reference).toBe("120");
   });
 
   it("should allow editor to create comments", async () => {
@@ -2340,6 +2353,35 @@ describe("Permissions API - Comments Feature", () => {
     expect(response.status).toBe(400);
     const data = await response.json();
     expect(data.error).toContain("Reference is required");
+  });
+});
+
+describe("Document email preferences", () => {
+  const preferencePath = () =>
+    `/api/v1/spaces/${featuresTestSpaceId}/documents/${featuresTestDocumentId}/email-preference`;
+
+  it("should mute and unmute document emails for the current user", async () => {
+    const initial = await apiRequest(preferencePath(), session2Token);
+    expect(initial.ok).toBe(true);
+    expect((await initial.json()).muted).toBe(false);
+
+    const muted = await apiRequest(preferencePath(), session2Token, {
+      method: "PATCH",
+      body: JSON.stringify({ muted: true }),
+    });
+    expect(muted.ok).toBe(true);
+    expect((await muted.json()).muted).toBe(true);
+
+    const persisted = await apiRequest(preferencePath(), session2Token);
+    expect(persisted.ok).toBe(true);
+    expect((await persisted.json()).muted).toBe(true);
+
+    const unmuted = await apiRequest(preferencePath(), session2Token, {
+      method: "PATCH",
+      body: JSON.stringify({ muted: false }),
+    });
+    expect(unmuted.ok).toBe(true);
+    expect((await unmuted.json()).muted).toBe(false);
   });
 });
 

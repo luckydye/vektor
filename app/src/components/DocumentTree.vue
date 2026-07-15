@@ -7,11 +7,8 @@ import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueIncludes, propertyValueToText } from "#utils/documentProperties.ts";
 import { currentLang, t } from "#utils/lang.ts";
-import {
-  propertyValueIncludes,
-  propertyValueToText,
-} from "#utils/documentProperties.ts";
 import { getTextColor, spacePath } from "#utils/utils.ts";
 import {
   categoryIcon,
@@ -87,7 +84,8 @@ function documentTitle(doc) {
 const categoriesWithDocs = computed(() => {
   return categories.value.map((category) => {
     const categoryDocs = [...(documentsBySlug.value.get(category.slug) || [])].sort(
-      (left, right) => documentTitleCollator.compare(documentTitle(left), documentTitle(right)),
+      (left, right) =>
+        documentTitleCollator.compare(documentTitle(left), documentTitle(right)),
     );
 
     // Root docs are docs that belong to this category and whose parent is not in this
@@ -401,7 +399,8 @@ async function confirmDelete() {
     await deleteCategory(category.id);
     deleteTarget.value = null;
   } catch (err) {
-    deleteError.value = err instanceof Error ? err.message : t("Failed to delete category");
+    deleteError.value =
+      err instanceof Error ? err.message : t("Failed to delete category");
   } finally {
     deletingIds.value.delete(category.id);
   }
@@ -606,7 +605,12 @@ defineExpose({ isEditMode, toggleEditMode });
                   :title="t('New document in this category')"
                   @click.stop
                 >
-                  <div class="svg-icon w-3.5 h-3.5" v-html="plusSmallIcon" />
+                  <div
+                    class="svg-icon w-3.5 h-3.5"
+                    aria-hidden="true"
+                    v-html="plusSmallIcon"
+                  />
+                  <span class="sr-only">{{ t("New document in this category") }}</span>
                 </a>
                 <button
                   type="button"
@@ -685,6 +689,7 @@ defineExpose({ isEditMode, toggleEditMode });
           <div
             class="category-context-menu w-max py-1 opacity-0 transition-opacity duration-100 group-[&[enabled]]:opacity-100"
           >
+            <!-- biome-ignore lint/a11y/noStaticElementInteractions: Preventing the native context menu does not make this menu panel an interactive control. -->
             <div
               v-if="contextMenu"
               class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100"
@@ -869,12 +874,10 @@ defineExpose({ isEditMode, toggleEditMode });
         @update:show="(v) => { if (!v) cancelDelete(); }"
       >
         <p class="text-size-medium text-neutral-700">
-          {{
-            t('Delete "{name}"? Documents in this category will not be deleted.').replace(
+          {{ t('Delete "{name}"? Documents in this category will not be deleted.').replace(
               "{name}",
               deleteTarget?.name ?? "",
-            )
-          }}
+            ) }}
         </p>
 
         <div

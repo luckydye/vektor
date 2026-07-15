@@ -27,11 +27,19 @@ export const linkElement: CanvasElementExtension = {
     transform: { move: true, resize: "none", rotate: false },
     measurement: {
       normalize: (shape, size) => {
-        if (size.height === undefined || !Number.isFinite(size.height) || size.height <= 0) return null;
+        if (
+          size.height === undefined ||
+          !Number.isFinite(size.height) ||
+          size.height <= 0
+        )
+          return null;
         const src = linkSource(shape);
         const preview = src ? linkPreviews.previews.value.get(src) : undefined;
         if (!preview || preview.status === "loading") return null;
-        const height = Math.max(linkElement.defaults.minSize.height, Math.round(size.height));
+        const height = Math.max(
+          linkElement.defaults.minSize.height,
+          Math.round(size.height),
+        );
         return Math.abs(height - shape.frame.height) <= 2 ? null : { height };
       },
     },
@@ -268,8 +276,7 @@ class CanvasLinkElement extends CanvasElementBase {
     const domain = document.createElement("span");
     domain.className = "canvas-link-domain";
     domain.textContent =
-      metadata?.siteName ||
-      (linkSource(shape) ? domainFromUrl(linkSource(shape)) : "");
+      metadata?.siteName || (linkSource(shape) ? domainFromUrl(linkSource(shape)) : "");
     site.appendChild(domain);
 
     const title = document.createElement("div");

@@ -2,7 +2,6 @@
 import { computed, ref } from "vue";
 import type { AuditLog } from "#api/client.ts";
 import { checkCircleOutlineIcon, editOutlineIcon, plusIcon } from "#assets/icons.ts";
-import { currentLang, t } from "#utils/lang.ts";
 import {
   formatActivityTime,
   formatPropertyKey,
@@ -10,6 +9,7 @@ import {
   getAuditEventLabel,
   hasPropertyChange,
 } from "#utils/auditActivity.ts";
+import { currentLang, t } from "#utils/lang.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 
 interface UserLike {

@@ -146,6 +146,21 @@ export async function initSpaceDbSchema(spaceDb: BunSQLiteDatabase) {
     ),
   );
 
+  const emailNotificationOutboxSQL = generateCreateTableSQL(
+    spaceSchema.emailNotificationOutbox,
+  );
+  await spaceDb.run(sql.raw(emailNotificationOutboxSQL));
+  await spaceDb.run(
+    sql.raw(
+      "CREATE UNIQUE INDEX IF NOT EXISTS email_notification_outbox_event_recipient_unique ON email_notification_outbox (kind, source_id, recipient_user_id)",
+    ),
+  );
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS email_notification_outbox_due_idx ON email_notification_outbox (status, available_at)",
+    ),
+  );
+
   const accessTokenSQL = generateCreateTableSQL(spaceSchema.accessToken);
   await spaceDb.run(sql.raw(accessTokenSQL));
 

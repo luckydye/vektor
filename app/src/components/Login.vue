@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { authClient } from "#composeables/auth-client.ts";
 import { config } from "#config";
-import { t, type TranslationKey } from "#utils/lang.ts";
+import { type TranslationKey, t } from "#utils/lang.ts";
 import {
   ButtonPrimary,
   ButtonSecondary,
@@ -101,9 +101,8 @@ async function onEmailLogin() {
       }
     }
   } catch (err) {
-    error.value = err instanceof Error
-      ? err.message
-      : translate("Authentication failed, mate!");
+    error.value =
+      err instanceof Error ? err.message : translate("Authentication failed, mate!");
   } finally {
     loading.value = false;
   }
@@ -125,11 +124,9 @@ function toggleMode() {
         {{ isSignUp ? translate("Create an account") : translate("Welcome back") }}
       </h2>
       <p class="text-size-medium text-neutral-500 mt-1.5">
-        {{
-          isSignUp
+        {{ isSignUp
             ? translate("Set up your Vektor workspace")
-            : translate("Sign in to your workspace")
-        }}
+            : translate("Sign in to your workspace") }}
       </p>
     </div>
 
@@ -184,11 +181,9 @@ function toggleMode() {
         class="w-full text-size-medium text-neutral-500 hover:text-neutral-700 transition-colors"
         :disabled="loading"
       >
-        {{
-          isSignUp
+        {{ isSignUp
             ? translate("Already have an account? Sign in")
-            : translate("Need an account? Sign up")
-        }}
+            : translate("Need an account? Sign up") }}
       </button>
     </form>
 

@@ -1522,10 +1522,7 @@ details[open] .details-chevron {
   margin: 0.25rem 0;
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
-.markdown-content :deep(h1),
-.markdown-content :deep(h2),
-.markdown-content :deep(h3),
-.markdown-content :deep(h4) {
+.markdown-content :deep(:is(h1, h2, h3, h4)) {
   margin: 0.5rem 0;
   font-weight: 600;
 }

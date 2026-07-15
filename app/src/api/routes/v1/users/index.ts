@@ -1,5 +1,5 @@
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { eq, inArray } from "drizzle-orm";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getSpaceMemberIds } from "#db/acl.ts";
 import {
   badRequestResponse,

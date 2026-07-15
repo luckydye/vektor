@@ -5,14 +5,14 @@ import { mediaTypeForFile } from "#utils/uploadFiles.ts";
 import {
   createDocumentLinkController,
   DOCUMENT_CANVAS_SERVICE,
+  type DocumentCanvasService,
+  type DocumentLinkReference,
   documentAddressForShape,
   documentUrlPartsFromUrl,
   fetchRemoteDocumentByAddress,
   insertDocumentUrl,
   isRemoteDocumentAddress,
   isRemoteDocumentShape,
-  type DocumentCanvasService,
-  type DocumentLinkReference,
 } from "./documentLink.ts";
 import { pasteFigmaIntoCanvas } from "./figma.ts";
 import { createUploadedFileShape } from "./files.ts";
@@ -22,11 +22,7 @@ import {
   splitCanvasFiles,
 } from "./inputs.ts";
 import { createLinkShape } from "./link.ts";
-import {
-  createUploadedMediaShape,
-  imageFileFromUrl,
-  uploadMediaFile,
-} from "./media.ts";
+import { createUploadedMediaShape, imageFileFromUrl, uploadMediaFile } from "./media.ts";
 import type {
   CanvasEditSession,
   CanvasExtensionHost,
@@ -83,9 +79,7 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
     isRemote: (shape) => isRemoteDocumentShape(shape, currentOrigin),
     address: documentAddressForShape,
   };
-  const services = new Map<symbol, unknown>([
-    [DOCUMENT_CANVAS_SERVICE, documentService],
-  ]);
+  const services = new Map<symbol, unknown>([[DOCUMENT_CANVAS_SERVICE, documentService]]);
 
   const host: CanvasExtensionHost = {
     spaceId: options.spaceId,
@@ -94,7 +88,8 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
     openUrl: (url) => window.open(url, "_blank", "noopener,noreferrer"),
     dispatch: (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail })),
     service: <T>(key: symbol) => {
-      if (!services.has(key)) throw new Error("Canvas extension service is not registered");
+      if (!services.has(key))
+        throw new Error("Canvas extension service is not registered");
       return services.get(key) as T;
     },
   };
@@ -145,15 +140,16 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
         fetchMetadata: (value) => api.linkPreview.get(value).catch(() => null),
         insertDocument: (reference, point, document) =>
           documentController.insertDocumentLink(reference, point, document),
-        insertLink: (value, point) => options.insertNewShape(createLinkShape(value, point)),
+        insertLink: (value, point) =>
+          options.insertNewShape(createLinkShape(value, point)),
         reportError: options.reportError,
       }),
     insertLink: (url: string, at: CanvasPoint) =>
       options.insertNewShape(createLinkShape(url, at)),
     insertImageUrl: (fetchUrl: string, originalUrl: string, at: CanvasPoint) =>
-      imageFileFromUrl(fetchUrl, originalUrl).then((file) =>
-        fileInsertion.addMedia(file, at),
-      ).catch(options.reportError),
+      imageFileFromUrl(fetchUrl, originalUrl)
+        .then((file) => fileInsertion.addMedia(file, at))
+        .catch(options.reportError),
     pasteFigma: (html: string, at: CanvasPoint) =>
       pasteFigmaIntoCanvas(html, at, {
         uploadMediaFile: (file) =>
@@ -183,7 +179,10 @@ export function createCanvasExtensionRuntime(options: CanvasExtensionRuntimeOpti
           value?.at as CanvasPoint,
         );
       case "insert-document-url":
-        return input.insertDocumentUrl(String(value?.url ?? ""), value?.at as CanvasPoint);
+        return input.insertDocumentUrl(
+          String(value?.url ?? ""),
+          value?.at as CanvasPoint,
+        );
       case "insert-document-ref":
         return input.insertDocumentRef(
           value?.reference as DocumentLinkReference,

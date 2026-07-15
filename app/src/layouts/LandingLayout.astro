@@ -6,10 +6,7 @@ export interface Props {
   lang?: string;
 }
 
-const {
-  title = "Vektor",
-  lang = Astro.preferredLocale || "en",
-} = Astro.props;
+const { title = "Vektor", lang = Astro.preferredLocale || "en" } = Astro.props;
 const publicEnv = Astro.locals.publicEnv;
 const isDev = import.meta.env.DEV;
 

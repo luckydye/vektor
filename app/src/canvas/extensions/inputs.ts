@@ -2,11 +2,7 @@ import { ref } from "vue";
 import { canvasClipboardFromDataTransfer } from "#utils/clipboard.ts";
 import { canvasFilesFromList } from "./files.ts";
 import { mediaFilesFromList } from "./media.ts";
-import type {
-  CanvasInputHandler,
-  CanvasPoint,
-  CanvasShape,
-} from "./types.ts";
+import type { CanvasInputHandler, CanvasPoint, CanvasShape } from "./types.ts";
 
 type UploadShapeType = "image" | "video" | "audio" | "file";
 
@@ -26,14 +22,16 @@ export const canvasClipboardInput: CanvasInputHandler = {
 export function createUploadPlaceholderStore(options: {
   sizeFor: (type: UploadShapeType) => { width: number; height: number };
 }) {
-  const items = ref<Array<{
-    id: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    filename: string;
-  }>>([]);
+  const items = ref<
+    Array<{
+      id: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      filename: string;
+    }>
+  >([]);
   return {
     items,
     add(type: UploadShapeType, filename: string, at: CanvasPoint) {
@@ -75,7 +73,7 @@ export function createCanvasFileInsertionQueue(options: {
 }) {
   async function add(file: File, at: CanvasPoint, kind: "media" | "file") {
     options.setBusy(true);
-    const type = kind === "media" ? options.mediaType(file) ?? "image" : "file";
+    const type = kind === "media" ? (options.mediaType(file) ?? "image") : "file";
     const placeholder = options.addPlaceholder(type, file.name || "file", at);
     try {
       const shape = await (kind === "media"

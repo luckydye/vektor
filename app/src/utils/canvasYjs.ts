@@ -48,9 +48,10 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   if (typeof shape.id !== "string") return;
   const map = new Y.Map<unknown>();
   map.set("type", typeof shape.type === "string" ? shape.type : "note");
-  const rawFrame = shape.frame && typeof shape.frame === "object"
-    ? shape.frame as Record<string, unknown>
-    : {};
+  const rawFrame =
+    shape.frame && typeof shape.frame === "object"
+      ? (shape.frame as Record<string, unknown>)
+      : {};
   const frame = new Y.Map<unknown>();
   frame.set("x", typeof rawFrame.x === "number" ? rawFrame.x : 0);
   frame.set("y", typeof rawFrame.y === "number" ? rawFrame.y : 0);
@@ -58,9 +59,10 @@ function seedShape(target: Y.Map<Y.Map<unknown>>, shape: RawShape): void {
   if (typeof rawFrame.height === "number") frame.set("height", rawFrame.height);
   frame.set("rotation", typeof rawFrame.rotation === "number" ? rawFrame.rotation : 0);
   map.set("frame", frame);
-  const rawStyle = shape.style && typeof shape.style === "object"
-    ? shape.style as Record<string, unknown>
-    : {};
+  const rawStyle =
+    shape.style && typeof shape.style === "object"
+      ? (shape.style as Record<string, unknown>)
+      : {};
   const style = new Y.Map<unknown>();
   style.set("color", typeof rawStyle.color === "string" ? rawStyle.color : "#fef3c7");
   map.set("style", style);

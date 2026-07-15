@@ -1,6 +1,6 @@
+import { hasInjectionContext, type InjectionKey, inject } from "vue";
 import de from "#assets/lang/de.json";
 import en from "#assets/lang/en.json";
-import { hasInjectionContext, inject, type InjectionKey } from "vue";
 
 const FALLBACK_LANG = "en";
 

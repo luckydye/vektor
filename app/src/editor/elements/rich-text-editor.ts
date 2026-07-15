@@ -1,7 +1,7 @@
 import { type Editor, Extension } from "@tiptap/core";
 import { Placeholder } from "@tiptap/extensions";
-import { createBaseEditor } from "#editor/extensions.ts";
 import { Heading } from "#editor/extensions/baseExtensions.ts";
+import { createBaseEditor } from "#editor/extensions.ts";
 import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "#utils/messageMarkdown.ts";
 
 export type RichTextEditorFormat = "bold" | "italic" | "bulletList" | "orderedList";
@@ -17,7 +17,7 @@ export interface RichTextEditorElementApi extends HTMLElement {
   value: string;
   readonly el: HTMLElement | null;
   readonly editorInstance: Editor | null;
-  focus(): void;
+  focus(options?: FocusOptions): void;
   isActive(name: string): boolean;
   toggleFormat(name: RichTextEditorFormat): void;
   getSelectionContext(): { caret: number; beforeCaret: string } | null;
@@ -195,10 +195,8 @@ if (
             const shortcuts: Record<string, () => boolean> = {
               "Mod-b": () => this.editor.chain().focus().toggleBold().run(),
               "Mod-i": () => this.editor.chain().focus().toggleItalic().run(),
-              "Mod-Shift-8": () =>
-                this.editor.chain().focus().toggleBulletList().run(),
-              "Mod-Shift-7": () =>
-                this.editor.chain().focus().toggleOrderedList().run(),
+              "Mod-Shift-8": () => this.editor.chain().focus().toggleBulletList().run(),
+              "Mod-Shift-7": () => this.editor.chain().focus().toggleOrderedList().run(),
             };
             if (headingsEnabled) {
               for (const level of [1, 2, 3, 4] as const) {
@@ -219,9 +217,7 @@ if (
             KeyboardShortcuts,
             // Opt-in (canvas text/notes): enables the `## `→H2 markdown input
             // rule and heading nodes. Chat input leaves this off.
-            ...(headingsEnabled
-              ? [Heading.configure({ levels: [1, 2, 3, 4] })]
-              : []),
+            ...(headingsEnabled ? [Heading.configure({ levels: [1, 2, 3, 4] })] : []),
           ],
           editorProps: {
             attributes: {
@@ -309,8 +305,10 @@ if (
         });
       }
 
-      focus() {
-        this.editor?.commands.focus();
+      focus(options?: FocusOptions) {
+        this.editor?.commands.focus(undefined, {
+          scrollIntoView: !options?.preventScroll,
+        });
       }
 
       isActive(name: string) {

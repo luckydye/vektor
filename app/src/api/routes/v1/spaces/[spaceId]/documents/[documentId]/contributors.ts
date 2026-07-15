@@ -1,5 +1,5 @@
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { inArray } from "drizzle-orm";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   jsonResponse,
   requireParam,
@@ -7,7 +7,10 @@ import {
   verifyDocumentAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getAuditLogsForDocument } from "#db/auditLogs.ts";
+import {
+  DOCUMENT_CONTRIBUTION_AUDIT_EVENTS,
+  getAuditLogsForDocument,
+} from "#db/auditLogs.ts";
 import { getAuthDb, getSpaceDb } from "#db/db.ts";
 import { user } from "#db/schema/auth.ts";
 
@@ -25,7 +28,12 @@ export const GET: ApiRouteHandler = (context) =>
     // Extract unique user IDs from audit logs
     const userIds = new Set<string>();
     for (const log of logs) {
-      if (log.userId) {
+      if (
+        log.userId &&
+        DOCUMENT_CONTRIBUTION_AUDIT_EVENTS.includes(
+          log.event as (typeof DOCUMENT_CONTRIBUTION_AUDIT_EVENTS)[number],
+        )
+      ) {
         userIds.add(log.userId);
       }
     }

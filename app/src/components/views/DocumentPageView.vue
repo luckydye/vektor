@@ -181,9 +181,7 @@ const title = computed(() =>
 const headerImageSrc = computed(() =>
   optionalPropertyValueToText(doc.value?.properties?.headerImage),
 );
-const headerImageAspectRatio = computed(
-  () => doc.value?.headerImageAspectRatio ?? null,
-);
+const headerImageAspectRatio = computed(() => doc.value?.headerImageAspectRatio ?? null);
 // A portrait header switches to a two-column layout (image beside the title).
 // Without a known aspect ratio we keep the existing full-width banner.
 const isPortraitHeader = computed(

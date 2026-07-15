@@ -69,12 +69,12 @@
 <script setup>
 import { computed } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
-import { t } from "#utils/lang.ts";
 import {
   propertyValueIncludes,
   propertyValueToScalar,
   propertyValueToText,
 } from "#utils/documentProperties.ts";
+import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { chevronRightThinIcon } from "~/src/assets/icons.ts";
 

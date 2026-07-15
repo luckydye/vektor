@@ -17,6 +17,7 @@ import { sendSyncEvent } from "./ws.ts";
  * - archive: Document is archived
  * - delete: Document is deleted
  * - view: Document is viewed
+ * - comment: Comment is created on a document
  *
  * Document state events:
  * - lock: Document is locked (readonly)
@@ -32,6 +33,7 @@ import { sendSyncEvent } from "./ws.ts";
  */
 export type AuditEvent =
   | "view"
+  | "comment"
   | "save"
   | "suggest"
   | "publish"
@@ -46,6 +48,14 @@ export type AuditEvent =
   | "unlock"
   | "property_update"
   | "property_delete";
+
+export const DOCUMENT_CONTRIBUTION_AUDIT_EVENTS: AuditEvent[] = [
+  "create",
+  "save",
+  "suggest",
+  "restore",
+  "publish",
+];
 
 /**
  * Optional details that can be attached to audit log entries
@@ -102,6 +112,12 @@ export interface AuditDetails {
   permission?: string;
   propertyKey?: string;
   propertyType?: string;
+  /** Comment created by a comment event. */
+  commentId?: string;
+  /** Parent comment when the comment is a direct reply. */
+  parentId?: string | null;
+  /** Document selector or position anchoring the comment thread. */
+  reference?: string | null;
   /** Revision number this save/suggestion was based on. */
   parentRev?: number | null;
   /** Suggestion status at the time of the "suggest" event. */

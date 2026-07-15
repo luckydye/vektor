@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { t } from "#utils/lang.ts";
 import ButtonSecondary from "./ButtonSecondary.vue";
 import Icon from "./Icon.vue";
-import { t } from "#utils/lang.ts";
 import "@atrium-ui/elements/popover";
 import "@atrium-ui/elements/list";
 

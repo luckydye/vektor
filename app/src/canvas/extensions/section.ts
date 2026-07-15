@@ -1,12 +1,12 @@
 import { canvasSectionIcon } from "#assets/icons.ts";
 import { pointOnRotatedShape, rotateVector } from "#canvas/geometry.ts";
+import { CanvasElementBase } from "./CanvasElementBase.ts";
 import type {
   CanvasElementExtension,
   CanvasHitTestHelpers,
   CanvasPaintHelpers,
   CanvasShape,
 } from "./types.ts";
-import { CanvasElementBase } from "./CanvasElementBase.ts";
 
 // Sections are click-through in their interior; only the painted border (this
 // many world px) is grabbable, preserving access to content placed inside.
@@ -123,7 +123,8 @@ export const sectionElement: CanvasElementExtension = {
     palette: SECTION_COLORS,
     tool: { id: "section", label: "Section", shortcut: "S", icon: canvasSectionIcon },
     editOnCreate: "chrome",
-    create: (at, ctx) => createSectionShape(at, ctx.color ?? sectionElement.defaults.style.color),
+    create: (at, ctx) =>
+      createSectionShape(at, ctx.color ?? sectionElement.defaults.style.color),
   },
   render: {
     surface: "canvas",
@@ -138,7 +139,8 @@ export const sectionElement: CanvasElementExtension = {
       size: (shape, helpers) => {
         const maxWidth = Math.max(1, shape.frame.width * helpers.scale);
         const title =
-          (typeof shape.data.text === "string" && shape.data.text) || helpers.t("Section");
+          (typeof shape.data.text === "string" && shape.data.text) ||
+          helpers.t("Section");
         return {
           width: Math.min(maxWidth, Math.max(40, title.length * 8 + 16)),
           height: 22,
@@ -204,7 +206,11 @@ class CanvasSectionTitleEditor extends CanvasElementBase {
 }
 
 const sectionEditorTag = sectionElement.render.chrome?.editorTag;
-if (typeof customElements !== "undefined" && sectionEditorTag && !customElements.get(sectionEditorTag)) {
+if (
+  typeof customElements !== "undefined" &&
+  sectionEditorTag &&
+  !customElements.get(sectionEditorTag)
+) {
   customElements.define(sectionEditorTag, CanvasSectionTitleEditor);
 }
 

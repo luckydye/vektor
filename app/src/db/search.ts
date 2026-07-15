@@ -1,11 +1,11 @@
 import { eq, sql } from "drizzle-orm";
+import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToText,
 } from "#utils/documentProperties.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
-import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
 import { listAccessibleResources, ResourceType } from "./acl.ts";
 import { getSpaceDb } from "./db.ts";
 import { document, file as fileTable, property } from "./schema/space.ts";
@@ -474,7 +474,10 @@ export async function searchDocuments(
         const keywordScore = scoreKeywordOverlap(query, textForScoring);
 
         let combinedScore: number;
-        if (queryEmbedding !== null && candidate.searchEmbeddingModel === embeddingModel) {
+        if (
+          queryEmbedding !== null &&
+          candidate.searchEmbeddingModel === embeddingModel
+        ) {
           const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
           if (documentEmbedding) {
             const semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);

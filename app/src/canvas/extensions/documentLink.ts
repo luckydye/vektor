@@ -85,7 +85,9 @@ export async function insertDocumentReference(
   ref: DocumentLinkReference,
   at: { x: number; y: number },
   options: {
-    fetchDocument: (ref: ParsedVektorDocumentAddress) => Promise<LoadedDocumentPreviewSource>;
+    fetchDocument: (
+      ref: ParsedVektorDocumentAddress,
+    ) => Promise<LoadedDocumentPreviewSource>;
     insertDocument: (
       ref: DocumentLinkReference,
       at: { x: number; y: number },
@@ -126,7 +128,9 @@ export async function insertDocumentUrl(
     defaultSpaceId: string;
     spaces: ReadonlyArray<{ id: string; slug?: string | null }> | undefined;
     loadSpaces: () => Promise<ReadonlyArray<{ id: string; slug?: string | null }>>;
-    fetchDocument: (ref: ParsedVektorDocumentAddress) => Promise<LoadedDocumentPreviewSource>;
+    fetchDocument: (
+      ref: ParsedVektorDocumentAddress,
+    ) => Promise<LoadedDocumentPreviewSource>;
     fetchMetadata: (url: string) => Promise<LinkMetadata | null>;
     insertDocument: (
       ref: DocumentLinkReference,
@@ -279,7 +283,9 @@ export const documentLinkElement: CanvasElementExtension = {
         status: documents.shapeStatus(shape),
         content: documents.shapeContent(shape),
         spaceId: documents.documentSpaceIdForShape(shape) || host.spaceId,
-        documentId: documents.isRemote(shape) ? "" : documents.documentIdForShape(shape) || "",
+        documentId: documents.isRemote(shape)
+          ? ""
+          : documents.documentIdForShape(shape) || "",
       };
     },
     activate: (shape, host, event) => {
@@ -305,8 +311,9 @@ export const documentLinkElement: CanvasElementExtension = {
           toggleTaskIndex: clickedTaskCheckboxIndex(event),
         },
         finish: (element) => {
-          const html = (element as (HTMLElement & { getHtml?: () => string | null }) | null)
-            ?.getHtml?.();
+          const html = (
+            element as (HTMLElement & { getHtml?: () => string | null }) | null
+          )?.getHtml?.();
           if (typeof html === "string") documents.setPreviewContent(address, html);
         },
       });
@@ -337,8 +344,11 @@ export const documentLinkElement: CanvasElementExtension = {
       priority: 70,
       handle: (event, context) => {
         const url = context.data?.getData("text/plain").trim() ?? "";
-        if ((!/^https?:\/\//i.test(url) && !url.startsWith("/")) ||
-          context.command("is-document-url", url) !== true) return false;
+        if (
+          (!/^https?:\/\//i.test(url) && !url.startsWith("/")) ||
+          context.command("is-document-url", url) !== true
+        )
+          return false;
         event.preventDefault();
         context.command("insert-document-url", { url, at: context.at() });
         return true;
@@ -475,11 +485,15 @@ export function documentSpaceIdForShape(
   shape: CanvasShape,
   fallbackSpaceId: string,
 ): string | undefined {
-  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.spaceId || fallbackSpaceId;
+  return (
+    parseVektorDocumentAddress(shapeDocumentAddress(shape))?.spaceId || fallbackSpaceId
+  );
 }
 
 export function documentHrefForShape(shape: CanvasShape): string | undefined {
-  return parseVektorDocumentAddress(shapeDocumentAddress(shape))?.href ?? shapeSource(shape);
+  return (
+    parseVektorDocumentAddress(shapeDocumentAddress(shape))?.href ?? shapeSource(shape)
+  );
 }
 
 export function documentAddressForShape(shape: CanvasShape): string | undefined {

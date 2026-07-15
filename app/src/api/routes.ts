@@ -25,6 +25,7 @@ import * as documentComments from "./routes/v1/spaces/[spaceId]/documents/[docum
 import * as documentContributors from "./routes/v1/spaces/[spaceId]/documents/[documentId]/contributors.ts";
 import * as documentDiff from "./routes/v1/spaces/[spaceId]/documents/[documentId]/diff.ts";
 import * as documentEdit from "./routes/v1/spaces/[spaceId]/documents/[documentId]/edit.ts";
+import * as documentEmailPreference from "./routes/v1/spaces/[spaceId]/documents/[documentId]/email-preference.ts";
 import * as document from "./routes/v1/spaces/[spaceId]/documents/[documentId]/index.ts";
 import * as documentRevisions from "./routes/v1/spaces/[spaceId]/documents/[documentId]/revisions.ts";
 import * as documentsArchived from "./routes/v1/spaces/[spaceId]/documents/archived.ts";
@@ -138,6 +139,10 @@ export const apiRoutes: ApiRoute[] = [
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/diff",
     module: documentDiff,
+  },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/email-preference",
+    module: documentEmailPreference,
   },
   {
     pattern: "/api/v1/spaces/[spaceId]/documents/[documentId]/edit",

@@ -161,7 +161,10 @@ beforeAll(async () => {
 
   const documentResponse = await apiRequest(`/api/v1/spaces/${testSpaceId}/documents`, {
     method: "POST",
-    body: JSON.stringify({ content: "<p>Realtime test</p>", properties: { title: "Test" } }),
+    body: JSON.stringify({
+      content: "<p>Realtime test</p>",
+      properties: { title: "Test" },
+    }),
   });
   expect(documentResponse.status).toBe(201);
   testDocumentId = (await documentResponse.json()).document.id;

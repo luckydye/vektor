@@ -4,9 +4,10 @@
  */
 
 import type { AuditLog } from "#api/client.ts";
-import { currentLang, t, type TranslationKey } from "#utils/lang.ts";
+import { currentLang, type TranslationKey, t } from "#utils/lang.ts";
 import {
   closeCircleIcon,
+  commentIcon,
   documentIcon,
   documentTextIcon,
   editOutlineIcon,
@@ -31,6 +32,7 @@ import { normalizeTimestamp } from "./utils.ts";
  */
 const auditEventLabels: Record<string, TranslationKey> = {
   view: "Viewed",
+  comment: "Commented",
   save: "Edited",
   suggest: "Suggested",
   publish: "Published",
@@ -51,6 +53,7 @@ export function getAuditEventLabel(event: string): string {
 }
 
 const auditEventActionKeys: Record<string, TranslationKey> = {
+  comment: "commented",
   publish: "published",
   unpublish: "unpublished",
   delete: "deleted",
@@ -77,6 +80,7 @@ export function getAuditEventAction(event: string): string {
 export function formatAuditEventDescription(userName: string, event: string): string {
   const descriptions: Record<string, string> = {
     view: `${userName} - Document viewed`,
+    comment: `${userName} - Comment created`,
     save: `${userName} - Document saved`,
     suggest: `${userName} - Suggested changes`,
     publish: `${userName} - Document published`,
@@ -107,6 +111,7 @@ export function getAuditEventIcon(event: string): string {
   const icons: Record<string, string> = {
     revision: `<span class="svg-icon w-4 h-4 text-neutral-500">${documentIcon}</span>`,
     view: `<span class="svg-icon w-4 h-4 text-neutral-400">${eyeIcon}</span>`,
+    comment: `<span class="svg-icon w-4 h-4 text-blue-500">${commentIcon}</span>`,
     publish: `<span class="svg-icon w-4 h-4 text-blue-500">${publishIcon}</span>`,
     unpublish: `<span class="svg-icon w-4 h-4 text-neutral-400">${publishIcon}</span>`,
     suggest: `<span class="svg-icon w-4 h-4 text-amber-500">${documentTextIcon}</span>`,

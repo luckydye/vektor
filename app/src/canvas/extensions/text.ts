@@ -1,9 +1,6 @@
 import { canvasTextIcon } from "#assets/icons.ts";
 import { CanvasRichTextElement } from "./CanvasElementBase.ts";
-import type {
-  CanvasElementExtension,
-  CanvasShape,
-} from "./types.ts";
+import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
 export const textElement: CanvasElementExtension = {
   type: "text",
@@ -37,8 +34,14 @@ export const textElement: CanvasElementExtension = {
         const lines = (text || String(textElement.defaults.data.text ?? "")).split(/\n/);
         const longest = Math.max(1, ...lines.map((line) => line.length));
         return {
-          width: Math.max(textElement.defaults.minSize.width, Math.ceil(longest * 8.5 + 26)),
-          height: Math.max(textElement.defaults.minSize.height, Math.ceil(lines.length * 20.25 + 22)),
+          width: Math.max(
+            textElement.defaults.minSize.width,
+            Math.ceil(longest * 8.5 + 26),
+          ),
+          height: Math.max(
+            textElement.defaults.minSize.height,
+            Math.ceil(lines.length * 20.25 + 22),
+          ),
         };
       },
     },

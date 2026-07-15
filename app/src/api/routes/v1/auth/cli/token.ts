@@ -9,8 +9,8 @@
  * Returns: { token: string, spaceId: string }
  */
 
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { pendingCliCodes } from "#api/routes/v1/auth/cli.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { createAccessToken, grantTokenAccess } from "#db/accessTokens.ts";
 import { ResourceType } from "#db/acl.ts";
 import { badRequestResponse, parseJsonBody, withApiErrorHandling } from "#db/api.ts";

@@ -28,8 +28,13 @@ export const Mentions = Mention.extend<MentionOptions>({
   },
 
   addOptions() {
+    const parentOptions = this.parent?.();
+    if (!parentOptions) {
+      throw new Error("Mention parent options are unavailable");
+    }
+
     return {
-      ...this.parent?.(),
+      ...parentOptions,
       HTMLAttributes: {
         class: "mention",
       },

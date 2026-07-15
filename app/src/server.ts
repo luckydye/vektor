@@ -7,6 +7,10 @@ import { apiRouter } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
+import {
+  startEmailNotificationWorker,
+  stopEmailNotificationWorker,
+} from "./notifications/worker.ts";
 import { appLogger } from "./observability/logger.ts";
 import { attachRealtimeWebSocketServer } from "./realtime/websocket.ts";
 import {
@@ -258,6 +262,7 @@ server.listen(port, host, () => {
 });
 
 startCronScheduler();
+startEmailNotificationWorker();
 
 let isShuttingDown = false;
 let forcedShutdownTimer: ReturnType<typeof setTimeout> | undefined;
@@ -271,6 +276,7 @@ async function shutdown(reason: string, exitCode = 0) {
   appLogger.info("Shutdown initiated", { reason, exitCode });
 
   stopCronScheduler();
+  stopEmailNotificationWorker();
 
   forcedShutdownTimer = setTimeout(() => {
     appLogger.error("Forced shutdown timeout reached", { reason, timeoutMs: 10_000 });

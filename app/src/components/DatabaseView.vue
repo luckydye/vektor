@@ -293,16 +293,9 @@ async function onCsvFileChange(event: Event) {
         </thead>
 
         <tbody>
-          <tr
-            v-for="row in rows"
-            :key="row.id"
-            class="group"
-          >
+          <tr v-for="row in rows" :key="row.id" class="group">
             <!-- Name cell — links to document -->
-            <td
-              class="px-3 py-2.5 align-top"
-              :style="{ width: `${NAME_COL_WIDTH}px` }"
-            >
+            <td class="px-3 py-2.5 align-top" :style="{ width: `${NAME_COL_WIDTH}px` }">
               <div
                 v-if="editingCell?.rowId === row.id && editingCell?.col === 'title'"
                 class="flex items-center"

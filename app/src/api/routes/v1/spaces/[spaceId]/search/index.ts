@@ -21,10 +21,13 @@ export const GET: ApiRouteHandler = (context) =>
       const userId = access.isPublic ? null : access.aclUserId;
 
       const query = new URL(context.req.url).searchParams.get("q") || "";
-      const { limit, offset } = parsePaginationParams(new URL(context.req.url).searchParams, {
-        defaultLimit: 20,
-        maxLimit: 100,
-      });
+      const { limit, offset } = parsePaginationParams(
+        new URL(context.req.url).searchParams,
+        {
+          defaultLimit: 20,
+          maxLimit: 100,
+        },
+      );
       const filtersParam = new URL(context.req.url).searchParams.get("filters");
 
       // Parse property filters from JSON string

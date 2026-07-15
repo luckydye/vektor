@@ -24,8 +24,7 @@ const buildDir = join(here, buildDirName);
 await mkdir(buildDir, { recursive: true });
 
 const modelRevision = "c32e6154d1bb7a0e47c5e745fd895e7700f44385";
-const modelBaseUrl =
-  `https://huggingface.co/Qdrant/bge-small-en-v1.5-onnx-Q/resolve/${modelRevision}`;
+const modelBaseUrl = `https://huggingface.co/Qdrant/bge-small-en-v1.5-onnx-Q/resolve/${modelRevision}`;
 const modelFiles = [
   "config.json",
   "model_optimized.onnx",

@@ -1,5 +1,5 @@
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { sql } from "drizzle-orm";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
   denyFeature,
   Feature,

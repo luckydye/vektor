@@ -311,5 +311,7 @@ export interface CanvasElementExtension {
       run: (shape: CanvasShape, host: CanvasExtensionHost) => void;
     };
   };
-  input?: Partial<Record<CanvasInputKind, CanvasInputHandler | readonly CanvasInputHandler[]>>;
+  input?: Partial<
+    Record<CanvasInputKind, CanvasInputHandler | readonly CanvasInputHandler[]>
+  >;
 }

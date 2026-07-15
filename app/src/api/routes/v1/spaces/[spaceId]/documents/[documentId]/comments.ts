@@ -1,5 +1,5 @@
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { inArray } from "drizzle-orm";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { Feature, ResourceType } from "#db/acl.ts";
 import {
   badRequestResponse,
@@ -13,6 +13,7 @@ import {
   verifyFeatureAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
+import { createAuditLog } from "#db/auditLogs.ts";
 import {
   archiveComment,
   archiveComments,
@@ -21,9 +22,11 @@ import {
   listComments,
   updateCommentReferences,
 } from "#db/comments.ts";
-import { getAuthDb } from "#db/db.ts";
+import { getAuthDb, getSpaceDb } from "#db/db.ts";
+import { enqueueCommentCreatedEmails } from "#db/emailNotifications.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { sendSyncEvent } from "#db/ws.ts";
+import { appLogger } from "#observability/logger.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 
 export const GET: ApiRouteHandler = (context) =>
@@ -108,6 +111,37 @@ export const POST: ApiRouteHandler = (context) =>
       typeof type === "string" ? type : undefined,
       typeof reference === "string" ? reference : undefined,
     );
+
+    await createAuditLog(await getSpaceDb(spaceId), {
+      spaceId,
+      docId: documentId,
+      userId: user.id,
+      event: "comment",
+      details: {
+        message: "Comment created",
+        commentId: comment.id,
+        parentId: comment.parentId,
+        reference: comment.reference,
+      },
+    });
+
+    try {
+      await enqueueCommentCreatedEmails({
+        spaceId,
+        documentId,
+        commentId: comment.id,
+        commentReference: comment.reference,
+        commentParentId: comment.parentId,
+        actorId: user.id,
+      });
+    } catch (error) {
+      appLogger.error("Failed to enqueue comment emails", {
+        error,
+        spaceId,
+        documentId,
+        commentId: comment.id,
+      });
+    }
 
     sendSyncEvent(spaceId, {
       topic: realtimeTopics.document(documentId),

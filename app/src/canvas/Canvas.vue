@@ -34,10 +34,13 @@ import {
   uploadIcon,
 } from "~/src/assets/icons.ts";
 import {
-  type CanvasElementContext,
+  activeShapeId,
   addCanvasDrawingPoint,
   type CanvasDrawingSession,
+  type CanvasElementContext,
+  type CanvasShapeLibraryItem,
   cloneFreehandPoint,
+  createCanvasExtensionManager,
   createStrokeMap,
   DRAW_STROKE_MODES,
   type DrawStrokeMode,
@@ -47,14 +50,11 @@ import {
   PEN_COLORS,
   renderCanvasInk,
   renderCanvasSelections,
+  SHAPE_LIBRARY,
+  setActiveShapeId,
   startCanvasDrawingStroke,
   strokeStyleFromUnknown,
   toCanvasStroke,
-  activeShapeId,
-  createCanvasExtensionManager,
-  type CanvasShapeLibraryItem,
-  SHAPE_LIBRARY,
-  setActiveShapeId,
 } from "./extensions/registry.ts";
 import type {
   CanvasEditSession,
@@ -333,7 +333,9 @@ let resizeObserver: ResizeObserver | null = null;
 let themeObserver: MutationObserver | null = null;
 let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
-const intrinsicShapeSizes = shallowRef(new Map<string, { width: number; height: number }>());
+const intrinsicShapeSizes = shallowRef(
+  new Map<string, { width: number; height: number }>(),
+);
 
 const extensionRuntime = extensionManager.createRuntime({
   spaceId: props.spaceId,
@@ -502,7 +504,8 @@ function articleStyle(shape: CanvasShape): Record<string, string> {
     style.width = `${frame.width}px`;
     style.height = `${frame.height}px`;
   }
-  if (extension.render.article?.background !== false) style.background = shape.style.color;
+  if (extension.render.article?.background !== false)
+    style.background = shape.style.color;
   return { ...style, ...extension.render.article?.style?.(shape) };
 }
 
@@ -560,7 +563,8 @@ const hostContext: CanvasElementContext = {
         height: Math.max(minimum.height, size.height),
       };
       const current = intrinsicShapeSizes.value.get(id);
-      if (current?.width === measured.width && current?.height === measured.height) return;
+      if (current?.width === measured.width && current?.height === measured.height)
+        return;
       const next = new Map(intrinsicShapeSizes.value);
       next.set(id, measured);
       intrinsicShapeSizes.value = next;
@@ -581,13 +585,16 @@ const hostContext: CanvasElementContext = {
     if (normalized.height !== undefined) {
       patch.height = Math.max(minimum.height, normalized.height);
     }
-    if (patch.width !== undefined || patch.height !== undefined) updateShapeFrame(id, patch);
+    if (patch.width !== undefined || patch.height !== undefined)
+      updateShapeFrame(id, patch);
   },
 };
 
 // DOM-surface elements stay mounted; content-visibility lets the browser skip
 // off-screen painting.
-const domShapes = computed(() => shapes.value.filter((shape) => extensionManager.rendersInDom(shape)));
+const domShapes = computed(() =>
+  shapes.value.filter((shape) => extensionManager.rendersInDom(shape)),
+);
 
 // Shapes painted via a canvas-2d extension hook, drawn behind the DOM.
 const paintedShapes = computed(() =>
@@ -606,17 +613,21 @@ function editorTagForShape(shape: CanvasShape) {
 }
 
 function elementChromePosition(shape: CanvasShape) {
-  return extensionManager.get(shape.type).render.chrome?.position(shape, {
-    scale: transform.value.scale,
-    worldToScreen,
-  }) ?? worldToScreen({ x: shape.frame.x, y: shape.frame.y });
+  return (
+    extensionManager.get(shape.type).render.chrome?.position(shape, {
+      scale: transform.value.scale,
+      worldToScreen,
+    }) ?? worldToScreen({ x: shape.frame.x, y: shape.frame.y })
+  );
 }
 
 function elementChromeSize(shape: CanvasShape) {
-  return extensionManager.get(shape.type).render.chrome?.size(shape, {
-    scale: transform.value.scale,
-    t,
-  }) ?? { width: 1, height: 1 };
+  return (
+    extensionManager.get(shape.type).render.chrome?.size(shape, {
+      scale: transform.value.scale,
+      t,
+    }) ?? { width: 1, height: 1 }
+  );
 }
 
 // Canvas-rasterized shapes within the current viewport. Used only by
@@ -917,7 +928,9 @@ function syncShapesFromY() {
 
   shapes.value = [...yShapes.entries()]
     .map(([id, value]) => toShape(id, value))
-    .filter((shape): shape is CanvasShape => Boolean(shape && extensionManager.isValid(shape)))
+    .filter((shape): shape is CanvasShape =>
+      Boolean(shape && extensionManager.isValid(shape)),
+    )
     .sort(
       (a, b) =>
         extensionManager.zOrder(a.type) - extensionManager.zOrder(b.type) ||
@@ -1480,9 +1493,7 @@ function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
   } else if (extension.creation?.editOnCreate === "element") {
     nextTick(() => {
       document
-        .querySelector<HTMLElement>(
-          `.canvas-shape[data-shape-id="${shape.id}"] > *`,
-        )
+        .querySelector<HTMLElement>(`.canvas-shape[data-shape-id="${shape.id}"] > *`)
         ?.focus();
     });
   }
@@ -1504,7 +1515,9 @@ function getContainerContents(container: CanvasShape, includeImmovable = false) 
         (stroke) =>
           (includeImmovable || canMoveStroke(stroke)) &&
           stroke.points.length > 0 &&
-          stroke.points.every((point) => extension.behavior.container?.containsPoint(container, point)),
+          stroke.points.every((point) =>
+            extension.behavior.container?.containsPoint(container, point),
+          ),
       )
       .map((stroke) => ({
         id: stroke.id,
@@ -1601,7 +1614,9 @@ function updateShapeFrame(id: string, patch: Partial<CanvasFrame>) {
   const currentShape = shapesById.value.get(id);
   if (currentShape && !canMoveShape(currentShape)) return;
   shape.set("updatedAt", Date.now());
-  const persistsSize = extensionManager.persistsSize(shape.get("type") as CanvasShapeType);
+  const persistsSize = extensionManager.persistsSize(
+    shape.get("type") as CanvasShapeType,
+  );
   const frame = shape.get("frame");
   if (!(frame instanceof Y.Map)) return;
   for (const [key, value] of Object.entries(patch)) {
@@ -1977,11 +1992,9 @@ function hitTestPaintedShape(worldPoint: {
 }): { shape: CanvasShape; region: "title" | "border" } | null {
   for (let i = paintedShapes.value.length - 1; i >= 0; i--) {
     const shape = paintedShapes.value[i];
-    const region = extensionManager.get(shape.type).render.hitTest?.(
-      shape,
-      worldPoint,
-      hitTestHelpers,
-    );
+    const region = extensionManager
+      .get(shape.type)
+      .render.hitTest?.(shape, worldPoint, hitTestHelpers);
     if (region === "title" || region === "border") return { shape, region };
   }
   return null;
@@ -2121,11 +2134,9 @@ function handleViewportPointerDown(event: PointerEvent) {
 
   // Non-select tools (draw / shape / note / text / section) dispatch to their
   // tool extension.
-  extensionManager.tool(activeTool.value)?.onPointerDown(
-    screenToWorld(point),
-    event,
-    canvasToolContext,
-  );
+  extensionManager
+    .tool(activeTool.value)
+    ?.onPointerDown(screenToWorld(point), event, canvasToolContext);
   event.preventDefault();
 }
 
@@ -2355,9 +2366,13 @@ function handlePointerMove(event: PointerEvent) {
       const ratio =
         dragState.initial.width > 0 ? resized.width / dragState.initial.width : 1;
       const nextScale = clampFontScale((dragState.initialScale ?? 1) * ratio);
-      updateShapeData(dragState.shapeId, {
-        fontScale: Math.round(nextScale * 1000) / 1000,
-      }, { transform: true });
+      updateShapeData(
+        dragState.shapeId,
+        {
+          fontScale: Math.round(nextScale * 1000) / 1000,
+        },
+        { transform: true },
+      );
       return;
     }
     updateShapeFrame(dragState.shapeId, {
@@ -2515,7 +2530,13 @@ function handlePointerLeave() {
 }
 
 function handleDragOver(event: DragEvent) {
-  routeExtensionInput("drop", event, event.dataTransfer, insertionPointFromEvent(event), "preview");
+  routeExtensionInput(
+    "drop",
+    event,
+    event.dataTransfer,
+    insertionPointFromEvent(event),
+    "preview",
+  );
 }
 
 function handleDrop(event: DragEvent) {
@@ -2552,7 +2573,8 @@ function selectContextMenuTarget(event: MouseEvent) {
   const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
   if (paintedShape) {
     if (paintedShape.locked) clearSelection();
-    else if (!selectedShapeIds.value.has(paintedShape.id)) selectOnlyShape(paintedShape.id);
+    else if (!selectedShapeIds.value.has(paintedShape.id))
+      selectOnlyShape(paintedShape.id);
     return;
   }
 
@@ -3021,9 +3043,7 @@ function handleKeydown(event: KeyboardEvent) {
     return;
   }
 
-  const shortcutTool = CANVAS_TOOLS.find(
-    (tool) => tool.shortcut.toLowerCase() === key,
-  );
+  const shortcutTool = CANVAS_TOOLS.find((tool) => tool.shortcut.toLowerCase() === key);
   if (shortcutTool) activeTool.value = shortcutTool.id;
   if (key === "r") activeTool.value = "shape";
   if (key === "f") fitView();
@@ -3040,10 +3060,7 @@ watch(
 );
 
 watch(selectedShapeIds, (ids) => {
-  if (
-    editingChromeId.value &&
-    (ids.size !== 1 || !ids.has(editingChromeId.value))
-  ) {
+  if (editingChromeId.value && (ids.size !== 1 || !ids.has(editingChromeId.value))) {
     finishChromeEditing();
   }
   renderSelections();

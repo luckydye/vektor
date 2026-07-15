@@ -115,9 +115,7 @@ export async function getHeaderImageAspectRatio(
 
   const dimensions = readImageDimensions(buffer);
   const ratio =
-    dimensions && dimensions.height > 0
-      ? dimensions.width / dimensions.height
-      : null;
+    dimensions && dimensions.height > 0 ? dimensions.width / dimensions.height : null;
   aspectRatioCache.set(cacheKey, ratio);
   return ratio;
 }

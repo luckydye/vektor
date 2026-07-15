@@ -177,10 +177,12 @@ export function deactivate({ views }: ExtensionContext): void {
 
 ### View Render Function
 
-The render function receives a container `HTMLElement` and can optionally return a cleanup function:
+The render function receives a container `HTMLElement` and can optionally return a cleanup function. Async renderers are supported:
 
 ```ts
-type ViewRenderFn = (container: HTMLElement) => void | (() => void);
+type ViewRenderFn = (
+  container: HTMLElement,
+) => void | (() => void) | Promise<void | (() => void)>;
 ```
 
 Views are rendered when navigating to `/:spaceSlug/x/:routePath`. The extension is activated if not already loaded, then the registered view renderer is called.

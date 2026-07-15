@@ -452,9 +452,10 @@ function changedCanvasShapes(
     const id = typeof shape.id === "string" ? shape.id : null;
     if (!id) continue;
     if (beforeById.get(id) === JSON.stringify(shape)) continue; // unchanged
-    const frame = shape.frame && typeof shape.frame === "object"
-      ? shape.frame as Record<string, unknown>
-      : {};
+    const frame =
+      shape.frame && typeof shape.frame === "object"
+        ? (shape.frame as Record<string, unknown>)
+        : {};
     result.push({
       id,
       x: typeof frame.x === "number" ? frame.x : 0,

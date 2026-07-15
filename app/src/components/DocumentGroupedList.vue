@@ -310,11 +310,9 @@ function docCategoryName(doc: DocumentWithProperties): string | null {
       v-if="filtered.length === 0"
       class="py-12 text-center text-size-small text-neutral-400"
     >
-      {{
-        items.length === 0
+      {{ items.length === 0
           ? (emptyText ?? t("No documents"))
-          : t("No documents in the selected date range")
-      }}
+          : t("No documents in the selected date range") }}
     </div>
 
     <!-- Groups -->

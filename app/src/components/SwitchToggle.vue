@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { play } from 'cuelume';
+import { play } from "cuelume";
 
 defineProps<{
   modelValue: boolean;

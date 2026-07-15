@@ -12,35 +12,73 @@ const props = defineProps<{
 const containerRef = ref<ExtensionViewElement>();
 const error = ref<string | null>(null);
 const loading = ref(true);
+let cleanup: (() => void) | null = null;
+let renderVersion = 0;
+
+function cleanupView() {
+  if (cleanup) {
+    try {
+      cleanup();
+    } catch (err) {
+      console.error("Error cleaning up extension view:", err);
+    }
+    cleanup = null;
+  }
+
+  containerRef.value?.root?.replaceChildren();
+}
 
 async function renderView() {
   if (!containerRef.value) return;
 
+  const version = ++renderVersion;
+  cleanupView();
   loading.value = true;
   error.value = null;
 
-  // Clear container
-  containerRef.value.innerHTML = "";
+  try {
+    // Ensure extensions are initialised for this space
+    await extensions.init(props.spaceId);
+    if (version !== renderVersion) return;
 
-  // Ensure extensions are initialised for this space
-  await extensions.init(props.spaceId);
+    const root = containerRef.value?.root;
+    if (!root) {
+      throw new Error("Extension view element is missing root");
+    }
 
-  if (!containerRef.value?.root) {
-    throw new Error("Extension view element is missing root");
+    // Give each render its own mount point. An async renderer from a previous
+    // route can then only mutate its detached mount point after navigation.
+    const mount = document.createElement("div");
+    mount.style.height = "100%";
+    mount.style.width = "100%";
+    root.replaceChildren(mount);
+
+    const nextCleanup = await extensions.renderInlineView(
+      props.extensionId,
+      props.routePath,
+      mount,
+    );
+
+    if (version !== renderVersion) {
+      nextCleanup?.();
+      mount.remove();
+      return;
+    }
+
+    cleanup = nextCleanup;
+    if (!nextCleanup) {
+      error.value = `Failed to render view for route "${props.routePath}"`;
+    }
+  } catch (err) {
+    console.error("Error rendering extension view:", err);
+    if (version === renderVersion) {
+      error.value = `Failed to render view for route "${props.routePath}"`;
+    }
+  } finally {
+    if (version === renderVersion) {
+      loading.value = false;
+    }
   }
-
-  // Render the view
-  const success = await extensions.renderView(
-    props.extensionId,
-    props.routePath,
-    containerRef.value?.root,
-  );
-
-  if (!success) {
-    error.value = `Failed to render view for route "${props.routePath}"`;
-  }
-
-  loading.value = false;
 }
 
 onMounted(() => {
@@ -56,7 +94,8 @@ watch(
 );
 
 onUnmounted(() => {
-  // Cleanup is handled by the extensions manager
+  renderVersion++;
+  cleanupView();
 });
 </script>
 

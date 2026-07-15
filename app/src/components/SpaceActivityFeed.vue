@@ -4,13 +4,13 @@ import { type AuditLog, api } from "#api/client.ts";
 import { chevronRightThinIcon, documentIcon } from "#assets/icons.ts";
 import { useQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { currentLang, t } from "#utils/lang.ts";
 import {
   formatActivityTime,
   formatPropertyKey,
   getAuditEventAction,
   hasPropertyChange,
 } from "#utils/auditActivity.ts";
+import { currentLang, t } from "#utils/lang.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 
 interface User {

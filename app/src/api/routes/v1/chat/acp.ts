@@ -1,6 +1,6 @@
-import type { ApiRouteHandler } from "#api/server/types.ts";
 import { type AgentEvent, type ChatMessage, runAgentInWorker } from "#agent/agent.ts";
 import { scheduleProfileUpdate } from "#agent/profileUpdater.ts";
+import type { ApiRouteHandler } from "#api/server/types.ts";
 import { getLocalOrigin } from "#config";
 import { getAIChatSession, upsertAIChatSession } from "#db/aiChatSessions.ts";
 import {

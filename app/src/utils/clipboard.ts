@@ -189,9 +189,7 @@ export function canvasClipboardToDocumentHtml(
 
     if (shape.type === "link" && src) {
       const label = text || src;
-      html.push(
-        `<p><a href="${escapeAttribute(src)}">${escapeHtml(label)}</a></p>`,
-      );
+      html.push(`<p><a href="${escapeAttribute(src)}">${escapeHtml(label)}</a></p>`);
       continue;
     }
 

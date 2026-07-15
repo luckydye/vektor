@@ -98,11 +98,7 @@ onMounted(async () => {
       </div>
     </template>
 
-    <a-tabs
-      v-else
-      ref="tabsEl"
-      @tab-selected="onTabSelected"
-    >
+    <a-tabs v-else ref="tabsEl" @tab-selected="onTabSelected">
       <a-tabs-list class="block h-[51px] py-4xs overflow-clip">
         <a-tabs-tab
           v-for="tab in tabs"

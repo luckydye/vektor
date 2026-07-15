@@ -206,9 +206,7 @@
     <!-- Integrations -->
     <template #integrations>
       <section>
-        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">
-          Extensions
-        </h2>
+        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Extensions</h2>
         <p class="text-size-medium text-neutral-900 mt-1">
           Install and manage extensions to add functionality
         </p>

@@ -1,5 +1,5 @@
-import type { ApiContext } from "#api/server/types.ts";
 import { eq } from "drizzle-orm";
+import type { ApiContext } from "#api/server/types.ts";
 import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { validateAccessToken } from "./accessTokens.ts";

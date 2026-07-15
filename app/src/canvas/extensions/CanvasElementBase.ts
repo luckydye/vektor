@@ -29,10 +29,7 @@ export interface CanvasElementContext {
   // Elements report intrinsic dimensions; the host decides from extension
   // metadata whether they are ephemeral geometry (font-resized text) or a
   // persisted box (link cards). Omitted axes remain unchanged.
-  reportSize: (
-    shapeId: string,
-    size: { width?: number; height?: number },
-  ) => void;
+  reportSize: (shapeId: string, size: { width?: number; height?: number }) => void;
 }
 
 // `class extends HTMLElement` is evaluated at module load. HTMLElement is

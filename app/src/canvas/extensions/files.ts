@@ -86,7 +86,9 @@ class CanvasFileElement extends CanvasElementBase {
 
   protected mount() {
     const shape = this.shapeData;
-    this.isPdf = Boolean(shape && (isPdfFile(fileName(shape)) || isPdfFile(fileSource(shape))));
+    this.isPdf = Boolean(
+      shape && (isPdfFile(fileName(shape)) || isPdfFile(fileSource(shape))),
+    );
 
     if (this.isPdf) {
       const wrap = document.createElement("div");
