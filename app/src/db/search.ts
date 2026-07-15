@@ -202,6 +202,13 @@ export function scoreKeywordOverlap(query: string, text: string): number {
   return score / terms.length;
 }
 
+const MIN_SEMANTIC_SIMILARITY = 0.6;
+const SEMANTIC_RANKING_WEIGHT = 0.4;
+
+function scoreToRank(score: number): number {
+  return 1 / (1 + Math.max(0, score));
+}
+
 function escapeHtml(input: string): string {
   return input.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
@@ -473,25 +480,32 @@ export async function searchDocuments(
         const textForScoring = candidate.searchText ?? candidate.content;
         const keywordScore = scoreKeywordOverlap(query, textForScoring);
 
-        let combinedScore: number;
+        let semanticScore: number | null = null;
         if (
           queryEmbedding !== null &&
           candidate.searchEmbeddingModel === embeddingModel
         ) {
           const documentEmbedding = parseEmbedding(candidate.searchEmbedding);
           if (documentEmbedding) {
-            const semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);
-            combinedScore = semanticScore * 0.7 + keywordScore * 0.3;
-          } else {
-            combinedScore = keywordScore;
+            semanticScore = cosineSimilarity(queryEmbedding, documentEmbedding);
           }
-        } else {
-          combinedScore = keywordScore;
         }
 
-        if (combinedScore < 0.12 && keywordScore === 0) {
+        // BGE similarities have a relatively high baseline even for unrelated
+        // text. Only admit semantic-only results when the model expresses a
+        // meaningful match; lexical matches remain available regardless.
+        if (
+          keywordScore === 0 &&
+          (semanticScore === null || semanticScore < MIN_SEMANTIC_SIMILARITY)
+        ) {
           return null;
         }
+
+        // Exact and prefix matches should outrank broader semantic similarity.
+        // Keep the raw score monotonic and convert it to rank reciprocally so
+        // strong lexical matches do not collapse into identical rank-zero ties.
+        const combinedScore =
+          keywordScore + (semanticScore ?? 0) * SEMANTIC_RANKING_WEIGHT;
 
         return {
           id: candidate.id,
@@ -501,7 +515,7 @@ export async function searchDocuments(
           parentId: candidate.parentId,
           createdAt: candidate.createdAt,
           updatedAt: candidate.updatedAt,
-          rank: Math.max(0, 1 - combinedScore),
+          rank: scoreToRank(combinedScore),
           snippet: buildSearchSnippet(query, textForScoring),
         };
       })
@@ -550,7 +564,7 @@ export async function searchDocuments(
           .join("\n");
         const keywordScore = scoreKeywordOverlap(query, fileSearchText);
         if (keywordScore === 0) continue;
-        rank = Math.max(0, 1 - keywordScore);
+        rank = scoreToRank(keywordScore);
         snippet = buildSearchSnippet(query, fileSearchText);
       }
       allRawResults.push({

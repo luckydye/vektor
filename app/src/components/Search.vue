@@ -330,7 +330,11 @@ const batchArchive = async (ids: string[]) => {
 
     <!-- Search results: grouped list -->
     <template v-else-if="sortedResults.length > 0">
-      <DocumentGroupedList :items="sortedResults as any" :show-toolbar="false">
+      <DocumentGroupedList
+        :items="sortedResults as any"
+        :show-toolbar="false"
+        preserve-order
+      >
         <template v-if="userCanEdit" #batch-actions="{ selectedIds, deselectAll }">
           <button
             type="button"

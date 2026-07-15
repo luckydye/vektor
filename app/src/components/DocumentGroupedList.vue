@@ -24,6 +24,7 @@ const props = defineProps<{
   categories?: Category[];
   emptyText?: string;
   showToolbar?: boolean;
+  preserveOrder?: boolean;
 }>();
 
 const { currentSpace } = useSpace();
@@ -93,6 +94,8 @@ const filtered = computed(() => {
     end.setDate(end.getDate() + 1);
     docs = docs.filter((d) => normalizeTimestamp(d.updatedAt).getTime() < end.getTime());
   }
+  if (props.preserveOrder) return [...docs];
+
   return [...docs].sort(
     (a, b) =>
       normalizeTimestamp(b.updatedAt).getTime() -
