@@ -6,6 +6,7 @@ import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
 import { config, isTrustProxyEnabled } from "./config.ts";
+import { initializeDatabases } from "./db/db.ts";
 import { startCronScheduler, stopCronScheduler } from "./jobs/cronScheduler.ts";
 import {
   startEmailNotificationWorker,
@@ -26,6 +27,10 @@ type AstroMiddleware = (
 ) => void | Promise<void>;
 
 const app = new Hono<ApiBindings>();
+
+// Database schema preparation and local-file reconciliation must complete
+// before requests or background workers can observe the space index.
+await initializeDatabases();
 
 app.use("*", async (c, next) => {
   const res = c.env.outgoing;

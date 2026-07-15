@@ -1,9 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { getAuthDb } from "#db/db.ts";
 import { user as userTable } from "#db/schema/auth.ts";
+import { deleteSpace } from "#db/spaces.ts";
 import {
   createPageRequest,
   createSessionApiRequest,
@@ -15,7 +14,6 @@ import {
 } from "./helpers/server.ts";
 
 const PORT = 7485;
-const DATA_DIR = "./data";
 const BASE_URL = testBaseUrl(PORT);
 const apiRequest = createSessionApiRequest(BASE_URL);
 const pageRequest = createPageRequest(BASE_URL);
@@ -147,9 +145,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   serverProcess?.kill();
-  if (testSpaceId && existsSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`))) {
-    rmSync(join(DATA_DIR, "spaces", `${testSpaceId}.db`), { force: true });
-  }
+  if (testSpaceId) await deleteSpace(testSpaceId);
 });
 
 describe("Frontend ACL Tests - Document Page Access", () => {

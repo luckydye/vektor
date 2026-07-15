@@ -1,10 +1,8 @@
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { config, getLocalOrigin } from "#config";
 import { verifyDocumentRole } from "#db/api.ts";
 import { getComment } from "#db/comments.ts";
-import { getAuthDb, listInMemorySpaceIds } from "#db/db.ts";
+import { getAuthDb } from "#db/db.ts";
 import { getDocument } from "#db/documents.ts";
 import { isDocumentEmailMuted } from "#db/emailNotificationPreferences.ts";
 import {
@@ -16,29 +14,16 @@ import {
 import { user } from "#db/schema/auth.ts";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
 import { getSpace } from "#db/spaces.ts";
-import { isInMemoryDb } from "#inMemoryDb";
+import { listActiveSpaceIds } from "#db/spaceIndex.ts";
 import { appLogger } from "#observability/logger.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";
 import { renderNotificationEmail } from "./render.ts";
 
-const SPACES_DIR = join("./data", "spaces");
 const TICK_INTERVAL_MS = 15_000;
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let tickInProgress = false;
-
-async function listSpaceIds(): Promise<string[]> {
-  if (isInMemoryDb()) return listInMemorySpaceIds();
-  try {
-    const entries = await readdir(SPACES_DIR);
-    return entries
-      .filter((name) => name.endsWith(".db"))
-      .map((name) => name.slice(0, -".db".length));
-  } catch {
-    return [];
-  }
-}
 
 function documentUrl(spaceSlug: string, documentSlug: string): string {
   const origin = config().SITE_URL || config().API_URL || getLocalOrigin();
@@ -131,7 +116,7 @@ async function tick(): Promise<void> {
   if (tickInProgress) return;
   tickInProgress = true;
   try {
-    for (const spaceId of await listSpaceIds()) {
+    for (const spaceId of await listActiveSpaceIds()) {
       try {
         const due = await claimDueEmailNotifications(spaceId);
         for (const notification of due) {

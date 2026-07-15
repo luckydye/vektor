@@ -23,6 +23,10 @@
  *   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
  *   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
  *   vektor category rm <slug>
+ *   vektor space register <libsql-url>
+ *   vektor space attach <libsql-url>
+ *   vektor space enable <database-id>
+ *   vektor space ls
  */
 
 import { commandAgent } from "./src/cli/agent.ts";
@@ -40,6 +44,12 @@ import {
   commandSet,
   commandWrite,
 } from "./src/cli/document.ts";
+import {
+  commandSpaceAttach,
+  commandSpaceEnable,
+  commandSpaceList,
+  commandSpaceRegister,
+} from "./src/cli/space.ts";
 import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
 import { commandLogin } from "./src/cli/login.ts";
 import { commandMcp } from "./src/cli/mcp.ts";
@@ -112,11 +122,16 @@ Commands:
   vektor category create <name> [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
   vektor category edit <slug> [--name <name>] [--slug <slug>] [--description <desc>] [--color <color>] [--icon <icon>]
   vektor category rm <slug>
+  vektor space register <libsql-url>
+  vektor space attach <libsql-url>
+  vektor space enable <database-id>
+  vektor space ls
 
 Env vars:
   VEKTOR_HOST           Server URL (default: http://localhost:8080)
   VEKTOR_SPACE_ID       Space to use (default: first space on server)
   VEKTOR_ACCESS_TOKEN   API token (required if auth is enabled; used by vektor mcp)
+  VEKTOR_DATABASE_URL   Auth database URL (default: file:./data/auth.db)
 `);
 }
 
@@ -376,8 +391,39 @@ async function main(): Promise<void> {
     );
   }
 
+  if (command === "space") {
+    const [subcommand, value] = rest;
+
+    if (subcommand === "register") {
+      if (!value) throw new Error("space register requires a <libsql-url>");
+      await commandSpaceRegister(value);
+      return;
+    }
+
+    if (subcommand === "attach") {
+      if (!value) throw new Error("space attach requires a <libsql-url>");
+      await commandSpaceAttach(value);
+      return;
+    }
+
+    if (subcommand === "enable") {
+      if (!value) throw new Error("space enable requires a <database-id>");
+      await commandSpaceEnable(value);
+      return;
+    }
+
+    if (subcommand === "ls" || subcommand === "list") {
+      await commandSpaceList();
+      return;
+    }
+
+    throw new Error(
+      `Unknown space subcommand: ${subcommand}\n\nTry: register, attach, enable, ls`,
+    );
+  }
+
   throw new Error(
-    `Unknown command: ${command}\n\nTry: serve, mcp, workflow, extension, cat, upload, write, set, ls, query, category`,
+    `Unknown command: ${command}\n\nTry: serve, mcp, workflow, extension, cat, upload, write, set, ls, query, category, space`,
   );
 }
 

@@ -54,3 +54,19 @@ export const verification = sqliteTable("verification", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
+
+export const spaceIndex = sqliteTable("space_index", {
+  id: text("id").primaryKey(),
+  databaseUrl: text("database_url").notNull().unique(),
+  status: text("status", {
+    enum: ["available", "claimed", "active", "disabled", "deleted"],
+  })
+    .notNull()
+    .default("available"),
+  spaceId: text("space_id").unique(),
+  name: text("name"),
+  slug: text("slug"),
+  createdBy: text("created_by"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
