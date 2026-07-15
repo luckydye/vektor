@@ -1,7 +1,7 @@
 import { type Editor, Extension } from "@tiptap/core";
-import { Placeholder } from "@tiptap/extensions";
 import { Heading } from "#editor/extensions/baseExtensions.ts";
 import { MentionSuggestions } from "#editor/extensions/MentionSuggestions.ts";
+import { Placeholder } from "#editor/extensions/Placeholder.ts";
 import { createBaseEditor } from "#editor/extensions.ts";
 import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "#utils/messageMarkdown.ts";
 

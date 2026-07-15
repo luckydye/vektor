@@ -6,8 +6,6 @@ import "./elements/file-attachment.ts";
 import "./elements/document-attachment.ts";
 import type { Editor } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
-import DragHandle from "@tiptap/extension-drag-handle";
-import { Dropcursor } from "@tiptap/extensions";
 import type { EditorState } from "@tiptap/pm/state";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
 import * as Y from "yjs";
@@ -16,6 +14,8 @@ import {
   type DocumentPresenceProfile,
   findYSyncState,
 } from "./collaboration.ts";
+import { Dropcursor } from "./extensions/Dropcursor.ts";
+import { DragHandle } from "./extensions/DragHandle.ts";
 import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
 import {
   imageFilesFromDataTransfer,

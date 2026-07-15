@@ -1,5 +1,11 @@
 import { Editor, type EditorOptions, Extension, type Extensions } from "@tiptap/core";
-import { NodeSelection, Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+} from "@tiptap/pm/state";
 import {
   canvasClipboardFromDataTransfer,
   canvasClipboardToDocumentHtml,
@@ -77,13 +83,105 @@ function selectNearestParentNode(editor: Editor) {
   return true;
 }
 
+function currentListItemRange(editor: Editor) {
+  const { $from } = editor.state.selection;
+
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth);
+    if (node.type.name !== "listItem" && node.type.name !== "taskItem") continue;
+
+    const from = $from.before(depth);
+    return { from, to: from + node.nodeSize };
+  }
+
+  return null;
+}
+
+function joinEmptyParagraphWithPreviousList(editor: Editor) {
+  const { state, view } = editor;
+  const { selection } = state;
+  const { $from } = selection;
+
+  if (
+    !(selection instanceof TextSelection) ||
+    !selection.empty ||
+    $from.parentOffset !== 0 ||
+    $from.parent.type.name !== "paragraph" ||
+    $from.parent.content.size !== 0 ||
+    $from.depth === 0
+  ) {
+    return false;
+  }
+
+  const containingDepth = $from.depth - 1;
+  const paragraphIndex = $from.index(containingDepth);
+  if (paragraphIndex === 0) return false;
+
+  const previousNode = $from.node(containingDepth).child(paragraphIndex - 1);
+  if (!previousNode.type.spec.group?.split(/\s+/).includes("list")) return false;
+
+  const from = $from.before($from.depth);
+  const tr = state.tr.delete(from, from + $from.parent.nodeSize);
+  tr.setSelection(Selection.near(tr.doc.resolve(from), -1));
+  view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
 const BaseSelectionShortcuts = Extension.create({
   name: "baseSelectionShortcuts",
 
   addKeyboardShortcuts() {
     return {
       "Mod-a": () => selectNearestParentNode(this.editor),
+      Backspace: () => joinEmptyParagraphWithPreviousList(this.editor),
     };
+  },
+
+  addProseMirrorPlugins() {
+    const editor = this.editor;
+
+    return [
+      new Plugin({
+        key: new PluginKey("cutCurrentBlock"),
+        props: {
+          handleDOMEvents: {
+            cut(view, domEvent) {
+              if (!view.state.selection.empty) return false;
+
+              const listItemRange = currentListItemRange(editor);
+              if (!listItemRange) {
+                selectNearestParentNode(editor);
+                return false;
+              }
+
+              const event = domEvent as ClipboardEvent;
+              const { from, to } = listItemRange;
+              if (!event.clipboardData) {
+                view.dispatch(
+                  view.state.tr.setSelection(NodeSelection.create(view.state.doc, from)),
+                );
+                return false;
+              }
+
+              const slice = view.state.doc.slice(from, to, true);
+              const { dom, text } = view.serializeForClipboard(slice);
+
+              event.preventDefault();
+              event.clipboardData.clearData();
+              event.clipboardData.setData("text/html", dom.innerHTML);
+              event.clipboardData.setData("text/plain", text);
+              view.dispatch(
+                view.state.tr
+                  .delete(from, to)
+                  .scrollIntoView()
+                  .setMeta("uiEvent", "cut"),
+              );
+              return true;
+            },
+          },
+        },
+      }),
+    ];
   },
 });
 
