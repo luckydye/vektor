@@ -77,7 +77,7 @@ export async function executeWorkflowScript(
         workflowVmRejectJob,
         workflowVmResolveJob,
         workflowVmStep,
-      } = getNativeExec();
+      } = await getNativeExec();
 
       try {
         vmId = workflowVmCreate(code, options?.runtimeInputs ?? {});

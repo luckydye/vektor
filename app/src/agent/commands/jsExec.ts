@@ -145,7 +145,7 @@ export const jsExecCommand = defineCommand("js-exec", async (args, ctx) => {
 
   const envEntries = [...ctx.env.entries()].map(([k, v]) => [k, v]);
 
-  const result = getNativeExec().evalJsSync(
+  const result = (await getNativeExec()).evalJsSync(
     wrappedCode,
     {
       argv: ["js-exec", scriptPath, ...scriptArgs],

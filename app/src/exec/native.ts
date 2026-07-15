@@ -1,15 +1,20 @@
 import type * as NativeExec from "#native/exec/index.d.ts";
+import { getNativeAddonExport } from "#utils/nativeAddon.ts";
 
 export type NativeExecAddon = typeof NativeExec;
 
 let addon: NativeExecAddon | undefined;
 
-export function getNativeExec(): NativeExecAddon {
+export async function getNativeExec(): Promise<NativeExecAddon> {
   if (addon) return addon;
   try {
-    // build.ts generates this static require so Bun embeds the .node addon.
-    // biome-ignore lint/suspicious/noExplicitAny: generated native module
-    addon = (require("./native/addon") as any).default as NativeExecAddon;
+    const nativeModule: unknown = await import("./native/addon.ts");
+    addon = getNativeAddonExport<NativeExecAddon>(nativeModule, {
+      addonName: "JavaScript runtime",
+      exportName: "nativeExec",
+      requiredFunction: "evalJsSync",
+      moduleUrl: import.meta.url,
+    });
     return addon;
   } catch (error) {
     throw new Error(

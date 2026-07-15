@@ -130,7 +130,7 @@ export async function applyTransform(
   input: Buffer,
   params: TransformParams,
 ): Promise<Buffer | null> {
-  const native = getNativeImage();
+  const native = await getNativeImage();
   if (!native) return null; // addon unavailable — caller serves original uncached
 
   try {

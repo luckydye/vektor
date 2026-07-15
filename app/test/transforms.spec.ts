@@ -24,7 +24,7 @@ import {
   waitForServer,
 } from "./helpers/server.ts";
 
-const native = getNativeImage();
+const native = await getNativeImage();
 if (!native) {
   throw new Error(
     "native image addon unavailable — run: cd native/image && bun run build",
