@@ -50,6 +50,21 @@ const archivedDocumentCondition = sql`
   )
 `;
 
+async function updateDocumentEmbeddingBestEffort(
+  spaceId: string,
+  documentId: string,
+): Promise<void> {
+  try {
+    await updateDocumentEmbedding(spaceId, documentId);
+  } catch (error) {
+    console.warn("Failed to update document embedding", {
+      error,
+      spaceId,
+      documentId,
+    });
+  }
+}
+
 async function generateUniqueSlug(
   spaceId: string,
   baseTitle: string,
@@ -155,7 +170,7 @@ export async function createDocument(
 
   await grantPermission(spaceId, ResourceType.DOCUMENT, id, createdBy, Permission.OWNER);
 
-  await updateDocumentEmbedding(spaceId, id);
+  await updateDocumentEmbeddingBestEffort(spaceId, id);
 
   const draftOnly = type === "canvas";
   if (!draftOnly) {
@@ -286,7 +301,7 @@ export async function updateDocument(
     .set({ content, updatedAt: now, type: nextType, readonly: nextReadonly })
     .where(eq(document.id, id));
 
-  await updateDocumentEmbedding(spaceId, id);
+  await updateDocumentEmbeddingBestEffort(spaceId, id);
 
   if (userId) {
     await createAuditLog(db, {
@@ -779,7 +794,7 @@ export async function updateDocumentProperty(
     await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
   }
 
-  updateDocumentEmbedding(spaceId, documentId).catch(() => {});
+  void updateDocumentEmbeddingBestEffort(spaceId, documentId);
   const propertyChangeData = {
     kind: "document_property_changed",
     documentId,
@@ -856,7 +871,7 @@ export async function deleteDocumentProperty(
   // Update the document's updatedAt timestamp
   await db.update(document).set({ updatedAt: now }).where(eq(document.id, documentId));
 
-  updateDocumentEmbedding(spaceId, documentId).catch(() => {});
+  void updateDocumentEmbeddingBestEffort(spaceId, documentId);
   const propertyDeleteData = {
     kind: "document_property_deleted",
     documentId,

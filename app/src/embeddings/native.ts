@@ -29,9 +29,9 @@ export async function getNativeEmbedding(): Promise<NativeEmbeddingAddon> {
     addon = await addonPromise;
     return addon;
   } catch (error) {
-    addonPromise = undefined;
+    const detail = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(
-      "Native embedding runtime unavailable — run: cd native/embedding && bun run build",
+      `Native embedding runtime unavailable${detail}`,
       { cause: error },
     );
   }

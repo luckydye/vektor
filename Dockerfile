@@ -31,6 +31,7 @@ ENV RUST_MIN_STACK=16777216
 RUN bun i && cd app && bun i
 RUN task native:image
 RUN task native:exec
+RUN task native:embedding
 RUN cd app && bunx --bun astro build && bun run ./build.ts
 
 FROM debian:12-slim
@@ -61,6 +62,10 @@ WORKDIR /app
 COPY --from=build /app/app/vektor /app/vektor
 
 RUN mkdir -p /app/data
+
+# Verify the embedded addons against the libraries in the actual runtime image,
+# not only the build stage. This catches glibc and shared-library mismatches.
+RUN ./vektor __native-self-test
 
 EXPOSE 8080
 

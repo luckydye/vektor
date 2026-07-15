@@ -11,7 +11,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          # Keep the Linux native ABI baseline older than supported production
+          # hosts. ubuntu-latest can raise its glibc requirement without notice.
+          - runner: ubuntu-22.04
             artifact: vektor-linux-x64
           - runner: macos-latest
             artifact: vektor-darwin-arm64

@@ -6,11 +6,19 @@ stages:
   - deploy
 
 build:
+  image: docker:latest
   stage: build
+  services:
+    - docker:dind
+  before_script:
+    - echo noop
   script:
-    - apt-get update -qq && apt-get install -y -qq build-essential
-    - task setup
-    - task compile
+    # Compile against the same Debian baseline as the deployed runtime. Native
+    # addons built on the GitLab runner may otherwise require a newer glibc.
+    - docker build . --tag vektor-runtime --platform linux/amd64
+    - container_id="$(docker create vektor-runtime)"
+    - docker cp "$container_id:/app/vektor" ./app/vektor
+    - docker rm "$container_id"
   artifacts:
     paths:
       - app/vektor

@@ -22,9 +22,9 @@ export async function getNativeExec(): Promise<NativeExecAddon> {
     addon = await addonPromise;
     return addon;
   } catch (error) {
-    addonPromise = undefined;
+    const detail = error instanceof Error ? `: ${error.message}` : "";
     throw new Error(
-      "Native JavaScript runtime unavailable — run: cd native/exec && bun run build",
+      `Native JavaScript runtime unavailable${detail}`,
       { cause: error },
     );
   }
