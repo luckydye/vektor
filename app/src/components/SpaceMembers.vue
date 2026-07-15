@@ -366,10 +366,7 @@ async function copyMemberId(memberId) {
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h2 class="text-size-large font-semibold text-neutral-900">Members</h2>
-      <ButtonPrimary
-        text="Invite People"
-        @click="showAddMember = true"
-      />
+      <ButtonPrimary text="Invite People" @click="showAddMember = true" />
     </div>
 
     <!-- Loading State -->

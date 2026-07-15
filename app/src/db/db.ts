@@ -21,18 +21,18 @@ declare global {
   var __vektor_database_initialization: Promise<void> | undefined;
 }
 
-const spaceDbCache =
-  globalThis.__vektor_space_db_cache ??
-  (globalThis.__vektor_space_db_cache = new Map<string, Database>());
+const spaceDbCache = globalThis.__vektor_space_db_cache ?? new Map<string, Database>();
+globalThis.__vektor_space_db_cache = spaceDbCache;
+
 const spaceDbPreparation =
-  globalThis.__vektor_space_db_preparation ??
-  (globalThis.__vektor_space_db_preparation = new Map<string, Promise<void>>());
+  globalThis.__vektor_space_db_preparation ?? new Map<string, Promise<void>>();
+globalThis.__vektor_space_db_preparation = spaceDbPreparation;
 // In-flight opens keyed by space ID. The first caller for an uncached space
 // creates the connection and runs schema preparation; concurrent callers await
 // this same promise instead of opening (and leaking) a second connection.
 const spaceDbOpening =
-  globalThis.__vektor_space_db_opening ??
-  (globalThis.__vektor_space_db_opening = new Map<string, Promise<Database>>());
+  globalThis.__vektor_space_db_opening ?? new Map<string, Promise<Database>>();
+globalThis.__vektor_space_db_opening = spaceDbOpening;
 
 function startDatabaseInitialization(): Promise<void> {
   if (!globalThis.__vektor_database_initialization) {
@@ -50,10 +50,7 @@ export function initializeDatabases(): Promise<void> {
 
 export { getAuthDb };
 
-async function openSpaceDb(
-  spaceId: string,
-  createLocalFile: boolean,
-): Promise<Database> {
+async function openSpaceDb(spaceId: string, createLocalFile: boolean): Promise<Database> {
   await initializeDatabases();
 
   const cached = spaceDbCache.get(spaceId);
@@ -77,9 +74,7 @@ async function openSpaceDb(
     }
 
     const isMemoryDatabase = databaseRecord.databaseUrl.startsWith("memory:");
-    const databaseUrl = isMemoryDatabase
-      ? "file::memory:"
-      : databaseRecord.databaseUrl;
+    const databaseUrl = isMemoryDatabase ? "file::memory:" : databaseRecord.databaseUrl;
     const databasePath = getDatabaseFilePath(databaseUrl);
     if (databasePath && !createLocalFile && !existsSync(databasePath)) {
       throw new Error(`Space database file not found: ${spaceId}`);

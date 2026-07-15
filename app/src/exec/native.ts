@@ -23,9 +23,6 @@ export async function getNativeExec(): Promise<NativeExecAddon> {
     return addon;
   } catch (error) {
     const detail = error instanceof Error ? `: ${error.message}` : "";
-    throw new Error(
-      `Native JavaScript runtime unavailable${detail}`,
-      { cause: error },
-    );
+    throw new Error(`Native JavaScript runtime unavailable${detail}`, { cause: error });
   }
 }

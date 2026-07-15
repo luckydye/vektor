@@ -9,10 +9,7 @@ function valueType(value: unknown): string {
 }
 
 function ownPropertyNames(value: unknown): string[] {
-  if (
-    (typeof value !== "object" || value === null) &&
-    typeof value !== "function"
-  ) {
+  if ((typeof value !== "object" || value === null) && typeof value !== "function") {
     return [];
   }
 
@@ -24,10 +21,7 @@ function ownPropertyNames(value: unknown): string[] {
 }
 
 function readProperty(value: unknown, property: string): unknown {
-  if (
-    (typeof value !== "object" || value === null) &&
-    typeof value !== "function"
-  ) {
+  if ((typeof value !== "object" || value === null) && typeof value !== "function") {
     return undefined;
   }
 
@@ -38,10 +32,7 @@ function readProperty(value: unknown, property: string): unknown {
   }
 }
 
-export function getNativeAddon<T>(
-  nativeModule: unknown,
-  options: NativeAddonOptions,
-): T {
+export function getNativeAddon<T>(nativeModule: unknown, options: NativeAddonOptions): T {
   const requiredFunction = readProperty(nativeModule, options.requiredFunction);
 
   if (typeof requiredFunction !== "function") {

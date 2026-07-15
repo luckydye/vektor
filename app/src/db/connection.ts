@@ -47,9 +47,7 @@ function authTokenFromUrl(databaseUrl: string): string | undefined {
 
 export function getAuthDatabaseUrl(): string {
   if (isInMemoryDb()) return "file::memory:";
-  return (
-    config().DATABASE_URL?.trim() || pathToFileURL(DEFAULT_AUTH_DATABASE_PATH).href
-  );
+  return config().DATABASE_URL?.trim() || pathToFileURL(DEFAULT_AUTH_DATABASE_PATH).href;
 }
 
 export function isLocalDatabaseMode(): boolean {

@@ -44,16 +44,16 @@ import {
   commandSet,
   commandWrite,
 } from "./src/cli/document.ts";
+import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
+import { commandLogin } from "./src/cli/login.ts";
+import { commandMcp } from "./src/cli/mcp.ts";
+import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
 import {
   commandSpaceAttach,
   commandSpaceEnable,
   commandSpaceList,
   commandSpaceRegister,
 } from "./src/cli/space.ts";
-import { commandCreate, commandPackage, commandUpload } from "./src/cli/extension.ts";
-import { commandLogin } from "./src/cli/login.ts";
-import { commandMcp } from "./src/cli/mcp.ts";
-import { resolveHost, resolveSpaceId } from "./src/cli/resolve.ts";
 import { commandUploadFile } from "./src/cli/upload.ts";
 import { commandLogs, parseArgs, runWorkflow } from "./src/cli/workflow.ts";
 import { config } from "./src/config.ts";

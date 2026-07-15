@@ -273,7 +273,7 @@ export async function getRevisionContent(
 export async function resolvePublishedDocumentContent<
   T extends {
     id: string;
-    content: string;
+    content?: string;
     publishedRev: number | null;
   },
 >(spaceId: string, document: T): Promise<T> {

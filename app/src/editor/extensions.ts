@@ -171,10 +171,7 @@ const BaseSelectionShortcuts = Extension.create({
               event.clipboardData.setData("text/html", dom.innerHTML);
               event.clipboardData.setData("text/plain", text);
               view.dispatch(
-                view.state.tr
-                  .delete(from, to)
-                  .scrollIntoView()
-                  .setMeta("uiEvent", "cut"),
+                view.state.tr.delete(from, to).scrollIntoView().setMeta("uiEvent", "cut"),
               );
               return true;
             },

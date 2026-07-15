@@ -94,9 +94,7 @@ async function inspectSpaceDatabase(
   const database = createDatabase(databaseUrl);
   try {
     const schemaObjects = await database.all<{ name: string }>(
-      sql.raw(
-        "SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'",
-      ),
+      sql.raw("SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'"),
     );
     if (schemaObjects.length === 0) return null;
     if (!schemaObjects.some(({ name }) => name === "space_metadata")) {
@@ -142,9 +140,7 @@ export async function registerAvailableSpaceDatabase(
     .get();
   if (existing) {
     if (existing.status !== "available") {
-      throw new Error(
-        `Database is already registered with status "${existing.status}"`,
-      );
+      throw new Error(`Database is already registered with status "${existing.status}"`);
     }
     return existing;
   }
@@ -185,11 +181,7 @@ export async function attachExistingSpaceDatabase(
       .from(spaceIndex)
       .where(eq(spaceIndex.databaseUrl, sanitizedUrl))
       .get(),
-    authDb
-      .select()
-      .from(spaceIndex)
-      .where(eq(spaceIndex.spaceId, metadata.id))
-      .get(),
+    authDb.select().from(spaceIndex).where(eq(spaceIndex.spaceId, metadata.id)).get(),
   ]);
   if (byUrl && bySpace && byUrl.id !== bySpace.id) {
     throw new Error("The database URL and space ID are already registered separately");
@@ -227,9 +219,7 @@ export async function listSpaceDatabaseRecords(): Promise<SpaceIndexRecord[]> {
   return getAuthDb().select().from(spaceIndex).all();
 }
 
-export async function enableSpaceDatabase(
-  recordId: string,
-): Promise<SpaceIndexRecord> {
+export async function enableSpaceDatabase(recordId: string): Promise<SpaceIndexRecord> {
   const authDb = getAuthDb();
   const existing = await authDb
     .select()
@@ -325,9 +315,7 @@ export async function enableSpaceDatabase(
       .returning()
       .get();
     if (!activated) {
-      throw new Error(
-        `Database record changed while it was being enabled: ${recordId}`,
-      );
+      throw new Error(`Database record changed while it was being enabled: ${recordId}`);
     }
     return activated;
   }
@@ -364,16 +352,12 @@ export async function enableSpaceDatabase(
     .returning()
     .get();
   if (!enabled) {
-    throw new Error(
-      `Database record changed while it was being enabled: ${recordId}`,
-    );
+    throw new Error(`Database record changed while it was being enabled: ${recordId}`);
   }
   return enabled;
 }
 
-export async function allocateSpaceDatabase(
-  spaceId: string,
-): Promise<SpaceIndexRecord> {
+export async function allocateSpaceDatabase(spaceId: string): Promise<SpaceIndexRecord> {
   const authDb = getAuthDb();
   const now = new Date();
 
@@ -411,9 +395,7 @@ export async function allocateSpaceDatabase(
     const claimed = await authDb
       .update(spaceIndex)
       .set({ status: "claimed", spaceId, updatedAt: now })
-      .where(
-        and(eq(spaceIndex.id, available.id), eq(spaceIndex.status, "available")),
-      )
+      .where(and(eq(spaceIndex.id, available.id), eq(spaceIndex.status, "available")))
       .returning()
       .get();
     if (claimed) return claimed;
@@ -561,10 +543,7 @@ async function indexLocalSpace(
     .select()
     .from(spaceIndex)
     .where(
-      or(
-        eq(spaceIndex.databaseUrl, databaseUrl),
-        eq(spaceIndex.spaceId, metadata.id),
-      ),
+      or(eq(spaceIndex.databaseUrl, databaseUrl), eq(spaceIndex.spaceId, metadata.id)),
     )
     .get();
   const recordId = existing?.id ?? databaseRecordId();
@@ -603,9 +582,7 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
   const discoveredPaths = new Set(discoveredFiles.map((file) => path.resolve(file)));
 
   for (const databasePath of discoveredFiles) {
-    const databaseUrl = getLocalSpaceDatabaseUrl(
-      path.basename(databasePath, ".db"),
-    );
+    const databaseUrl = getLocalSpaceDatabaseUrl(path.basename(databasePath, ".db"));
     const database = createDatabase(databaseUrl);
     let metadata: IndexedSpaceMetadata | undefined;
     try {

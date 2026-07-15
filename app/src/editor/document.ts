@@ -14,8 +14,8 @@ import {
   type DocumentPresenceProfile,
   findYSyncState,
 } from "./collaboration.ts";
-import { Dropcursor } from "./extensions/Dropcursor.ts";
 import { DragHandle } from "./extensions/DragHandle.ts";
+import { Dropcursor } from "./extensions/Dropcursor.ts";
 import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
 import {
   imageFilesFromDataTransfer,

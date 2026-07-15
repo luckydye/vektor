@@ -30,10 +30,7 @@ export async function getNativeEmbedding(): Promise<NativeEmbeddingAddon> {
     return addon;
   } catch (error) {
     const detail = error instanceof Error ? `: ${error.message}` : "";
-    throw new Error(
-      `Native embedding runtime unavailable${detail}`,
-      { cause: error },
-    );
+    throw new Error(`Native embedding runtime unavailable${detail}`, { cause: error });
   }
 }
 

@@ -64,10 +64,7 @@ export async function applySpaceDbPragmas(spaceDb: Database) {
   await spaceDb.run(sql.raw("PRAGMA wal_autocheckpoint = 1000"));
 }
 
-export async function initSpaceDbSchema(
-  spaceDb: Database,
-  options: { local: boolean },
-) {
+export async function initSpaceDbSchema(spaceDb: Database, options: { local: boolean }) {
   if (options.local) await applySpaceDbPragmas(spaceDb);
 
   const metadataSQL = generateCreateTableSQL(spaceSchema.spaceMetadata);
