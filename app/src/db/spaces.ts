@@ -102,10 +102,11 @@ export async function createSpace(
     await upsertSpaceIndex(
       { id, name, slug, createdBy, createdAt: now, updatedAt: now },
       allocation.id,
+      id,
     );
   } catch (error) {
     closeSpaceDb(id);
-    await disableSpaceDatabase(allocation.id);
+    await disableSpaceDatabase(allocation.id, id);
     throw error;
   }
 

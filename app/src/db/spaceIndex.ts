@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { isInMemoryDb } from "#inMemoryDb";
+import { grantPermission, Permission, ResourceType } from "./acl.ts";
 import {
   closeDatabase,
   createDatabase,
@@ -126,6 +127,13 @@ export async function registerAvailableSpaceDatabase(
   databaseUrl: string,
 ): Promise<SpaceIndexRecord> {
   const sanitizedUrl = sanitizeRemoteSpaceDatabaseUrl(databaseUrl);
+  const metadata = await inspectSpaceDatabase(sanitizedUrl);
+  if (metadata) {
+    throw new Error(
+      "The database already contains a space; use `vektor space attach <url>` instead",
+    );
+  }
+
   const authDb = getAuthDb();
   const existing = await authDb
     .select()
@@ -192,7 +200,12 @@ export async function attachExistingSpaceDatabase(
   if (existing) {
     await authDb
       .update(spaceIndex)
-      .set({ databaseUrl: sanitizedUrl })
+      .set({
+        databaseUrl: sanitizedUrl,
+        status: "claimed",
+        spaceId: metadata.id,
+        updatedAt: new Date(),
+      })
       .where(eq(spaceIndex.id, existing.id));
   } else {
     const now = new Date();
@@ -206,7 +219,7 @@ export async function attachExistingSpaceDatabase(
     });
   }
 
-  await upsertSpaceIndex(metadata, recordId);
+  await upsertSpaceIndex(metadata, recordId, metadata.id);
   return (await getIndexedSpace(metadata.id))!;
 }
 
@@ -232,6 +245,12 @@ export async function enableSpaceDatabase(
 
   const metadata = await inspectSpaceDatabase(existing.databaseUrl);
   if (metadata) {
+    if (existing.spaceId !== metadata.id) {
+      throw new Error(
+        `Database metadata does not match the claimed space: expected ${existing.spaceId ?? "an assigned space ID"}, found ${metadata.id}`,
+      );
+    }
+
     const indexedForSpace = await authDb
       .select({ id: spaceIndex.id })
       .from(spaceIndex)
@@ -239,6 +258,50 @@ export async function enableSpaceDatabase(
       .get();
     if (indexedForSpace && indexedForSpace.id !== existing.id) {
       throw new Error(`Space is already assigned to another database: ${metadata.id}`);
+    }
+
+    if (existing.status === "disabled") {
+      const reclaimed = await authDb
+        .update(spaceIndex)
+        .set({ status: "claimed", updatedAt: new Date() })
+        .where(
+          and(
+            eq(spaceIndex.id, existing.id),
+            eq(spaceIndex.status, "disabled"),
+            eq(spaceIndex.spaceId, metadata.id),
+          ),
+        )
+        .returning({ id: spaceIndex.id })
+        .get();
+      if (!reclaimed) {
+        throw new Error(
+          `Database record changed while it was being enabled: ${recordId}`,
+        );
+      }
+    }
+
+    try {
+      await grantPermission(
+        metadata.id,
+        ResourceType.SPACE,
+        metadata.id,
+        metadata.createdBy,
+        Permission.OWNER,
+      );
+    } catch (error) {
+      if (existing.status === "disabled") {
+        await authDb
+          .update(spaceIndex)
+          .set({ status: "disabled", updatedAt: new Date() })
+          .where(
+            and(
+              eq(spaceIndex.id, existing.id),
+              eq(spaceIndex.status, "claimed"),
+              eq(spaceIndex.spaceId, metadata.id),
+            ),
+          );
+      }
+      throw error;
     }
 
     const activated = await authDb
@@ -253,7 +316,11 @@ export async function enableSpaceDatabase(
         updatedAt: metadata.updatedAt,
       })
       .where(
-        and(eq(spaceIndex.id, existing.id), eq(spaceIndex.status, existing.status)),
+        and(
+          eq(spaceIndex.id, existing.id),
+          eq(spaceIndex.status, "claimed"),
+          eq(spaceIndex.spaceId, metadata.id),
+        ),
       )
       .returning()
       .get();
@@ -263,6 +330,15 @@ export async function enableSpaceDatabase(
       );
     }
     return activated;
+  }
+
+  if (existing.status === "claimed") {
+    // Without a lease, an empty claim is indistinguishable from a creator that
+    // has not initialized its database yet. Only failed (disabled) claims are
+    // safe to return to the available pool.
+    throw new Error(
+      `Database claim may still be in use; only an empty disabled database can be enabled: ${recordId}`,
+    );
   }
 
   const enabled = await authDb
@@ -277,7 +353,13 @@ export async function enableSpaceDatabase(
       updatedAt: new Date(),
     })
     .where(
-      and(eq(spaceIndex.id, recordId), eq(spaceIndex.status, existing.status)),
+      and(
+        eq(spaceIndex.id, recordId),
+        eq(spaceIndex.status, existing.status),
+        existing.spaceId
+          ? eq(spaceIndex.spaceId, existing.spaceId)
+          : isNull(spaceIndex.spaceId),
+      ),
     )
     .returning()
     .get();
@@ -338,11 +420,20 @@ export async function allocateSpaceDatabase(
   }
 }
 
-export async function disableSpaceDatabase(recordId: string): Promise<void> {
+export async function disableSpaceDatabase(
+  recordId: string,
+  expectedSpaceId: string,
+): Promise<void> {
   await getAuthDb()
     .update(spaceIndex)
     .set({ status: "disabled", updatedAt: new Date() })
-    .where(eq(spaceIndex.id, recordId));
+    .where(
+      and(
+        eq(spaceIndex.id, recordId),
+        eq(spaceIndex.status, "claimed"),
+        eq(spaceIndex.spaceId, expectedSpaceId),
+      ),
+    );
 }
 
 export async function getAssignedSpaceDatabase(
@@ -365,7 +456,14 @@ export async function getAssignedSpaceDatabase(
 export async function upsertSpaceIndex(
   metadata: IndexedSpaceMetadata,
   recordId: string,
+  expectedSpaceId: string,
 ): Promise<void> {
+  if (metadata.id !== expectedSpaceId) {
+    throw new Error(
+      `Space metadata does not match the database claim: expected ${expectedSpaceId}, found ${metadata.id}`,
+    );
+  }
+
   const updated = await getAuthDb()
     .update(spaceIndex)
     .set({
@@ -377,10 +475,22 @@ export async function upsertSpaceIndex(
       createdAt: metadata.createdAt,
       updatedAt: metadata.updatedAt,
     })
-    .where(eq(spaceIndex.id, recordId))
+    .where(
+      // The space ID is the claim generation: each creation allocates a fresh
+      // ID, so a stale creator cannot activate a recovered or reassigned row.
+      and(
+        eq(spaceIndex.id, recordId),
+        eq(spaceIndex.status, "claimed"),
+        eq(spaceIndex.spaceId, expectedSpaceId),
+      ),
+    )
     .returning({ id: spaceIndex.id })
     .get();
-  if (!updated) throw new Error(`Database record not found: ${recordId}`);
+  if (!updated) {
+    throw new Error(
+      `Database claim changed while space ${expectedSpaceId} was being activated`,
+    );
+  }
 }
 
 export async function updateIndexedSpaceMetadata(
@@ -461,7 +571,12 @@ async function indexLocalSpace(
   if (existing) {
     await authDb
       .update(spaceIndex)
-      .set({ databaseUrl })
+      .set({
+        databaseUrl,
+        status: "claimed",
+        spaceId: metadata.id,
+        updatedAt: new Date(),
+      })
       .where(eq(spaceIndex.id, existing.id));
   } else {
     await authDb.insert(spaceIndex).values({
@@ -473,7 +588,7 @@ async function indexLocalSpace(
       updatedAt: metadata.updatedAt,
     });
   }
-  await upsertSpaceIndex(metadata, recordId);
+  await upsertSpaceIndex(metadata, recordId, metadata.id);
 }
 
 export async function reconcileLocalSpaceIndex(): Promise<void> {
