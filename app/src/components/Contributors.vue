@@ -92,11 +92,6 @@ const remainingCount = computed(() => {
           >
             <Avatar size="small" :user="collaborator.user" />
           </span>
-          <span
-            v-if="collaborator.isPresent"
-            class="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-green-500"
-            aria-hidden="true"
-          />
         </span>
       </TransitionGroup>
       <div
@@ -138,12 +133,6 @@ const remainingCount = computed(() => {
             >
               <div class="relative">
                 <Avatar size="small" :user="collaborator.user" />
-                <span
-                  v-if="collaborator.isPresent"
-                  class="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full border-2 border-background bg-green-500"
-                  role="img"
-                  aria-label="Present"
-                />
               </div>
               <span class="min-w-0 flex-1 text-interactive text-neutral-950 truncate">
                 {{ collaborator.user.name }}
