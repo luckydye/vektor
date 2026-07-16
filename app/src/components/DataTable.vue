@@ -81,13 +81,13 @@ function cellText(v: unknown): string {
   return String(v);
 }
 
-const STATUS_MARKER = /(?:^|[^\p{L}\p{N}_])(ROT|GELB|GREEN)(?=$|[^\p{L}\p{N}_])/u;
+const STATUS_MARKER = /(?:^|[^\p{L}\p{N}_])(ROT|GELB|GREEN|GRÜN)(?=$|[^\p{L}\p{N}_])/u;
 
 function statusFill(value: unknown): ExcelCellFill | undefined {
   const marker = cellText(value).match(STATUS_MARKER)?.[1];
   if (marker === "ROT") return "red";
   if (marker === "GELB") return "yellow";
-  if (marker === "GREEN") return "green";
+  if (marker === "GREEN" || marker === "GRÜN") return "green";
   return undefined;
 }
 
