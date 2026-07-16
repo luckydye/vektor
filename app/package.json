@@ -82,7 +82,6 @@
     "#files/*": "./src/files/*",
     "#styles/*": "./src/styles/*",
     "#utils/*": "./src/utils/*",
-    "#viewport/*": "./src/viewport/*",
     "#provider/*": "./src/provider/*",
     "#native/*": "./native/*",
     "#generated/*": "./generated/*",

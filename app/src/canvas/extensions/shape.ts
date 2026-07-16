@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { shapeCircleIcon, shapeRectangleIcon } from "#assets/icons.ts";
 import type { TranslationKey } from "#utils/lang.ts";
-import type { FreehandPoint } from "#viewport/index.ts";
+import type { FreehandPoint } from "../viewport/index.ts";
 import { FREEHAND_STYLE } from "./drawing.ts";
 import type { CanvasSize, CanvasStrokeSnapshot, CanvasToolExtension } from "./types.ts";
 

@@ -123,7 +123,7 @@ import {
   worldToScreen as viewportWorldToScreen,
   type WorldRect,
   worldViewportBounds,
-} from "#viewport/index.ts";
+} from "./viewport/index.ts";
 
 const props = defineProps<{
   spaceId: string;

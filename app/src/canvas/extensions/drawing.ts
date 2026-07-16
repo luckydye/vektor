@@ -15,7 +15,7 @@ import {
   type ScreenSize,
   type SnapGuide,
   type WorldTransform,
-} from "#viewport/index.ts";
+} from "../viewport/index.ts";
 import type { CanvasStroke, CanvasStrokeSnapshot, CanvasToolExtension } from "./types.ts";
 
 // The freehand draw tool. Placement is a streaming interaction, so it just
