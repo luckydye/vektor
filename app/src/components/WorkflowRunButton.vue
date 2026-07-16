@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
+import { ButtonSecondary } from "~/src/components/index.ts";
 import {
   closeXIcon,
   playCircleFilledIcon,
@@ -69,34 +70,34 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <button
+  <ButtonSecondary
     v-if="isActiveRun"
-    type="button"
-    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
     :disabled="cancelling"
     @click="cancelRun"
   >
-    <div
-      v-if="cancelling"
-      class="svg-icon w-3.5 h-3.5 animate-spin"
-      v-html="spinnerQuarterIcon"
-    />
-    <div v-else class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
-    {{ cancelling ? "Cancelling…" : "Cancel" }}
-  </button>
-  <button
+    <span class="inline-flex items-center gap-2">
+      <div
+        v-if="cancelling"
+        class="svg-icon w-3.5 h-3.5 animate-spin"
+        v-html="spinnerQuarterIcon"
+      />
+      <div v-else class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
+      <span>{{ cancelling ? "Cancelling…" : "Cancel" }}</span>
+    </span>
+  </ButtonSecondary>
+  <ButtonSecondary
     v-else
-    type="button"
-    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
     :disabled="starting"
     @click="startRun"
   >
-    <div
-      v-if="starting"
-      class="svg-icon w-3.5 h-3.5 animate-spin"
-      v-html="spinnerQuarterIcon"
-    />
-    <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
-    {{ starting ? "Starting…" : "Run Workflow" }}
-  </button>
+    <span class="inline-flex items-center gap-2">
+      <div
+        v-if="starting"
+        class="svg-icon w-3.5 h-3.5 animate-spin"
+        v-html="spinnerQuarterIcon"
+      />
+      <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
+      <span>{{ starting ? "Starting…" : "Run Workflow" }}</span>
+    </span>
+  </ButtonSecondary>
 </template>

@@ -42,9 +42,49 @@ const selectedRunId = ref<string | null>(null);
 const selectedRunDetail = ref<WorkflowRunStatus | null>(null);
 const selectedRunResult = ref<Record<string, unknown> | null>(null);
 const selectedRunError = ref<string | null>(null);
-const logsExpanded = ref(false);
 let unsubscribeRuns: (() => void) | null = null;
 let unsubscribeRun: (() => void) | null = null;
+
+type ATabsEl = HTMLElement & {
+  selectTabByIndex: (index: number, focus?: boolean) => void;
+};
+const workflowTabsEl = ref<ATabsEl | null>(null);
+const selectedWorkflowTabIndex = ref(0);
+
+function animateWorkflowTabPanel(index: number, direction: "next" | "previous") {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  requestAnimationFrame(() => {
+    const panel = workflowTabsEl.value?.querySelectorAll("a-tabs-panel").item(index);
+    const content = panel?.firstElementChild as HTMLElement | null;
+    if (!content) return;
+
+    for (const animation of content.getAnimations()) animation.cancel();
+
+    const easing = getComputedStyle(document.documentElement)
+      .getPropertyValue("--emphasized-curve")
+      .trim();
+    content.animate(
+      [
+        {
+          opacity: 0,
+          transform: `translateX(${direction === "next" ? 8 : -8}px)`,
+        },
+        { opacity: 1, transform: "translateX(0)" },
+      ],
+      { duration: 180, easing: easing || "ease-out" },
+    );
+  });
+}
+
+function handleWorkflowTabSelected(event: Event) {
+  const { index } = (event as CustomEvent<{ index: number }>).detail;
+  if (index === selectedWorkflowTabIndex.value) return;
+
+  const direction = index > selectedWorkflowTabIndex.value ? "next" : "previous";
+  selectedWorkflowTabIndex.value = index;
+  animateWorkflowTabPanel(index, direction);
+}
 
 const {
   items: runList,
@@ -128,7 +168,6 @@ async function selectRun(runId: string, options: { updateUrl?: boolean } = {}) {
   if (options.updateUrl ?? true) setRunSearchParam(runId);
   selectedRunId.value = runId;
   selectedRunResult.value = null;
-  logsExpanded.value = false;
   await fetchSelectedRunDetail();
 }
 
@@ -395,9 +434,26 @@ function historyOutputDocumentTitle(runId: string): string | null {
   return historyRunDocTitles.value.get(runId) ?? null;
 }
 
-const runFailureError = computed<string | null>(() => {
-  if (selectedRunDetail.value?.status !== "failed") return null;
-  return selectedRunDetail.value.error;
+const isSelectedRunActive = computed(
+  () =>
+    selectedRunDetail.value?.status === "pending" ||
+    selectedRunDetail.value?.status === "running",
+);
+
+const activeRunPhase = computed(() => {
+  if (selectedRunDetail.value?.status === "pending") return "Getting things ready";
+  if ((selectedRunDetail.value?.logs.length ?? 0) === 0) return "Starting your workflow";
+  return "Working through the steps";
+});
+
+const recentActivity = computed(() => {
+  const logs = selectedRunDetail.value?.logs.filter(Boolean) ?? [];
+  const firstVisibleLog = Math.max(0, logs.length - 3);
+  return logs.slice(firstVisibleLog).map((message, index) => ({
+    id: `${selectedRunId.value}-${firstVisibleLog + index}`,
+    message,
+    isLatest: firstVisibleLog + index === logs.length - 1,
+  }));
 });
 
 // The script has one flat log stream; job messages include their job identifier.
@@ -473,7 +529,7 @@ const statusBadgeClass: Record<string, string> = {
     </div>
 
     <!-- Tabs: Results / Run Details / History -->
-    <a-tabs>
+    <a-tabs ref="workflowTabsEl" @tab-selected="handleWorkflowTabSelected">
       <a-tabs-list class="block h-[51px] py-4xs overflow-clip">
         <a-tabs-tab
           class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
@@ -504,7 +560,77 @@ const statusBadgeClass: Record<string, string> = {
       <!-- Results panel -->
       <a-tabs-panel>
         <div class="space-y-4 pt-4">
-          <template v-if="selectedRunDetail?.status === 'completed'">
+          <section
+            v-if="isSelectedRunActive"
+            class="relative overflow-hidden rounded-xl border border-sky-100 bg-[linear-gradient(135deg,rgba(240,249,255,0.9),rgba(255,255,255,0.96)_55%,rgba(236,253,245,0.8))] p-5 shadow-[0_8px_24px_rgba(14,116,144,0.08)] dark:border-sky-900/50 dark:bg-[linear-gradient(135deg,rgba(12,74,110,0.2),rgba(23,23,23,0.96)_55%,rgba(6,78,59,0.2))]"
+            aria-live="polite"
+          >
+            <div
+              class="absolute -right-12 -top-16 h-40 w-40 rounded-full bg-sky-200/25 blur-3xl dark:bg-sky-500/10"
+            />
+            <div class="relative space-y-5">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex items-start gap-3">
+                  <div
+                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner shadow-sky-200/60 dark:bg-sky-900/50 dark:text-sky-300 dark:shadow-none"
+                  >
+                    <div class="svg-icon h-5 w-5 animate-spin" v-html="spinnerQuarterIcon" />
+                  </div>
+                  <div>
+                    <p class="font-semibold text-neutral-800">
+                      Your workflow is in progress
+                    </p>
+                    <p class="mt-0.5 text-size-small text-neutral-500">
+                      {{ activeRunPhase }}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  class="rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300"
+                >
+                  Working
+                </span>
+              </div>
+
+              <div>
+                <div class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70">
+                  <div
+                    class="workflow-progress-indicator absolute inset-y-0 w-1/3 rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)]"
+                  />
+                </div>
+              </div>
+
+              <div
+                v-if="recentActivity.length"
+                class="border-t border-sky-100/80 pt-3 dark:border-sky-900/60"
+              >
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <span class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
+                    Recent activity
+                  </span>
+                  <span class="text-[10px] text-neutral-400">
+                    {{ selectedRunDetail?.logs.length }} updates
+                  </span>
+                </div>
+                <TransitionGroup name="workflow-activity" tag="div" class="space-y-1.5">
+                  <div
+                    v-for="activity in recentActivity"
+                    :key="activity.id"
+                    class="flex min-w-0 items-center gap-2 text-size-small"
+                    :class="activity.isLatest ? 'text-neutral-700' : 'text-neutral-400'"
+                  >
+                    <span
+                      class="h-1.5 w-1.5 shrink-0 rounded-full"
+                      :class="activity.isLatest ? 'bg-sky-500 animate-pulse' : 'bg-neutral-300'"
+                    />
+                    <span class="truncate" :title="activity.message">{{ activity.message }}</span>
+                  </div>
+                </TransitionGroup>
+              </div>
+            </div>
+          </section>
+
+          <template v-else-if="selectedRunDetail?.status === 'completed'">
             <!-- HTML output -->
             <div
               v-if="outputHtml"
@@ -599,26 +725,28 @@ const statusBadgeClass: Record<string, string> = {
             >
               Input fields
             </div>
-            <div class="rounded-lg border border-neutral-100 overflow-hidden">
+            <div
+              class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50 transition-colors"
+            >
               <div
-                class="grid grid-cols-[180px_1fr] items-center h-9 border-b border-neutral-100 bg-neutral-50"
+                class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
+                Field
+              </div>
+              <div
+                class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
+                Value
+              </div>
+            </div>
+            <div>
+              <div
+                v-for="(val, key) in selectedRunInputs"
+                :key="key"
+                class="border-b border-neutral-100 transition-colors hover:bg-neutral-50"
               >
                 <div
-                  class="px-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-                >
-                  Field
-                </div>
-                <div
-                  class="pr-4 text-size-small font-medium text-neutral-500 uppercase tracking-wide"
-                >
-                  Value
-                </div>
-              </div>
-              <div>
-                <div
-                  v-for="(val, key) in selectedRunInputs"
-                  :key="key"
-                  class="grid grid-cols-[180px_1fr] border-b border-neutral-100 last:border-b-0 transition-colors hover:bg-neutral-50"
+                  class="grid grid-cols-[180px_1fr] items-center text-size-medium"
                 >
                   <div
                     class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate"
@@ -638,22 +766,10 @@ const statusBadgeClass: Record<string, string> = {
             v-if="allLogs.length > 0"
             class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg"
           >
-            <button
-              type="button"
-              class="flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-600 transition-colors"
-              @click="logsExpanded = !logsExpanded"
-            >
-              <div
-                class="svg-icon w-3 h-3 transition-transform"
-                :class="logsExpanded ? 'rotate-90' : ''"
-                v-html="chevronRightSmallIcon"
-              />
+            <div class="text-size-small text-neutral-400">
               Logs
-            </button>
-            <div
-              v-if="logsExpanded || runFailureError"
-              class="mt-2 w-full overflow-x-auto max-h-[400px]"
-            >
+            </div>
+            <div class="mt-2 w-full overflow-x-auto max-h-[400px]">
               <div class="font-mono text-[11px] space-y-0.5">
                 <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
                   <span
@@ -807,3 +923,38 @@ const statusBadgeClass: Record<string, string> = {
     </a-tabs>
   </div>
 </template>
+
+<style scoped>
+.workflow-progress-indicator {
+  animation: workflow-progress 1.8s ease-in-out infinite;
+}
+
+.workflow-activity-enter-active,
+.workflow-activity-leave-active,
+.workflow-activity-move {
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.workflow-activity-enter-from,
+.workflow-activity-leave-to {
+  opacity: 0;
+  transform: translateY(0.55rem);
+}
+
+@keyframes workflow-progress {
+  from {
+    transform: translateX(-120%);
+  }
+
+  to {
+    transform: translateX(420%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-progress-indicator {
+    animation: none;
+    transform: translateX(100%);
+  }
+}
+</style>
