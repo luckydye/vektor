@@ -4,8 +4,8 @@ import en from "#assets/lang/en.json";
 
 const FALLBACK_LANG = "en";
 
-// The English file is the canonical catalogue: its keys define every string
-// that can be translated, so `t()` only accepts keys that actually exist.
+// The English file is the canonical catalogue. API messages may also be
+// passed through `t()`; unknown strings fall back to their original value.
 export type TranslationKey = keyof typeof en;
 
 // Every language file under assets/lang. Add a new <lang>.json file and
@@ -36,7 +36,7 @@ export function currentLang(): string {
 // `lang` lets server-rendered callers (where `navigator` is undefined) pass
 // their resolved locale explicitly. On the client it is otherwise omitted and
 // the browser language is used.
-export function t(key: TranslationKey, lang?: string): string {
+export function t(key: TranslationKey | string, lang?: string): string {
   const code = lang ? normalizeLang(lang) : currentLang();
   return translations[code]?.[key] ?? translations[FALLBACK_LANG]?.[key] ?? key;
 }

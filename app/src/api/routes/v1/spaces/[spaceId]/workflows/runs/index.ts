@@ -145,9 +145,10 @@ export const POST: ApiRouteHandler = (context) =>
         return badRequestResponse("Workflow script is empty");
       }
 
-      const runId = createRun(
+      const runId = await createRun(
         spaceId,
         documentId,
+        doc.createdBy,
         initiatedByUserId,
         sourceExtensionId ?? null,
         inputs ?? {},

@@ -1,4 +1,5 @@
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { filterReadableResources, getUserGroups, ResourceType } from "#db/acl.ts";
 import {
   errorResponse,
   jsonResponse,
@@ -12,7 +13,6 @@ import {
   cancelRun,
   ensureSpaceRecovered,
   getRunForRead,
-  migrateLegacyResultArtifact,
   readRunLogs,
 } from "#jobs/runStore.ts";
 import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
@@ -21,19 +21,30 @@ import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs/:runId
  * Returns the current state of a script workflow run. The result itself is a
- * JSON artifact; the run row contains only its storage key.
+ * JSON artifact; a hidden child document holds only its storage key and run
+ * metadata in private properties.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const spaceId = requireParam(context.var.params, "spaceId");
     const runId = requireParam(context.var.params, "runId");
 
-    await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
+    const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "viewer");
 
     await ensureSpaceRecovered(spaceId);
     const run = await getRunForRead(spaceId, runId);
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
-    await migrateLegacyResultArtifact(runId, run);
+    const aclUserId = auth.type === "user" ? auth.user.id : auth.userId;
+    if (aclUserId) {
+      const readable = await filterReadableResources(
+        spaceId,
+        ResourceType.DOCUMENT,
+        [run.documentId],
+        aclUserId,
+        await getUserGroups(aclUserId),
+      );
+      if (!readable.has(run.documentId)) return notFoundResponse("Run");
+    }
     const logs = await readRunLogs(run);
 
     return jsonResponse({

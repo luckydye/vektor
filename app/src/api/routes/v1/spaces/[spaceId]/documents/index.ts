@@ -11,6 +11,7 @@ import {
 import {
   createDocument,
   getDocumentChildren,
+  InvalidDocumentParentError,
   listAllDocumentsByCategories,
   listDocuments,
   type PropertyInit,
@@ -220,6 +221,11 @@ export const POST: ApiRouteHandler = (context) =>
       type,
       createdAt,
       updatedAt,
-    );
+    ).catch((error) => {
+      if (error instanceof InvalidDocumentParentError) {
+        throw badRequestResponse(error.message);
+      }
+      throw error;
+    });
     return createdResponse({ document });
   }, "Failed to create document");

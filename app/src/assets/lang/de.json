@@ -325,6 +325,7 @@
   "Document": "Dokument",
   "Multi Select": "Mehrfachauswahl",
   "Date": "Datum",
+  "This document cannot contain documents of this type": "Dieses Dokument kann keine Dokumente dieses Typs enthalten",
   "User": "Benutzer",
   "New property": "Neue Eigenschaft",
   "New Property": "Neue Eigenschaft",

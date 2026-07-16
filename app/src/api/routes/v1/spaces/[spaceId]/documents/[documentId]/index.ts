@@ -28,6 +28,7 @@ import {
   deleteDocumentProperty,
   getDocument,
   getDocumentBySlug,
+  InvalidDocumentParentError,
   restoreDocument,
   setDocumentParent,
   updateDocument,
@@ -50,7 +51,7 @@ import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#utils/documentContent.ts";
 import { htmlToMarkdown } from "#utils/documentMarkdown.ts";
-import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
+import { readOnlyDocumentTypes, workflowRunDocumentType } from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { stripScriptTags } from "#utils/utils.ts";
 import { getLiveDocumentContent } from "#utils/yjsRooms.ts";
@@ -341,6 +342,9 @@ export const GET: ApiRouteHandler = (context) =>
     if (!document) {
       throw notFoundResponse("Document");
     }
+    if (document.type === workflowRunDocumentType) {
+      throw notFoundResponse("Document");
+    }
 
     if (live) {
       document = {
@@ -575,7 +579,12 @@ export const PATCH: ApiRouteHandler = (context) =>
         await verifyDocumentAccess(spaceId, parentId, userId);
       }
 
-      const parentChange = await setDocumentParent(spaceId, id, parentId);
+      const parentChange = await setDocumentParent(spaceId, id, parentId).catch((error) => {
+        if (error instanceof InvalidDocumentParentError) {
+          throw badRequestResponse(error.message);
+        }
+        throw error;
+      });
       const parentChangeData = {
         kind: "document_parent_changed",
         documentId: id,

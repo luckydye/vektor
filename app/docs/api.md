@@ -440,8 +440,9 @@ Most errors are JSON:
 - Auth: session + `viewer`.
 - Returns:
 - `200` with script status, inputs, logs, error, and `resultArtifact`. The
-  artifact is a JSON file containing the script's returned object; SQLite holds
-  only its storage key.
+  artifact is a JSON file containing the script's returned object. The run is
+  a hidden, readonly child document of the workflow; its properties hold only
+  the artifact keys and compact execution metadata.
 
 ## `DELETE /spaces/:spaceId/workflows/runs/:runId`
 

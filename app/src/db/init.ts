@@ -88,6 +88,11 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
   await spaceDb.run(
     sql.raw("CREATE INDEX IF NOT EXISTS document_parent_id_idx ON document (parent_id)"),
   );
+  await spaceDb.run(
+    sql.raw(
+      "CREATE INDEX IF NOT EXISTS document_workflow_run_parent_created_idx ON document (parent_id, created_at DESC) WHERE type = 'workflow-run'",
+    ),
+  );
   await spaceDb.run(sql.raw("DROP INDEX IF EXISTS property_document_id_key_idx"));
   // Deduplicate before creating the unique index — the old code had a SELECT+INSERT
   // race that could produce duplicate (document_id, key) rows in existing DBs.
@@ -179,25 +184,9 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
     sql.raw("CREATE INDEX IF NOT EXISTS job_run_queued_at_idx ON job_run (queued_at)"),
   );
 
-  const workflowRunSQL = generateCreateTableSQL(spaceSchema.workflowRun);
-  await spaceDb.run(sql.raw(workflowRunSQL));
-  // The legacy `nodes` column is intentionally retained for old workflow
-  // histories. New script workflow results are stored as JSON artifacts.
-  await ensureColumnExists(spaceDb, "workflow_run", "result_artifact_path", "TEXT");
-  await ensureColumnExists(spaceDb, "workflow_run", "log_artifact_path", "TEXT");
-  await ensureColumnExists(spaceDb, "workflow_run", "error", "TEXT");
-  await ensureColumnExists(spaceDb, "workflow_run", "started_at", "INTEGER");
-  await ensureColumnExists(spaceDb, "workflow_run", "completed_at", "INTEGER");
-  await spaceDb.run(
-    sql.raw(
-      "CREATE INDEX IF NOT EXISTS workflow_run_document_created_idx ON workflow_run (document_id, created_at)",
-    ),
-  );
-  await spaceDb.run(
-    sql.raw(
-      "CREATE INDEX IF NOT EXISTS workflow_run_created_at_idx ON workflow_run (created_at)",
-    ),
-  );
+  // Workflow executions are now hidden `workflow-run` documents. Old rows
+  // have no compatible meaning and are intentionally discarded.
+  await spaceDb.run(sql.raw("DROP TABLE IF EXISTS workflow_run"));
 
   const spaceSecretSQL = generateCreateTableSQL(spaceSchema.spaceSecret);
   await spaceDb.run(sql.raw(spaceSecretSQL));

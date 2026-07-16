@@ -871,8 +871,15 @@ export class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`API request failed: ${response.status} ${error}`);
+      const responseBody = await response.text();
+      let message: string | undefined;
+      try {
+        const body = JSON.parse(responseBody) as { error?: unknown };
+        if (typeof body.error === "string") {
+          message = body.error;
+        }
+      } catch {}
+      throw new Error(message ?? responseBody);
     }
 
     const data = (await response.json()) as T;

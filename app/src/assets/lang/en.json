@@ -329,6 +329,7 @@
   "Document": "Document",
   "Multi Select": "Multi Select",
   "Date": "Date",
+  "This document cannot contain documents of this type": "This document cannot contain documents of this type",
   "User": "User",
   "New property": "New property",
   "New Property": "New Property",

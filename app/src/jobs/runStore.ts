@@ -1,13 +1,15 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  assertDocumentCanParent,
+  getDocument,
+  type DocumentWithProperties,
+} from "#db/documents.ts";
 import { getSpaceDb } from "#db/db.ts";
 import { createId } from "#db/ids.ts";
-import {
-  type WorkflowRunInsert,
-  type WorkflowRunRow,
-  workflowRun,
-} from "#db/schema/space.ts";
+import { document, property } from "#db/schema/space.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { appLogger } from "#observability/logger.ts";
+import { workflowRunDocumentType } from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import {
   readWorkflowArtifact,
@@ -16,26 +18,10 @@ import {
 
 export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
-/**
- * @deprecated Compatibility shape for workflow runs created before workflows
- * became JavaScript scripts. Do not add new callers or write new data here.
- */
-type DeprecatedLegacyNodeState = {
-  status?: string;
-  outputs?: Record<string, unknown> | null;
-  error?: string | null;
-  logs?: string[];
-};
-
-/**
- * @deprecated Compatibility container for the legacy DAG workflow format.
- * It is only read to lazily move a historical script result into an artifact.
- */
-type DeprecatedLegacyNodes = Record<string, DeprecatedLegacyNodeState>;
-
 export type RunState = {
   status: RunStatus;
   spaceId: string;
+  /** Parent workflow document id. */
   documentId: string;
   initiatedByUserId: string | null;
   sourceExtensionId: string | null;
@@ -49,14 +35,11 @@ export type RunState = {
   /** Logs are held only while the workflow is executing, then written as an artifact. */
   logs: string[];
   abort?: () => void;
-  /** @deprecated See DeprecatedLegacyNodes. */
-  legacyNodes?: DeprecatedLegacyNodes;
 };
 
 /**
- * Workflow runs are durable metadata records in per-space SQLite. Results and
- * completed logs are JSON files in artifact storage, referenced by their keys
- * from the row. Memory holds only active runs and their live logs/abort handle.
+ * Active executions only. Persisted workflow runs are hidden, readonly child
+ * documents of their workflow document, not rows in a dedicated run table.
  */
 export const activeRuns = new Map<string, RunState>();
 
@@ -68,6 +51,18 @@ const MAX_ARRAY_ITEMS = 20;
 const MAX_OBJECT_ENTRIES = 20;
 const MAX_LOG_ENTRIES = 200;
 const REDACTED_VALUE = "[redacted]";
+
+const runProperty = {
+  status: "_workflowRunStatus",
+  initiatedByUserId: "_workflowRunInitiatedByUserId",
+  sourceExtensionId: "_workflowRunSourceExtensionId",
+  runtimeInputs: "_workflowRunRuntimeInputs",
+  resultArtifactPath: "_workflowRunResultArtifactPath",
+  logArtifactPath: "_workflowRunLogArtifactPath",
+  error: "_workflowRunError",
+  startedAt: "_workflowRunStartedAt",
+  completedAt: "_workflowRunCompletedAt",
+} as const;
 
 function isSecretKey(key: string): boolean {
   return /key|token|secret|password|authorization|cookie/i.test(key);
@@ -137,78 +132,129 @@ function summarizeLogs(messages: string[]): string[] {
     : summarized;
 }
 
-function deserializeDate(value: Date | string | null): Date | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function parseJsonRecord(value: string): Record<string, unknown> {
+function parseInputs(value: string | undefined): Record<string, unknown> {
+  if (!value) return {};
   try {
     const parsed = JSON.parse(value);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
+      ? summarizeRecord(parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};
   }
 }
 
-/** @deprecated Read support for old `workflow_run.nodes` snapshots only. */
-function parseLegacyNodes(value: string): DeprecatedLegacyNodes | undefined {
-  const nodes = parseJsonRecord(value);
-  return Object.keys(nodes).length > 0 ? (nodes as DeprecatedLegacyNodes) : undefined;
+function parseDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function serializeRunToRow(runId: string, run: RunState): WorkflowRunInsert {
-  return {
-    id: runId,
-    documentId: run.documentId,
-    status: run.status,
-    initiatedByUserId: run.initiatedByUserId,
-    sourceExtensionId: run.sourceExtensionId,
-    runtimeInputs: JSON.stringify(summarizeRecord(run.runtimeInputs)),
-    resultArtifactPath: run.resultArtifactPath,
-    logArtifactPath: run.logArtifactPath,
-    error: run.error,
-    startedAt: run.startedAt,
-    completedAt: run.completedAt,
-    // @deprecated Keep old DBs writable without storing new workflow results in SQLite.
-    nodes: JSON.stringify(run.legacyNodes ?? {}),
-    createdAt: run.createdAt,
-    updatedAt: new Date(),
-  };
+function propertyValue(
+  properties: DocumentWithProperties["properties"],
+  key: string,
+): string | undefined {
+  const value = properties[key];
+  return Array.isArray(value) ? value[0] : value;
 }
 
-function deserializeRowToRun(row: WorkflowRunRow, spaceId: string): RunState {
+function nullableProperty(value: string | null): string {
+  return value ?? "";
+}
+
+function deserializeRun(runId: string, doc: DocumentWithProperties): RunState | undefined {
+  if (doc.type !== workflowRunDocumentType || !doc.parentId) return undefined;
+  const properties = doc.properties;
+  const status = propertyValue(properties, runProperty.status) as RunStatus | undefined;
+  if (!status) return undefined;
+
   return {
-    status: row.status as RunStatus,
-    spaceId,
-    documentId: row.documentId,
-    initiatedByUserId: row.initiatedByUserId,
-    sourceExtensionId: row.sourceExtensionId,
-    runtimeInputs: summarizeRecord(parseJsonRecord(row.runtimeInputs)),
-    resultArtifactPath: row.resultArtifactPath,
-    logArtifactPath: row.logArtifactPath,
-    error: row.error ? summarizeString(row.error) : null,
-    startedAt: deserializeDate(row.startedAt),
-    completedAt: deserializeDate(row.completedAt),
-    createdAt: deserializeDate(row.createdAt) ?? new Date(0),
+    status,
+    spaceId: "",
+    documentId: doc.parentId,
+    initiatedByUserId: propertyValue(properties, runProperty.initiatedByUserId) || null,
+    sourceExtensionId: propertyValue(properties, runProperty.sourceExtensionId) || null,
+    runtimeInputs: parseInputs(propertyValue(properties, runProperty.runtimeInputs)),
+    resultArtifactPath: propertyValue(properties, runProperty.resultArtifactPath) || null,
+    logArtifactPath: propertyValue(properties, runProperty.logArtifactPath) || null,
+    error: propertyValue(properties, runProperty.error) || null,
+    startedAt: parseDate(propertyValue(properties, runProperty.startedAt)),
+    completedAt: parseDate(propertyValue(properties, runProperty.completedAt)),
+    createdAt: doc.createdAt,
     logs: [],
-    // @deprecated Only retained to migrate historical records lazily.
-    legacyNodes: parseLegacyNodes(row.nodes),
   };
 }
 
-async function upsertRunToDb(spaceId: string, row: WorkflowRunInsert): Promise<void> {
+function runProperties(run: RunState): Array<{ key: string; value: string; type: string }> {
+  return [
+    { key: runProperty.status, value: run.status, type: "workflow-run-status" },
+    {
+      key: runProperty.initiatedByUserId,
+      value: nullableProperty(run.initiatedByUserId),
+      type: "user-id",
+    },
+    {
+      key: runProperty.sourceExtensionId,
+      value: nullableProperty(run.sourceExtensionId),
+      type: "extension-id",
+    },
+    {
+      key: runProperty.runtimeInputs,
+      value: JSON.stringify(summarizeRecord(run.runtimeInputs)),
+      type: "json",
+    },
+    {
+      key: runProperty.resultArtifactPath,
+      value: nullableProperty(run.resultArtifactPath),
+      type: "artifact-key",
+    },
+    {
+      key: runProperty.logArtifactPath,
+      value: nullableProperty(run.logArtifactPath),
+      type: "artifact-key",
+    },
+    { key: runProperty.error, value: nullableProperty(run.error), type: "text" },
+    {
+      key: runProperty.startedAt,
+      value: run.startedAt?.toISOString() ?? "",
+      type: "datetime",
+    },
+    {
+      key: runProperty.completedAt,
+      value: run.completedAt?.toISOString() ?? "",
+      type: "datetime",
+    },
+  ];
+}
+
+async function persistRunToDocument(runId: string, run: RunState): Promise<void> {
   try {
-    const db = await getSpaceDb(spaceId);
+    const db = await getSpaceDb(run.spaceId);
+    const now = new Date();
     await db
-      .insert(workflowRun)
-      .values(row)
-      .onConflictDoUpdate({ target: workflowRun.id, set: row });
+      .update(document)
+      .set({ updatedAt: now })
+      .where(and(eq(document.id, runId), eq(document.type, workflowRunDocumentType)));
+
+    for (const entry of runProperties(run)) {
+      await db
+        .insert(property)
+        .values({
+          id: createId("property"),
+          documentId: runId,
+          key: entry.key,
+          value: entry.value,
+          type: entry.type,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [property.documentId, property.key],
+          set: { value: entry.value, type: entry.type, updatedAt: now },
+        });
+    }
   } catch (error) {
-    appLogger.warn("Failed to persist workflow run", { runId: row.id, error });
+    appLogger.warn("Failed to persist workflow run document", { runId, error });
   }
 }
 
@@ -221,10 +267,8 @@ function trackWrite(write: Promise<void>): void {
 }
 
 function persistNow(runId: string, run: RunState): void {
-  // A terminal snapshot must never be overwritten by an earlier asynchronous
-  // update (for example, result persistence completing after log persistence).
   const previous = writeChains.get(runId) ?? Promise.resolve();
-  const write = previous.then(() => upsertRunToDb(run.spaceId, serializeRunToRow(runId, run)));
+  const write = previous.then(() => persistRunToDocument(runId, run));
   writeChains.set(runId, write);
   const tracked = write.finally(() => {
     if (writeChains.get(runId) === write) writeChains.delete(runId);
@@ -243,6 +287,29 @@ function emitRunChanged(runId: string, run: RunState): void {
 const recoveredSpaces = new Set<string>();
 const recoveryPromises = new Map<string, Promise<void>>();
 
+async function listStoredRuns(
+  spaceId: string,
+  documentId?: string | null,
+): Promise<Array<{ runId: string; run: RunState }>> {
+  const db = await getSpaceDb(spaceId);
+  const conditions = [eq(document.type, workflowRunDocumentType)];
+  if (documentId) conditions.push(eq(document.parentId, documentId));
+  const rows = await db
+    .select({ id: document.id })
+    .from(document)
+    .where(and(...conditions))
+    .orderBy(desc(document.createdAt))
+    .all();
+  const runs = await Promise.all(
+    rows.map(async ({ id }) => {
+      const doc = await getDocument(spaceId, id);
+      const run = doc ? deserializeRun(id, doc) : undefined;
+      return run ? { runId: id, run: { ...run, spaceId } } : undefined;
+    }),
+  );
+  return runs.filter((entry): entry is { runId: string; run: RunState } => Boolean(entry));
+}
+
 function applyRecovery(run: RunState, recoveredAt: Date): void {
   run.status = "failed";
   run.error = RUN_STORE_RECOVERY_ERROR;
@@ -251,22 +318,18 @@ function applyRecovery(run: RunState, recoveredAt: Date): void {
 
 async function recoverSpace(spaceId: string): Promise<void> {
   try {
-    const db = await getSpaceDb(spaceId);
-    const rows = await db
-      .select()
-      .from(workflowRun)
-      .where(inArray(workflowRun.status, ["pending", "running"]))
-      .all();
+    const runs = await listStoredRuns(spaceId);
     const recoveredAt = new Date();
-    for (const row of rows) {
-      if (activeRuns.has(row.id)) continue;
-      const run = deserializeRowToRun(row, spaceId);
+    for (const { runId, run } of runs) {
+      if (activeRuns.has(runId) || (run.status !== "pending" && run.status !== "running")) {
+        continue;
+      }
       applyRecovery(run, recoveredAt);
-      await upsertRunToDb(spaceId, serializeRunToRow(row.id, run));
+      await persistRunToDocument(runId, run);
     }
     recoveredSpaces.add(spaceId);
   } catch (error) {
-    appLogger.warn("Failed to recover workflow runs", { spaceId, error });
+    appLogger.warn("Failed to recover workflow run documents", { spaceId, error });
   } finally {
     recoveryPromises.delete(spaceId);
   }
@@ -283,14 +346,16 @@ export async function ensureSpaceRecovered(spaceId: string): Promise<void> {
   await promise;
 }
 
-export function createRun(
+export async function createRun(
   spaceId: string,
   documentId: string,
+  createdBy: string,
   initiatedByUserId: string | null = null,
   sourceExtensionId: string | null = null,
   runtimeInputs: Record<string, unknown> = {},
-): string {
-  const runId = createId("run");
+): Promise<string> {
+  const runId = createId("document");
+  const now = new Date();
   const run: RunState = {
     status: "pending",
     spaceId,
@@ -303,11 +368,28 @@ export function createRun(
     error: null,
     startedAt: null,
     completedAt: null,
-    createdAt: new Date(),
+    createdAt: now,
     logs: [],
   };
+  const db = await getSpaceDb(spaceId);
+  await assertDocumentCanParent(spaceId, documentId, workflowRunDocumentType);
+  await db.insert(document).values({
+    id: runId,
+    slug: `workflow-run-${runId.slice("doc_".length)}`,
+    type: workflowRunDocumentType,
+    archived: true,
+    readonly: true,
+    content: "",
+    currentRev: 0,
+    publishedRev: null,
+    parentId: documentId,
+    createdAt: now,
+    updatedAt: now,
+    createdBy,
+  });
   activeRuns.set(runId, run);
   persistNow(runId, run);
+  await writeChains.get(runId);
   emitRunChanged(runId, run);
   return runId;
 }
@@ -398,25 +480,19 @@ export async function getRunForRead(
 ): Promise<RunState | undefined> {
   const active = activeRuns.get(runId);
   if (active && active.spaceId === spaceId) return active;
-  const db = await getSpaceDb(spaceId);
-  const rows = await db
-    .select()
-    .from(workflowRun)
-    .where(eq(workflowRun.id, runId))
-    .limit(1)
-    .all();
-  const row = rows[0];
-  return row ? deserializeRowToRun(row, spaceId) : undefined;
+  const doc = await getDocument(spaceId, runId);
+  const run = doc ? deserializeRun(runId, doc) : undefined;
+  return run ? { ...run, spaceId } : undefined;
 }
 
 export async function listRuns(
   spaceId: string,
   options?: { sourceExtensionId?: string | null; documentId?: string | null },
 ): Promise<Array<{ runId: string; run: RunState }>> {
-  const db = await getSpaceDb(spaceId);
-  const rows = await db.select().from(workflowRun).orderBy(desc(workflowRun.createdAt)).all();
   const merged = new Map<string, RunState>();
-  for (const row of rows) merged.set(row.id, deserializeRowToRun(row, spaceId));
+  for (const { runId, run } of await listStoredRuns(spaceId, options?.documentId)) {
+    merged.set(runId, run);
+  }
   for (const [runId, run] of activeRuns) {
     if (run.spaceId === spaceId) merged.set(runId, run);
   }
@@ -435,42 +511,8 @@ export async function getLatestRunIdForDoc(
   spaceId: string,
   documentId: string,
 ): Promise<string | undefined> {
-  let latestActive: { runId: string; createdAt: Date } | undefined;
-  for (const [runId, run] of activeRuns) {
-    if (run.spaceId !== spaceId || run.documentId !== documentId) continue;
-    if (!latestActive || run.createdAt > latestActive.createdAt) {
-      latestActive = { runId, createdAt: run.createdAt };
-    }
-  }
-  const db = await getSpaceDb(spaceId);
-  const rows = await db
-    .select({ id: workflowRun.id, createdAt: workflowRun.createdAt })
-    .from(workflowRun)
-    .where(eq(workflowRun.documentId, documentId))
-    .orderBy(desc(workflowRun.createdAt))
-    .limit(1)
-    .all();
-  const dbLatest = rows[0];
-  if (latestActive && (!dbLatest || latestActive.createdAt >= dbLatest.createdAt)) {
-    return latestActive.runId;
-  }
-  return dbLatest?.id;
-}
-
-/**
- * @deprecated Transitional migration for rows that stored script outputs in
- * `workflow_run.nodes`. New runs always write their result artifact directly.
- */
-export async function migrateLegacyResultArtifact(
-  runId: string,
-  run: RunState,
-): Promise<void> {
-  if (run.resultArtifactPath || !run.legacyNodes) return;
-  const output = run.legacyNodes._script?.outputs;
-  if (!output || typeof output !== "object" || Array.isArray(output)) return;
-  const artifact = await writeWorkflowArtifact(run.spaceId, runId, "result", output);
-  run.resultArtifactPath = artifact.key;
-  await upsertRunToDb(run.spaceId, serializeRunToRow(runId, run));
+  const runs = await listRuns(spaceId, { documentId });
+  return runs[0]?.runId;
 }
 
 export async function readRunLogs(run: RunState): Promise<string[]> {
@@ -479,19 +521,15 @@ export async function readRunLogs(run: RunState): Promise<string[]> {
     const logs = await readWorkflowArtifact<unknown>(run.spaceId, run.logArtifactPath);
     return Array.isArray(logs) ? logs.filter((line): line is string => typeof line === "string") : [];
   }
-  // @deprecated Exposes historical node logs as one flat script log.
-  return Object.entries(run.legacyNodes ?? {}).flatMap(([nodeId, node]) => [
-    ...(node.logs ?? []).map((line) => `[${nodeId}] ${line}`),
-    ...(node.error ? [`[${nodeId}] ${node.error}`] : []),
-  ]);
+  return [];
 }
 
-/** Drain writes so tests can observe the DB deterministically. */
+/** Drain writes so tests can observe the document store deterministically. */
 export async function flushRunStoreForTests(): Promise<void> {
   await Promise.all([...pendingWrites]);
 }
 
-/** Drop in-memory state, simulating a fresh process (DB rows are untouched). */
+/** Drop in-memory state, simulating a fresh process (documents are untouched). */
 export function resetRunStoreMemoryForTests(): void {
   activeRuns.clear();
   recoveredSpaces.clear();
@@ -499,14 +537,14 @@ export function resetRunStoreMemoryForTests(): void {
   writeChains.clear();
 }
 
-/** Reset memory and delete all persisted runs for a space. */
+/** Reset memory and delete all hidden workflow-run documents for a space. */
 export async function clearRunStoreForTests(spaceId: string): Promise<void> {
   await flushRunStoreForTests();
   resetRunStoreMemoryForTests();
   try {
     const db = await getSpaceDb(spaceId);
-    await db.delete(workflowRun);
+    await db.delete(document).where(eq(document.type, workflowRunDocumentType));
   } catch (error) {
-    appLogger.warn("Failed to clear workflow runs for tests", { spaceId, error });
+    appLogger.warn("Failed to clear workflow run documents for tests", { spaceId, error });
   }
 }

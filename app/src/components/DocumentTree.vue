@@ -7,6 +7,7 @@ import { useCategoryDocuments } from "#composeables/useCategoryDocuments.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useToast } from "#composeables/useToast.ts";
 import { propertyValueIncludes, propertyValueToText } from "#utils/documentProperties.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { getTextColor, spacePath } from "#utils/utils.ts";
@@ -26,6 +27,7 @@ import DocumentTreeItem from "./DocumentTreeItem.vue";
 
 const { currentSpace } = useSpace();
 const { documentSlug: activeDocSlug } = useRoute();
+const toast = useToast();
 const {
   categories,
   createCategory,
@@ -422,16 +424,20 @@ async function handleDocumentParentChange(event) {
     throw new Error(t("No space selected"));
   }
 
-  await api.document.patch(currentSpace.value.id, documentId, {
-    parentId: newParentId,
-  });
+  try {
+    await api.document.patch(currentSpace.value.id, documentId, {
+      parentId: newParentId,
+    });
 
-  // Then, update the category property
-  await api.document.patch(currentSpace.value.id, documentId, {
-    properties: {
-      category: null,
-    },
-  });
+    // Then, update the category property
+    await api.document.patch(currentSpace.value.id, documentId, {
+      properties: {
+        category: null,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error) toast.error(t(error.message));
+  }
 }
 
 async function handleDocumentCategoryChange(event) {

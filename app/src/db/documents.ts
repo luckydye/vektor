@@ -8,7 +8,7 @@ import {
   propertyValueToText,
   serializePropertyValue,
 } from "#utils/documentProperties.ts";
-import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
+import { allowsChildDocumentType, readOnlyDocumentTypes } from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { slugify } from "#utils/utils.ts";
 import {
@@ -111,6 +111,31 @@ export type PropertyInit =
   | boolean
   | { value: unknown; type?: string | null };
 
+export class InvalidDocumentParentError extends Error {}
+
+/**
+ * Enforce the generic parent document's child-type policy before creating or
+ * reparenting a document.
+ */
+export async function assertDocumentCanParent(
+  spaceId: string,
+  parentId: string,
+  childType: string | null | undefined,
+): Promise<void> {
+  const db = await getSpaceDb(spaceId);
+  const parent = await db
+    .select({ type: document.type })
+    .from(document)
+    .where(eq(document.id, parentId))
+    .get();
+  if (!parent) throw new InvalidDocumentParentError("Parent document not found");
+  if (!allowsChildDocumentType(parent.type, childType)) {
+    throw new InvalidDocumentParentError(
+      "This document cannot contain documents of this type",
+    );
+  }
+}
+
 export async function createDocument(
   spaceId: string,
   createdBy: string,
@@ -123,6 +148,7 @@ export async function createDocument(
   updatedAt?: Date,
 ): Promise<DocumentWithProperties> {
   const db = await getSpaceDb(spaceId);
+  if (parentId) await assertDocumentCanParent(spaceId, parentId, type);
   const id = createId("document");
   const now = new Date();
   const documentCreatedAt = createdAt || now;
@@ -1142,7 +1168,7 @@ export async function setDocumentParent(
   const db = await getSpaceDb(spaceId);
   const now = new Date();
   const existing = await db
-    .select({ parentId: document.parentId })
+    .select({ parentId: document.parentId, type: document.type })
     .from(document)
     .where(eq(document.id, documentId))
     .get();
@@ -1150,6 +1176,8 @@ export async function setDocumentParent(
   if (parentId === documentId) {
     throw new Error("Cannot set parent: a child cant be a parent");
   }
+  if (!existing) throw new InvalidDocumentParentError("Child document not found");
+  if (parentId) await assertDocumentCanParent(spaceId, parentId, existing.type);
 
   await db
     .update(document)
