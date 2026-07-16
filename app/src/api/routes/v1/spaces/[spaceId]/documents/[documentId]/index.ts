@@ -579,12 +579,14 @@ export const PATCH: ApiRouteHandler = (context) =>
         await verifyDocumentAccess(spaceId, parentId, userId);
       }
 
-      const parentChange = await setDocumentParent(spaceId, id, parentId).catch((error) => {
-        if (error instanceof InvalidDocumentParentError) {
-          throw badRequestResponse(error.message);
-        }
-        throw error;
-      });
+      const parentChange = await setDocumentParent(spaceId, id, parentId).catch(
+        (error) => {
+          if (error instanceof InvalidDocumentParentError) {
+            throw badRequestResponse(error.message);
+          }
+          throw error;
+        },
+      );
       const parentChangeData = {
         kind: "document_parent_changed",
         documentId: id,

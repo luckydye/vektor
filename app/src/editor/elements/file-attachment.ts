@@ -214,12 +214,12 @@ if (
             :host {
               display: inline-flex;
               flex-direction: column;
-              border: 1px solid #e5e7eb;
+              border: 1px solid var(--color-neutral-200, #e5e7eb);
               border-radius: var(--radius-md);
               overflow: hidden;
               max-width: 300px;
               margin: 4px 0;
-              background: #fff;
+              background: var(--color-background, #fff);
               cursor: pointer;
               transition: box-shadow 0.2s;
             }
@@ -231,7 +231,7 @@ if (
               display: flex;
               align-items: center;
               justify-content: center;
-              background: #f9fafb;
+              background: var(--color-neutral-50, #f9fafb);
               padding: 16px;
               position: relative;
             }
@@ -241,13 +241,17 @@ if (
             .preview-area.model-preview {
               min-height: 92px;
               padding: 0;
-              background: radial-gradient(circle at 50% 35%, #eef2ff 0, #f8fafc 62%);
+              background: radial-gradient(
+                circle at 50% 35%,
+                var(--color-primary-50, #eef2ff) 0,
+                var(--color-neutral-50, #f8fafc) 62%
+              );
             }
             .text-content {
               font-family: ui-monospace, monospace;
               font-size: 11px;
               line-height: 1.4;
-              color: #374151;
+              color: var(--color-neutral-700, #374151);
               margin: 0;
               padding: 0;
               white-space: pre-wrap;
@@ -266,7 +270,7 @@ if (
             .model-status {
               position: absolute;
               inset: auto 8px 8px 8px;
-              color: #64748b;
+              color: var(--color-neutral-500, #64748b);
               font-size: 11px;
               line-height: 1.2;
               text-align: center;
@@ -285,8 +289,8 @@ if (
               align-items: center;
               gap: 8px;
               padding: 8px 12px;
-              border-top: 1px solid #e5e7eb;
-              background: #fff;
+              border-top: 1px solid var(--color-neutral-100, #e5e7eb);
+              background: var(--color-background, #fff);
             }
             .icon-small {
               width: 16px;
@@ -299,7 +303,7 @@ if (
             }
             .filename {
               font-size: 13px;
-              color: #374151;
+              color: var(--color-neutral-700, #374151);
               overflow: hidden;
               text-overflow: ellipsis;
               white-space: nowrap;

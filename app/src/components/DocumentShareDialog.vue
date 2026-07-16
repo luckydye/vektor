@@ -470,7 +470,9 @@ function canRemoveSpaceMember(perm: any) {
           </select>
 
           <form @submit.prevent="handleInvite">
-            <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div
+              class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+            >
               <input
                 v-model="newMemberEmail"
                 type="email"
@@ -560,7 +562,9 @@ function canRemoveSpaceMember(perm: any) {
       <a-tabs-panel class="block">
         <div class="px-5 py-3 space-y-3">
           <form @submit.prevent="handleInvite">
-            <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div
+              class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+            >
               <input
                 v-model="newMemberEmail"
                 type="email"

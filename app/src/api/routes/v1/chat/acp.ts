@@ -251,7 +251,9 @@ async function persistCancelledChatTurn(options: {
       ? { role: "user", content: lastUserRequest.content ?? "", timestamp: Date.now() }
       : null;
   const partialAssistantContent = options.events
-    .filter((event): event is Extract<AgentEvent, { type: "text" }> => event.type === "text")
+    .filter(
+      (event): event is Extract<AgentEvent, { type: "text" }> => event.type === "text",
+    )
     .map((event) => event.text)
     .join("");
   const stoppedMessage = partialAssistantContent.trim() || "Response stopped by user.";
@@ -606,14 +608,11 @@ function getOrStartActiveChatTurn(options: {
               events: turn.events,
             });
           } catch (persistError) {
-            appLogger.warn(
-              "Failed to persist cancelled chat turn",
-              {
-                chatId: options.chatId,
-                spaceId: options.spaceId,
-                error: persistError,
-              },
-            );
+            appLogger.warn("Failed to persist cancelled chat turn", {
+              chatId: options.chatId,
+              spaceId: options.spaceId,
+              error: persistError,
+            });
           }
         }
       } else {

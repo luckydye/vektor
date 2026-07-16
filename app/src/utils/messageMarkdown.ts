@@ -75,7 +75,10 @@ function serializeNode(node: JSONContent, depth = 0): string {
       return label ? `@${escapeMarkdownText(label)}` : "";
     }
     case "documentMention": {
-      const label = String(node.attrs?.label ?? node.attrs?.documentId ?? "").replace(/^@/, "");
+      const label = String(node.attrs?.label ?? node.attrs?.documentId ?? "").replace(
+        /^@/,
+        "",
+      );
       const href = String(node.attrs?.href ?? "").replace(/[()]/g, "\\$&");
       return label && href ? `[@${escapeMarkdownText(label)}](${href})` : "";
     }

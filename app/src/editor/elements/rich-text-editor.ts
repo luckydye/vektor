@@ -122,6 +122,12 @@ const SHADOW_STYLES = `
     text-decoration: none;
     white-space: nowrap;
   }
+  .tiptap document-mention:hover,
+  .tiptap a[href^="doc:"]:hover,
+  .tiptap a[href*="/doc/"]:hover {
+    background: var(--color-primary-50, #d6bfde);
+    border-color: var(--color-primary-200, #c099cf);
+  }
 `;
 
 if (

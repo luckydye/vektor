@@ -2,12 +2,12 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import { ButtonSecondary } from "~/src/components/index.ts";
 import {
   closeXIcon,
   playCircleFilledIcon,
   spinnerQuarterIcon,
 } from "~/src/assets/icons.ts";
+import { ButtonSecondary } from "~/src/components/index.ts";
 
 const props = defineProps<{
   documentId: string;
@@ -70,11 +70,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ButtonSecondary
-    v-if="isActiveRun"
-    :disabled="cancelling"
-    @click="cancelRun"
-  >
+  <ButtonSecondary v-if="isActiveRun" :disabled="cancelling" @click="cancelRun">
     <span class="inline-flex items-center gap-2">
       <div
         v-if="cancelling"
@@ -85,11 +81,7 @@ onUnmounted(() => {
       <span>{{ cancelling ? "Cancelling…" : "Cancel" }}</span>
     </span>
   </ButtonSecondary>
-  <ButtonSecondary
-    v-else
-    :disabled="starting"
-    @click="startRun"
-  >
+  <ButtonSecondary v-else :disabled="starting" @click="startRun">
     <span class="inline-flex items-center gap-2">
       <div
         v-if="starting"

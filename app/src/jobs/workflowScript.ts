@@ -140,7 +140,8 @@ export async function executeWorkflowScript(
                   jobDef.entry,
                   jobInputs,
                   spaceId,
-                  (msg) => appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${msg}`),
+                  (msg) =>
+                    appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${msg}`),
                   {
                     signal: controller.signal,
                     initiatedByUserId: run.initiatedByUserId,

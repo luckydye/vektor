@@ -141,10 +141,15 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
             const viewportPadding = 8;
             const spaceAbove = rect.top - gap - viewportPadding;
             const spaceBelow = window.innerHeight - rect.bottom - gap - viewportPadding;
-            const openAbove =
-              spaceBelow < popupRect.height && spaceAbove > spaceBelow;
-            const maxLeft = Math.max(viewportPadding, window.innerWidth - popupRect.width - viewportPadding);
-            const maxTop = Math.max(viewportPadding, window.innerHeight - popupRect.height - viewportPadding);
+            const openAbove = spaceBelow < popupRect.height && spaceAbove > spaceBelow;
+            const maxLeft = Math.max(
+              viewportPadding,
+              window.innerWidth - popupRect.width - viewportPadding,
+            );
+            const maxTop = Math.max(
+              viewportPadding,
+              window.innerHeight - popupRect.height - viewportPadding,
+            );
 
             popup.style.left = `${Math.min(Math.max(rect.left, viewportPadding), maxLeft)}px`;
             popup.style.top = `${
@@ -164,7 +169,9 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
               const href = state?.inlineDocumentReferences
                 ? `doc:${item.id}`
                 : (() => {
-                    const spaceSlug = window.location.pathname.split("/").filter(Boolean)[0];
+                    const spaceSlug = window.location.pathname
+                      .split("/")
+                      .filter(Boolean)[0];
                     return spaceSlug ? `/${spaceSlug}/doc/${item.id}` : null;
                   })();
               if (!href) return;

@@ -266,21 +266,13 @@ const BaseSelectionShortcuts = Extension.create({
               const nodeRange = currentParentNodeRange(editor);
               if (!nodeRange) return false;
 
-              const nodeSelection = NodeSelection.create(
-                view.state.doc,
-                nodeRange.from,
-              );
+              const nodeSelection = NodeSelection.create(view.state.doc, nodeRange.from);
               if (!event.clipboardData) {
                 view.dispatch(view.state.tr.setSelection(nodeSelection));
                 return false;
               }
 
-              return writeSliceToClipboard(
-                view,
-                event,
-                nodeSelection.content(),
-                false,
-              );
+              return writeSliceToClipboard(view, event, nodeSelection.content(), false);
             },
             cut(view, domEvent) {
               if (!view.state.selection.empty) return false;

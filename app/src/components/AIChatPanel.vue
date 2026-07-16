@@ -1,16 +1,10 @@
 <script setup lang="ts">
 defineOptions({ inheritAttrs: false });
 
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
-import {
-  type ChatSession,
-  deleteSession,
-  getSession,
-  getSessionsForSpace,
-  saveSession,
-  type UIMessage,
-} from "#composeables/useChatSessions.ts";
+import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
+import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
@@ -20,7 +14,7 @@ import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   checkThinIcon,
-  clockIcon,
+  chevronLeftLargeIcon,
   copyOutlineIcon,
   pencilSquareIcon,
   plusThinIcon,
@@ -73,13 +67,29 @@ let abortController: AbortController | null = null;
 let scrollAnimationFrame: number | null = null;
 let clearCopiedAssistantMessageTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Session persistence
-const currentSessionId = ref<string | null>(null);
-const sessions = ref<ChatSession[]>([]);
-const showSessionPicker = ref(false);
-const sessionStartedAt = computed(() => {
-  const session = sessions.value.find((item) => item.id === currentSessionId.value);
-  return session?.createdAt ?? messages.value[0]?.timestamp ?? null;
+function resetSessionDraft() {
+  uploadError.value = "";
+  messageInputEl.value?.clearAttachments();
+}
+
+const {
+  currentSessionId,
+  sessions,
+  showSessionPicker,
+  sessionStartedAt,
+  refreshCurrentSession,
+  getSessionStatus,
+  startNewChat,
+  resumeSession,
+  createSession,
+  removeSession,
+} = useChatSessionHandling({
+  currentSpaceId,
+  messages,
+  isGenerating,
+  resetDraft: resetSessionDraft,
+  scrollToBottom,
+  reconnectSession,
 });
 
 // ── UI state persistence ──────────────────────────────────────────────────────
@@ -199,19 +209,6 @@ async function copyAssistantMessage(message: UIMessage) {
     copiedAssistantMessageTimestamp.value = null;
     clearCopiedAssistantMessageTimer = null;
   }, 2000);
-}
-
-type SessionStatus = "generating" | "awaiting" | "idle";
-
-function getSessionStatus(session: ChatSession): SessionStatus {
-  if (session.id === currentSessionId.value && isGenerating.value) {
-    return "generating";
-  }
-  const lastMsg = (session.conversationHistory as Array<{ role: string }>).at(-1);
-  if (lastMsg?.role === "user") {
-    return "awaiting";
-  }
-  return "idle";
 }
 
 function parseReferencedDocuments(message: string): Array<{ id: string; title: string }> {
@@ -350,19 +347,6 @@ function clearTransientStatusMessages(startIndex: number) {
   messages.value = messages.value.filter(
     (message, index) => !(index >= startIndex && message.role === "status"),
   );
-}
-
-function normalizeSavedMessage(message: UIMessage): UIMessage {
-  return {
-    role: message.role,
-    content: typeof message.content === "string" ? message.content : "",
-    timestamp: Number.isFinite(message.timestamp) ? message.timestamp : Date.now(),
-    attachments: message.attachments,
-    toolName: message.toolName,
-    toolCallId: message.toolCallId,
-    toolPhase: message.toolPhase,
-    isError: message.isError,
-  };
 }
 
 function collectAssistantText(startIndex: number): string {
@@ -639,65 +623,6 @@ async function streamAssistantResponse(
   });
 }
 
-// ── Session management ────────────────────────────────────────────────────────
-
-async function loadSessions() {
-  if (!currentSpaceId.value) return;
-  sessions.value = await getSessionsForSpace(currentSpaceId.value);
-}
-
-watch(
-  currentSpaceId,
-  async (id) => {
-    if (!id) return;
-    await loadSessions();
-    if (sessions.value.length > 0) {
-      showSessionPicker.value = true;
-    } else if (messages.value.length === 0) {
-      messages.value.push({
-        role: "assistant",
-        content: "Hello! I'm here to help you with this document. Ask me anything!",
-        timestamp: Date.now(),
-      });
-    }
-  },
-  { immediate: true },
-);
-
-function startNewChat() {
-  currentSessionId.value = null;
-  messages.value = [];
-  uploadError.value = "";
-  messageInputEl.value?.clearAttachments();
-  showSessionPicker.value = false;
-  messages.value.push({
-    role: "assistant",
-    content: "Hello! I'm here to help you with this document. Ask me anything!",
-    timestamp: Date.now(),
-  });
-}
-
-function resumeSession(session: ChatSession) {
-  currentSessionId.value = session.id;
-  uploadError.value = "";
-  messageInputEl.value?.clearAttachments();
-  messages.value = (session.messages as UIMessage[]).map(normalizeSavedMessage);
-  showSessionPicker.value = false;
-  scrollToBottom();
-
-  // If the session was interrupted while the agent was responding, the history
-  // will end with a user message (pre-saved before the agent started).  Connect
-  // back to the in-progress turn (or restart it if the server already finished).
-  const conversationArr = session.conversationHistory as Array<{
-    role: string;
-    content?: string;
-  }>;
-  const lastHistoryMsg = conversationArr.at(-1);
-  if (lastHistoryMsg?.role === "user" && typeof lastHistoryMsg.content === "string") {
-    void nextTick(() => void reconnectSession(lastHistoryMsg.content!));
-  }
-}
-
 async function reconnectSession(pendingUserMessage: string) {
   if (isGenerating.value || !currentSessionId.value) return;
   isGenerating.value = true;
@@ -710,13 +635,7 @@ async function reconnectSession(pendingUserMessage: string) {
       responseStartIndex,
       buildDocumentReferenceContext(pendingUserMessage),
     );
-    if (currentSessionId.value && currentSpaceId.value) {
-      const refreshed = await getSession(currentSpaceId.value, currentSessionId.value);
-      if (refreshed) {
-        const idx = sessions.value.findIndex((s) => s.id === refreshed.id);
-        if (idx !== -1) sessions.value[idx] = refreshed;
-      }
-    }
+    await refreshCurrentSession();
   } catch (error) {
     if (!(error instanceof DOMException && error.name === "AbortError")) {
       const errorMessage =
@@ -733,22 +652,6 @@ async function reconnectSession(pendingUserMessage: string) {
     abortController = null;
     isGenerating.value = false;
     scrollToBottomIfFollowing();
-  }
-}
-
-async function removeSession(id: string) {
-  const session = sessions.value.find((item) => item.id === id);
-  if (!session) return;
-  await deleteSession(session.spaceId, id);
-  sessions.value = sessions.value.filter((s) => s.id !== id);
-  if (currentSessionId.value === id) {
-    if (sessions.value.length > 0) {
-      showSessionPicker.value = true;
-      currentSessionId.value = null;
-      messages.value = [];
-    } else {
-      startNewChat();
-    }
   }
 }
 
@@ -775,18 +678,9 @@ async function sendMessage() {
   showSessionPicker.value = false;
 
   if (!currentSessionId.value) {
-    const newSession: ChatSession = {
-      id: crypto.randomUUID(),
-      title: (message || attachmentsToUpload[0]?.name || "New chat").slice(0, 60),
-      spaceId: currentSpaceId.value,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
-      conversationHistory: [],
-    };
-    sessions.value.unshift(newSession);
-    currentSessionId.value = newSession.id;
-    await saveSession(newSession);
+    await createSession(
+      (message || attachmentsToUpload[0]?.name || "New chat").slice(0, 60),
+    );
   }
 
   let uploadedAttachments: UploadedAttachment[] = [];
@@ -855,13 +749,7 @@ async function sendMessage() {
   try {
     await streamAssistantResponse(userDisplayText, responseStartIndex, additionalContext);
     // Reload the session so sessions.value reflects the messages persistCompletedChatTurn saved.
-    if (currentSessionId.value && currentSpaceId.value) {
-      const refreshed = await getSession(currentSpaceId.value, currentSessionId.value);
-      if (refreshed) {
-        const idx = sessions.value.findIndex((s) => s.id === refreshed.id);
-        if (idx !== -1) sessions.value[idx] = refreshed;
-      }
-    }
+    await refreshCurrentSession();
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       // cancelled — server already notified via session/cancel
@@ -966,19 +854,8 @@ onUnmounted(() => {
       <!-- Session toolbar -->
       <div
         v-if="!showSessionPicker"
-        class="flex shrink-0 items-center gap-3 border-b border-neutral-100 bg-neutral-10 px-3 py-2"
+        class="flex shrink-0 items-center gap-3 border-b border-neutral-100 bg-neutral-10 px-3 py-4"
       >
-        <button
-          type="button"
-          @click="startNewChat"
-          :disabled="isGenerating"
-          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          title="New chat"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
-          New chat
-        </button>
-        <div class="flex-1" />
         <button
           v-if="sessions.length > 0"
           type="button"
@@ -986,14 +863,25 @@ onUnmounted(() => {
           class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 transition-colors"
           title="Recent conversations"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="clockIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="chevronLeftLargeIcon" />
           History
+        </button>
+        <div class="flex-1" />
+        <button
+          type="button"
+          @click="startNewChat"
+          :disabled="isGenerating"
+          class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
+          title="New chat"
+        >
+          <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
+          <span>New chat</span>
         </button>
       </div>
 
       <!-- Sessions picker -->
       <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
-        <div class="flex items-center justify-between mb-3 px-1">
+        <div class="flex items-center justify-between mb-3">
           <p class="text-[11px] font-medium text-neutral-400 uppercase tracking-wide">
             Recent conversations
           </p>
@@ -1002,8 +890,8 @@ onUnmounted(() => {
             @click="startNewChat"
             class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
           >
-            <div class="svg-icon w-3.5 h-3.5" v-html="plusThinIcon" />
-            New chat
+            <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
+            <span>New chat</span>
           </button>
         </div>
         <div class="space-y-0.5">
@@ -1433,6 +1321,13 @@ details[open] .details-chevron {
   padding: 0.0625rem 0.3125rem;
   text-decoration: none;
   white-space: nowrap;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(document-mention:hover),
+.markdown-content :deep(a[href^="doc:"]:hover),
+.markdown-content :deep(a[href*="/doc/"]:hover) {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-200);
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(blockquote) {

@@ -226,4 +226,10 @@ watch(
   text-decoration: none;
   white-space: nowrap;
 }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.comment-markdown :deep(document-mention:hover),
+.comment-markdown :deep(a[href*="/doc/"]:hover) {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-200);
+}
 </style>

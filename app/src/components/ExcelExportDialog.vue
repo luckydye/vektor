@@ -49,11 +49,7 @@ function submit() {
 </script>
 
 <template>
-  <Dialog
-    :show="true"
-    title="Export to Excel"
-    @update:show="emit('cancel')"
-  >
+  <Dialog :show="true" title="Export to Excel" @update:show="emit('cancel')">
     <div class="flex flex-col gap-xs">
       <p class="text-size-small text-neutral-500">
         Creates an Overview sheet plus one sub-sheet per row. Long cell content is split

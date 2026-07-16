@@ -122,7 +122,8 @@ function summariseFailure(run: RunState): string {
 }
 
 async function readRunResult(run: RunState): Promise<Record<string, unknown>> {
-  if (!run.resultArtifact) throw new Error("Workflow completed without a result artifact");
+  if (!run.resultArtifact)
+    throw new Error("Workflow completed without a result artifact");
   return await apiJson<Record<string, unknown>>(run.resultArtifact.url);
 }
 

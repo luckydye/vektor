@@ -1,20 +1,17 @@
 import { and, desc, eq } from "drizzle-orm";
+import { getSpaceDb } from "#db/db.ts";
 import {
   assertDocumentCanParent,
-  getDocument,
   type DocumentWithProperties,
+  getDocument,
 } from "#db/documents.ts";
-import { getSpaceDb } from "#db/db.ts";
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { appLogger } from "#observability/logger.ts";
 import { workflowRunDocumentType } from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import {
-  readWorkflowArtifact,
-  writeWorkflowArtifact,
-} from "./workflowArtifacts.ts";
+import { readWorkflowArtifact, writeWorkflowArtifact } from "./workflowArtifacts.ts";
 
 export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
@@ -162,7 +159,10 @@ function nullableProperty(value: string | null): string {
   return value ?? "";
 }
 
-function deserializeRun(runId: string, doc: DocumentWithProperties): RunState | undefined {
+function deserializeRun(
+  runId: string,
+  doc: DocumentWithProperties,
+): RunState | undefined {
   if (doc.type !== workflowRunDocumentType || !doc.parentId) return undefined;
   const properties = doc.properties;
   const status = propertyValue(properties, runProperty.status) as RunStatus | undefined;
@@ -185,7 +185,9 @@ function deserializeRun(runId: string, doc: DocumentWithProperties): RunState | 
   };
 }
 
-function runProperties(run: RunState): Array<{ key: string; value: string; type: string }> {
+function runProperties(
+  run: RunState,
+): Array<{ key: string; value: string; type: string }> {
   return [
     { key: runProperty.status, value: run.status, type: "workflow-run-status" },
     {
@@ -307,7 +309,9 @@ async function listStoredRuns(
       return run ? { runId: id, run: { ...run, spaceId } } : undefined;
     }),
   );
-  return runs.filter((entry): entry is { runId: string; run: RunState } => Boolean(entry));
+  return runs.filter((entry): entry is { runId: string; run: RunState } =>
+    Boolean(entry),
+  );
 }
 
 function applyRecovery(run: RunState, recoveredAt: Date): void {
@@ -321,7 +325,10 @@ async function recoverSpace(spaceId: string): Promise<void> {
     const runs = await listStoredRuns(spaceId);
     const recoveredAt = new Date();
     for (const { runId, run } of runs) {
-      if (activeRuns.has(runId) || (run.status !== "pending" && run.status !== "running")) {
+      if (
+        activeRuns.has(runId) ||
+        (run.status !== "pending" && run.status !== "running")
+      ) {
         continue;
       }
       applyRecovery(run, recoveredAt);
@@ -498,7 +505,9 @@ export async function listRuns(
   }
   let entries = [...merged.entries()];
   if (options?.sourceExtensionId) {
-    entries = entries.filter(([, run]) => run.sourceExtensionId === options.sourceExtensionId);
+    entries = entries.filter(
+      ([, run]) => run.sourceExtensionId === options.sourceExtensionId,
+    );
   }
   if (options?.documentId) {
     entries = entries.filter(([, run]) => run.documentId === options.documentId);
@@ -519,7 +528,9 @@ export async function readRunLogs(run: RunState): Promise<string[]> {
   if (run.logs.length > 0) return run.logs;
   if (run.logArtifactPath) {
     const logs = await readWorkflowArtifact<unknown>(run.spaceId, run.logArtifactPath);
-    return Array.isArray(logs) ? logs.filter((line): line is string => typeof line === "string") : [];
+    return Array.isArray(logs)
+      ? logs.filter((line): line is string => typeof line === "string")
+      : [];
   }
   return [];
 }
@@ -545,6 +556,9 @@ export async function clearRunStoreForTests(spaceId: string): Promise<void> {
     const db = await getSpaceDb(spaceId);
     await db.delete(document).where(eq(document.type, workflowRunDocumentType));
   } catch (error) {
-    appLogger.warn("Failed to clear workflow run documents for tests", { spaceId, error });
+    appLogger.warn("Failed to clear workflow run documents for tests", {
+      spaceId,
+      error,
+    });
   }
 }

@@ -652,7 +652,8 @@ if (
           let output: Record<string, unknown> | null = null;
           if (run.resultArtifact) {
             const response = await fetch(run.resultArtifact.url);
-            if (!response.ok) throw new Error(`Unable to load workflow result: ${response.status}`);
+            if (!response.ok)
+              throw new Error(`Unable to load workflow result: ${response.status}`);
             const value: unknown = await response.json();
             if (value && typeof value === "object" && !Array.isArray(value)) {
               output = value as Record<string, unknown>;

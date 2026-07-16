@@ -214,10 +214,19 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       inputSchema: {
         type: "object",
         properties: {
-          limit: { type: "number", description: "Documents per page (default 100, maximum 500)." },
-          cursor: { type: "string", description: "nextCursor returned by a previous list_documents call." },
+          limit: {
+            type: "number",
+            description: "Documents per page (default 100, maximum 500).",
+          },
+          cursor: {
+            type: "string",
+            description: "nextCursor returned by a previous list_documents call.",
+          },
           type: { type: "string" },
-          parentId: { type: "string", description: "List the direct children of this document." },
+          parentId: {
+            type: "string",
+            description: "List the direct children of this document.",
+          },
           categorySlugs: { type: "string" },
         },
       },
@@ -326,7 +335,10 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         type: "object",
         properties: {
           documentId: { type: "string", description: "Workflow document ID" },
-          inputs: { type: "object", description: "Runtime inputs for the workflow script" },
+          inputs: {
+            type: "object",
+            description: "Runtime inputs for the workflow script",
+          },
           sourceExtensionId: {
             type: "string",
             description: "Extension that initiated the run",
@@ -348,8 +360,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "get_workflow_log",
-      description:
-        "Get the script log and terminal error from a workflow run.",
+      description: "Get the script log and terminal error from a workflow run.",
       inputSchema: {
         type: "object",
         properties: {

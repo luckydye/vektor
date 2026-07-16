@@ -79,7 +79,8 @@ beforeAll(async () => {
       },
       {
         slug: "title-only-match",
-        content: "# Unrelated body\n\nThis document deliberately has no matching body text.",
+        content:
+          "# Unrelated body\n\nThis document deliberately has no matching body text.",
         properties: { title: "Search Needle", category: "Testing" },
       },
     ];
@@ -175,9 +176,7 @@ describe("Search API Tests", () => {
   });
 
   it("should find documents when only the title matches", async () => {
-    const response = await apiRequest(
-      `/api/v1/spaces/${testSpaceId}/search?q=needle`,
-    );
+    const response = await apiRequest(`/api/v1/spaces/${testSpaceId}/search?q=needle`);
 
     expect(response.status).toBe(200);
     const data = await response.json();

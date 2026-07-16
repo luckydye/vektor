@@ -574,7 +574,10 @@ const statusBadgeClass: Record<string, string> = {
                   <div
                     class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-inner shadow-sky-200/60 dark:bg-sky-900/50 dark:text-sky-300 dark:shadow-none"
                   >
-                    <div class="svg-icon h-5 w-5 animate-spin" v-html="spinnerQuarterIcon" />
+                    <div
+                      class="svg-icon h-5 w-5 animate-spin"
+                      v-html="spinnerQuarterIcon"
+                    />
                   </div>
                   <div>
                     <p class="font-semibold text-neutral-800">
@@ -593,7 +596,9 @@ const statusBadgeClass: Record<string, string> = {
               </div>
 
               <div>
-                <div class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70">
+                <div
+                  class="relative h-1.5 overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950/70"
+                >
                   <div
                     class="workflow-progress-indicator absolute inset-y-0 w-1/3 rounded-full bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.95),transparent)]"
                   />
@@ -605,11 +610,14 @@ const statusBadgeClass: Record<string, string> = {
                 class="border-t border-sky-100/80 pt-3 dark:border-sky-900/60"
               >
                 <div class="mb-2 flex items-center justify-between gap-3">
-                  <span class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
+                  <span
+                    class="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400"
+                  >
                     Recent activity
                   </span>
                   <span class="text-[10px] text-neutral-400">
-                    {{ selectedRunDetail?.logs.length }} updates
+                    {{ selectedRunDetail?.logs.length }}
+                    updates
                   </span>
                 </div>
                 <TransitionGroup name="workflow-activity" tag="div" class="space-y-1.5">
@@ -623,7 +631,9 @@ const statusBadgeClass: Record<string, string> = {
                       class="h-1.5 w-1.5 shrink-0 rounded-full"
                       :class="activity.isLatest ? 'bg-sky-500 animate-pulse' : 'bg-neutral-300'"
                     />
-                    <span class="truncate" :title="activity.message">{{ activity.message }}</span>
+                    <span class="truncate" :title="activity.message"
+                      >{{ activity.message }}</span
+                    >
                   </div>
                 </TransitionGroup>
               </div>
@@ -657,7 +667,10 @@ const statusBadgeClass: Record<string, string> = {
                 rel="noreferrer"
                 class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
               >
-                <div class="svg-icon w-4 h-4 text-neutral-400" v-html="arrowDownTrayIcon" />
+                <div
+                  class="svg-icon w-4 h-4 text-neutral-400"
+                  v-html="arrowDownTrayIcon"
+                />
                 Result JSON
               </a>
 
@@ -745,9 +758,7 @@ const statusBadgeClass: Record<string, string> = {
                 :key="key"
                 class="border-b border-neutral-100 transition-colors hover:bg-neutral-50"
               >
-                <div
-                  class="grid grid-cols-[180px_1fr] items-center text-size-medium"
-                >
+                <div class="grid grid-cols-[180px_1fr] items-center text-size-medium">
                   <div
                     class="px-4 py-2.5 font-mono text-[11px] font-medium text-neutral-500 truncate"
                   >
@@ -766,9 +777,7 @@ const statusBadgeClass: Record<string, string> = {
             v-if="allLogs.length > 0"
             class="flex flex-col p-4 bg-neutral-950 dark:bg-neutral-50 rounded-lg"
           >
-            <div class="text-size-small text-neutral-400">
-              Logs
-            </div>
+            <div class="text-size-small text-neutral-400">Logs</div>
             <div class="mt-2 w-full overflow-x-auto max-h-[400px]">
               <div class="font-mono text-[11px] space-y-0.5">
                 <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
@@ -932,7 +941,9 @@ const statusBadgeClass: Record<string, string> = {
 .workflow-activity-enter-active,
 .workflow-activity-leave-active,
 .workflow-activity-move {
-  transition: opacity 0.28s ease, transform 0.28s ease;
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s ease;
 }
 
 .workflow-activity-enter-from,

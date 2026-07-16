@@ -180,7 +180,10 @@ function onKeydown(event: KeyboardEvent) {
   const isMentionSuggestionOpen = editorElementRef.value?.isMentionSuggestionOpen();
 
   if (
-    (props.submitKey === "enter" && isEnterNoShift && !isInList && !isMentionSuggestionOpen) ||
+    (props.submitKey === "enter" &&
+      isEnterNoShift &&
+      !isInList &&
+      !isMentionSuggestionOpen) ||
     (props.submitKey === "ctrl+enter" && isCtrlEnter)
   ) {
     event.preventDefault();
@@ -319,7 +322,9 @@ defineExpose({
         @editor-paste="onEditorPaste"
       />
 
-      <div class="absolute inset-y-0 right-0 flex w-5 flex-col items-center justify-between">
+      <div
+        class="absolute inset-y-0 right-0 flex w-5 flex-col items-center justify-between"
+      >
         <button
           v-if="attachments"
           type="button"
