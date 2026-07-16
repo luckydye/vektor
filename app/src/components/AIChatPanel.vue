@@ -1424,7 +1424,7 @@ details[open] .details-chevron {
 .markdown-content :deep(document-mention),
 .markdown-content :deep(a[href^="doc:"]),
 .markdown-content :deep(a[href*="/doc/"]) {
-  background: var(--color-neutral-10);
+  background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
   border-radius: 0.375rem;
   color: var(--color-primary-700);

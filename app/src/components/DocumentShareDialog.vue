@@ -294,6 +294,7 @@ function canRemoveSpaceMember(perm: any) {
   <Dialog
     :show="show"
     body-class="p-0 overflow-y-auto"
+    panel-height="h-[22rem]"
     @update:show="emit('update:show', $event)"
   >
     <template #header>
@@ -308,10 +309,10 @@ function canRemoveSpaceMember(perm: any) {
     </template>
 
     <!-- Tabs -->
-    <a-tabs ref="tabsEl" @tab-selected="onTabSelected">
-      <a-tabs-list class="block h-[51px] py-4xs overflow-clip">
+    <a-tabs ref="tabsEl" class="block" @tab-selected="onTabSelected">
+      <a-tabs-list class="block px-4 pt-4xs pb-2xs overflow-x-auto">
         <a-tabs-tab
-          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
+          class="inline-flex items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >
           <span
             class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
@@ -319,7 +320,7 @@ function canRemoveSpaceMember(perm: any) {
           >
         </a-tabs-tab>
         <a-tabs-tab
-          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
+          class="inline-flex items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >
           <span
             class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
@@ -327,7 +328,7 @@ function canRemoveSpaceMember(perm: any) {
           >
         </a-tabs-tab>
         <a-tabs-tab
-          class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
+          class="inline-flex items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >
           <span
             class="inline-flex items-center justify-center rounded-md px-3xs py-5xs transition-colors"
@@ -338,9 +339,9 @@ function canRemoveSpaceMember(perm: any) {
 
       <!-- Document panel -->
       <a-tabs-panel class="block">
-        <div class="px-4 py-3 space-y-3">
-          <form @submit.prevent="handleInvite">
-            <div class="flex flex-wrap gap-2 items-center">
+        <div class="px-5 py-3 space-y-3">
+          <form class="space-y-2" @submit.prevent="handleInvite">
+            <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <input
                 v-model="newMemberEmail"
                 type="email"
@@ -356,6 +357,8 @@ function canRemoveSpaceMember(perm: any) {
                   {{ opt.label }}
                 </option>
               </select>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <label
                 class="inline-flex items-center gap-1.5 text-size-small text-neutral-600 whitespace-nowrap"
               >
@@ -450,7 +453,7 @@ function canRemoveSpaceMember(perm: any) {
 
       <!-- Category panel -->
       <a-tabs-panel class="block">
-        <div class="px-4 py-3 space-y-3">
+        <div class="px-5 py-3 space-y-3">
           <select
             v-model="selectedCategoryId"
             class="w-full px-2.5 py-1.5 border border-neutral-200 rounded-md text-size-medium bg-background focus:outline-none focus:ring-1 focus:ring-neutral-400 text-neutral-900"
@@ -467,7 +470,7 @@ function canRemoveSpaceMember(perm: any) {
           </select>
 
           <form @submit.prevent="handleInvite">
-            <div class="flex flex-wrap gap-2 items-center">
+            <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
               <input
                 v-model="newMemberEmail"
                 type="email"
@@ -486,7 +489,7 @@ function canRemoveSpaceMember(perm: any) {
               <button
                 type="submit"
                 :disabled="addingMember || !newMemberEmail.trim() || !selectedCategoryId"
-                class="button-primary px-3xs"
+                class="button-primary col-span-2 justify-self-end px-3xs sm:col-span-1"
               >
                 {{ addingMember ? "..." : "Invite" }}
               </button>
@@ -555,9 +558,9 @@ function canRemoveSpaceMember(perm: any) {
 
       <!-- Space panel -->
       <a-tabs-panel class="block">
-        <div class="px-4 py-3 space-y-3">
+        <div class="px-5 py-3 space-y-3">
           <form @submit.prevent="handleInvite">
-            <div class="flex gap-2 items-center">
+            <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
               <input
                 v-model="newMemberEmail"
                 type="email"
@@ -576,7 +579,7 @@ function canRemoveSpaceMember(perm: any) {
               <button
                 type="submit"
                 :disabled="addingMember || !newMemberEmail.trim()"
-                class="button-primary px-3xs"
+                class="button-primary col-span-2 justify-self-end px-3xs sm:col-span-1"
               >
                 {{ addingMember ? "…" : "Invite" }}
               </button>

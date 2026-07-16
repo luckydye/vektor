@@ -88,13 +88,31 @@ const SHADOW_STYLES = `
   .tiptap li { display: list-item; margin: 0.125rem 0; }
   .tiptap li > p { display: inline; }
   .tiptap user-mention {
-    color: var(--color-primary-600, #7c3aed);
+    background: var(--color-primary-50, #d6bfde);
+    border: 1px solid var(--color-primary-200, #c099cf);
+    border-radius: 0.25rem;
+    color: var(--color-primary-700, #78378f);
+    cursor: pointer;
     font-weight: 500;
+    padding: 0 0.25rem;
+  }
+  .tiptap user-mention:hover {
+    background: var(--color-primary-100, #cbacd6);
+    border-color: var(--color-primary-300, #b686c8);
+  }
+  .tiptap user-mention[data-self-mention="true"] {
+    background: var(--color-primary-100, #cbacd6);
+    border-color: var(--color-primary-300, #b686c8);
+    color: var(--color-primary-800, #562567);
+  }
+  .tiptap user-mention[data-self-mention="true"]:hover {
+    background: var(--color-primary-200, #c099cf);
+    border-color: var(--color-primary-400, #ac72c1);
   }
   .tiptap document-mention,
   .tiptap a[href^="doc:"],
   .tiptap a[href*="/doc/"] {
-    background: var(--color-neutral-10, #fff);
+    background: var(--color-neutral-50, #f9f9f9);
     border: 1px solid var(--color-neutral-200, #e5e7eb);
     border-radius: 0.375rem;
     color: var(--color-primary-700, #6d28d9);

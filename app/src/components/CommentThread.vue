@@ -216,7 +216,7 @@ watch(
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(document-mention),
 .comment-markdown :deep(a[href*="/doc/"]) {
-  background: var(--color-neutral-10);
+  background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
   border-radius: 0.375rem;
   color: var(--color-primary-700);

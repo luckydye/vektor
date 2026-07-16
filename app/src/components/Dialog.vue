@@ -14,6 +14,8 @@ const props = withDefaults(
     closeOnBackdrop?: boolean;
     /** Desktop max-width utility class (mobile is always full-width). */
     maxWidth?: string;
+    /** Optional fixed panel height. Content still scrolls within the body. */
+    panelHeight?: string;
     /** Override body classes (padding + overflow). Pass e.g. "p-0" for
      * full-bleed content, or your own overflow for self-scrolling content. */
     bodyClass?: string;
@@ -27,6 +29,7 @@ const props = withDefaults(
     title: "",
     closeOnBackdrop: true,
     maxWidth: "md:max-w-md",
+    panelHeight: "",
     bodyClass: "px-5 pt-1 pb-5 overflow-y-auto",
     expand: false,
   },
@@ -95,7 +98,11 @@ onBeforeUnmount(() => applyScrollLock(false));
             role="dialog"
             aria-modal="true"
             class="dialog-panel relative flex w-full flex-col overflow-hidden bg-background shadow-xl rounded-t-2xl md:rounded-2xl"
-            :class="[maxWidth, expand ? 'h-[90dvh] md:h-[85vh]' : 'max-h-[90dvh] md:max-h-[85vh]']"
+            :class="[
+              maxWidth,
+              panelHeight,
+              expand ? 'h-[90dvh] md:h-[85vh]' : 'max-h-[90dvh] md:max-h-[85vh]',
+            ]"
             @click.stop
           >
             <!-- Mobile grab handle -->
