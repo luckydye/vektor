@@ -34,6 +34,8 @@ const props = withDefaults(
     uploadError?: string;
     /** Enable people and document @mention suggestions. */
     mentions?: boolean;
+    /** Insert selected documents as agent-readable inline references. */
+    inlineDocumentReferences?: boolean;
     spaceId?: string;
     documentId?: string;
   }>(),
@@ -48,6 +50,7 @@ const props = withDefaults(
     isUploading: false,
     uploadError: "",
     mentions: false,
+    inlineDocumentReferences: false,
   },
 );
 
@@ -174,9 +177,10 @@ function onKeydown(event: KeyboardEvent) {
   const isInList =
     editorElementRef.value?.isActive("bulletList") ||
     editorElementRef.value?.isActive("orderedList");
+  const isMentionSuggestionOpen = editorElementRef.value?.isMentionSuggestionOpen();
 
   if (
-    (props.submitKey === "enter" && isEnterNoShift && !isInList) ||
+    (props.submitKey === "enter" && isEnterNoShift && !isInList && !isMentionSuggestionOpen) ||
     (props.submitKey === "ctrl+enter" && isCtrlEnter)
   ) {
     event.preventDefault();
@@ -237,12 +241,6 @@ defineExpose({
   clearAttachments,
   removeAttachment,
   pendingAttachments,
-  getSelectionContext() {
-    return editorElementRef.value?.getSelectionContext() ?? null;
-  },
-  insertMention(start: number, end: number, title: string, id: string) {
-    editorElementRef.value?.insertMention(start, end, title, id);
-  },
   get el() {
     return editorElementRef.value?.el ?? null;
   },
@@ -300,17 +298,7 @@ defineExpose({
     </div>
 
     <!-- Input row -->
-    <div class="flex items-end gap-2">
-      <button
-        v-if="attachments"
-        type="button"
-        title="Attach files"
-        class="shrink-0 text-neutral-400 hover:text-neutral-700 transition-colors mb-0.5"
-        @click="openFilePicker"
-      >
-        <div class="svg-icon w-4 h-4" v-html="paperclipIcon" />
-      </button>
-
+    <div class="relative flex items-start gap-2 pr-7">
       <slot name="left" />
 
       <rich-text-editor
@@ -318,6 +306,7 @@ defineExpose({
         :value="modelValue"
         :placeholder="placeholder"
         :mentions="mentions ? '' : undefined"
+        :inline-document-references="inlineDocumentReferences ? '' : undefined"
         :space-id="spaceId"
         :document-id="documentId"
         :class="autoGrow ? 'max-h-40' : ''"
@@ -330,17 +319,28 @@ defineExpose({
         @editor-paste="onEditorPaste"
       />
 
-      <slot name="actions">
+      <div class="absolute inset-y-0 right-0 flex w-5 flex-col items-center justify-between">
         <button
+          v-if="attachments"
           type="button"
-          :disabled="!canSubmit"
-          class="shrink-0 text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors mb-0.5"
-          title="Send"
-          @click="emit('submit')"
+          title="Attach files"
+          class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-400 hover:text-neutral-700 transition-colors"
+          @click="openFilePicker"
         >
-          <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
+          <div class="svg-icon w-4 h-4" v-html="paperclipIcon" />
         </button>
-      </slot>
+        <slot name="actions">
+          <button
+            type="button"
+            :disabled="!canSubmit"
+            class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors"
+            title="Send"
+            @click="emit('submit')"
+          >
+            <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
+          </button>
+        </slot>
+      </div>
     </div>
 
     <!-- Upload status (controlled by parent) -->

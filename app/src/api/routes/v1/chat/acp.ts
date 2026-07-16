@@ -226,32 +226,50 @@ function createTurnMessagesFromEvents(
  * The client never writes display messages to the session.
  */
 /**
- * Undoes the pre-save that was written before the turn started, restoring the
- * session to the state it was in before the user sent this message.  Called
- * when a turn is cancelled so the session doesn't get permanently stuck with a
- * dangling user message.
+ * Persists the user message and every displayable event received before a turn
+ * was stopped. The assistant history must still end with an assistant message,
+ * otherwise opening the session would treat the stopped request as one to
+ * reconnect and run again.
  */
-async function rollbackPreSavedUserMessage(options: {
+async function persistCancelledChatTurn(options: {
   spaceId: string;
   chatId: string;
   userId: string;
-  preTurnHistory: ChatMessage[];
+  requestMessages: Array<{ role: string; content?: string | null }>;
+  events: AgentEvent[];
 }) {
   const session = await getAIChatSession(options.spaceId, options.chatId, options.userId);
   if (!session) return;
 
-  // Remove the user message that was appended by the pre-save.
-  const messages = session.messages as unknown[];
-  const lastMsg = messages.at(-1) as { role?: string } | undefined;
-  const trimmedMessages = lastMsg?.role === "user" ? messages.slice(0, -1) : messages;
+  const lastUserRequest = [...options.requestMessages]
+    .reverse()
+    .find((message) => message.role === "user");
+  const existingMessages = session.messages as Array<{ role?: string }>;
+  const alreadyHasUserMessage = existingMessages.at(-1)?.role === "user";
+  const userMessage =
+    !alreadyHasUserMessage && lastUserRequest
+      ? { role: "user", content: lastUserRequest.content ?? "", timestamp: Date.now() }
+      : null;
+  const partialAssistantContent = options.events
+    .filter((event): event is Extract<AgentEvent, { type: "text" }> => event.type === "text")
+    .map((event) => event.text)
+    .join("");
+  const stoppedMessage = partialAssistantContent.trim() || "Response stopped by user.";
 
   await upsertAIChatSession(options.spaceId, options.userId, {
     id: session.id,
     title: session.title,
     createdAt: session.createdAt,
     updatedAt: Date.now(),
-    messages: trimmedMessages,
-    conversationHistory: options.preTurnHistory,
+    messages: [
+      ...(session.messages as unknown[]),
+      ...(userMessage ? [userMessage] : []),
+      ...createTurnMessagesFromEvents(options.events, stoppedMessage),
+    ],
+    conversationHistory: [
+      ...options.requestMessages,
+      { role: "assistant", content: stoppedMessage },
+    ],
     shellSnapshot: session.shellSnapshot,
   });
 }
@@ -500,8 +518,8 @@ function getOrStartActiveChatTurn(options: {
   userId: string | null;
   chatId: string;
   messages: ChatMessage[];
-  /** History before this turn's user message was added. Non-null only when a pre-save was written. */
-  preTurnHistory: ChatMessage[] | null;
+  /** The persistent conversation, without turn-only generated context. */
+  sessionMessages: ChatMessage[];
   userProfile?: string;
   connectedProviders: string[];
   apiUrl: string;
@@ -555,7 +573,7 @@ function getOrStartActiveChatTurn(options: {
           spaceId: options.spaceId,
           chatId: options.chatId,
           userId: options.userId,
-          requestMessages: options.messages,
+          requestMessages: options.sessionMessages,
           events: turn.events,
           result,
         });
@@ -578,21 +596,22 @@ function getOrStartActiveChatTurn(options: {
     .catch(async (error) => {
       const isAbort = error instanceof Error && error.name === "AbortError";
       if (isAbort) {
-        if (options.userId !== null && options.preTurnHistory !== null) {
+        if (options.userId !== null) {
           try {
-            await rollbackPreSavedUserMessage({
+            await persistCancelledChatTurn({
               spaceId: options.spaceId,
               chatId: options.chatId,
               userId: options.userId,
-              preTurnHistory: options.preTurnHistory,
+              requestMessages: options.sessionMessages,
+              events: turn.events,
             });
-          } catch (rollbackError) {
+          } catch (persistError) {
             appLogger.warn(
-              "Failed to rollback pre-saved user message after cancellation",
+              "Failed to persist cancelled chat turn",
               {
                 chatId: options.chatId,
                 spaceId: options.spaceId,
-                error: rollbackError,
+                error: persistError,
               },
             );
           }
@@ -638,6 +657,7 @@ export const POST: ApiRouteHandler = (context) =>
         const spaceId = params.spaceId;
         const documentId = params.documentId;
         const prompt = params.prompt;
+        const additionalContext = params.additionalContext;
 
         if (!sessionId || typeof sessionId !== "string") {
           return badRequestResponse("params.sessionId is required");
@@ -647,6 +667,9 @@ export const POST: ApiRouteHandler = (context) =>
         }
         if (documentId !== undefined && typeof documentId !== "string") {
           return badRequestResponse("params.documentId must be a string");
+        }
+        if (additionalContext !== undefined && typeof additionalContext !== "string") {
+          return badRequestResponse("params.additionalContext must be a string");
         }
         if (
           !Array.isArray(prompt) ||
@@ -709,6 +732,15 @@ export const POST: ApiRouteHandler = (context) =>
           lastHistoryRole === "user"
             ? history
             : [...history, { role: "user", content: userText }];
+        const agentMessages = additionalContext
+          ? [
+              ...messages,
+              {
+                role: "user" as const,
+                content: `Additional context for the preceding message:\n${additionalContext}`,
+              },
+            ]
+          : messages;
 
         // Pre-save the user message to the session BEFORE starting the agent.
         // This ensures that if the page is reloaded mid-turn the history shows
@@ -738,11 +770,8 @@ export const POST: ApiRouteHandler = (context) =>
           key,
           userId,
           chatId: sessionId,
-          messages,
-          preTurnHistory:
-            userId !== null && persistedSession && lastHistoryRole !== "user"
-              ? history
-              : null,
+          messages: agentMessages,
+          sessionMessages: messages,
           userProfile: userProfile ?? undefined,
           connectedProviders,
           apiUrl: getLocalOrigin(),

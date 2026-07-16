@@ -11,9 +11,19 @@ function escapeHtml(value: string): string {
 
 const markdownRenderer = new marked.Renderer();
 markdownRenderer.html = ({ text }: { text: string }) => escapeHtml(text);
+
+function getDocumentReferenceId(href: string): string | null {
+  if (href.startsWith("doc:")) return href.slice("doc:".length) || null;
+  return href.match(/^\/[^/]+\/doc\/([^/?#]+)/)?.[1] ?? null;
+}
+
 markdownRenderer.link = function ({ href, title, tokens }) {
   const label = this.parser.parseInline(tokens);
   const safeHref = /^(?:https?:|mailto:|doc:|\/|#)/i.test(href) ? href : "#";
+  const documentId = getDocumentReferenceId(safeHref);
+  if (documentId) {
+    return `<document-mention data-document-id="${escapeHtml(documentId)}" data-href="${escapeHtml(safeHref)}">${label}</document-mention>`;
+  }
   const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
   return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noopener noreferrer">${label}</a>`;
 };
@@ -63,6 +73,11 @@ function serializeNode(node: JSONContent, depth = 0): string {
     case "mention": {
       const label = String(node.attrs?.label ?? node.attrs?.id ?? "").replace(/^@/, "");
       return label ? `@${escapeMarkdownText(label)}` : "";
+    }
+    case "documentMention": {
+      const label = String(node.attrs?.label ?? node.attrs?.documentId ?? "").replace(/^@/, "");
+      const href = String(node.attrs?.href ?? "").replace(/[()]/g, "\\$&");
+      return label && href ? `[@${escapeMarkdownText(label)}](${href})` : "";
     }
     case "doc":
       return children.map((child) => serializeNode(child, depth)).join("\n\n");

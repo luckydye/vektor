@@ -2,7 +2,6 @@
 defineOptions({ inheritAttrs: false });
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import type { DocumentWithProperties } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import {
   type ChatSession,
@@ -16,14 +15,13 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
 import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
+  checkThinIcon,
   clockIcon,
   copyOutlineIcon,
-  linkChainIcon,
   pencilSquareIcon,
   plusThinIcon,
   robotIcon,
@@ -54,12 +52,6 @@ type UploadedAttachment = {
   isImage: boolean;
 };
 
-type MentionSuggestion = {
-  id: string;
-  slug: string;
-  title: string;
-};
-
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const { currentSpaceId } = useSpace();
@@ -73,26 +65,22 @@ const isGenerating = ref(false);
 const messageInputEl = ref<InstanceType<typeof MessageInput> | null>(null);
 const isUploadingFiles = ref(false);
 const uploadError = ref("");
-const mentionOpen = ref(false);
-const mentionQuery = ref("");
-const mentionSuggestions = ref<MentionSuggestion[]>([]);
-const mentionActiveIndex = ref(0);
-const mentionLoading = ref(false);
-const mentionStart = ref(-1);
-const mentionEnd = ref(-1);
-const mentionDocsSpaceId = ref("");
-const mentionDocsCache = ref<DocumentWithProperties[]>([]);
-const mentionAnchorEl = ref<HTMLElement | null>(null);
-const mentionOverlayStyle = ref<Record<string, string>>({});
 const expandedToolMessages = ref<Set<string>>(new Set());
-let mentionReqSeq = 0;
+const shouldFollowMessages = ref(true);
+const copiedAssistantMessageTimestamp = ref<number | null>(null);
 
 let abortController: AbortController | null = null;
+let scrollAnimationFrame: number | null = null;
+let clearCopiedAssistantMessageTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Session persistence
 const currentSessionId = ref<string | null>(null);
 const sessions = ref<ChatSession[]>([]);
 const showSessionPicker = ref(false);
+const sessionStartedAt = computed(() => {
+  const session = sessions.value.find((item) => item.id === currentSessionId.value);
+  return session?.createdAt ?? messages.value[0]?.timestamp ?? null;
+});
 
 // ── UI state persistence ──────────────────────────────────────────────────────
 
@@ -155,120 +143,12 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function buildMessageWithAttachments(
-  message: string,
-  attachments: UploadedAttachment[],
-): string {
-  if (attachments.length === 0) return message;
+function buildAttachmentContext(attachments: UploadedAttachment[]): string {
+  if (attachments.length === 0) return "";
   const fileLines = attachments.map((file) => {
     return `- ${file.name} (${file.type || "unknown"}, ${formatFileSize(file.size)}): ${file.url}`;
   });
-  const fileContext = `Attached files:\n${fileLines.join("\n")}\nUse these files when relevant.`;
-  return message ? `${message}\n\n${fileContext}` : fileContext;
-}
-
-function getDocumentTitle(doc: DocumentWithProperties): string {
-  const title = doc.properties?.title;
-  return (title ? propertyValueToText(title).trim() : "") || doc.slug;
-}
-
-function closeMentionSuggestions() {
-  mentionOpen.value = false;
-  mentionSuggestions.value = [];
-  mentionActiveIndex.value = 0;
-  mentionLoading.value = false;
-  mentionStart.value = -1;
-  mentionEnd.value = -1;
-}
-
-function updateMentionOverlayPosition() {
-  const anchor = mentionAnchorEl.value;
-  if (!anchor || !mentionOpen.value) return;
-  const rect = anchor.getBoundingClientRect();
-  mentionOverlayStyle.value = {
-    position: "fixed",
-    left: `${Math.max(8, rect.left)}px`,
-    top: `${Math.max(8, rect.top - 8)}px`,
-    width: `${Math.max(260, rect.width)}px`,
-    transform: "translateY(-100%)",
-    zIndex: "80",
-  };
-}
-
-async function ensureMentionDocs(): Promise<DocumentWithProperties[]> {
-  if (!currentSpaceId.value) return [];
-  if (
-    mentionDocsSpaceId.value === currentSpaceId.value &&
-    mentionDocsCache.value.length > 0
-  ) {
-    return mentionDocsCache.value;
-  }
-  const response = await api.documents.get(currentSpaceId.value, { limit: 500 });
-  mentionDocsSpaceId.value = currentSpaceId.value;
-  mentionDocsCache.value = response.documents;
-  return mentionDocsCache.value;
-}
-
-async function updateMentionSuggestions() {
-  const selection = messageInputEl.value?.getSelectionContext();
-  if (!selection) {
-    closeMentionSuggestions();
-    return;
-  }
-
-  const { caret, beforeCaret } = selection;
-  const match = beforeCaret.match(/(?:^|\s)@([a-zA-Z0-9._/-]*)$/);
-  if (!match) {
-    closeMentionSuggestions();
-    return;
-  }
-
-  mentionQuery.value = match[1] || "";
-  mentionStart.value = caret - mentionQuery.value.length - 1;
-  mentionEnd.value = caret;
-  mentionOpen.value = true;
-  mentionLoading.value = true;
-  updateMentionOverlayPosition();
-  const seq = ++mentionReqSeq;
-
-  try {
-    const docs = await ensureMentionDocs();
-    if (seq !== mentionReqSeq) return;
-    const query = mentionQuery.value.trim().toLowerCase();
-    const filtered = [...docs]
-      .filter((doc) => {
-        const title = getDocumentTitle(doc).toLowerCase();
-        const slug = doc.slug.toLowerCase();
-        if (!query) return true;
-        return title.includes(query) || slug.includes(query);
-      })
-      .sort((a, b) => {
-        const aTime = normalizeTimestamp(a.updatedAt).getTime();
-        const bTime = normalizeTimestamp(b.updatedAt).getTime();
-        return bTime - aTime;
-      })
-      .slice(0, 8)
-      .map((doc) => ({ id: doc.id, slug: doc.slug, title: getDocumentTitle(doc) }));
-
-    mentionSuggestions.value = filtered;
-    mentionActiveIndex.value = 0;
-    if (filtered.length === 0) {
-      mentionOpen.value = false;
-    }
-  } catch {
-    if (seq === mentionReqSeq) {
-      closeMentionSuggestions();
-    }
-  } finally {
-    if (seq === mentionReqSeq) {
-      mentionLoading.value = false;
-    }
-  }
-}
-
-function onMessageInput() {
-  updateMentionSuggestions();
-  nextTick(updateMentionOverlayPosition);
+  return `Attached files:\n${fileLines.join("\n")}\nUse these files when relevant.`;
 }
 
 function formatSessionDate(date: string | number | Date): string {
@@ -277,6 +157,48 @@ function formatSessionDate(date: string | number | Date): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatSessionStartTime(timestamp: number | null): string {
+  if (timestamp === null) return "";
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function copyAssistantMessage(message: UIMessage) {
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(message.content);
+      copied = true;
+    }
+  } catch {
+    // Some embedded or non-secure contexts deny the Clipboard API. Fall back
+    // to the synchronous browser copy command below.
+  }
+
+  if (!copied) {
+    const textarea = document.createElement("textarea");
+    textarea.value = message.content;
+    textarea.setAttribute("readonly", "");
+    textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+    document.body.append(textarea);
+    textarea.select();
+    copied = document.execCommand("copy");
+    textarea.remove();
+  }
+
+  if (!copied) return;
+  copiedAssistantMessageTimestamp.value = message.timestamp;
+  if (clearCopiedAssistantMessageTimer !== null) {
+    clearTimeout(clearCopiedAssistantMessageTimer);
+  }
+  clearCopiedAssistantMessageTimer = setTimeout(() => {
+    copiedAssistantMessageTimestamp.value = null;
+    clearCopiedAssistantMessageTimer = null;
+  }, 2000);
 }
 
 type SessionStatus = "generating" | "awaiting" | "idle";
@@ -292,68 +214,25 @@ function getSessionStatus(session: ChatSession): SessionStatus {
   return "idle";
 }
 
-function selectMention(suggestion: MentionSuggestion) {
-  const start = mentionStart.value;
-  const end = mentionEnd.value;
-  if (start < 0 || end < 0) return;
-  messageInputEl.value?.insertMention(start, end, suggestion.title, suggestion.id);
-  closeMentionSuggestions();
-}
-
-function onMessageKeydown(event: KeyboardEvent) {
-  nextTick(updateMentionOverlayPosition);
-  if (mentionOpen.value && mentionSuggestions.value.length > 0) {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      mentionActiveIndex.value =
-        (mentionActiveIndex.value + 1) % mentionSuggestions.value.length;
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      mentionActiveIndex.value =
-        (mentionActiveIndex.value - 1 + mentionSuggestions.value.length) %
-        mentionSuggestions.value.length;
-      return;
-    }
-    if (event.key === "Enter" || event.key === "Tab") {
-      event.preventDefault();
-      const active = mentionSuggestions.value[mentionActiveIndex.value];
-      if (active) selectMention(active);
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeMentionSuggestions();
-      return;
-    }
-  }
-}
-
-function parseReferencedDocuments(message: string): MentionSuggestion[] {
-  const references: MentionSuggestion[] = [];
+function parseReferencedDocuments(message: string): Array<{ id: string; title: string }> {
+  const references: Array<{ id: string; title: string }> = [];
   const seen = new Set<string>();
-  const regex = /@\[([^\]]+)\]\(doc:([^)]+)\)/g;
+  const regex = /(?:@\[([^\]]+)\]|\[@([^\]]+)\])\(doc:([^)]+)\)/g;
   for (const match of message.matchAll(regex)) {
-    const title = match[1]?.trim();
-    const id = match[2]?.trim();
+    const title = (match[1] ?? match[2])?.trim();
+    const id = match[3]?.trim();
     if (!title || !id || seen.has(id)) continue;
     seen.add(id);
-    references.push({ id, title, slug: "" });
+    references.push({ id, title });
   }
   return references;
 }
 
-function buildMessageWithDocumentReferences(message: string): string {
+function buildDocumentReferenceContext(message: string): string {
   const refs = parseReferencedDocuments(message);
-  if (refs.length === 0) return message;
+  if (refs.length === 0) return "";
   const lines = refs.map((doc) => `- ${doc.title} (documentId: ${doc.id})`);
-  const context = `Referenced documents:\n${lines.join("\n")}\nUse these document IDs with tools when relevant.`;
-  return `${message}\n\n${context}`;
-}
-
-function formatUserMessageForDisplay(message: string): string {
-  return message.replace(/@\[([^\]]+)\]\(doc:[^)]+\)/g, "@$1");
+  return `Referenced documents:\n${lines.join("\n")}\nUse these document IDs with tools when relevant.`;
 }
 
 function appendAssistantMessageChunk(
@@ -446,7 +325,7 @@ function applyStreamEvent(
     }
     appendToolEventMessage(event);
   }
-  scrollToBottomIfNearBottom();
+  scrollToBottomIfFollowing();
 }
 
 function appendStatusMessage(text: string) {
@@ -698,6 +577,12 @@ function formatToolPreview(message: UIMessage): string {
   return formatValuePreview(result);
 }
 
+function formatCollapsedToolInput(message: UIMessage): string {
+  if (message.toolPhase !== "call") return "";
+  const preview = formatToolPreview(message).replace(/\s+/g, " ").trim();
+  return preview.length > 120 ? `${preview.slice(0, 119)}…` : preview;
+}
+
 function getToolMessageKey(message: UIMessage, index: number): string {
   return message.toolCallId
     ? `${message.toolCallId}:${message.toolPhase ?? "unknown"}`
@@ -728,7 +613,11 @@ function toggleToolMessageExpanded(message: UIMessage, index: number) {
 
 // ── Send to agent ─────────────────────────────────────────────────────────────
 
-async function streamAssistantResponse(userMessage: string, responseStartIndex: number) {
+async function streamAssistantResponse(
+  userMessage: string,
+  responseStartIndex: number,
+  additionalContext = "",
+) {
   const assistantMessageIndex = { value: null as number | null };
   const thinkingMessageIndex = { value: null as number | null };
 
@@ -738,6 +627,7 @@ async function streamAssistantResponse(userMessage: string, responseStartIndex: 
     spaceId: currentSpaceId.value!,
     documentId: props.documentId || undefined,
     userMessage,
+    additionalContext: additionalContext || undefined,
     onEvent: (event) =>
       applyStreamEvent(
         event,
@@ -779,7 +669,6 @@ function startNewChat() {
   messages.value = [];
   uploadError.value = "";
   messageInputEl.value?.clearAttachments();
-  closeMentionSuggestions();
   showSessionPicker.value = false;
   messages.value.push({
     role: "assistant",
@@ -792,7 +681,6 @@ function resumeSession(session: ChatSession) {
   currentSessionId.value = session.id;
   uploadError.value = "";
   messageInputEl.value?.clearAttachments();
-  closeMentionSuggestions();
   messages.value = (session.messages as UIMessage[]).map(normalizeSavedMessage);
   showSessionPicker.value = false;
   scrollToBottom();
@@ -817,7 +705,11 @@ async function reconnectSession(pendingUserMessage: string) {
   const responseStartIndex = messages.value.length;
 
   try {
-    await streamAssistantResponse(pendingUserMessage, responseStartIndex);
+    await streamAssistantResponse(
+      pendingUserMessage,
+      responseStartIndex,
+      buildDocumentReferenceContext(pendingUserMessage),
+    );
     if (currentSessionId.value && currentSpaceId.value) {
       const refreshed = await getSession(currentSpaceId.value, currentSessionId.value);
       if (refreshed) {
@@ -840,7 +732,7 @@ async function reconnectSession(pendingUserMessage: string) {
     removeThinkingMessages(responseStartIndex);
     abortController = null;
     isGenerating.value = false;
-    scrollToBottom();
+    scrollToBottomIfFollowing();
   }
 }
 
@@ -877,7 +769,6 @@ async function sendMessage() {
   if (!canSend.value) return;
 
   const message = messageInput.value.trim();
-  closeMentionSuggestions();
   const attachmentsToUpload = [...(messageInputEl.value?.pendingAttachments ?? [])];
   uploadError.value = "";
 
@@ -937,11 +828,15 @@ async function sendMessage() {
     }
   }
 
-  const enrichedMessage = buildMessageWithDocumentReferences(message);
-  const modelMessage = buildMessageWithAttachments(enrichedMessage, uploadedAttachments);
   const userDisplayText =
-    formatUserMessageForDisplay(message) ||
+    message ||
     `Uploaded ${uploadedAttachments.length} attachment${uploadedAttachments.length > 1 ? "s" : ""}`;
+  const additionalContext = [
+    buildDocumentReferenceContext(message),
+    buildAttachmentContext(uploadedAttachments),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   messages.value.push({
     role: "user",
@@ -958,7 +853,7 @@ async function sendMessage() {
   const responseStartIndex = messages.value.length;
 
   try {
-    await streamAssistantResponse(modelMessage, responseStartIndex);
+    await streamAssistantResponse(userDisplayText, responseStartIndex, additionalContext);
     // Reload the session so sessions.value reflects the messages persistCompletedChatTurn saved.
     if (currentSessionId.value && currentSpaceId.value) {
       const refreshed = await getSession(currentSpaceId.value, currentSessionId.value);
@@ -984,7 +879,7 @@ async function sendMessage() {
     removeThinkingMessages(responseStartIndex);
     abortController = null;
     isGenerating.value = false;
-    scrollToBottom();
+    scrollToBottomIfFollowing();
   }
 }
 
@@ -996,22 +891,30 @@ function isNearBottom(): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 }
 
+function onMessagesScroll() {
+  shouldFollowMessages.value = isNearBottom();
+}
+
+function scheduleScrollToBottom() {
+  nextTick(() => {
+    if (!shouldFollowMessages.value || scrollAnimationFrame !== null) return;
+    scrollAnimationFrame = requestAnimationFrame(() => {
+      scrollAnimationFrame = null;
+      if (!shouldFollowMessages.value || !messagesContainer.value) return;
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+    });
+  });
+}
+
 /** Unconditional scroll — use for explicit user actions (send, load session, generation done). */
 function scrollToBottom() {
-  setTimeout(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-    }
-  }, 50);
+  shouldFollowMessages.value = true;
+  scheduleScrollToBottom();
 }
 
 /** Conditional scroll — use during streaming so the user can freely scroll up mid-response. */
-function scrollToBottomIfNearBottom() {
-  nextTick(() => {
-    if (messagesContainer.value && isNearBottom()) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-    }
-  });
+function scrollToBottomIfFollowing() {
+  scheduleScrollToBottom();
 }
 
 function scrollThinkingToBottom() {
@@ -1022,10 +925,8 @@ function scrollThinkingToBottom() {
     if (!pres.length) return;
     const lastPre = pres[pres.length - 1] as HTMLElement;
     lastPre.scrollTop = lastPre.scrollHeight;
-    // Also keep the main container scrolled to bottom if the user hasn't scrolled up.
-    if (isNearBottom()) {
-      container.scrollTop = container.scrollHeight;
-    }
+    // Also keep the main container scrolled to bottom unless the user scrolled away.
+    scrollToBottomIfFollowing();
   });
 }
 
@@ -1043,14 +944,14 @@ Actions.register("ai-chat:toggle", {
 
 onMounted(() => {
   loadUIState();
-  window.addEventListener("resize", updateMentionOverlayPosition);
-  window.addEventListener("scroll", updateMentionOverlayPosition, true);
 });
 
 onUnmounted(() => {
-  window.removeEventListener("resize", updateMentionOverlayPosition);
-  window.removeEventListener("scroll", updateMentionOverlayPosition, true);
   Actions.unregister("ai-chat:toggle");
+  if (scrollAnimationFrame !== null) cancelAnimationFrame(scrollAnimationFrame);
+  if (clearCopiedAssistantMessageTimer !== null) {
+    clearTimeout(clearCopiedAssistantMessageTimer);
+  }
 });
 </script>
 
@@ -1062,6 +963,34 @@ onUnmounted(() => {
     :default-width="380"
   >
     <div class="flex flex-col h-full bg-neutral-50">
+      <!-- Session toolbar -->
+      <div
+        v-if="!showSessionPicker"
+        class="flex shrink-0 items-center gap-3 border-b border-neutral-100 bg-neutral-10 px-3 py-2"
+      >
+        <button
+          type="button"
+          @click="startNewChat"
+          :disabled="isGenerating"
+          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="New chat"
+        >
+          <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
+          New chat
+        </button>
+        <div class="flex-1" />
+        <button
+          v-if="sessions.length > 0"
+          type="button"
+          @click="showSessionPicker = true"
+          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 transition-colors"
+          title="Recent conversations"
+        >
+          <div class="svg-icon w-3.5 h-3.5" v-html="clockIcon" />
+          History
+        </button>
+      </div>
+
       <!-- Sessions picker -->
       <div v-if="showSessionPicker" class="flex-1 overflow-y-auto px-3 py-4">
         <div class="flex items-center justify-between mb-3 px-1">
@@ -1131,14 +1060,15 @@ onUnmounted(() => {
       </div>
 
       <!-- Messages -->
-      <!-- biome-ignore lint/a11y/noStaticElementInteractions: The handler forwards pointer events within this Vue component; the element is not a standalone control. -->
-      <!-- biome-ignore lint/a11y/useKeyWithClickEvents: This Vue event handler is supplemental to the component's keyboard interaction model. -->
       <div
         v-else
         ref="messagesContainer"
         class="flex-1 overflow-y-auto px-3 py-4 space-y-3 messages-container"
-        @click="closeMentionSuggestions()"
+        @scroll="onMessagesScroll"
       >
+        <div v-if="sessionStartedAt" class="text-center text-[11px] text-neutral-400">
+          {{ formatSessionStartTime(sessionStartedAt) }}
+        </div>
         <template
           v-for="(message, index) in messages"
           :key="getMessageKey(message, index)"
@@ -1187,10 +1117,6 @@ onUnmounted(() => {
                     class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap font-mono text-neutral-700 overflow-y-auto flex-1 min-h-0 thinking-content"
                   >{{ message.content }}</pre>
                 </div>
-                <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
-                  {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                  &nbsp;·&nbsp; Agent
-                </div>
               </div>
             </template>
             <template v-else-if="message.role === 'assistant'">
@@ -1202,75 +1128,60 @@ onUnmounted(() => {
               </div>
               <div class="flex-1 min-w-0">
                 <div
-                  class="bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm"
+                  class="group relative bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm"
                 >
+                  <button
+                    type="button"
+                    class="absolute right-1.5 top-1.5 z-10 rounded p-1 text-neutral-400 opacity-0 transition-opacity hover:text-neutral-600 focus:opacity-100 group-hover:opacity-100"
+                    :title="copiedAssistantMessageTimestamp === message.timestamp ? 'Copied!' : 'Copy'"
+                    @click.stop="copyAssistantMessage(message)"
+                  >
+                    <div
+                      v-if="copiedAssistantMessageTimestamp === message.timestamp"
+                      class="svg-icon h-3.5 w-3.5 text-green-600"
+                      v-html="checkThinIcon"
+                    />
+                    <div v-else class="svg-icon h-3.5 w-3.5" v-html="copyOutlineIcon" />
+                  </button>
                   <div
-                    class="px-3.5 py-3 text-size-medium text-neutral-800 leading-relaxed markdown-content"
+                    class="px-3.5 py-3 pr-9 text-size-medium text-neutral-800 leading-relaxed markdown-content"
                     v-html="renderMessageMarkdown(message.content)"
                   ></div>
-                </div>
-                <!-- Timestamp + model + copy/refresh icons -->
-                <div class="flex items-center justify-between mt-1.5 px-0.5">
-                  <span class="text-[11px] text-neutral-500">
-                    {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                    &nbsp;·&nbsp; Agent
-                  </span>
-                  <div class="flex items-center gap-1">
-                    <button
-                      type="button"
-                      class="p-0.5 text-neutral-400 hover:text-neutral-600 transition-colors"
-                      title="Copy"
-                      @click="navigator.clipboard.writeText(message.content)"
-                    >
-                      <div class="svg-icon w-3.5 h-3.5" v-html="copyOutlineIcon" />
-                    </button>
-                  </div>
                 </div>
               </div>
             </template>
             <template v-else-if="message.role === 'tool'">
               <div
-                class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5"
+                class="ml-9 flex min-w-0"
+                :class="isToolMessageExpanded(message, index) ? 'flex-1' : ''"
               >
-                <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkChainIcon" />
-              </div>
-              <div class="flex-1 min-w-0">
                 <button
                   type="button"
-                  class="w-full text-left border tool-message-bg rounded-xl overflow-hidden shadow-sm cursor-pointer"
+                  class="max-w-full text-left border tool-message-bg rounded-lg overflow-hidden cursor-pointer transition-colors hover:bg-neutral-100"
+                  :class="isToolMessageExpanded(message, index) ? 'w-full' : 'inline-block'"
                   @click="toggleToolMessageExpanded(message, index)"
                 >
                   <div
-                    class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide"
+                    class="px-3 py-1.5 tool-message-header text-[11px] flex items-center gap-1.5 min-w-0"
+                    :class="isToolMessageExpanded(message, index) ? 'border-b' : ''"
                   >
-                    {{ message.toolPhase === 'call' ? 'Tool call' : 'Tool result' }}
-                    <span
-                      v-if="message.toolName"
-                      class="normal-case tracking-normal font-semibold tool-message-name ml-1"
-                    >
-                      {{ message.toolName }}
+                    <span class="tool-message-label shrink-0">Used</span>
+                    <span class="font-semibold tool-message-name truncate">
+                      {{ message.toolName || 'Tool' }}
                     </span>
                     <span
-                      v-if="message.toolPhase === 'result'"
-                      class="normal-case tracking-normal font-medium text-neutral-500 ml-2"
+                      v-if="formatCollapsedToolInput(message)"
+                      class="min-w-0 flex-1 truncate text-neutral-500 font-normal"
                     >
-                      {{ isToolMessageExpanded(message, index) ? 'Collapse' : 'Expand' }}
+                      {{ formatCollapsedToolInput(message) }}
                     </span>
                   </div>
                   <pre
+                    v-if="isToolMessageExpanded(message, index)"
                     class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
-                    :style="
-                    message.toolPhase === 'result' && !isToolMessageExpanded(message, index)
-                      ? { maxHeight: '12rem' }
-                      : undefined
-                  "
                     :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
                   >{{ formatToolPreview(message) }}</pre>
                 </button>
-                <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
-                  {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-                  &nbsp;·&nbsp; ACP
-                </div>
               </div>
             </template>
             <div
@@ -1304,33 +1215,26 @@ onUnmounted(() => {
         <!-- Tool-executing indicator -->
         <div
           v-if="waitingState?.kind === 'tool_executing'"
-          class="flex gap-2 justify-start animate-message-slide-in"
+          class="flex justify-start animate-message-slide-in"
         >
           <div
-            class="w-7 h-7 rounded-lg tool-message-bg flex items-center justify-center shrink-0 mt-0.5"
+            class="ml-9 inline-flex max-w-full min-w-0 items-center gap-1.5 tool-message-bg border rounded-lg px-3 py-1.5 mt-0.5 text-[11px]"
           >
-            <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkChainIcon" />
-          </div>
-          <div
-            class="flex-1 min-w-0 tool-message-bg border border-neutral-200 rounded-xl overflow-hidden shadow-sm mt-0.5"
-          >
-            <div
-              class="px-3.5 py-2 border-b tool-message-header text-[11px] font-medium uppercase tracking-wide flex items-center gap-1.5"
+            <span class="tool-message-label shrink-0">Running</span>
+            <span class="font-semibold tool-message-name truncate">
+              {{ waitingState.tool.toolName }}
+            </span>
+            <span
+              v-if="formatCollapsedToolInput(waitingState.tool)"
+              class="min-w-0 truncate text-neutral-500"
             >
-              Running
-              <span class="normal-case tracking-normal font-semibold tool-message-name">
-                {{ waitingState.tool.toolName }}
-              </span>
-              <span class="ml-auto flex items-center gap-0.5">
-                <span class="typing-dot" />
-                <span class="typing-dot" style="animation-delay: 160ms" />
-                <span class="typing-dot" style="animation-delay: 320ms" />
-              </span>
-            </div>
-            <pre
-              v-if="formatToolPreview(waitingState.tool)"
-              class="px-3.5 py-2.5 text-size-small leading-relaxed whitespace-pre-wrap font-mono text-neutral-500 max-h-20 overflow-hidden"
-            >{{ formatToolPreview(waitingState.tool) }}</pre>
+              {{ formatCollapsedToolInput(waitingState.tool) }}
+            </span>
+            <span class="flex shrink-0 items-center gap-0.5">
+              <span class="typing-dot" />
+              <span class="typing-dot" style="animation-delay: 160ms" />
+              <span class="typing-dot" style="animation-delay: 320ms" />
+            </span>
           </div>
         </div>
 
@@ -1354,61 +1258,31 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Toolbar -->
-      <div
-        v-if="!showSessionPicker"
-        class="px-3 py-1.5 flex items-center gap-3 shrink-0 border-t border-neutral-100 bg-neutral-50"
-      >
-        <button
-          type="button"
-          @click="startNewChat"
-          :disabled="isGenerating"
-          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          title="New chat"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
-          New chat
-        </button>
-        <div class="flex-1" />
-        <button
-          type="button"
-          v-if="sessions.length > 0"
-          @click="showSessionPicker = true"
-          class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 transition-colors"
-          title="Recent conversations"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="clockIcon" />
-          History
-        </button>
-      </div>
-
       <!-- Input bar -->
       <div class="px-3 pb-3 pt-2 bg-neutral-10 border-t border-neutral-100 shrink-0">
-        <div
-          ref="mentionAnchorEl"
-          class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-xl"
-        >
+        <div class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-xl">
           <MessageInput
             ref="messageInputEl"
             v-model="messageInput"
             placeholder="Ask anything..."
+            :rows="3"
             auto-grow
             attachments
+            mentions
+            inline-document-references
+            :space-id="currentSpaceId"
+            :document-id="documentId"
             :disabled="!canSend"
             :is-uploading="isUploadingFiles"
             :upload-error="uploadError"
             @submit="sendMessage"
-            @keydown="onMessageKeydown"
-            @input="onMessageInput"
-            @click="updateMentionSuggestions"
-            @keyup="updateMentionSuggestions"
           >
             <template #actions>
               <button
                 v-if="isGenerating"
                 type="button"
                 @click="cancelGeneration"
-                class="shrink-0 text-neutral-500 hover:text-red-500 transition-colors mb-0.5"
+                class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 hover:text-red-500 transition-colors"
                 title="Stop generating"
               >
                 <div class="svg-icon w-4 h-4" v-html="stopIcon" />
@@ -1418,7 +1292,7 @@ onUnmounted(() => {
                 type="button"
                 @click="sendMessage"
                 :disabled="!canSend"
-                class="shrink-0 text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors mb-0.5"
+                class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors"
                 title="Send (↵)"
               >
                 <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
@@ -1429,35 +1303,11 @@ onUnmounted(() => {
       </div>
     </div>
   </DockedPanel>
-  <Teleport to="body">
-    <div
-      v-if="mentionOpen"
-      class="max-h-56 overflow-y-auto rounded-lg border border-neutral-200 bg-neutral-10 shadow-lg"
-      :style="mentionOverlayStyle"
-    >
-      <div v-if="mentionLoading" class="px-2.5 py-2 text-size-small text-neutral-500">
-        Loading documents...
-      </div>
-      <button
-        v-for="(suggestion, idx) in mentionSuggestions"
-        :key="suggestion.id"
-        type="button"
-        class="flex w-full items-center justify-between px-2.5 py-2 text-left text-size-medium transition-colors"
-        :class="idx === mentionActiveIndex ? 'bg-primary-50 text-primary-700' : 'hover:bg-neutral-50 text-neutral-700'"
-        @mousedown.prevent="selectMention(suggestion)"
-      >
-        <span class="truncate font-medium">{{ suggestion.title }}</span>
-        <span class="ml-2 truncate text-size-small opacity-70"
-          >{{ suggestion.slug }}</span
-        >
-      </button>
-    </div>
-  </Teleport>
 </template>
 
 <style scoped>
 /* Disable browser scroll anchoring so it doesn't fight our manual scroll management.
-   We handle "stick to bottom" ourselves via scrollToBottomIfNearBottom(). */
+   We handle "stick to bottom" ourselves via scrollToBottomIfFollowing(). */
 .messages-container {
   overflow-anchor: none;
 }
@@ -1571,6 +1421,20 @@ details[open] .details-chevron {
   text-decoration: underline;
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(document-mention),
+.markdown-content :deep(a[href^="doc:"]),
+.markdown-content :deep(a[href*="/doc/"]) {
+  background: var(--color-neutral-10);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.375rem;
+  color: var(--color-primary-700);
+  cursor: default;
+  font-weight: 500;
+  padding: 0.0625rem 0.3125rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(blockquote) {
   border-left: 3px solid var(--color-neutral-200);
   padding-left: 0.75rem;
@@ -1608,21 +1472,20 @@ details[open] .details-chevron {
 }
 
 .tool-message-bg {
-  background-color: #fffbeb;
-  border-color: #fef3c7;
+  background-color: #f9fafb;
+  border-color: #e5e7eb;
 }
 
 .tool-message-header {
-  color: #b45309;
-  border-color: rgba(254, 243, 199, 0.8);
+  border-color: #e5e7eb;
 }
 
 .tool-message-name {
-  color: #92400e;
+  color: #52525b;
 }
 
-.tool-message-icon {
-  color: #d97706;
+.tool-message-label {
+  color: #a1a1aa;
 }
 
 .tool-error-bg {
@@ -1648,13 +1511,12 @@ details[open] .details-chevron {
     border-color: var(--color-neutral-200);
   }
   .tool-message-header {
-    color: var(--color-neutral-600);
     border-color: var(--color-neutral-200);
   }
   .tool-message-name {
     color: var(--color-neutral-600);
   }
-  .tool-message-icon {
+  .tool-message-label {
     color: var(--color-neutral-500);
   }
   .tool-error-bg {
@@ -1680,13 +1542,12 @@ details[open] .details-chevron {
   border-color: var(--color-neutral-200);
 }
 :root[data-theme="dark"] .tool-message-header {
-  color: var(--color-neutral-600);
   border-color: var(--color-neutral-200);
 }
 :root[data-theme="dark"] .tool-message-name {
   color: var(--color-neutral-600);
 }
-:root[data-theme="dark"] .tool-message-icon {
+:root[data-theme="dark"] .tool-message-label {
   color: var(--color-neutral-500);
 }
 :root[data-theme="dark"] .tool-error-bg {

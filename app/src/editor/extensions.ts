@@ -42,6 +42,7 @@ import {
 import { ColumnItem, ColumnLayout } from "./extensions/ColumnLayout.ts";
 import { CommentAnchor } from "./extensions/CommentAnchor.ts";
 import { DatePicker } from "./extensions/DatePicker.ts";
+import { DocumentMention } from "./extensions/DocumentMention.ts";
 import { ExtensionView } from "./extensions/ExtensionView.ts";
 import { FigmaEmbed } from "./extensions/FigmaEmbed.ts";
 import { FileAttachment } from "./extensions/FileAttachment.ts";
@@ -353,6 +354,7 @@ function baseEditorExtensions(): Extensions {
     Paragraph,
     Text,
     Link,
+    DocumentMention,
     Bold,
     Italic,
     HardBreak,

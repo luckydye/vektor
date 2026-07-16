@@ -77,7 +77,7 @@ function precedingWidth(): number {
 // Left edge (viewport px) of this panel when docked.
 function dockedLeft(): number {
   if (side.value === "left") return sidebarOffset() + precedingWidth();
-  return window.innerWidth - precedingWidth() - width.value;
+  return window.innerWidth - DOCK_MARGIN - precedingWidth() - width.value;
 }
 
 // Computed style for the fixed overlay. Docked panels derive their position
@@ -93,7 +93,7 @@ const overlayStyle = computed(() => {
     };
     return side.value === "left"
       ? { ...base, left: `${sidebarOffset() + precedingWidth()}px` }
-      : { ...base, right: `${precedingWidth()}px` };
+      : { ...base, right: `${DOCK_MARGIN + precedingWidth()}px` };
   }
   return {
     left: `${floatX.value}px`,
@@ -190,7 +190,7 @@ function onMouseMove(e: MouseEvent) {
       const threshold =
         side.value === "left"
           ? sidebarOffset() + precedingWidth() + DOCK_THRESHOLD
-          : window.innerWidth - width.value - DOCK_THRESHOLD;
+          : window.innerWidth - DOCK_MARGIN - width.value - DOCK_THRESHOLD;
       const movedAway = side.value === "left" ? newX > threshold : newX < threshold;
 
       if (movedAway) {
@@ -318,7 +318,7 @@ onUnmounted(() => {
   <!-- Desktop: docked / floating overlay. -->
   <div
     v-else-if="isOpen"
-    class="fixed z-50 flex flex-col bg-neutral-10 border border-neutral-100 rounded-md overflow-hidden shadow-xl"
+    class="fixed z-50 flex flex-col bg-neutral-10 border border-neutral-100 rounded-lg overflow-hidden shadow-xl"
     :style="overlayStyle"
   >
     <!-- Header / drag handle -->

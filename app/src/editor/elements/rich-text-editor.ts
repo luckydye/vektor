@@ -1,6 +1,9 @@
 import { type Editor, Extension } from "@tiptap/core";
 import { Heading } from "#editor/extensions/baseExtensions.ts";
-import { MentionSuggestions } from "#editor/extensions/MentionSuggestions.ts";
+import {
+  isMentionSuggestionOpen,
+  MentionSuggestions,
+} from "#editor/extensions/MentionSuggestions.ts";
 import { Placeholder } from "#editor/extensions/Placeholder.ts";
 import { createBaseEditor } from "#editor/extensions.ts";
 import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "#utils/messageMarkdown.ts";
@@ -20,9 +23,8 @@ export interface RichTextEditorElementApi extends HTMLElement {
   readonly editorInstance: Editor | null;
   focus(options?: FocusOptions): void;
   isActive(name: string): boolean;
+  isMentionSuggestionOpen(): boolean;
   toggleFormat(name: RichTextEditorFormat): void;
-  getSelectionContext(): { caret: number; beforeCaret: string } | null;
-  insertMention(start: number, end: number, title: string, id: string): void;
 }
 
 const SHADOW_STYLES = `
@@ -89,6 +91,19 @@ const SHADOW_STYLES = `
     color: var(--color-primary-600, #7c3aed);
     font-weight: 500;
   }
+  .tiptap document-mention,
+  .tiptap a[href^="doc:"],
+  .tiptap a[href*="/doc/"] {
+    background: var(--color-neutral-10, #fff);
+    border: 1px solid var(--color-neutral-200, #e5e7eb);
+    border-radius: 0.375rem;
+    color: var(--color-primary-700, #6d28d9);
+    cursor: default;
+    font-weight: 500;
+    padding: 0.0625rem 0.3125rem;
+    text-decoration: none;
+    white-space: nowrap;
+  }
 `;
 
 if (
@@ -105,7 +120,13 @@ if (
       private _mount: HTMLDivElement;
 
       static get observedAttributes() {
-        return ["placeholder", "mentions", "space-id", "document-id"];
+        return [
+          "placeholder",
+          "mentions",
+          "inline-document-references",
+          "space-id",
+          "document-id",
+        ];
       }
 
       constructor() {
@@ -196,6 +217,10 @@ if (
         return this.hasAttribute("mentions") && Boolean(this.getAttribute("space-id"));
       }
 
+      private get inlineDocumentReferencesEnabled() {
+        return this.hasAttribute("inline-document-references");
+      }
+
       private mountEditor() {
         const headingsEnabled = this.headingsEnabled;
 
@@ -237,6 +262,7 @@ if (
                   MentionSuggestions.configure({
                     spaceId: this.getAttribute("space-id") ?? "",
                     documentId: this.getAttribute("document-id") ?? undefined,
+                    inlineDocumentReferences: this.inlineDocumentReferencesEnabled,
                   }),
                 ]
               : []),
@@ -337,6 +363,10 @@ if (
         return this.editor?.isActive(name) ?? false;
       }
 
+      isMentionSuggestionOpen() {
+        return isMentionSuggestionOpen(this.editor);
+      }
+
       toggleFormat(name: RichTextEditorFormat) {
         if (!this.editor) return;
         const chain = this.editor.chain().focus() as unknown as FormatCommandChain;
@@ -344,31 +374,6 @@ if (
         if (name === "italic") chain.toggleItalic().run();
         if (name === "bulletList") chain.toggleBulletList().run();
         if (name === "orderedList") chain.toggleOrderedList().run();
-      }
-
-      getSelectionContext() {
-        if (!this.editor) return null;
-        const caret = this.editor.state.selection.from;
-        return {
-          caret,
-          beforeCaret: this.editor.state.doc.textBetween(0, caret, "\n", "\n"),
-        };
-      }
-
-      insertMention(start: number, end: number, title: string, id: string) {
-        this.editor
-          ?.chain()
-          .focus()
-          .insertContentAt({ from: start, to: end }, [
-            { type: "text", text: "@" },
-            {
-              type: "text",
-              text: title,
-              marks: [{ type: "link", attrs: { href: `doc:${id}` } }],
-            },
-            { type: "text", text: " " },
-          ])
-          .run();
       }
 
       get el() {

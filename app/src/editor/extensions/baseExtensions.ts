@@ -185,6 +185,11 @@ export const HardBreak = Node.create({
             .run(),
     };
   },
+  addKeyboardShortcuts() {
+    return {
+      "Shift-Enter": () => this.editor.commands.setHardBreak(),
+    };
+  },
 });
 
 // ---- Marks ----

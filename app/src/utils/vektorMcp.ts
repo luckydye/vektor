@@ -208,13 +208,16 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
   return [
     {
       name: "list_documents",
-      description: "List documents in current Vektor space.",
+      description:
+        "List documents in the current Vektor space. Returns up to 100 documents by default. " +
+        "Pass nextCursor from a prior result to fetch the next page, or parentId to list a document's direct children.",
       inputSchema: {
         type: "object",
         properties: {
-          limit: { type: "number" },
-          offset: { type: "number" },
+          limit: { type: "number", description: "Documents per page (default 100, maximum 500)." },
+          cursor: { type: "string", description: "nextCursor returned by a previous list_documents call." },
           type: { type: "string" },
+          parentId: { type: "string", description: "List the direct children of this document." },
           categorySlugs: { type: "string" },
         },
       },
@@ -481,9 +484,10 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       return await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/documents${buildQuery({
-          limit: expectNumber(args, "limit", { optional: true }),
-          offset: expectNumber(args, "offset", { optional: true }),
+          limit: expectNumber(args, "limit", { optional: true }) ?? 100,
+          cursor: expectString(args, "cursor", { optional: true }),
           type: expectString(args, "type", { optional: true }),
+          parentId: expectString(args, "parentId", { optional: true }),
           categorySlugs: expectString(args, "categorySlugs", { optional: true }),
         })}`,
       );

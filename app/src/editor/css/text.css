@@ -117,6 +117,13 @@ a[href] {
   @apply underline text-blue-500;
 }
 
+/* Document references selected with @ stay inline, but are visually distinct
+   from ordinary hyperlinks in both read and edit mode. */
+document-mention,
+a[href*="/doc/"] {
+  @apply inline-flex items-center px-1.5 py-px rounded-md bg-white border border-neutral-200 text-primary-700 no-underline font-medium whitespace-nowrap cursor-default;
+}
+
 ticket-link {
   @apply text-blue-600 underline cursor-pointer;
 }

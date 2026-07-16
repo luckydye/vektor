@@ -177,6 +177,11 @@ function nodeToMarkdown(node: AnyNode): string {
       const label = getTextContent(children).replace(/^@/, "");
       return `[@${label}](mailto:${email})`;
     }
+    case "document-mention": {
+      const href = getAttr(tag, "data-href") || "";
+      const label = getTextContent(children);
+      return href ? `[${label}](${href})` : label;
+    }
     case "ticket-link": {
       const ticketId = getAttr(tag, "data-ticket-id") || childContent();
       const url = getAttr(tag, "data-connection-url");

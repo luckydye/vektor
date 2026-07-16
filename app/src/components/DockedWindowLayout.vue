@@ -6,6 +6,7 @@ import { setDockInsets } from "#utils/insets.ts";
 
 const { leftWindows, rightWindows } = useDockedWindows();
 const isDesktop = useIsDesktop();
+const RIGHT_DOCK_MARGIN = 6;
 
 // Docked panels reserve edge space through the inset system (not flex
 // placeholders): the totals here flow into `--inset-left`/`--inset-right`, and
@@ -15,7 +16,9 @@ const leftDock = computed(() =>
   isDesktop.value ? leftWindows.value.reduce((sum, w) => sum + w.width, 0) : 0,
 );
 const rightDock = computed(() =>
-  isDesktop.value ? rightWindows.value.reduce((sum, w) => sum + w.width, 0) : 0,
+  isDesktop.value && rightWindows.value.length > 0
+    ? rightWindows.value.reduce((sum, w) => sum + w.width, 0) + RIGHT_DOCK_MARGIN
+    : 0,
 );
 
 watch([leftDock, rightDock], ([l, r]) => setDockInsets(l, r), { immediate: true });

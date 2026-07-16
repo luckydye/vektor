@@ -20,11 +20,14 @@ type MentionProps = SuggestionProps<MentionItem, MentionItem>;
 export interface MentionOptions {
   spaceId: string;
   documentId: string | undefined;
+  /** Emit `@[title](doc:id)` instead of a navigable document URL. */
+  inlineDocumentReferences: boolean;
 }
 
 type EditorMentionState = {
   spaceId: string;
   documentId: string | undefined;
+  inlineDocumentReferences: boolean;
   cachedMembers: SpaceMember[] | null;
   cachedDocs: DocumentWithProperties[] | null;
 };
@@ -32,6 +35,11 @@ type EditorMentionState = {
 // Keyed by editor instance so each editor has its own config + cache.
 // Using `object` because the Editor type isn't importable without a side-effectful import.
 const editorState = new WeakMap<object, EditorMentionState>();
+const openSuggestionEditors = new WeakSet<object>();
+
+export function isMentionSuggestionOpen(editor: object | null): boolean {
+  return editor !== null && openSuggestionEditors.has(editor);
+}
 
 export const MentionSuggestions = Mentions.extend<MentionOptions>({
   addOptions() {
@@ -39,6 +47,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
       ...this.parent?.(),
       spaceId: "",
       documentId: undefined,
+      inlineDocumentReferences: false,
       suggestion: {
         char: "@",
         allowSpaces: true,
@@ -127,8 +136,22 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
             assertClientRect(props);
             const rect = props.clientRect();
             if (!rect || !popup) return;
-            popup.style.left = `${rect.left}px`;
-            popup.style.top = `${rect.bottom + 8}px`;
+            const popupRect = popup.getBoundingClientRect();
+            const gap = 8;
+            const viewportPadding = 8;
+            const spaceAbove = rect.top - gap - viewportPadding;
+            const spaceBelow = window.innerHeight - rect.bottom - gap - viewportPadding;
+            const openAbove =
+              spaceBelow < popupRect.height && spaceAbove > spaceBelow;
+            const maxLeft = Math.max(viewportPadding, window.innerWidth - popupRect.width - viewportPadding);
+            const maxTop = Math.max(viewportPadding, window.innerHeight - popupRect.height - viewportPadding);
+
+            popup.style.left = `${Math.min(Math.max(rect.left, viewportPadding), maxLeft)}px`;
+            popup.style.top = `${
+              openAbove
+                ? Math.max(viewportPadding, rect.top - gap - popupRect.height)
+                : Math.min(rect.bottom + gap, maxTop)
+            }px`;
           }
 
           function selectItem(props: MentionProps, index: number) {
@@ -136,20 +159,26 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
             if (!item) return;
 
             if (item.type === "document") {
-              const spaceSlug = window.location.pathname.split("/").filter(Boolean)[0];
-              if (!spaceSlug) return;
-              const href = `/${spaceSlug}/doc/${item.id}`;
-
               const { editor, range } = props;
+              const state = editorState.get(editor);
+              const href = state?.inlineDocumentReferences
+                ? `doc:${item.id}`
+                : (() => {
+                    const spaceSlug = window.location.pathname.split("/").filter(Boolean)[0];
+                    return spaceSlug ? `/${spaceSlug}/doc/${item.id}` : null;
+                  })();
+              if (!href) return;
               editor
                 .chain()
                 .focus()
                 .deleteRange(range)
-                .insertContent({
-                  type: "text",
-                  marks: [{ type: "link", attrs: { href } }],
-                  text: item.label,
-                })
+                .insertContent([
+                  {
+                    type: "documentMention",
+                    attrs: { documentId: item.id, label: item.label, href },
+                  },
+                  { type: "text", text: " " },
+                ])
                 .run();
             } else {
               props.command(item);
@@ -180,6 +209,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
                 rerenderSelection();
                 return true;
               case "Enter":
+              case "Tab":
                 event.preventDefault();
                 if (lastProps) selectItem(lastProps, selectedIndex);
                 return true;
@@ -203,7 +233,6 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
             if (currentItems.length === 0) {
               selectedIndex = 0;
               popup.style.display = "";
-              movePopup(props);
               render(
                 html`
                 <div class="w-72 bg-background border border-neutral-100 rounded-sm shadow-lg overflow-hidden text-size-medium">
@@ -212,13 +241,12 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
               `,
                 popup,
               );
+              movePopup(props);
               return;
             }
 
             popup.style.display = "";
             selectedIndex = Math.max(0, Math.min(selectedIndex, currentItems.length - 1));
-
-            movePopup(props);
 
             const people = currentItems.filter((i) => i.type === "person");
             const docs = currentItems.filter((i) => i.type === "document");
@@ -247,9 +275,9 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
                             ? html`<img src=${item.image} alt=${item.label} class="w-6 h-6 rounded-full object-cover" />`
                             : html`<div class="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-size-small text-neutral-700">${item.label ? item.label.slice(0, 1).toUpperCase() : "?"}</div>`
                         }
-                        <div class="flex flex-col">
-                          <span class="font-medium leading-4">${item.label}</span>
-                          <span class="text-size-small text-neutral-500 leading-4">${item.email}</span>
+                        <div class="flex min-w-0 flex-1 flex-col">
+                          <span class="block truncate font-medium leading-4">${item.label}</span>
+                          <span class="block truncate text-size-small text-neutral-500 leading-4">${item.email}</span>
                         </div>
                       </li>`;
                     })}
@@ -272,7 +300,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
                         <div class="w-6 h-6 rounded-sm flex items-center justify-center text-size-small text-neutral-500 bg-neutral-100">
                           <span class="svg-icon w-3.5 h-3.5">${unsafeHTML(documentIcon)}</span>
                         </div>
-                        <span class="font-medium leading-4 truncate">${item.label}</span>
+                        <span class="min-w-0 flex-1 truncate font-medium leading-4">${item.label}</span>
                       </li>`;
                     })}
                   `
@@ -283,6 +311,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
             `,
               popup,
             );
+            movePopup(props);
           }
 
           return {
@@ -302,6 +331,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
 
               document.body.appendChild(popup);
 
+              openSuggestionEditors.add(props.editor);
               selectedIndex = 0;
               renderList(props);
             },
@@ -318,6 +348,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
             },
 
             onExit: () => {
+              if (lastProps) openSuggestionEditors.delete(lastProps.editor);
               if (popup) {
                 render(html``, popup);
                 popup.remove();
@@ -340,6 +371,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
       editorState.set(this.editor, {
         spaceId: this.options.spaceId,
         documentId: this.options.documentId,
+        inlineDocumentReferences: this.options.inlineDocumentReferences,
         cachedMembers: null,
         cachedDocs: null,
       });

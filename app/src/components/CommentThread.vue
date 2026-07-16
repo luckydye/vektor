@@ -213,4 +213,17 @@ watch(
   color: var(--color-primary-600);
   text-decoration: underline;
 }
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.comment-markdown :deep(document-mention),
+.comment-markdown :deep(a[href*="/doc/"]) {
+  background: var(--color-neutral-10);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.375rem;
+  color: var(--color-primary-700);
+  cursor: default;
+  font-weight: 500;
+  padding: 0.0625rem 0.3125rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
 </style>

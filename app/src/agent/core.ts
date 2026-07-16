@@ -547,7 +547,8 @@ export async function runAgentPrompt(options: {
       // Large tool outputs flood the context and cause the model to lose
       // coherence.  The truncation message instructs the model to redirect
       // output to a file when it needs to process more data.
-      const MAX_TOOL_RESULT_CHARS = 6_000;
+      const MAX_TOOL_RESULT_CHARS =
+        toolCall.function.name === "list_documents" ? 30_000 : 6_000;
       const modelContent =
         content.length > MAX_TOOL_RESULT_CHARS
           ? `${content.slice(0, MAX_TOOL_RESULT_CHARS)}\n\n[Output truncated — ${(content.length - MAX_TOOL_RESULT_CHARS).toLocaleString()} more characters not shown. Redirect to a file and process it there: e.g. \`command > output.json && jq '...'  output.json\`]`
