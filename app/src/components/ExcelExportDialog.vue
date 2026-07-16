@@ -52,7 +52,6 @@ function submit() {
   <Dialog
     :show="true"
     title="Export to Excel"
-    max-width="md:max-w-sm"
     @update:show="emit('cancel')"
   >
     <div class="flex flex-col gap-xs">

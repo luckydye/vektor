@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
-import type { ExcelCell, ExcelSheet } from "#utils/excelExport.ts";
+import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/excelExport.ts";
 import { downloadExcelSheets, sanitizeSheetName } from "#utils/excelExport.ts";
 import { spacePath } from "#utils/utils.ts";
 import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
@@ -81,6 +81,34 @@ function cellText(v: unknown): string {
   return String(v);
 }
 
+const STATUS_MARKER = /(?:^|[^\p{L}\p{N}_])(ROT|GELB|GREEN)(?=$|[^\p{L}\p{N}_])/u;
+
+function statusFill(value: unknown): ExcelCellFill | undefined {
+  const marker = cellText(value).match(STATUS_MARKER)?.[1];
+  if (marker === "ROT") return "red";
+  if (marker === "GELB") return "yellow";
+  if (marker === "GREEN") return "green";
+  return undefined;
+}
+
+function exportCell(value: unknown, fill = statusFill(value)): ExcelCell {
+  const text = cellText(value);
+  return fill ? { text, fill } : text;
+}
+
+function exportRow(values: unknown[]): ExcelCell[] {
+  const fill = values.map(statusFill).find((candidate) => candidate !== undefined);
+  return values.map((value) => exportCell(value, fill));
+}
+
+function exportSummaryRow(column: string, value: unknown): ExcelCell[] {
+  const fill = statusFill(value);
+  return [
+    fill ? { text: column, bold: true, fill } : { text: column, bold: true },
+    exportCell(value, fill),
+  ];
+}
+
 const showExportDialog = ref(false);
 
 function downloadExcel() {
@@ -100,7 +128,7 @@ function parseBoldSection(text: string): Record<string, string> | null {
 }
 
 function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][] {
-  if (!parseBold) return sections.map((s) => [s]);
+  if (!parseBold) return sections.map((s) => exportRow([s]));
 
   // The 0th section is an intro/summary block (e.g. "Notiz"), not a record — skip it.
   const recordSections = sections.slice(1);
@@ -108,7 +136,7 @@ function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][
   const parsed = recordSections
     .map(parseBoldSection)
     .filter((r): r is Record<string, string> => r !== null);
-  if (parsed.length === 0) return recordSections.map((s) => [s]);
+  if (parsed.length === 0) return recordSections.map((s) => exportRow([s]));
 
   // Union of all keys in order of first appearance
   const keyOrder: string[] = [];
@@ -123,7 +151,7 @@ function buildSubSheetRows(sections: string[], parseBold: boolean): ExcelCell[][
   }
 
   const headerRow: ExcelCell[] = keyOrder.map((k) => ({ text: k, bold: true }));
-  return [headerRow, ...parsed.map((r) => keyOrder.map((k) => r[k] ?? ""))];
+  return [headerRow, ...parsed.map((r) => exportRow(keyOrder.map((k) => r[k])))];
 }
 
 function handleExportDownload(config: ExcelExportConfig) {
@@ -132,7 +160,7 @@ function handleExportDownload(config: ExcelExportConfig) {
 
   const overviewRows = [
     tableColumns,
-    ...filtered.value.map((row) => tableColumns.map((col) => cellText(row[col]))),
+    ...filtered.value.map((row) => exportRow(tableColumns.map((col) => row[col]))),
   ];
 
   const sheets: ExcelSheet[] = [{ name: "Overview", rows: overviewRows }];
@@ -161,10 +189,9 @@ function handleExportDownload(config: ExcelExportConfig) {
       : [content];
 
     const summaryCols = tableColumns.slice(0, config.summaryColumnCount);
-    const summaryRows: ExcelCell[][] = summaryCols.map((col) => [
-      { text: col, bold: true },
-      cellText(row[col]),
-    ]);
+    const summaryRows: ExcelCell[][] = summaryCols.map((col) =>
+      exportSummaryRow(col, row[col]),
+    );
     const subRows = buildSubSheetRows(sections, config.parseBoldHeadings);
 
     sheets.push({ name: sheetName, rows: [...summaryRows, [], ...subRows] });

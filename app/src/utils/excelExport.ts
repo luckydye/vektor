@@ -91,7 +91,9 @@ function columnName(index: number): string {
   return name;
 }
 
-export type ExcelCell = string | { text: string; bold?: boolean };
+export type ExcelCellFill = "red" | "yellow" | "green";
+
+export type ExcelCell = string | { text: string; bold?: boolean; fill?: ExcelCellFill };
 
 function cellValue(cell: ExcelCell): string {
   return typeof cell === "string" ? cell : cell.text;
@@ -99,6 +101,18 @@ function cellValue(cell: ExcelCell): string {
 
 function cellBold(cell: ExcelCell): boolean {
   return typeof cell === "object" && cell.bold === true;
+}
+
+function cellFill(cell: ExcelCell): ExcelCellFill | undefined {
+  return typeof cell === "object" ? cell.fill : undefined;
+}
+
+function cellStyle(cell: ExcelCell): string {
+  const fill = cellFill(cell);
+  if (fill === "red") return cellBold(cell) ? "6" : "3";
+  if (fill === "yellow") return cellBold(cell) ? "7" : "4";
+  if (fill === "green") return cellBold(cell) ? "8" : "5";
+  return cellBold(cell) ? "2" : "1";
 }
 
 function normalizedCellText(value: string): string {
@@ -157,7 +171,7 @@ function worksheetXml(rows: ExcelCell[][]): string {
         .map((cell, columnIndex) => {
           const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
           const text = escapeXml(normalizedCellText(cellValue(cell)));
-          const style = cellBold(cell) ? "2" : "1";
+          const style = cellStyle(cell);
           return `<c r="${ref}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${text}</t></is></c>`;
         })
         .join("");
@@ -376,15 +390,38 @@ ${sheetRelationships}
     <font><sz val="11"/><name val="Calibri"/></font>
     <font><b/><sz val="11"/><name val="Calibri"/></font>
   </fonts>
-  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <fills count="4">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFEE2E2"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFEF3C7"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFDCFCE7"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
   <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="3">
+  <cellXfs count="9">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
       <alignment vertical="top" wrapText="1"/>
     </xf>
     <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="0" fillId="1" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyAlignment="1">
+      <alignment vertical="top" wrapText="1"/>
+    </xf>
+    <xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyAlignment="1">
       <alignment vertical="top" wrapText="1"/>
     </xf>
   </cellXfs>
