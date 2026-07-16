@@ -19,17 +19,11 @@
 import { config } from "#config";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
-type NodeState = {
-  status: string;
-  logs: string[];
-  outputs: Record<string, unknown> | null;
-  error: string | null;
-};
-
 type RunResponse = {
   status: string;
-  nodes: Record<string, NodeState>;
-  output: Record<string, unknown> | null;
+  error: string | null;
+  logs: string[];
+  resultArtifact: { key: string; url: string } | null;
 };
 
 export type CliOptions = {
@@ -172,10 +166,8 @@ export async function commandLogs(runId: string): Promise<void> {
     `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
   )) as RunResponse;
 
-  for (const [nodeId, node] of Object.entries(run.nodes)) {
-    for (const line of node.logs) {
-      process.stdout.write(`[${nodeId}] ${line}\n`);
-    }
+  for (const line of run.logs) {
+    process.stdout.write(`${line}\n`);
   }
 }
 
@@ -206,7 +198,7 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
 
   if (!json) process.stderr.write(`Run started: ${runId}\n`);
 
-  const logCursors: Record<string, number> = {};
+  let logCursor = 0;
 
   while (true) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -218,14 +210,11 @@ export async function runWorkflow(options: CliOptions): Promise<RunResponse> {
     )) as RunResponse;
 
     if (!json) {
-      for (const [nodeId, node] of Object.entries(run.nodes)) {
-        const cursor = logCursors[nodeId] ?? 0;
-        const newLogs = node.logs.slice(cursor);
-        for (const line of newLogs) {
-          process.stderr.write(`[${nodeId}] ${line}\n`);
-        }
-        logCursors[nodeId] = cursor + newLogs.length;
+      const newLogs = run.logs.slice(logCursor);
+      for (const line of newLogs) {
+        process.stderr.write(`${line}\n`);
       }
+      logCursor += newLogs.length;
     }
 
     if (run.status !== "running" && run.status !== "pending") {

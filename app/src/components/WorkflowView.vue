@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { WorkflowNodeState, WorkflowRunStatus } from "#api/ApiClient.ts";
+import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { usePagedList } from "#composeables/usePagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
@@ -40,6 +40,7 @@ type RunSummary = {
 const sourceExtensionHref = ref<string | null>(null);
 const selectedRunId = ref<string | null>(null);
 const selectedRunDetail = ref<WorkflowRunStatus | null>(null);
+const selectedRunResult = ref<Record<string, unknown> | null>(null);
 const selectedRunError = ref<string | null>(null);
 const logsExpanded = ref(false);
 let unsubscribeRuns: (() => void) | null = null;
@@ -107,9 +108,17 @@ async function fetchSelectedRunDetail() {
     }
     selectedRunDetail.value = detail;
     selectedRunError.value = null;
+    try {
+      selectedRunResult.value = await fetchResultArtifact(detail);
+    } catch (err) {
+      selectedRunResult.value = null;
+      selectedRunError.value =
+        err instanceof Error ? err.message : "Failed to load workflow result";
+    }
   } catch (err) {
     if (selectedRunId.value !== runId) return;
     selectedRunDetail.value = null;
+    selectedRunResult.value = null;
     selectedRunError.value =
       err instanceof Error ? err.message : "Failed to load workflow run";
   }
@@ -118,6 +127,7 @@ async function fetchSelectedRunDetail() {
 async function selectRun(runId: string, options: { updateUrl?: boolean } = {}) {
   if (options.updateUrl ?? true) setRunSearchParam(runId);
   selectedRunId.value = runId;
+  selectedRunResult.value = null;
   logsExpanded.value = false;
   await fetchSelectedRunDetail();
 }
@@ -252,13 +262,19 @@ onUnmounted(() => {
   unsubscribeRun?.();
 });
 
-// Pipeline nodes — insertion order = execution order for JS scripts; _script is the wrapper
-const pipelineNodes = computed((): [string, WorkflowNodeState][] => {
-  if (!selectedRunDetail.value) return [];
-  return Object.entries(selectedRunDetail.value.nodes).filter(([id]) => id !== "_script");
-});
+async function fetchResultArtifact(
+  run: WorkflowRunStatus,
+): Promise<Record<string, unknown> | null> {
+  if (!run.resultArtifact) return null;
+  const response = await fetch(run.resultArtifact.url);
+  if (!response.ok) throw new Error(`Unable to load workflow result: ${response.status}`);
+  const result: unknown = await response.json();
+  return result && typeof result === "object" && !Array.isArray(result)
+    ? (result as Record<string, unknown>)
+    : null;
+}
 
-// Job outputs are stored as { type: "text", value } or { type: "file", url } objects
+// Job values may use { type: "text", value } or { type: "file", url } envelopes.
 function unwrapOutputValue(val: unknown): string | null {
   if (typeof val === "string") return val;
   if (val && typeof val === "object") {
@@ -271,11 +287,11 @@ function unwrapOutputValue(val: unknown): string | null {
 
 // Output fields
 const outputHtml = computed<string | null>(() =>
-  unwrapOutputValue(selectedRunDetail.value?.output?.html),
+  unwrapOutputValue(selectedRunResult.value?.html),
 );
 
 const outputDocumentId = computed<string | null>(() =>
-  unwrapOutputValue(selectedRunDetail.value?.output?.documentId),
+  unwrapOutputValue(selectedRunResult.value?.documentId),
 );
 
 function extractTableData(
@@ -296,7 +312,7 @@ function extractTableData(
   return raw as Record<string, unknown>[];
 }
 
-const outputData = computed(() => extractTableData(selectedRunDetail.value?.output));
+const outputData = computed(() => extractTableData(selectedRunResult.value));
 
 const outputDocumentHref = ref<string | null>(null);
 const outputDocumentTitle = ref<string | null>(null);
@@ -317,6 +333,7 @@ watch(outputDocumentId, async (id) => {
 // Run history expansion — lazy load per run
 const expandedHistoryRuns = ref<Set<string>>(new Set());
 const historyRunDetails = ref<Map<string, WorkflowRunStatus>>(new Map());
+const historyRunResults = ref<Map<string, Record<string, unknown> | null>>(new Map());
 const historyRunDocHrefs = ref<Map<string, string>>(new Map());
 const historyRunDocTitles = ref<Map<string, string>>(new Map());
 
@@ -331,7 +348,14 @@ async function toggleHistoryRun(runId: string) {
   if (historyRunDetails.value.has(runId)) return;
   const detail = await api.workflows.getRun(props.spaceId, runId);
   historyRunDetails.value = new Map([...historyRunDetails.value, [runId, detail]]);
-  const docId = unwrapOutputValue(detail.output?.documentId);
+  let result: Record<string, unknown> | null = null;
+  try {
+    result = await fetchResultArtifact(detail);
+  } catch {
+    // Keep the run selectable even if a historical artifact was removed.
+  }
+  historyRunResults.value = new Map([...historyRunResults.value, [runId, result]]);
+  const docId = unwrapOutputValue(result?.documentId);
   if (docId) {
     const doc = await api.document.get(props.spaceId, docId);
     historyRunDocHrefs.value = new Map([
@@ -349,11 +373,11 @@ async function toggleHistoryRun(runId: string) {
 }
 
 function historyOutputHtml(runId: string): string | null {
-  return unwrapOutputValue(historyRunDetails.value.get(runId)?.output?.html);
+  return unwrapOutputValue(historyRunResults.value.get(runId)?.html);
 }
 
 function historyOutputData(runId: string): Record<string, unknown>[] | null {
-  return extractTableData(historyRunDetails.value.get(runId)?.output);
+  return extractTableData(historyRunResults.value.get(runId));
 }
 
 function historyRunTitle(run: RunSummary): string | null {
@@ -371,21 +395,20 @@ function historyOutputDocumentTitle(runId: string): string | null {
   return historyRunDocTitles.value.get(runId) ?? null;
 }
 
-const runFailureError = computed<{ nodeId: string; error: string } | null>(() => {
+const runFailureError = computed<string | null>(() => {
   if (selectedRunDetail.value?.status !== "failed") return null;
-  for (const [nodeId, node] of Object.entries(selectedRunDetail.value.nodes)) {
-    if (node.status === "failed" && node.error) return { nodeId, error: node.error };
-  }
-  return null;
+  return selectedRunDetail.value.error;
 });
 
-// All node logs for the expand section
+// The script has one flat log stream; job messages include their job identifier.
 const allLogs = computed(() => {
   if (!selectedRunDetail.value) return [];
-  return Object.entries(selectedRunDetail.value.nodes).flatMap(([nodeId, node]) => [
-    ...(node.logs ?? []).map((line) => ({ nodeId, line, isError: false })),
-    ...(node.error ? [{ nodeId, line: node.error, isError: true }] : []),
-  ]);
+  return [
+    ...selectedRunDetail.value.logs.map((line) => ({ line, isError: false })),
+    ...(selectedRunDetail.value.error
+      ? [{ line: selectedRunDetail.value.error, isError: true }]
+      : []),
+  ];
 });
 
 function formatDate(iso: string): string {
@@ -499,6 +522,19 @@ const statusBadgeClass: Record<string, string> = {
             />
 
             <div class="flex flex-wrap items-center gap-2">
+              <!-- Raw JSON artifact -->
+              <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
+              <a
+                v-if="selectedRunDetail?.resultArtifact"
+                :href="selectedRunDetail.resultArtifact.url"
+                target="_blank"
+                rel="noreferrer"
+                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
+              >
+                <div class="svg-icon w-4 h-4 text-neutral-400" v-html="arrowDownTrayIcon" />
+                Result JSON
+              </a>
+
               <!-- Document link -->
               <!-- biome-ignore lint/a11y/useValidAnchor: href is supplied by Vue's dynamic binding. -->
               <a
@@ -540,7 +576,7 @@ const statusBadgeClass: Record<string, string> = {
             </div>
 
             <p
-              v-if="!outputHtml && !outputData && !outputDocumentId && !selectedRunFileUrl"
+              v-if="!outputHtml && !outputData && !outputDocumentId && !selectedRunFileUrl && !selectedRunDetail?.resultArtifact"
               class="text-size-medium text-neutral-400"
             >
               No output
@@ -620,9 +656,6 @@ const statusBadgeClass: Record<string, string> = {
             >
               <div class="font-mono text-[11px] space-y-0.5">
                 <div v-for="(entry, i) in allLogs" :key="i" class="flex gap-3">
-                  <span class="text-neutral-500 dark:text-neutral-400 shrink-0"
-                    >{{ entry.nodeId }}</span
-                  >
                   <span
                     :class="entry.isError ? 'text-red-400' : 'text-neutral-300 dark:text-neutral-600'"
                     >{{ entry.line }}</span

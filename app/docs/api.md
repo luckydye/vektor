@@ -59,9 +59,8 @@ Most errors are JSON:
 | POST | `/spaces/:spaceId/jobs/run` | Runs an extension job inline or as SSE stream. |
 | GET | `/spaces/:spaceId/workflows/runs` | Lists active runs or latest run for a document. |
 | POST | `/spaces/:spaceId/workflows/runs` | Starts a workflow run asynchronously. |
-| GET | `/spaces/:spaceId/workflows/runs/:runId` | Returns status and node state for one run. |
+| GET | `/spaces/:spaceId/workflows/runs/:runId` | Returns metadata and artifact references for one run. |
 | DELETE | `/spaces/:spaceId/workflows/runs/:runId` | Cancels a run. |
-| DELETE | `/spaces/:spaceId/workflows/cache` | Clears cached outputs for all jobs referenced by a workflow document. |
 | GET | `/spaces/:spaceId/documents` | Lists documents (optionally by categories). |
 | POST | `/spaces/:spaceId/documents` | Creates a document from JSON or raw content. |
 | GET | `/spaces/:spaceId/documents/archived` | Lists archived documents visible to the caller. |
@@ -432,7 +431,7 @@ Most errors are JSON:
 - Auth: session + `editor`.
 - Body:
 - `documentId` (required; must be workflow doc)
-- optional restart controls: `fromRunId`, `fromNodeId`
+- optional `inputs` object for the workflow script
 - Returns:
 - `202` `{ runId }` (execution continues in background).
 
@@ -440,8 +439,9 @@ Most errors are JSON:
 
 - Auth: session + `viewer`.
 - Returns:
-- `200` `{ status, nodes, output }` with node inputs/outputs/logs/timestamps and
-  merged outputs from the workflow's terminal node(s).
+- `200` with script status, inputs, logs, error, and `resultArtifact`. The
+  artifact is a JSON file containing the script's returned object; SQLite holds
+  only its storage key.
 
 ## `DELETE /spaces/:spaceId/workflows/runs/:runId`
 
@@ -451,17 +451,6 @@ Most errors are JSON:
 - Returns:
 - `200` `{ ok: true }`.
 
-## `DELETE /spaces/:spaceId/workflows/cache`
-
-- Auth: session + `editor`.
-- Body:
-- `documentId` (required; must be workflow doc)
-- Behavior:
-- Parses the workflow document and clears cached outputs for each unique job scope in that workflow.
-- Returns:
-- `200` `{ clearedScopes }`
-
----
 
 ## `GET /spaces/:spaceId/documents`
 

@@ -176,27 +176,33 @@ export interface JobRun {
   initiatedBy: string | null;
 }
 
-export type WorkflowNodeStatus = "pending" | "running" | "completed" | "failed";
+export type WorkflowRunState =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
-export interface WorkflowNodeState {
-  status: WorkflowNodeStatus;
-  inputs: Record<string, unknown>;
-  outputs: Record<string, unknown> | null;
-  error: string | null;
-  logs: string[];
-  startedAt: string | null;
-  completedAt: string | null;
+export interface WorkflowArtifact {
+  key: string;
+  url: string;
 }
 
 export interface WorkflowRunStatus {
   runId?: string;
   documentId?: string;
-  status: WorkflowNodeStatus;
+  status: WorkflowRunState;
   createdAt?: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
   sourceExtensionId?: string | null;
   runtimeInputs?: Record<string, unknown>;
-  nodes: Record<string, WorkflowNodeState>;
-  output: Record<string, unknown> | null;
+  error: string | null;
+  logs: string[];
+  /** The script return value, serialized as a JSON artifact. */
+  resultArtifact: WorkflowArtifact | null;
+  /** Completed logs, serialized as a JSON artifact. */
+  logArtifact: WorkflowArtifact | null;
 }
 
 export interface ExtensionRouteMenuItem {
@@ -2592,11 +2598,7 @@ export class ApiClient {
       spaceId: string,
       documentId: string,
       inputs?: Record<string, unknown>,
-      options?: {
-        fromRunId?: string;
-        fromNodeId?: string;
-        sourceExtensionId?: string;
-      },
+      options?: { sourceExtensionId?: string },
     ): Promise<{ runId: string }> => {
       return await this.apiPost<{ runId: string }>(
         this.baseUrl,
@@ -2604,8 +2606,6 @@ export class ApiClient {
         {
           documentId,
           inputs,
-          fromRunId: options?.fromRunId,
-          fromNodeId: options?.fromNodeId,
           sourceExtensionId: options?.sourceExtensionId,
         },
       );
@@ -2664,8 +2664,6 @@ export class ApiClient {
           createdAt: string;
           startedAt: string | null;
           finishedAt: string | null;
-          totalNodes: number;
-          completedNodes: number;
           sourceExtensionId: string | null;
           runtimeInputs: Record<string, unknown>;
         }[];

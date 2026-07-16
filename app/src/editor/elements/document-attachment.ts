@@ -12,7 +12,7 @@ type WorkflowPreviewState =
   | { status: "idle" | "loading" }
   | { status: "no-run" }
   | { status: "error"; message: string }
-  | { status: "loaded"; run: WorkflowRunStatus };
+  | { status: "loaded"; run: WorkflowRunStatus; output: Record<string, unknown> | null };
 
 function escapeHtml(value: string): string {
   return value
@@ -110,7 +110,7 @@ function setDocumentViewHtml(
     });
 }
 
-// Job outputs are stored as { type: "text", value } or { type: "file", url } objects.
+// Job values may use { type: "text", value } or { type: "file", url } envelopes.
 function unwrapOutputValue(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (value && typeof value === "object") {
@@ -213,9 +213,9 @@ function workflowPreviewHtml(state: WorkflowPreviewState | null): string {
   }
 
   const run = state.run;
-  const outputHtml = unwrapOutputValue(run.output?.html);
-  const outputDocumentId = unwrapOutputValue(run.output?.documentId);
-  const tableData = extractTableData(run.output);
+  const outputHtml = unwrapOutputValue(state.output?.html);
+  const outputDocumentId = unwrapOutputValue(state.output?.documentId);
+  const tableData = extractTableData(state.output);
   const createdAt = formatWorkflowDate(run.createdAt);
   const status = run.status;
   const statusClass = workflowStatusClass(status);
@@ -649,7 +649,17 @@ if (
 
           const run = await api.workflows.getRun(spaceId, latest.runId);
           if (this.workflowPreviewKey !== key) return;
-          this.workflowPreview = { status: "loaded", run };
+          let output: Record<string, unknown> | null = null;
+          if (run.resultArtifact) {
+            const response = await fetch(run.resultArtifact.url);
+            if (!response.ok) throw new Error(`Unable to load workflow result: ${response.status}`);
+            const value: unknown = await response.json();
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+              output = value as Record<string, unknown>;
+            }
+          }
+          if (this.workflowPreviewKey !== key) return;
+          this.workflowPreview = { status: "loaded", run, output };
           this.render();
         } catch (error) {
           if (this.workflowPreviewKey !== key) return;

@@ -181,6 +181,13 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
 
   const workflowRunSQL = generateCreateTableSQL(spaceSchema.workflowRun);
   await spaceDb.run(sql.raw(workflowRunSQL));
+  // The legacy `nodes` column is intentionally retained for old workflow
+  // histories. New script workflow results are stored as JSON artifacts.
+  await ensureColumnExists(spaceDb, "workflow_run", "result_artifact_path", "TEXT");
+  await ensureColumnExists(spaceDb, "workflow_run", "log_artifact_path", "TEXT");
+  await ensureColumnExists(spaceDb, "workflow_run", "error", "TEXT");
+  await ensureColumnExists(spaceDb, "workflow_run", "started_at", "INTEGER");
+  await ensureColumnExists(spaceDb, "workflow_run", "completed_at", "INTEGER");
   await spaceDb.run(
     sql.raw(
       "CREATE INDEX IF NOT EXISTS workflow_run_document_created_idx ON workflow_run (document_id, created_at)",

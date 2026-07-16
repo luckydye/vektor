@@ -3,13 +3,14 @@ import { getNativeExec } from "#exec/native.ts";
 import type { WorkflowVmEvent } from "#native/exec/index.d.ts";
 import { otelMetrics, withSpan } from "#observability/otel.ts";
 import {
-  addNode,
-  appendNodeLog,
+  appendRunLog,
   finalizeRun,
   getRun,
-  setNodeStatus,
   setRunAbort,
+  setRunError,
   setRunStatus,
+  writeRunLogs,
+  writeRunResult,
 } from "./runStore.ts";
 import { resolveJobSandbox } from "./sandbox.ts";
 import { runJob } from "./scheduler.ts";
@@ -28,8 +29,8 @@ const workflowRunDurationMs = meter.createHistogram("wiki_workflow_run_duration_
  *   - log(message) → void
  *   - input → runtime inputs object
  *
- * The return value of the script (or last expression) becomes the run output,
- * stored on the special "_script" tracking node.
+ * The return value of the script (or last expression) becomes a JSON result
+ * artifact. Intermediate runJob values exist only while the script is running.
  */
 export async function executeWorkflowScript(
   spaceId: string,
@@ -63,13 +64,6 @@ export async function executeWorkflowScript(
 
       const sandbox = await resolveJobSandbox();
 
-      addNode(runId, "_script");
-      setNodeStatus(runId, "_script", {
-        status: "running",
-        inputs: {},
-        startedAt: new Date(),
-      });
-
       let vmId: number | null = null;
       const {
         workflowVmCreate,
@@ -98,11 +92,7 @@ export async function executeWorkflowScript(
               !Array.isArray(event.output)
                 ? (event.output as Record<string, unknown>)
                 : {};
-            setNodeStatus(runId, "_script", {
-              status: "completed",
-              outputs: output,
-              completedAt: new Date(),
-            });
+            await writeRunResult(runId, output);
             break;
           }
 
@@ -111,16 +101,13 @@ export async function executeWorkflowScript(
           }
 
           if (event.type === "log") {
-            appendNodeLog(runId, "_script", event.message ?? "");
+            appendRunLog(runId, event.message ?? "");
             continue;
           }
 
           if (event.type === "pending_job") {
             const { jobId, extensionId, workflowJobId, inputs } = event;
             if (!jobId || !extensionId || !workflowJobId) continue;
-
-            const stepId = jobId;
-            const stepStart = Date.now();
 
             // Run the job asynchronously and resolve/reject the VM promise.
             // We do NOT await here — let the loop continue stepping while the job runs.
@@ -146,17 +133,6 @@ export async function executeWorkflowScript(
                     ? (inputs as Record<string, unknown>)
                     : {};
 
-                addNode(runId, stepId);
-                setNodeStatus(runId, stepId, {
-                  status: "running",
-                  inputs: {
-                    _extensionId: extensionId,
-                    _jobId: workflowJobId,
-                    ...jobInputs,
-                  },
-                  startedAt: new Date(),
-                });
-
                 if (controller.signal.aborted) throw new Error("Workflow cancelled");
 
                 const outputs = await runJob(
@@ -164,22 +140,16 @@ export async function executeWorkflowScript(
                   jobDef.entry,
                   jobInputs,
                   spaceId,
-                  (msg) => appendNodeLog(runId, stepId, msg),
+                  (msg) => appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${msg}`),
                   {
                     signal: controller.signal,
                     initiatedByUserId: run.initiatedByUserId,
-                    jobType: "workflow_node",
+                    jobType: "workflow_script_job",
                     jobId: workflowJobId,
                     trigger: "workflow",
                     sandbox,
                   },
                 );
-
-                setNodeStatus(runId, stepId, {
-                  status: "completed",
-                  outputs,
-                  completedAt: new Date(),
-                });
 
                 // Unwrap JobOutputValue typed wrappers before passing back to the VM.
                 const unwrapped: Record<string, unknown> = {};
@@ -193,14 +163,7 @@ export async function executeWorkflowScript(
                 if (vmId !== null) workflowVmResolveJob(vmId, jobId, unwrapped);
               } catch (err) {
                 const error = err instanceof Error ? err.message : String(err);
-                setNodeStatus(runId, stepId, {
-                  status: "failed",
-                  error,
-                  completedAt: new Date(),
-                });
-                workflowRunDurationMs.record(Date.now() - stepStart, {
-                  status: "failed",
-                });
+                appendRunLog(runId, `[${extensionId}/${workflowJobId}] ${error}`);
                 if (vmId !== null) workflowVmRejectJob(vmId, jobId, error);
               }
             })();
@@ -217,18 +180,17 @@ export async function executeWorkflowScript(
           }
         }
 
-        finalizeRun(runId);
+        await writeRunLogs(runId);
+        await finalizeRun(runId);
         workflowRunsCounter.add(1, { status: "completed" });
         workflowRunDurationMs.record(Date.now() - workflowStart, { status: "completed" });
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
-        setNodeStatus(runId, "_script", {
-          status: "failed",
-          error,
-          completedAt: new Date(),
-        });
+        appendRunLog(runId, error);
+        setRunError(runId, error);
         setRunStatus(runId, "failed");
-        finalizeRun(runId);
+        await writeRunLogs(runId);
+        await finalizeRun(runId);
         workflowRunsCounter.add(1, { status: "failed" });
         workflowRunDurationMs.record(Date.now() - workflowStart, { status: "failed" });
       } finally {

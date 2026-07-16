@@ -311,14 +311,26 @@ export const workflowRun = sqliteTable("workflow_run", {
   id: text("id").primaryKey(),
   /** Workflow document this run belongs to */
   documentId: text("document_id").notNull(),
-  /** NodeStatus: "pending" | "running" | "completed" | "failed" | "cancelled" | "skipped" */
+  /** Workflow run status: pending, running, completed, failed, or cancelled. */
   status: text("status").notNull(),
   initiatedByUserId: text("initiated_by_user_id"),
   sourceExtensionId: text("source_extension_id"),
   /** JSON: sanitized Record<string, unknown> of runtime inputs */
   runtimeInputs: text("runtime_inputs").notNull(),
-  /** JSON: sanitized Record<nodeId, PersistedNodeState> */
-  nodes: text("nodes").notNull(),
+  /** Storage key for the JSON artifact containing the script return value. */
+  resultArtifactPath: text("result_artifact_path"),
+  /** Storage key for the JSON artifact containing workflow logs. */
+  logArtifactPath: text("log_artifact_path"),
+  /** Terminal workflow error, if the script failed. */
+  error: text("error"),
+  startedAt: integer("started_at", { mode: "timestamp" }),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
+  /**
+   * @deprecated Legacy DAG-node snapshot. New script workflows never write
+   * this field; it remains so existing run history can be read and migrated
+   * lazily to result artifacts.
+   */
+  nodes: text("nodes").notNull().default("{}"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });

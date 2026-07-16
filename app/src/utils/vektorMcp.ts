@@ -326,7 +326,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
         type: "object",
         properties: {
           documentId: { type: "string", description: "Workflow document ID" },
-          inputs: { type: "object", description: "Runtime inputs for workflow nodes" },
+          inputs: { type: "object", description: "Runtime inputs for the workflow script" },
           sourceExtensionId: {
             type: "string",
             description: "Extension that initiated the run",
@@ -337,7 +337,7 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     },
     {
       name: "get_workflow_run",
-      description: "Get status and outputs of a workflow run.",
+      description: "Get status and result artifact reference for a workflow run.",
       inputSchema: {
         type: "object",
         properties: {
@@ -349,12 +349,11 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "get_workflow_log",
       description:
-        "Get logs from a workflow run. Returns logs and errors for all nodes, or a specific node if nodeId is provided.",
+        "Get the script log and terminal error from a workflow run.",
       inputSchema: {
         type: "object",
         properties: {
           runId: { type: "string", description: "Workflow run ID" },
-          nodeId: { type: "string", description: "Filter logs to a specific node" },
         },
         required: ["runId"],
       },
@@ -629,28 +628,15 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     }
     case "get_workflow_log": {
       const runId = expectString(args, "runId");
-      const nodeId = expectString(args, "nodeId", { optional: true });
       const run = (await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/workflows/runs/${encodeURIComponent(runId)}`,
       )) as {
-        nodes: Record<string, { logs: string[]; error: string | null; status: string }>;
+        status: string;
+        logs: string[];
+        error: string | null;
       };
-      if (nodeId) {
-        const node = run.nodes[nodeId];
-        if (!node) throw new Error(`Node not found: ${nodeId}`);
-        return { nodeId, status: node.status, error: node.error, logs: node.logs };
-      }
-      const result: Record<
-        string,
-        { status: string; error: string | null; logs: string[] }
-      > = {};
-      for (const [id, node] of Object.entries(run.nodes)) {
-        if (node.logs.length > 0 || node.error) {
-          result[id] = { status: node.status, error: node.error, logs: node.logs };
-        }
-      }
-      return result;
+      return { status: run.status, error: run.error, logs: run.logs };
     }
     case "list_workflow_runs": {
       const documentId = expectString(args, "documentId", { optional: true });

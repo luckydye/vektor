@@ -103,7 +103,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
           "save to file: vektor read <id> > doc.md\n" +
           "workflow: vektor workflow run <document-id> [--inputs '{...}']\n" +
           "          vektor workflow status <run-id>\n" +
-          "          vektor workflow logs <run-id> [--node <node-id>]\n" +
+          "          vektor workflow logs <run-id>\n" +
           "          vektor workflow list [--document-id <id>]\n",
         exitCode: 2,
       };
@@ -541,12 +541,9 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
               ...(inputs ? { inputs } : {}),
             });
             if (!json) {
-              const run = (result as Record<string, unknown>)?.run as
-                | Record<string, unknown>
-                | undefined;
-              const runId = typeof run?.id === "string" ? run.id : null;
+              const runId = (result as Record<string, unknown>)?.runId;
               return {
-                stdout: `started workflow run ${runId ?? ""}\n`,
+                stdout: `started workflow run ${typeof runId === "string" ? runId : ""}\n`,
                 stderr: "",
                 exitCode: 0,
               };
@@ -572,20 +569,12 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
             if (!runId) {
               return {
                 stdout: "",
-                stderr: "usage: vektor workflow logs <run-id> [--node <node-id>]\n",
+                stderr: "usage: vektor workflow logs <run-id>\n",
                 exitCode: 2,
               };
             }
-            let nodeId: string | undefined;
-            for (let i = 1; i < wfRest.length; i++) {
-              if (wfRest[i] === "--node") {
-                nodeId = wfRest[++i];
-                break;
-              }
-            }
             result = await callVektorTool(mcpConfigRef.current, "get_workflow_log", {
               runId,
-              ...(nodeId ? { nodeId } : {}),
             });
             break;
           }
@@ -609,7 +598,7 @@ export function vektorCommand(mcpConfigRef: { current: VektorMcpConfig }) {
                 "usage: vektor workflow <run|status|logs|list> [args]\n" +
                 "  run <document-id> [--inputs '{...}']\n" +
                 "  status <run-id>\n" +
-                "  logs <run-id> [--node <node-id>]\n" +
+                "  logs <run-id>\n" +
                 "  list [--document-id <id>]\n",
               exitCode: 2,
             };

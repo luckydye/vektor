@@ -19,8 +19,6 @@ type WorkflowRun = {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
-  totalNodes: number;
-  completedNodes: number;
   runtimeInputs: Record<string, unknown>;
 };
 
@@ -237,20 +235,6 @@ const groupedRuns = computed(() => {
                   />
                   <span v-else class="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                   <span class="leading-none capitalize">{{ run.status }}</span>
-                </span>
-              </div>
-
-              <!-- Progress bar -->
-              <div v-if="run.totalNodes > 0" class="mb-3 flex items-center gap-2">
-                <div class="flex-1 h-1 rounded-full bg-neutral-200 overflow-hidden">
-                  <div
-                    class="h-full rounded-full transition-all duration-500"
-                    :class="run.status === 'failed' ? 'bg-rose-400' : run.status === 'completed' ? 'bg-emerald-400' : 'bg-sky-400'"
-                    :style="{ width: `${Math.round((run.completedNodes / run.totalNodes) * 100)}%` }"
-                  />
-                </div>
-                <span class="text-[11px] text-neutral-400 tabular-nums whitespace-nowrap">
-                  {{ run.completedNodes }}/{{ run.totalNodes }}
                 </span>
               </div>
 

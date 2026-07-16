@@ -90,19 +90,6 @@ export const GET: ApiRouteHandler = (context) =>
     const allRuns = await Promise.all(
       pageRuns.map(async ([runId, run]) => {
         const doc = await getDocument(spaceId, run.documentId);
-        const nodeList = [...run.nodes.values()];
-        const startedAt = nodeList.reduce<Date | null>((min, n) => {
-          if (!n.startedAt) return min;
-          return min === null || n.startedAt < min ? n.startedAt : min;
-        }, null);
-        const finishedAt = nodeList.reduce<Date | null>((max, n) => {
-          if (!n.completedAt) return max;
-          return max === null || n.completedAt > max ? n.completedAt : max;
-        }, null);
-        const completedNodes = nodeList.filter(
-          (n) =>
-            n.status === "completed" || n.status === "failed" || n.status === "cancelled",
-        ).length;
         return {
           runId,
           documentId: run.documentId,
@@ -112,10 +99,8 @@ export const GET: ApiRouteHandler = (context) =>
             : run.documentId,
           status: run.status,
           createdAt: run.createdAt.toISOString(),
-          startedAt: startedAt?.toISOString() ?? null,
-          finishedAt: finishedAt?.toISOString() ?? null,
-          totalNodes: nodeList.length,
-          completedNodes,
+          startedAt: run.startedAt?.toISOString() ?? null,
+          finishedAt: run.completedAt?.toISOString() ?? null,
           sourceExtensionId: run.sourceExtensionId,
           runtimeInputs: run.runtimeInputs,
         };
@@ -163,7 +148,6 @@ export const POST: ApiRouteHandler = (context) =>
       const runId = createRun(
         spaceId,
         documentId,
-        [],
         initiatedByUserId,
         sourceExtensionId ?? null,
         inputs ?? {},

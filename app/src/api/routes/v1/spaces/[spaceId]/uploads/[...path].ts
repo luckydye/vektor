@@ -39,6 +39,7 @@ const MIME_TYPES: Record<string, string> = {
   md: "text/markdown",
   txt: "text/plain",
   csv: "text/csv",
+  json: "application/json",
   // Archive
   zip: "application/zip",
   // 3D models

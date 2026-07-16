@@ -25,6 +25,7 @@ const INLINE_SAFE_EXTENSIONS = new Set([
   "txt",
   "md",
   "csv",
+  "json",
 ]);
 
 /**

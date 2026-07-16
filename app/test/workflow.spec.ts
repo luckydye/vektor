@@ -73,8 +73,9 @@ async function apiJson<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 type RunState = {
   status: string;
-  output: Record<string, unknown> | null;
-  nodes: Record<string, { status: string; error?: string | null; logs?: string[] }>;
+  error: string | null;
+  logs: string[];
+  resultArtifact: { key: string; url: string } | null;
 };
 
 async function pollRunUntilDone(
@@ -115,14 +116,14 @@ async function pollRunUntilDone(
 }
 
 function summariseFailure(run: RunState): string {
-  const lines: string[] = [`status: ${run.status}`];
-  for (const [id, node] of Object.entries(run.nodes)) {
-    if (node.status === "failed") {
-      lines.push(`  node ${id}: ${node.error ?? "(no error message)"}`);
-      if (node.logs?.length) lines.push(`  logs: ${node.logs.slice(-5).join(" | ")}`);
-    }
-  }
+  const lines: string[] = [`status: ${run.status}`, `error: ${run.error ?? "(none)"}`];
+  if (run.logs.length) lines.push(`logs: ${run.logs.slice(-5).join(" | ")}`);
   return lines.join("\n");
+}
+
+async function readRunResult(run: RunState): Promise<Record<string, unknown>> {
+  if (!run.resultArtifact) throw new Error("Workflow completed without a result artifact");
+  return await apiJson<Record<string, unknown>>(run.resultArtifact.url);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +251,7 @@ describe("workflow: sitemap download + HTML-to-markdown conversion", () => {
     // ── 3. Validate the output structure ────────────────────────────────
     // The script returns { result: mdFiles.result } where result is the
     // JSON table produced by for-each-file after running convert on each page.
-    const result = run.output?.result;
+    const result = (await readRunResult(run)).result;
     expect(result).toBeDefined();
     expect(typeof result).toBe("string");
 

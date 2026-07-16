@@ -1063,7 +1063,7 @@ onUnmounted(() => {
       <div
         v-else
         ref="messagesContainer"
-        class="flex-1 overflow-y-auto px-3 py-4 space-y-3 messages-container"
+        class="flex-1 overflow-y-auto px-2xs py-4 space-y-3 messages-container"
         @scroll="onMessagesScroll"
       >
         <div v-if="sessionStartedAt" class="text-center text-[11px] text-neutral-400">
@@ -1128,7 +1128,7 @@ onUnmounted(() => {
               </div>
               <div class="flex-1 min-w-0">
                 <div
-                  class="group relative bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm"
+                  class="group relative bg-neutral-10 border border-neutral-100 rounded-xl overflow-hidden shadow-sm w-max max-w-full"
                 >
                   <button
                     type="button"
@@ -1259,8 +1259,8 @@ onUnmounted(() => {
       </div>
 
       <!-- Input bar -->
-      <div class="px-3 pb-3 pt-2 bg-neutral-10 border-t border-neutral-100 shrink-0">
-        <div class="px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-xl">
+      <div class="px-3 pb-2 pt-2 shrink-0">
+        <div class="px-3 py-2 bg-neutral-10 border border-neutral-100 rounded-md">
           <MessageInput
             ref="messageInputEl"
             v-model="messageInput"

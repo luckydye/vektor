@@ -8,14 +8,20 @@ import {
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { cancelRun, ensureSpaceRecovered, getRunForRead } from "#jobs/runStore.ts";
+import {
+  cancelRun,
+  ensureSpaceRecovered,
+  getRunForRead,
+  migrateLegacyResultArtifact,
+  readRunLogs,
+} from "#jobs/runStore.ts";
+import { workflowArtifactUrl } from "#jobs/workflowArtifacts.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs/:runId
- * Returns the current state of a workflow run.
- * Nodes are returned in insertion order (= execution order for JS scripts).
- * Output is taken from the "_script" node's outputs (the script's return value).
+ * Returns the current state of a script workflow run. The result itself is a
+ * JSON artifact; the run row contains only its storage key.
  */
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -27,36 +33,32 @@ export const GET: ApiRouteHandler = (context) =>
     await ensureSpaceRecovered(spaceId);
     const run = await getRunForRead(spaceId, runId);
     if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
-
-    const nodes: Record<string, unknown> = {};
-    for (const [id, nodeState] of run.nodes) {
-      nodes[id] = {
-        status: nodeState.status,
-        inputs: nodeState.inputs,
-        outputs: nodeState.outputs,
-        error: nodeState.error,
-        logs: nodeState.logs,
-        startedAt: nodeState.startedAt?.toISOString() ?? null,
-        completedAt: nodeState.completedAt?.toISOString() ?? null,
-      };
-    }
-
-    // Output = the script's return value (stored on the _script node)
-    const scriptNode = run.nodes.get("_script");
-    const output =
-      scriptNode?.outputs && Object.keys(scriptNode.outputs).length > 0
-        ? scriptNode.outputs
-        : null;
+    await migrateLegacyResultArtifact(runId, run);
+    const logs = await readRunLogs(run);
 
     return jsonResponse({
       runId,
       documentId: run.documentId,
       status: run.status,
       createdAt: run.createdAt.toISOString(),
+      startedAt: run.startedAt?.toISOString() ?? null,
+      completedAt: run.completedAt?.toISOString() ?? null,
       sourceExtensionId: run.sourceExtensionId,
       runtimeInputs: run.runtimeInputs,
-      nodes,
-      output,
+      error: run.error,
+      logs,
+      resultArtifact: run.resultArtifactPath
+        ? {
+            key: run.resultArtifactPath,
+            url: workflowArtifactUrl(spaceId, run.resultArtifactPath),
+          }
+        : null,
+      logArtifact: run.logArtifactPath
+        ? {
+            key: run.logArtifactPath,
+            url: workflowArtifactUrl(spaceId, run.logArtifactPath),
+          }
+        : null,
     });
   }, "Failed to get run");
 
@@ -70,7 +72,7 @@ function cancelWorkflowRun(context: Parameters<ApiRouteHandler>[0]) {
       await ensureSpaceRecovered(spaceId);
       const run = await getRunForRead(spaceId, runId);
       if (!run || run.spaceId !== spaceId) return notFoundResponse("Run");
-      cancelRun(runId);
+      await cancelRun(runId);
       return jsonResponse({ ok: true });
     },
     {
