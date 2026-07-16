@@ -29,6 +29,7 @@ import type {
 
 export type { CanvasElementContext } from "./CanvasElementBase.ts";
 export {
+  activeDrawStrokeMode,
   addCanvasDrawingPoint,
   addCanvasDrawingPoints,
   type CanvasDrawingSession,

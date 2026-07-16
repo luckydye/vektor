@@ -127,12 +127,58 @@ export type CanvasElementTool = {
   icon: string;
 };
 
-// Services a canvas tool uses to act. The host owns the stroke/shape stores and
-// the freehand/drag engine; tools drive them.
+// Pointer gestures are owned by the host after a tool starts one. This keeps
+// capture, viewport coordinate conversion, coalesced pen samples, and cleanup
+// consistent across freehand drawing and extension-provided tools.
+export type CanvasPointerGestureSample = {
+  event: PointerEvent;
+  screen: CanvasPoint;
+  world: CanvasPoint;
+};
+
+export type CanvasPointerGestureEvent = CanvasPointerGestureSample & {
+  // PointerEvent.getCoalescedEvents(), converted through the same viewport
+  // transform. Always contains at least the current event.
+  samples: readonly CanvasPointerGestureSample[];
+};
+
+export type CanvasPointerGestureCancelReason =
+  | "cancelled"
+  | "escape"
+  | "pointercancel"
+  | "superseded"
+  | "touch-gesture"
+  | "unmount";
+
+export interface CanvasPointerGestureHandlers {
+  onMove?: (input: CanvasPointerGestureEvent, ctx: CanvasToolContext) => void;
+  onEnd?: (input: CanvasPointerGestureEvent, ctx: CanvasToolContext) => void;
+  onCancel?: (
+    reason: CanvasPointerGestureCancelReason,
+    ctx: CanvasToolContext,
+  ) => void;
+}
+
+export interface CanvasPointerGestureController {
+  readonly pointerId: number;
+  cancel: () => void;
+}
+
+// Services a canvas tool uses to act. The host owns gesture routing and the
+// stroke/shape stores; tools own their interaction state and drive them.
 export interface CanvasToolContext {
   penColor: () => string;
-  // Begin a streaming freehand stroke from this pointerdown (engine-managed).
-  startFreehand: (event: PointerEvent) => void;
+  viewportScale: () => number;
+  // Begin an exclusive pointer gesture. Starting another gesture cancels the
+  // current one; the host captures the pointer and routes move/end/cancel.
+  beginPointerGesture: (
+    event: PointerEvent,
+    handlers: CanvasPointerGestureHandlers,
+  ) => CanvasPointerGestureController;
+  clearSelection: () => void;
+  // Transient ink is rendered by the host but owned by the active tool. Passing
+  // null removes the preview without committing it to the document.
+  setStrokePreview: (stroke: FreehandStroke | null) => void;
   insertStroke: (stroke: CanvasStrokeSnapshot) => void;
   selectStroke: (id: string) => void;
   createElement: (type: CanvasShapeType, at: CanvasPoint) => void;

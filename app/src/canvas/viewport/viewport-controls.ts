@@ -35,6 +35,7 @@ export interface ViewportControlsOptions extends ViewportZoomLimits {
   getScreen: () => ScreenSize;
   getFit: () => FitReference;
   onTouchGestureStart?: () => void;
+  onTwoFingerTap?: () => void;
   wheelZoomSpeed?: number;
   pinchZoomSpeed?: number;
 }
@@ -52,6 +53,24 @@ interface TouchGestureState {
 interface LastTouchGesture extends TouchGestureState {
   zoom: number;
 }
+
+type TouchStart = {
+  clientX: number;
+  clientY: number;
+  timeStamp: number;
+};
+
+type TwoFingerTapCandidate = {
+  pointerIds: Set<number>;
+  starts: Map<number, TouchStart>;
+  released: Set<number>;
+  startedAt: number;
+  valid: boolean;
+};
+
+const TWO_FINGER_TAP_MAX_INTERVAL_MS = 180;
+const TWO_FINGER_TAP_MAX_DURATION_MS = 320;
+const TWO_FINGER_TAP_MOVE_TOLERANCE_PX = 12;
 
 function targetPoint(target: Window | HTMLElement, clientX: number, clientY: number) {
   if (target instanceof Window) {
@@ -110,14 +129,76 @@ export function createViewportControls({
   getScreen,
   getFit,
   onTouchGestureStart,
+  onTwoFingerTap,
   minZoom = 0.2,
   maxZoom = 20,
   wheelZoomSpeed = 0.001,
   pinchZoomSpeed = 0.01,
 }: ViewportControlsOptions): ViewportControls {
   const touchPointers = new Map<number, PointerEvent>();
+  const touchStarts = new Map<number, TouchStart>();
   let lastTouchGesture: LastTouchGesture | null = null;
   let touchGestureActive = false;
+  let twoFingerTapCandidate: TwoFingerTapCandidate | null = null;
+
+  function pointerStayedWithinTapTolerance(
+    pointerId: number,
+    event: Pick<PointerEvent, "clientX" | "clientY">,
+    candidate: TwoFingerTapCandidate,
+  ) {
+    const start = candidate.starts.get(pointerId);
+    return Boolean(
+      start &&
+        Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) <=
+          TWO_FINGER_TAP_MOVE_TOLERANCE_PX,
+    );
+  }
+
+  function updateTwoFingerTapCandidate(e: PointerEvent) {
+    const candidate = twoFingerTapCandidate;
+    if (!candidate?.pointerIds.has(e.pointerId)) return;
+    if (
+      e.timeStamp - candidate.startedAt > TWO_FINGER_TAP_MAX_DURATION_MS ||
+      !pointerStayedWithinTapTolerance(e.pointerId, e, candidate)
+    ) {
+      candidate.valid = false;
+    }
+  }
+
+  function beginTwoFingerTapCandidate(e: PointerEvent) {
+    if (touchPointers.size > 2) {
+      if (twoFingerTapCandidate) twoFingerTapCandidate.valid = false;
+      return;
+    }
+    if (touchPointers.size !== 2) return;
+
+    const pointerIds = new Set(touchPointers.keys());
+    const starts = new Map<number, TouchStart>();
+    for (const pointerId of pointerIds) {
+      const start = touchStarts.get(pointerId);
+      if (start) starts.set(pointerId, start);
+    }
+    if (starts.size !== 2) return;
+
+    const startedAt = Math.min(...Array.from(starts.values(), (start) => start.timeStamp));
+    const latestStartedAt = Math.max(
+      ...Array.from(starts.values(), (start) => start.timeStamp),
+    );
+    const candidate: TwoFingerTapCandidate = {
+      pointerIds,
+      starts,
+      released: new Set(),
+      startedAt,
+      valid: latestStartedAt - startedAt <= TWO_FINGER_TAP_MAX_INTERVAL_MS,
+    };
+    for (const [pointerId, pointer] of touchPointers) {
+      if (!pointerStayedWithinTapTolerance(pointerId, pointer, candidate)) {
+        candidate.valid = false;
+      }
+    }
+    twoFingerTapCandidate = candidate;
+    updateTwoFingerTapCandidate(e);
+  }
 
   function touchGestureState(): TouchGestureState | null {
     const pointers = Array.from(touchPointers.values());
@@ -136,7 +217,13 @@ export function createViewportControls({
   function beginTouchPointer(e: PointerEvent) {
     if (e.pointerType !== "touch") return;
 
+    touchStarts.set(e.pointerId, {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      timeStamp: e.timeStamp,
+    });
     touchPointers.set(e.pointerId, e);
+    beginTwoFingerTapCandidate(e);
     if (touchPointers.size < 2) return;
 
     const gesture = touchGestureState();
@@ -158,6 +245,12 @@ export function createViewportControls({
 
     e.preventDefault();
     e.stopPropagation();
+
+    updateTwoFingerTapCandidate(e);
+    // Hold the camera still while this can still be a tap. Once either finger
+    // crosses the tolerance, the same event falls through and starts pan/zoom
+    // from the original two-finger gesture state.
+    if (twoFingerTapCandidate?.valid) return;
 
     const screen = getScreen();
     const fit = getFit();
@@ -186,7 +279,22 @@ export function createViewportControls({
     if (e.pointerType !== "touch" || !touchPointers.has(e.pointerId)) return;
 
     const wasGestureActive = touchGestureActive;
+    const candidate = twoFingerTapCandidate;
+    const wasTwoFingerTapSequence = Boolean(candidate?.pointerIds.has(e.pointerId));
+    let completedTwoFingerTap = false;
+    if (candidate?.pointerIds.has(e.pointerId)) {
+      updateTwoFingerTapCandidate(e);
+      if (e.type === "pointercancel") candidate.valid = false;
+      candidate.released.add(e.pointerId);
+      if (candidate.released.size === candidate.pointerIds.size) {
+        completedTwoFingerTap =
+          candidate.valid &&
+          e.timeStamp - candidate.startedAt <= TWO_FINGER_TAP_MAX_DURATION_MS;
+        twoFingerTapCandidate = null;
+      }
+    }
     touchPointers.delete(e.pointerId);
+    touchStarts.delete(e.pointerId);
     if (touchPointers.size >= 2) {
       const gesture = touchGestureState();
       lastTouchGesture = gesture ? { ...gesture, zoom: getCamera().zoom } : null;
@@ -195,10 +303,11 @@ export function createViewportControls({
       lastTouchGesture = null;
     }
 
-    if (wasGestureActive) {
+    if (wasGestureActive || wasTwoFingerTapSequence) {
       e.preventDefault();
       e.stopPropagation();
     }
+    if (completedTwoFingerTap) onTwoFingerTap?.();
   }
 
   let wheelRafId: number | null = null;
@@ -317,8 +426,10 @@ export function createViewportControls({
       target.removeEventListener("gesturechange", preventNativeViewportGesture);
       target.removeEventListener("gestureend", preventNativeViewportGesture);
       touchPointers.clear();
+      touchStarts.clear();
       touchGestureActive = false;
       lastTouchGesture = null;
+      twoFingerTapCandidate = null;
       if (wheelRafId !== null) {
         cancelAnimationFrame(wheelRafId);
         wheelRafId = null;

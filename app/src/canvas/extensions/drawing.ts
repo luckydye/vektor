@@ -1,3 +1,4 @@
+import { ref } from "vue";
 import * as Y from "yjs";
 import { canvasPenIcon, pencilIcon } from "#assets/icons.ts";
 import type { TranslationKey } from "#utils/lang.ts";
@@ -16,14 +17,12 @@ import {
   type SnapGuide,
   type WorldTransform,
 } from "../viewport/index.ts";
-import type { CanvasStroke, CanvasStrokeSnapshot, CanvasToolExtension } from "./types.ts";
-
-// The freehand draw tool. Placement is a streaming interaction, so it just
-// hands the pointerdown to the host's engine-managed drawing session.
-export const drawTool: CanvasToolExtension = {
-  id: "draw",
-  onPointerDown: (_at, event, ctx) => ctx.startFreehand(event),
-};
+import type {
+  CanvasPointerGestureSample,
+  CanvasStroke,
+  CanvasStrokeSnapshot,
+  CanvasToolExtension,
+} from "./types.ts";
 
 export type DrawStrokeMode = "pencil" | "pen";
 export type CanvasDrawingSession = {
@@ -76,6 +75,10 @@ export const DRAW_STROKE_MODES: Array<{
     icon: canvasPenIcon,
   },
 ];
+
+// Tool-specific UI state belongs to the extension. Canvas.vue only binds its
+// toolbar controls to this ref.
+export const activeDrawStrokeMode = ref<DrawStrokeMode>("pen");
 
 // addVelocityWidths measures velocity in world units/ms, so it would otherwise
 // taper differently depending on zoom. Multiplying the scale by the current
@@ -326,13 +329,12 @@ export function addCanvasDrawingPoint(
 
 export function addCanvasDrawingPoints(
   session: CanvasDrawingSession,
-  events: readonly PointerEvent[],
-  worldForEvent: (event: PointerEvent) => { x: number; y: number },
+  samples: readonly Pick<CanvasPointerGestureSample, "event" | "world">[],
 ): FreehandStroke | null {
   function* points(): Iterable<FreehandPoint> {
-    for (const event of events) {
+    for (const { event, world } of samples) {
       if (session.pointerId !== event.pointerId) continue;
-      yield freehandPointFromPointerEvent(event, worldForEvent(event), session.mode);
+      yield freehandPointFromPointerEvent(event, world, session.mode);
     }
   }
 
@@ -351,6 +353,36 @@ export function finishCanvasDrawingStroke(
     updatedAt: Date.now(),
   };
 }
+
+// Freehand drawing is a regular extension-owned pointer gesture. The host only
+// supplies coordinate conversion, pointer capture, preview rendering, and the
+// final stroke store through CanvasToolContext.
+export const drawTool: CanvasToolExtension = {
+  id: "draw",
+  onPointerDown: (at, event, ctx) => {
+    const started = startCanvasDrawingStroke(event, at, {
+      color: ctx.penColor(),
+      mode: activeDrawStrokeMode.value,
+      worldToScreenScale: ctx.viewportScale(),
+    });
+    if (!started) return;
+
+    ctx.beginPointerGesture(event, {
+      onMove: ({ samples }) => {
+        const preview = addCanvasDrawingPoints(started.session, samples);
+        if (preview) ctx.setStrokePreview(preview);
+      },
+      onEnd: () => {
+        const stroke = finishCanvasDrawingStroke(started.session);
+        ctx.setStrokePreview(null);
+        if (stroke) ctx.insertStroke(stroke);
+      },
+      onCancel: () => ctx.setStrokePreview(null),
+    });
+    ctx.clearSelection();
+    ctx.setStrokePreview(started.stroke);
+  },
+};
 
 function themedStroke(stroke: FreehandStroke, defaultInkColor: string): FreehandStroke {
   if (stroke.style.color !== FREEHAND_STYLE.color) {

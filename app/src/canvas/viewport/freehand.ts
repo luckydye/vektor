@@ -800,6 +800,29 @@ export function drawFreehandStroke(
   drawFreehandPath(ctx, stroke.path, transform, stroke.style);
 }
 
+// Fills an opaque silhouette around a stroke. This is used when replacing a
+// stroke directly inside a transparent raster cache: a small expansion removes
+// antialiased edge pixels that an exact destination-out redraw would leave behind.
+export function fillFreehandStrokeMask(
+  ctx: CanvasRenderingContext2D,
+  stroke: FreehandStroke,
+  transform: WorldTransform,
+  expand = 1,
+): void {
+  if (!stroke.path.start) return;
+  const mask = variableWidthPathFor(stroke.path, transform, stroke.style, expand);
+  if (!mask) return;
+
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#000";
+  ctx.translate(transform.dx, transform.dy);
+  const scale = transform.scale / mask.geometryScale;
+  ctx.scale(scale, scale);
+  ctx.fill(mask.path);
+  ctx.restore();
+}
+
 // Strokes the silhouette outline of a freehand stroke in screen space.
 // `expand` adds extra screen-pixel padding around the stroke shape, useful for
 // drawing a visible selection ring outside the stroke's actual edge.

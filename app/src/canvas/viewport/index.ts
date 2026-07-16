@@ -17,6 +17,7 @@ export {
   drawFreehandOutline,
   drawFreehandPath,
   drawFreehandStroke,
+  fillFreehandStrokeMask,
   filterFreehandPoints,
   simplifyFreehandPoints,
 } from "./freehand";

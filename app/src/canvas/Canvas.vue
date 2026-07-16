@@ -34,26 +34,22 @@ import {
   uploadIcon,
 } from "~/src/assets/icons.ts";
 import {
+  activeDrawStrokeMode,
   activeShapeId,
-  addCanvasDrawingPoints,
-  type CanvasDrawingSession,
   type CanvasElementContext,
   type CanvasShapeLibraryItem,
   cloneFreehandPoint,
   createCanvasExtensionManager,
   createStrokeMap,
   DRAW_STROKE_MODES,
-  type DrawStrokeMode,
   drawCanvasStrokes,
   FREEHAND_STYLE,
-  finishCanvasDrawingStroke,
   hitTestCanvasStroke,
   PEN_COLORS,
   renderCanvasInkOverlay,
   renderCanvasSelections,
   SHAPE_LIBRARY,
   setActiveShapeId,
-  startCanvasDrawingStroke,
   strokeStyleFromUnknown,
   toCanvasStroke,
 } from "./extensions/registry.ts";
@@ -65,6 +61,9 @@ import type {
   CanvasInputKind,
   CanvasPaintHelpers,
   CanvasPoint,
+  CanvasPointerGestureCancelReason,
+  CanvasPointerGestureEvent,
+  CanvasPointerGestureHandlers,
   CanvasSerializedShape,
   CanvasShape,
   CanvasShapeType,
@@ -113,6 +112,7 @@ import {
   type FitReference,
   type FreehandPoint,
   type FreehandStroke,
+  fillFreehandStrokeMask,
   panCameraByScreenDelta,
   type ScreenSize,
   type SnapGuide,
@@ -273,7 +273,6 @@ const activeColors = reactive<Record<string, string>>(
 );
 const penColor = ref<string>(PEN_COLORS[0]);
 const cursorColor = ref<string>(readCanvasCursorColor());
-const drawStrokeMode = ref<DrawStrokeMode>("pen");
 // Backdrop grid style, driven by the document's "gridtype" property. "grid"
 // draws ruled lines, "dots" a dot grid, and "clean" leaves the backdrop empty.
 type GridType = "grid" | "clean" | "dots";
@@ -320,7 +319,12 @@ let dragState: DragState | null = null;
 // True once a shape drag has actually moved the selection. Interactive
 // extensions use it to distinguish activation from repositioning.
 let dragMoved = false;
-let drawingSession: CanvasDrawingSession | null = null;
+type ActiveToolPointerGesture = {
+  pointerId: number;
+  captureTarget: HTMLElement | null;
+  handlers: CanvasPointerGestureHandlers;
+};
+let activeToolPointerGesture: ActiveToolPointerGesture | null = null;
 let activeFreehandStroke: FreehandStroke | null = null;
 // Screen-space position of the long-press context menu, null when hidden.
 const contextMenuPos = ref<{ x: number; y: number } | null>(null);
@@ -356,9 +360,21 @@ type StaticInkRasterBuild = {
   nextStrokeIndex: number;
   rafId: number | null;
 };
+type StrokeTransformState = {
+  originalCache: StaticInkRasterCache | null;
+  originalStrokes: CanvasStroke[];
+  strokes: CanvasStroke[];
+  dx: number;
+  dy: number;
+  renderedStrokes: CanvasStroke[];
+  renderedDx: number;
+  renderedDy: number;
+};
 let staticInkRasterCache: StaticInkRasterCache | null = null;
 let staticInkRasterBuild: StaticInkRasterBuild | null = null;
 let staticInkSpareCanvas: HTMLCanvasElement | null = null;
+let strokeTransformState: StrokeTransformState | null = null;
+let committingStrokeCacheUpdate = false;
 const intrinsicShapeSizes = shallowRef(
   new Map<string, { width: number; height: number }>(),
 );
@@ -863,6 +879,13 @@ function strokeBounds(stroke: Pick<CanvasStroke, "points">): Rect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+function strokeMaxWidth(stroke: Pick<CanvasStroke, "points" | "style">) {
+  return stroke.points.reduce(
+    (width, point) => Math.max(width, point.width ?? stroke.style.width),
+    stroke.style.width,
+  );
+}
+
 function strokeTransformControlPositions(stroke: CanvasStroke) {
   const bounds = strokeBounds(stroke);
   if (!bounds) return null;
@@ -1002,13 +1025,20 @@ function syncShapesFromY() {
 }
 
 function syncStrokesFromY() {
+  const previous = new Map(strokes.value.map((stroke) => [stroke.id, stroke]));
   strokes.value = [...yStrokes.entries()]
-    .map(([id, value]) => toStroke(id, value))
+    .map(([id, value]) => {
+      const existing = previous.get(id);
+      const updatedAt = value.get("updatedAt");
+      return existing && existing.updatedAt === updatedAt
+        ? existing
+        : toStroke(id, value);
+    })
     .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
   let pruned = false;
   for (const id of selectedStrokeIds.value) {
     const source = yStrokes.get(id);
-    if (!source || toStroke(id, source).locked) {
+    if (!source || source.get("locked") === true) {
       selectedStrokeIds.value.delete(id);
       pruned = true;
     }
@@ -1341,6 +1371,7 @@ function scheduleInkRender() {
   if (inkRafId !== null) return;
   inkRafId = requestAnimationFrame(() => {
     inkRafId = null;
+    renderStrokeTransformCache();
     renderActiveInk();
   });
 }
@@ -1371,9 +1402,15 @@ function renderStaticInk(context: CanvasRenderingContext2D) {
   const currentTransform = transform.value;
   const color = defaultInkColor();
   let cache = staticInkRasterCache;
-  if (!cache || !staticInkRasterCacheMatches(cache, color)) {
+  if (!cache || !staticInkRasterCacheSurfaceMatches(cache, color)) {
     cache = buildStaticInkRasterCache(currentTransform, color);
     staticInkRasterCache = cache;
+  } else if (cache.strokes !== strokes.value) {
+    if (committingStrokeCacheUpdate) cache.strokes = strokes.value;
+    else {
+      cache = buildStaticInkRasterCache(currentTransform, color);
+      staticInkRasterCache = cache;
+    }
   }
 
   const { ratio, x, y } = staticInkRasterCachePlacement(cache, currentTransform);
@@ -1387,15 +1424,23 @@ function renderStaticInk(context: CanvasRenderingContext2D) {
     cache.screen.height * ratio,
   );
 
-  if (staticInkRasterCacheNeedsRefresh(cache, currentTransform)) {
+  if (
+    !strokeTransformState &&
+    staticInkRasterCacheNeedsRefresh(cache, currentTransform)
+  ) {
     scheduleStaticInkRasterRefresh(currentTransform, color);
   }
 }
 
 function staticInkRasterCacheMatches(cache: StaticInkRasterCache, color: string) {
+  return (
+    cache.strokes === strokes.value && staticInkRasterCacheSurfaceMatches(cache, color)
+  );
+}
+
+function staticInkRasterCacheSurfaceMatches(cache: StaticInkRasterCache, color: string) {
   return !(
     cache.dpr !== dpr ||
-    cache.strokes !== strokes.value ||
     cache.defaultInkColor !== color ||
     cache.screen.width !== screen.value.width + STATIC_INK_CACHE_MARGIN * 2 ||
     cache.screen.height !== screen.value.height + STATIC_INK_CACHE_MARGIN * 2
@@ -1480,6 +1525,7 @@ function prepareStaticInkRasterCache(
 function paintStaticInkRasterCache(
   cache: StaticInkRasterCache,
   strokesToPaint: CanvasStroke[],
+  offset: { dx: number; dy: number } = { dx: 0, dy: 0 },
 ) {
   const context = cache.canvas.getContext("2d");
   if (!context) throw new Error("Static ink cache requires a 2D canvas context");
@@ -1488,8 +1534,10 @@ function paintStaticInkRasterCache(
     screen: cache.screen,
     transform: {
       scale: cache.transform.scale,
-      dx: cache.transform.dx + STATIC_INK_CACHE_MARGIN,
-      dy: cache.transform.dy + STATIC_INK_CACHE_MARGIN,
+      dx:
+        cache.transform.dx + STATIC_INK_CACHE_MARGIN + offset.dx * cache.transform.scale,
+      dy:
+        cache.transform.dy + STATIC_INK_CACHE_MARGIN + offset.dy * cache.transform.scale,
     },
     strokes: strokesToPaint,
     defaultInkColor: cache.defaultInkColor,
@@ -1581,6 +1629,240 @@ function paintStaticInkRasterRefreshBatch() {
   renderScene();
 }
 
+function updateStaticInkCacheStrokes(
+  strokesToPaint: CanvasStroke[],
+  offset: { dx: number; dy: number },
+  operation: GlobalCompositeOperation,
+) {
+  const cache = staticInkRasterCache;
+  if (!cache || !staticInkRasterCacheMatches(cache, defaultInkColor())) return false;
+  cancelStaticInkRasterRefresh();
+  const context = cache.canvas.getContext("2d");
+  if (!context) return false;
+  context.save();
+  context.globalCompositeOperation = operation;
+  if (operation === "destination-out") {
+    const cacheTransform = {
+      scale: cache.transform.scale,
+      dx:
+        cache.transform.dx + STATIC_INK_CACHE_MARGIN + offset.dx * cache.transform.scale,
+      dy:
+        cache.transform.dy + STATIC_INK_CACHE_MARGIN + offset.dy * cache.transform.scale,
+    };
+    for (const stroke of strokesToPaint) {
+      fillFreehandStrokeMask(context, stroke, cacheTransform, 1.5);
+    }
+  } else {
+    paintStaticInkRasterCache(cache, strokesToPaint, offset);
+  }
+  context.restore();
+  return true;
+}
+
+function cloneStaticInkCacheForTransform() {
+  const source = staticInkRasterCache;
+  if (!source || !staticInkRasterCacheMatches(source, defaultInkColor())) return null;
+  cancelStaticInkRasterRefresh();
+
+  const canvas = staticInkSpareCanvas ?? document.createElement("canvas");
+  staticInkSpareCanvas = null;
+  if (canvas.width !== source.canvas.width) canvas.width = source.canvas.width;
+  if (canvas.height !== source.canvas.height) canvas.height = source.canvas.height;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = "copy";
+  context.drawImage(source.canvas, 0, 0);
+  context.globalCompositeOperation = "source-over";
+
+  staticInkRasterCache = { ...source, canvas };
+  staticInkSpareCanvas = source.canvas;
+  return source;
+}
+
+function beginStrokeTransform(strokesToMove: CanvasStroke[]) {
+  if (strokesToMove.length === 0) return;
+  const originalCache = cloneStaticInkCacheForTransform();
+  strokeTransformState = {
+    originalCache,
+    originalStrokes: strokesToMove,
+    strokes: strokesToMove,
+    dx: 0,
+    dy: 0,
+    renderedStrokes: strokesToMove,
+    renderedDx: 0,
+    renderedDy: 0,
+  };
+  hideSelectionLayer();
+  renderScene();
+  renderActiveInk();
+}
+
+function eraseTransformedStrokesFromCache(strokesToMove: CanvasStroke[]) {
+  const cache = staticInkRasterCache;
+  if (!cache) return;
+  updateStaticInkCacheStrokes(strokesToMove, { dx: 0, dy: 0 }, "destination-out");
+  const movedIds = new Set(strokesToMove.map((stroke) => stroke.id));
+  const repairBounds = strokesToMove.flatMap((stroke) => {
+    const bounds = strokeBounds(stroke);
+    if (!bounds) return [];
+    const padding = Math.max(strokeMaxWidth(stroke), 18) / 2 + 2 / cache.transform.scale;
+    return [
+      {
+        x: bounds.x - padding,
+        y: bounds.y - padding,
+        width: bounds.width + padding * 2,
+        height: bounds.height + padding * 2,
+      },
+    ];
+  });
+  const overlappingStrokes = strokes.value.filter((stroke) => {
+    if (movedIds.has(stroke.id)) return false;
+    const bounds = strokeBounds(stroke);
+    if (!bounds) return false;
+    const padding = strokeMaxWidth(stroke) / 2;
+    const paintedBounds = {
+      x: bounds.x - padding,
+      y: bounds.y - padding,
+      width: bounds.width + padding * 2,
+      height: bounds.height + padding * 2,
+    };
+    return repairBounds.some((region) => rectsIntersect(region, paintedBounds));
+  });
+  if (overlappingStrokes.length > 0) {
+    const context = cache.canvas.getContext("2d");
+    if (!context) return;
+    context.save();
+    context.setTransform(cache.dpr, 0, 0, cache.dpr, 0, 0);
+    context.beginPath();
+    for (const bounds of repairBounds) {
+      context.rect(
+        bounds.x * cache.transform.scale + cache.transform.dx + STATIC_INK_CACHE_MARGIN,
+        bounds.y * cache.transform.scale + cache.transform.dy + STATIC_INK_CACHE_MARGIN,
+        bounds.width * cache.transform.scale,
+        bounds.height * cache.transform.scale,
+      );
+    }
+    context.clip();
+    updateStaticInkCacheStrokes(overlappingStrokes, { dx: 0, dy: 0 }, "source-over");
+    context.restore();
+  }
+}
+
+function restoreStrokeCacheDamage(
+  source: StaticInkRasterCache,
+  target: StaticInkRasterCache,
+  strokesToRestore: CanvasStroke[],
+  dx: number,
+  dy: number,
+) {
+  const context = target.canvas.getContext("2d");
+  if (!context) return false;
+
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = "source-over";
+  for (const stroke of strokesToRestore) {
+    const bounds = strokeBounds(stroke);
+    if (!bounds) continue;
+    const padding = Math.max(strokeMaxWidth(stroke), 18) / 2 + 4 / source.transform.scale;
+    const left =
+      (bounds.x + dx - padding) * source.transform.scale +
+      source.transform.dx +
+      STATIC_INK_CACHE_MARGIN;
+    const top =
+      (bounds.y + dy - padding) * source.transform.scale +
+      source.transform.dy +
+      STATIC_INK_CACHE_MARGIN;
+    const right =
+      (bounds.x + dx + bounds.width + padding) * source.transform.scale +
+      source.transform.dx +
+      STATIC_INK_CACHE_MARGIN;
+    const bottom =
+      (bounds.y + dy + bounds.height + padding) * source.transform.scale +
+      source.transform.dy +
+      STATIC_INK_CACHE_MARGIN;
+    const x = Math.max(0, Math.floor(left * source.dpr));
+    const y = Math.max(0, Math.floor(top * source.dpr));
+    const endX = Math.min(source.canvas.width, Math.ceil(right * source.dpr));
+    const endY = Math.min(source.canvas.height, Math.ceil(bottom * source.dpr));
+    const width = endX - x;
+    const height = endY - y;
+    if (width <= 0 || height <= 0) continue;
+    context.clearRect(x, y, width, height);
+    context.drawImage(source.canvas, x, y, width, height, x, y, width, height);
+  }
+  context.restore();
+  return true;
+}
+
+function renderStrokeTransformCache() {
+  const state = strokeTransformState;
+  const target = staticInkRasterCache;
+  const source = state?.originalCache;
+  if (!state || !source || !target || source.canvas === target.canvas) return false;
+
+  if (
+    !restoreStrokeCacheDamage(
+      source,
+      target,
+      state.renderedStrokes,
+      state.renderedDx,
+      state.renderedDy,
+    ) ||
+    !restoreStrokeCacheDamage(source, target, state.originalStrokes, 0, 0)
+  ) {
+    return false;
+  }
+
+  const moved =
+    state.dx !== 0 ||
+    state.dy !== 0 ||
+    state.strokes.some((stroke, index) => stroke !== state.originalStrokes[index]);
+  if (moved) {
+    eraseTransformedStrokesFromCache(state.originalStrokes);
+    updateStaticInkCacheStrokes(
+      state.strokes,
+      { dx: state.dx, dy: state.dy },
+      "source-over",
+    );
+  }
+  state.renderedStrokes = state.strokes;
+  state.renderedDx = state.dx;
+  state.renderedDy = state.dy;
+  renderScene();
+  return true;
+}
+
+function setStrokeTransform(strokesToMove: CanvasStroke[], dx = 0, dy = 0) {
+  const state = strokeTransformState;
+  if (!state) return;
+  state.strokes = strokesToMove;
+  state.dx = dx;
+  state.dy = dy;
+  scheduleInkRender();
+}
+
+function clearStrokeTransform() {
+  strokeTransformState = null;
+  renderActiveInk();
+  renderSelections();
+}
+
+function cancelStrokeTransform() {
+  const state = strokeTransformState;
+  if (!state) return;
+  if (state.originalCache && staticInkRasterCache) {
+    const modifiedCanvas = staticInkRasterCache.canvas;
+    staticInkRasterCache = state.originalCache;
+    staticInkSpareCanvas = modifiedCanvas;
+  }
+  clearStrokeTransform();
+  renderScene();
+}
+
 function renderActiveInk() {
   const canvas = activeInkRef.value;
   const context = canvas?.getContext("2d");
@@ -1601,6 +1883,10 @@ function renderSelections() {
   const canvas = selectionRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
+  if (strokeTransformState) {
+    hideSelectionLayer();
+    return;
+  }
 
   if (selectionLayerHidden) {
     canvas.style.visibility = "";
@@ -1722,14 +2008,105 @@ function stopActiveEdit() {
 // Insertion/engine services the tool extensions (draw/shape/create) drive.
 const canvasToolContext: CanvasToolContext = {
   penColor: () => penColor.value,
-  startFreehand: (event) => startFreehand(event),
-  insertStroke: (stroke) => yStrokes.set(stroke.id, createStrokeMap(stroke)),
+  viewportScale: () => transform.value.scale,
+  beginPointerGesture,
+  clearSelection,
+  setStrokePreview: (stroke) => {
+    activeFreehandStroke = stroke;
+    scheduleInkRender();
+  },
+  insertStroke: insertCanvasStroke,
   selectStroke: (id) => selectStroke(id, false),
   createElement: (type, at) => addShape(type, at),
   setActiveTool: (tool) => {
     activeTool.value = tool;
   },
 };
+
+function insertCanvasStroke(stroke: CanvasStrokeSnapshot) {
+  const completedStroke = toCanvasStroke(stroke.id, stroke);
+  const cacheUpdated = updateStaticInkCacheStrokes(
+    [completedStroke],
+    { dx: 0, dy: 0 },
+    "source-over",
+  );
+  committingStrokeCacheUpdate = cacheUpdated;
+  try {
+    yStrokes.set(stroke.id, createStrokeMap(stroke));
+  } finally {
+    committingStrokeCacheUpdate = false;
+  }
+}
+
+function pointerGestureSample(event: PointerEvent) {
+  const screen = screenPoint(event);
+  return { event, screen, world: screenToWorld(screen) };
+}
+
+function pointerGestureEvent(event: PointerEvent): CanvasPointerGestureEvent {
+  const coalesced = event.getCoalescedEvents?.() ?? [];
+  return {
+    ...pointerGestureSample(event),
+    samples: (coalesced.length > 0 ? coalesced : [event]).map(pointerGestureSample),
+  };
+}
+
+function releaseGesturePointer(gesture: ActiveToolPointerGesture) {
+  const target = gesture.captureTarget;
+  if (target?.hasPointerCapture(gesture.pointerId)) {
+    target.releasePointerCapture(gesture.pointerId);
+  }
+}
+
+function cancelToolPointerGesture(reason: CanvasPointerGestureCancelReason) {
+  const gesture = activeToolPointerGesture;
+  if (!gesture) return false;
+  activeToolPointerGesture = null;
+  releaseGesturePointer(gesture);
+  gesture.handlers.onCancel?.(reason, canvasToolContext);
+  return true;
+}
+
+function beginPointerGesture(
+  event: PointerEvent,
+  handlers: CanvasPointerGestureHandlers,
+) {
+  cancelToolPointerGesture("superseded");
+  const captureTarget =
+    event.currentTarget instanceof HTMLElement ? event.currentTarget : viewportRef.value;
+  const gesture: ActiveToolPointerGesture = {
+    pointerId: event.pointerId,
+    captureTarget,
+    handlers,
+  };
+  activeToolPointerGesture = gesture;
+  hoveredLockedElement.value = null;
+  captureTarget?.setPointerCapture(event.pointerId);
+  return {
+    pointerId: event.pointerId,
+    cancel: () => {
+      if (activeToolPointerGesture === gesture) {
+        cancelToolPointerGesture("cancelled");
+      }
+    },
+  };
+}
+
+function moveToolPointerGesture(event: PointerEvent) {
+  const gesture = activeToolPointerGesture;
+  if (!gesture || gesture.pointerId !== event.pointerId) return false;
+  gesture.handlers.onMove?.(pointerGestureEvent(event), canvasToolContext);
+  return true;
+}
+
+function endToolPointerGesture(event: PointerEvent) {
+  const gesture = activeToolPointerGesture;
+  if (!gesture || gesture.pointerId !== event.pointerId) return false;
+  activeToolPointerGesture = null;
+  releaseGesturePointer(gesture);
+  gesture.handlers.onEnd?.(pointerGestureEvent(event), canvasToolContext);
+  return true;
+}
 
 function addShape(type: CanvasShapeType, at: { x: number; y: number }) {
   const extension = extensionManager.get(type);
@@ -1785,6 +2162,23 @@ function translateStroke(id: string, points: FreehandPoint[], dx: number, dy: nu
     id,
     points.map((point) => ({ ...point, x: point.x + dx, y: point.y + dy })),
   );
+}
+
+function strokeFromTransformedPoints(
+  stroke: CanvasStroke,
+  points: FreehandPoint[],
+  rotation = stroke.rotation,
+) {
+  return toCanvasStroke(stroke.id, {
+    id: stroke.id,
+    points,
+    style: { ...stroke.style },
+    kind: stroke.kind,
+    rotation,
+    authorId: stroke.authorId,
+    locked: stroke.locked,
+    updatedAt: stroke.updatedAt,
+  });
 }
 
 function updateStrokePoints(id: string, points: FreehandPoint[], rotation?: number) {
@@ -1965,33 +2359,6 @@ function deleteSelectedShape() {
   selectedStrokeIds.value = new Set();
 }
 
-function startFreehand(event: PointerEvent) {
-  const started = startCanvasDrawingStroke(event, screenToWorld(screenPoint(event)), {
-    color: penColor.value,
-    mode: drawStrokeMode.value,
-    worldToScreenScale: transform.value.scale,
-  });
-  if (!started) return;
-
-  clearSelection();
-  hoveredLockedElement.value = null;
-  drawingSession = started.session;
-  activeFreehandStroke = started.stroke;
-  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  event.preventDefault();
-}
-
-function finishFreehand(event: PointerEvent) {
-  if (!drawingSession || drawingSession.pointerId !== event.pointerId) return;
-  const finished = finishCanvasDrawingStroke(drawingSession);
-  if (finished) {
-    yStrokes.set(finished.id, createStrokeMap(finished));
-  }
-  drawingSession = null;
-  activeFreehandStroke = null;
-  renderInk();
-}
-
 // Snapshots the start positions of everything that should move with a shape
 // drag: the whole current selection, plus the contents of any selected
 // section. Strokes are deduped against section contents so a stroke that is
@@ -2028,6 +2395,15 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
   };
 }
 
+function beginDragStrokeTransform(drag: Extract<DragState, { type: "shape" }>) {
+  beginStrokeTransform(
+    drag.strokes.flatMap((item) => {
+      const stroke = strokesById.value.get(item.id);
+      return stroke ? [stroke] : [];
+    }),
+  );
+}
+
 function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
   if (event.button !== 0) return;
   if (shape.locked) {
@@ -2055,6 +2431,7 @@ function startShapeDrag(shape: CanvasShape, event: PointerEvent) {
 
   dragMoved = false;
   dragState = buildShapeDragState(event);
+  beginDragStrokeTransform(dragState);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   if (suppressesNativePointer(shape)) {
     event.preventDefault();
@@ -2127,6 +2504,7 @@ function startStrokeResize(stroke: CanvasStroke, event: PointerEvent) {
     startBounds: bounds,
     initialPoints: stroke.points.map(cloneFreehandPoint),
   };
+  beginStrokeTransform([stroke]);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
 }
@@ -2145,6 +2523,7 @@ function startStrokeRotation(stroke: CanvasStroke, event: PointerEvent) {
     initialRotation: stroke.rotation ?? 0,
     initialPoints: stroke.points.map(cloneFreehandPoint),
   };
+  beginStrokeTransform([stroke]);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
 }
@@ -2330,6 +2709,7 @@ function handleViewportPointerDown(event: PointerEvent) {
       }
       dragMoved = false;
       dragState = buildShapeDragState(event);
+      beginDragStrokeTransform(dragState);
       (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       event.preventDefault();
       return;
@@ -2366,6 +2746,7 @@ function handleViewportPointerDown(event: PointerEvent) {
       }
       dragMoved = false;
       dragState = buildShapeDragState(event);
+      beginDragStrokeTransform(dragState);
       (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       event.preventDefault();
       return;
@@ -2565,14 +2946,8 @@ function handlePointerMove(event: PointerEvent) {
   const point = screenPoint(event);
   localPointer = screenToWorld(point);
 
-  if (drawingSession && drawingSession.pointerId === event.pointerId) {
-    const coalescedEvents = event.getCoalescedEvents();
-    activeFreehandStroke = addCanvasDrawingPoints(
-      drawingSession,
-      coalescedEvents.length > 0 ? coalescedEvents : [event],
-      (coalesced) => screenToWorld(screenPoint(coalesced)),
-    );
-    scheduleInkRender();
+  if (moveToolPointerGesture(event)) {
+    schedulePresenceUpdate();
     event.preventDefault();
     return;
   }
@@ -2665,14 +3040,16 @@ function handlePointerMove(event: PointerEvent) {
     });
     const scaleX = resized.width / dragState.startBounds.width;
     const scaleY = resized.height / dragState.startBounds.height;
-    updateStrokePoints(
-      dragState.strokeId,
-      dragState.initialPoints.map((point) => ({
-        ...point,
-        x: resized.x + (point.x - dragState.startBounds.x) * scaleX,
-        y: resized.y + (point.y - dragState.startBounds.y) * scaleY,
-      })),
-    );
+    setStrokeTransform([
+      strokeFromTransformedPoints(
+        stroke,
+        dragState.initialPoints.map((point) => ({
+          ...point,
+          x: resized.x + (point.x - dragState.startBounds.x) * scaleX,
+          y: resized.y + (point.y - dragState.startBounds.y) * scaleY,
+        })),
+      ),
+    ]);
     return;
   }
 
@@ -2682,21 +3059,24 @@ function handlePointerMove(event: PointerEvent) {
     const rawRotation = rotationFromPointer(dragState.center, world);
     const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
     const delta = ((rotation - dragState.startRotation + 540) % 360) - 180;
-    updateStrokePoints(
-      dragState.strokeId,
-      dragState.initialPoints.map((point) => {
-        const rotated = rotateVector(
-          { x: point.x - dragState.center.x, y: point.y - dragState.center.y },
-          delta,
-        );
-        return {
-          ...point,
-          x: dragState.center.x + rotated.x,
-          y: dragState.center.y + rotated.y,
-        };
-      }),
-      normalizeRotation(dragState.initialRotation + delta),
-    );
+    const normalizedRotation = normalizeRotation(dragState.initialRotation + delta);
+    setStrokeTransform([
+      strokeFromTransformedPoints(
+        stroke,
+        dragState.initialPoints.map((point) => {
+          const rotated = rotateVector(
+            { x: point.x - dragState.center.x, y: point.y - dragState.center.y },
+            delta,
+          );
+          return {
+            ...point,
+            x: dragState.center.x + rotated.x,
+            y: dragState.center.y + rotated.y,
+          };
+        }),
+        normalizedRotation,
+      ),
+    ]);
     return;
   }
 
@@ -2726,20 +3106,59 @@ function handlePointerMove(event: PointerEvent) {
         y: Math.round(moved.y + dy),
       });
     }
-    for (const stroke of drag.strokes) {
-      const currentStroke = strokesById.value.get(stroke.id);
-      if (!currentStroke || !canMoveStroke(currentStroke)) continue;
-      translateStroke(stroke.id, stroke.points, dx, dy);
-    }
   });
+  if (strokeTransformState) {
+    setStrokeTransform(strokeTransformState.originalStrokes, dx, dy);
+  }
   // Yjs shape edits don't trigger an ink redraw, so guides won't appear without
   // this explicit render.
   scheduleInkRender();
 }
 
+function commitStrokeTransform(state: DragState) {
+  const transformState = strokeTransformState;
+  if (!transformState) return;
+
+  const hasChange =
+    state.type === "shape"
+      ? transformState.dx !== 0 || transformState.dy !== 0
+      : transformState.strokes.some(
+          (stroke, index) => stroke !== transformState.originalStrokes[index],
+        );
+  if (!hasChange) {
+    cancelStrokeTransform();
+    return;
+  }
+
+  const cacheUpdated = renderStrokeTransformCache();
+  committingStrokeCacheUpdate = cacheUpdated;
+  try {
+    ydoc.transact(() => {
+      if (state.type === "shape") {
+        for (const stroke of state.strokes) {
+          translateStroke(stroke.id, stroke.points, transformState.dx, transformState.dy);
+        }
+        return;
+      }
+      if (state.type !== "stroke-resize" && state.type !== "stroke-rotate") return;
+      const stroke = transformState.strokes[0];
+      if (!stroke) return;
+      updateStrokePoints(
+        state.strokeId,
+        stroke.points,
+        state.type === "stroke-rotate" ? stroke.rotation : undefined,
+      );
+    });
+  } finally {
+    committingStrokeCacheUpdate = false;
+  }
+  clearStrokeTransform();
+}
+
 function handlePointerUp(event: PointerEvent) {
-  finishFreehand(event);
+  if (endToolPointerGesture(event)) event.preventDefault();
   if (dragState?.pointerId === event.pointerId) {
+    commitStrokeTransform(dragState);
     if (dragState.type === "marquee") marqueeRect.value = null;
     if (dragState.type === "pan") isPanning.value = false;
     if (activeSnapGuides.length > 0) {
@@ -2757,14 +3176,7 @@ function cancelTransformDrag() {
       updateShapeFrame(dragState.shapeId, dragState.initial);
     }
   } else if (dragState?.type === "stroke-resize" || dragState?.type === "stroke-rotate") {
-    const stroke = strokesById.value.get(dragState.strokeId);
-    if (stroke && canMoveStroke(stroke)) {
-      updateStrokePoints(
-        dragState.strokeId,
-        dragState.initialPoints,
-        dragState.type === "stroke-rotate" ? dragState.initialRotation : undefined,
-      );
-    }
+    cancelStrokeTransform();
   } else {
     return false;
   }
@@ -2773,10 +3185,17 @@ function cancelTransformDrag() {
 }
 
 function handlePointerCancel(event: PointerEvent) {
+  if (
+    activeToolPointerGesture?.pointerId === event.pointerId &&
+    cancelToolPointerGesture("pointercancel")
+  ) {
+    return;
+  }
   if (!dragState || dragState.pointerId !== event.pointerId) return;
   if (cancelTransformDrag()) return;
   if (dragState.type === "marquee") marqueeRect.value = null;
   if (dragState.type === "pan") isPanning.value = false;
+  cancelStrokeTransform();
   dragState = null;
   if (activeSnapGuides.length > 0) {
     activeSnapGuides = [];
@@ -3191,6 +3610,45 @@ function reservedSidebarWidth(): number {
   return Math.max(0, rect?.right ?? 0);
 }
 
+function isBrowserFindTarget(shape: CanvasShape): boolean {
+  return shape.type === "text" || shape.type === "note";
+}
+
+function moveCameraToShape(shape: CanvasShape) {
+  const bounds = shapeAabb(shape);
+  const inset = reservedSidebarWidth();
+  const scale = transform.value.scale;
+  camera.value = {
+    ...camera.value,
+    // Center within the unobscured part of the canvas, not behind the sidebar.
+    centerX: bounds.x + bounds.width / 2 - inset / (2 * scale),
+    centerY: bounds.y + bounds.height / 2,
+  };
+}
+
+function handleBrowserFindMatch(event: Event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+
+  const article = target.closest<HTMLElement>(".canvas-shape[data-shape-id]");
+  const shapeId = article?.dataset.shapeId;
+  const shape = shapeId ? shapesById.value.get(shapeId) : null;
+  if (!article || !shape || !isBrowserFindTarget(shape)) return;
+
+  moveCameraToShape(shape);
+
+  // The browser removes hidden=until-found after beforematch. Restore the
+  // marker once it has finished revealing this match so advancing to another
+  // result in the same shape emits beforematch again. The author-level
+  // content-visibility:auto rule keeps these marked shapes normally visible.
+  requestAnimationFrame(() => {
+    if (article.isConnected) article.setAttribute("hidden", "until-found");
+    // Native find may try to scroll the overflow-hidden viewport as well as
+    // revealing the match. Camera state is the canvas's only scroll model.
+    viewportRef.value?.scrollTo(0, 0);
+  });
+}
+
 function fitView(maxZoom = 5) {
   const xs = [
     ...shapes.value.flatMap((shape) => {
@@ -3274,9 +3732,11 @@ function handleKeydown(event: KeyboardEvent) {
   // retarget to the host element, so closest() must match the host itself.
   if (target?.closest("textarea, input, select, document-view")) return;
 
-  if (event.key === "Escape" && cancelTransformDrag()) {
-    event.preventDefault();
-    return;
+  if (event.key === "Escape") {
+    if (cancelToolPointerGesture("escape") || cancelTransformDrag()) {
+      event.preventDefault();
+      return;
+    }
   }
 
   const key = event.key.toLowerCase();
@@ -3449,12 +3909,12 @@ onMounted(() => {
     getScreen: () => screen.value,
     getFit: () => FIT_REFERENCE,
     onTouchGestureStart: () => {
+      cancelToolPointerGesture("touch-gesture");
       dragState = null;
       isPanning.value = false;
-      drawingSession = null;
-      activeFreehandStroke = null;
       renderInk();
     },
+    onTwoFingerTap: undo,
     minZoom: 0.15,
     maxZoom: 10,
   });
@@ -3498,6 +3958,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  cancelToolPointerGesture("unmount");
   viewportControls?.dispose();
   resizeObserver?.disconnect();
   themeObserver?.disconnect();
@@ -3550,11 +4011,11 @@ onUnmounted(() => {
           :key="mode.id"
           type="button"
           class="canvas-draw-mode"
-          :class="{ active: drawStrokeMode === mode.id }"
+          :class="{ active: activeDrawStrokeMode === mode.id }"
           :aria-label="t(mode.label)"
-          :aria-pressed="drawStrokeMode === mode.id"
+          :aria-pressed="activeDrawStrokeMode === mode.id"
           :title="t(mode.label)"
-          @click="drawStrokeMode = mode.id"
+          @click="activeDrawStrokeMode = mode.id"
         >
           <div
             class="svg-icon canvas-draw-mode-icon"
@@ -3725,6 +4186,7 @@ onUnmounted(() => {
         :style="{
           transform: `translate(${transform.dx}px, ${transform.dy}px) scale(${transform.scale})`,
         }"
+        @beforematch="handleBrowserFindMatch"
       >
         <article
           v-for="shape in domShapes"
@@ -3736,6 +4198,7 @@ onUnmounted(() => {
           ]"
           :style="articleStyle(shape)"
           :data-shape-id="shape.id"
+          :hidden.attr="isBrowserFindTarget(shape) ? 'until-found' : undefined"
         >
           <!-- Extension-owned custom element (note, text, …). Falls back to the
                inline branches below for types not yet migrated. -->
