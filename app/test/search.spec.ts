@@ -77,6 +77,11 @@ beforeAll(async () => {
           "# React Components\n\nReact is a JavaScript library for building user interfaces with reusable components.",
         properties: { title: "React Components", category: "Frontend" },
       },
+      {
+        slug: "title-only-match",
+        content: "# Unrelated body\n\nThis document deliberately has no matching body text.",
+        properties: { title: "Search Needle", category: "Testing" },
+      },
     ];
 
     for (const doc of testDocs) {
@@ -167,6 +172,17 @@ describe("Search API Tests", () => {
     expect(data.total).toBeGreaterThan(0);
     const slugs = data.results.map((r: any) => r.slug);
     expect(slugs).toContain("typescript-basics");
+  });
+
+  it("should find documents when only the title matches", async () => {
+    const response = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/search?q=needle`,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const slugs = data.results.map((r: any) => r.slug);
+    expect(slugs).toContain("title-only-match");
   });
 
   it("should handle quoted phrases", async () => {

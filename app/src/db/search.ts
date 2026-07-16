@@ -362,7 +362,7 @@ export async function searchDocuments(
         .select({ id: document.id })
         .from(document)
         .where(
-          sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel})
+          sql`(search_embedding IS NULL OR search_text IS NULL OR search_embedding_model IS NULL OR search_embedding_model != ${embeddingModel} OR search_updated_at IS NULL OR search_updated_at < updated_at)
             AND (type IS NULL OR type != 'canvas')
             AND ${nonArchivedDocumentCondition}`,
         )
@@ -443,6 +443,7 @@ export async function searchDocuments(
       slug: string;
       type: string | null;
       content: string;
+      title: string | null;
       searchText: string | null;
       searchEmbedding: string | null;
       searchEmbeddingModel: string | null;
@@ -460,6 +461,7 @@ export async function searchDocuments(
         d.slug,
         d.type,
         d.content,
+        title.value as title,
         d.search_text as searchText,
         d.search_embedding as searchEmbedding,
         d.search_embedding_model as searchEmbeddingModel,
@@ -472,12 +474,21 @@ export async function searchDocuments(
         d.created_at as createdAt,
         d.updated_at as updatedAt
       FROM document d
+      LEFT JOIN property title ON title.document_id = d.id AND title.key = 'title'
       WHERE ${nonArchivedColumnCondition("d.archived")}
     `);
 
     const ranked = candidates
       .map((candidate) => {
-        const textForScoring = candidate.searchText ?? candidate.content;
+        // Read the title directly as well as from the cached search text. The
+        // latter is updated asynchronously after a title edit and may also be
+        // unavailable when the embedding runtime cannot index a document.
+        const title = candidate.title
+          ? propertyValueToText(parseStoredPropertyValue(candidate.title))
+          : "";
+        const textForScoring = [title, candidate.searchText ?? candidate.content]
+          .filter(Boolean)
+          .join("\n\n");
         const keywordScore = scoreKeywordOverlap(query, textForScoring);
 
         let semanticScore: number | null = null;
