@@ -1,4 +1,4 @@
-import { pointInRotatedShape } from "#canvas/geometry.ts";
+import { pointInRotatedShape } from "#canvas/viewport/geometry.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import {
   IMAGE_RESIZE_TIERS,

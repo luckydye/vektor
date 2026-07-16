@@ -6,7 +6,7 @@ import {
   rotatedShapeCorners,
   rotationFromPointer,
   snapRotation,
-} from "#canvas/geometry.ts";
+} from "#canvas/viewport/geometry.ts";
 
 describe("canvas transform geometry", () => {
   const shape = { x: 100, y: 200, width: 80, height: 40, rotation: 90 };

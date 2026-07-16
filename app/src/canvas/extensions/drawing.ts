@@ -192,6 +192,43 @@ function distanceToSegment(
   return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
 }
 
+type StrokePointBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+// Strokes are immutable render snapshots. Cache their point extents so hover
+// hit-testing does not walk every point of every stroke before it can reject a
+// far-away stroke.
+const strokePointBounds = new WeakMap<CanvasStroke, StrokePointBounds | null>();
+
+function pointBoundsForStroke(stroke: CanvasStroke): StrokePointBounds | null {
+  const cached = strokePointBounds.get(stroke);
+  if (cached !== undefined) return cached;
+  if (stroke.points.length === 0) {
+    strokePointBounds.set(stroke, null);
+    return null;
+  }
+
+  let minX = stroke.points[0].x;
+  let minY = stroke.points[0].y;
+  let maxX = minX;
+  let maxY = minY;
+  for (let index = 1; index < stroke.points.length; index += 1) {
+    const point = stroke.points[index];
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  const bounds = { minX, minY, maxX, maxY };
+  strokePointBounds.set(stroke, bounds);
+  return bounds;
+}
+
 export function hitTestCanvasStroke(
   strokes: CanvasStroke[],
   world: { x: number; y: number },
@@ -203,6 +240,16 @@ export function hitTestCanvasStroke(
     const stroke = strokes[i];
     const points = stroke.points;
     const threshold = stroke.style.width / 2 + 8 / scale;
+    const bounds = pointBoundsForStroke(stroke);
+    if (
+      !bounds ||
+      world.x < bounds.minX - threshold ||
+      world.x > bounds.maxX + threshold ||
+      world.y < bounds.minY - threshold ||
+      world.y > bounds.maxY + threshold
+    ) {
+      continue;
+    }
     if (points.length === 1) {
       if (Math.hypot(world.x - points[0].x, world.y - points[0].y) <= threshold) {
         return stroke.id;
@@ -277,6 +324,21 @@ export function addCanvasDrawingPoint(
   );
 }
 
+export function addCanvasDrawingPoints(
+  session: CanvasDrawingSession,
+  events: readonly PointerEvent[],
+  worldForEvent: (event: PointerEvent) => { x: number; y: number },
+): FreehandStroke | null {
+  function* points(): Iterable<FreehandPoint> {
+    for (const event of events) {
+      if (session.pointerId !== event.pointerId) continue;
+      yield freehandPointFromPointerEvent(event, worldForEvent(event), session.mode);
+    }
+  }
+
+  return session.builder.addPoints(points());
+}
+
 export function finishCanvasDrawingStroke(
   session: CanvasDrawingSession,
 ): CanvasStrokeSnapshot | null {
@@ -334,7 +396,7 @@ function drawShapeOutline(
   context.restore();
 }
 
-export function renderCanvasInk(params: {
+type CanvasInkRenderParams = {
   context: CanvasRenderingContext2D;
   dpr: number;
   screen: ScreenSize;
@@ -343,7 +405,61 @@ export function renderCanvasInk(params: {
   activeStroke: FreehandStroke | null;
   snapGuides: SnapGuide[];
   defaultInkColor: string;
-}) {
+};
+
+function clearInkCanvas(
+  context: CanvasRenderingContext2D,
+  dpr: number,
+  screen: ScreenSize,
+) {
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, screen.width, screen.height);
+}
+
+function paintCanvasStrokes(
+  context: CanvasRenderingContext2D,
+  strokes: CanvasStroke[],
+  transform: WorldTransform,
+  screen: ScreenSize,
+  defaultInkColor: string,
+) {
+  const minX = -transform.dx / transform.scale;
+  const minY = -transform.dy / transform.scale;
+  const maxX = (screen.width - transform.dx) / transform.scale;
+  const maxY = (screen.height - transform.dy) / transform.scale;
+
+  for (const stroke of strokes) {
+    const bounds = pointBoundsForStroke(stroke);
+    const padding = Math.max(stroke.style.width, FREEHAND_PEN_VELOCITY.maxWidth);
+    if (
+      !bounds ||
+      bounds.maxX + padding < minX ||
+      bounds.minX - padding > maxX ||
+      bounds.maxY + padding < minY ||
+      bounds.minY - padding > maxY
+    ) {
+      continue;
+    }
+    drawFreehandStroke(context, themedStroke(stroke, defaultInkColor), transform);
+  }
+}
+
+function drawCanvasInkOverlay(
+  context: CanvasRenderingContext2D,
+  activeStroke: FreehandStroke | null,
+  snapGuides: SnapGuide[],
+  transform: WorldTransform,
+  screen: ScreenSize,
+  defaultInkColor: string,
+) {
+  if (activeStroke) {
+    drawFreehandStroke(context, themedStroke(activeStroke, defaultInkColor), transform);
+  }
+  drawSnapGuides(context, snapGuides, transform, screen, { color: "#2563eb" });
+}
+
+// Retained for callers that render static strokes and live ink into one canvas.
+export function renderCanvasInk(params: CanvasInkRenderParams) {
   const {
     context,
     dpr,
@@ -355,17 +471,64 @@ export function renderCanvasInk(params: {
     defaultInkColor,
   } = params;
 
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.clearRect(0, 0, screen.width, screen.height);
+  clearInkCanvas(context, dpr, screen);
+  paintCanvasStrokes(context, strokes, transform, screen, defaultInkColor);
+  drawCanvasInkOverlay(
+    context,
+    activeStroke,
+    snapGuides,
+    transform,
+    screen,
+    defaultInkColor,
+  );
+}
 
-  for (const stroke of strokes) {
-    drawFreehandStroke(context, themedStroke(stroke, defaultInkColor), transform);
-  }
-  if (activeStroke) {
-    drawFreehandStroke(context, themedStroke(activeStroke, defaultInkColor), transform);
-  }
+export function renderCanvasStrokes(
+  params: Pick<
+    CanvasInkRenderParams,
+    "context" | "dpr" | "screen" | "transform" | "strokes" | "defaultInkColor"
+  >,
+) {
+  const { context, dpr, screen, transform, strokes, defaultInkColor } = params;
+  clearInkCanvas(context, dpr, screen);
+  paintCanvasStrokes(context, strokes, transform, screen, defaultInkColor);
+}
 
-  drawSnapGuides(context, snapGuides, transform, screen, { color: "#2563eb" });
+// Draw completed strokes into a caller-owned canvas without clearing it.
+// Use this when ink shares a backing store with other canvas layers.
+export function drawCanvasStrokes(
+  params: Pick<
+    CanvasInkRenderParams,
+    "context" | "screen" | "transform" | "strokes" | "defaultInkColor"
+  >,
+) {
+  const { context, screen, transform, strokes, defaultInkColor } = params;
+  paintCanvasStrokes(context, strokes, transform, screen, defaultInkColor);
+}
+
+export function renderCanvasInkOverlay(
+  params: Pick<
+    CanvasInkRenderParams,
+    | "context"
+    | "dpr"
+    | "screen"
+    | "transform"
+    | "activeStroke"
+    | "snapGuides"
+    | "defaultInkColor"
+  >,
+) {
+  const { context, dpr, screen, transform, activeStroke, snapGuides, defaultInkColor } =
+    params;
+  clearInkCanvas(context, dpr, screen);
+  drawCanvasInkOverlay(
+    context,
+    activeStroke,
+    snapGuides,
+    transform,
+    screen,
+    defaultInkColor,
+  );
 }
 
 export function renderCanvasSelections(params: {

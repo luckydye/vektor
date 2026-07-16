@@ -35,7 +35,7 @@ import {
 } from "~/src/assets/icons.ts";
 import {
   activeShapeId,
-  addCanvasDrawingPoint,
+  addCanvasDrawingPoints,
   type CanvasDrawingSession,
   type CanvasElementContext,
   type CanvasShapeLibraryItem,
@@ -44,11 +44,12 @@ import {
   createStrokeMap,
   DRAW_STROKE_MODES,
   type DrawStrokeMode,
+  drawCanvasStrokes,
   FREEHAND_STYLE,
   finishCanvasDrawingStroke,
   hitTestCanvasStroke,
   PEN_COLORS,
-  renderCanvasInk,
+  renderCanvasInkOverlay,
   renderCanvasSelections,
   SHAPE_LIBRARY,
   setActiveShapeId,
@@ -83,7 +84,7 @@ import {
   rotateVector,
   rotationFromPointer,
   snapRotation,
-} from "./geometry.ts";
+} from "./viewport/geometry.ts";
 import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
 import "@atrium-ui/elements/popover";
@@ -122,6 +123,7 @@ import {
   screenToWorld as viewportScreenToWorld,
   worldToScreen as viewportWorldToScreen,
   type WorldRect,
+  type WorldTransform,
   worldViewportBounds,
 } from "./viewport/index.ts";
 
@@ -225,10 +227,8 @@ const CANVAS_TOOLS: ToolDef[] = [
   ...extensionManager.elementTools(),
 ];
 const viewportRef = ref<HTMLElement | null>(null);
-const gridRef = ref<HTMLCanvasElement | null>(null);
-const paintedShapesRef = ref<HTMLCanvasElement | null>(null);
-const inkRef = ref<HTMLCanvasElement | null>(null);
-const rasterShapesRef = ref<HTMLCanvasElement | null>(null);
+const sceneRef = ref<HTMLCanvasElement | null>(null);
+const activeInkRef = ref<HTMLCanvasElement | null>(null);
 const selectionRef = ref<HTMLCanvasElement | null>(null);
 const shapes = shallowRef<CanvasShape[]>([]);
 const strokes = shallowRef<CanvasStroke[]>([]);
@@ -333,6 +333,32 @@ let resizeObserver: ResizeObserver | null = null;
 let themeObserver: MutationObserver | null = null;
 let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+let selectionLayerHidden = false;
+const STATIC_INK_CACHE_MARGIN = 256;
+const STATIC_INK_MIN_SCALE_RATIO = 2 / 3;
+const STATIC_INK_MAX_SCALE_RATIO = 3 / 2;
+const STATIC_INK_REFRESH_MARGIN = 96;
+const STATIC_INK_REFRESH_MIN_SCALE_RATIO = 4 / 5;
+const STATIC_INK_REFRESH_MAX_SCALE_RATIO = 5 / 4;
+const STATIC_INK_REFRESH_STROKES_PER_CHUNK = 32;
+const STATIC_INK_REFRESH_MAX_STROKES_PER_FRAME = 512;
+const STATIC_INK_REFRESH_BUDGET_MS = 5;
+type StaticInkRasterCache = {
+  canvas: HTMLCanvasElement;
+  dpr: number;
+  screen: ScreenSize;
+  transform: WorldTransform;
+  strokes: CanvasStroke[];
+  defaultInkColor: string;
+};
+type StaticInkRasterBuild = {
+  cache: StaticInkRasterCache;
+  nextStrokeIndex: number;
+  rafId: number | null;
+};
+let staticInkRasterCache: StaticInkRasterCache | null = null;
+let staticInkRasterBuild: StaticInkRasterBuild | null = null;
+let staticInkSpareCanvas: HTMLCanvasElement | null = null;
 const intrinsicShapeSizes = shallowRef(
   new Map<string, { width: number; height: number }>(),
 );
@@ -413,10 +439,14 @@ const isCameraMoving = ref(false);
 let cameraMoveTimer: ReturnType<typeof setTimeout> | null = null;
 
 watch(camera, () => {
-  isCameraMoving.value = true;
+  if (!isCameraMoving.value) {
+    isCameraMoving.value = true;
+    hideSelectionLayer();
+  }
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
   cameraMoveTimer = setTimeout(() => {
     isCameraMoving.value = false;
+    renderSelections();
   }, 150);
 });
 // The single selected shape, or null when nothing or multiple things are
@@ -653,6 +683,7 @@ const selectedStrokeColor = computed(() => {
 
 const shapesById = computed(() => new Map(shapes.value.map((s) => [s.id, s])));
 const strokesById = computed(() => new Map(strokes.value.map((s) => [s.id, s])));
+const hasLockedStrokes = computed(() => strokes.value.some((stroke) => stroke.locked));
 
 function isShapeLocked(id: string): boolean {
   return shapesById.value.get(id)?.locked === true;
@@ -1203,8 +1234,6 @@ function updateThemeMode() {
 
 function renderThemeChanged() {
   refreshCssVars();
-  renderGrid();
-  renderPaintedShapes();
   renderInk();
 }
 
@@ -1213,21 +1242,40 @@ function applyGridType(value: unknown) {
     value === "clean" || value === "dots" || value === "grid" ? value : "dots";
   if (next === gridType.value) return;
   gridType.value = next;
-  renderGrid();
+  renderScene();
 }
 
 function defaultInkColor() {
   return cssInkColor;
 }
 
-function renderGrid() {
-  const canvas = gridRef.value;
+// The camera changes every input frame. Keep the static world in one backing
+// store so a pan produces one compositor update instead of one per visual layer.
+function renderScene() {
+  const canvas = sceneRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
 
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = "source-over";
+  context.setLineDash([]);
   context.clearRect(0, 0, screen.value.width, screen.value.height);
+  context.save();
+  renderGrid(context);
+  context.restore();
+  context.save();
+  renderPaintedShapes(context);
+  context.restore();
+  context.save();
+  renderRasterShapes(context);
+  context.restore();
+  context.save();
+  renderStaticInk(context);
+  context.restore();
+}
 
+function renderGrid(context: CanvasRenderingContext2D) {
   if (gridType.value === "clean") return;
 
   if (gridType.value === "dots") {
@@ -1258,19 +1306,9 @@ function renderGrid() {
   });
 }
 
-// Sections are intentionally a dedicated canvas layer between the backdrop
-// grid and all content layers. Unlike DOM shapes, they can never establish a
-// stacking context above cards, media, strokes, or controls. The frame/title
-// drawing lives on the section extension's paint() hook; the host owns the
-// layer, ordering, and the geometry shared with hit-testing / the title editor.
-function renderPaintedShapes() {
-  const canvas = paintedShapesRef.value;
-  const context = canvas?.getContext("2d");
-  if (!canvas || !context) return;
-
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.clearRect(0, 0, screen.value.width, screen.value.height);
-
+// Sections draw before raster elements and ink so their frames cannot overlap
+// cards, media, or strokes. The host owns their shared paint/hit-test geometry.
+function renderPaintedShapes(context: CanvasRenderingContext2D) {
   const helpers: CanvasPaintHelpers = {
     scale: transform.value.scale,
     dx: transform.value.dx,
@@ -1286,21 +1324,14 @@ function renderPaintedShapes() {
   }
 }
 
-function renderRasterShapes() {
-  const canvas = rasterShapesRef.value;
-  const ctx = canvas?.getContext("2d");
-  if (!canvas || !ctx) return;
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, screen.value.width, screen.value.height);
-
+function renderRasterShapes(ctx: CanvasRenderingContext2D) {
   for (const shape of visibleRasterShapes.value) {
     extensionManager.get(shape.type).render.paintRaster?.(ctx, shape, {
       scale: transform.value.scale,
       dx: transform.value.dx,
       dy: transform.value.dy,
       dpr,
-      invalidate: renderRasterShapes,
+      invalidate: renderScene,
     });
   }
 }
@@ -1310,7 +1341,7 @@ function scheduleInkRender() {
   if (inkRafId !== null) return;
   inkRafId = requestAnimationFrame(() => {
     inkRafId = null;
-    renderInk();
+    renderActiveInk();
   });
 }
 
@@ -1324,28 +1355,257 @@ function schedulePresenceUpdate() {
 }
 
 function renderInk() {
-  const canvas = inkRef.value;
+  renderScene();
+  renderActiveInk();
+  if (isCameraMoving.value) hideSelectionLayer();
+  else renderSelections();
+}
+
+function renderStaticInk(context: CanvasRenderingContext2D) {
+  if (strokes.value.length === 0) {
+    cancelStaticInkRasterRefresh();
+    staticInkRasterCache = null;
+    return;
+  }
+
+  const currentTransform = transform.value;
+  const color = defaultInkColor();
+  let cache = staticInkRasterCache;
+  if (!cache || !staticInkRasterCacheMatches(cache, color)) {
+    cache = buildStaticInkRasterCache(currentTransform, color);
+    staticInkRasterCache = cache;
+  }
+
+  const { ratio, x, y } = staticInkRasterCachePlacement(cache, currentTransform);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    cache.canvas,
+    x,
+    y,
+    cache.screen.width * ratio,
+    cache.screen.height * ratio,
+  );
+
+  if (staticInkRasterCacheNeedsRefresh(cache, currentTransform)) {
+    scheduleStaticInkRasterRefresh(currentTransform, color);
+  }
+}
+
+function staticInkRasterCacheMatches(cache: StaticInkRasterCache, color: string) {
+  return !(
+    cache.dpr !== dpr ||
+    cache.strokes !== strokes.value ||
+    cache.defaultInkColor !== color ||
+    cache.screen.width !== screen.value.width + STATIC_INK_CACHE_MARGIN * 2 ||
+    cache.screen.height !== screen.value.height + STATIC_INK_CACHE_MARGIN * 2
+  );
+}
+
+function staticInkRasterCachePlacement(
+  cache: StaticInkRasterCache,
+  currentTransform: WorldTransform,
+) {
+  const ratio = currentTransform.scale / cache.transform.scale;
+  const x = (-STATIC_INK_CACHE_MARGIN - cache.transform.dx) * ratio + currentTransform.dx;
+  const y = (-STATIC_INK_CACHE_MARGIN - cache.transform.dy) * ratio + currentTransform.dy;
+  return { ratio, x, y };
+}
+
+function staticInkRasterCacheCovers(
+  cache: StaticInkRasterCache,
+  currentTransform: WorldTransform,
+  color: string,
+) {
+  if (!staticInkRasterCacheMatches(cache, color)) return false;
+
+  const { ratio, x, y } = staticInkRasterCachePlacement(cache, currentTransform);
+  if (ratio < STATIC_INK_MIN_SCALE_RATIO || ratio > STATIC_INK_MAX_SCALE_RATIO) {
+    return false;
+  }
+
+  return (
+    x <= 0 &&
+    y <= 0 &&
+    x + cache.screen.width * ratio >= screen.value.width &&
+    y + cache.screen.height * ratio >= screen.value.height
+  );
+}
+
+function staticInkRasterCacheNeedsRefresh(
+  cache: StaticInkRasterCache,
+  currentTransform: WorldTransform,
+) {
+  const { ratio, x, y } = staticInkRasterCachePlacement(cache, currentTransform);
+  const right = x + cache.screen.width * ratio - screen.value.width;
+  const bottom = y + cache.screen.height * ratio - screen.value.height;
+  return (
+    ratio < STATIC_INK_REFRESH_MIN_SCALE_RATIO ||
+    ratio > STATIC_INK_REFRESH_MAX_SCALE_RATIO ||
+    -x < STATIC_INK_REFRESH_MARGIN ||
+    -y < STATIC_INK_REFRESH_MARGIN ||
+    right < STATIC_INK_REFRESH_MARGIN ||
+    bottom < STATIC_INK_REFRESH_MARGIN
+  );
+}
+
+function prepareStaticInkRasterCache(
+  currentTransform: WorldTransform,
+  color: string,
+  canvas: HTMLCanvasElement,
+): StaticInkRasterCache {
+  const cacheScreen = {
+    width: screen.value.width + STATIC_INK_CACHE_MARGIN * 2,
+    height: screen.value.height + STATIC_INK_CACHE_MARGIN * 2,
+  };
+  const width = Math.ceil(cacheScreen.width * dpr);
+  const height = Math.ceil(cacheScreen.height * dpr);
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Static ink cache requires a 2D canvas context");
+
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, cacheScreen.width, cacheScreen.height);
+  return {
+    canvas,
+    dpr,
+    screen: cacheScreen,
+    transform: { ...currentTransform },
+    strokes: strokes.value,
+    defaultInkColor: color,
+  };
+}
+
+function paintStaticInkRasterCache(
+  cache: StaticInkRasterCache,
+  strokesToPaint: CanvasStroke[],
+) {
+  const context = cache.canvas.getContext("2d");
+  if (!context) throw new Error("Static ink cache requires a 2D canvas context");
+  drawCanvasStrokes({
+    context,
+    screen: cache.screen,
+    transform: {
+      scale: cache.transform.scale,
+      dx: cache.transform.dx + STATIC_INK_CACHE_MARGIN,
+      dy: cache.transform.dy + STATIC_INK_CACHE_MARGIN,
+    },
+    strokes: strokesToPaint,
+    defaultInkColor: cache.defaultInkColor,
+  });
+}
+
+function prepareStaticInkSpareCanvas(cache: StaticInkRasterCache) {
+  if (!staticInkSpareCanvas) staticInkSpareCanvas = document.createElement("canvas");
+  const width = Math.ceil(cache.screen.width * cache.dpr);
+  const height = Math.ceil(cache.screen.height * cache.dpr);
+  if (staticInkSpareCanvas.width !== width) staticInkSpareCanvas.width = width;
+  if (staticInkSpareCanvas.height !== height) staticInkSpareCanvas.height = height;
+  // Force allocation while the initial snapshot is being built, not on a
+  // later camera frame when the spare is first needed.
+  staticInkSpareCanvas.getContext("2d");
+}
+
+function cancelStaticInkRasterRefresh() {
+  const build = staticInkRasterBuild;
+  if (!build) return;
+  if (build.rafId !== null) cancelAnimationFrame(build.rafId);
+  staticInkSpareCanvas = build.cache.canvas;
+  staticInkRasterBuild = null;
+}
+
+function buildStaticInkRasterCache(
+  currentTransform: WorldTransform,
+  color: string,
+): StaticInkRasterCache {
+  cancelStaticInkRasterRefresh();
+  const canvas = staticInkRasterCache?.canvas ?? document.createElement("canvas");
+  const cache = prepareStaticInkRasterCache(currentTransform, color, canvas);
+  paintStaticInkRasterCache(cache, cache.strokes);
+  prepareStaticInkSpareCanvas(cache);
+  return cache;
+}
+
+function scheduleStaticInkRasterRefresh(currentTransform: WorldTransform, color: string) {
+  const currentBuild = staticInkRasterBuild;
+  if (
+    currentBuild &&
+    staticInkRasterCacheCovers(currentBuild.cache, currentTransform, color)
+  ) {
+    return;
+  }
+  cancelStaticInkRasterRefresh();
+
+  const canvas = staticInkSpareCanvas ?? document.createElement("canvas");
+  staticInkSpareCanvas = null;
+  staticInkRasterBuild = {
+    cache: prepareStaticInkRasterCache(currentTransform, color, canvas),
+    nextStrokeIndex: 0,
+    rafId: requestAnimationFrame(paintStaticInkRasterRefreshBatch),
+  };
+}
+
+function paintStaticInkRasterRefreshBatch() {
+  const build = staticInkRasterBuild;
+  if (!build) return;
+  build.rafId = null;
+
+  const startedAt = performance.now();
+  const maxEnd = Math.min(
+    build.nextStrokeIndex + STATIC_INK_REFRESH_MAX_STROKES_PER_FRAME,
+    build.cache.strokes.length,
+  );
+  let end = build.nextStrokeIndex;
+  do {
+    const chunkEnd = Math.min(end + STATIC_INK_REFRESH_STROKES_PER_CHUNK, maxEnd);
+    paintStaticInkRasterCache(build.cache, build.cache.strokes.slice(end, chunkEnd));
+    end = chunkEnd;
+  } while (end < maxEnd && performance.now() - startedAt < STATIC_INK_REFRESH_BUDGET_MS);
+  build.nextStrokeIndex = end;
+
+  if (end < build.cache.strokes.length) {
+    build.rafId = requestAnimationFrame(paintStaticInkRasterRefreshBatch);
+    return;
+  }
+
+  const color = defaultInkColor();
+  if (staticInkRasterCacheCovers(build.cache, transform.value, color)) {
+    const previousCanvas = staticInkRasterCache?.canvas ?? null;
+    staticInkRasterCache = build.cache;
+    staticInkSpareCanvas = previousCanvas;
+  } else {
+    staticInkSpareCanvas = build.cache.canvas;
+  }
+  staticInkRasterBuild = null;
+  renderScene();
+}
+
+function renderActiveInk() {
+  const canvas = activeInkRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
 
-  renderCanvasInk({
+  renderCanvasInkOverlay({
     context,
     dpr,
     screen: screen.value,
     transform: transform.value,
-    strokes: strokes.value,
     activeStroke: activeFreehandStroke,
     snapGuides: activeSnapGuides,
     defaultInkColor: defaultInkColor(),
   });
-
-  renderSelections();
 }
 
 function renderSelections() {
   const canvas = selectionRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
+
+  if (selectionLayerHidden) {
+    canvas.style.visibility = "";
+    selectionLayerHidden = false;
+  }
 
   renderCanvasSelections({
     context,
@@ -1371,6 +1631,17 @@ function renderSelections() {
   });
 }
 
+// Reprojecting a full-screen selection canvas with CSS transform forces Chrome
+// to recommit its backing texture on every pan/zoom frame. Keep interactions
+// smooth by hiding the expensive overlay during movement, then redraw it once
+// the camera has settled.
+function hideSelectionLayer() {
+  const canvas = selectionRef.value;
+  if (!canvas || selectionLayerHidden) return;
+  canvas.style.visibility = "hidden";
+  selectionLayerHidden = true;
+}
+
 function resize() {
   const rect = viewportRef.value?.getBoundingClientRect() ?? null;
   cachedViewportRect = rect;
@@ -1379,33 +1650,19 @@ function resize() {
     height: Math.max(1, Math.round(rect?.height ?? 1)),
   };
   dpr = window.devicePixelRatio || 1;
-  const canvas = gridRef.value;
-  if (canvas) {
-    canvas.width = Math.round(screen.value.width * dpr);
-    canvas.height = Math.round(screen.value.height * dpr);
-    canvas.style.width = `${screen.value.width}px`;
-    canvas.style.height = `${screen.value.height}px`;
+  const scene = sceneRef.value;
+  if (scene) {
+    scene.width = Math.round(screen.value.width * dpr);
+    scene.height = Math.round(screen.value.height * dpr);
+    scene.style.width = `${screen.value.width}px`;
+    scene.style.height = `${screen.value.height}px`;
   }
-  const sections = paintedShapesRef.value;
-  if (sections) {
-    sections.width = Math.round(screen.value.width * dpr);
-    sections.height = Math.round(screen.value.height * dpr);
-    sections.style.width = `${screen.value.width}px`;
-    sections.style.height = `${screen.value.height}px`;
-  }
-  const ink = inkRef.value;
-  if (ink) {
-    ink.width = Math.round(screen.value.width * dpr);
-    ink.height = Math.round(screen.value.height * dpr);
-    ink.style.width = `${screen.value.width}px`;
-    ink.style.height = `${screen.value.height}px`;
-  }
-  const images = rasterShapesRef.value;
-  if (images) {
-    images.width = Math.round(screen.value.width * dpr);
-    images.height = Math.round(screen.value.height * dpr);
-    images.style.width = `${screen.value.width}px`;
-    images.style.height = `${screen.value.height}px`;
+  const activeInk = activeInkRef.value;
+  if (activeInk) {
+    activeInk.width = Math.round(screen.value.width * dpr);
+    activeInk.height = Math.round(screen.value.height * dpr);
+    activeInk.style.width = `${screen.value.width}px`;
+    activeInk.style.height = `${screen.value.height}px`;
   }
   const selection = selectionRef.value;
   if (selection) {
@@ -1414,10 +1671,7 @@ function resize() {
     selection.style.width = `${screen.value.width}px`;
     selection.style.height = `${screen.value.height}px`;
   }
-  renderGrid();
-  renderPaintedShapes();
   renderInk();
-  renderRasterShapes();
 }
 
 function presenceState(): CanvasPresenceState {
@@ -1720,6 +1974,7 @@ function startFreehand(event: PointerEvent) {
   if (!started) return;
 
   clearSelection();
+  hoveredLockedElement.value = null;
   drawingSession = started.session;
   activeFreehandStroke = started.stroke;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -2004,7 +2259,7 @@ function editElementChrome(shape: CanvasShape) {
   if (shape.locked) return;
   selectOnlyShape(shape.id);
   editingChromeId.value = shape.id;
-  renderPaintedShapes();
+  renderScene();
   void nextTick(() => {
     viewportRef.value
       ?.querySelector<HTMLElement>(`[data-editor-shape-id="${shape.id}"]`)
@@ -2015,7 +2270,7 @@ function editElementChrome(shape: CanvasShape) {
 function finishChromeEditing() {
   if (!editingChromeId.value) return;
   editingChromeId.value = null;
-  renderPaintedShapes();
+  renderScene();
 }
 
 function isPointInRect(point: { x: number; y: number }, rect: Rect) {
@@ -2282,8 +2537,14 @@ function lockedElementAtPointer(event: PointerEvent): LockedCanvasElement | null
   const image = hitTestRasterShape(worldPoint);
   if (image?.locked) return { type: "shape", id: image.id };
 
-  const strokeId = hitTestCanvasStroke(strokes.value, worldPoint, transform.value.scale);
-  if (strokeId && isStrokeLocked(strokeId)) return { type: "stroke", id: strokeId };
+  if (hasLockedStrokes.value) {
+    const strokeId = hitTestCanvasStroke(
+      strokes.value,
+      worldPoint,
+      transform.value.scale,
+    );
+    if (strokeId && isStrokeLocked(strokeId)) return { type: "stroke", id: strokeId };
+  }
 
   const paintedShape = hitTestPaintedShape(worldPoint)?.shape ?? null;
   if (paintedShape?.locked) return { type: "shape", id: paintedShape.id };
@@ -2303,20 +2564,20 @@ function updateHoveredLockedElement(event: PointerEvent) {
 function handlePointerMove(event: PointerEvent) {
   const point = screenPoint(event);
   localPointer = screenToWorld(point);
-  updateHoveredLockedElement(event);
 
   if (drawingSession && drawingSession.pointerId === event.pointerId) {
-    for (const coalesced of event.getCoalescedEvents()) {
-      activeFreehandStroke = addCanvasDrawingPoint(
-        drawingSession,
-        coalesced,
-        screenToWorld(screenPoint(coalesced)),
-      );
-    }
+    const coalescedEvents = event.getCoalescedEvents();
+    activeFreehandStroke = addCanvasDrawingPoints(
+      drawingSession,
+      coalescedEvents.length > 0 ? coalescedEvents : [event],
+      (coalesced) => screenToWorld(screenPoint(coalesced)),
+    );
     scheduleInkRender();
     event.preventDefault();
     return;
   }
+
+  updateHoveredLockedElement(event);
 
   if (!dragState || dragState.pointerId !== event.pointerId) {
     schedulePresenceUpdate();
@@ -2876,7 +3137,7 @@ function insertConvertedShapes(nextShapes: CanvasShape[]): boolean {
   selectedShapeIds.value = pastedShapeIds;
   selectedStrokeIds.value = new Set();
   activeTool.value = "select";
-  renderRasterShapes();
+  renderScene();
   return true;
 }
 
@@ -3052,8 +3313,7 @@ function handleKeydown(event: KeyboardEvent) {
 watch(
   shapes,
   () => {
-    renderPaintedShapes();
-    renderRasterShapes();
+    renderScene();
     renderSelections();
   },
   { flush: "post" },
@@ -3145,10 +3405,7 @@ watch(
     screen.value.height,
   ],
   () => {
-    renderGrid();
-    renderPaintedShapes();
     renderInk();
-    renderRasterShapes();
     updatePresence();
   },
   { flush: "post" },
@@ -3264,6 +3521,7 @@ onUnmounted(() => {
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
   if (inkRafId !== null) cancelAnimationFrame(inkRafId);
   if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
+  cancelStaticInkRasterRefresh();
 });
 </script>
 
@@ -3459,10 +3717,8 @@ onUnmounted(() => {
       @dragover="handleDragOver"
       @drop="handleDrop"
     >
-      <canvas ref="gridRef" class="canvas-grid"></canvas>
-      <canvas ref="paintedShapesRef" class="canvas-painted-shapes"></canvas>
-      <canvas ref="rasterShapesRef" class="canvas-raster-shapes"></canvas>
-      <canvas ref="inkRef" class="canvas-ink"></canvas>
+      <canvas ref="sceneRef" class="canvas-scene"></canvas>
+      <canvas ref="activeInkRef" class="canvas-active-ink"></canvas>
       <canvas ref="selectionRef" class="canvas-selection"></canvas>
       <div
         class="canvas-world"
@@ -4161,10 +4417,8 @@ onUnmounted(() => {
   transform-origin: 0 0;
 }
 
-.canvas-grid,
-.canvas-painted-shapes,
-.canvas-raster-shapes,
-.canvas-ink,
+.canvas-scene,
+.canvas-active-ink,
 .canvas-selection {
   position: absolute;
   inset: 0;
@@ -4172,19 +4426,11 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.canvas-grid {
+.canvas-scene {
   z-index: 0;
 }
 
-.canvas-painted-shapes {
-  z-index: 1;
-}
-
-.canvas-raster-shapes {
-  z-index: 2;
-}
-
-.canvas-ink {
+.canvas-active-ink {
   z-index: 3;
 }
 

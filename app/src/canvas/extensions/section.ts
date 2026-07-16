@@ -1,5 +1,5 @@
 import { canvasSectionIcon } from "#assets/icons.ts";
-import { pointOnRotatedShape, rotateVector } from "#canvas/geometry.ts";
+import { pointOnRotatedShape, rotateVector } from "#canvas/viewport/geometry.ts";
 import { CanvasElementBase } from "./CanvasElementBase.ts";
 import type {
   CanvasElementExtension,

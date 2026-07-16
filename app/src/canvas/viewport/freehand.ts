@@ -68,6 +68,7 @@ export interface FreehandVelocityWidthOptions {
 export interface FreehandStrokeBuilder {
   readonly points: readonly FreehandPoint[];
   addPoint(point: FreehandPoint): FreehandStroke;
+  addPoints(points: Iterable<FreehandPoint>): FreehandStroke;
   startAt(point: FreehandPoint): FreehandStroke;
   getStroke(): FreehandStroke;
   finish(): FreehandStroke;
@@ -376,9 +377,20 @@ export function buildFreehandPath(
   const style = resolveStyle(options.style);
   const filtered = filterFreehandPoints(points, options.minDistance ?? 0);
   const sized = addVelocityWidths(filtered, style, options.velocityWidth);
+  return buildFreehandPathFromSizedPoints(sized, style, options);
+}
+
+function buildFreehandPathFromSizedPoints(
+  points: readonly FreehandPoint[],
+  style: FreehandStrokeStyle,
+  options: Pick<
+    FreehandStrokeOptions,
+    "simplifyTolerance" | "simplifyWidthTolerance" | "smoothing"
+  >,
+): FreehandPath {
   const widthTolerance = options.simplifyWidthTolerance ?? style.width * 0.15;
   const simplified = simplifyFreehandPoints(
-    sized,
+    points,
     options.simplifyTolerance ?? 0,
     widthTolerance,
   );
@@ -424,7 +436,10 @@ export function buildFreehandStroke(
   );
   return {
     points: retained,
-    path: buildFreehandPath(retained, options),
+    // `retained` already has the distance filter and velocity widths applied.
+    // Running the public path builder here used to do both passes a second time
+    // for every live pointer update.
+    path: buildFreehandPathFromSizedPoints(retained, style, options),
     style,
   };
 }
@@ -439,6 +454,31 @@ export function createFreehandStrokeBuilder(
     return buildFreehandStroke(points, options);
   }
 
+  function addPoints(nextPoints: Iterable<FreehandPoint>): FreehandStroke {
+    const minDistance = options.minDistance ?? 0;
+    const minDistanceSq = minDistance * minDistance;
+
+    for (const point of nextPoints) {
+      if (pendingStart) {
+        const farEnough =
+          minDistance <= 0 || distanceSq(point, pendingStart) >= minDistanceSq;
+        if (!farEnough) continue;
+
+        points.push(clonePoint(pendingStart), clonePoint(point));
+        pendingStart = null;
+        continue;
+      }
+
+      const farEnough =
+        points.length === 0 ||
+        minDistance <= 0 ||
+        distanceSq(point, points[points.length - 1]) >= minDistanceSq;
+      if (farEnough) points.push(clonePoint(point));
+    }
+
+    return makeStroke();
+  }
+
   return {
     get points() {
       return points;
@@ -449,26 +489,10 @@ export function createFreehandStrokeBuilder(
       return makeStroke();
     },
     addPoint(point) {
-      const minDistance = options.minDistance ?? 0;
-      if (pendingStart) {
-        const farEnough =
-          minDistance <= 0 ||
-          distanceSq(point, pendingStart) >= minDistance * minDistance;
-        if (!farEnough) return makeStroke();
-
-        points.push(clonePoint(pendingStart), clonePoint(point));
-        pendingStart = null;
-        return makeStroke();
-      }
-
-      const farEnough =
-        points.length === 0 ||
-        minDistance <= 0 ||
-        distanceSq(point, points[points.length - 1]) >= minDistance * minDistance;
-      if (farEnough) {
-        points.push(clonePoint(point));
-      }
-      return makeStroke();
+      return addPoints([point]);
+    },
+    addPoints(nextPoints) {
+      return addPoints(nextPoints);
     },
     getStroke() {
       return makeStroke();
@@ -505,11 +529,11 @@ function smoothstep(t: number): number {
 }
 
 function addEdgeCurve(
-  ctx: CanvasRenderingContext2D,
+  path: Pick<CanvasRenderingContext2D, "lineTo" | "quadraticCurveTo">,
   edge: readonly { x: number; y: number }[],
 ) {
   if (edge.length === 0) return;
-  ctx.lineTo(edge[0].x, edge[0].y);
+  path.lineTo(edge[0].x, edge[0].y);
   if (edge.length === 1) {
     return;
   }
@@ -517,55 +541,75 @@ function addEdgeCurve(
   for (let i = 1; i < edge.length - 1; i++) {
     const midpointX = (edge[i].x + edge[i + 1].x) * 0.5;
     const midpointY = (edge[i].y + edge[i + 1].y) * 0.5;
-    ctx.quadraticCurveTo(edge[i].x, edge[i].y, midpointX, midpointY);
+    path.quadraticCurveTo(edge[i].x, edge[i].y, midpointX, midpointY);
   }
 
   const last = edge[edge.length - 1];
-  ctx.lineTo(last.x, last.y);
+  path.lineTo(last.x, last.y);
 }
 
-const sampleCache = new WeakMap<
-  FreehandPath,
-  { scale: number; dx: number; dy: number; samples: ScreenStrokeSample[] }
->();
+type ScreenStrokeCache = {
+  // The remaining scale adjustment happens on the canvas context. A path may
+  // be reused for one lower LOD bucket while zooming out, avoiding a visible
+  // all-strokes retessellation at the bucket boundary.
+  geometryScale: number;
+  styleWidth: number;
+  samples: ScreenStrokeSample[];
+  paths: Map<number, Path2D | null>;
+};
 
-function sampleFreehandPath(
+// Sample positions are relative to the screen origin. This keeps the expensive
+// curve sampling and silhouette construction stable during pans and continuous
+// zoom: translation and any scale below the cached geometry scale are applied
+// by the canvas transform.
+const sampleCache = new WeakMap<FreehandPath, ScreenStrokeCache>();
+
+function geometryScaleFor(scale: number): number {
+  // Match silhouette detail to its on-screen size. Keeping a minimum 1x
+  // geometry scale meant a canvas viewed at 0.25x still tessellated every
+  // stroke at four times the useful resolution, then shrank all that work.
+  // Power-of-two buckets keep paths reusable throughout continuous zoom.
+  return 2 ** Math.ceil(Math.log2(Math.max(1 / 16, scale)));
+}
+
+function screenStrokeCacheFor(
   path: FreehandPath,
   transform: WorldTransform,
   style: FreehandStrokeStyle,
-): ScreenStrokeSample[] {
-  if (!path.start) return [];
+): ScreenStrokeCache | null {
+  if (!path.start) return null;
 
   const cached = sampleCache.get(path);
+  const geometryScale = geometryScaleFor(transform.scale);
   if (
     cached &&
-    cached.scale === transform.scale &&
-    cached.dx === transform.dx &&
-    cached.dy === transform.dy
+    cached.geometryScale >= geometryScale &&
+    cached.geometryScale <= geometryScale * 2 &&
+    cached.styleWidth === style.width
   ) {
-    return cached.samples;
+    return cached;
   }
 
   const samples: ScreenStrokeSample[] = [
     {
-      x: path.start.x * transform.scale + transform.dx,
-      y: path.start.y * transform.scale + transform.dy,
-      width: Math.max(0.5, (path.start.width ?? style.width) * transform.scale),
+      x: path.start.x * geometryScale,
+      y: path.start.y * geometryScale,
+      width: Math.max(0.5, (path.start.width ?? style.width) * geometryScale),
     },
   ];
 
-  let from = path.start;
+  let fromX = path.start.x;
+  let fromY = path.start.y;
   let fromWidth = path.start.width ?? style.width;
 
   for (const segment of path.segments) {
-    const end: FreehandPoint = { x: segment.x, y: segment.y };
     const controlLength =
-      Math.hypot(segment.cp1x - from.x, segment.cp1y - from.y) +
+      Math.hypot(segment.cp1x - fromX, segment.cp1y - fromY) +
       Math.hypot(segment.cp2x - segment.cp1x, segment.cp2y - segment.cp1y) +
       Math.hypot(segment.x - segment.cp2x, segment.y - segment.cp2y);
     const sampleCount = Math.max(
       3,
-      Math.min(32, Math.ceil((controlLength * transform.scale) / 8)),
+      Math.min(32, Math.ceil((controlLength * geometryScale) / 8)),
     );
     const toWidth = segment.width ?? style.width;
 
@@ -573,27 +617,25 @@ function sampleFreehandPath(
       const t = i / sampleCount;
       const width = fromWidth + (toWidth - fromWidth) * smoothstep(t);
       samples.push({
-        x:
-          cubic(from.x, segment.cp1x, segment.cp2x, segment.x, t) * transform.scale +
-          transform.dx,
-        y:
-          cubic(from.y, segment.cp1y, segment.cp2y, segment.y, t) * transform.scale +
-          transform.dy,
-        width: Math.max(0.5, width * transform.scale),
+        x: cubic(fromX, segment.cp1x, segment.cp2x, segment.x, t) * geometryScale,
+        y: cubic(fromY, segment.cp1y, segment.cp2y, segment.y, t) * geometryScale,
+        width: Math.max(0.5, width * geometryScale),
       });
     }
 
-    from = end;
+    fromX = segment.x;
+    fromY = segment.y;
     fromWidth = toWidth;
   }
 
-  sampleCache.set(path, {
-    scale: transform.scale,
-    dx: transform.dx,
-    dy: transform.dy,
+  const next: ScreenStrokeCache = {
+    geometryScale,
+    styleWidth: style.width,
     samples,
-  });
-  return samples;
+    paths: new Map<number, Path2D | null>(),
+  };
+  sampleCache.set(path, next);
+  return next;
 }
 
 function filterScreenSamples(
@@ -647,18 +689,18 @@ function tangentForSample(samples: readonly ScreenStrokeSample[], index: number)
   return { x: dx / len, y: dy / len };
 }
 
-function drawVariableWidthSamples(
-  ctx: CanvasRenderingContext2D,
+function buildVariableWidthPath(
   samples: readonly ScreenStrokeSample[],
-) {
+  expand = 0,
+): Path2D | null {
   const filtered = filterScreenSamples(samples);
-  if (filtered.length === 0) return;
+  if (filtered.length === 0) return null;
+
+  const path = new Path2D();
   if (filtered.length === 1) {
     const sample = filtered[0];
-    ctx.beginPath();
-    ctx.arc(sample.x, sample.y, sample.width / 2, 0, Math.PI * 2);
-    ctx.fill();
-    return;
+    path.arc(sample.x, sample.y, sample.width / 2 + expand, 0, Math.PI * 2);
+    return path;
   }
 
   const left: ScreenStrokeEdge[] = [];
@@ -670,12 +712,12 @@ function drawVariableWidthSamples(
 
     const nx = -tangent.y;
     const ny = tangent.x;
-    const halfWidth = filtered[i].width / 2;
+    const halfWidth = filtered[i].width / 2 + expand;
     left.push({ x: filtered[i].x + nx * halfWidth, y: filtered[i].y + ny * halfWidth });
     right.push({ x: filtered[i].x - nx * halfWidth, y: filtered[i].y - ny * halfWidth });
   }
 
-  if (left.length === 0 || right.length === 0) return;
+  if (left.length === 0 || right.length === 0) return null;
 
   const start = filtered[0];
   const end = filtered[filtered.length - 1];
@@ -684,28 +726,49 @@ function drawVariableWidthSamples(
   const leftStart = left[0];
   const rightStart = right[0];
 
-  ctx.beginPath();
-  ctx.moveTo(left[0].x, left[0].y);
-  addEdgeCurve(ctx, left);
-  ctx.arc(
+  path.moveTo(left[0].x, left[0].y);
+  addEdgeCurve(path, left);
+  path.arc(
     end.x,
     end.y,
-    end.width / 2,
+    end.width / 2 + expand,
     Math.atan2(leftEnd.y - end.y, leftEnd.x - end.x),
     Math.atan2(rightEnd.y - end.y, rightEnd.x - end.x),
     true,
   );
-  addEdgeCurve(ctx, right.slice().reverse());
-  ctx.arc(
+  addEdgeCurve(path, right.slice().reverse());
+  path.arc(
     start.x,
     start.y,
-    start.width / 2,
+    start.width / 2 + expand,
     Math.atan2(rightStart.y - start.y, rightStart.x - start.x),
     Math.atan2(leftStart.y - start.y, leftStart.x - start.x),
     true,
   );
-  ctx.closePath();
-  ctx.fill();
+  path.closePath();
+  return path;
+}
+
+function variableWidthPathFor(
+  path: FreehandPath,
+  transform: WorldTransform,
+  style: FreehandStrokeStyle,
+  expand = 0,
+): { path: Path2D; geometryScale: number } | null {
+  const cached = screenStrokeCacheFor(path, transform, style);
+  if (!cached) return null;
+
+  // Expand is supplied in final screen pixels. Convert it into the cached
+  // geometry space so an outline stays the same apparent width while zooming.
+  const geometryExpand = (expand * cached.geometryScale) / transform.scale;
+  const cachedPath = cached.paths.get(geometryExpand);
+  if (cachedPath !== undefined) {
+    return cachedPath ? { path: cachedPath, geometryScale: cached.geometryScale } : null;
+  }
+
+  const strokePath = buildVariableWidthPath(cached.samples, geometryExpand);
+  cached.paths.set(geometryExpand, strokePath);
+  return strokePath ? { path: strokePath, geometryScale: cached.geometryScale } : null;
 }
 
 export function drawFreehandPath(
@@ -716,10 +779,16 @@ export function drawFreehandPath(
 ): void {
   if (!path.start) return;
 
+  const strokePath = variableWidthPathFor(path, transform, style);
+  if (!strokePath) return;
+
   ctx.save();
   ctx.globalAlpha *= style.opacity;
   ctx.fillStyle = style.color;
-  drawVariableWidthSamples(ctx, sampleFreehandPath(path, transform, style));
+  ctx.translate(transform.dx, transform.dy);
+  const scale = transform.scale / strokePath.geometryScale;
+  ctx.scale(scale, scale);
+  ctx.fill(strokePath.path);
   ctx.restore();
 }
 
@@ -740,63 +809,14 @@ export function drawFreehandOutline(
   transform: WorldTransform,
   expand = 0,
 ): void {
-  const samples = sampleFreehandPath(stroke.path, transform, stroke.style);
-  const filtered = filterScreenSamples(samples);
-  if (filtered.length === 0) return;
+  if (!stroke.path.start) return;
+  const outlinePath = variableWidthPathFor(stroke.path, transform, stroke.style, expand);
+  if (!outlinePath) return;
 
-  if (filtered.length === 1) {
-    const sample = filtered[0];
-    ctx.beginPath();
-    ctx.arc(sample.x, sample.y, sample.width / 2 + expand, 0, Math.PI * 2);
-    ctx.stroke();
-    return;
-  }
-
-  const left: ScreenStrokeEdge[] = [];
-  const right: ScreenStrokeEdge[] = [];
-
-  for (let i = 0; i < filtered.length; i++) {
-    const tangent = tangentForSample(filtered, i);
-    if (!tangent) continue;
-
-    const nx = -tangent.y;
-    const ny = tangent.x;
-    const halfWidth = filtered[i].width / 2 + expand;
-    left.push({ x: filtered[i].x + nx * halfWidth, y: filtered[i].y + ny * halfWidth });
-    right.push({ x: filtered[i].x - nx * halfWidth, y: filtered[i].y - ny * halfWidth });
-  }
-
-  if (left.length === 0 || right.length === 0) return;
-
-  const start = filtered[0];
-  const end = filtered[filtered.length - 1];
-  const startRadius = start.width / 2 + expand;
-  const endRadius = end.width / 2 + expand;
-  const leftEnd = left[left.length - 1];
-  const rightEnd = right[right.length - 1];
-  const leftStart = left[0];
-  const rightStart = right[0];
-
-  ctx.beginPath();
-  ctx.moveTo(left[0].x, left[0].y);
-  addEdgeCurve(ctx, left);
-  ctx.arc(
-    end.x,
-    end.y,
-    endRadius,
-    Math.atan2(leftEnd.y - end.y, leftEnd.x - end.x),
-    Math.atan2(rightEnd.y - end.y, rightEnd.x - end.x),
-    true,
-  );
-  addEdgeCurve(ctx, right.slice().reverse());
-  ctx.arc(
-    start.x,
-    start.y,
-    startRadius,
-    Math.atan2(rightStart.y - start.y, rightStart.x - start.x),
-    Math.atan2(leftStart.y - start.y, leftStart.x - start.x),
-    true,
-  );
-  ctx.closePath();
-  ctx.stroke();
+  ctx.save();
+  ctx.translate(transform.dx, transform.dy);
+  const scale = transform.scale / outlinePath.geometryScale;
+  ctx.scale(scale, scale);
+  ctx.stroke(outlinePath.path);
+  ctx.restore();
 }
