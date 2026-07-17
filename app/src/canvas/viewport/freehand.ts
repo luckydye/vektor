@@ -876,7 +876,7 @@ export function drawRetainedFreehandSelection(
   ctx: CanvasRenderingContext2D,
   groups: readonly RetainedFreehandSelectionGroup[],
   transform: WorldTransform,
-  expand = 4,
+  expand = 2,
   lineWidth = 1.5,
 ): void {
   const drawPath = (
@@ -888,6 +888,8 @@ export function drawRetainedFreehandSelection(
     ctx.save();
     ctx.translate(transform.dx, transform.dy);
     ctx.scale(scale, scale);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.lineWidth =
       (operation === "paint" ? expand * 2 + lineWidth : expand * 2 - lineWidth) /
       Math.abs(scale);

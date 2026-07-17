@@ -443,14 +443,13 @@ function drawShapeOutline(
   const sy = (bounds.y + bounds.height / 2) * transform.scale + transform.dy;
   const sw = bounds.width * transform.scale + expand * 2;
   const sh = bounds.height * transform.scale + expand * 2;
-  const r = Math.max(0, 8 * transform.scale + expand);
   context.save();
   context.translate(sx, sy);
   context.rotate(((bounds.rotation ?? 0) * Math.PI) / 180);
   context.strokeStyle = strokeStyle;
   context.lineWidth = 1.5;
   context.beginPath();
-  context.roundRect(-sw / 2, -sh / 2, sw, sh, r);
+  context.rect(-sw / 2, -sh / 2, sw, sh);
   context.stroke();
   context.restore();
 }
@@ -1261,209 +1260,22 @@ export function renderCanvasSelections(params: CanvasSelectionRenderParams) {
   }
 }
 
-const SELECTION_MASK_MARGIN = 256;
+// Retained Path2D geometry still makes Chromium rasterize every selected path
+// for every camera frame. Cache the completed antialiased pass instead; the
+// margin lets pan/zoom frames reposition it without rebuilding the paths.
+const SELECTION_RASTER_MARGIN = 256;
+// The selection gap is two screen pixels. Refresh after a 12.5% scale change
+// so resampling cannot move it by more than roughly a quarter pixel from the ink.
+const SELECTION_RASTER_MIN_SCALE_RATIO = 0.875;
+const SELECTION_RASTER_MAX_SCALE_RATIO = 1.125;
 
-const SELECTION_VERTEX_SHADER = `#version 300 es
-precision highp float;
-out vec2 v_uv;
-void main() {
-  vec2 position = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-  v_uv = position;
-  gl_Position = vec4(position * 2.0 - 1.0, 0.0, 1.0);
-}`;
-
-const SELECTION_SEED_SHADER = `#version 300 es
-precision highp float;
-uniform sampler2D u_mask;
-in vec2 v_uv;
-out vec4 out_seed;
-void main() {
-  float alpha = texture(u_mask, v_uv).a;
-  out_seed = alpha > 0.02 ? vec4(v_uv, 0.0, 1.0) : vec4(-1.0, -1.0, 0.0, 1.0);
-}`;
-
-const SELECTION_JUMP_SHADER = `#version 300 es
-precision highp float;
-uniform sampler2D u_previous;
-uniform vec2 u_size;
-uniform float u_jump;
-in vec2 v_uv;
-out vec4 out_seed;
-void main() {
-  vec2 best = vec2(-1.0);
-  float best_distance = 1.0e30;
-  for (int y = -1; y <= 1; y++) {
-    for (int x = -1; x <= 1; x++) {
-      vec2 candidate_uv = v_uv + vec2(float(x), float(y)) * u_jump / u_size;
-      if (any(lessThan(candidate_uv, vec2(0.0))) || any(greaterThan(candidate_uv, vec2(1.0)))) continue;
-      vec2 seed = texture(u_previous, candidate_uv).xy;
-      if (seed.x < 0.0) continue;
-      float distance_to_seed = dot((seed - v_uv) * u_size, (seed - v_uv) * u_size);
-      if (distance_to_seed < best_distance) {
-        best_distance = distance_to_seed;
-        best = seed;
-      }
-    }
-  }
-  out_seed = vec4(best, 0.0, 1.0);
-}`;
-
-const SELECTION_DISPLAY_SHADER = `#version 300 es
-precision highp float;
-uniform sampler2D u_mask;
-uniform sampler2D u_seeds;
-uniform vec2 u_output_size;
-uniform vec2 u_source_size;
-uniform vec2 u_cache_screen;
-uniform vec2 u_placement;
-uniform float u_ratio;
-uniform float u_output_dpr;
-uniform float u_source_dpr;
-in vec2 v_uv;
-out vec4 out_color;
-void main() {
-  vec2 screen = vec2(
-    gl_FragCoord.x / u_output_dpr,
-    (u_output_size.y - gl_FragCoord.y) / u_output_dpr
-  );
-  vec2 source = (screen - u_placement) / u_ratio;
-  vec2 source_uv = source / u_cache_screen;
-  if (any(lessThan(source_uv, vec2(0.0))) || any(greaterThan(source_uv, vec2(1.0)))) discard;
-
-  vec4 here = texture(u_mask, source_uv);
-  if (here.a > 0.02) discard;
-  vec2 seed = texture(u_seeds, source_uv).xy;
-  if (seed.x < 0.0) discard;
-
-  vec4 selected = texture(u_mask, seed);
-  float expand = max(2.0, selected.a * 4.0);
-  float distance_in_source_pixels = length((seed - source_uv) * u_source_size);
-  float distance_on_screen = distance_in_source_pixels * u_ratio / u_source_dpr;
-  float half_width = 0.5;
-  float antialias = max(fwidth(distance_on_screen), 0.35);
-  float inner = expand - half_width;
-  float outer = expand + half_width;
-  float ring = smoothstep(inner - antialias, inner, distance_on_screen)
-    * (1.0 - smoothstep(outer, outer + antialias, distance_on_screen));
-  if (ring <= 0.0) discard;
-  out_color = vec4(selected.rgb, ring);
-}`;
-
-type SelectionProgram = {
-  program: WebGLProgram;
-  uniforms: Map<string, WebGLUniformLocation>;
-};
-
-type SelectionGpuResources = {
-  canvas: HTMLCanvasElement;
-  gl: WebGL2RenderingContext;
-  framebuffer: WebGLFramebuffer;
-  vao: WebGLVertexArrayObject;
-  maskTexture: WebGLTexture;
-  seedTextures: [WebGLTexture, WebGLTexture];
-  seedTextureIndex: 0 | 1;
-  seed: SelectionProgram;
-  jump: SelectionProgram;
-  display: SelectionProgram;
-  sourceWidth: number;
-  sourceHeight: number;
-  displayFilteringReady: boolean;
-};
-
-type SelectionMaskCache = {
+type CanvasSelectionRasterCache = {
   canvas: HTMLCanvasElement;
   dpr: number;
   screen: ScreenSize;
+  viewport: ScreenSize;
   transform: WorldTransform;
   selection: CanvasSelectionSnapshot;
-};
-
-function compileSelectionProgram(
-  gl: WebGL2RenderingContext,
-  fragmentSource: string,
-): SelectionProgram {
-  const compile = (type: number, source: string) => {
-    const shader = gl.createShader(type);
-    if (!shader) throw new Error("Could not create selection shader");
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      const message = gl.getShaderInfoLog(shader) ?? "Unknown selection shader error";
-      gl.deleteShader(shader);
-      throw new Error(message);
-    }
-    return shader;
-  };
-  const vertex = compile(gl.VERTEX_SHADER, SELECTION_VERTEX_SHADER);
-  const fragment = compile(gl.FRAGMENT_SHADER, fragmentSource);
-  const program = gl.createProgram();
-  if (!program) throw new Error("Could not create selection shader program");
-  gl.attachShader(program, vertex);
-  gl.attachShader(program, fragment);
-  gl.linkProgram(program);
-  gl.deleteShader(vertex);
-  gl.deleteShader(fragment);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const message =
-      gl.getProgramInfoLog(program) ?? "Unknown selection shader link error";
-    gl.deleteProgram(program);
-    throw new Error(message);
-  }
-  return { program, uniforms: new Map() };
-}
-
-function selectionUniform(
-  gl: WebGL2RenderingContext,
-  program: SelectionProgram,
-  name: string,
-) {
-  const cached = program.uniforms.get(name);
-  if (cached) return cached;
-  const location = gl.getUniformLocation(program.program, name);
-  if (!location) throw new Error(`Missing selection shader uniform: ${name}`);
-  program.uniforms.set(name, location);
-  return location;
-}
-
-function createSelectionGpuResources(): SelectionGpuResources | null {
-  const canvas = document.createElement("canvas");
-  const gl = canvas.getContext("webgl2", {
-    alpha: true,
-    antialias: false,
-    depth: false,
-    premultipliedAlpha: true,
-    preserveDrawingBuffer: true,
-    stencil: false,
-  });
-  if (!gl || !gl.getExtension("EXT_color_buffer_float")) return null;
-  const framebuffer = gl.createFramebuffer();
-  const vao = gl.createVertexArray();
-  const maskTexture = gl.createTexture();
-  const firstSeed = gl.createTexture();
-  const secondSeed = gl.createTexture();
-  if (!framebuffer || !vao || !maskTexture || !firstSeed || !secondSeed) return null;
-  gl.bindVertexArray(vao);
-  return {
-    canvas,
-    gl,
-    framebuffer,
-    vao,
-    maskTexture,
-    seedTextures: [firstSeed, secondSeed],
-    seedTextureIndex: 0,
-    seed: compileSelectionProgram(gl, SELECTION_SEED_SHADER),
-    jump: compileSelectionProgram(gl, SELECTION_JUMP_SHADER),
-    display: compileSelectionProgram(gl, SELECTION_DISPLAY_SHADER),
-    sourceWidth: 0,
-    sourceHeight: 0,
-    displayFilteringReady: false,
-  };
-}
-
-type RetainedCanvasSelection = {
-  selection: CanvasSelectionSnapshot;
-  scale: number;
-  strokeGroups: RetainedFreehandSelectionGroup[];
 };
 
 export type CanvasSelectionRendererParams = {
@@ -1509,254 +1321,8 @@ function retainCanvasSelectionStrokes(
   return groups;
 }
 
-function paintSelectionMaskShape(
-  context: CanvasRenderingContext2D,
-  bounds: NonNullable<CanvasSelectionSnapshot["selectedShapeBounds"]>[number],
-  transform: WorldTransform,
-  color: string,
-  alpha: number,
-) {
-  const sx = (bounds.x + bounds.width / 2) * transform.scale + transform.dx;
-  const sy = (bounds.y + bounds.height / 2) * transform.scale + transform.dy;
-  const width = bounds.width * transform.scale;
-  const height = bounds.height * transform.scale;
-  context.save();
-  context.translate(sx, sy);
-  context.rotate(((bounds.rotation ?? 0) * Math.PI) / 180);
-  context.fillStyle = color;
-  context.globalAlpha = alpha;
-  context.beginPath();
-  context.roundRect(
-    -width / 2,
-    -height / 2,
-    width,
-    height,
-    Math.max(0, 8 * transform.scale),
-  );
-  context.fill();
-  context.restore();
-}
-
-function buildSelectionMask(
-  previous: SelectionMaskCache | null,
-  dpr: number,
-  screen: ScreenSize,
-  transform: WorldTransform,
-  selection: CanvasSelectionSnapshot,
-) {
-  const canvas = previous?.canvas ?? document.createElement("canvas");
-  const cacheScreen = {
-    width: screen.width + SELECTION_MASK_MARGIN * 2,
-    height: screen.height + SELECTION_MASK_MARGIN * 2,
-  };
-  const width = Math.ceil(cacheScreen.width * dpr);
-  const height = Math.ceil(cacheScreen.height * dpr);
-  if (canvas.width !== width) canvas.width = width;
-  if (canvas.height !== height) canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Selection mask requires a 2D canvas context");
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.globalAlpha = 1;
-  context.globalCompositeOperation = "source-over";
-  context.clearRect(0, 0, cacheScreen.width, cacheScreen.height);
-
-  const maskTransform = {
-    scale: transform.scale,
-    dx: transform.dx + SELECTION_MASK_MARGIN,
-    dy: transform.dy + SELECTION_MASK_MARGIN,
-  };
-  const strokesById = new Map(selection.strokes.map((stroke) => [stroke.id, stroke]));
-  const paintStrokes = (ids: Set<string>, color: string) => {
-    for (const id of ids) {
-      const stroke = strokesById.get(id);
-      if (!stroke) continue;
-      drawFreehandStroke(
-        context,
-        {
-          ...stroke,
-          style: { ...stroke.style, color, opacity: 1 },
-        },
-        maskTransform,
-      );
-    }
-  };
-  paintStrokes(selection.selectedStrokeIds, "#2563eb");
-  for (const remote of selection.remoteSelectedStrokeIds ?? []) {
-    paintStrokes(remote.ids, remote.color);
-  }
-  for (const bounds of selection.selectedShapeBounds ?? []) {
-    paintSelectionMaskShape(
-      context,
-      bounds,
-      maskTransform,
-      "#2563eb",
-      bounds.type === "section" ? 1 : 0.5,
-    );
-  }
-  for (const bounds of selection.remoteSelectedShapeBounds ?? []) {
-    paintSelectionMaskShape(
-      context,
-      bounds,
-      maskTransform,
-      bounds.color,
-      bounds.type === "section" ? 1 : 0.5,
-    );
-  }
-  return {
-    canvas,
-    dpr,
-    screen: cacheScreen,
-    transform: { ...transform },
-    selection,
-  } satisfies SelectionMaskCache;
-}
-
-function configureSelectionTexture(
-  gl: WebGL2RenderingContext,
-  texture: WebGLTexture,
-  filter = gl.NEAREST,
-) {
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-}
-
-function updateSelectionDistanceField(
-  resources: SelectionGpuResources,
-  cache: SelectionMaskCache,
-) {
-  const { gl } = resources;
-  const width = cache.canvas.width;
-  const height = cache.canvas.height;
-  resources.sourceWidth = width;
-  resources.sourceHeight = height;
-  resources.displayFilteringReady = false;
-
-  configureSelectionTexture(gl, resources.maskTexture);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cache.canvas);
-  for (const texture of resources.seedTextures) {
-    configureSelectionTexture(gl, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, width, height, 0, gl.RG, gl.FLOAT, null);
-  }
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, resources.framebuffer);
-  gl.viewport(0, 0, width, height);
-  gl.disable(gl.BLEND);
-  gl.useProgram(resources.seed.program);
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, resources.maskTexture);
-  gl.uniform1i(selectionUniform(gl, resources.seed, "u_mask"), 0);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    resources.seedTextures[0],
-    0,
-  );
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-  let sourceIndex: 0 | 1 = 0;
-  let targetIndex: 0 | 1 = 1;
-  gl.useProgram(resources.jump.program);
-  gl.uniform1i(selectionUniform(gl, resources.jump, "u_previous"), 0);
-  gl.uniform2f(selectionUniform(gl, resources.jump, "u_size"), width, height);
-  let jump = 2 ** Math.floor(Math.log2(Math.max(width, height)));
-  while (jump >= 1) {
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, resources.seedTextures[sourceIndex]);
-    gl.framebufferTexture2D(
-      gl.FRAMEBUFFER,
-      gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
-      resources.seedTextures[targetIndex],
-      0,
-    );
-    gl.uniform1f(selectionUniform(gl, resources.jump, "u_jump"), jump);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    sourceIndex = targetIndex;
-    targetIndex = sourceIndex === 0 ? 1 : 0;
-    jump /= 2;
-  }
-  resources.seedTextureIndex = sourceIndex;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-}
-
-function renderGpuSelection(
-  resources: SelectionGpuResources,
-  cache: SelectionMaskCache,
-  dpr: number,
-  screen: ScreenSize,
-  transform: WorldTransform,
-) {
-  const { canvas, gl, display } = resources;
-  const outputDpr = Math.max(2, dpr);
-  const width = Math.ceil(screen.width * outputDpr);
-  const height = Math.ceil(screen.height * outputDpr);
-  if (canvas.width !== width) canvas.width = width;
-  if (canvas.height !== height) canvas.height = height;
-  const ratio = transform.scale / cache.transform.scale;
-  const x = (-SELECTION_MASK_MARGIN - cache.transform.dx) * ratio + transform.dx;
-  const y = (-SELECTION_MASK_MARGIN - cache.transform.dy) * ratio + transform.dy;
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.bindVertexArray(resources.vao);
-  gl.viewport(0, 0, width, height);
-  gl.disable(gl.BLEND);
-  gl.clearColor(0, 0, 0, 0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.useProgram(display.program);
-  if (!resources.displayFilteringReady) {
-    configureSelectionTexture(gl, resources.maskTexture, gl.LINEAR);
-    resources.displayFilteringReady = true;
-  }
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, resources.maskTexture);
-  gl.uniform1i(selectionUniform(gl, display, "u_mask"), 0);
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, resources.seedTextures[resources.seedTextureIndex]);
-  gl.uniform1i(selectionUniform(gl, display, "u_seeds"), 1);
-  gl.uniform2f(selectionUniform(gl, display, "u_output_size"), width, height);
-  gl.uniform2f(
-    selectionUniform(gl, display, "u_source_size"),
-    resources.sourceWidth,
-    resources.sourceHeight,
-  );
-  gl.uniform2f(
-    selectionUniform(gl, display, "u_cache_screen"),
-    cache.screen.width,
-    cache.screen.height,
-  );
-  gl.uniform2f(selectionUniform(gl, display, "u_placement"), x, y);
-  gl.uniform1f(selectionUniform(gl, display, "u_ratio"), ratio);
-  gl.uniform1f(selectionUniform(gl, display, "u_output_dpr"), outputDpr);
-  gl.uniform1f(selectionUniform(gl, display, "u_source_dpr"), cache.dpr);
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
-}
-
-function selectionMaskCovers(
-  cache: SelectionMaskCache,
-  screen: ScreenSize,
-  transform: WorldTransform,
-) {
-  const ratio = transform.scale / cache.transform.scale;
-  if (ratio < 2 / 3 || ratio > 3 / 2) return false;
-  const x = (-SELECTION_MASK_MARGIN - cache.transform.dx) * ratio + transform.dx;
-  const y = (-SELECTION_MASK_MARGIN - cache.transform.dy) * ratio + transform.dy;
-  return (
-    x <= 0 &&
-    y <= 0 &&
-    x + cache.screen.width * ratio >= screen.width &&
-    y + cache.screen.height * ratio >= screen.height
-  );
-}
-
 export class CanvasSelectionRenderer {
-  #retained: RetainedCanvasSelection | null = null;
-  #mask: SelectionMaskCache | null = null;
-  #gpu: SelectionGpuResources | null | undefined;
+  #cache: CanvasSelectionRasterCache | null = null;
 
   render(params: CanvasSelectionRendererParams) {
     const {
@@ -1769,96 +1335,41 @@ export class CanvasSelectionRenderer {
       deferRefresh = false,
     } = params;
     if (!hasCanvasSelection(selection)) {
-      this.#retained = null;
-      this.#releaseMask();
+      this.#releaseCache();
       this.#clear(context, dpr, screen);
       return;
     }
 
-    if (this.#gpu === undefined) this.#gpu = createSelectionGpuResources();
-    if (this.#gpu) {
-      const mask = this.#mask;
-      if (deferRefresh && (!mask || mask.selection !== selection)) {
-        if (!mask) {
-          this.#clear(context, dpr, screen);
-          return;
-        }
-        renderGpuSelection(this.#gpu, mask, dpr, screen, transform);
-        this.#copyGpuSurface(context, dpr, screen);
-        return;
-      }
-      const surfaceChanged =
-        !mask ||
-        mask.dpr !== dpr ||
-        mask.screen.width !== screen.width + SELECTION_MASK_MARGIN * 2 ||
-        mask.screen.height !== screen.height + SELECTION_MASK_MARGIN * 2;
-      const cameraOutgrewMask =
-        Boolean(mask) && refresh && !selectionMaskCovers(mask, screen, transform);
-      if (surfaceChanged || !mask || mask.selection !== selection || cameraOutgrewMask) {
-        this.#mask = buildSelectionMask(this.#mask, dpr, screen, transform, selection);
-        updateSelectionDistanceField(this.#gpu, this.#mask);
-      }
-      const activeMask = this.#mask;
-      if (!activeMask) return;
-      renderGpuSelection(this.#gpu, activeMask, dpr, screen, transform);
-      this.#copyGpuSurface(context, dpr, screen);
-      return;
-    }
-
-    if (deferRefresh && this.#retained?.selection !== selection) {
-      if (this.#retained) this.#draw(context, dpr, screen, transform);
+    if (deferRefresh && this.#cache?.selection !== selection) {
+      if (this.#cache) this.#draw(context, dpr, screen, transform);
       else this.#clear(context, dpr, screen);
       return;
     }
 
-    const retained = this.#retained;
-    if (
-      !retained ||
-      retained.selection !== selection ||
-      (refresh && retained.scale !== transform.scale)
-    ) {
-      this.#retained = {
-        selection,
-        scale: transform.scale,
-        strokeGroups: retainCanvasSelectionStrokes(selection, transform),
-      };
+    const cache = this.#cache;
+    const surfaceChanged =
+      !cache ||
+      cache.dpr !== dpr ||
+      cache.viewport.width !== screen.width ||
+      cache.viewport.height !== screen.height;
+    const scaleRatio = cache ? transform.scale / cache.transform.scale : 1;
+    const scaleDrifted =
+      scaleRatio < SELECTION_RASTER_MIN_SCALE_RATIO ||
+      scaleRatio > SELECTION_RASTER_MAX_SCALE_RATIO;
+    const cameraNeedsRefresh =
+      cache !== null &&
+      (scaleDrifted ||
+        (refresh &&
+          (cache.transform.scale !== transform.scale ||
+            !this.#cacheCovers(cache, screen, transform))));
+    if (surfaceChanged || !cache || cache.selection !== selection || cameraNeedsRefresh) {
+      this.#cache = this.#buildCache(cache, dpr, screen, transform, selection);
     }
     this.#draw(context, dpr, screen, transform);
   }
 
-  #copyGpuSurface(context: CanvasRenderingContext2D, dpr: number, screen: ScreenSize) {
-    const resources = this.#gpu;
-    if (!resources) return;
-    // drawImage crosses from this WebGL surface into the visible 2D layer.
-    // Waiting here prevents Chromium from copying the just-cleared buffer
-    // before the fullscreen selection pass has completed.
-    resources.gl.finish();
-    this.#clear(context, dpr, screen);
-    context.save();
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    context.globalAlpha = 1;
-    context.globalCompositeOperation = "source-over";
-    context.drawImage(resources.canvas, 0, 0, screen.width, screen.height);
-    context.restore();
-  }
-
   dispose() {
-    this.#retained = null;
-    this.#releaseMask();
-    const resources = this.#gpu;
-    if (resources) {
-      const { gl } = resources;
-      gl.deleteProgram(resources.seed.program);
-      gl.deleteProgram(resources.jump.program);
-      gl.deleteProgram(resources.display.program);
-      gl.deleteTexture(resources.maskTexture);
-      for (const texture of resources.seedTextures) gl.deleteTexture(texture);
-      gl.deleteFramebuffer(resources.framebuffer);
-      gl.deleteVertexArray(resources.vao);
-      resources.canvas.width = 0;
-      resources.canvas.height = 0;
-    }
-    this.#gpu = undefined;
+    this.#releaseCache();
   }
 
   #draw(
@@ -1867,25 +1378,92 @@ export class CanvasSelectionRenderer {
     screen: ScreenSize,
     transform: WorldTransform,
   ) {
-    const retained = this.#retained;
-    if (!retained) {
+    const cache = this.#cache;
+    if (!cache) {
       this.#clear(context, dpr, screen);
       return;
     }
 
     this.#clear(context, dpr, screen);
+    const { ratio, x, y } = this.#cachePlacement(cache, transform);
+    context.save();
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.globalAlpha = 1;
     context.globalCompositeOperation = "source-over";
-    context.setLineDash([]);
-    drawRetainedFreehandSelection(context, retained.strokeGroups, transform);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(
+      cache.canvas,
+      x,
+      y,
+      cache.screen.width * ratio,
+      cache.screen.height * ratio,
+    );
+    context.restore();
+  }
 
-    for (const bounds of retained.selection.selectedShapeBounds ?? []) {
-      drawShapeOutline(context, bounds, transform, "#2563eb");
-    }
-    for (const bounds of retained.selection.remoteSelectedShapeBounds ?? []) {
-      drawShapeOutline(context, bounds, transform, bounds.color);
-    }
+  #buildCache(
+    previous: CanvasSelectionRasterCache | null,
+    dpr: number,
+    viewport: ScreenSize,
+    transform: WorldTransform,
+    selection: CanvasSelectionSnapshot,
+  ): CanvasSelectionRasterCache {
+    const canvas = previous?.canvas ?? document.createElement("canvas");
+    const screen = {
+      width: viewport.width + SELECTION_RASTER_MARGIN * 2,
+      height: viewport.height + SELECTION_RASTER_MARGIN * 2,
+    };
+    const width = Math.ceil(screen.width * dpr);
+    const height = Math.ceil(screen.height * dpr);
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    const cacheContext = canvas.getContext("2d");
+    if (!cacheContext) throw new Error("Selection cache requires a 2D canvas context");
+
+    renderCanvasSelections({
+      ...selection,
+      context: cacheContext,
+      dpr,
+      screen,
+      transform: {
+        scale: transform.scale,
+        dx: transform.dx + SELECTION_RASTER_MARGIN,
+        dy: transform.dy + SELECTION_RASTER_MARGIN,
+      },
+    });
+
+    return {
+      canvas,
+      dpr,
+      screen,
+      viewport: { ...viewport },
+      transform: { ...transform },
+      selection,
+    };
+  }
+
+  #cachePlacement(cache: CanvasSelectionRasterCache, transform: WorldTransform) {
+    const ratio = transform.scale / cache.transform.scale;
+    return {
+      ratio,
+      x: (-SELECTION_RASTER_MARGIN - cache.transform.dx) * ratio + transform.dx,
+      y: (-SELECTION_RASTER_MARGIN - cache.transform.dy) * ratio + transform.dy,
+    };
+  }
+
+  #cacheCovers(
+    cache: CanvasSelectionRasterCache,
+    screen: ScreenSize,
+    transform: WorldTransform,
+  ) {
+    const { ratio, x, y } = this.#cachePlacement(cache, transform);
+    return (
+      x <= 0 &&
+      y <= 0 &&
+      x + cache.screen.width * ratio >= screen.width &&
+      y + cache.screen.height * ratio >= screen.height
+    );
   }
 
   #clear(context: CanvasRenderingContext2D, dpr: number, screen: ScreenSize) {
@@ -1895,22 +1473,12 @@ export class CanvasSelectionRenderer {
     context.restore();
   }
 
-  #releaseMask() {
-    if (!this.#mask) return;
-    this.#mask.canvas.width = 0;
-    this.#mask.canvas.height = 0;
-    this.#mask = null;
-    const resources = this.#gpu;
-    if (!resources) return;
-    const { gl } = resources;
-    configureSelectionTexture(gl, resources.maskTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    for (const texture of resources.seedTextures) {
-      configureSelectionTexture(gl, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, 1, 1, 0, gl.RG, gl.FLOAT, null);
+  #releaseCache() {
+    if (this.#cache) {
+      this.#cache.canvas.width = 0;
+      this.#cache.canvas.height = 0;
     }
-    resources.sourceWidth = 0;
-    resources.sourceHeight = 0;
+    this.#cache = null;
   }
 }
 
