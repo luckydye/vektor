@@ -10,6 +10,15 @@ output_dir = Path(__file__).parent
 with open(input_file, 'r', encoding='utf-8') as f:
     content = f.read()
 
+
+def write_icon(filename: str, svg_content: str) -> None:
+    output_path = output_dir / filename
+    normalized_svg = re.sub(r'\bblack\b', 'currentColor', svg_content, flags=re.IGNORECASE)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(normalized_svg)
+    print(f'Created: {filename}')
+
+
 # Split by lines
 lines = content.split('\n')
 
@@ -31,11 +40,8 @@ for line in lines:
             if '</svg>' in line:
                 # Entire SVG is on one line
                 in_svg = False
-                output_path = output_dir / current_filename
                 svg_content = current_svg[0]
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(svg_content)
-                print(f'Created: {current_filename}')
+                write_icon(current_filename, svg_content)
                 current_filename = None
                 current_svg = []
         continue
@@ -47,11 +53,8 @@ for line in lines:
         # Check if it ends on the same line
         if '</svg>' in line:
             in_svg = False
-            output_path = output_dir / current_filename
             svg_content = '\n'.join(current_svg)
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(svg_content)
-            print(f'Created: {current_filename}')
+            write_icon(current_filename, svg_content)
             current_filename = None
             current_svg = []
         continue
@@ -64,14 +67,8 @@ for line in lines:
         if '</svg>' in line:
             in_svg = False
 
-            # Write the file
-            output_path = output_dir / current_filename
             svg_content = '\n'.join(current_svg)
-
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(svg_content)
-
-            print(f'Created: {current_filename}')
+            write_icon(current_filename, svg_content)
 
             # Reset
             current_filename = None

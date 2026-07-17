@@ -85,7 +85,7 @@ export { default as fourColumnsIcon } from "#assets/icons/4-columns.svg?raw";
 // Icons extracted from inline SVGs
 export { default as addIcon } from "./icons/add.svg?raw";
 export { default as alertCircleIcon } from "./icons/alert-circle.svg?raw";
-export { default as archiveBoxIcon } from "./icons/archive-box.svg?raw";
+export { default as archiveBoxIcon } from "./icons/archive.svg?raw";
 export { default as arrowLeftIcon } from "./icons/arrow-left.svg?raw";
 export { default as boltIcon } from "./icons/bolt.svg?raw";
 export { default as categoryIcon } from "./icons/category.svg?raw";
@@ -113,7 +113,7 @@ export { default as presentationIcon } from "./icons/presentation.svg?raw";
 export { default as publishIcon } from "./icons/publish.svg?raw";
 export { default as refreshIcon } from "./icons/refresh.svg?raw";
 export { default as resizeHandleIcon } from "./icons/resize-handle.svg?raw";
-export { default as restoreArrowIcon } from "./icons/restore-arrow.svg?raw";
+export { default as restoreArrowIcon } from "./icons/restore.svg?raw";
 export { default as settingsIcon } from "./icons/settings.svg?raw";
 export { default as shapeCircleIcon } from "./icons/shape-circle.svg?raw";
 export { default as shapeRectangleIcon } from "./icons/shape-rectangle.svg?raw";
