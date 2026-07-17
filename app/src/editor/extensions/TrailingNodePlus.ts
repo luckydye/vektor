@@ -3,7 +3,19 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
-import { addIcon, extensionIcon } from "~/src/assets/icons.ts";
+import {
+  addIcon,
+  dateIcon,
+  extensionIcon,
+  fileAttachmentIcon,
+  fourColumnsIcon,
+  htmlIcon,
+  imageIcon,
+  tableIcon,
+  threeColumnsIcon,
+  twoColumnsIcon,
+  videoIcon,
+} from "~/src/assets/icons.ts";
 import { extensions } from "~/src/utils/extensions.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
@@ -30,7 +42,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Table",
       description: "Insert a table",
-      icon: "⊞",
+      icon: tableIcon,
       command: (editor) => {
         editor
           .chain()
@@ -42,7 +54,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Image",
       description: "Upload and insert an image",
-      icon: "🖼️",
+      icon: imageIcon,
       command: (editor) => {
         handleImageUpload(editor, spaceId, documentId);
       },
@@ -50,7 +62,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Video",
       description: "Upload and insert a video",
-      icon: "🎬",
+      icon: videoIcon,
       command: (editor) => {
         handleVideoUpload(editor, spaceId, documentId);
       },
@@ -58,7 +70,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "File/Attachment",
       description: "Upload and insert any file",
-      icon: "📎",
+      icon: fileAttachmentIcon,
       command: (editor) => {
         handleFileAttachmentUpload(editor, spaceId, documentId);
       },
@@ -66,7 +78,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "2 Columns",
       description: "Insert a 2-column layout",
-      icon: "⫴⫴",
+      icon: twoColumnsIcon,
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
           .setColumnLayout({ columns: 2 })
@@ -76,7 +88,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "3 Columns",
       description: "Insert a 3-column layout",
-      icon: "⫴⫴⫴",
+      icon: threeColumnsIcon,
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
           .setColumnLayout({ columns: 3 })
@@ -86,7 +98,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "4 Columns",
       description: "Insert a 4-column layout",
-      icon: "⫴⫴⫴⫴",
+      icon: fourColumnsIcon,
       command: (editor) => {
         (editor.chain().focus() as unknown as ColumnLayoutCommandChain)
           .setColumnLayout({ columns: 4 })
@@ -96,7 +108,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "HTML Block",
       description: "Insert raw HTML markup",
-      icon: "<>",
+      icon: htmlIcon,
       command: (editor) => {
         editor.chain().focus().insertHtmlBlock().run();
       },
@@ -104,7 +116,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     {
       title: "Date",
       description: "Insert a date picker",
-      icon: "📅",
+      icon: dateIcon,
       command: (editor) => {
         editor.chain().focus().insertDatePicker().run();
       },
