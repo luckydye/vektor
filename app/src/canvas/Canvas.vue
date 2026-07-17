@@ -2356,7 +2356,10 @@ function movingGroupBounds(
   for (const moved of drag.shapes) {
     const shape = shapesById.value.get(moved.id);
     if (!shape) continue;
-    const bounds = shapeAabb({ ...shape, x: moved.x, y: moved.y });
+    const bounds = shapeAabb({
+      ...shape,
+      frame: { ...shape.frame, x: moved.x, y: moved.y },
+    });
     minX = Math.min(minX, bounds.x);
     minY = Math.min(minY, bounds.y);
     maxX = Math.max(maxX, bounds.x + bounds.width);
