@@ -48,7 +48,7 @@ const collaborators = computed(() => {
         ? {
             ...contributor.user,
             ...profile.user,
-            email: contributor.user.email,
+            email: profile.user.email ?? contributor.user.email,
           }
         : profile.user,
       isPresent: true,

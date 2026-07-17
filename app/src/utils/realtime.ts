@@ -30,6 +30,7 @@ export interface RealtimeEventMessage {
 }
 
 export interface PresenceUser {
+  email?: string | null;
   id: string;
   name: string;
   image?: string | null;

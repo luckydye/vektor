@@ -222,6 +222,7 @@ export function useCollaboration<TPresenceState>(options: {
               user: {
                 id: localUser.id,
                 name: localUser.name,
+                email: localUser.email,
                 image: localUser.image,
                 color: getPresenceColor(localUser.id),
               },
@@ -278,6 +279,7 @@ export function useCollaboration<TPresenceState>(options: {
       {
         id: user.value.id,
         name: user.value.name,
+        email: user.value.email,
         image: user.value.image,
         color: getPresenceColor(user.value.id),
       },
