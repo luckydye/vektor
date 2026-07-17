@@ -1350,6 +1350,54 @@ details[open] .details-chevron {
   border-color: var(--color-neutral-200);
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(table) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.75rem 0;
+  border: 1px solid var(--color-neutral-200);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow-x: auto;
+  table-layout: auto;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(:is(th, td)) {
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-right: 1px solid var(--color-neutral-200);
+  border-bottom: 1px solid var(--color-neutral-200);
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  word-break: normal;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(th) {
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  font-weight: 600;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(tr > :last-child) {
+  border-right: 0;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(tr:last-child > *) {
+  border-bottom: 0;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(:is(th, td):first-child) {
+  width: 1%;
+  white-space: nowrap;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
+.markdown-content :deep(td code) {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .user-markdown :deep(a) {
   color: inherit;
 }
