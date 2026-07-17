@@ -3,8 +3,8 @@
 import re
 from pathlib import Path
 
-# Read the sheets.svg file
-input_file = Path(__file__).parent / 'sheets.svg'
+# Read the icons.svg file
+input_file = Path(__file__).parent.parent / 'icons.svg'
 output_dir = Path(__file__).parent
 
 with open(input_file, 'r', encoding='utf-8') as f:

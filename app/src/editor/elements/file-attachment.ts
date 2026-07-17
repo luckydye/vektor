@@ -10,10 +10,9 @@
 
 import {
   archiveBoxIcon,
+  csvFileIcon,
+  documentIcon,
   fileIcon,
-  fileLinesIcon,
-  fileSpreadsheetIcon,
-  fileTextIcon,
   imageIcon,
   presentationIcon,
 } from "~/src/assets/icons.ts";
@@ -147,11 +146,11 @@ function normalizeVertices(vertices: Vec3[]): Vec3[] {
 }
 
 const ICONS: Record<FileType, string> = {
-  document: fileTextIcon,
+  document: documentIcon,
   presentation: presentationIcon,
-  spreadsheet: fileSpreadsheetIcon,
+  spreadsheet: csvFileIcon,
   archive: archiveBoxIcon,
-  text: fileLinesIcon,
+  text: fileIcon,
   image: imageIcon,
   model: fileIcon,
   unknown: fileIcon,

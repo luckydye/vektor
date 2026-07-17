@@ -92,7 +92,7 @@ Actions.register("document:print", {
 
 Actions.register("document:accesstoken", {
   title: t("Copy API Command"),
-  icon: () => "webhook",
+  icon: () => "source-code",
   description: t("Creates API token to access this document"),
   group: "document:dev",
   order: 10,
@@ -484,7 +484,7 @@ watchEffect(() => {
           :disabled="publishDisabled"
           @click="publishDocument"
         >
-          <Icon name="check" />
+          <Icon name="confirmation" />
           <span>{{ isSaving ? "Saving..." : isNewDocument ? "Create" : "Publish" }}</span>
         </button>
         <a-popover-trigger v-if="!isNewDocument" class="flex items-stretch group">
@@ -523,7 +523,7 @@ watchEffect(() => {
       </div>
 
       <ButtonSecondary v-if="showCancel" @click="cancelEditing">
-        <Icon name="close" />
+        <Icon name="cancel" />
         <span>Cancel</span>
       </ButtonSecondary>
     </div>

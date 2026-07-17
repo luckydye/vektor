@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
-import { addIcon, puzzleIcon } from "~/src/assets/icons.ts";
+import { addIcon, extensionIcon } from "~/src/assets/icons.ts";
 import { extensions } from "~/src/utils/extensions.ts";
 import { handleFileAttachmentUpload } from "./FileAttachment.ts";
 import { handleImageUpload } from "./ImageUpload.ts";
@@ -115,7 +115,7 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
     items.push({
       title: route.menuItem?.title || route.title || extensionId,
       description: route.description || "Extension view",
-      icon: route.menuItem?.icon || puzzleIcon,
+      icon: route.menuItem?.icon || extensionIcon,
       command: (editor) => {
         editor
           .chain()

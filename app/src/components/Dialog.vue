@@ -2,7 +2,7 @@
 import { onBeforeUnmount, useSlots, watch } from "vue";
 import { t } from "#utils/lang.ts";
 import { lockScroll, unlockScroll } from "#utils/scrollLock.ts";
-import { closeIcon } from "~/src/assets/icons.ts";
+import { cancelIcon } from "~/src/assets/icons.ts";
 import ClientOnly from "./ClientOnly.vue";
 import "@atrium-ui/elements/blur";
 
@@ -126,7 +126,7 @@ onBeforeUnmount(() => applyScrollLock(false));
                 :aria-label="t('Close')"
                 @click="close"
               >
-                <div class="svg-icon w-4 h-4" v-html="closeIcon" />
+                <div class="svg-icon w-4 h-4" v-html="cancelIcon" />
               </button>
             </div>
 

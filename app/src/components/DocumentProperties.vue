@@ -11,15 +11,15 @@ import {
 import { currentLang, t } from "#utils/lang.ts";
 import { getTextColor } from "#utils/utils.ts";
 import {
-  calendarIcon,
+  dateIcon,
   gridCleanIcon,
   gridDotsIcon,
   gridGridIcon,
-  layoutDocumentIcon,
-  layoutFullIcon,
+  documentWidthFullIcon,
+  documentWidthStandardIcon,
   peopleIcon,
-  plusIcon,
-  propertyIcon,
+  addIcon,
+  genericPropertyIcon,
 } from "~/src/assets/icons.ts";
 import type { Property } from "~/src/components/index.ts";
 import {
@@ -196,8 +196,8 @@ const getPropertyIcon = (property: Property) => {
   }
   if (property.id?.toLowerCase() === "layout") {
     return propertyValueToScalar(property.value) === "full"
-      ? layoutFullIcon
-      : layoutDocumentIcon;
+      ? documentWidthFullIcon
+      : documentWidthStandardIcon;
   }
   if (property.id?.toLowerCase() === "gridtype") {
     return (
@@ -209,9 +209,9 @@ const getPropertyIcon = (property: Property) => {
     return peopleIcon;
   }
   if (property.type === "date") {
-    return calendarIcon;
+    return dateIcon;
   }
-  return propertyIcon;
+  return genericPropertyIcon;
 };
 
 const getPropertyVariant = (property: Property): "default" | "special" => {
@@ -245,8 +245,8 @@ const getPropertyValues = async (property: Property) => {
 
   if (property.name?.toLowerCase() === "layout") {
     return [
-      { id: "document", label: t("Document"), icon: layoutDocumentIcon },
-      { id: "full", label: t("Full Width"), icon: layoutFullIcon },
+      { id: "document", label: t("Document"), icon: documentWidthStandardIcon },
+      { id: "full", label: t("Full Width"), icon: documentWidthFullIcon },
     ];
   }
 
@@ -272,7 +272,7 @@ const getPropertyValues = async (property: Property) => {
     spaceProperties.value
       ?.find((sp) => sp.name === property.name)
       ?.values?.map((value) => {
-        return { id: value, label: value, icon: propertyIcon };
+        return { id: value, label: value, icon: genericPropertyIcon };
       }) || [];
 
   return propertyValues;
@@ -327,9 +327,9 @@ const properties = computed((): Property[] => {
 });
 
 const propertyTypes = [
-  { id: "text", label: t("Text"), icon: plusIcon },
-  { id: "multi-select", label: t("Multi Select"), icon: plusIcon },
-  { id: "date", label: t("Date"), icon: plusIcon },
+  { id: "text", label: t("Text"), icon: addIcon },
+  { id: "multi-select", label: t("Multi Select"), icon: addIcon },
+  { id: "date", label: t("Date"), icon: addIcon },
   { id: "user", label: t("User"), icon: peopleIcon },
 ];
 
@@ -384,7 +384,7 @@ const availableNewProperties = computed(() => {
       :class="twMerge('pointer-events-auto', layout === 'labeled' ? 'relative ml-28 pl-3xs' : 'relative')"
     >
       <ButtonIconSmall
-        :icon="plusIcon"
+        :icon="addIcon"
         :aria-label="t('New property')"
         @click="toggleCreatePopover"
       />

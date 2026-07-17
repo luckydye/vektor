@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { slugify } from "#utils/utils.ts";
-import { checkIcon, closeIcon } from "~/src/assets/icons.ts";
+import { cancelIcon, confirmationIcon } from "~/src/assets/icons.ts";
 import { ButtonPrimary, ButtonSecondary, Dialog, Input } from "~/src/components/index.ts";
 
 interface Props {
@@ -138,13 +138,13 @@ watch(
     <template #footer>
       <div class="flex gap-3xs">
         <ButtonSecondary
-          :icon="closeIcon"
+          :icon="cancelIcon"
           text="Cancel"
           class="flex-1"
           @click="handleClose"
         />
         <ButtonPrimary
-          :icon="checkIcon"
+          :icon="confirmationIcon"
           text="Create"
           class="flex-1"
           type="submit"

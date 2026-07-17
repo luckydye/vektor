@@ -30,7 +30,7 @@ import { propertyValueToText } from "#utils/documentProperties.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import "./AvatarElement.ts";
 import {
-  closeXIcon,
+  cancelIcon,
   commentIcon,
   documentIcon,
   warningTriangleIcon,
@@ -259,7 +259,7 @@ function formatCommentTime(date: Date | string): string {
                   class="p-1.5 text-neutral-400 hover:text-foreground hover:bg-neutral-100 rounded-sm transition-colors"
                   title="Close (Esc)"
                 >
-                  <div class="svg-icon w-5 h-5" v-html="closeXIcon" />
+                  <div class="svg-icon w-5 h-5" v-html="cancelIcon" />
                 </button>
               </div>
             </div>

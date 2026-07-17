@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { AuditLog } from "#api/client.ts";
-import { checkCircleOutlineIcon, editOutlineIcon, plusIcon } from "#assets/icons.ts";
+import { addIcon, confirmationIcon, editEntryIcon } from "#assets/icons.ts";
 import {
   formatActivityTime,
   formatPropertyKey,
@@ -98,8 +98,8 @@ function getEntryChangeLabel(entry: AuditLog): string | null {
 }
 
 function getDocumentActivityIcon(entry: AuditLog): string {
-  if (entry.event === "publish") return checkCircleOutlineIcon;
-  return editOutlineIcon;
+  if (entry.event === "publish") return confirmationIcon;
+  return editEntryIcon;
 }
 
 function getDocumentEntries(group: DocumentActivityGroup): AuditLog[] {
@@ -285,7 +285,7 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
                 <div
                   class="svg-icon h-4 w-4 shrink-0 text-neutral-400 transition-transform"
                   :class="isGroupExpanded(group.id) ? 'rotate-45' : ''"
-                  v-html="plusIcon"
+                  v-html="addIcon"
                 />
                 <span>
                   {{ isGroupExpanded(group.id)

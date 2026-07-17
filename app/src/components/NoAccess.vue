@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from "#utils/lang.ts";
-import { arrowLeftIcon, lockIcon } from "~/src/assets/icons.ts";
+import { arrowLeftIcon, lockElementIcon } from "~/src/assets/icons.ts";
 import { ButtonPrimary } from "~/src/components/index.ts";
 
 function goBack() {
@@ -12,7 +12,7 @@ function goBack() {
   <div class="flex items-center h-full justify-center bg-neutral-200">
     <div class="text-center px-6 py-12 max-w-md">
       <div class="mb-6">
-        <div class="svg-icon mx-auto h-24 w-24 text-red-500" v-html="lockIcon" />
+        <div class="svg-icon mx-auto h-24 w-24 text-red-500" v-html="lockElementIcon" />
       </div>
 
       <h1 class="text-size-display font-bold text-neutral-900 mb-4">

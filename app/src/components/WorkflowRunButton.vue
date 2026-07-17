@@ -3,11 +3,10 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import {
-  closeXIcon,
+  cancelIcon,
   playCircleFilledIcon,
-  spinnerQuarterIcon,
+  spinnerIcon,
 } from "~/src/assets/icons.ts";
-import { ButtonSecondary } from "~/src/components/index.ts";
 
 const props = defineProps<{
   documentId: string;
@@ -70,26 +69,34 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ButtonSecondary v-if="isActiveRun" :disabled="cancelling" @click="cancelRun">
-    <span class="inline-flex items-center gap-2">
-      <div
-        v-if="cancelling"
-        class="svg-icon w-3.5 h-3.5 animate-spin"
-        v-html="spinnerQuarterIcon"
-      />
-      <div v-else class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
-      <span>{{ cancelling ? "Cancelling…" : "Cancel" }}</span>
-    </span>
-  </ButtonSecondary>
-  <ButtonSecondary v-else :disabled="starting" @click="startRun">
-    <span class="inline-flex items-center gap-2">
-      <div
-        v-if="starting"
-        class="svg-icon w-3.5 h-3.5 animate-spin"
-        v-html="spinnerQuarterIcon"
-      />
-      <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
-      <span>{{ starting ? "Starting…" : "Run Workflow" }}</span>
-    </span>
-  </ButtonSecondary>
+  <button
+    v-if="isActiveRun"
+    type="button"
+    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    :disabled="cancelling"
+    @click="cancelRun"
+  >
+    <div
+      v-if="cancelling"
+      class="svg-icon w-3.5 h-3.5 animate-spin"
+      v-html="spinnerIcon"
+    />
+    <div v-else class="svg-icon w-3.5 h-3.5" v-html="cancelIcon" />
+    {{ cancelling ? "Cancelling…" : "Cancel" }}
+  </button>
+  <button
+    v-else
+    type="button"
+    class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    :disabled="starting"
+    @click="startRun"
+  >
+    <div
+      v-if="starting"
+      class="svg-icon w-3.5 h-3.5 animate-spin"
+      v-html="spinnerIcon"
+    />
+    <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
+    {{ starting ? "Starting…" : "Run Workflow" }}
+  </button>
 </template>

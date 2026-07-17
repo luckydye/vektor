@@ -13,16 +13,17 @@ import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
-  checkThinIcon,
-  chevronLeftLargeIcon,
-  copyOutlineIcon,
-  pencilSquareIcon,
-  plusThinIcon,
-  robotIcon,
-  sendPlaneIcon,
+  activityIcon,
+  agentChatIcon,
+  confirmationIcon,
+  copyIcon,
+  linkIcon,
+  editEntryIcon,
+  addIcon,
+  sendMessageIcon,
   stopIcon,
   thinkingIcon,
-  trashSmallIcon,
+  deleteEntryIcon,
 } from "~/src/assets/icons.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
@@ -822,7 +823,7 @@ function scrollThinkingToBottom() {
 
 Actions.register("ai-chat:toggle", {
   title: t("AI Chat"),
-  icon: () => "sparkles",
+  icon: () => "agent-chat",
   description: t("Open AI chat to ask questions about this document"),
   group: "document",
   run: async () => {
@@ -863,7 +864,7 @@ onUnmounted(() => {
           class="flex items-center gap-1.5 text-size-small text-neutral-500 hover:text-neutral-700 transition-colors"
           title="Recent conversations"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="chevronLeftLargeIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="activityIcon" />
           History
         </button>
         <div class="flex-1" />
@@ -874,7 +875,7 @@ onUnmounted(() => {
           class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
           title="New chat"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="editEntryIcon" />
           <span>New chat</span>
         </button>
       </div>
@@ -890,8 +891,8 @@ onUnmounted(() => {
             @click="startNewChat"
             class="flex items-center gap-1 text-size-small text-primary-600 hover:text-primary-700 font-medium transition-colors"
           >
-            <div class="svg-icon w-3.5 h-3.5" v-html="pencilSquareIcon" />
-            <span>New chat</span>
+            <div class="svg-icon w-3.5 h-3.5" v-html="addIcon" />
+            New chat
           </button>
         </div>
         <div class="space-y-0.5">
@@ -941,7 +942,7 @@ onUnmounted(() => {
               class="opacity-0 group-hover:opacity-100 p-1 text-neutral-400 hover:text-red-500 transition-all shrink-0"
               title="Delete"
             >
-              <div class="svg-icon w-3.5 h-3.5" v-html="trashSmallIcon" />
+              <div class="svg-icon w-3.5 h-3.5" v-html="deleteEntryIcon" />
             </button>
           </div>
         </div>
@@ -1012,7 +1013,7 @@ onUnmounted(() => {
               <div
                 class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5"
               >
-                <div class="svg-icon w-4 h-4 text-primary-500" v-html="robotIcon" />
+                <div class="svg-icon w-4 h-4 text-primary-500" v-html="agentChatIcon" />
               </div>
               <div class="flex-1 min-w-0">
                 <div
@@ -1027,14 +1028,18 @@ onUnmounted(() => {
                     <div
                       v-if="copiedAssistantMessageTimestamp === message.timestamp"
                       class="svg-icon h-3.5 w-3.5 text-green-600"
-                      v-html="checkThinIcon"
+                      v-html="confirmationIcon"
                     />
-                    <div v-else class="svg-icon h-3.5 w-3.5" v-html="copyOutlineIcon" />
+                    <div v-else class="svg-icon h-3.5 w-3.5" v-html="copyIcon" />
                   </button>
                   <div
                     class="px-3.5 py-3 pr-9 text-size-medium text-neutral-800 leading-relaxed markdown-content"
                     v-html="renderMessageMarkdown(message.content)"
                   ></div>
+                </div>
+                <div class="mt-1.5 px-0.5 text-[11px] text-neutral-500">
+                  {{ new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+                  &nbsp;·&nbsp; Agent
                 </div>
               </div>
             </template>
@@ -1043,6 +1048,10 @@ onUnmounted(() => {
                 class="ml-9 flex min-w-0"
                 :class="isToolMessageExpanded(message, index) ? 'flex-1' : ''"
               >
+                <div class="mr-1.5 shrink-0 pt-1.5">
+                  <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkIcon" />
+                </div>
+                <div class="flex-1 min-w-0">
                 <button
                   type="button"
                   class="max-w-full text-left border tool-message-bg rounded-lg overflow-hidden cursor-pointer transition-colors hover:bg-neutral-100"
@@ -1068,8 +1077,9 @@ onUnmounted(() => {
                     v-if="isToolMessageExpanded(message, index)"
                     class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
                     :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
-                  >{{ formatToolPreview(message) }}</pre>
+                >{{ formatToolPreview(message) }}</pre>
                 </button>
+              </div>
               </div>
             </template>
             <div
@@ -1108,6 +1118,7 @@ onUnmounted(() => {
           <div
             class="ml-9 inline-flex max-w-full min-w-0 items-center gap-1.5 tool-message-bg border rounded-lg px-3 py-1.5 mt-0.5 text-[11px]"
           >
+            <div class="svg-icon w-4 h-4 shrink-0 tool-message-icon" v-html="linkIcon" />
             <span class="tool-message-label shrink-0">Running</span>
             <span class="font-semibold tool-message-name truncate">
               {{ waitingState.tool.toolName }}
@@ -1134,7 +1145,7 @@ onUnmounted(() => {
           <div
             class="w-7 h-7 rounded-lg bg-primary-50 border border-primary-100 flex items-center justify-center shrink-0 mt-0.5"
           >
-            <div class="svg-icon w-4 h-4 text-primary-500" v-html="robotIcon" />
+            <div class="svg-icon w-4 h-4 text-primary-500" v-html="agentChatIcon" />
           </div>
           <div
             class="flex items-center bg-neutral-10 border border-neutral-100 rounded-xl px-3.5 py-3 gap-1 mt-0.5"
@@ -1183,7 +1194,7 @@ onUnmounted(() => {
                 class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-500 hover:text-primary-500 disabled:opacity-40 transition-colors"
                 title="Send (↵)"
               >
-                <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
+                <div class="svg-icon w-4 h-4" v-html="sendMessageIcon" />
               </button>
             </template>
           </MessageInput>

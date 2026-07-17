@@ -5,7 +5,7 @@ import { usePagedList } from "#composeables/usePagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
-import { spinnerQuarterIcon } from "~/src/assets/icons.ts";
+import { spinnerIcon } from "~/src/assets/icons.ts";
 import Pager from "./Pager.vue";
 
 const { currentSpace } = useSpace();
@@ -231,7 +231,7 @@ const groupedRuns = computed(() => {
                   <div
                     v-if="run.status === 'running'"
                     class="svg-icon w-2.5 h-2.5 animate-spin"
-                    v-html="spinnerQuarterIcon"
+                    v-html="spinnerIcon"
                   />
                   <span v-else class="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                   <span class="leading-none capitalize">{{ run.status }}</span>

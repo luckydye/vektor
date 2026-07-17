@@ -11,7 +11,7 @@ import {
   propertyValueToText,
 } from "#utils/documentProperties.ts";
 import { spacePath } from "#utils/utils.ts";
-import { fileSpreadsheetIcon, plusIcon, trashSmallIcon } from "~/src/assets/icons.ts";
+import { addIcon, csvFileIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
 
 const { currentSpace } = useSpace();
 
@@ -188,7 +188,7 @@ async function onCsvFileChange(event: Event) {
           :disabled="isImportingCsv"
           @click="openCsvPicker"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="fileSpreadsheetIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="csvFileIcon" />
           Import CSV
         </button>
       </div>
@@ -233,7 +233,7 @@ async function onCsvFileChange(event: Event) {
                   title="Delete column"
                   @click="openDeleteColumn(col.name, $event)"
                 >
-                  <div class="svg-icon w-3.5 h-3.5" v-html="trashSmallIcon" />
+                  <div class="svg-icon w-3.5 h-3.5" v-html="deleteEntryIcon" />
                 </button>
               </div>
             </th>
@@ -248,7 +248,7 @@ async function onCsvFileChange(event: Event) {
                   title="Add column"
                   @click="onAddColumnTrigger"
                 >
-                  <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
+                  <div class="svg-icon w-3.5 h-3.5" v-html="addIcon" />
                 </button>
                 <a-popover class="group" placements="bottom-end">
                   <div
@@ -378,7 +378,7 @@ async function onCsvFileChange(event: Event) {
                 title="Delete row"
                 @click="openDeleteRow(row.id, $event)"
               >
-                <div class="svg-icon w-3.5 h-3.5" v-html="trashSmallIcon" />
+                <div class="svg-icon w-3.5 h-3.5" v-html="deleteEntryIcon" />
               </button>
             </td>
           </tr>
@@ -403,7 +403,7 @@ async function onCsvFileChange(event: Event) {
         class="inline-flex items-center gap-1.5 text-size-small text-neutral-400 hover:text-neutral-700 transition-colors"
         @click="() => addRow()"
       >
-        <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
+        <div class="svg-icon w-3.5 h-3.5" v-html="addIcon" />
         New row
       </button>
     </div>

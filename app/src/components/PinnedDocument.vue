@@ -6,7 +6,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { spacePath } from "#utils/utils.ts";
-import { pinPushpinIcon } from "~/src/assets/icons.ts";
+import { pinToHomeIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   spaceId: string;
@@ -68,7 +68,7 @@ function docTitle(document: DocumentWithProperties): string {
       >
         <div
           class="svg-icon w-3.5 h-3.5 text-amber-500 shrink-0"
-          v-html="pinPushpinIcon"
+          v-html="pinToHomeIcon"
         />
         <span class="text-size-small font-semibold text-amber-600 uppercase tracking-wide"
           >Pinned</span

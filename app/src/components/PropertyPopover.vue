@@ -4,7 +4,7 @@ import { t } from "#utils/lang.ts";
 import ButtonPrimary from "./ButtonPrimary.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";
-import { plusIcon } from "~/src/assets/icons.ts";
+import { addIcon } from "~/src/assets/icons.ts";
 import type { Property, SpaceProperty } from "./property.ts";
 import type { SelectMenuItem } from "./SelectMenu.vue";
 
@@ -51,7 +51,7 @@ const spacePropertyItems = computed<SelectMenuItem[]>(() => {
         label: sp.name,
         icon: "",
       })),
-    { id: "__new__", label: t("New Property"), icon: plusIcon },
+    { id: "__new__", label: t("New Property"), icon: addIcon },
   ];
 });
 

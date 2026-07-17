@@ -18,11 +18,6 @@
         @dblclick="canEdit && startEditing()"
       >
         {{ localTitle || 'Untitled Document' }}
-        <div
-          v-if="starred"
-          class="svg-icon w-6 h-6 text-yellow-500"
-          v-html="starFilledIcon"
-        />
       </h1>
     </div>
   </div>
@@ -34,7 +29,6 @@ import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import { spacePath } from "#utils/utils.ts";
-import { starFilledIcon } from "~/src/assets/icons.ts";
 
 const { currentSpace } = useSpace();
 
@@ -43,12 +37,10 @@ const props = withDefaults(
     title: string;
     spaceId?: string;
     documentId?: string;
-    starred?: boolean;
     initialEditMode?: boolean;
     canEdit?: boolean;
   }>(),
   {
-    starred: false,
     initialEditMode: false,
     canEdit: false,
   },

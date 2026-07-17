@@ -3,7 +3,7 @@
 // explicit open button.
 
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
-import { chevronRightThinIcon, documentIcon, tableRowIcon } from "~/src/assets/icons.ts";
+import { chevronRightThinIcon, csvFileIcon, documentIcon } from "~/src/assets/icons.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
 type DocumentPreviewType = "document" | "canvas" | "csv" | "workflow" | string;
@@ -294,7 +294,7 @@ if (
           "loading") as DocumentPreviewStatus;
         const spaceId = this.getAttribute("space-id") || "";
         const documentId = this.getAttribute("document-id") || "";
-        const icon = type === "csv" ? tableRowIcon : documentIcon;
+        const icon = type === "csv" ? csvFileIcon : documentIcon;
         const workflow =
           type === "workflow" ? this.ensureWorkflowPreview(spaceId, documentId) : null;
 

@@ -10,13 +10,12 @@ import { downloadExcelRows, parseCsvRows } from "#utils/excelExport.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
-  arrowDownTrayIcon,
-  checkBoldIcon,
+  downloadIcon,
   chevronLeftThinIcon,
   chevronRightSmallIcon,
-  clipboardDocumentIcon,
-  closeXIcon,
-  spinnerQuarterIcon,
+  documentIcon,
+  fileAttachmentIcon,
+  spinnerIcon,
 } from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/tabs";
 import DataTable from "./DataTable.vue";
@@ -519,7 +518,7 @@ const statusBadgeClass: Record<string, string> = {
               <div
                 v-if="selectedRunDetail.status === 'running' || selectedRunDetail.status === 'pending'"
                 class="svg-icon w-3 h-3 animate-spin"
-                v-html="spinnerQuarterIcon"
+                v-html="spinnerIcon"
               />
               {{ selectedRunDetail.status }}
             </span>
@@ -683,7 +682,7 @@ const statusBadgeClass: Record<string, string> = {
               >
                 <div
                   class="svg-icon w-4 h-4 text-neutral-400"
-                  v-html="clipboardDocumentIcon"
+                  v-html="documentIcon"
                 />
                 {{ outputDocumentTitle ?? "Open document" }}
               </a>
@@ -699,7 +698,7 @@ const statusBadgeClass: Record<string, string> = {
                 >
                   <div
                     class="svg-icon w-4 h-4 text-neutral-400"
-                    v-html="clipboardDocumentIcon"
+                    v-html="fileAttachmentIcon"
                   />
                   {{ selectedRunFileName }}
                 </a>
@@ -709,7 +708,7 @@ const statusBadgeClass: Record<string, string> = {
                   title="Download"
                   @click="downloadFile(selectedRunFileUrl!, selectedRunFileName!, selectedRunTitle ?? selectedRunFileName!)"
                 >
-                  <div class="svg-icon w-4 h-4" v-html="arrowDownTrayIcon" />
+                  <div class="svg-icon w-4 h-4" v-html="downloadIcon" />
                 </button>
               </template>
             </div>
@@ -900,7 +899,7 @@ const statusBadgeClass: Record<string, string> = {
                       >
                         <div
                           class="svg-icon w-4 h-4 text-neutral-400"
-                          v-html="clipboardDocumentIcon"
+                          v-html="documentIcon"
                         />
                         {{ historyOutputDocumentTitle(run.runId) ?? "Open document" }}
                       </a>

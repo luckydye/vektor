@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import * as Y from "yjs";
-import { canvasPenIcon, pencilIcon } from "#assets/icons.ts";
+import { penToolIcon } from "#assets/icons.ts";
 import type { TranslationKey } from "#utils/lang.ts";
 import {
   buildFreehandStroke,
@@ -70,12 +70,12 @@ export const DRAW_STROKE_MODES: Array<{
   {
     id: "pencil",
     label: "Pencil",
-    icon: pencilIcon,
+    icon: penToolIcon,
   },
   {
     id: "pen",
     label: "Pen",
-    icon: canvasPenIcon,
+    icon: penToolIcon,
   },
 ];
 

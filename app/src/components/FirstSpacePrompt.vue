@@ -8,7 +8,7 @@
         <div
           class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4"
         >
-          <div class="svg-icon w-8 h-8 text-blue-600" v-html="folderLargeIcon" />
+          <div class="svg-icon w-8 h-8 text-blue-600" v-html="folderIcon" />
         </div>
         <h2 class="text-size-title font-bold text-neutral-900 mb-2">
           Welcome to Your Space!
@@ -147,7 +147,7 @@
 import { onMounted, ref, watch } from "vue";
 import { api } from "#api/client.ts";
 import { slugify } from "#utils/utils.ts";
-import { folderLargeIcon } from "~/src/assets/icons.ts";
+import { folderIcon } from "~/src/assets/icons.ts";
 
 const showPrompt = ref(false);
 const spaceName = ref("");

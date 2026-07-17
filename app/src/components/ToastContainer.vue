@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { useToast } from "#composeables/useToast.ts";
-import { alertCircleIcon, checkCircleOutlineIcon, infoIcon } from "~/src/assets/icons.ts";
+import { alertCircleIcon, confirmationIcon, infoIcon } from "~/src/assets/icons.ts";
 
 const { toasts } = useToast();
 
 const icons = {
   error: alertCircleIcon,
-  success: checkCircleOutlineIcon,
+  success: confirmationIcon,
   info: infoIcon,
 };
 </script>

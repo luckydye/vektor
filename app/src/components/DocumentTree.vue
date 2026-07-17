@@ -15,12 +15,11 @@ import {
   categoryIcon,
   chevronRightThinIcon,
   documentIcon,
-  dotsVerticalIcon,
+  contextMenuMoreIcon,
   dragDotsIcon,
-  editOutlineIcon,
-  plusIcon,
-  plusSmallIcon,
-  trashCanIcon,
+  editEntryIcon,
+  addIcon,
+  deleteEntryIcon,
 } from "~/src/assets/icons.ts";
 import Dialog from "./Dialog.vue";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
@@ -534,7 +533,7 @@ defineExpose({ isEditMode, toggleEditMode });
             @click="startCreating"
             class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
           >
-            <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
+            <div class="svg-icon w-4 h-4" v-html="addIcon" />
             <span>{{ t("Create category") }}</span>
           </button>
         </div>
@@ -614,7 +613,7 @@ defineExpose({ isEditMode, toggleEditMode });
                   <div
                     class="svg-icon w-3.5 h-3.5"
                     aria-hidden="true"
-                    v-html="plusSmallIcon"
+                    v-html="addIcon"
                   />
                   <span class="sr-only">{{ t("New document in this category") }}</span>
                 </a>
@@ -626,7 +625,7 @@ defineExpose({ isEditMode, toggleEditMode });
                   :aria-label="t('Category options')"
                   @click.stop="handleMenuButton($event, category)"
                 >
-                  <div class="svg-icon w-3.5 h-3.5" v-html="dotsVerticalIcon" />
+                  <div class="svg-icon w-3.5 h-3.5" v-html="contextMenuMoreIcon" />
                 </button>
               </div>
 
@@ -664,7 +663,7 @@ defineExpose({ isEditMode, toggleEditMode });
           @click="startCreating"
           class="w-full flex items-center gap-3 px-3 py-2 text-size-medium text-neutral-900 hover:text-neutral hover:bg-neutral-100 rounded-md transition-colors duration-200 mt-2"
         >
-          <div class="svg-icon w-4 h-4 shrink-0" v-html="plusSmallIcon" />
+          <div class="svg-icon w-4 h-4 shrink-0" v-html="addIcon" />
           <span>{{ t("Add category") }}</span>
         </button>
       </div>
@@ -718,7 +717,7 @@ defineExpose({ isEditMode, toggleEditMode });
                 @click="contextEditCategory(contextMenu.category)"
                 class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
               >
-                <div class="svg-icon w-4 h-4 flex-none" v-html="editOutlineIcon" />
+                <div class="svg-icon w-4 h-4 flex-none" v-html="editEntryIcon" />
                 <span>{{ t("Edit category") }}</span>
               </button>
 
@@ -729,7 +728,7 @@ defineExpose({ isEditMode, toggleEditMode });
                 @click="contextNewCategory()"
                 class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
               >
-                <div class="svg-icon w-4 h-4 flex-none" v-html="plusIcon" />
+                <div class="svg-icon w-4 h-4 flex-none" v-html="addIcon" />
                 <span>{{ t("New category") }}</span>
               </button>
               <button
@@ -749,7 +748,7 @@ defineExpose({ isEditMode, toggleEditMode });
                 :disabled="deletingIds.has(contextMenu.category.id)"
                 class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
               >
-                <div class="svg-icon w-4 h-4 flex-none" v-html="trashCanIcon" />
+                <div class="svg-icon w-4 h-4 flex-none" v-html="deleteEntryIcon" />
                 <span>{{ t("Delete category") }}</span>
               </button>
             </div>

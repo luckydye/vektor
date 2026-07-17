@@ -1,4 +1,4 @@
-import { canvasSectionIcon } from "#assets/icons.ts";
+import { frameSectionToolIcon } from "#assets/icons.ts";
 import { pointOnRotatedShape, rotateVector } from "#canvas/viewport/geometry.ts";
 import { CanvasElementBase } from "./CanvasElementBase.ts";
 import type {
@@ -121,7 +121,7 @@ export const sectionElement: CanvasElementExtension = {
   },
   creation: {
     palette: SECTION_COLORS,
-    tool: { id: "section", label: "Section", shortcut: "S", icon: canvasSectionIcon },
+    tool: { id: "section", label: "Section", shortcut: "S", icon: frameSectionToolIcon },
     editOnCreate: "chrome",
     create: (at, ctx) =>
       createSectionShape(at, ctx.color ?? sectionElement.defaults.style.color),

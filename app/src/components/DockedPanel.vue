@@ -7,11 +7,9 @@ import {
 import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
 import {
-  closeXIcon,
+  cancelIcon,
   dragDotsIcon,
-  panelRightIcon,
   resizeHandleIcon,
-  windowRestoreIcon,
 } from "~/src/assets/icons.ts";
 import Dialog from "./Dialog.vue";
 
@@ -261,20 +259,6 @@ function onClose() {
   close(props.id);
 }
 
-function onDock() {
-  dock(props.id, side.value);
-}
-
-function onUndock() {
-  // Position floating window roughly where the docked one was
-  floatX.value = dockedLeft() + 20;
-  floatY.value = 40;
-  floatW.value = width.value;
-  floatH.value = window.innerHeight - 80;
-  undock(props.id);
-  setPosition(props.id, floatX.value, floatY.value, floatW.value, floatH.value);
-}
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 onMounted(() => {
@@ -334,32 +318,13 @@ onUnmounted(() => {
       >
       <!-- Right controls -->
       <div class="panel-close flex items-center gap-0.5">
-        <!-- Dock/undock toggle -->
-        <button
-          type="button"
-          v-if="mode === 'floating'"
-          class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
-          title="Dock panel"
-          @click="onDock"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="panelRightIcon" />
-        </button>
-        <button
-          type="button"
-          v-else
-          class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
-          title="Undock panel"
-          @click="onUndock"
-        >
-          <div class="svg-icon w-3.5 h-3.5" v-html="windowRestoreIcon" />
-        </button>
         <!-- Close -->
         <button
           type="button"
           class="p-1 text-neutral-500 hover:text-neutral-800 rounded-sm transition-colors"
           @click="onClose"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="cancelIcon" />
         </button>
       </div>
     </div>

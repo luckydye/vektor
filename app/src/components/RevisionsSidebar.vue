@@ -9,14 +9,13 @@ import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import { t } from "#utils/lang.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
-  clipboardIcon,
-  clockIcon,
+  activityIcon,
   copyIcon,
-  dotsVerticalIcon,
+  contextMenuMoreIcon,
   eyeIcon,
+  pasteIcon,
   publishIcon,
   refreshIcon,
-  timelineNowDotIcon,
 } from "~/src/assets/icons.ts";
 import DockedPanel from "./DockedPanel.vue";
 import DocumentActivityFeed from "./DocumentActivityFeed.vue";
@@ -326,7 +325,7 @@ useSync(
         <div class="text-center px-4">
           <div
             class="svg-icon w-12 h-12 mx-auto mb-3 text-neutral-300"
-            v-html="clockIcon"
+            v-html="activityIcon"
           />
           <p class="font-medium text-neutral-600">No activity yet</p>
           <p class="text-size-medium text-neutral-500 mt-1">
@@ -355,7 +354,7 @@ useSync(
                   >
                     <div
                       class="svg-icon w-[12px] h-[18px] text-neutral-500"
-                      v-html="dotsVerticalIcon"
+                      v-html="contextMenuMoreIcon"
                     />
                   </button>
 
@@ -379,7 +378,7 @@ useSync(
                           @click="e => { exitPopover(e); showDiff(primaryRevisionEntry(items)!); }"
                           class="w-full px-4 py-2 text-left text-size-medium text-neutral-800 hover:bg-neutral-100 flex items-center gap-2 transition-colors"
                         >
-                          <div class="svg-icon w-4 h-4" v-html="clipboardIcon" />
+                          <div class="svg-icon w-4 h-4" v-html="pasteIcon" />
                           Show Diff
                         </button>
                         <button

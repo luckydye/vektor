@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { archiveBoxIcon, cogIcon, mailIcon, signOutIcon } from "~/src/assets/icons.ts";
+import {
+  preferencesIcon,
+  sendFeedbackIcon,
+  signOutIcon,
+  sourceCodeIcon,
+} from "~/src/assets/icons.ts";
 import "./AvatarElement.ts";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@atrium-ui/elements/popover";
@@ -87,21 +92,21 @@ onMounted(() => {
                 @click="openPreferences"
                 class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
-                <div class="svg-icon w-4 h-4" v-html="cogIcon" />
+                <div class="svg-icon w-4 h-4" v-html="preferencesIcon" />
                 <span class="leading-none font-medium">{{ t("Preferences") }}</span>
               </button>
               <a
                 href="mailto:t.havlicek@s-v.de"
                 class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
-                <div class="svg-icon w-4 h-4" v-html="mailIcon" />
+                <div class="svg-icon w-4 h-4" v-html="sendFeedbackIcon" />
                 <span class="leading-none font-medium">{{ t("Send feedback") }}</span>
               </a>
               <a
                 href="https://github.com/luckydye/vektor"
                 class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
-                <div class="svg-icon w-4 h-4" v-html="archiveBoxIcon" />
+                <div class="svg-icon w-4 h-4" v-html="sourceCodeIcon" />
                 <span class="leading-none font-medium">{{ t("Source") }}</span>
               </a>
               <button

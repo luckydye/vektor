@@ -8,10 +8,10 @@ import { propertyValueToScalar, propertyValueToText } from "#utils/documentPrope
 import { currentLang, t } from "#utils/lang.ts";
 import { formatDate, normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import {
-  calendarIcon,
+  dateIcon,
   chevronDownIcon,
-  clockIcon,
-  closeXIcon,
+  activityIcon,
+  cancelIcon,
   documentIcon,
 } from "~/src/assets/icons.ts";
 
@@ -229,7 +229,7 @@ function docCategoryName(doc: DocumentListItem): string | null {
           class="flex items-center gap-1.5 px-2.5 py-1.5 text-size-small border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-primary-300 transition-colors"
           :class="dateRangeLabel ? 'border-primary-300 text-primary-700' : 'border-neutral-200 text-neutral-700'"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="calendarIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="dateIcon" />
           <span>{{ dateRangeLabel ?? t("Date range") }}</span>
           <button
             v-if="dateRangeLabel"
@@ -237,7 +237,7 @@ function docCategoryName(doc: DocumentListItem): string | null {
             @click.stop="clearDateRange"
             class="ml-0.5 text-primary-400 hover:text-primary-700"
           >
-            <div class="svg-icon w-3 h-3" v-html="closeXIcon" />
+            <div class="svg-icon w-3 h-3" v-html="cancelIcon" />
           </button>
         </button>
         <a-popover placements="bottom-start">
@@ -276,7 +276,7 @@ function docCategoryName(doc: DocumentListItem): string | null {
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
           :title="t('Deselect all')"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="cancelIcon" />
         </button>
         <slot
           name="batch-actions"
@@ -302,7 +302,7 @@ function docCategoryName(doc: DocumentListItem): string | null {
           class="p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
           :title="t('Deselect all')"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="closeXIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="cancelIcon" />
         </button>
         <slot
           name="batch-actions"
@@ -331,7 +331,7 @@ function docCategoryName(doc: DocumentListItem): string | null {
           class="flex items-center gap-2 w-full text-left mb-2"
           @click="toggleCollapse(group.id)"
         >
-          <div class="svg-icon w-3.5 h-3.5 text-neutral-400" v-html="clockIcon" />
+          <div class="svg-icon w-3.5 h-3.5 text-neutral-400" v-html="activityIcon" />
           <span class="text-size-small font-semibold text-neutral-700"
             >{{ group.label }}</span
           >

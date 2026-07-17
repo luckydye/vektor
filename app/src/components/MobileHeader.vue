@@ -5,7 +5,7 @@
         @click="handleMenuClick"
         class="flex items-center justify-center w-9 h-9 rounded-lg transition-colors text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100"
       >
-        <div class="svg-icon h-5 w-5" v-html="menuIcon" />
+        <div class="svg-icon h-5 w-5" v-html="collapseSidebarIcon" />
         <span class="sr-only">Menu</span>
       </ButtonGhost>
 
@@ -21,7 +21,7 @@
         class="flex items-center justify-center w-9 h-9 rounded-lg transition-colors"
         :class="isSearchActive ? 'text-primary-600 bg-primary-50' : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'"
       >
-        <div class="svg-icon h-5 w-5" v-html="searchMagnifierIcon" />
+        <div class="svg-icon h-5 w-5" v-html="searchIcon" />
         <span class="sr-only">Search</span>
       </ButtonGhost>
     </div>
@@ -33,7 +33,7 @@ import { computed } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
 import { spacePath } from "#utils/utils.ts";
-import { menuIcon, searchMagnifierIcon } from "~/src/assets/icons.ts";
+import { collapseSidebarIcon, searchIcon } from "~/src/assets/icons.ts";
 import ButtonGhost from "./ButtonGhost.vue";
 
 const props = withDefaults(

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { closeSmallIcon, paperclipIcon, sendPlaneIcon } from "~/src/assets/icons.ts";
+import {
+  addAttachmentsIcon,
+  deleteElementIcon,
+  sendMessageIcon,
+} from "~/src/assets/icons.ts";
 import "#editor/elements/rich-text-editor.ts";
 import type {
   RichTextEditorElementApi,
@@ -295,7 +299,7 @@ defineExpose({
           class="text-neutral-400 hover:text-red-500 transition-colors"
           @click="removeAttachment(attachment.id)"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="closeSmallIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="deleteElementIcon" />
         </button>
       </div>
     </div>
@@ -332,7 +336,7 @@ defineExpose({
           class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-400 hover:text-neutral-700 transition-colors"
           @click="openFilePicker"
         >
-          <div class="svg-icon w-4 h-4" v-html="paperclipIcon" />
+          <div class="svg-icon w-4 h-4" v-html="addAttachmentsIcon" />
         </button>
         <slot name="actions">
           <button
@@ -342,7 +346,7 @@ defineExpose({
             title="Send"
             @click="emit('submit')"
           >
-            <div class="svg-icon w-4 h-4" v-html="sendPlaneIcon" />
+            <div class="svg-icon w-4 h-4" v-html="sendMessageIcon" />
           </button>
         </slot>
       </div>

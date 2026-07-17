@@ -19,19 +19,19 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
-  canvasFitViewIcon,
-  canvasSelectIcon,
-  canvasShapeIcon,
-  clipboardDocumentIcon,
   copyIcon,
-  lockIcon,
-  pencilIcon,
-  redoArrowIcon,
-  scissorsIcon,
-  trashIcon,
-  undoArrowIcon,
-  unlockIcon,
-  uploadIcon,
+  cutIcon,
+  fitViewToElementsIcon,
+  lockElementIcon,
+  pasteIcon,
+  penToolIcon,
+  redoIcon,
+  selectToolIcon,
+  shapesToolIcon,
+  deleteElementIcon,
+  undoIcon,
+  unlockElementIcon,
+  uploadFileIcon,
 } from "~/src/assets/icons.ts";
 import {
   activeDrawStrokeMode,
@@ -222,8 +222,8 @@ const extensionManager = createCanvasExtensionManager({
 // collected from the registry, so adding an element type surfaces its tool
 // without editing the host.
 const CANVAS_TOOLS: ToolDef[] = [
-  { id: "select", label: "Select", shortcut: "V", icon: canvasSelectIcon },
-  { id: "draw", label: "Draw", shortcut: "D", icon: pencilIcon },
+  { id: "select", label: "Select", shortcut: "V", icon: selectToolIcon },
+  { id: "draw", label: "Draw", shortcut: "D", icon: penToolIcon },
   ...extensionManager.elementTools(),
 ];
 const viewportRef = ref<HTMLElement | null>(null);
@@ -3697,7 +3697,7 @@ onUnmounted(() => {
           <div
             class="svg-icon canvas-tool-icon"
             aria-hidden="true"
-            v-html="canvasShapeIcon"
+            v-html="shapesToolIcon"
           />
         </button>
         <a-popover placements="top">
@@ -3735,7 +3735,7 @@ onUnmounted(() => {
         <div
           class="svg-icon canvas-tool-icon"
           aria-hidden="true"
-          v-html="undoArrowIcon"
+          v-html="undoIcon"
         />
       </button>
       <button
@@ -3749,7 +3749,7 @@ onUnmounted(() => {
         <div
           class="svg-icon canvas-tool-icon"
           aria-hidden="true"
-          v-html="redoArrowIcon"
+          v-html="redoIcon"
         />
       </button>
       <span class="canvas-divider"></span>
@@ -3763,7 +3763,7 @@ onUnmounted(() => {
         <div
           class="svg-icon canvas-tool-icon"
           aria-hidden="true"
-          v-html="canvasFitViewIcon"
+          v-html="fitViewToElementsIcon"
         />
       </button>
     </div>
@@ -3949,7 +3949,7 @@ onUnmounted(() => {
         @pointerdown.stop
         @click.stop="unlockHoveredElement"
       >
-        <div class="svg-icon" aria-hidden="true" v-html="unlockIcon" />
+        <div class="svg-icon" aria-hidden="true" v-html="unlockElementIcon" />
       </button>
 
       <div
@@ -4010,7 +4010,7 @@ onUnmounted(() => {
             :aria-label="t('Lock')"
             @click="lockSelectedElements(); contextMenuPos = null"
           >
-            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="lockIcon" />
+            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="lockElementIcon" />
           </button>
           <span class="canvas-divider"></span>
           <button
@@ -4030,7 +4030,7 @@ onUnmounted(() => {
             <div
               class="svg-icon canvas-tool-icon"
               aria-hidden="true"
-              v-html="scissorsIcon"
+              v-html="cutIcon"
             />
           </button>
           <span class="canvas-divider"></span>
@@ -4044,7 +4044,7 @@ onUnmounted(() => {
           <div
             class="svg-icon canvas-tool-icon"
             aria-hidden="true"
-            v-html="clipboardDocumentIcon"
+            v-html="pasteIcon"
           />
         </button>
         <button
@@ -4053,7 +4053,7 @@ onUnmounted(() => {
           :aria-label="t('Upload file')"
           @click="uploadFromContextMenu"
         >
-          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="uploadIcon" />
+          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="uploadFileIcon" />
         </button>
         <template v-if="selectedShapeIds.size > 0 || selectedStrokeIds.size > 0">
           <span class="canvas-divider"></span>
@@ -4066,7 +4066,7 @@ onUnmounted(() => {
             <div
               class="svg-icon canvas-tool-icon"
               aria-hidden="true"
-              v-html="trashIcon"
+              v-html="deleteElementIcon"
             />
           </button>
         </template>

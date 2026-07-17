@@ -6,19 +6,18 @@
 import type { AuditLog } from "#api/client.ts";
 import { currentLang, type TranslationKey, t } from "#utils/lang.ts";
 import {
-  closeCircleIcon,
+  deleteEntryIcon,
   commentIcon,
   documentIcon,
-  documentTextIcon,
-  editOutlineIcon,
+  editDocumentIcon,
+  editEntryIcon,
   eyeIcon,
   infoIcon,
-  lockIcon,
-  plusSmallIcon,
+  lockElementIcon,
+  addIcon,
   publishIcon,
   refreshIcon,
-  trashCanIcon,
-  unlockIcon,
+  unlockElementIcon,
 } from "~/src/assets/icons.ts";
 import { normalizeTimestamp } from "./utils.ts";
 
@@ -114,17 +113,17 @@ export function getAuditEventIcon(event: string): string {
     comment: `<span class="svg-icon w-4 h-4 text-blue-500">${commentIcon}</span>`,
     publish: `<span class="svg-icon w-4 h-4 text-blue-500">${publishIcon}</span>`,
     unpublish: `<span class="svg-icon w-4 h-4 text-neutral-400">${publishIcon}</span>`,
-    suggest: `<span class="svg-icon w-4 h-4 text-amber-500">${documentTextIcon}</span>`,
+    suggest: `<span class="svg-icon w-4 h-4 text-amber-500">${editDocumentIcon}</span>`,
     restore: `<span class="svg-icon w-4 h-4 text-orange-500">${refreshIcon}</span>`,
-    delete: `<span class="svg-icon w-4 h-4 text-red-500">${trashCanIcon}</span>`,
-    archive: `<span class="svg-icon w-4 h-4 text-neutral-400">${trashCanIcon}</span>`,
-    acl_grant: `<span class="svg-icon w-4 h-4 text-purple-500">${lockIcon}</span>`,
-    acl_revoke: `<span class="svg-icon w-4 h-4 text-purple-500">${lockIcon}</span>`,
-    create: `<span class="svg-icon w-4 h-4 text-green-500">${plusSmallIcon}</span>`,
-    lock: `<span class="svg-icon w-4 h-4 text-yellow-500">${lockIcon}</span>`,
-    unlock: `<span class="svg-icon w-4 h-4 text-green-500">${unlockIcon}</span>`,
-    property_update: `<span class="svg-icon w-4 h-4 text-indigo-500">${editOutlineIcon}</span>`,
-    property_delete: `<span class="svg-icon w-4 h-4 text-pink-500">${closeCircleIcon}</span>`,
+    delete: `<span class="svg-icon w-4 h-4 text-red-500">${deleteEntryIcon}</span>`,
+    archive: `<span class="svg-icon w-4 h-4 text-neutral-400">${deleteEntryIcon}</span>`,
+    acl_grant: `<span class="svg-icon w-4 h-4 text-purple-500">${lockElementIcon}</span>`,
+    acl_revoke: `<span class="svg-icon w-4 h-4 text-purple-500">${lockElementIcon}</span>`,
+    create: `<span class="svg-icon w-4 h-4 text-green-500">${addIcon}</span>`,
+    lock: `<span class="svg-icon w-4 h-4 text-yellow-500">${lockElementIcon}</span>`,
+    unlock: `<span class="svg-icon w-4 h-4 text-green-500">${unlockElementIcon}</span>`,
+    property_update: `<span class="svg-icon w-4 h-4 text-indigo-500">${editEntryIcon}</span>`,
+    property_delete: `<span class="svg-icon w-4 h-4 text-pink-500">${deleteEntryIcon}</span>`,
   };
   return (
     icons[event] ?? `<span class="svg-icon w-4 h-4 text-neutral-400">${infoIcon}</span>`

@@ -7,10 +7,10 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import {
-  closeCircleFilledIcon,
-  closeXIcon,
+  alertCircleIcon,
+  cancelIcon,
   documentIcon,
-  searchMagnifierIcon,
+  searchIcon,
   spinnerIcon,
 } from "~/src/assets/icons.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
@@ -236,7 +236,7 @@ const batchArchive = async (ids: string[]) => {
       <div class="relative flex-1">
         <div
           class="svg-icon absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 pointer-events-none"
-          v-html="searchMagnifierIcon"
+          v-html="searchIcon"
         />
         <input
           v-model="searchQuery"
@@ -254,7 +254,7 @@ const batchArchive = async (ids: string[]) => {
           :disabled="isSearching"
           title="Clear search"
         >
-          <div class="svg-icon w-4 h-4" v-html="closeXIcon" />
+          <div class="svg-icon w-4 h-4" v-html="cancelIcon" />
         </button>
       </div>
 
@@ -264,7 +264,7 @@ const batchArchive = async (ids: string[]) => {
         :disabled="isSearching || !canSearch"
         class="flex items-center gap-2 px-5 py-3 bg-primary-500 text-white font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
       >
-        <div v-if="!isSearching" class="svg-icon w-4 h-4" v-html="searchMagnifierIcon" />
+        <div v-if="!isSearching" class="svg-icon w-4 h-4" v-html="searchIcon" />
         <div v-else class="svg-icon w-4 h-4 animate-spin" v-html="spinnerIcon" />
         {{ isSearching ? "Searching…" : "Search" }}
       </button>
@@ -284,7 +284,7 @@ const batchArchive = async (ids: string[]) => {
       v-if="searchError"
       class="flex items-center gap-3 p-4 mb-6 bg-red-50 text-red-800 border border-red-200 rounded-lg text-size-medium"
     >
-      <div class="svg-icon w-5 h-5 shrink-0" v-html="closeCircleFilledIcon" />
+      <div class="svg-icon w-5 h-5 shrink-0" v-html="alertCircleIcon" />
       {{ searchError.message ?? "Search failed" }}
     </div>
 
@@ -363,7 +363,7 @@ const batchArchive = async (ids: string[]) => {
     >
       <div
         class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300"
-        v-html="searchMagnifierIcon"
+        v-html="searchIcon"
       />
       <h3 class="text-size-large font-semibold text-neutral-800 mb-2">
         No results found

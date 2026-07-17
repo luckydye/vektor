@@ -4,7 +4,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/excelExport.ts";
 import { downloadExcelSheets, sanitizeSheetName } from "#utils/excelExport.ts";
 import { spacePath } from "#utils/utils.ts";
-import { arrowDownTrayIcon } from "~/src/assets/icons.ts";
+import { downloadIcon } from "~/src/assets/icons.ts";
 import type { ExcelExportConfig } from "./ExcelExportDialog.vue";
 import ExcelExportDialog from "./ExcelExportDialog.vue";
 
@@ -290,7 +290,7 @@ onUnmounted(() => {
           title="Download as Excel"
           @click="downloadExcel"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="arrowDownTrayIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="downloadIcon" />
           Excel
         </button>
       </div>

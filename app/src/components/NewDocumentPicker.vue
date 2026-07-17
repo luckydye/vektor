@@ -6,7 +6,7 @@ import databasePreview from "#assets/new-document-picker/database-preview.svg?ra
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
 import starterIllustration from "#assets/new-document-picker/starter.svg?raw";
 import workflowPreview from "#assets/new-document-picker/workflow-preview.svg?raw";
-import { boltIcon, fileTextIcon, imageIcon, tableRowIcon } from "~/src/assets/icons.ts";
+import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "~/src/assets/icons.ts";
 
 const router = useRouter();
 const visible = ref(true);
@@ -24,14 +24,14 @@ const documentOptions: Array<{
     type: "document",
     title: "Doc",
     description: "Write, organize, and collaborate in a structured document.",
-    icon: fileTextIcon,
+    icon: documentIcon,
     illustration: documentPreview,
   },
   {
     type: "canvas",
     title: "Canvas",
     description: "Visualize ideas and connect things on a flexible canvas.",
-    icon: imageIcon,
+    icon: canvasIcon,
     illustration: canvasPreview,
   },
   {
@@ -45,7 +45,7 @@ const documentOptions: Array<{
     type: "database",
     title: "Database",
     description: "Organize and manage data in structured tables.",
-    icon: tableRowIcon,
+    icon: databaseIcon,
     illustration: databasePreview,
   },
 ];

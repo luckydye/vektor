@@ -8,7 +8,7 @@ import type { SelectMenuItem } from "./SelectMenu.vue";
 import SelectMenu from "./SelectMenu.vue";
 import "@atrium-ui/elements/blur";
 import "@atrium-ui/elements/calendar";
-import { plusIcon } from "~/src/assets/icons.ts";
+import { addIcon } from "~/src/assets/icons.ts";
 
 const inputElement = ref();
 
@@ -84,7 +84,7 @@ const filteredValueOptions = computed(() => {
       {
         id: "__new__",
         label: t("Add {value}").replace("{value}", searchInput.value),
-        icon: plusIcon,
+        icon: addIcon,
       },
     ];
   }

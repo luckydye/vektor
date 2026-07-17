@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
 import { replaceBrowserUrl } from "#utils/browserHistory.ts";
-import { clockIcon } from "~/src/assets/icons.ts";
+import { activityIcon } from "~/src/assets/icons.ts";
 import AppView from "./AppView.vue";
 
 const props = defineProps<{
@@ -124,7 +124,7 @@ onUnmounted(() => {
       class="sticky top-0 z-60 bg-amber-50 border border-amber-200 px-6 py-4 flex items-center justify-between duration-300 mb-10"
     >
       <div class="flex items-center gap-3">
-        <div class="svg-icon w-5 h-5 text-amber-600" v-html="clockIcon" />
+        <div class="svg-icon w-5 h-5 text-amber-600" v-html="activityIcon" />
         <div>
           <p class="text-size-medium font-semibold text-amber-900">
             {{ showingDiff ? "Comparing" : "Viewing" }}

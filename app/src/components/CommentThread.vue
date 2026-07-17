@@ -3,7 +3,7 @@ import { nextTick, ref, watch } from "vue";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
-import { checkThinIcon, closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
+import { cancelIcon, confirmationIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
 import "./AvatarElement.ts";
 import ButtonGhost from "./ButtonGhost.vue";
 import MessageInput from "./MessageInput.vue";
@@ -114,13 +114,13 @@ watch(
           class="p-1 text-neutral-400 hover:text-green-600 w-6 h-6"
           title="Resolve thread"
         >
-          <div class="svg-icon w-4 h-4" v-html="checkThinIcon" />
+          <div class="svg-icon w-4 h-4" v-html="confirmationIcon" />
         </ButtonGhost>
         <ButtonGhost
           @click="emit('close')"
           class="p-1 -mr-1 text-neutral-400 hover:text-neutral-700 w-6 h-6"
         >
-          <div class="svg-icon w-4 h-4" v-html="closeXIcon" />
+          <div class="svg-icon w-4 h-4" v-html="cancelIcon" />
         </ButtonGhost>
       </div>
     </div>
@@ -153,7 +153,7 @@ watch(
               class="ml-auto p-0.5 text-neutral-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5"
               title="Delete comment"
             >
-              <div class="svg-icon w-3 h-3" v-html="trashCanIcon" />
+              <div class="svg-icon w-3 h-3" v-html="deleteEntryIcon" />
             </ButtonGhost>
           </div>
 

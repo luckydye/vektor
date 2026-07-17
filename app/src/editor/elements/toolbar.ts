@@ -3,44 +3,43 @@ import "@atrium-ui/elements/color-picker";
 import "@atrium-ui/elements/popover";
 import { html, render } from "lit-html";
 import {
-  alignCenterIcon,
-  alignJustifyIcon,
-  alignLeftIcon,
-  alignRightIcon,
-  arrowsMergeIcon,
-  arrowsSplitIcon,
+  addColumnLeftIcon,
+  addColumnRightIcon,
+  addRowBottomIcon,
+  addRowTopIcon,
   boldIcon,
   chevronDownIcon,
-  clipboardIcon,
-  closeSmallIcon,
-  closeThickIcon,
-  columnMinusIcon,
-  columnPlusLeftIcon,
-  columnPlusRightIcon,
-  columns2Icon,
-  columns3Icon,
-  columns4Icon,
+  cancelIcon,
+  deleteElementIcon,
+  deleteColumnIcon,
+  deleteRowIcon,
+  twoColumnsIcon,
+  threeColumnsIcon,
+  fourColumnsIcon,
   commentIcon,
   functionIcon,
   imageFullWidthIcon,
   indentIcon,
   italicIcon,
   linkIcon,
-  listCheckIcon,
-  listOrderedIcon,
-  listUnorderedIcon,
-  moreIcon,
+  listIcon,
+  mergeCellsIcon,
+  numberedListIcon,
+  contextMenuMoreIcon,
   outdentIcon,
-  paintBucketIcon,
+  pasteIcon,
+  cellFillIcon,
   restoreArrowIcon,
-  rowMinusIcon,
-  rowPlusBottomIcon,
-  rowPlusTopIcon,
-  scissorsIcon,
-  strikethroughIcon,
+  cutIcon,
+  splitCellsIcon,
+  strikeThroughIcon,
+  taskListIcon,
+  justifyCenterIcon,
+  justifyBlockIcon,
+  justifyLeftIcon,
+  justifyRightIcon,
   tableIcon,
   textColorIcon,
-  trashIcon,
   underlineIcon,
 } from "#assets/icons.ts";
 
@@ -837,7 +836,7 @@ if (
                 this.update();
               }}
             >
-              ${this.icon(closeSmallIcon)}
+              ${this.icon(cancelIcon)}
             </button>
           </div>
         `;
@@ -1192,13 +1191,13 @@ if (
               <div class="menu-divider"></div>
               <div class="menu-group">
                 ${this.button(
-                  this.icon(listUnorderedIcon),
+                  this.icon(listIcon),
                   "Bullet List",
                   () => this.chain()?.toggleBulletList().run(),
                   { active: this.isActive("bulletList") },
                 )}
                 ${this.button(
-                  this.icon(listOrderedIcon),
+                  this.icon(numberedListIcon),
                   "Numbered List",
                   () => this.chain()?.toggleOrderedList().run(),
                   { active: this.isActive("orderedList") },
@@ -1283,7 +1282,7 @@ if (
 
               <div class="menu-group">
                 ${this.button(
-                  this.icon(listUnorderedIcon),
+                  this.icon(listIcon),
                   "Bullet List",
                   () => this.chain()?.toggleBulletList().run(),
                   {
@@ -1291,7 +1290,7 @@ if (
                   },
                 )}
                 ${this.button(
-                  this.icon(listOrderedIcon),
+                  this.icon(numberedListIcon),
                   "Numbered List",
                   () => this.chain()?.toggleOrderedList().run(),
                   {
@@ -1299,7 +1298,7 @@ if (
                   },
                 )}
                 ${this.button(
-                  this.icon(listCheckIcon),
+                  this.icon(taskListIcon),
                   "Task List",
                   () => this.chain()?.toggleTaskList().run(),
                   {
@@ -1326,7 +1325,7 @@ if (
               <div class="menu-divider"></div>
               <div class="menu-group">
                 ${this.button(
-                  this.icon(moreIcon),
+                  this.icon(contextMenuMoreIcon),
                   "More Formatting",
                   () => this.toggleSecondaryToolbar(),
                   { active: this.secondaryOpen },
@@ -1365,7 +1364,7 @@ if (
 
                     <div class="menu-group">
                       ${this.button(
-                        this.icon(strikethroughIcon),
+                        this.icon(strikeThroughIcon),
                         "Strikethrough",
                         () => this.chain()?.toggleStrike().run(),
                         {
@@ -1377,7 +1376,7 @@ if (
 
                     <div class="menu-group">
                       ${this.button(
-                        this.icon(alignLeftIcon),
+                        this.icon(justifyLeftIcon),
                         "Align Left",
                         () => this.chain()?.setTextAlign("left").run(),
                         {
@@ -1385,7 +1384,7 @@ if (
                         },
                       )}
                       ${this.button(
-                        this.icon(alignCenterIcon),
+                        this.icon(justifyCenterIcon),
                         "Align Center",
                         () => this.chain()?.setTextAlign("center").run(),
                         {
@@ -1393,7 +1392,7 @@ if (
                         },
                       )}
                       ${this.button(
-                        this.icon(alignRightIcon),
+                        this.icon(justifyRightIcon),
                         "Align Right",
                         () => this.chain()?.setTextAlign("right").run(),
                         {
@@ -1401,7 +1400,7 @@ if (
                         },
                       )}
                       ${this.button(
-                        this.icon(alignJustifyIcon),
+                        this.icon(justifyBlockIcon),
                         "Justify",
                         () => this.chain()?.setTextAlign("justify").run(),
                         {
@@ -1446,7 +1445,7 @@ if (
                       </div>
                       <div class="color-picker-wrapper">
                         ${this.colorControl({
-                          icon: paintBucketIcon,
+                          icon: cellFillIcon,
                           label: "Background Color",
                           value:
                             this.bgColor === "transparent" ? "#ffff00" : this.bgColor,
@@ -1466,9 +1465,9 @@ if (
                           <div class="menu-divider"></div>
                           <div class="menu-group columns-section">
                             ${[
-                              [2, columns2Icon],
-                              [3, columns3Icon],
-                              [4, columns4Icon],
+                              [2, twoColumnsIcon],
+                              [3, threeColumnsIcon],
+                              [4, fourColumnsIcon],
                             ].map(([count, icon]) =>
                               this.button(
                                 this.icon(icon as string),
@@ -1480,7 +1479,7 @@ if (
                               ),
                             )}
                             ${this.button(
-                              this.icon(closeThickIcon),
+                              this.icon(deleteElementIcon),
                               "Delete Column Layout",
                               () => this.deleteColumnLayout(),
                               { danger: true },
@@ -1525,14 +1524,14 @@ if (
             style=${this.tableStyle}
           >
             <div class="menu-group">
-              ${this.button(this.icon(columnPlusLeftIcon), "Add Column Before", () =>
+              ${this.button(this.icon(addColumnLeftIcon), "Add Column Before", () =>
                 this.chain()?.addColumnBefore().run(),
               )}
-              ${this.button(this.icon(columnPlusRightIcon), "Add Column After", () =>
+              ${this.button(this.icon(addColumnRightIcon), "Add Column After", () =>
                 this.chain()?.addColumnAfter().run(),
               )}
               ${this.button(
-                this.icon(columnMinusIcon),
+                this.icon(deleteColumnIcon),
                 "Delete Column",
                 () => this.chain()?.deleteColumn().run(),
                 { danger: true },
@@ -1541,21 +1540,21 @@ if (
             <div class="menu-divider"></div>
 
             <div class="menu-group">
-              ${this.button(this.icon(rowPlusTopIcon), "Add Row Before", () =>
+              ${this.button(this.icon(addRowTopIcon), "Add Row Before", () =>
                 this.chain()?.addRowBefore().run(),
               )}
-              ${this.button(this.icon(rowPlusBottomIcon), "Add Row After", () =>
+              ${this.button(this.icon(addRowBottomIcon), "Add Row After", () =>
                 this.chain()?.addRowAfter().run(),
               )}
               ${this.button(
-                this.icon(rowMinusIcon),
+                this.icon(deleteRowIcon),
                 "Delete Row",
                 () => this.chain()?.deleteRow().run(),
                 { danger: true },
               )}
-              ${this.button(this.icon(scissorsIcon), "Cut Row", () => this.cutRow())}
+              ${this.button(this.icon(cutIcon), "Cut Row", () => this.cutRow())}
               ${this.button(
-                this.icon(clipboardIcon),
+                this.icon(pasteIcon),
                 "Paste Row",
                 () => this.pasteRow(),
                 { disabled: !this.copiedRow },
@@ -1570,10 +1569,10 @@ if (
                 () => this.chain()?.toggleHeaderCell().run(),
                 { active: this.isActive("tableHeader") },
               )}
-              ${this.button(this.icon(arrowsMergeIcon), "Merge Cells", () =>
+              ${this.button(this.icon(mergeCellsIcon), "Merge Cells", () =>
                 this.chain()?.mergeCells().run(),
               )}
-              ${this.button(this.icon(arrowsSplitIcon), "Split Cell", () =>
+              ${this.button(this.icon(splitCellsIcon), "Split Cell", () =>
                 this.chain()?.splitCell().run(),
               )}
             </div>
@@ -1589,7 +1588,7 @@ if (
             <div class="menu-group">
               <div class="color-picker-wrapper">
                 ${this.colorControl({
-                  icon: paintBucketIcon,
+                  icon: cellFillIcon,
                   label: "Cell Background",
                   value:
                     this.cellBackgroundColor === "transparent"
@@ -1608,7 +1607,7 @@ if (
 
             <div class="menu-group">
               ${this.button(
-                this.icon(trashIcon),
+                this.icon(deleteElementIcon),
                 "Delete Table",
                 () => this.chain()?.deleteTable().run(),
                 { danger: true },

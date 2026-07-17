@@ -9,9 +9,9 @@ import { extensions } from "#utils/extensions.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
-  boltIcon,
   homeIcon,
-  puzzleIcon,
+  commandPaletteIcon,
+  extensionIcon,
   searchIcon,
   settingsIcon,
 } from "~/src/assets/icons.ts";
@@ -200,7 +200,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
               :title="t('Command Palette')"
               @click="Actions.run('ui:toggle:palatte')"
             >
-              <span v-html="boltIcon" class="icon inline flex-none" />
+              <span v-html="commandPaletteIcon" class="icon inline flex-none" />
             </button>
           </div>
           <MenuLink
@@ -231,7 +231,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
           <MenuLink
             v-for="link in extensionMenuLinks"
             :key="`${link.extensionId}-${link.route}`"
-            :icon="link.icon || puzzleIcon"
+            :icon="link.icon || extensionIcon"
             :text="link.title"
             :href="spacePath(currentSpace?.slug, `/x/${link.route}`)"
             :is-active="activeRoute === `x/${link.route}`"

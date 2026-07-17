@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { api } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
-import { spinnerIcon, trashIcon } from "~/src/assets/icons.ts";
+import { deleteElementIcon, spinnerIcon } from "~/src/assets/icons.ts";
 import DocumentGroupedList from "./DocumentGroupedList.vue";
 
 const props = defineProps<{
@@ -107,7 +107,7 @@ async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
           class="p-1.5 border border-neutral-200 rounded-md text-neutral-500 hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-colors"
           title="Delete selected permanently"
         >
-          <div class="block svg-icon w-4 h-4" v-html="trashIcon" />
+          <div class="block svg-icon w-4 h-4" v-html="deleteElementIcon" />
         </button>
       </template>
 
@@ -125,7 +125,7 @@ async function handleBatchDelete(ids: Set<string>, deselectAll: () => void) {
           class="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
           title="Delete permanently"
         >
-          <div class="svg-icon w-3.5 h-3.5" v-html="trashIcon" />
+          <div class="svg-icon w-3.5 h-3.5" v-html="deleteElementIcon" />
         </button>
       </template>
     </DocumentGroupedList>

@@ -8,7 +8,7 @@ import {
   isInlineAnchorReference,
   resolveReferenceSelector,
 } from "#utils/commentReference.ts";
-import { plusSmallIcon } from "~/src/assets/icons.ts";
+import { addIcon } from "~/src/assets/icons.ts";
 import type { Comment as CommentThreadType } from "./CommentThread.vue";
 import CommentThread from "./CommentThread.vue";
 
@@ -319,7 +319,7 @@ defineExpose({ commentsForOverlays, handleMoveThread });
         class="w-8 h-8 rounded-full bg-white border border-neutral-200 shadow-md flex items-center justify-center text-neutral-500 hover:text-primary-600 hover:border-primary-300 hover:shadow-lg transition-all"
         title="Add comment"
       >
-        <div class="svg-icon w-4 h-4" v-html="plusSmallIcon" />
+        <div class="svg-icon w-4 h-4" v-html="addIcon" />
       </button>
     </div>
 

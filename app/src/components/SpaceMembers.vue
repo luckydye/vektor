@@ -5,7 +5,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { formatDate } from "#utils/utils.ts";
 import {
-  checkThinIcon,
+  confirmationIcon,
   copyIcon,
   usersGroupIcon,
   usersIcon,
@@ -458,7 +458,7 @@ async function copyMemberId(memberId) {
                   <div
                     v-if="copiedUserId === perm.permission.userId"
                     class="svg-icon w-3.5 h-3.5 text-green-600"
-                    v-html="checkThinIcon"
+                    v-html="confirmationIcon"
                   />
                   <div v-else class="svg-icon w-3.5 h-3.5" v-html="copyIcon" />
                 </button>

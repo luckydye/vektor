@@ -3,10 +3,10 @@ import { computed, ref } from "vue";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
 import {
-  calendarIcon,
+  dateIcon,
   chevronRightThinIcon,
-  closeXIcon,
-  plusIcon,
+  cancelIcon,
+  addIcon,
 } from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";
@@ -152,7 +152,7 @@ const popoverInner =
         slot="trigger"
         :class="[chipBase, activeDateRange ? chipActive : chipInactive]"
       >
-        <div class="svg-icon w-3 h-3 opacity-60" v-html="calendarIcon" />
+        <div class="svg-icon w-3 h-3 opacity-60" v-html="dateIcon" />
         <span>{{ dateRangeLabel ?? 'Modified' }}</span>
         <button
           type="button"
@@ -160,7 +160,7 @@ const popoverInner =
           @click="clearDateFilter"
           class="hover:opacity-70 flex-none"
         >
-          <div class="svg-icon w-3 h-3" v-html="closeXIcon" />
+          <div class="svg-icon w-3 h-3" v-html="cancelIcon" />
         </button>
       </button>
 
@@ -206,7 +206,7 @@ const popoverInner =
           @click.stop="removeFilterByKeyValue('type', tv)"
           class="hover:opacity-70 flex-none"
         >
-          <div class="svg-icon w-3 h-3" v-html="closeXIcon" />
+          <div class="svg-icon w-3 h-3" v-html="cancelIcon" />
         </button>
       </button>
     </template>
@@ -227,7 +227,7 @@ const popoverInner =
         @click="removeFilterByKeyValue(filter.key, filter.value)"
         class="ml-0.5 hover:opacity-70 flex-none"
       >
-        <div class="svg-icon w-3 h-3" v-html="closeXIcon" />
+        <div class="svg-icon w-3 h-3" v-html="cancelIcon" />
       </button>
     </div>
 
@@ -238,7 +238,7 @@ const popoverInner =
         slot="trigger"
         class="flex items-center gap-1 py-1 px-3xs text-interactive rounded-lg border border-dashed border-neutral-300 text-neutral-500 hover:border-primary-300 hover:text-primary-600 transition-colors text-size-small"
       >
-        <div class="svg-icon w-3.5 h-3.5" v-html="plusIcon" />
+        <div class="svg-icon w-3.5 h-3.5" v-html="addIcon" />
         <span>Filter</span>
       </button>
 

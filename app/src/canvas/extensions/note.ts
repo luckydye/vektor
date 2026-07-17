@@ -1,4 +1,4 @@
-import { canvasNoteIcon } from "#assets/icons.ts";
+import { noteToolIcon } from "#assets/icons.ts";
 import { CanvasRichTextElement } from "./CanvasElementBase.ts";
 import type { CanvasElementExtension, CanvasShape } from "./types.ts";
 
@@ -20,7 +20,7 @@ export const noteElement: CanvasElementExtension = {
   },
   creation: {
     palette: NOTE_COLORS,
-    tool: { id: "note", label: "Note", shortcut: "N", icon: canvasNoteIcon },
+    tool: { id: "note", label: "Note", shortcut: "N", icon: noteToolIcon },
     editOnCreate: "element",
     create: (at, ctx) =>
       createNoteShape(at, ctx.color ?? noteElement.defaults.style.color),
