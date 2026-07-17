@@ -9,6 +9,8 @@ export type {
   FreehandStrokeOptions,
   FreehandStrokeStyle,
   FreehandVelocityWidthOptions,
+  RetainedFreehandOutline,
+  RetainedFreehandSelectionGroup,
 } from "./freehand";
 export {
   buildFreehandPath,
@@ -16,9 +18,11 @@ export {
   createFreehandStrokeBuilder,
   drawFreehandOutline,
   drawFreehandPath,
+  drawRetainedFreehandSelection,
   drawFreehandStroke,
   fillFreehandStrokeMask,
   filterFreehandPoints,
+  retainFreehandOutlines,
   simplifyFreehandPoints,
 } from "./freehand";
 export type { DrawWorldDotsOptions, DrawWorldGridOptions, WorldGridLevel } from "./grid";

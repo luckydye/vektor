@@ -38,8 +38,10 @@ import {
   activeShapeId,
   type CanvasElementContext,
   type CanvasShapeLibraryItem,
+  type CanvasSelectionSnapshot,
   cloneFreehandPoint,
   createCanvasInkRenderer,
+  createCanvasSelectionRenderer,
   createCanvasExtensionManager,
   createStrokeMap,
   DRAW_STROKE_MODES,
@@ -47,7 +49,6 @@ import {
   hitTestCanvasStroke,
   PEN_COLORS,
   renderCanvasInkOverlay,
-  renderCanvasSelections,
   SHAPE_LIBRARY,
   setActiveShapeId,
   strokeStyleFromUnknown,
@@ -419,12 +420,11 @@ let cameraMoveTimer: ReturnType<typeof setTimeout> | null = null;
 watch(camera, () => {
   if (!isCameraMoving.value) {
     isCameraMoving.value = true;
-    hideSelectionLayer();
   }
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
   cameraMoveTimer = setTimeout(() => {
     isCameraMoving.value = false;
-    renderSelections();
+    renderSelections(true);
   }, 150);
 });
 // The single selected shape, or null when nothing or multiple things are
@@ -1242,6 +1242,29 @@ const inkRenderer = createCanvasInkRenderer({
   getDefaultInkColor: defaultInkColor,
   invalidateScene: renderScene,
 });
+const selectionRenderer = createCanvasSelectionRenderer();
+
+// This snapshot deliberately excludes camera state. Its identity therefore
+// stays stable through pan/zoom frames and changes only when the selection
+// geometry itself needs to be rebuilt.
+const selectionSnapshot = computed<CanvasSelectionSnapshot>(() => ({
+  strokes: strokes.value,
+  selectedStrokeIds: selectedStrokeIds.value,
+  remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
+  selectedShapeBounds: [...selectedShapeIds.value]
+    .map((id) => shapesById.value.get(id))
+    .filter((shape) => shape != null)
+    .map(shapeBounds),
+  remoteSelectedShapeBounds: remoteCanvasSelections.value.map((selection) => ({
+    x: selection.bounds.x,
+    y: selection.bounds.y,
+    width: selection.bounds.width,
+    height: selection.bounds.height,
+    rotation: selection.bounds.rotation,
+    type: selection.bounds.type,
+    color: selection.cursorColor,
+  })),
+}));
 
 // The camera changes every input frame. Keep the static world in one backing
 // store so a pan produces one compositor update instead of one per visual layer.
@@ -1352,8 +1375,7 @@ function schedulePresenceUpdate() {
 function renderInk() {
   renderScene();
   renderActiveInk();
-  if (isCameraMoving.value) hideSelectionLayer();
-  else renderSelections();
+  renderSelections();
 }
 
 function renderActiveInk() {
@@ -1372,7 +1394,7 @@ function renderActiveInk() {
   });
 }
 
-function renderSelections() {
+function renderSelections(refresh = false) {
   const canvas = selectionRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
@@ -1386,34 +1408,20 @@ function renderSelections() {
     selectionLayerHidden = false;
   }
 
-  renderCanvasSelections({
+  selectionRenderer.render({
     context,
     dpr,
     screen: screen.value,
     transform: transform.value,
-    strokes: strokes.value,
-    selectedStrokeIds: selectedStrokeIds.value,
-    remoteSelectedStrokeIds: remoteCanvasStrokeSelections.value,
-    selectedShapeBounds: [...selectedShapeIds.value]
-      .map((id) => shapesById.value.get(id))
-      .filter((s) => s != null)
-      .map(shapeBounds),
-    remoteSelectedShapeBounds: remoteCanvasSelections.value.map((s) => ({
-      x: s.bounds.x,
-      y: s.bounds.y,
-      width: s.bounds.width,
-      height: s.bounds.height,
-      rotation: s.bounds.rotation,
-      type: s.bounds.type,
-      color: s.cursorColor,
-    })),
+    selection: selectionSnapshot.value,
+    refresh,
+    deferRefresh: marqueeRect.value !== null,
   });
 }
 
-// Reprojecting a full-screen selection canvas with CSS transform forces Chrome
-// to recommit its backing texture on every pan/zoom frame. Keep interactions
-// smooth by hiding the expensive overlay during movement, then redraw it once
-// the camera has settled.
+// Stroke transforms hide the selection outline while the selected ink is being
+// replaced inside the raster cache. Camera movement keeps this layer visible
+// and redraws it through renderInk with the current viewport transform.
 function hideSelectionLayer() {
   const canvas = selectionRef.value;
   if (!canvas || selectionLayerHidden) return;
@@ -2670,7 +2678,10 @@ function handlePointerUp(event: PointerEvent) {
   if (endToolPointerGesture(event)) event.preventDefault();
   if (dragState?.pointerId === event.pointerId) {
     commitStrokeTransformInteraction(dragState);
-    if (dragState.type === "marquee") marqueeRect.value = null;
+    if (dragState.type === "marquee") {
+      marqueeRect.value = null;
+      renderSelections();
+    }
     if (dragState.type === "pan") isPanning.value = false;
     if (activeSnapGuides.length > 0) {
       activeSnapGuides = [];
@@ -2704,7 +2715,10 @@ function handlePointerCancel(event: PointerEvent) {
   }
   if (!dragState || dragState.pointerId !== event.pointerId) return;
   if (cancelTransformDrag()) return;
-  if (dragState.type === "marquee") marqueeRect.value = null;
+  if (dragState.type === "marquee") {
+    marqueeRect.value = null;
+    renderSelections();
+  }
   if (dragState.type === "pan") isPanning.value = false;
   cancelStrokeTransformInteraction();
   dragState = null;
@@ -3494,6 +3508,7 @@ onUnmounted(() => {
   if (inkRafId !== null) cancelAnimationFrame(inkRafId);
   if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
   inkRenderer.dispose();
+  selectionRenderer.dispose();
 });
 </script>
 

@@ -843,3 +843,69 @@ export function drawFreehandOutline(
   ctx.stroke(outlinePath.path);
   ctx.restore();
 }
+
+export type RetainedFreehandOutline = {
+  path: Path2D;
+  geometryScale: number;
+};
+
+export type RetainedFreehandSelectionGroup = {
+  outlines: RetainedFreehandOutline[];
+  color: string;
+};
+
+// Retains references to the already-cached silhouettes without copying their
+// commands into one pathological mega-path. Camera frames can transform these
+// paths without rebuilding expanded outlines at each intermediate zoom level.
+export function retainFreehandOutlines(
+  strokes: readonly FreehandStroke[],
+  transform: WorldTransform,
+): RetainedFreehandOutline[] {
+  const outlines: RetainedFreehandOutline[] = [];
+  for (const stroke of strokes) {
+    const outline = variableWidthPathFor(stroke.path, transform, stroke.style);
+    if (outline) outlines.push(outline);
+  }
+  return outlines;
+}
+
+// Paints a thin ring outside the retained stroke silhouettes. The path itself
+// follows the camera, while both the gap and ring width are applied after the
+// transform so they remain constant screen-pixel values at every zoom level.
+export function drawRetainedFreehandSelection(
+  ctx: CanvasRenderingContext2D,
+  groups: readonly RetainedFreehandSelectionGroup[],
+  transform: WorldTransform,
+  expand = 4,
+  lineWidth = 1.5,
+): void {
+  const drawPath = (
+    outline: RetainedFreehandOutline,
+    color: string,
+    operation: "paint" | "erase",
+  ) => {
+    const scale = transform.scale / outline.geometryScale;
+    ctx.save();
+    ctx.translate(transform.dx, transform.dy);
+    ctx.scale(scale, scale);
+    ctx.lineWidth =
+      (operation === "paint" ? expand * 2 + lineWidth : expand * 2 - lineWidth) /
+      Math.abs(scale);
+    if (operation === "paint") {
+      ctx.strokeStyle = color;
+      ctx.stroke(outline.path);
+    } else {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fill(outline.path);
+      if (ctx.lineWidth > 0) ctx.stroke(outline.path);
+    }
+    ctx.restore();
+  };
+
+  for (const group of groups) {
+    for (const outline of group.outlines) drawPath(outline, group.color, "paint");
+  }
+  for (const group of groups) {
+    for (const outline of group.outlines) drawPath(outline, group.color, "erase");
+  }
+}
