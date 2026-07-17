@@ -644,6 +644,7 @@ function strokeBoundsIntersect(left: StrokeBounds, right: StrokeBounds) {
 export class CanvasInkRenderer {
   readonly #options: CanvasInkRendererOptions;
   #cache: StaticInkRasterCache | null = null;
+  #fallbackCache: StaticInkRasterCache | null = null;
   #build: StaticInkRasterBuild | null = null;
   #spareCanvas: HTMLCanvasElement | null = null;
   #strokeTransform: CanvasStrokeTransformState | null = null;
@@ -666,11 +667,15 @@ export class CanvasInkRenderer {
     if (strokes.length === 0) {
       this.#cancelRasterRefresh();
       this.#cache = null;
+      this.#discardFallbackCache();
       return;
     }
 
     const currentTransform = this.#options.getTransform();
     const color = this.#options.getDefaultInkColor();
+    if (this.#fallbackCache && !this.#cacheMatches(this.#fallbackCache, color)) {
+      this.#discardFallbackCache();
+    }
     let cache = this.#cache;
     if (!cache || !this.#cacheSurfaceMatches(cache, color)) {
       cache = this.#buildRasterCache(currentTransform, color);
@@ -683,16 +688,13 @@ export class CanvasInkRenderer {
       }
     }
 
-    const { ratio, x, y } = this.#cachePlacement(cache, currentTransform);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    context.drawImage(
-      cache.canvas,
-      x,
-      y,
-      cache.screen.width * ratio,
-      cache.screen.height * ratio,
-    );
+    const fallback = this.#fallbackCache;
+    if (fallback && !this.#cacheFillsViewport(cache, currentTransform)) {
+      this.#drawRasterCache(context, fallback, currentTransform);
+    }
+    this.#drawRasterCache(context, cache, currentTransform);
 
     if (!this.#strokeTransform && this.#cacheNeedsRefresh(cache, currentTransform)) {
       this.#scheduleRasterRefresh(currentTransform, color);
@@ -793,6 +795,7 @@ export class CanvasInkRenderer {
 
   dispose() {
     this.#cancelRasterRefresh();
+    this.#discardFallbackCache();
   }
 
   #withCacheCommit(cacheUpdated: boolean, commit: () => void) {
@@ -826,6 +829,32 @@ export class CanvasInkRenderer {
     const x = (-STATIC_INK_CACHE_MARGIN - cache.transform.dx) * ratio + transform.dx;
     const y = (-STATIC_INK_CACHE_MARGIN - cache.transform.dy) * ratio + transform.dy;
     return { ratio, x, y };
+  }
+
+  #drawRasterCache(
+    context: CanvasRenderingContext2D,
+    cache: StaticInkRasterCache,
+    transform: WorldTransform,
+  ) {
+    const { ratio, x, y } = this.#cachePlacement(cache, transform);
+    context.drawImage(
+      cache.canvas,
+      x,
+      y,
+      cache.screen.width * ratio,
+      cache.screen.height * ratio,
+    );
+  }
+
+  #cacheFillsViewport(cache: StaticInkRasterCache, transform: WorldTransform) {
+    const { ratio, x, y } = this.#cachePlacement(cache, transform);
+    const screen = this.#options.getScreen();
+    return (
+      x <= 0 &&
+      y <= 0 &&
+      x + cache.screen.width * ratio >= screen.width &&
+      y + cache.screen.height * ratio >= screen.height
+    );
   }
 
   #cacheCovers(cache: StaticInkRasterCache, transform: WorldTransform, color: string) {
@@ -940,6 +969,7 @@ export class CanvasInkRenderer {
 
   #buildRasterCache(transform: WorldTransform, color: string) {
     this.#cancelRasterRefresh();
+    this.#discardFallbackCache();
     const canvas = this.#cache?.canvas ?? document.createElement("canvas");
     const cache = this.#prepareRasterCache(transform, color, canvas);
     this.#paintRasterCache(cache, cache.strokes);
@@ -990,9 +1020,9 @@ export class CanvasInkRenderer {
 
     const color = this.#options.getDefaultInkColor();
     if (this.#cacheCovers(build.cache, this.#options.getTransform(), color)) {
-      const previousCanvas = this.#cache?.canvas ?? null;
+      const previousCache = this.#cache;
       this.#cache = build.cache;
-      this.#spareCanvas = previousCanvas;
+      this.#retainFallbackCache(previousCache, color);
     } else {
       this.#spareCanvas = build.cache.canvas;
     }
@@ -1009,6 +1039,7 @@ export class CanvasInkRenderer {
     if (!cache || !this.#cacheMatches(cache, this.#options.getDefaultInkColor())) {
       return false;
     }
+    this.#discardFallbackCache();
     this.#cancelRasterRefresh();
     const context = cache.canvas.getContext("2d");
     if (!context) return false;
@@ -1036,6 +1067,37 @@ export class CanvasInkRenderer {
     }
     context.restore();
     return true;
+  }
+
+  #retainFallbackCache(
+    previousCache: StaticInkRasterCache | null,
+    color: string,
+  ) {
+    if (!previousCache) return;
+    const existingFallback = this.#fallbackCache;
+    const keepExisting =
+      existingFallback !== null &&
+      this.#cacheMatches(existingFallback, color) &&
+      existingFallback.transform.scale <= previousCache.transform.scale;
+    this.#fallbackCache = keepExisting ? existingFallback : previousCache;
+    const reusableCanvas = keepExisting ? previousCache.canvas : existingFallback?.canvas;
+    if (reusableCanvas) this.#spareCanvas = reusableCanvas;
+  }
+
+  #discardFallbackCache() {
+    const fallback = this.#fallbackCache;
+    if (!fallback) return;
+    this.#fallbackCache = null;
+    if (
+      !this.#spareCanvas &&
+      fallback.canvas !== this.#cache?.canvas &&
+      fallback.canvas !== this.#build?.cache.canvas
+    ) {
+      this.#spareCanvas = fallback.canvas;
+      return;
+    }
+    fallback.canvas.width = 0;
+    fallback.canvas.height = 0;
   }
 
   #cloneCacheForTransform() {
@@ -1264,10 +1326,13 @@ export function renderCanvasSelections(params: CanvasSelectionRenderParams) {
 // for every camera frame. Cache the completed antialiased pass instead; the
 // margin lets pan/zoom frames reposition it without rebuilding the paths.
 const SELECTION_RASTER_MARGIN = 256;
-// The selection gap is two screen pixels. Refresh after a 12.5% scale change
-// so resampling cannot move it by more than roughly a quarter pixel from the ink.
-const SELECTION_RASTER_MIN_SCALE_RATIO = 0.875;
-const SELECTION_RASTER_MAX_SCALE_RATIO = 1.125;
+// The selection gap is two screen pixels. A 25% scale window limits temporary
+// resampling drift to roughly half a pixel while avoiding needless rebuilds.
+const SELECTION_RASTER_MIN_SCALE_RATIO = 0.75;
+const SELECTION_RASTER_MAX_SCALE_RATIO = 1.25;
+const SELECTION_RASTER_MIN_REFRESH_MS = 50;
+const SELECTION_RASTER_MAX_REFRESH_MS = 250;
+const SELECTION_RASTER_BUILD_COOLDOWN = 8;
 
 type CanvasSelectionRasterCache = {
   canvas: HTMLCanvasElement;
@@ -1276,6 +1341,7 @@ type CanvasSelectionRasterCache = {
   viewport: ScreenSize;
   transform: WorldTransform;
   selection: CanvasSelectionSnapshot;
+  remoteStrokeGroups: RetainedFreehandSelectionGroup[];
 };
 
 export type CanvasSelectionRendererParams = {
@@ -1323,6 +1389,13 @@ function retainCanvasSelectionStrokes(
 
 export class CanvasSelectionRenderer {
   #cache: CanvasSelectionRasterCache | null = null;
+  #interactionOffset: { x: number; y: number } | null = null;
+  #lastBuildAt = 0;
+  #lastBuildDuration = 0;
+
+  setInteractionOffset(offset: { x: number; y: number } | null) {
+    this.#interactionOffset = offset ? { ...offset } : null;
+  }
 
   render(params: CanvasSelectionRendererParams) {
     const {
@@ -1340,13 +1413,25 @@ export class CanvasSelectionRenderer {
       return;
     }
 
-    if (deferRefresh && this.#cache?.selection !== selection) {
-      if (this.#cache) this.#draw(context, dpr, screen, transform);
-      else this.#clear(context, dpr, screen);
+    const cache = this.#cache;
+    const buildCooldown = Math.min(
+      SELECTION_RASTER_MAX_REFRESH_MS,
+      Math.max(
+        SELECTION_RASTER_MIN_REFRESH_MS,
+        this.#lastBuildDuration * SELECTION_RASTER_BUILD_COOLDOWN,
+      ),
+    );
+    const intermediateRefreshReady =
+      performance.now() - this.#lastBuildAt >= buildCooldown;
+    if (
+      deferRefresh &&
+      cache?.selection !== selection &&
+      !intermediateRefreshReady
+    ) {
+      this.#draw(context, dpr, screen, transform);
       return;
     }
 
-    const cache = this.#cache;
     const surfaceChanged =
       !cache ||
       cache.dpr !== dpr ||
@@ -1358,12 +1443,21 @@ export class CanvasSelectionRenderer {
       scaleRatio > SELECTION_RASTER_MAX_SCALE_RATIO;
     const cameraNeedsRefresh =
       cache !== null &&
-      (scaleDrifted ||
+      ((scaleDrifted && intermediateRefreshReady) ||
         (refresh &&
           (cache.transform.scale !== transform.scale ||
             !this.#cacheCovers(cache, screen, transform))));
-    if (surfaceChanged || !cache || cache.selection !== selection || cameraNeedsRefresh) {
+    const selectionChanged = cache?.selection !== selection;
+    if (
+      surfaceChanged ||
+      !cache ||
+      (selectionChanged && this.#interactionOffset === null) ||
+      cameraNeedsRefresh
+    ) {
+      const buildStartedAt = performance.now();
       this.#cache = this.#buildCache(cache, dpr, screen, transform, selection);
+      this.#lastBuildAt = performance.now();
+      this.#lastBuildDuration = this.#lastBuildAt - buildStartedAt;
     }
     this.#draw(context, dpr, screen, transform);
   }
@@ -1386,6 +1480,8 @@ export class CanvasSelectionRenderer {
 
     this.#clear(context, dpr, screen);
     const { ratio, x, y } = this.#cachePlacement(cache, transform);
+    const interactionDx = (this.#interactionOffset?.x ?? 0) * transform.scale;
+    const interactionDy = (this.#interactionOffset?.y ?? 0) * transform.scale;
     context.save();
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.globalAlpha = 1;
@@ -1394,11 +1490,16 @@ export class CanvasSelectionRenderer {
     context.imageSmoothingQuality = "high";
     context.drawImage(
       cache.canvas,
-      x,
-      y,
+      x + interactionDx,
+      y + interactionDy,
       cache.screen.width * ratio,
       cache.screen.height * ratio,
     );
+    context.setLineDash([]);
+    drawRetainedFreehandSelection(context, cache.remoteStrokeGroups, transform);
+    for (const bounds of cache.selection.remoteSelectedShapeBounds ?? []) {
+      drawShapeOutline(context, bounds, transform, bounds.color);
+    }
     context.restore();
   }
 
@@ -1422,7 +1523,11 @@ export class CanvasSelectionRenderer {
     if (!cacheContext) throw new Error("Selection cache requires a 2D canvas context");
 
     renderCanvasSelections({
-      ...selection,
+      strokes: selection.strokes,
+      selectedStrokeIds: selection.selectedStrokeIds,
+      selectedShapeBounds: selection.selectedShapeBounds,
+      remoteSelectedStrokeIds: [],
+      remoteSelectedShapeBounds: [],
       context: cacheContext,
       dpr,
       screen,
@@ -1440,6 +1545,14 @@ export class CanvasSelectionRenderer {
       viewport: { ...viewport },
       transform: { ...transform },
       selection,
+      remoteStrokeGroups: retainCanvasSelectionStrokes(
+        {
+          strokes: selection.strokes,
+          selectedStrokeIds: new Set(),
+          remoteSelectedStrokeIds: selection.remoteSelectedStrokeIds,
+        },
+        transform,
+      ),
     };
   }
 
@@ -1479,6 +1592,9 @@ export class CanvasSelectionRenderer {
       this.#cache.canvas.height = 0;
     }
     this.#cache = null;
+    this.#interactionOffset = null;
+    this.#lastBuildAt = 0;
+    this.#lastBuildDuration = 0;
   }
 }
 

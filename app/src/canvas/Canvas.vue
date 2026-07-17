@@ -338,6 +338,7 @@ let themeObserver: MutationObserver | null = null;
 let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 let selectionLayerHidden = false;
+let selectionDragActive = false;
 const intrinsicShapeSizes = shallowRef(
   new Map<string, { width: number; height: number }>(),
 );
@@ -1360,6 +1361,7 @@ function scheduleInkRender() {
     inkRafId = null;
     inkRenderer.renderStrokeTransformCache();
     renderActiveInk();
+    if (selectionDragActive) renderSelections();
   });
 }
 
@@ -1398,7 +1400,7 @@ function renderSelections(refresh = false) {
   const canvas = selectionRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
-  if (inkRenderer.isTransformingStroke) {
+  if (inkRenderer.isTransformingStroke && !selectionDragActive) {
     hideSelectionLayer();
     return;
   }
@@ -1888,9 +1890,12 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
   };
 }
 
-function startStrokeTransformInteraction(strokesToMove: CanvasStroke[]) {
+function startStrokeTransformInteraction(
+  strokesToMove: CanvasStroke[],
+  hideSelection = true,
+) {
   if (!inkRenderer.beginStrokeTransform(strokesToMove)) return;
-  hideSelectionLayer();
+  if (hideSelection) hideSelectionLayer();
   renderScene();
   renderActiveInk();
 }
@@ -1905,18 +1910,27 @@ function updateStrokeTransformInteraction(
 }
 
 function cancelStrokeTransformInteraction() {
-  if (!inkRenderer.cancelStrokeTransform()) return;
+  const canceledStrokeTransform = inkRenderer.cancelStrokeTransform();
+  if (!canceledStrokeTransform && !selectionDragActive) return;
+  selectionDragActive = false;
+  selectionRenderer.setInteractionOffset(null);
   renderActiveInk();
   renderSelections();
-  renderScene();
+  if (canceledStrokeTransform) renderScene();
 }
 
 function beginDragStrokeTransform(drag: Extract<DragState, { type: "shape" }>) {
+  // Capture the current selection once, then move its raster cache with the
+  // pointer instead of rebuilding or hiding it during the drag.
+  renderSelections();
+  selectionDragActive = true;
+  selectionRenderer.setInteractionOffset({ x: 0, y: 0 });
   startStrokeTransformInteraction(
     drag.strokes.flatMap((item) => {
       const stroke = strokesById.value.get(item.id);
       return stroke ? [stroke] : [];
     }),
+    false,
   );
 }
 
@@ -2613,6 +2627,7 @@ function handlePointerMove(event: PointerEvent) {
     world.y - drag.startPointer.y,
     event.metaKey,
   );
+  selectionRenderer.setInteractionOffset({ x: dx, y: dy });
   ydoc.transact(() => {
     for (const moved of drag.shapes) {
       const shape = shapesById.value.get(moved.id);
@@ -2634,7 +2649,14 @@ function handlePointerMove(event: PointerEvent) {
 
 function commitStrokeTransformInteraction(state: DragState) {
   const transformState = inkRenderer.strokeTransform;
-  if (!transformState) return;
+  if (!transformState) {
+    if (selectionDragActive) {
+      selectionDragActive = false;
+      selectionRenderer.setInteractionOffset(null);
+      renderSelections();
+    }
+    return;
+  }
 
   const hasChange =
     state.type === "shape"
@@ -2670,6 +2692,8 @@ function commitStrokeTransformInteraction(state: DragState) {
       );
     });
   });
+  selectionDragActive = false;
+  selectionRenderer.setInteractionOffset(null);
   renderActiveInk();
   renderSelections();
 }
