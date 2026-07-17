@@ -50,11 +50,11 @@ watch(
   <nav
     v-if="showBreadcrumbs"
     aria-label="Breadcrumb"
-    class="breadcrumbs text-size-medium text-neutral-600 min-w-0"
+    class="breadcrumbs text-size-medium text-neutral-600 min-w-0 flex"
   >
     <ol
       ref="olRef"
-      class="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      class="flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pointer-events-auto"
     >
       <!-- Category -->
       <li v-if="category" class="flex items-center gap-1.5 shrink-0">

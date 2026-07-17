@@ -6,12 +6,12 @@
       v-model="localTitle"
       type="text"
       placeholder="Untitled Document"
-      class="text-size-display font-bold text-neutral-900 bg-neutral-50 focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors px-1"
+      class="pointer-events-auto text-size-display font-bold text-neutral-900 bg-neutral-50 focus:border-blue-500 outline-none focus:ring-0 flex-1 transition-colors px-1"
       @blur="updateTitle"
       @keydown.enter="updateTitle"
     >
 
-    <div v-else :data-document-id="documentId">
+    <div v-else :data-document-id="documentId" class="pointer-events-auto">
       <h1
         class="text-size-display font-bold text-neutral-900 flex items-center gap-3 px-1"
         :class="{ 'cursor-text hover:bg-neutral-50': canEdit, 'cursor-default': !canEdit }"

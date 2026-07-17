@@ -27,6 +27,7 @@ import {
   PropertyChip,
   PropertyPopover,
 } from "~/src/components/index.ts";
+import { twMerge } from "tailwind-merge";
 
 const props = defineProps<{
   documentId?: string;
@@ -345,15 +346,15 @@ const availableNewProperties = computed(() => {
 <template>
   <div
     :class="
-      layout === 'labeled'
-        ? 'flex flex-col items-start gap-3xs'
-        : 'flex flex-wrap items-center gap-3xs'
+      twMerge('flex gap-3xs pointer-events-none', layout === 'labeled'
+        ? 'flex-col items-start'
+        : 'flex-wrap items-center')
     "
   >
     <div
       v-for="property in properties"
       :key="property.id"
-      :class="layout === 'labeled' ? 'flex min-h-8 items-center gap-3xs' : ''"
+      :class="twMerge('pointer-events-auto', layout === 'labeled' ? 'flex min-h-8 items-center gap-3xs' : '')"
     >
       <span
         v-if="layout === 'labeled'"
@@ -380,7 +381,7 @@ const availableNewProperties = computed(() => {
 
     <div
       v-if="!readonly"
-      :class="layout === 'labeled' ? 'relative ml-28 pl-3xs' : 'relative'"
+      :class="twMerge('pointer-events-auto', layout === 'labeled' ? 'relative ml-28 pl-3xs' : 'relative')"
     >
       <ButtonIconSmall
         :icon="plusIcon"

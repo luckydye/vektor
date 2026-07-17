@@ -358,7 +358,6 @@ watchEffect(() => {
             <inset-view
               :class="twMerge(
                             'flex flex-row justify-between gap-6 py-3xs px-xs md:gap-4 md:px-xl print:px-0',
-                            'pointer-events-auto',
                             'sticky top-0 z-10',
                         )"
             >
@@ -384,7 +383,7 @@ watchEffect(() => {
 
             <inset-view
               id="document-properties"
-              :class="twMerge('block px-xs md:px-xl print:px-0 mb-l', 'pointer-events-auto')"
+              :class="twMerge('block px-xs md:px-xl print:px-0 mb-l')"
             >
               <DocumentProperties
                 :documentId="doc?.id"

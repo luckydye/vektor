@@ -3555,10 +3555,7 @@ onUnmounted(() => {
       'is-dark': isDarkMode,
     }"
   >
-    <div
-      v-if="hasSelectedElementProperties || hasToolProperties"
-      class="canvas-properties-bar"
-    >
+    <div v-if="hasToolProperties" class="canvas-properties-bar">
       <div
         v-if="hasToolProperties"
         class="canvas-tool-properties"
@@ -3626,16 +3623,21 @@ onUnmounted(() => {
           ></button>
         </span>
       </div>
-      <div
-        v-if="hasSelectedElementProperties"
-        class="canvas-selection-properties"
-        @pointerdown.stop
+    </div>
+    <aside
+      v-if="hasSelectedElementProperties"
+      class="canvas-properties-sidebar"
+      :aria-label="t('Appearance')"
+      @pointerdown.stop
+    >
+      <h2 class="canvas-properties-sidebar-title">{{ t("Appearance") }}</h2>
+      <section
+        v-if="selectedShapeColorPalette"
+        class="canvas-property-section"
+        :aria-label="`${t(selectedShapeColorPalette.label)} color`"
       >
-        <span
-          v-if="selectedShapeColorPalette"
-          class="canvas-note-colors"
-          :aria-label="`${t(selectedShapeColorPalette.label)} color`"
-        >
+        <span class="canvas-property-label">{{ t("Color") }}</span>
+        <div class="canvas-property-colors">
           <button
             v-for="color in selectedShapeColorPalette.palette"
             :key="color"
@@ -3646,12 +3648,15 @@ onUnmounted(() => {
             :aria-label="`${t(selectedShapeColorPalette.label)} color ${color}`"
             @click="setSelectedElementColor(selectedShapeColorPalette.type, color)"
           ></button>
-        </span>
-        <span
-          v-if="selectedStrokeIds.size > 0"
-          class="canvas-note-colors"
-          :aria-label="t('Pen color')"
-        >
+        </div>
+      </section>
+      <section
+        v-if="selectedStrokeIds.size > 0"
+        class="canvas-property-section"
+        :aria-label="t('Pen color')"
+      >
+        <span class="canvas-property-label">{{ t("Color") }}</span>
+        <div class="canvas-property-colors">
           <button
             v-for="color in PEN_COLORS"
             :key="color"
@@ -3662,9 +3667,9 @@ onUnmounted(() => {
             :aria-label="`${t('Set pen color')} ${color}`"
             @click="setSelectedStrokeColor(color)"
           ></button>
-        </span>
-      </div>
-    </div>
+        </div>
+      </section>
+    </aside>
     <div class="canvas-toolbar" @pointerdown.stop>
       <button
         v-for="tool in CANVAS_TOOLS"
@@ -4198,7 +4203,6 @@ onUnmounted(() => {
   max-width: calc(100% - 24px);
 }
 
-.canvas-selection-properties,
 .canvas-tool-properties {
   display: flex;
   align-items: center;
@@ -4209,6 +4213,55 @@ onUnmounted(() => {
   padding: 6px;
   box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
   backdrop-filter: blur(8px);
+}
+
+.canvas-properties-sidebar {
+  position: absolute;
+  top: 140px;
+  right: 16px;
+  z-index: 11;
+  display: flex;
+  width: min(224px, calc(100% - 32px));
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--canvas-toolbar-border);
+  border-radius: 12px;
+  background: var(--canvas-toolbar-bg);
+  padding: 14px;
+  box-shadow: 0 8px 22px var(--canvas-toolbar-shadow);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-properties-sidebar-title {
+  margin: 0;
+  color: var(--canvas-text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.canvas-property-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.canvas-property-section + .canvas-property-section {
+  border-top: 1px solid var(--canvas-divider-color);
+  padding-top: 14px;
+}
+
+.canvas-property-label {
+  color: var(--canvas-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.canvas-property-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .canvas-tool {
