@@ -1,4 +1,9 @@
 import { api } from "#api/client.ts";
+import avatarOne from "#assets/avatars/one.svg?raw";
+import avatarThree from "#assets/avatars/three.svg?raw";
+import avatarTwo from "#assets/avatars/two.svg?raw";
+import avatarZero from "#assets/avatars/zero.svg?raw";
+import { isNoAuthMode, LOCAL_USER, LOCAL_USER_ID } from "#noAuth";
 
 const avatarElementTag = "vektor-avatar";
 
@@ -13,6 +18,9 @@ const sizeMap = {
   medium: 36,
   large: 48,
 };
+
+const generatedAvatars = [avatarOne, avatarTwo, avatarThree];
+const defaultAvatar = `data:image/svg+xml,${encodeURIComponent(avatarZero)}`;
 
 const userCache = new Map<string, { expiresAt: number; user: AvatarUser }>();
 const userRequests = new Map<string, Promise<AvatarUser | undefined>>();
@@ -39,23 +47,6 @@ const avatarStyles = `
     object-fit: cover;
   }
 
-  .avatar-initials {
-    display: flex;
-    width: 100%;
-    height: 100%;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(
-      to bottom right,
-      var(--color-primary-500, #a25ebb),
-      var(--color-purple-600, #9333ea)
-    );
-    color: white;
-    font-family: inherit;
-    font-size: var(--text-size-medium, 0.875rem);
-    font-weight: 700;
-    line-height: 2.2rem;
-  }
 `;
 
 function getAvatarSize(value: string | number | null): number {
@@ -66,18 +57,108 @@ function getAvatarSize(value: string | number | null): number {
   return Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : sizeMap.medium;
 }
 
-function getUserInitials(user: AvatarUser | undefined): string {
-  const displayName = user?.name || user?.email;
-  if (!displayName) return "?";
+function hashEmail(email: string | null | undefined): number {
+  const normalizedEmail = email?.trim().toLowerCase() ?? "";
+  let hash = 0x811c9dc5;
 
-  const names = displayName.trim().split(/\s+/).filter(Boolean);
-  if (names.length >= 2) {
-    return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+  for (let index = 0; index < normalizedEmail.length; index += 1) {
+    hash ^= normalizedEmail.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
   }
-  return displayName[0]?.toUpperCase() || "?";
+
+  return hash >>> 0;
+}
+
+function getPrimaryColorHue(): number {
+  const primaryColor = getComputedStyle(document.documentElement)
+    .getPropertyValue("--color-primary")
+    .trim();
+  const hex = primaryColor.match(/^#([\da-f]{3}|[\da-f]{6})$/i)?.[1];
+  if (!hex) return 283;
+
+  const expandedHex = hex.length === 3 ? [...hex].map((value) => value.repeat(2)).join("") : hex;
+  const red = Number.parseInt(expandedHex.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(expandedHex.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(expandedHex.slice(4, 6), 16) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+
+  if (delta === 0) return 283;
+  if (max === red) return (60 * ((green - blue) / delta) + 360) % 360;
+  if (max === green) return 60 * ((blue - red) / delta + 2);
+  return 60 * ((red - green) / delta + 4);
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const hueSegment = hue / 60;
+  const secondary = chroma * (1 - Math.abs((hueSegment % 2) - 1));
+  const match = lightness - chroma / 2;
+
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (hueSegment < 1) [red, green] = [chroma, secondary];
+  else if (hueSegment < 2) [red, green] = [secondary, chroma];
+  else if (hueSegment < 3) [green, blue] = [chroma, secondary];
+  else if (hueSegment < 4) [green, blue] = [secondary, chroma];
+  else if (hueSegment < 5) [red, blue] = [secondary, chroma];
+  else [red, blue] = [chroma, secondary];
+
+  const componentToHex = (component: number) =>
+    Math.round((component + match) * 255)
+      .toString(16)
+      .padStart(2, "0");
+
+  return `#${componentToHex(red)}${componentToHex(green)}${componentToHex(blue)}`;
+}
+
+function getGeneratedAvatarColor(hash: number): string {
+  const primaryColorHue = getPrimaryColorHue();
+  const compoundOffsets = [30, 150, 210, 330];
+  const hueVariation = ((hash >>> 24) % 17) - 8;
+  const hue =
+    (primaryColorHue + compoundOffsets[hash % compoundOffsets.length] + hueVariation) % 360;
+  const saturation = 65 + ((hash >>> 8) % 26);
+  const lightness = 74 + ((hash >>> 16) % 13);
+
+  return hslToHex(hue, saturation / 100, lightness / 100);
+}
+
+function getGeneratedAvatar(email: string): { color: string; src: string } {
+  const hash = hashEmail(email);
+
+  return {
+    color: getGeneratedAvatarColor(hash),
+    src: `data:image/svg+xml,${encodeURIComponent(generatedAvatars[hash % generatedAvatars.length])}`,
+  };
+}
+
+function hasAvatarIdentity(user: AvatarUser | null | undefined): boolean {
+  return Boolean(user?.email || user?.image);
+}
+
+function resolveAvatarUser(
+  providedUser: AvatarUser | null | undefined,
+  fetchedUser: AvatarUser | undefined,
+): AvatarUser | undefined {
+  if (!providedUser) return fetchedUser;
+  if (!fetchedUser) return providedUser;
+
+  return {
+    email: providedUser.email ?? fetchedUser.email,
+    image: providedUser.image ?? fetchedUser.image,
+    name: providedUser.name ?? fetchedUser.name,
+  };
 }
 
 function loadUser(userId: string): Promise<AvatarUser | undefined> {
+  if (isNoAuthMode() && userId === LOCAL_USER_ID) {
+    return Promise.resolve(LOCAL_USER);
+  }
+
   const cachedUser = userCache.get(userId);
   if (cachedUser && cachedUser.expiresAt > Date.now()) {
     return Promise.resolve(cachedUser.user);
@@ -166,7 +247,7 @@ const AvatarElement =
         }
 
         private async resolveUser() {
-          if (!this.isConnected || this.providedUser) return;
+          if (!this.isConnected || hasAvatarIdentity(this.providedUser)) return;
 
           const userId = this.getAttribute("user-id");
           if (!userId) return;
@@ -180,7 +261,7 @@ const AvatarElement =
         }
 
         private render() {
-          const user = this.providedUser || this.fetchedUser;
+          const user = resolveAvatarUser(this.providedUser, this.fetchedUser);
           const size = getAvatarSize(this.size);
           const avatar = document.createElement("div");
 
@@ -195,10 +276,18 @@ const AvatarElement =
             image.className = "avatar-image";
             avatar.appendChild(image);
           } else {
-            const initials = document.createElement("div");
-            initials.className = "avatar-initials";
-            initials.textContent = getUserInitials(user);
-            avatar.appendChild(initials);
+            const image = document.createElement("img");
+            const email = user?.email?.trim();
+            if (email) {
+              const generatedAvatar = getGeneratedAvatar(email);
+              avatar.style.background = generatedAvatar.color;
+              image.src = generatedAvatar.src;
+            } else {
+              image.src = defaultAvatar;
+            }
+            image.alt = user?.name || user?.email || "User profile";
+            image.className = "avatar-image";
+            avatar.appendChild(image);
           }
 
           this.avatarContainer.replaceChildren(avatar);

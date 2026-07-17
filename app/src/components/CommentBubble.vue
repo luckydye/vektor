@@ -148,6 +148,7 @@ const clickedAnchorComments = computed(() => {
           createdAt:
             typeof c.createdAt === "string" ? c.createdAt : c.createdAt.toISOString(),
           createdBy: c.createdBy,
+          createdByUser: c.createdByUser,
           reference: c.reference ?? undefined,
           parentId: c.parentId ?? undefined,
         }) as CommentThreadType,
@@ -163,6 +164,7 @@ const commentsForThread = computed(() =>
         createdAt:
           typeof c.createdAt === "string" ? c.createdAt : c.createdAt.toISOString(),
         createdBy: c.createdBy,
+        createdByUser: c.createdByUser,
         reference: c.reference ?? undefined,
         parentId: c.parentId ?? undefined,
       }) as CommentThreadType,

@@ -74,15 +74,15 @@ async function fetchUsers() {
   if (!currentSpace.value) return;
   loadingUsers.value = true;
   try {
-    const users = await api.users.get(currentSpace.value.id);
+    const members = await api.spaceMembers.get(currentSpace.value.id);
 
     const map = new Map();
-    users.forEach((u) => {
-      map.set(u.id, u);
+    members.forEach((member) => {
+      if (member.user) map.set(member.user.id, member.user);
     });
     usersMap.value = map;
 
-    return users;
+    return members;
   } catch (err) {
     console.error("Failed to fetch users:", err);
   } finally {

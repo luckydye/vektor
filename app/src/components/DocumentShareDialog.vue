@@ -83,7 +83,7 @@ async function load() {
   if (!currentSpaceId.value || !props.documentId) return;
   isLoading.value = true;
   try {
-    const [docPerms, docTreePerms, spacePerms, users, categoryList] = await Promise.all([
+    const [docPerms, docTreePerms, spacePerms, members, categoryList] = await Promise.all([
       api.permissions.list(currentSpaceId.value, "role", {
         resourceType: "document",
         resourceId: props.documentId,
@@ -93,7 +93,7 @@ async function load() {
         resourceId: props.documentId,
       }),
       api.permissions.list(currentSpaceId.value, "role"),
-      api.users.get(currentSpaceId.value),
+      api.spaceMembers.get(currentSpaceId.value),
       api.categories.get(currentSpaceId.value),
     ]);
 
@@ -111,8 +111,8 @@ async function load() {
     );
 
     const map = new Map<string, any>();
-    (users || []).forEach((u: any) => {
-      map.set(u.id, u);
+    (members || []).forEach((member) => {
+      if (member.user) map.set(member.user.id, member.user);
     });
     usersMap.value = map;
     await loadCategoryPermissions();

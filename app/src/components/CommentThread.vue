@@ -13,6 +13,11 @@ export interface Comment {
   content: string;
   createdAt: string;
   createdBy: string;
+  createdByUser?: {
+    email?: string | null;
+    image?: string | null;
+    name?: string | null;
+  } | null;
   reference?: string;
   parentId?: string | null;
   resourceType?: string;
@@ -42,9 +47,16 @@ const currentUser = useUserProfile();
 const newCommentContent = ref("");
 const commentListRef = ref<HTMLElement | null>(null);
 
-const getUserName = (userId: string): string => {
-  const member = members.value.find((m) => m.userId === userId);
-  return member?.user?.name || member?.user?.email || userId;
+const getUser = (comment: Comment) => {
+  return (
+    comment.createdByUser ??
+    members.value.find((member) => member.userId === comment.createdBy)?.user
+  );
+};
+
+const getUserName = (comment: Comment): string => {
+  const user = getUser(comment);
+  return user?.name || user?.email || comment.createdBy;
 };
 
 function getRelativeTime(dateString: string) {
@@ -136,12 +148,17 @@ watch(
       </div>
 
       <div v-for="comment in comments" :key="comment.id" class="flex gap-2 group">
-        <vektor-avatar size="24" :user-id="comment.createdBy" class="shrink-0 mt-0.5" />
+        <vektor-avatar
+          size="24"
+          :user-id="comment.createdBy"
+          :user="getUser(comment)"
+          class="shrink-0 mt-0.5"
+        />
 
         <div class="flex-1 min-w-0">
           <div class="flex items-baseline gap-2 mb-0.5">
             <span class="text-size-small font-semibold text-neutral-900 truncate">
-              {{ getUserName(comment.createdBy) }}
+              {{ getUserName(comment) }}
             </span>
             <span class="text-[10px] text-neutral-400 whitespace-nowrap">
               {{ getRelativeTime(comment.createdAt) }}

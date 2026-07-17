@@ -44,7 +44,13 @@ const collaborators = computed(() => {
 
     collaboratorsByUser.set(key, {
       key,
-      user: contributor ? { ...contributor.user, ...profile.user } : profile.user,
+      user: contributor
+        ? {
+            ...contributor.user,
+            ...profile.user,
+            email: contributor.user.email,
+          }
+        : profile.user,
       isPresent: true,
     });
   }
@@ -66,7 +72,7 @@ const remainingCount = computed(() => {
     v-if="collaborators.length > 0"
     showdelay="200"
     hidedelay="100"
-    class="group relative z-20"
+    class="group relative z-20 block"
   >
     <button
       slot="trigger"
@@ -90,7 +96,7 @@ const remainingCount = computed(() => {
             class="block rounded-full transition-shadow duration-200"
             :class="{ 'ring-2 ring-green-500 ring-offset-1 ring-offset-background': collaborator.isPresent }"
           >
-            <vektor-avatar size="small" :user="collaborator.user" />
+            <vektor-avatar size="small" :user-id="collaborator.key" :user="collaborator.user" />
           </span>
         </span>
       </TransitionGroup>
@@ -132,7 +138,7 @@ const remainingCount = computed(() => {
               class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
             >
               <div class="relative">
-                <vektor-avatar size="small" :user="collaborator.user" />
+                <vektor-avatar size="small" :user-id="collaborator.key" :user="collaborator.user" />
               </div>
               <span class="min-w-0 flex-1 text-interactive text-neutral-950 truncate">
                 {{ collaborator.user.name }}

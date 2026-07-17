@@ -17,8 +17,8 @@ import "./AvatarElement.ts";
 interface User {
   id: string;
   name: string;
-  email: string;
-  image?: string;
+  email?: string;
+  image?: string | null;
 }
 
 interface Document {
@@ -67,9 +67,9 @@ const {
 } = useQuery({
   queryKey: computed(() => ["space_activity", props.spaceId, props.limit]),
   queryFn: async () => {
-    const [logsData, usersData] = await Promise.all([
+    const [logsData, membersData] = await Promise.all([
       api.auditLogs.get(props.spaceId, { limit: props.limit }),
-      api.users.get(props.spaceId),
+      api.spaceMembers.get(props.spaceId),
     ]);
 
     const activities = logsData.auditLogs.filter(
@@ -77,8 +77,8 @@ const {
     );
 
     const usersMap = new Map<string, User>();
-    for (const user of usersData) {
-      usersMap.set(user.id, user);
+    for (const member of membersData) {
+      if (member.user) usersMap.set(member.user.id, member.user);
     }
 
     const docIds = new Set<string>();
@@ -282,21 +282,47 @@ const activityGroups = computed((): CompactActivityGroup[] => {
       {{ error }}
     </div>
 
-    <div v-else-if="isLoading" class="space-y-5">
-      <div v-for="i in 3" :key="`skeleton-${i}`" class="space-y-2 animate-pulse">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-full bg-neutral-200 shrink-0" />
-          <div class="flex items-center gap-2">
-            <div class="h-3.5 bg-neutral-200 rounded-sm w-24" />
-            <div class="h-3 bg-neutral-200 rounded-sm w-16" />
-            <div class="h-3 bg-neutral-200 rounded-sm w-20" />
+    <div v-else-if="isLoading" class="@container space-y-4 animate-pulse">
+      <template v-for="i in 3" :key="`skeleton-${i}`">
+        <div
+          v-if="i === 1 || i === 2"
+          class="h-4 rounded-sm bg-neutral-100 px-1"
+          :class="i === 1 ? 'w-24' : 'w-20'"
+        />
+
+        <div class="rounded-lg border border-neutral-100 bg-neutral-10 px-3.5 py-3">
+          <div
+            class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto]"
+          >
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="h-10 w-10 shrink-0 rounded-full bg-neutral-200" />
+
+              <div class="min-w-0 space-y-2">
+                <div class="flex items-center gap-2">
+                  <div class="h-4 w-20 rounded-sm bg-neutral-200" />
+                  <div class="h-4 w-16 rounded-sm bg-neutral-100" />
+                </div>
+                <div class="h-3.5 w-16 rounded-sm bg-neutral-100" />
+              </div>
+            </div>
+
+            <div
+              class="col-start-1 row-start-2 flex min-w-0 items-center gap-3 @md:col-auto @md:row-auto"
+            >
+              <div
+                class="svg-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-100 p-2 text-neutral-500"
+                v-html="documentIcon"
+              />
+              <div class="h-4 w-32 rounded-sm bg-neutral-100" />
+            </div>
+
+            <div
+              class="svg-icon col-start-2 row-span-2 h-5 w-5 shrink-0 text-neutral-400 @md:col-auto @md:row-auto"
+              v-html="chevronRightThinIcon"
+            />
           </div>
         </div>
-        <div class="ml-12 space-y-1.5">
-          <div class="h-6 bg-neutral-100 rounded-sm w-56" />
-          <div v-if="i === 1" class="h-6 bg-neutral-100 rounded-sm w-44" />
-        </div>
-      </div>
+      </template>
     </div>
 
     <div v-else-if="activities.length === 0" class="text-center py-8 text-neutral-400">
