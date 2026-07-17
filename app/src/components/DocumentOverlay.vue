@@ -28,6 +28,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import docStyles from "#editor/css/document.css?inline";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
+import "./AvatarElement.ts";
 import {
   closeXIcon,
   commentIcon,
@@ -164,14 +165,6 @@ onUnmounted(() => {
 watch(isOpen, (open) => {
   document.body.style.overflow = open ? "hidden" : "";
 });
-
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((part) => part.charAt(0).toUpperCase())
-    .slice(0, 2)
-    .join("");
-}
 
 function formatCommentTime(date: Date | string): string {
   const commentDate = new Date(date);
@@ -324,11 +317,11 @@ function formatCommentTime(date: Date | string): string {
 
                   <div v-for="comment in comments" :key="comment.id" class="flex gap-3">
                     <!-- Avatar -->
-                    <div
-                      class="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-blue-600 flex items-center justify-center text-size-small font-semibold text-white shrink-0"
-                    >
-                      {{ getInitials(comment.createdByUser?.name || comment.createdBy) }}
-                    </div>
+                    <vektor-avatar
+                      size="small"
+                      :user-id="comment.createdBy"
+                      :user="comment.createdByUser"
+                    />
 
                     <!-- Comment Content -->
                     <div class="flex-1 min-w-0">

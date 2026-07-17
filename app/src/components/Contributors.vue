@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { useActiveCollaboration } from "#composeables/useCollaboration.ts";
 import { useContributors } from "#composeables/useContributors.ts";
-import Avatar from "./Avatar.vue";
+import "./AvatarElement.ts";
 import "@atrium-ui/elements/popover";
 
 interface Props {
@@ -90,7 +90,7 @@ const remainingCount = computed(() => {
             class="block rounded-full transition-shadow duration-200"
             :class="{ 'ring-2 ring-green-500 ring-offset-1 ring-offset-background': collaborator.isPresent }"
           >
-            <Avatar size="small" :user="collaborator.user" />
+            <vektor-avatar size="small" :user="collaborator.user" />
           </span>
         </span>
       </TransitionGroup>
@@ -132,7 +132,7 @@ const remainingCount = computed(() => {
               class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
             >
               <div class="relative">
-                <Avatar size="small" :user="collaborator.user" />
+                <vektor-avatar size="small" :user="collaborator.user" />
               </div>
               <span class="min-w-0 flex-1 text-interactive text-neutral-950 truncate">
                 {{ collaborator.user.name }}

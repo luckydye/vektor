@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { formatDate, getUserInitials } from "#utils/utils.ts";
+import { formatDate } from "#utils/utils.ts";
 import {
   checkThinIcon,
   copyIcon,
@@ -11,6 +11,7 @@ import {
   usersIcon,
 } from "~/src/assets/icons.ts";
 import { ButtonPrimary, ButtonSecondary } from "~/src/components/index.ts";
+import "./AvatarElement.ts";
 
 const { currentSpace } = useSpace();
 const user = useUserProfile();
@@ -312,15 +313,20 @@ function canRemoveMember(perm) {
 
 function getMemberName(perm) {
   if (perm.permission.userId) {
-    const userData = usersMap.value.get(perm.permission.userId);
+    const userData = getMemberUser(perm);
     return userData?.name || userData?.email || perm.permission.userId;
   }
   return perm.permission.groupId;
 }
 
+function getMemberUser(perm) {
+  if (!perm.permission.userId) return undefined;
+  return usersMap.value.get(perm.permission.userId);
+}
+
 function getMemberEmail(perm) {
   if (perm.permission.userId) {
-    const userData = usersMap.value.get(perm.permission.userId);
+    const userData = getMemberUser(perm);
     return userData?.email || "";
   }
   return "";
@@ -339,14 +345,6 @@ function getResourceLabel(perm) {
     return category ? `Category: ${category.name}` : "Category";
   }
   return `${perm.permission.resourceType}: ${perm.permission.resourceId}`;
-}
-
-function getMemberIcon(perm) {
-  return perm.permission.userId ? "user" : "group";
-}
-
-function getMemberBgColor(perm) {
-  return perm.permission.userId ? "bg-blue-600" : "bg-green-600";
 }
 
 async function copyMemberId(memberId) {
@@ -427,16 +425,17 @@ async function copyMemberId(memberId) {
           >
             <td class="px-4 py-2.5">
               <div class="flex items-center gap-3">
+                <vektor-avatar
+                  v-if="perm.permission.userId"
+                  size="28"
+                  :user-id="perm.permission.userId"
+                  :user="getMemberUser(perm)"
+                />
                 <div
-                  :class="[getMemberBgColor(perm), 'flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center']"
+                  v-else
+                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600"
                 >
-                  <span
-                    v-if="perm.permission.userId"
-                    class="text-white text-size-small font-medium"
-                  >
-                    {{ getUserInitials(getMemberName(perm)) }}
-                  </span>
-                  <div v-else class="svg-icon w-4 h-4 text-white" v-html="usersIcon" />
+                  <div class="svg-icon w-4 h-4 text-white" v-html="usersIcon" />
                 </div>
                 <div>
                   <div class="font-medium text-neutral-900">

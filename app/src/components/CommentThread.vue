@@ -4,7 +4,7 @@ import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { checkThinIcon, closeXIcon, trashCanIcon } from "~/src/assets/icons.ts";
-import Avatar from "./Avatar.vue";
+import "./AvatarElement.ts";
 import ButtonGhost from "./ButtonGhost.vue";
 import MessageInput from "./MessageInput.vue";
 
@@ -136,7 +136,7 @@ watch(
       </div>
 
       <div v-for="comment in comments" :key="comment.id" class="flex gap-2 group">
-        <Avatar :id="comment.createdBy" class="shrink-0 w-6 h-6 mt-0.5" />
+        <vektor-avatar size="24" :user-id="comment.createdBy" class="shrink-0 mt-0.5" />
 
         <div class="flex-1 min-w-0">
           <div class="flex items-baseline gap-2 mb-0.5">

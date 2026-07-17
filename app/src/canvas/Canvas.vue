@@ -1686,29 +1686,35 @@ function updateStrokePoints(id: string, points: FreehandPoint[], rotation?: numb
   if (rotation !== undefined) stroke.set("rotation", rotation);
 }
 
-// Sets the active swatch for a type and recolors the selected shape if it is
-// that type. Generic over the registry's color-capable extensions.
-function setElementColor(type: CanvasShapeType, color: string) {
+// Sets the swatch used by the active creation tool. This deliberately does not
+// affect a selected shape: tool defaults and selected-element properties are
+// rendered in separate toolbars.
+function setActiveElementColor(type: CanvasShapeType, color: string) {
   activeColors[type] = color;
+}
+
+// Recolors only the selected shape. Creation defaults remain owned by the
+// active-tool toolbar.
+function setSelectedElementColor(type: CanvasShapeType, color: string) {
   if (selectedShape.value?.type === type) {
     updateShapeStyle(selectedShape.value.id, { color });
   }
 }
 
-// The swatch to highlight: the selected shape's color when one of that type is
-// selected, otherwise the active swatch for new shapes.
-function activeElementColor(type: CanvasShapeType): string | undefined {
-  return selectedShape.value?.type === type
-    ? selectedShape.value.style.color
-    : activeColors[type];
-}
+const activeToolColorPalettes = computed(() =>
+  colorPalettes.filter((entry) => activeTool.value === entry.type),
+);
 
-// Color pickers to show: the active tool's type, or the selected shape's type.
-const visibleColorPalettes = computed(() =>
-  colorPalettes.filter(
-    (entry) =>
-      activeTool.value === entry.type || selectedShape.value?.type === entry.type,
-  ),
+const selectedShapeColorPalette = computed(() =>
+  colorPalettes.find((entry) => entry.type === selectedShape.value?.type),
+);
+
+const hasSelectedElementProperties = computed(
+  () => selectedShapeColorPalette.value !== undefined || selectedStrokeIds.value.size > 0,
+);
+
+const hasToolProperties = computed(
+  () => activeTool.value === "draw" || activeToolColorPalettes.value.length > 0,
 );
 
 function pickShapeLibraryItem(item: CanvasShapeLibraryItem) {
@@ -1717,8 +1723,11 @@ function pickShapeLibraryItem(item: CanvasShapeLibraryItem) {
   shapePopoverRef.value?.hide();
 }
 
-function setPenColor(color: string) {
+function setActivePenColor(color: string) {
   penColor.value = color;
+}
+
+function setSelectedStrokeColor(color: string) {
   if (selectedStrokeIds.value.size === 0) return;
 
   ydoc.transact(() => {
@@ -3540,84 +3549,121 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="canvas-root" :class="{ 'is-dark': isDarkMode }">
+  <div
+    class="canvas-root"
+    :class="{
+      'is-dark': isDarkMode,
+    }"
+  >
     <div
-      v-if="
-        activeTool === 'draw' ||
-        activeTool === 'note' ||
-        activeTool === 'section' ||
-        activeTool === 'shape' ||
-        selectedStrokeIds.size > 0 ||
-        selectedShape?.type === 'note' ||
-        selectedShape?.type === 'section'
-      "
-      class="canvas-sub-toolbar"
-      @pointerdown.stop
+      v-if="hasSelectedElementProperties || hasToolProperties"
+      class="canvas-properties-bar"
     >
-      <span
-        v-if="activeTool === 'draw'"
-        class="canvas-draw-modes"
-        :aria-label="t('Draw mode')"
+      <div
+        v-if="hasToolProperties"
+        class="canvas-tool-properties"
+        @pointerdown.stop
       >
-        <button
-          v-for="mode in DRAW_STROKE_MODES"
-          :key="mode.id"
-          type="button"
-          class="canvas-draw-mode"
-          :class="{ active: activeDrawStrokeMode === mode.id }"
-          :aria-label="t(mode.label)"
-          :aria-pressed="activeDrawStrokeMode === mode.id"
-          :title="t(mode.label)"
-          @click="activeDrawStrokeMode = mode.id"
+        <span
+          v-if="activeTool === 'draw'"
+          class="canvas-draw-modes"
+          :aria-label="t('Draw mode')"
         >
-          <div
-            class="svg-icon canvas-draw-mode-icon"
-            aria-hidden="true"
-            v-html="mode.icon"
-          />
-        </button>
-      </span>
-      <span v-if="activeTool === 'draw'" class="canvas-divider"></span>
-      <span
-        v-for="cp in visibleColorPalettes"
-        :key="cp.type"
-        class="canvas-note-colors"
-        :aria-label="`${t(cp.label)} color`"
+          <button
+            v-for="mode in DRAW_STROKE_MODES"
+            :key="mode.id"
+            type="button"
+            class="canvas-draw-mode"
+            :class="{ active: activeDrawStrokeMode === mode.id }"
+            :aria-label="t(mode.label)"
+            :aria-pressed="activeDrawStrokeMode === mode.id"
+            :title="t(mode.label)"
+            @click="activeDrawStrokeMode = mode.id"
+          >
+            <div
+              class="svg-icon canvas-draw-mode-icon"
+              aria-hidden="true"
+              v-html="mode.icon"
+            />
+          </button>
+        </span>
+        <span v-if="activeTool === 'draw'" class="canvas-divider"></span>
+        <span
+          v-for="cp in activeToolColorPalettes"
+          :key="cp.type"
+          class="canvas-note-colors"
+          :aria-label="`${t(cp.label)} color`"
+        >
+          <button
+            v-for="color in cp.palette"
+            :key="color"
+            type="button"
+            class="canvas-color-swatch"
+            :class="{ active: activeColors[cp.type] === color }"
+            :style="{ background: color }"
+            :aria-label="`${t(cp.label)} color ${color}`"
+            @click="setActiveElementColor(cp.type, color)"
+          ></button>
+        </span>
+        <span
+          v-if="activeTool === 'draw' && activeToolColorPalettes.length > 0"
+          class="canvas-divider"
+        ></span>
+        <span
+          v-if="activeTool === 'draw'"
+          class="canvas-note-colors"
+          :aria-label="t('Pen color')"
+        >
+          <button
+            v-for="color in PEN_COLORS"
+            :key="color"
+            type="button"
+            class="canvas-color-swatch"
+            :class="{ active: penColor === color }"
+            :style="{ background: color }"
+            :aria-label="`${t('Set pen color')} ${color}`"
+            @click="setActivePenColor(color)"
+          ></button>
+        </span>
+      </div>
+      <div
+        v-if="hasSelectedElementProperties"
+        class="canvas-selection-properties"
+        @pointerdown.stop
       >
-        <button
-          v-for="color in cp.palette"
-          :key="color"
-          type="button"
-          class="canvas-color-swatch"
-          :class="{ active: activeElementColor(cp.type) === color }"
-          :style="{ background: color }"
-          :aria-label="`${t(cp.label)} color ${color}`"
-          @click="setElementColor(cp.type, color)"
-        ></button>
-      </span>
-      <span
-        v-if="
-          (activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0) &&
-          visibleColorPalettes.length > 0
-        "
-        class="canvas-divider"
-      ></span>
-      <span
-        v-if="activeTool === 'draw' || activeTool === 'shape' || selectedStrokeIds.size > 0"
-        class="canvas-note-colors"
-        :aria-label="t('Pen color')"
-      >
-        <button
-          v-for="color in PEN_COLORS"
-          :key="color"
-          type="button"
-          class="canvas-color-swatch"
-          :class="{ active: (selectedStrokeIds.size > 0 ? selectedStrokeColor : penColor) === color }"
-          :style="{ background: color }"
-          :aria-label="`${t('Set pen color')} ${color}`"
-          @click="setPenColor(color)"
-        ></button>
-      </span>
+        <span
+          v-if="selectedShapeColorPalette"
+          class="canvas-note-colors"
+          :aria-label="`${t(selectedShapeColorPalette.label)} color`"
+        >
+          <button
+            v-for="color in selectedShapeColorPalette.palette"
+            :key="color"
+            type="button"
+            class="canvas-color-swatch"
+            :class="{ active: selectedShape?.style.color === color }"
+            :style="{ background: color }"
+            :aria-label="`${t(selectedShapeColorPalette.label)} color ${color}`"
+            @click="setSelectedElementColor(selectedShapeColorPalette.type, color)"
+          ></button>
+        </span>
+        <span
+          v-if="selectedStrokeIds.size > 0"
+          class="canvas-note-colors"
+          :aria-label="t('Pen color')"
+        >
+          <button
+            v-for="color in PEN_COLORS"
+            :key="color"
+            type="button"
+            class="canvas-color-swatch"
+            :class="{ active: selectedStrokeColor === color }"
+            :style="{ background: color }"
+            :aria-label="`${t('Set pen color')} ${color}`"
+            @click="setSelectedStrokeColor(color)"
+          ></button>
+        </span>
+      </div>
     </div>
     <div class="canvas-toolbar" @pointerdown.stop>
       <button
@@ -4140,7 +4186,7 @@ onUnmounted(() => {
   backdrop-filter: blur(8px);
 }
 
-.canvas-sub-toolbar {
+.canvas-properties-bar {
   position: absolute;
   bottom: 74px;
   left: 50%;
@@ -4148,8 +4194,15 @@ onUnmounted(() => {
   z-index: 11;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   max-width: calc(100% - 24px);
+}
+
+.canvas-selection-properties,
+.canvas-tool-properties {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid var(--canvas-toolbar-border);
   border-radius: 12px;
   background: var(--canvas-toolbar-bg);

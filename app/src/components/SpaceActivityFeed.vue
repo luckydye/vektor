@@ -12,6 +12,7 @@ import {
 } from "#utils/auditActivity.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
+import "./AvatarElement.ts";
 
 interface User {
   id: string;
@@ -163,18 +164,6 @@ function getActivityBucketLabel(dateString: string | Date): string {
 
 function getCardUser(userId: string | null): UserLike | undefined {
   return getUser(userId);
-}
-
-function getCardUserInitials(userId: string | null): string {
-  const user = getCardUser(userId);
-  const displayName = user?.name || user?.email || getUserName(userId);
-  if (!displayName) return "?";
-
-  const parts = displayName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  }
-  return displayName[0]?.toUpperCase() ?? "?";
 }
 
 function getEntryAction(entry: AuditLog): string {
@@ -334,22 +323,11 @@ const activityGroups = computed((): CompactActivityGroup[] => {
             class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 @md:grid-cols-[minmax(0,1fr)_minmax(10rem,42%)_auto]"
           >
             <div class="flex min-w-0 items-center gap-3">
-              <div
-                class="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-neutral-200 text-neutral-700"
-              >
-                <img
-                  v-if="getCardUser(group.userId)?.image"
-                  :src="getCardUser(group.userId)?.image ?? undefined"
-                  :alt="getUserName(group.userId)"
-                  class="h-full w-full object-cover"
-                >
-                <div
-                  v-else
-                  class="flex h-full w-full items-center justify-center text-size-medium font-semibold leading-none"
-                >
-                  {{ getCardUserInitials(group.userId) }}
-                </div>
-              </div>
+              <vektor-avatar
+                size="medium"
+                :user-id="group.userId ?? undefined"
+                :user="getCardUser(group.userId)"
+              />
 
               <div class="min-w-0">
                 <div

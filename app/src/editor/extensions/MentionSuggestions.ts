@@ -3,6 +3,7 @@ import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import type { DocumentWithProperties, SpaceMember } from "~/src/api/ApiClient.ts";
 import { documentIcon } from "~/src/assets/icons.ts";
+import "~/src/components/AvatarElement.ts";
 import { propertyValueToText } from "~/src/utils/documentProperties.ts";
 import { Mentions } from "./Mentions.ts";
 
@@ -277,11 +278,14 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
                         aria-selected=${gi === selectedIndex}
                         @click=${(e: MouseEvent) => onItemClick(e, props, gi)}
                       >
-                        ${
-                          item.image
-                            ? html`<img src=${item.image} alt=${item.label} class="w-6 h-6 rounded-full object-cover" />`
-                            : html`<div class="w-6 h-6 rounded-full bg-neutral-200 flex items-center justify-center text-size-small text-neutral-700">${item.label ? item.label.slice(0, 1).toUpperCase() : "?"}</div>`
-                        }
+                        <vektor-avatar
+                          .user=${{
+                            name: item.label,
+                            email: item.email,
+                            image: item.image,
+                          }}
+                          .size=${24}
+                        ></vektor-avatar>
                         <div class="flex min-w-0 flex-1 flex-col">
                           <span class="block truncate font-medium leading-4">${item.label}</span>
                           <span class="block truncate text-size-small text-neutral-500 leading-4">${item.email}</span>

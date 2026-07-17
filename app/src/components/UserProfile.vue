@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { archiveBoxIcon, cogIcon, mailIcon, signOutIcon } from "~/src/assets/icons.ts";
-import Avatar from "./Avatar.vue";
+import "./AvatarElement.ts";
 import UserPreferencesPanel from "./UserPreferencesPanel.vue";
 import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
@@ -53,7 +53,7 @@ onMounted(() => {
       type="button"
       class="block rounded-full mx-1.5 my-2 border-2 border-neutral-100 hover:border-primary-500 transition-colors duration-200 overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 group-[[enabled]]:border-primary-500"
     >
-      <Avatar :user="user" />
+      <vektor-avatar :user="user" />
     </button>
 
     <a-popover class="group" placements="top-start" @exit="handlePopoverExit">

@@ -11,6 +11,7 @@ import {
 } from "#utils/auditActivity.ts";
 import { currentLang, t } from "#utils/lang.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
+import "./AvatarElement.ts";
 
 interface UserLike {
   name?: string;
@@ -68,18 +69,6 @@ function getActivityBucketLabel(dateString: string | Date): string {
 
 function getCardUser(userId: string | null): UserLike | undefined {
   return props.getUser?.(userId);
-}
-
-function getCardUserInitials(userId: string | null): string {
-  const user = getCardUser(userId);
-  const displayName = user?.name || user?.email || props.getUserName(userId);
-  if (!displayName) return "?";
-
-  const parts = displayName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-  }
-  return displayName[0]?.toUpperCase() ?? "?";
 }
 
 function getEntryAction(entry: AuditLog): string {
@@ -218,22 +207,11 @@ const activityGroups = computed((): DocumentActivityGroup[] => {
 
       <article class="rounded-lg border border-neutral-100 bg-neutral-10 px-3 py-3">
         <div class="flex items-start gap-3">
-          <div
-            class="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-neutral-200 text-neutral-700"
-          >
-            <img
-              v-if="getCardUser(group.userId)?.image"
-              :src="getCardUser(group.userId)?.image ?? undefined"
-              :alt="getUserName(group.userId)"
-              class="h-full w-full object-cover"
-            >
-            <div
-              v-else
-              class="flex h-full w-full items-center justify-center text-size-small font-semibold leading-none"
-            >
-              {{ getCardUserInitials(group.userId) }}
-            </div>
-          </div>
+          <vektor-avatar
+            size="small"
+            :user-id="group.userId ?? undefined"
+            :user="getCardUser(group.userId)"
+          />
 
           <div class="min-w-0 flex-1">
             <div class="flex min-w-0 items-center gap-2">
