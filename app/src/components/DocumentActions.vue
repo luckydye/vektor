@@ -261,7 +261,7 @@ watchEffect(() => {
   const actionName = muted ? "document:unmute-email" : "document:mute-email";
   Actions.register(actionName, {
     title: muted ? "Enable email notifications" : "Mute email notifications",
-    icon: () => "mail",
+    icon: () => (muted ? "enable-notifications" : "mute-notifications"),
     description: muted
       ? "Receive publication and comment emails for this document"
       : "Stop publication and comment emails for this document",
@@ -417,7 +417,7 @@ watchEffect(() => {
   ) {
     Actions.register("document:set-header", {
       title: props.headerImage ? t("Change header") : t("Add header image"),
-      icon: () => "image",
+      icon: () => "header-image",
       description: t("Set the header image for this document"),
       group: "document",
       order: 30,
@@ -484,7 +484,7 @@ watchEffect(() => {
           :disabled="publishDisabled"
           @click="publishDocument"
         >
-          <Icon name="confirmation" />
+          <Icon name="publish" />
           <span>{{ isSaving ? "Saving..." : isNewDocument ? "Create" : "Publish" }}</span>
         </button>
         <a-popover-trigger v-if="!isNewDocument" class="flex items-stretch group">
