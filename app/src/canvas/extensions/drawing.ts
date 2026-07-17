@@ -47,7 +47,7 @@ export const FREEHAND_STYLE: FreehandStrokeStyle = {
 const FREEHAND_PEN_VELOCITY = {
   minWidth: 2,
   maxWidth: 18,
-  smoothing: 0.45,
+  smoothing: 0.72,
 };
 
 // The stroke reaches its thinnest at roughly this pointer speed in screen px/ms.
@@ -91,16 +91,21 @@ export function createFreehandOptions(
   mode: DrawStrokeMode = "pen",
   worldToScreenScale = 1,
 ): FreehandStrokeOptions {
+  const safeScreenScale = Math.max(0.01, worldToScreenScale);
+  const screenPixelInWorld = 1 / safeScreenScale;
   return {
-    minDistance: 2,
-    simplifyTolerance: 0.75,
+    // Sampling and simplification are perceptual values. Keeping them in
+    // screen pixels prevents high zoom from turning a smooth gesture into a
+    // sparse, angular polyline.
+    minDistance: 2 * screenPixelInWorld,
+    simplifyTolerance: 0.75 * screenPixelInWorld,
     smoothing: 0.9,
     style,
     velocityWidth:
       mode === "pen"
         ? {
             ...FREEHAND_PEN_VELOCITY,
-            scale: (1 / SCREEN_VELOCITY_FULL) * worldToScreenScale,
+            scale: (1 / SCREEN_VELOCITY_FULL) * safeScreenScale,
           }
         : undefined,
   };

@@ -59,7 +59,9 @@ export interface FreehandVelocityWidthOptions {
   maxWidth?: number;
   // Multiplier for velocity before clamping. Higher values react more strongly.
   scale?: number;
-  // Blend factor for consecutive widths in [0,1]. Higher values smooth more.
+  // Width retention per 60 Hz frame in [0,1]. It is normalized by elapsed
+  // sample time, so coalesced high-frequency pointer events do not react more
+  // sharply than lower-frequency events. Higher values smooth more.
   smoothing?: number;
   // By default faster strokes get thinner. Set true for faster strokes to get wider.
   invert?: boolean;
@@ -299,6 +301,15 @@ function addVelocityWidths(
   const velocityScale = options.scale ?? 10;
   const smoothing = Math.max(0, Math.min(1, options.smoothing ?? 0.65));
   const range = Math.max(0, maxWidth - minWidth);
+  const referenceFrameMs = 1000 / 60;
+  const elapsedMs = (previous: FreehandPoint, point: FreehandPoint) => {
+    if (previous.time === undefined || point.time === undefined) {
+      return referenceFrameMs;
+    }
+    return Math.max(1, point.time - previous.time);
+  };
+  const smoothingForElapsed = (dt: number) =>
+    Math.pow(smoothing, dt / referenceFrameMs);
 
   // When a point carries stylus pressure, width is driven by pressure directly.
   // Otherwise it is derived from pointer velocity (slower strokes are thicker).
@@ -318,7 +329,7 @@ function addVelocityWidths(
   const hasFirstVelocity =
     scaled.length > 1 && scaled[0].time !== undefined && scaled[1].time !== undefined;
   if (hasFirstVelocity) {
-    const firstDt = Math.max(1, scaled[1].time! - scaled[0].time!);
+    const firstDt = elapsedMs(scaled[0], scaled[1]);
     firstVelocity = Math.sqrt(distanceSq(scaled[1], scaled[0])) / firstDt;
   }
   scaled[0].velocity = firstVelocity;
@@ -338,10 +349,11 @@ function addVelocityWidths(
   for (let i = 1; i < scaled.length; i++) {
     const previous = scaled[i - 1];
     const point = scaled[i];
-    const dt = Math.max(1, (point.time ?? i) - (previous.time ?? i - 1));
+    const dt = elapsedMs(previous, point);
     const velocity = Math.sqrt(distanceSq(point, previous)) / dt;
     const targetWidth = targetWidthFor(point, velocity);
-    const width = previousWidth * smoothing + targetWidth * (1 - smoothing);
+    const blend = smoothingForElapsed(dt);
+    const width = previousWidth * blend + targetWidth * (1 - blend);
 
     point.velocity = velocity;
     point.width = Math.max(minWidth, Math.min(maxWidth, width));
@@ -352,9 +364,10 @@ function addVelocityWidths(
   for (let i = scaled.length - 2; i >= 0; i--) {
     const point = scaled[i];
     const width = point.width ?? style.width;
+    const blend = smoothingForElapsed(elapsedMs(point, scaled[i + 1]));
     point.width = Math.max(
       minWidth,
-      Math.min(maxWidth, nextWidth * smoothing + width * (1 - smoothing)),
+      Math.min(maxWidth, nextWidth * blend + width * (1 - blend)),
     );
     nextWidth = point.width;
   }
