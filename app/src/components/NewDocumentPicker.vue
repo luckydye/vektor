@@ -4,7 +4,6 @@ import { useRouter } from "vue-router";
 import canvasPreview from "#assets/new-document-picker/canvas-preview.svg?raw";
 import databasePreview from "#assets/new-document-picker/database-preview.svg?raw";
 import documentPreview from "#assets/new-document-picker/document-preview.svg?raw";
-import starterIllustration from "#assets/new-document-picker/starter.svg?raw";
 import workflowPreview from "#assets/new-document-picker/workflow-preview.svg?raw";
 import { boltIcon, canvasIcon, databaseIcon, documentIcon } from "~/src/assets/icons.ts";
 
@@ -93,11 +92,6 @@ onUnmounted(() => {
         class="new-document-picker pointer-events-auto w-full max-w-[1120px] opacity-80 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100"
       >
         <div class="flex flex-col items-center text-center mb-8">
-          <div
-            class="starter-illustration mb-5"
-            aria-hidden="true"
-            v-html="starterIllustration"
-          />
           <h2 class="text-[28px] leading-tight font-semibold text-neutral-900">
             Create your first content
           </h2>
