@@ -92,7 +92,9 @@ input[type="checkbox"]::before {
   margin-bottom: -0.125rem;
 }
 input[type="checkbox"]:checked::before {
-  content: url('data:image/svg+xml,<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M19.6874 5.51175C19.9845 5.75916 20.0247 6.20055 19.7773 6.49761L10.3229 17.8491L4.37824 13.2011C4.07368 12.9629 4.01983 12.523 4.25796 12.2185C4.49609 11.9139 4.93602 11.8601 5.24057 12.0982L10.1159 15.9101L18.7015 5.60164C18.9489 5.30458 19.3903 5.26434 19.6874 5.51175Z" fill="white"/></svg>');
+  content: "";
+  background: white;
+  mask: url("../../assets/icons/confirmation.svg") center / contain no-repeat;
 }
 
 /* paragraph */

@@ -78,16 +78,10 @@
                     <div
                       class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 rounded-lg"
                     >
-                      <svg
-                        aria-hidden="true"
-                        class="w-4 h-4 text-white"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"
-                        />
-                      </svg>
+                      <div
+                        class="svg-icon w-4 h-4 text-white"
+                        v-html="editEntryIcon"
+                      />
                     </div>
                   </label>
                   <ButtonSecondary
@@ -884,6 +878,7 @@ function setTab(id: string) {
 import { type AccessToken, api, type SpaceSecret } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
+import { editEntryIcon } from "~/src/assets/icons.ts";
 
 const emit = defineEmits(["saved"]);
 

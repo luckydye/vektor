@@ -3965,22 +3965,12 @@ onUnmounted(() => {
             getPresenceColor(presence.user.id),
         }"
       >
-        <svg
-          class="canvas-presence-cursor"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
+        <div
+          class="svg-icon canvas-presence-cursor w-6 h-6"
           aria-hidden="true"
-        >
-          <path
-            d="M4.5 4.2a.6.6 0 0 1 .77-.77l13.2 5.36a.6.6 0 0 1-.07 1.13l-5.05 1.3a1.6 1.6 0 0 0-1.15 1.15l-1.3 5.05a.6.6 0 0 1-1.13.07z"
-            fill="var(--presence-color)"
-            stroke="#fff"
-            stroke-width="1.2"
-            stroke-linejoin="round"
-          />
-        </svg>
+          :style="{ color: 'var(--presence-color)' }"
+          v-html="selectToolIcon"
+        />
         <span class="canvas-presence-label">{{ presence.user.name }}</span>
       </div>
 

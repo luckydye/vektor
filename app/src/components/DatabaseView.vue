@@ -11,7 +11,12 @@ import {
   propertyValueToText,
 } from "#utils/documentProperties.ts";
 import { spacePath } from "#utils/utils.ts";
-import { addIcon, csvFileIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
+import {
+  addIcon,
+  csvFileIcon,
+  deleteEntryIcon,
+  editEntryIcon,
+} from "~/src/assets/icons.ts";
 
 const { currentSpace } = useSpace();
 
@@ -322,16 +327,7 @@ async function onCsvFileChange(event: Event) {
                   title="Edit name"
                   @click="startEdit(row.id, 'title', rowTitle(row.properties))"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="w-3.5 h-3.5"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                  >
-                    <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" />
-                  </svg>
+                  <div class="svg-icon w-3.5 h-3.5" v-html="editEntryIcon" />
                 </button>
               </div>
             </td>
