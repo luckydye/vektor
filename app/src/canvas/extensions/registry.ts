@@ -34,6 +34,7 @@ export {
   addCanvasDrawingPoints,
   type CanvasDrawingSession,
   cloneFreehandPoint,
+  createCanvasInkRenderer,
   createStrokeMap,
   DRAW_STROKE_MODES,
   type DrawStrokeMode,

@@ -153,10 +153,7 @@ export type CanvasPointerGestureCancelReason =
 export interface CanvasPointerGestureHandlers {
   onMove?: (input: CanvasPointerGestureEvent, ctx: CanvasToolContext) => void;
   onEnd?: (input: CanvasPointerGestureEvent, ctx: CanvasToolContext) => void;
-  onCancel?: (
-    reason: CanvasPointerGestureCancelReason,
-    ctx: CanvasToolContext,
-  ) => void;
+  onCancel?: (reason: CanvasPointerGestureCancelReason, ctx: CanvasToolContext) => void;
 }
 
 export interface CanvasPointerGestureController {
@@ -176,9 +173,9 @@ export interface CanvasToolContext {
     handlers: CanvasPointerGestureHandlers,
   ) => CanvasPointerGestureController;
   clearSelection: () => void;
-  // Transient ink is rendered by the host but owned by the active tool. Passing
-  // null removes the preview without committing it to the document.
-  setStrokePreview: (stroke: FreehandStroke | null) => void;
+  // Unfinished ink is rendered by the host but owned by the active tool.
+  // Passing null clears it without committing it to the document.
+  setActiveStroke: (stroke: FreehandStroke | null) => void;
   insertStroke: (stroke: CanvasStrokeSnapshot) => void;
   selectStroke: (id: string) => void;
   createElement: (type: CanvasShapeType, at: CanvasPoint) => void;

@@ -39,10 +39,10 @@ import {
   type CanvasElementContext,
   type CanvasShapeLibraryItem,
   cloneFreehandPoint,
+  createCanvasInkRenderer,
   createCanvasExtensionManager,
   createStrokeMap,
   DRAW_STROKE_MODES,
-  drawCanvasStrokes,
   FREEHAND_STYLE,
   hitTestCanvasStroke,
   PEN_COLORS,
@@ -112,7 +112,6 @@ import {
   type FitReference,
   type FreehandPoint,
   type FreehandStroke,
-  fillFreehandStrokeMask,
   panCameraByScreenDelta,
   type ScreenSize,
   type SnapGuide,
@@ -338,43 +337,6 @@ let themeObserver: MutationObserver | null = null;
 let colorSchemeMedia: MediaQueryList | null = null;
 let dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 let selectionLayerHidden = false;
-const STATIC_INK_CACHE_MARGIN = 256;
-const STATIC_INK_MIN_SCALE_RATIO = 2 / 3;
-const STATIC_INK_MAX_SCALE_RATIO = 3 / 2;
-const STATIC_INK_REFRESH_MARGIN = 96;
-const STATIC_INK_REFRESH_MIN_SCALE_RATIO = 4 / 5;
-const STATIC_INK_REFRESH_MAX_SCALE_RATIO = 5 / 4;
-const STATIC_INK_REFRESH_STROKES_PER_CHUNK = 32;
-const STATIC_INK_REFRESH_MAX_STROKES_PER_FRAME = 512;
-const STATIC_INK_REFRESH_BUDGET_MS = 5;
-type StaticInkRasterCache = {
-  canvas: HTMLCanvasElement;
-  dpr: number;
-  screen: ScreenSize;
-  transform: WorldTransform;
-  strokes: CanvasStroke[];
-  defaultInkColor: string;
-};
-type StaticInkRasterBuild = {
-  cache: StaticInkRasterCache;
-  nextStrokeIndex: number;
-  rafId: number | null;
-};
-type StrokeTransformState = {
-  originalCache: StaticInkRasterCache | null;
-  originalStrokes: CanvasStroke[];
-  strokes: CanvasStroke[];
-  dx: number;
-  dy: number;
-  renderedStrokes: CanvasStroke[];
-  renderedDx: number;
-  renderedDy: number;
-};
-let staticInkRasterCache: StaticInkRasterCache | null = null;
-let staticInkRasterBuild: StaticInkRasterBuild | null = null;
-let staticInkSpareCanvas: HTMLCanvasElement | null = null;
-let strokeTransformState: StrokeTransformState | null = null;
-let committingStrokeCacheUpdate = false;
 const intrinsicShapeSizes = shallowRef(
   new Map<string, { width: number; height: number }>(),
 );
@@ -879,13 +841,6 @@ function strokeBounds(stroke: Pick<CanvasStroke, "points">): Rect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-function strokeMaxWidth(stroke: Pick<CanvasStroke, "points" | "style">) {
-  return stroke.points.reduce(
-    (width, point) => Math.max(width, point.width ?? stroke.style.width),
-    stroke.style.width,
-  );
-}
-
 function strokeTransformControlPositions(stroke: CanvasStroke) {
   const bounds = strokeBounds(stroke);
   if (!bounds) return null;
@@ -1279,6 +1234,15 @@ function defaultInkColor() {
   return cssInkColor;
 }
 
+const inkRenderer = createCanvasInkRenderer({
+  getDpr: () => dpr,
+  getScreen: () => screen.value,
+  getTransform: () => transform.value,
+  getStrokes: () => strokes.value,
+  getDefaultInkColor: defaultInkColor,
+  invalidateScene: renderScene,
+});
+
 // The camera changes every input frame. Keep the static world in one backing
 // store so a pan produces one compositor update instead of one per visual layer.
 function renderScene() {
@@ -1301,7 +1265,7 @@ function renderScene() {
   renderRasterShapes(context);
   context.restore();
   context.save();
-  renderStaticInk(context);
+  inkRenderer.renderStaticInk(context);
   context.restore();
 }
 
@@ -1371,7 +1335,7 @@ function scheduleInkRender() {
   if (inkRafId !== null) return;
   inkRafId = requestAnimationFrame(() => {
     inkRafId = null;
-    renderStrokeTransformCache();
+    inkRenderer.renderStrokeTransformCache();
     renderActiveInk();
   });
 }
@@ -1390,477 +1354,6 @@ function renderInk() {
   renderActiveInk();
   if (isCameraMoving.value) hideSelectionLayer();
   else renderSelections();
-}
-
-function renderStaticInk(context: CanvasRenderingContext2D) {
-  if (strokes.value.length === 0) {
-    cancelStaticInkRasterRefresh();
-    staticInkRasterCache = null;
-    return;
-  }
-
-  const currentTransform = transform.value;
-  const color = defaultInkColor();
-  let cache = staticInkRasterCache;
-  if (!cache || !staticInkRasterCacheSurfaceMatches(cache, color)) {
-    cache = buildStaticInkRasterCache(currentTransform, color);
-    staticInkRasterCache = cache;
-  } else if (cache.strokes !== strokes.value) {
-    if (committingStrokeCacheUpdate) cache.strokes = strokes.value;
-    else {
-      cache = buildStaticInkRasterCache(currentTransform, color);
-      staticInkRasterCache = cache;
-    }
-  }
-
-  const { ratio, x, y } = staticInkRasterCachePlacement(cache, currentTransform);
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
-  context.drawImage(
-    cache.canvas,
-    x,
-    y,
-    cache.screen.width * ratio,
-    cache.screen.height * ratio,
-  );
-
-  if (
-    !strokeTransformState &&
-    staticInkRasterCacheNeedsRefresh(cache, currentTransform)
-  ) {
-    scheduleStaticInkRasterRefresh(currentTransform, color);
-  }
-}
-
-function staticInkRasterCacheMatches(cache: StaticInkRasterCache, color: string) {
-  return (
-    cache.strokes === strokes.value && staticInkRasterCacheSurfaceMatches(cache, color)
-  );
-}
-
-function staticInkRasterCacheSurfaceMatches(cache: StaticInkRasterCache, color: string) {
-  return !(
-    cache.dpr !== dpr ||
-    cache.defaultInkColor !== color ||
-    cache.screen.width !== screen.value.width + STATIC_INK_CACHE_MARGIN * 2 ||
-    cache.screen.height !== screen.value.height + STATIC_INK_CACHE_MARGIN * 2
-  );
-}
-
-function staticInkRasterCachePlacement(
-  cache: StaticInkRasterCache,
-  currentTransform: WorldTransform,
-) {
-  const ratio = currentTransform.scale / cache.transform.scale;
-  const x = (-STATIC_INK_CACHE_MARGIN - cache.transform.dx) * ratio + currentTransform.dx;
-  const y = (-STATIC_INK_CACHE_MARGIN - cache.transform.dy) * ratio + currentTransform.dy;
-  return { ratio, x, y };
-}
-
-function staticInkRasterCacheCovers(
-  cache: StaticInkRasterCache,
-  currentTransform: WorldTransform,
-  color: string,
-) {
-  if (!staticInkRasterCacheMatches(cache, color)) return false;
-
-  const { ratio, x, y } = staticInkRasterCachePlacement(cache, currentTransform);
-  if (ratio < STATIC_INK_MIN_SCALE_RATIO || ratio > STATIC_INK_MAX_SCALE_RATIO) {
-    return false;
-  }
-
-  return (
-    x <= 0 &&
-    y <= 0 &&
-    x + cache.screen.width * ratio >= screen.value.width &&
-    y + cache.screen.height * ratio >= screen.value.height
-  );
-}
-
-function staticInkRasterCacheNeedsRefresh(
-  cache: StaticInkRasterCache,
-  currentTransform: WorldTransform,
-) {
-  const { ratio, x, y } = staticInkRasterCachePlacement(cache, currentTransform);
-  const right = x + cache.screen.width * ratio - screen.value.width;
-  const bottom = y + cache.screen.height * ratio - screen.value.height;
-  return (
-    ratio < STATIC_INK_REFRESH_MIN_SCALE_RATIO ||
-    ratio > STATIC_INK_REFRESH_MAX_SCALE_RATIO ||
-    -x < STATIC_INK_REFRESH_MARGIN ||
-    -y < STATIC_INK_REFRESH_MARGIN ||
-    right < STATIC_INK_REFRESH_MARGIN ||
-    bottom < STATIC_INK_REFRESH_MARGIN
-  );
-}
-
-function prepareStaticInkRasterCache(
-  currentTransform: WorldTransform,
-  color: string,
-  canvas: HTMLCanvasElement,
-): StaticInkRasterCache {
-  const cacheScreen = {
-    width: screen.value.width + STATIC_INK_CACHE_MARGIN * 2,
-    height: screen.value.height + STATIC_INK_CACHE_MARGIN * 2,
-  };
-  const width = Math.ceil(cacheScreen.width * dpr);
-  const height = Math.ceil(cacheScreen.height * dpr);
-  if (canvas.width !== width) canvas.width = width;
-  if (canvas.height !== height) canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Static ink cache requires a 2D canvas context");
-
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.clearRect(0, 0, cacheScreen.width, cacheScreen.height);
-  return {
-    canvas,
-    dpr,
-    screen: cacheScreen,
-    transform: { ...currentTransform },
-    strokes: strokes.value,
-    defaultInkColor: color,
-  };
-}
-
-function paintStaticInkRasterCache(
-  cache: StaticInkRasterCache,
-  strokesToPaint: CanvasStroke[],
-  offset: { dx: number; dy: number } = { dx: 0, dy: 0 },
-) {
-  const context = cache.canvas.getContext("2d");
-  if (!context) throw new Error("Static ink cache requires a 2D canvas context");
-  drawCanvasStrokes({
-    context,
-    screen: cache.screen,
-    transform: {
-      scale: cache.transform.scale,
-      dx:
-        cache.transform.dx + STATIC_INK_CACHE_MARGIN + offset.dx * cache.transform.scale,
-      dy:
-        cache.transform.dy + STATIC_INK_CACHE_MARGIN + offset.dy * cache.transform.scale,
-    },
-    strokes: strokesToPaint,
-    defaultInkColor: cache.defaultInkColor,
-  });
-}
-
-function prepareStaticInkSpareCanvas(cache: StaticInkRasterCache) {
-  if (!staticInkSpareCanvas) staticInkSpareCanvas = document.createElement("canvas");
-  const width = Math.ceil(cache.screen.width * cache.dpr);
-  const height = Math.ceil(cache.screen.height * cache.dpr);
-  if (staticInkSpareCanvas.width !== width) staticInkSpareCanvas.width = width;
-  if (staticInkSpareCanvas.height !== height) staticInkSpareCanvas.height = height;
-  // Force allocation while the initial snapshot is being built, not on a
-  // later camera frame when the spare is first needed.
-  staticInkSpareCanvas.getContext("2d");
-}
-
-function cancelStaticInkRasterRefresh() {
-  const build = staticInkRasterBuild;
-  if (!build) return;
-  if (build.rafId !== null) cancelAnimationFrame(build.rafId);
-  staticInkSpareCanvas = build.cache.canvas;
-  staticInkRasterBuild = null;
-}
-
-function buildStaticInkRasterCache(
-  currentTransform: WorldTransform,
-  color: string,
-): StaticInkRasterCache {
-  cancelStaticInkRasterRefresh();
-  const canvas = staticInkRasterCache?.canvas ?? document.createElement("canvas");
-  const cache = prepareStaticInkRasterCache(currentTransform, color, canvas);
-  paintStaticInkRasterCache(cache, cache.strokes);
-  prepareStaticInkSpareCanvas(cache);
-  return cache;
-}
-
-function scheduleStaticInkRasterRefresh(currentTransform: WorldTransform, color: string) {
-  const currentBuild = staticInkRasterBuild;
-  if (
-    currentBuild &&
-    staticInkRasterCacheCovers(currentBuild.cache, currentTransform, color)
-  ) {
-    return;
-  }
-  cancelStaticInkRasterRefresh();
-
-  const canvas = staticInkSpareCanvas ?? document.createElement("canvas");
-  staticInkSpareCanvas = null;
-  staticInkRasterBuild = {
-    cache: prepareStaticInkRasterCache(currentTransform, color, canvas),
-    nextStrokeIndex: 0,
-    rafId: requestAnimationFrame(paintStaticInkRasterRefreshBatch),
-  };
-}
-
-function paintStaticInkRasterRefreshBatch() {
-  const build = staticInkRasterBuild;
-  if (!build) return;
-  build.rafId = null;
-
-  const startedAt = performance.now();
-  const maxEnd = Math.min(
-    build.nextStrokeIndex + STATIC_INK_REFRESH_MAX_STROKES_PER_FRAME,
-    build.cache.strokes.length,
-  );
-  let end = build.nextStrokeIndex;
-  do {
-    const chunkEnd = Math.min(end + STATIC_INK_REFRESH_STROKES_PER_CHUNK, maxEnd);
-    paintStaticInkRasterCache(build.cache, build.cache.strokes.slice(end, chunkEnd));
-    end = chunkEnd;
-  } while (end < maxEnd && performance.now() - startedAt < STATIC_INK_REFRESH_BUDGET_MS);
-  build.nextStrokeIndex = end;
-
-  if (end < build.cache.strokes.length) {
-    build.rafId = requestAnimationFrame(paintStaticInkRasterRefreshBatch);
-    return;
-  }
-
-  const color = defaultInkColor();
-  if (staticInkRasterCacheCovers(build.cache, transform.value, color)) {
-    const previousCanvas = staticInkRasterCache?.canvas ?? null;
-    staticInkRasterCache = build.cache;
-    staticInkSpareCanvas = previousCanvas;
-  } else {
-    staticInkSpareCanvas = build.cache.canvas;
-  }
-  staticInkRasterBuild = null;
-  renderScene();
-}
-
-function updateStaticInkCacheStrokes(
-  strokesToPaint: CanvasStroke[],
-  offset: { dx: number; dy: number },
-  operation: GlobalCompositeOperation,
-) {
-  const cache = staticInkRasterCache;
-  if (!cache || !staticInkRasterCacheMatches(cache, defaultInkColor())) return false;
-  cancelStaticInkRasterRefresh();
-  const context = cache.canvas.getContext("2d");
-  if (!context) return false;
-  context.save();
-  context.globalCompositeOperation = operation;
-  if (operation === "destination-out") {
-    const cacheTransform = {
-      scale: cache.transform.scale,
-      dx:
-        cache.transform.dx + STATIC_INK_CACHE_MARGIN + offset.dx * cache.transform.scale,
-      dy:
-        cache.transform.dy + STATIC_INK_CACHE_MARGIN + offset.dy * cache.transform.scale,
-    };
-    for (const stroke of strokesToPaint) {
-      fillFreehandStrokeMask(context, stroke, cacheTransform, 1.5);
-    }
-  } else {
-    paintStaticInkRasterCache(cache, strokesToPaint, offset);
-  }
-  context.restore();
-  return true;
-}
-
-function cloneStaticInkCacheForTransform() {
-  const source = staticInkRasterCache;
-  if (!source || !staticInkRasterCacheMatches(source, defaultInkColor())) return null;
-  cancelStaticInkRasterRefresh();
-
-  const canvas = staticInkSpareCanvas ?? document.createElement("canvas");
-  staticInkSpareCanvas = null;
-  if (canvas.width !== source.canvas.width) canvas.width = source.canvas.width;
-  if (canvas.height !== source.canvas.height) canvas.height = source.canvas.height;
-  const context = canvas.getContext("2d");
-  if (!context) return null;
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.globalAlpha = 1;
-  context.globalCompositeOperation = "copy";
-  context.drawImage(source.canvas, 0, 0);
-  context.globalCompositeOperation = "source-over";
-
-  staticInkRasterCache = { ...source, canvas };
-  staticInkSpareCanvas = source.canvas;
-  return source;
-}
-
-function beginStrokeTransform(strokesToMove: CanvasStroke[]) {
-  if (strokesToMove.length === 0) return;
-  const originalCache = cloneStaticInkCacheForTransform();
-  strokeTransformState = {
-    originalCache,
-    originalStrokes: strokesToMove,
-    strokes: strokesToMove,
-    dx: 0,
-    dy: 0,
-    renderedStrokes: strokesToMove,
-    renderedDx: 0,
-    renderedDy: 0,
-  };
-  hideSelectionLayer();
-  renderScene();
-  renderActiveInk();
-}
-
-function eraseTransformedStrokesFromCache(strokesToMove: CanvasStroke[]) {
-  const cache = staticInkRasterCache;
-  if (!cache) return;
-  updateStaticInkCacheStrokes(strokesToMove, { dx: 0, dy: 0 }, "destination-out");
-  const movedIds = new Set(strokesToMove.map((stroke) => stroke.id));
-  const repairBounds = strokesToMove.flatMap((stroke) => {
-    const bounds = strokeBounds(stroke);
-    if (!bounds) return [];
-    const padding = Math.max(strokeMaxWidth(stroke), 18) / 2 + 2 / cache.transform.scale;
-    return [
-      {
-        x: bounds.x - padding,
-        y: bounds.y - padding,
-        width: bounds.width + padding * 2,
-        height: bounds.height + padding * 2,
-      },
-    ];
-  });
-  const overlappingStrokes = strokes.value.filter((stroke) => {
-    if (movedIds.has(stroke.id)) return false;
-    const bounds = strokeBounds(stroke);
-    if (!bounds) return false;
-    const padding = strokeMaxWidth(stroke) / 2;
-    const paintedBounds = {
-      x: bounds.x - padding,
-      y: bounds.y - padding,
-      width: bounds.width + padding * 2,
-      height: bounds.height + padding * 2,
-    };
-    return repairBounds.some((region) => rectsIntersect(region, paintedBounds));
-  });
-  if (overlappingStrokes.length > 0) {
-    const context = cache.canvas.getContext("2d");
-    if (!context) return;
-    context.save();
-    context.setTransform(cache.dpr, 0, 0, cache.dpr, 0, 0);
-    context.beginPath();
-    for (const bounds of repairBounds) {
-      context.rect(
-        bounds.x * cache.transform.scale + cache.transform.dx + STATIC_INK_CACHE_MARGIN,
-        bounds.y * cache.transform.scale + cache.transform.dy + STATIC_INK_CACHE_MARGIN,
-        bounds.width * cache.transform.scale,
-        bounds.height * cache.transform.scale,
-      );
-    }
-    context.clip();
-    updateStaticInkCacheStrokes(overlappingStrokes, { dx: 0, dy: 0 }, "source-over");
-    context.restore();
-  }
-}
-
-function restoreStrokeCacheDamage(
-  source: StaticInkRasterCache,
-  target: StaticInkRasterCache,
-  strokesToRestore: CanvasStroke[],
-  dx: number,
-  dy: number,
-) {
-  const context = target.canvas.getContext("2d");
-  if (!context) return false;
-
-  context.save();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.globalAlpha = 1;
-  context.globalCompositeOperation = "source-over";
-  for (const stroke of strokesToRestore) {
-    const bounds = strokeBounds(stroke);
-    if (!bounds) continue;
-    const padding = Math.max(strokeMaxWidth(stroke), 18) / 2 + 4 / source.transform.scale;
-    const left =
-      (bounds.x + dx - padding) * source.transform.scale +
-      source.transform.dx +
-      STATIC_INK_CACHE_MARGIN;
-    const top =
-      (bounds.y + dy - padding) * source.transform.scale +
-      source.transform.dy +
-      STATIC_INK_CACHE_MARGIN;
-    const right =
-      (bounds.x + dx + bounds.width + padding) * source.transform.scale +
-      source.transform.dx +
-      STATIC_INK_CACHE_MARGIN;
-    const bottom =
-      (bounds.y + dy + bounds.height + padding) * source.transform.scale +
-      source.transform.dy +
-      STATIC_INK_CACHE_MARGIN;
-    const x = Math.max(0, Math.floor(left * source.dpr));
-    const y = Math.max(0, Math.floor(top * source.dpr));
-    const endX = Math.min(source.canvas.width, Math.ceil(right * source.dpr));
-    const endY = Math.min(source.canvas.height, Math.ceil(bottom * source.dpr));
-    const width = endX - x;
-    const height = endY - y;
-    if (width <= 0 || height <= 0) continue;
-    context.clearRect(x, y, width, height);
-    context.drawImage(source.canvas, x, y, width, height, x, y, width, height);
-  }
-  context.restore();
-  return true;
-}
-
-function renderStrokeTransformCache() {
-  const state = strokeTransformState;
-  const target = staticInkRasterCache;
-  const source = state?.originalCache;
-  if (!state || !source || !target || source.canvas === target.canvas) return false;
-
-  if (
-    !restoreStrokeCacheDamage(
-      source,
-      target,
-      state.renderedStrokes,
-      state.renderedDx,
-      state.renderedDy,
-    ) ||
-    !restoreStrokeCacheDamage(source, target, state.originalStrokes, 0, 0)
-  ) {
-    return false;
-  }
-
-  const moved =
-    state.dx !== 0 ||
-    state.dy !== 0 ||
-    state.strokes.some((stroke, index) => stroke !== state.originalStrokes[index]);
-  if (moved) {
-    eraseTransformedStrokesFromCache(state.originalStrokes);
-    updateStaticInkCacheStrokes(
-      state.strokes,
-      { dx: state.dx, dy: state.dy },
-      "source-over",
-    );
-  }
-  state.renderedStrokes = state.strokes;
-  state.renderedDx = state.dx;
-  state.renderedDy = state.dy;
-  renderScene();
-  return true;
-}
-
-function setStrokeTransform(strokesToMove: CanvasStroke[], dx = 0, dy = 0) {
-  const state = strokeTransformState;
-  if (!state) return;
-  state.strokes = strokesToMove;
-  state.dx = dx;
-  state.dy = dy;
-  scheduleInkRender();
-}
-
-function clearStrokeTransform() {
-  strokeTransformState = null;
-  renderActiveInk();
-  renderSelections();
-}
-
-function cancelStrokeTransform() {
-  const state = strokeTransformState;
-  if (!state) return;
-  if (state.originalCache && staticInkRasterCache) {
-    const modifiedCanvas = staticInkRasterCache.canvas;
-    staticInkRasterCache = state.originalCache;
-    staticInkSpareCanvas = modifiedCanvas;
-  }
-  clearStrokeTransform();
-  renderScene();
 }
 
 function renderActiveInk() {
@@ -1883,7 +1376,7 @@ function renderSelections() {
   const canvas = selectionRef.value;
   const context = canvas?.getContext("2d");
   if (!canvas || !context) return;
-  if (strokeTransformState) {
+  if (inkRenderer.isTransformingStroke) {
     hideSelectionLayer();
     return;
   }
@@ -2011,9 +1504,9 @@ const canvasToolContext: CanvasToolContext = {
   viewportScale: () => transform.value.scale,
   beginPointerGesture,
   clearSelection,
-  setStrokePreview: (stroke) => {
+  setActiveStroke: (stroke) => {
     activeFreehandStroke = stroke;
-    scheduleInkRender();
+    renderActiveInk();
   },
   insertStroke: insertCanvasStroke,
   selectStroke: (id) => selectStroke(id, false),
@@ -2025,17 +1518,9 @@ const canvasToolContext: CanvasToolContext = {
 
 function insertCanvasStroke(stroke: CanvasStrokeSnapshot) {
   const completedStroke = toCanvasStroke(stroke.id, stroke);
-  const cacheUpdated = updateStaticInkCacheStrokes(
-    [completedStroke],
-    { dx: 0, dy: 0 },
-    "source-over",
-  );
-  committingStrokeCacheUpdate = cacheUpdated;
-  try {
+  inkRenderer.commitAddedStroke(completedStroke, () => {
     yStrokes.set(stroke.id, createStrokeMap(stroke));
-  } finally {
-    committingStrokeCacheUpdate = false;
-  }
+  });
 }
 
 function pointerGestureSample(event: PointerEvent) {
@@ -2395,8 +1880,31 @@ function buildShapeDragState(event: PointerEvent): Extract<DragState, { type: "s
   };
 }
 
+function startStrokeTransformInteraction(strokesToMove: CanvasStroke[]) {
+  if (!inkRenderer.beginStrokeTransform(strokesToMove)) return;
+  hideSelectionLayer();
+  renderScene();
+  renderActiveInk();
+}
+
+function updateStrokeTransformInteraction(
+  transformedStrokes: CanvasStroke[],
+  dx = 0,
+  dy = 0,
+) {
+  if (!inkRenderer.setStrokeTransform(transformedStrokes, dx, dy)) return;
+  scheduleInkRender();
+}
+
+function cancelStrokeTransformInteraction() {
+  if (!inkRenderer.cancelStrokeTransform()) return;
+  renderActiveInk();
+  renderSelections();
+  renderScene();
+}
+
 function beginDragStrokeTransform(drag: Extract<DragState, { type: "shape" }>) {
-  beginStrokeTransform(
+  startStrokeTransformInteraction(
     drag.strokes.flatMap((item) => {
       const stroke = strokesById.value.get(item.id);
       return stroke ? [stroke] : [];
@@ -2504,7 +2012,7 @@ function startStrokeResize(stroke: CanvasStroke, event: PointerEvent) {
     startBounds: bounds,
     initialPoints: stroke.points.map(cloneFreehandPoint),
   };
-  beginStrokeTransform([stroke]);
+  startStrokeTransformInteraction([stroke]);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
 }
@@ -2523,7 +2031,7 @@ function startStrokeRotation(stroke: CanvasStroke, event: PointerEvent) {
     initialRotation: stroke.rotation ?? 0,
     initialPoints: stroke.points.map(cloneFreehandPoint),
   };
-  beginStrokeTransform([stroke]);
+  startStrokeTransformInteraction([stroke]);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   event.preventDefault();
 }
@@ -3040,7 +2548,7 @@ function handlePointerMove(event: PointerEvent) {
     });
     const scaleX = resized.width / dragState.startBounds.width;
     const scaleY = resized.height / dragState.startBounds.height;
-    setStrokeTransform([
+    updateStrokeTransformInteraction([
       strokeFromTransformedPoints(
         stroke,
         dragState.initialPoints.map((point) => ({
@@ -3060,7 +2568,7 @@ function handlePointerMove(event: PointerEvent) {
     const rotation = event.shiftKey ? snapRotation(rawRotation) : rawRotation;
     const delta = ((rotation - dragState.startRotation + 540) % 360) - 180;
     const normalizedRotation = normalizeRotation(dragState.initialRotation + delta);
-    setStrokeTransform([
+    updateStrokeTransformInteraction([
       strokeFromTransformedPoints(
         stroke,
         dragState.initialPoints.map((point) => {
@@ -3107,16 +2615,17 @@ function handlePointerMove(event: PointerEvent) {
       });
     }
   });
-  if (strokeTransformState) {
-    setStrokeTransform(strokeTransformState.originalStrokes, dx, dy);
+  const strokeTransform = inkRenderer.strokeTransform;
+  if (strokeTransform) {
+    updateStrokeTransformInteraction(strokeTransform.originalStrokes, dx, dy);
   }
   // Yjs shape edits don't trigger an ink redraw, so guides won't appear without
   // this explicit render.
   scheduleInkRender();
 }
 
-function commitStrokeTransform(state: DragState) {
-  const transformState = strokeTransformState;
+function commitStrokeTransformInteraction(state: DragState) {
+  const transformState = inkRenderer.strokeTransform;
   if (!transformState) return;
 
   const hasChange =
@@ -3126,22 +2635,25 @@ function commitStrokeTransform(state: DragState) {
           (stroke, index) => stroke !== transformState.originalStrokes[index],
         );
   if (!hasChange) {
-    cancelStrokeTransform();
+    cancelStrokeTransformInteraction();
     return;
   }
 
-  const cacheUpdated = renderStrokeTransformCache();
-  committingStrokeCacheUpdate = cacheUpdated;
-  try {
+  inkRenderer.commitStrokeTransform((committedTransform) => {
     ydoc.transact(() => {
       if (state.type === "shape") {
         for (const stroke of state.strokes) {
-          translateStroke(stroke.id, stroke.points, transformState.dx, transformState.dy);
+          translateStroke(
+            stroke.id,
+            stroke.points,
+            committedTransform.dx,
+            committedTransform.dy,
+          );
         }
         return;
       }
       if (state.type !== "stroke-resize" && state.type !== "stroke-rotate") return;
-      const stroke = transformState.strokes[0];
+      const stroke = committedTransform.strokes[0];
       if (!stroke) return;
       updateStrokePoints(
         state.strokeId,
@@ -3149,16 +2661,15 @@ function commitStrokeTransform(state: DragState) {
         state.type === "stroke-rotate" ? stroke.rotation : undefined,
       );
     });
-  } finally {
-    committingStrokeCacheUpdate = false;
-  }
-  clearStrokeTransform();
+  });
+  renderActiveInk();
+  renderSelections();
 }
 
 function handlePointerUp(event: PointerEvent) {
   if (endToolPointerGesture(event)) event.preventDefault();
   if (dragState?.pointerId === event.pointerId) {
-    commitStrokeTransform(dragState);
+    commitStrokeTransformInteraction(dragState);
     if (dragState.type === "marquee") marqueeRect.value = null;
     if (dragState.type === "pan") isPanning.value = false;
     if (activeSnapGuides.length > 0) {
@@ -3176,7 +2687,7 @@ function cancelTransformDrag() {
       updateShapeFrame(dragState.shapeId, dragState.initial);
     }
   } else if (dragState?.type === "stroke-resize" || dragState?.type === "stroke-rotate") {
-    cancelStrokeTransform();
+    cancelStrokeTransformInteraction();
   } else {
     return false;
   }
@@ -3195,7 +2706,7 @@ function handlePointerCancel(event: PointerEvent) {
   if (cancelTransformDrag()) return;
   if (dragState.type === "marquee") marqueeRect.value = null;
   if (dragState.type === "pan") isPanning.value = false;
-  cancelStrokeTransform();
+  cancelStrokeTransformInteraction();
   dragState = null;
   if (activeSnapGuides.length > 0) {
     activeSnapGuides = [];
@@ -3982,7 +3493,7 @@ onUnmounted(() => {
   if (cameraMoveTimer) clearTimeout(cameraMoveTimer);
   if (inkRafId !== null) cancelAnimationFrame(inkRafId);
   if (presenceRafId !== null) cancelAnimationFrame(presenceRafId);
-  cancelStaticInkRasterRefresh();
+  inkRenderer.dispose();
 });
 </script>
 
