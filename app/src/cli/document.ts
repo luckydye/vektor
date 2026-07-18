@@ -78,6 +78,18 @@ async function readSource(source?: string): Promise<string> {
   return Bun.file(source).text();
 }
 
+// Map source file extensions to the Content-Type sent to the API. HTML must be
+// sent as text/html so the server stores it verbatim; sending it as markdown
+// runs it through marked, which escapes raw tags (e.g. <tr> → &lt;tr&gt;).
+function inferContentType(source?: string): string {
+  if (source && source !== "-") {
+    const dot = source.lastIndexOf(".");
+    const ext = dot > -1 ? source.slice(dot + 1).toLowerCase() : "";
+    if (ext === "html" || ext === "htm") return "text/html";
+  }
+  return "text/markdown";
+}
+
 type Frontmatter = Record<string, string>;
 
 function parseFrontmatter(raw: string): { meta: Frontmatter; content: string } {
@@ -111,14 +123,18 @@ function parseFrontmatter(raw: string): { meta: Frontmatter; content: string } {
 // Fields extracted from frontmatter that map to first-class document fields.
 const FIRST_CLASS = new Set(["title", "slug", "type", "guid", "created", "modified"]);
 
-export async function commandWrite(docId: string, source?: string): Promise<void> {
+export async function commandWrite(
+  docId: string,
+  source?: string,
+  contentType?: string,
+): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
   const raw = await readSource(source);
   const { content } = parseFrontmatter(raw);
 
   await apiFetch(host, token, `/api/v1/spaces/${spaceId}/documents/${docId}`, {
     method: "PUT",
-    headers: { "Content-Type": "text/markdown" },
+    headers: { "Content-Type": contentType ?? inferContentType(source) },
     body: content,
   });
 }
@@ -137,11 +153,13 @@ export async function commandCreate(flags: {
   parent?: string;
   modified?: string;
   created?: string;
+  contentType?: string;
   properties?: Record<string, string>;
 }): Promise<void> {
   const { host, token, spaceId } = await resolveConnection();
   const raw = await readSource(flags.source);
   const { meta, content } = parseFrontmatter(raw);
+  const contentType = flags.contentType ?? inferContentType(flags.source);
 
   const type = flags.type ?? meta.type;
   const slug = flags.slug ?? meta.slug ?? meta.guid;
@@ -166,7 +184,7 @@ export async function commandCreate(flags: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       content,
-      contentType: "text/markdown",
+      contentType,
       ...(type ? { type } : {}),
       ...(slug ? { slug } : {}),
       ...(flags.parent ? { parentId: flags.parent } : {}),

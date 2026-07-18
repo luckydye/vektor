@@ -120,8 +120,9 @@ async function saveContent(code: string) {
     savedTimer = setTimeout(() => {
       savedAt.value = null;
     }, 2000);
-  } catch {
-    // Silently ignore — next edit will retry
+  } catch (error) {
+    // Next edit will retry, but log so failures aren't invisible.
+    console.error("Failed to save workflow code", error);
   } finally {
     saving.value = false;
   }

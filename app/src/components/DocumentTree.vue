@@ -773,7 +773,7 @@ defineExpose({ isEditMode, toggleEditMode });
               v-model="formData.name"
               type="text"
               required
-              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
               :placeholder="t('Category name')"
             >
           </div>
@@ -788,7 +788,7 @@ defineExpose({ isEditMode, toggleEditMode });
               type="text"
               required
               pattern="[a-z0-9-]+"
-              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
               placeholder="slug-name"
             >
             <p class="mt-1 text-size-small text-neutral">
@@ -804,7 +804,7 @@ defineExpose({ isEditMode, toggleEditMode });
             <textarea
               v-model="formData.description"
               rows="2"
-              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
               :placeholder="t('Description (optional)')"
             />
           </div>
@@ -825,7 +825,7 @@ defineExpose({ isEditMode, toggleEditMode });
                 type="text"
                 placeholder="#4ECDC4"
                 pattern="^#[0-9A-Fa-f]{6}$"
-                class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
               >
             </div>
           </div>
@@ -839,7 +839,7 @@ defineExpose({ isEditMode, toggleEditMode });
               v-model="formData.icon"
               type="text"
               maxlength="10"
-              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-md focus-ring"
               :placeholder="t('Icon (emoji or text)')"
             >
           </div>

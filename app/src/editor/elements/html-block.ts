@@ -23,17 +23,25 @@ if (typeof customElements !== "undefined" && !customElements.get("html-block")) 
       }
 
       static get observedAttributes() {
-        return ["data-html", "contenteditable"];
+        return ["data-html", "data-html-encoding", "contenteditable"];
       }
 
       private updateContent() {
         if (!this.shadow) return;
 
-        const htmlString = this.getAttribute("data-html");
+        const encodedHtml = this.getAttribute("data-html") || "";
+        let htmlString = encodedHtml;
+        if (this.getAttribute("data-html-encoding") === "uri") {
+          try {
+            htmlString = decodeURIComponent(encodedHtml);
+          } catch {
+            htmlString = encodedHtml;
+          }
+        }
 
         const container = document.createElement("div");
-        container.innerHTML = stripScriptTags(htmlString || "");
-        container.contentEditable = this.closest(".tiptap") ? "true" : "false";
+        container.innerHTML = stripScriptTags(htmlString);
+        container.contentEditable = this.getAttribute("contenteditable") === "true" ? "true" : "false";
         container.addEventListener("input", () => {
           const html = container.innerHTML;
           this.dispatchEvent(new CustomEvent("change", { detail: html }));

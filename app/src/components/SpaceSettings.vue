@@ -123,7 +123,7 @@
                   v-model="localName"
                   type="text"
                   required
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring"
                 >
               </div>
               <div>
@@ -137,7 +137,7 @@
                   v-model="localDescription"
                   type="text"
                   placeholder="e.g., Engineering / Documentation"
-                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring"
                 >
               </div>
             </div>
@@ -237,7 +237,7 @@
                     type="text"
                     required
                     placeholder="e.g. OPENAI_API_KEY"
-                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring font-mono"
                   >
                 </div>
                 <div>
@@ -249,7 +249,7 @@
                     v-model="newSecretDescription"
                     type="text"
                     placeholder="Optional description"
-                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
                   >
                 </div>
                 <div class="md:col-span-2">
@@ -262,7 +262,7 @@
                     type="password"
                     required
                     placeholder="Will be encrypted at rest"
-                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring font-mono"
                   >
                 </div>
               </div>
@@ -415,7 +415,7 @@
               <div class="flex flex-wrap items-center justify-end gap-2">
                 <select
                   v-model="selectedGrantUserId"
-                  class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+                  class="flex-1 px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring min-w-[200px]"
                 >
                   <option value="" disabled>
                     {{ isLoadingSecretUsers
@@ -514,7 +514,7 @@
                     type="text"
                     required
                     placeholder="e.g. CI Deploy Token"
-                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
                   >
                 </div>
                 <div>
@@ -524,7 +524,7 @@
                   >
                   <select
                     v-model="newTokenPermission"
-                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
                   >
                     <option value="viewer">Viewer</option>
                     <option value="editor">Editor</option>
@@ -539,7 +539,7 @@
                     >
                     <select
                       v-model="newTokenResourceType"
-                      class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
                     >
                       <option value="space">Space</option>
                       <option value="document">Document</option>
@@ -563,7 +563,7 @@
                       type="text"
                       required
                       :disabled="newTokenResourceType === 'space'"
-                      class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-neutral-100 disabled:text-neutral-400"
+                      class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring disabled:bg-neutral-100 disabled:text-neutral-400"
                     >
                   </div>
                 </template>
@@ -585,7 +585,7 @@
                     type="number"
                     min="1"
                     placeholder="Never"
-                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
                   >
                 </div>
               </div>
@@ -1254,7 +1254,8 @@ async function loadSecretAssignableUsers() {
     secretAssignableUsers.value = [...users.values()].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-  } catch {
+  } catch (error) {
+    console.error("Failed to load secret assignable users", error);
     secretAssignableUsers.value = [];
   } finally {
     isLoadingSecretUsers.value = false;

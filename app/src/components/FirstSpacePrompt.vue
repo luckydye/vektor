@@ -33,7 +33,7 @@
             type="text"
             required
             placeholder="Engineering, Product, Design ..."
-            class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-4 py-2 border border-neutral-100 rounded-md focus-ring focus:border-transparent"
             :disabled="isCreating"
           >
         </div>
@@ -52,7 +52,7 @@
             required
             placeholder="engineering"
             pattern="[a-z0-9-]+"
-            class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-4 py-2 border border-neutral-100 rounded-md focus-ring focus:border-transparent"
             :disabled="isCreating"
           >
           <p class="mt-1 text-size-small text-neutral">
@@ -79,7 +79,7 @@
               type="text"
               placeholder="#1e293b"
               pattern="^#[0-9A-Fa-f]{6}$"
-              class="flex-1 px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="flex-1 px-3 py-2 border border-neutral-100 rounded-md focus-ring"
             >
           </div>
           <p class="mt-1 text-size-small text-neutral">Used for the header and sidebar</p>
@@ -99,7 +99,7 @@
               accept=".svg,image/svg+xml"
               @change="handleLogoUpload"
               :disabled="isCreating"
-              class="w-full px-4 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              class="w-full px-4 py-2 border border-neutral-100 rounded-md focus-ring focus:border-transparent"
             >
             <div
               v-if="logoSvg"
@@ -128,7 +128,7 @@
         <button
           type="submit"
           :disabled="isCreating"
-          class="w-full px-4 py-3 text-base font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="w-full px-4 py-3 text-base font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {{ isCreating ? 'Creating Space...' : 'Create Your First Space' }}
         </button>

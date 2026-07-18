@@ -15,7 +15,7 @@
  *   vektor extension upload [id]
  *   vektor cat <docId>
  *   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
- *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>]
+ *   vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>] [--content-type <mime>]
  *   vektor ls [--limit <n>]
  *   vektor query <query>
  *   vektor set <docId> [key=value ...] [-key ...] [--title <title>] [--category <slug>] [--parent <docId|->]
@@ -114,7 +114,7 @@ Commands:
   vektor extension upload [id]
   vektor cat <docId>
   vektor upload <file> [--filename <name>] [--document <docId>] [--content-type <mime>] [--json]
-  vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>]
+  vektor write [<docId>] [<file>|-] [--slug <slug>] [--title <title>] [--category <slug>] [--created <date>] [--modified <date>] [--type <type>] [--parent <docId>] [--content-type <mime>]
   vektor ls [--limit <n>]
   vektor query <query>
   vektor set <docId> [key=value ...] [-key ...] [--title <title>] [--category <slug>] [--parent <docId|->]
@@ -303,7 +303,7 @@ async function main(): Promise<void> {
       !positional[0].includes(".") &&
       positional[0] !== "-";
     if (isDocId) {
-      await commandWrite(positional[0], positional[1]);
+      await commandWrite(positional[0], positional[1], flags["content-type"]);
     } else {
       const properties: Record<string, string> = {};
       if (flags.title) properties.title = flags.title;
@@ -315,6 +315,7 @@ async function main(): Promise<void> {
         parent: flags.parent,
         created: flags.created,
         modified: flags.modified,
+        contentType: flags["content-type"],
         ...(Object.keys(properties).length > 0 ? { properties } : {}),
       });
     }

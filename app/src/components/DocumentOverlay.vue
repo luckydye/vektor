@@ -353,7 +353,7 @@ function formatCommentTime(date: Date | string): string {
                     <div class="flex-1">
                       <textarea
                         placeholder="Add a comment..."
-                        class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-sm bg-white text-foreground placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                        class="w-full px-3 py-2 text-size-medium border border-neutral-100 rounded-sm bg-white text-foreground placeholder-neutral-400 focus-ring focus:border-transparent resize-none"
                         rows="2"
                       />
                       <div class="mt-2 flex justify-end gap-2">

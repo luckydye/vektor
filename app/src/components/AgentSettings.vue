@@ -53,7 +53,7 @@
           >
           <select
             v-model="form.provider"
-            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring"
           >
             <option value="anthropic">Anthropic</option>
             <option value="openai">OpenAI</option>
@@ -73,7 +73,7 @@
             type="text"
             required
             :placeholder="modelPlaceholder"
-            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring font-mono"
           >
         </div>
 
@@ -87,7 +87,7 @@
             type="url"
             required
             placeholder="http://127.0.0.1:11434"
-            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring font-mono"
           >
         </div>
 
@@ -106,7 +106,7 @@
             type="password"
             :required="!(meta?.configured && meta.hasApiKey)"
             :placeholder="meta?.configured && meta.hasApiKey ? '••••••••' : 'sk-…'"
-            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+            class="w-full px-3 py-1.5 text-size-medium border border-neutral-200 rounded-md focus-ring font-mono"
           >
         </div>
 

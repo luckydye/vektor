@@ -220,10 +220,11 @@ const batchArchive = async (ids: string[]) => {
   isBatchArchiving.value = true;
   try {
     for (const id of ids) {
-      await api.documents.archive(props.spaceId, id);
+      await api.document.archive(props.spaceId, id);
     }
     window.location.reload();
-  } catch {
+  } catch (error) {
+    console.error("Failed to archive documents", error);
     isBatchArchiving.value = false;
   }
 };

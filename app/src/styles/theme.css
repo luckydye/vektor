@@ -218,3 +218,7 @@
   inset: -40px;
   backdrop-filter: blur(28px);
 }
+
+@utility focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500;
+}

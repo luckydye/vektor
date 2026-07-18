@@ -35,7 +35,7 @@
             <select
               v-model="newScheduleJobId"
               required
-              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
             >
               <option value="" disabled>
                 {{ availableJobs.length > 0 ? 'Select job' : 'No jobs available' }}
@@ -56,7 +56,7 @@
               type="text"
               required
               placeholder="e.g. 0 6 * * 1"
-              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring font-mono"
             >
             <p class="mt-0.5 text-size-small text-neutral-500">
               minute hour day month weekday
@@ -72,7 +72,7 @@
               v-model="newScheduleTimezone"
               type="text"
               placeholder="e.g. Europe/Berlin"
-              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
             >
           </div>
         </div>
@@ -407,7 +407,8 @@ async function loadAvailableJobs() {
           extensionName: ext.name,
         })) ?? [],
     );
-  } catch {
+  } catch (error) {
+    console.error("Failed to load available jobs", error);
     availableJobs.value = [];
   }
 }

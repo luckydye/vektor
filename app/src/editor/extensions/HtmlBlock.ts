@@ -16,6 +16,59 @@ declare global {
   }
 }
 
+// These elements have no TipTap representation. Without an explicit fallback,
+// ProseMirror drops their element and attributes, then parses only their text
+// children. Keep the complete source in an HTML block instead.
+const UNSUPPORTED_BLOCK_TAGS = new Set([
+  "address",
+  "article",
+  "aside",
+  "audio",
+  "canvas",
+  "dd",
+  "details",
+  "dialog",
+  "div",
+  "dl",
+  "embed",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "header",
+  "hgroup",
+  "iframe",
+  "main",
+  "menu",
+  "nav",
+  "noscript",
+  "object",
+  "output",
+  "picture",
+  "section",
+  "svg",
+  "template",
+  "video",
+]);
+
+function isUnsupportedHtmlBlock(element: HTMLElement): boolean {
+  const tagName = element.tagName.toLowerCase();
+  return UNSUPPORTED_BLOCK_TAGS.has(tagName) || tagName.includes("-");
+}
+
+function parseHtmlBlockContent(element: HTMLElement): string | null {
+  const value = element.getAttribute("data-html");
+  if (value === null) return null;
+  if (element.getAttribute("data-html-encoding") !== "uri") return value;
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export const HtmlBlock = Node.create({
   name: "htmlBlock",
   group: "block",
@@ -27,8 +80,7 @@ export const HtmlBlock = Node.create({
     return {
       "data-html": {
         default: "<p>Enter HTML content here</p>",
-        parseHTML: (element) =>
-          element.getAttribute("data-html") || "<p>Enter HTML content here</p>",
+        parseHTML: parseHtmlBlockContent,
         renderHTML: (attributes) => {
           return {
             "data-html": attributes["data-html"],
@@ -43,11 +95,28 @@ export const HtmlBlock = Node.create({
       {
         tag: "html-block",
       },
+      {
+        // Run after every native and Vektor-specific parser rule, so this
+        // captures only elements the document schema does not understand.
+        tag: "*",
+        priority: 1,
+        getAttrs: (element) => {
+          if (!isUnsupportedHtmlBlock(element)) return false;
+          return { "data-html": element.outerHTML };
+        },
+      },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["html-block", mergeAttributes(HTMLAttributes)];
+    const htmlContent = String(HTMLAttributes["data-html"] ?? "");
+    return [
+      "html-block",
+      mergeAttributes(HTMLAttributes, {
+        "data-html": encodeURIComponent(htmlContent),
+        "data-html-encoding": "uri",
+      }),
+    ];
   },
 
   addCommands() {
@@ -69,6 +138,8 @@ export const HtmlBlock = Node.create({
     return ({ editor, node, getPos }) => {
       const { view } = editor;
       const dom = document.createElement("div");
+      let currentNode = node;
+      let isPreview = true;
 
       const updateHtml = (e: Event) => {
         const textarea = e.target as HTMLInputElement;
@@ -76,7 +147,7 @@ export const HtmlBlock = Node.create({
 
         if (typeof getPos === "function") {
           const pos = getPos();
-          if (pos) {
+          if (typeof pos === "number") {
             view.dispatch(
               view.state.tr.setNodeMarkup(pos, undefined, {
                 "data-html": newHtml,
@@ -88,29 +159,58 @@ export const HtmlBlock = Node.create({
         renderSource();
       };
 
+      const toggleView = () => {
+        isPreview = !isPreview;
+        renderSource();
+      };
+
       function renderSource() {
-        const htmlString = node.attrs["data-html"];
+        const htmlString = currentNode.attrs["data-html"];
 
         render(
           html`
           <style>
             .html-block-wrapper {
-              display: flex;
-              gap: 1rem;
               margin: 1rem 0;
               width: 100%;
+              position: relative;
+            }
+            .html-block-toolbar {
+              position: absolute;
+              top: 0.75rem;
+              right: 0.75rem;
+              z-index: 1;
             }
             .html-block-toggle-btn {
-              background: transparent;
-              border: none;
+              align-items: center;
+              background: color-mix(in srgb, var(--color-background) 88%, transparent);
+              border: 1px solid var(--color-neutral-200);
               cursor: pointer;
-              font-size: 1rem;
-              padding: 0.25rem 0.5rem;
-              border-radius: var(--radius-sm);
-              transition: background-color 0.2s;
+              backdrop-filter: blur(8px);
+              border-radius: 999px;
+              box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
+              color: var(--color-neutral-600);
+              display: inline-flex;
+              font-size: 0.75rem;
+              font-weight: 600;
+              gap: 0.375rem;
+              letter-spacing: 0.01em;
+              line-height: 1;
+              padding: 0.5rem 0.625rem;
+              transition: background-color 0.15s, border-color 0.15s, color 0.15s;
             }
             .html-block-toggle-btn:hover {
-              background: var(--color-neutral-200);
+              background: var(--color-background);
+              border-color: var(--color-neutral-300);
+              color: var(--color-neutral-900);
+            }
+            .html-block-toggle-btn:focus-visible {
+              outline: 2px solid var(--color-primary-400);
+              outline-offset: 2px;
+            }
+            .html-block-toggle-icon {
+              height: 0.875rem;
+              width: 0.875rem;
             }
             .html-block-textarea {
               width: 100%;
@@ -123,24 +223,45 @@ export const HtmlBlock = Node.create({
               word-break: break-word;
               overflow-wrap: break-word;
             }
-            .w-full {
+            .html-block-preview {
               width: 100%;
             }
           </style>
 
           <div class="html-block-wrapper">
-            <div class="w-full" @keydown=${(e: Event) => e.stopPropagation()} @paste=${(e: Event) => e.stopPropagation()}>
-              <ai-textarea
-                .value=${htmlString}
-                @change=${updateHtml}
-                placeholder="Enter HTML content..."
-                class="html-block-textarea"
-              ></ai-textarea>
+            <div class="html-block-toolbar">
+              <button
+                type="button"
+                class="html-block-toggle-btn"
+                @click=${toggleView}
+                aria-pressed=${isPreview ? "true" : "false"}
+                aria-label=${isPreview ? "Edit HTML source" : "Show HTML preview"}
+              >
+                ${
+                  isPreview
+                    ? html`<svg class="html-block-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5.5 3 1.5 8l4 5M10.5 3l4 5-4 5M9 1.5 7 14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> HTML`
+                    : html`<svg class="html-block-toggle-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.5 8s2.2-4 6.5-4 6.5 4 6.5 4-2.2 4-6.5 4-6.5-4-6.5-4Z" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="1.75" fill="currentColor"/></svg> Preview`
+                }
+              </button>
             </div>
 
-            <div class="w-full">
-              <html-block contentEditable="true" data-html=${htmlString}></html-block>
-            </div>
+            ${
+              isPreview
+                ? html`<div class="html-block-preview"><html-block data-html=${htmlString}></html-block></div>`
+                : html`
+                    <div
+                      @keydown=${(e: Event) => e.stopPropagation()}
+                      @paste=${(e: Event) => e.stopPropagation()}
+                    >
+                      <ai-textarea
+                        .value=${htmlString}
+                        @change=${updateHtml}
+                        placeholder="Enter HTML content..."
+                        class="html-block-textarea"
+                      ></ai-textarea>
+                    </div>
+                  `
+            }
           </div>
         `,
           dom,
@@ -149,7 +270,15 @@ export const HtmlBlock = Node.create({
 
       renderSource();
 
-      return { dom };
+      return {
+        dom,
+        update(updatedNode) {
+          if (updatedNode.type !== currentNode.type) return false;
+          currentNode = updatedNode;
+          renderSource();
+          return true;
+        },
+      };
     };
   },
 });

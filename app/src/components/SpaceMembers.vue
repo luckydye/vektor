@@ -475,7 +475,7 @@ async function copyMemberId(memberId) {
                 v-if="canEditMember(perm.permission.userId, perm)"
                 :value="perm.permission.permission"
                 @change="(e) => handleRoleChange(perm, e.target.value)"
-                class="text-size-medium border border-neutral-100 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="text-size-medium border border-neutral-100 rounded-md px-2 py-1 focus-ring"
                 :disabled="updatingMember === (perm.permission.userId || perm.permission.groupId)"
               >
                 <option value="viewer">Viewer</option>
@@ -543,7 +543,7 @@ async function copyMemberId(memberId) {
           <select
             id="member-type"
             v-model="newMemberType"
-            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus-ring"
           >
             <option value="user">User</option>
             <option value="group">OAuth Group</option>
@@ -565,7 +565,7 @@ async function copyMemberId(memberId) {
             type="email"
             required
             placeholder="person@example.com"
-            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus-ring"
           >
           <input
             v-else
@@ -574,7 +574,7 @@ async function copyMemberId(memberId) {
             type="text"
             required
             placeholder="e.g., admins, developers"
-            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus-ring"
           >
           <p
             v-if="newMemberType === 'user'"
@@ -598,7 +598,7 @@ async function copyMemberId(memberId) {
           <select
             id="member-scope"
             v-model="newMemberScope"
-            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus-ring"
           >
             <option value="space">Entire space</option>
             <option value="category">Category</option>
@@ -616,7 +616,7 @@ async function copyMemberId(memberId) {
             id="member-category"
             v-model="newMemberCategoryId"
             required
-            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus-ring"
           >
             <option value="">Select a category...</option>
             <option
@@ -639,7 +639,7 @@ async function copyMemberId(memberId) {
           <select
             id="member-role"
             v-model="newMemberRole"
-            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full px-3 py-2 border border-neutral-100 rounded-md focus-ring"
           >
             <option value="viewer">Viewer - Read-only access</option>
             <option value="editor">Editor - Create and edit content</option>
