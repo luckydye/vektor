@@ -124,6 +124,75 @@ dd {
   @apply text-green-500 font-semibold mr-2;
 }
 
+ul[data-type="taskList"] {
+  @apply pl-0;
+}
+
+ul[data-type="taskList"] li {
+  @apply flex items-start gap-2 pl-0 list-none;
+}
+
+ul[data-type="taskList"] li p {
+  @apply mb-0;
+}
+
+ul[data-type="taskList"] li[data-checked="true"] {
+  text-decoration: line-through;
+}
+
+input[type="checkbox"] {
+  --checkbox-color-fill: #007bff;
+  --checkbox-color-fill-hover: #0056b3;
+  --checkbox-color-border: #6c757d;
+  --checkbox-color-border-hover: #5a6268;
+
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  vertical-align: middle;
+
+  transform: translateY(-0.0625em);
+
+  cursor: pointer;
+
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-sm);
+
+  background: transparent;
+
+  display: inline-grid;
+  place-content: center;
+
+  --color-border: var(--checkbox-color-border);
+
+  @apply border-2 border-solid border-[var(--color-border)];
+}
+input[type="checkbox"]:not(:checked):hover {
+  --color-border: var(--checkbox-color-border-hover);
+}
+input[type="checkbox"]:checked:hover {
+  --checkbox-color-fill: var(--checkbox-color-fill-hover);
+}
+input[type="checkbox"]:checked {
+  background: var(--checkbox-color-fill);
+  --color-border: var(--checkbox-color-fill);
+}
+input[type="checkbox"]::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  line-height: 100%;
+  margin-bottom: -0.125rem;
+}
+input[type="checkbox"]:checked::before {
+  content: "";
+  background: white;
+  mask: url("../../assets/icons/confirmation.svg") center / contain no-repeat;
+}
+
 /* Arrow list */
 .list-arrow {
   @apply list-none space-y-1;
