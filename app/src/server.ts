@@ -1,4 +1,3 @@
-import "./observability/bootstrap.ts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { dev } from "astro";
 import { Hono } from "hono";

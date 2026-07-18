@@ -278,7 +278,6 @@ function startServer(): ReturnType<typeof Bun.spawn> {
     env: {
       ...process.env,
       HOST: "127.0.0.1",
-      VEKTOR_OTEL_ENABLED: "0",
     },
     // CWD determines where ./data/ is created; keep bench data isolated from app data
     cwd: BENCH_DIR,
@@ -683,7 +682,7 @@ async function measureColdStart(): Promise<ColdStartResult> {
   const coldServer = Bun.spawn(
     [BINARY, "serve", "--port", String(PORT + 1), "--no-auth"],
     {
-      env: { ...process.env, HOST: "127.0.0.1", VEKTOR_OTEL_ENABLED: "0" },
+      env: { ...process.env, HOST: "127.0.0.1" },
       cwd: BENCH_DIR,
       stdout: "ignore",
       stderr: "ignore",

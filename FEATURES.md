@@ -106,7 +106,6 @@
 
 ## API & Developer Tools
 - Full REST API for all resources
-- OpenTelemetry tracing support
 - OAuth2 apps integrations (currently Gitlab and YouTrack)
 - Encrypted secret/credential storage per space
 - CalDAV calendar sync protocol

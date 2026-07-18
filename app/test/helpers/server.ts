@@ -40,7 +40,6 @@ export function startTestServer(
       ...process.env,
       HOST: "127.0.0.1",
       NODE_ENV: "test",
-      VEKTOR_OTEL_ENABLED: "0",
       ...env,
     },
     stdout: "ignore",

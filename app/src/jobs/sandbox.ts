@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { config, getLocalOrigin } from "#config";
 import { extractFile } from "#db/extensions.ts";
-import { activeTraceHeaders } from "#observability/otel.ts";
 import { createJobToken } from "./jobToken.ts";
 import { buildSandboxWrapper } from "./sandboxRuntime.ts";
 
@@ -87,7 +86,6 @@ export async function createSandbox(): Promise<Sandbox> {
       // Sandbox jobs hit backend directly; do not route through public ingress.
       const apiUrl = getLocalOrigin();
       const timestamp = Date.now().toString();
-      const traceHeaders = activeTraceHeaders();
 
       const workerData = {
         ...inputs,
@@ -95,8 +93,6 @@ export async function createSandbox(): Promise<Sandbox> {
         spaceId,
         apiUrl,
         jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
-        traceparent: traceHeaders.traceparent ?? null,
-        tracestate: traceHeaders.tracestate ?? null,
       };
 
       try {

@@ -14,12 +14,7 @@ export function buildJobWrapper(jobFileUrl: string): string {
   return `const { workerData: __wd, parentPort: __pp } = await import("node:worker_threads");
 const { spaceId: __s, apiUrl: __a, jobToken: __t } = __wd;
 
-const __headersWithTrace = (headers) => {
-  const merged = new Headers(headers ?? {});
-  if (__wd.traceparent) merged.set("traceparent", String(__wd.traceparent));
-  if (__wd.tracestate) merged.set("tracestate", String(__wd.tracestate));
-  return merged;
-};
+const __headers = (headers) => new Headers(headers ?? {});
 
 globalThis.log = (message) => {
   __pp.postMessage({ type: "log", message: String(message) });
@@ -32,7 +27,7 @@ globalThis.uploadArtifact = async (filename, content, mimeType) => {
   log("POST " + __a + "/api/v1/spaces/" + __s + "/uploads (" + filename + ")");
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/uploads", {
     method: "POST",
-    headers: __headersWithTrace({
+    headers: __headers({
       "X-Job-Token": __t,
       "Origin": __a,
     }),
@@ -47,7 +42,7 @@ globalThis.uploadArtifact = async (filename, content, mimeType) => {
 
 globalThis.readDocument = async (documentId) => {
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/documents/" + documentId, {
-    headers: __headersWithTrace({ "X-Job-Token": __t }),
+    headers: __headers({ "X-Job-Token": __t }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
@@ -66,7 +61,7 @@ globalThis.writeDocument = async (documentId, content, type) => {
   log("PUT " + __a + "/api/v1/spaces/" + __s + "/documents/" + documentId);
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/documents/" + documentId, {
     method: "PUT",
-    headers: __headersWithTrace({
+    headers: __headers({
       "Content-Type": contentType,
       "X-Job-Token": __t,
     }),
@@ -96,7 +91,7 @@ globalThis.createDocument = async (content, options) => {
       : type === "app"
         ? "application/vnd.wiki.app+html; charset=utf-8"
         : "text/markdown; charset=utf-8";
-  const headers = __headersWithTrace({
+  const headers = __headers({
     "Content-Type": contentType,
     "X-Job-Token": __t,
   });
@@ -117,7 +112,7 @@ globalThis.searchDocuments = async (query, limit) => {
   const params = new URLSearchParams({ q: query });
   if (limit != null) params.set("limit", String(limit));
   const res = await fetch(__a + "/api/v1/spaces/" + __s + "/search?" + params.toString(), {
-    headers: __headersWithTrace({ "X-Job-Token": __t }),
+    headers: __headers({ "X-Job-Token": __t }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => String(res.status));
@@ -130,7 +125,7 @@ globalThis.getSecret = async (name) => {
   const res = await fetch(
     __a + "/api/v1/spaces/" + __s + "/secrets/" + encodeURIComponent(String(name)),
     {
-      headers: __headersWithTrace({ "X-Job-Token": __t }),
+      headers: __headers({ "X-Job-Token": __t }),
     },
   );
   if (!res.ok) {

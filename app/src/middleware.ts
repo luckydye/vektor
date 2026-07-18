@@ -1,4 +1,3 @@
-import "./observability/bootstrap.ts";
 import { defineMiddleware } from "astro:middleware";
 import { auth } from "./auth.ts";
 import { getPublicEnv } from "./config.ts";

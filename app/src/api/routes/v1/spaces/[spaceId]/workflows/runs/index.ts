@@ -20,7 +20,6 @@ import {
 } from "#jobs/runStore.ts";
 import { executeWorkflowScript } from "#jobs/workflowScript.ts";
 import { appLogger } from "#observability/logger.ts";
-import { activeTraceHeaders } from "#observability/otel.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 
@@ -117,7 +116,7 @@ export const GET: ApiRouteHandler = (context) =>
  */
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(
-    async (span) => {
+    async () => {
       const spaceId = requireParam(context.var.params, "spaceId");
       const auth = await authenticateJobTokenOrSpaceRole(context, spaceId, "editor");
       const initiatedByUserId = auth.type === "user" ? auth.user.id : auth.userId;
@@ -128,7 +127,6 @@ export const POST: ApiRouteHandler = (context) =>
         sourceExtensionId?: string;
       }>(context.req.raw);
       const { documentId, inputs, sourceExtensionId } = body;
-      if (documentId) span?.setAttribute("wiki.document.id", documentId);
 
       if (!documentId) return badRequestResponse("documentId is required");
 
@@ -153,27 +151,15 @@ export const POST: ApiRouteHandler = (context) =>
         sourceExtensionId ?? null,
         inputs ?? {},
       );
-      const traceHeaders = activeTraceHeaders();
-
       // Fire and forget — errors are recorded in run state
       executeWorkflowScript(spaceId, runId, code, {
         runtimeInputs: inputs,
-        traceparent: traceHeaders.traceparent,
-        tracestate: traceHeaders.tracestate,
       }).catch(() => {});
 
       return jsonResponse({ runId }, 202);
     },
     {
       fallbackMessage: "Failed to start workflow run",
-      telemetry: {
-        context,
-        spanName: "api.workflows.runs.start",
-        attributes: {
-          "http.method": "POST",
-          "http.route": "/api/v1/spaces/:spaceId/workflows/runs",
-        },
-      },
       onError: (error) => {
         appLogger.error("Start workflow run error", {
           error: error instanceof Error ? error.message : String(error),

@@ -1,8 +1,6 @@
-import type { Attributes, Span } from "@opentelemetry/api";
 import type { ApiContext } from "#api/server/types.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
-import { withSpan } from "#observability/otel.ts";
 import type { ValidateTokenResult } from "./accessTokens.ts";
 import { getTokenUserId, validateAccessToken } from "./accessTokens.ts";
 import {
@@ -69,7 +67,7 @@ export function createdResponse(data: unknown): Response {
 }
 
 export async function withApiErrorHandling(
-  handler: (span?: Span) => Promise<Response> | Response,
+  handler: () => Promise<Response> | Response,
   optionsOrMessage:
     | string
     | {
@@ -77,11 +75,6 @@ export async function withApiErrorHandling(
         onError?: (
           error: unknown,
         ) => Response | undefined | Promise<Response | undefined>;
-        telemetry?: {
-          context: ApiContext;
-          spanName: string;
-          attributes?: Attributes;
-        };
       } = "Internal server error",
 ): Promise<Response> {
   const options =
@@ -90,19 +83,6 @@ export async function withApiErrorHandling(
       : optionsOrMessage;
 
   try {
-    if (options.telemetry) {
-      const { context, spanName, attributes } = options.telemetry;
-      return await withSpan(
-        spanName,
-        {
-          traceparent: context.req.raw.headers.get("traceparent"),
-          tracestate: context.req.raw.headers.get("tracestate"),
-          attributes,
-        },
-        async (span) => handler(span),
-      );
-    }
-
     return await handler();
   } catch (error) {
     if (error instanceof Response) {

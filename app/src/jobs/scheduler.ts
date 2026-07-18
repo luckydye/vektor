@@ -12,7 +12,6 @@ import {
   recordJobRunQueued,
   recordJobRunStarted,
 } from "#db/jobRuns.ts";
-import { activeTraceHeaders, otelMetrics, withSpan } from "#observability/otel.ts";
 import { buildJobWrapper } from "./jobRuntime.ts";
 import { createJobToken } from "./jobToken.ts";
 import type { Sandbox } from "./sandbox.ts";
@@ -36,42 +35,12 @@ const MAX_CONCURRENT_JOBS = 3;
 
 let activeJobs = 0;
 const waitQueue: Array<() => void> = [];
-const meter = otelMetrics.getMeter("wiki.jobs");
-const jobsStartedCounter = meter.createCounter("wiki_jobs_started_total");
-const jobsCompletedCounter = meter.createCounter("wiki_jobs_completed_total");
-const jobsFailedCounter = meter.createCounter("wiki_jobs_failed_total");
-const jobDurationMs = meter.createHistogram("wiki_job_duration_ms", {
-  unit: "ms",
-});
-const jobQueueWaitMs = meter.createHistogram("wiki_job_queue_wait_ms", {
-  unit: "ms",
-});
-const activeJobsGauge = meter.createUpDownCounter("wiki_jobs_active");
-const queuedJobsGauge = meter.createUpDownCounter("wiki_jobs_queued");
-const MAX_SPAN_JSON_CHARS = 4_000;
-
-function toSpanJson(value: unknown, maxChars = MAX_SPAN_JSON_CHARS): string {
-  try {
-    const raw = JSON.stringify(value);
-    if (!raw) return "null";
-    if (raw.length <= maxChars) return raw;
-    return `${raw.slice(0, maxChars)}…(truncated ${raw.length - maxChars} chars)`;
-  } catch (error) {
-    return JSON.stringify({
-      error: "serialization_failed",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
-}
 
 function releaseJobSlot(): void {
   activeJobs = Math.max(0, activeJobs - 1);
-  activeJobsGauge.add(-1);
   const next = waitQueue.shift();
   if (next) {
-    queuedJobsGauge.add(-1);
     activeJobs += 1;
-    activeJobsGauge.add(1);
     next();
   }
 }
@@ -81,7 +50,6 @@ function acquireJobSlot(signal?: AbortSignal): Promise<void> {
 
   if (activeJobs < MAX_CONCURRENT_JOBS) {
     activeJobs += 1;
-    activeJobsGauge.add(1);
     return Promise.resolve();
   }
 
@@ -95,14 +63,12 @@ function acquireJobSlot(signal?: AbortSignal): Promise<void> {
       const idx = waitQueue.indexOf(start);
       if (idx >= 0) {
         waitQueue.splice(idx, 1);
-        queuedJobsGauge.add(-1);
       }
       reject(new Error("Job cancelled"));
     };
 
     signal?.addEventListener("abort", onAbort, { once: true });
     waitQueue.push(start);
-    queuedJobsGauge.add(1);
   });
 }
 
@@ -129,7 +95,6 @@ export async function runJob(
     timeoutMs = DEFAULT_TIMEOUT_MS,
     signal,
     initiatedByUserId,
-    jobType,
     jobId: logicalJobId,
     sandbox,
     trigger = "manual",
@@ -176,7 +141,6 @@ export async function runJob(
   }
 
   const fileBuffer = extractFile(zipBuffer, entryPath);
-  const queuedAt = Date.now();
   try {
     if (signal?.aborted) throw new Error("Job cancelled");
     if (!fileBuffer) throw new Error(`Job entry not found in zip: ${entryPath}`);
@@ -190,170 +154,131 @@ export async function runJob(
     throw error;
   }
   await recordJobRunStarted(spaceId, executionId);
-  const queueWait = Date.now() - queuedAt;
-  jobsStartedCounter.add(1, { entry_path: entryPath });
-  jobQueueWaitMs.record(queueWait, { entry_path: entryPath });
 
   let jobPath: string | null = null;
   let wrapperPath: string | null = null;
-  const startedAt = Date.now();
-  let completed = false;
 
   try {
-    const outputs = await withSpan(
-      "wiki.job.run",
-      {
-        attributes: {
-          "wiki.space.id": spaceId,
-          "wiki.job.entry_path": entryPath,
-          "wiki.job.queue_wait_ms": queueWait,
-          "wiki.job.type": jobType ?? "unknown",
-          "wiki.job.id": logicalJobId ?? entryPath,
-        },
-      },
-      async (span) => {
-        span.setAttribute("wiki.job.inputs_json", toSpanJson(inputs));
-        span.setAttribute("wiki.job.execution_id", executionId);
-        jobPath = join(tmpdir(), `wiki-job-${executionId}.mjs`);
-        wrapperPath = join(tmpdir(), `wiki-wrapper-${executionId}.mjs`);
+    const outputs = await (async () => {
+      jobPath = join(tmpdir(), `wiki-job-${executionId}.mjs`);
+      wrapperPath = join(tmpdir(), `wiki-wrapper-${executionId}.mjs`);
 
-        await writeFile(jobPath, fileBuffer);
-        await writeFile(wrapperPath, buildJobWrapper(pathToFileURL(jobPath).href));
-        if (!wrapperPath) throw new Error("Failed to create worker wrapper path");
+      await writeFile(jobPath, fileBuffer);
+      await writeFile(wrapperPath, buildJobWrapper(pathToFileURL(jobPath).href));
+      if (!wrapperPath) throw new Error("Failed to create worker wrapper path");
 
-        const timestamp = Date.now().toString();
-        const traceHeaders = activeTraceHeaders();
+      const timestamp = Date.now().toString();
 
-        const workerData = {
-          ...inputs,
-          jobId: executionId,
-          spaceId,
-          // Job-side API calls must stay on internal backend origin.
-          apiUrl: getLocalOrigin(),
-          jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
-          traceparent: traceHeaders.traceparent ?? null,
-          tracestate: traceHeaders.tracestate ?? null,
+      const workerData = {
+        ...inputs,
+        jobId: executionId,
+        spaceId,
+        // Job-side API calls must stay on internal backend origin.
+        apiUrl: getLocalOrigin(),
+        jobToken: createJobToken(spaceId, timestamp, initiatedByUserId ?? null),
+      };
+      const resolvedWrapperPath = wrapperPath;
+
+      return await new Promise<Record<string, unknown>>((resolve, reject) => {
+        const worker = new Worker(resolvedWrapperPath, { workerData });
+        let settled = false;
+        const abortListenerController = new AbortController();
+
+        const cancelWorker = () => {
+          if (settled) return;
+          try {
+            worker.postMessage({ type: "cancel" });
+          } catch {
+            // Worker may already be terminated; ignore.
+          }
         };
-        const resolvedWrapperPath = wrapperPath;
 
-        return await new Promise<Record<string, unknown>>((resolve, reject) => {
-          const worker = new Worker(resolvedWrapperPath, { workerData });
-          let settled = false;
-          const abortListenerController = new AbortController();
+        const cleanup = () => {
+          clearTimeout(timer);
+          abortListenerController.abort();
+          worker.terminate().catch(() => {});
+        };
+        const settleResolve = (outputs: Record<string, unknown>) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(outputs);
+        };
+        const settleReject = (err: Error) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(err);
+        };
 
-          const cancelWorker = () => {
-            if (settled) return;
-            try {
-              worker.postMessage({ type: "cancel" });
-            } catch {
-              // Worker may already be terminated; ignore.
-            }
-          };
+        let timer = setTimeout(() => {
+          cancelWorker();
+          settleReject(
+            new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`),
+          );
+        }, timeoutMs);
 
-          const cleanup = () => {
-            clearTimeout(timer);
-            abortListenerController.abort();
-            worker.terminate().catch(() => {});
-          };
-          const settleResolve = (outputs: Record<string, unknown>) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            resolve(outputs);
-          };
-          const settleReject = (err: Error) => {
-            if (settled) return;
-            settled = true;
-            cleanup();
-            reject(err);
-          };
-
-          let timer = setTimeout(() => {
-            span.setAttribute("wiki.job.timeout", true);
+        const resetTimer = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
             cancelWorker();
             settleReject(
               new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`),
             );
           }, timeoutMs);
+        };
 
-          const resetTimer = () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => {
-              span.setAttribute("wiki.job.timeout", true);
-              cancelWorker();
-              settleReject(
-                new Error(`Job timed out after ${timeoutMs / 1000}s of inactivity`),
-              );
-            }, timeoutMs);
-          };
-
-          signal?.addEventListener(
-            "abort",
-            () => {
-              if (settled) return;
-              span.setAttribute("wiki.job.cancelled", true);
-              cancelWorker();
-              settleReject(new Error("Job cancelled"));
-            },
-            { once: true, signal: abortListenerController.signal },
-          );
-
-          worker.on(
-            "message",
-            (msg: {
-              type?: string;
-              success?: boolean;
-              outputs?: Record<string, unknown>;
-              error?: string;
-              message?: string;
-            }) => {
-              if (msg.type === "log") {
-                resetTimer();
-                const message = msg.message ?? "";
-                onLog?.(message);
-              } else if (msg.type === "result") {
-                if (msg.success) {
-                  const outputs = msg.outputs ?? {};
-                  span.setAttribute("wiki.job.outputs_json", toSpanJson(outputs));
-                  settleResolve(outputs);
-                } else {
-                  settleReject(
-                    new Error(msg.error ?? "Job failed without error message"),
-                  );
-                }
-              }
-            },
-          );
-          worker.once("error", (err) => {
-            settleReject(err instanceof Error ? err : new Error(String(err)));
-          });
-          worker.once("exit", (code) => {
+        signal?.addEventListener(
+          "abort",
+          () => {
             if (settled) return;
-            settleReject(new Error(`Worker exited unexpectedly with code ${code}`));
-          });
+            cancelWorker();
+            settleReject(new Error("Job cancelled"));
+          },
+          { once: true, signal: abortListenerController.signal },
+        );
+
+        worker.on(
+          "message",
+          (msg: {
+            type?: string;
+            success?: boolean;
+            outputs?: Record<string, unknown>;
+            error?: string;
+            message?: string;
+          }) => {
+            if (msg.type === "log") {
+              resetTimer();
+              const message = msg.message ?? "";
+              onLog?.(message);
+            } else if (msg.type === "result") {
+              if (msg.success) {
+                const outputs = msg.outputs ?? {};
+                settleResolve(outputs);
+              } else {
+                settleReject(new Error(msg.error ?? "Job failed without error message"));
+              }
+            }
+          },
+        );
+        worker.once("error", (err) => {
+          settleReject(err instanceof Error ? err : new Error(String(err)));
         });
-      },
-    );
-    completed = true;
+        worker.once("exit", (code) => {
+          if (settled) return;
+          settleReject(new Error(`Worker exited unexpectedly with code ${code}`));
+        });
+      });
+    })();
     await recordJobRunFinished(spaceId, executionId, { status: "success" });
     return outputs;
   } catch (error) {
-    jobsFailedCounter.add(1, {
-      entry_path: entryPath,
-      status: "failed",
-    });
     await recordJobRunFinished(spaceId, executionId, {
       status: classifyJobError(error),
       error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   } finally {
-    if (Date.now() >= startedAt) {
-      jobDurationMs.record(Date.now() - startedAt, { entry_path: entryPath });
-    }
-    if (completed) {
-      jobsCompletedCounter.add(1, { entry_path: entryPath });
-    }
     releaseJobSlot();
     await Promise.all([
       jobPath ? unlink(jobPath).catch(() => {}) : Promise.resolve(),
