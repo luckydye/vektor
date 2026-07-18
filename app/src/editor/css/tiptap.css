@@ -1,3 +1,5 @@
+@reference "../../styles/index.css";
+
 .tiptap img.ProseMirror-selectednode {
   @apply outline outline-2 outline-blue-500 outline-offset-2;
 }

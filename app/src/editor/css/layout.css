@@ -1,3 +1,5 @@
+@reference "../../styles/index.css";
+
 .column-content,
 div[data-type="column-layout"] {
   @apply flex flex-wrap md:flex-row flex-col gap-xs w-full;

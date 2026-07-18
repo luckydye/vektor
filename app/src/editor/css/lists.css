@@ -1,3 +1,5 @@
+@reference "../../styles/index.css";
+
 /* Unordered Lists */
 ul {
   @apply list-disc list-outside pl-5 space-y-1;
