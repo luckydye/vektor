@@ -38,6 +38,7 @@ import "#components/document-statusbar.ts";
 import { twMerge } from "tailwind-merge";
 
 type DocumentContentPresenceState = DocumentPresenceState | CanvasPresenceState;
+type TaskToggleRequest = { index: number };
 
 const props = withDefaults(
   defineProps<{
@@ -83,6 +84,39 @@ type DocumentToolbarElement = HTMLElement & {
 const documentViewEl = shallowRef<DocumentViewElement | null>(null);
 const documentToolbar = shallowRef<DocumentToolbarElement | null>(null);
 const editor = shallowRef<Editor>();
+let pendingTaskToggle: number | null = null;
+
+function requestTaskToggle(event: CustomEvent<TaskToggleRequest>) {
+  pendingTaskToggle = event.detail.index;
+}
+
+function applyPendingTaskToggle(activeEditor: Editor) {
+  const index = pendingTaskToggle;
+  pendingTaskToggle = null;
+  if (index === null || index < 0) return;
+
+  const positions: number[] = [];
+  activeEditor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "taskItem") positions.push(pos);
+  });
+
+  const pos = positions[index];
+  if (pos === undefined) return;
+
+  activeEditor
+    .chain()
+    .command(({ tr }) => {
+      const node = tr.doc.nodeAt(pos);
+      if (node?.type.name !== "taskItem") return false;
+      tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        checked: !node.attrs.checked,
+      });
+      return true;
+    })
+    .run();
+}
+
 const handleVisibilityChange = () => {
   if (pendingReload.value && document.visibilityState === "visible") {
     pendingReload.value = false;
@@ -204,6 +238,7 @@ function setCurrentEditor(nextEditor: Editor | undefined) {
   nextEditor.on("blur", updatePresence);
   nextEditor.on("transaction", updatePresence);
   nextEditor.on("update", trackLocalChange as Parameters<typeof nextEditor.on>[1]);
+  applyPendingTaskToggle(nextEditor);
   updatePresence();
 
   leaveEditorPresenceSubscriptions = () => {
@@ -369,6 +404,7 @@ watch(editing, (isEditing) => {
     registerEditorActions();
     registerToolbarActions();
   } else {
+    pendingTaskToggle = null;
     unregisterEditorActions();
     unregisterToolbarActions();
   }
@@ -390,7 +426,6 @@ onMounted(() => {
 
   window.addEventListener("visibilitychange", handleVisibilityChange);
 
-  setupDocumentPresence();
   maybeStartAutoEditMode();
 });
 
@@ -499,6 +534,7 @@ useSync(
         :space-id="props.spaceId"
         :document-id="documentId"
         data-allow-mismatch="children"
+        @task-toggle-request="requestTaskToggle"
         v-html="ssrDeclarativeShadowDom"
       />
     </div>

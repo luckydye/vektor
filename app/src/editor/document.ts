@@ -950,8 +950,25 @@ export class DocumentView extends HTMLElement {
 
     this.root?.addEventListener(
       "input",
-      (_e) => {
-        if (this.tiptapEditor) return; // we ignore checkbox changes in read mode only
+      (event) => {
+        if (this.tiptapEditor) return;
+
+        const checkbox = event.target;
+        if (checkbox instanceof HTMLInputElement && checkbox.type === "checkbox") {
+          const checkboxes = this.root?.querySelectorAll<HTMLInputElement>(
+            'ul[data-type="taskList"] input[type="checkbox"]',
+          );
+          const index = checkboxes ? Array.from(checkboxes).indexOf(checkbox) : -1;
+          if (index >= 0) {
+            this.dispatchEvent(
+              new CustomEvent("task-toggle-request", {
+                bubbles: true,
+                composed: true,
+                detail: { index },
+              }),
+            );
+          }
+        }
 
         editing.value = true;
       },
