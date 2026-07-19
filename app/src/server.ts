@@ -338,12 +338,40 @@ process.once("SIGTERM", () => {
   void shutdown("SIGTERM", 0);
 });
 
-process.once("uncaughtException", (error) => {
+// A client that disconnects mid-response (e.g. navigating away while the SSR
+// stream is still being written) surfaces as an `aborted` / `ECONNRESET` error
+// on the Node request socket. Astro's node adapter lets this reach the process
+// as an unhandled rejection. It is a benign network condition, not a server
+// bug, so it must NOT take the whole process (and every live WebSocket) down.
+// Genuine errors still crash so we notice real issues.
+function isBenignConnectionError(reason: unknown): boolean {
+  if (typeof reason !== "object" || reason === null) {
+    return false;
+  }
+  const code = (reason as { code?: unknown }).code;
+  const message = (reason as { message?: unknown }).message;
+  return (
+    code === "ECONNRESET" ||
+    code === "ECONNABORTED" ||
+    code === "EPIPE" ||
+    message === "aborted"
+  );
+}
+
+process.on("uncaughtException", (error) => {
+  if (isBenignConnectionError(error)) {
+    appLogger.warn("Ignoring benign connection error (uncaughtException)", { error });
+    return;
+  }
   appLogger.error("Uncaught exception", { error });
   void shutdown("uncaughtException", 1);
 });
 
-process.once("unhandledRejection", (reason) => {
+process.on("unhandledRejection", (reason) => {
+  if (isBenignConnectionError(reason)) {
+    appLogger.warn("Ignoring benign connection error (unhandledRejection)", { reason });
+    return;
+  }
   appLogger.error("Unhandled rejection", { reason });
   void shutdown("unhandledRejection", 1);
 });
