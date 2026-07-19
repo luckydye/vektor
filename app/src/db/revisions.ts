@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
+import { promisify } from "node:util";
+import {
+  brotliCompress,
+  brotliDecompressSync,
+  constants as zlibConstants,
+} from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
 import { notFoundResponse } from "#db/api.ts";
 import { appLogger } from "#observability/logger.ts";
@@ -28,9 +33,24 @@ export interface CreateRevisionOptions {
   parentRev?: number | null;
 }
 
-function compressHtml(html: string): Buffer {
+const brotliCompressAsync = promisify(brotliCompress);
+
+// Brotli's default quality (11) costs seconds of CPU on large canvases (tens of
+// MB). The synchronous zlib API ran that inline on Bun's single event-loop
+// thread, stalling every connected client for the duration of a save. Run the
+// compression on libuv's threadpool instead, and drop the quality for large
+// payloads so effort scales sub-linearly with document size.
+const LARGE_PAYLOAD_BYTES = 512 * 1024;
+
+async function compressHtml(html: string): Promise<Buffer> {
   const buffer = Buffer.from(html, "utf-8");
-  return brotliCompressSync(buffer);
+  const quality = buffer.byteLength > LARGE_PAYLOAD_BYTES ? 4 : 11;
+  return await brotliCompressAsync(buffer, {
+    params: {
+      [zlibConstants.BROTLI_PARAM_QUALITY]: quality,
+      [zlibConstants.BROTLI_PARAM_SIZE_HINT]: buffer.byteLength,
+    },
+  });
 }
 
 export function decompressHtml(compressed: Buffer): string {
@@ -124,7 +144,7 @@ export async function createRevision(
     status === null &&
     (lastRevision?.status ?? null) === null
   ) {
-    const compressed = compressHtml(html);
+    const compressed = await compressHtml(html);
     const updatedMessage = options.message ?? lastRevision?.message;
     await db
       .update(revision)
@@ -156,7 +176,7 @@ export async function createRevision(
   }
 
   const nextRev = lastRevision ? lastRevision.rev + 1 : 1;
-  const compressed = compressHtml(html);
+  const compressed = await compressHtml(html);
   const id = createId("revision");
   const now = new Date();
   const slug = await getDocumentSlug(spaceId, documentId);

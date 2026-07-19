@@ -11,7 +11,6 @@ import {
   watch,
 } from "vue";
 import * as Y from "yjs";
-import { api } from "#api/client.ts";
 import type { CollaborationPresenceProfile } from "#composeables/useCollaboration.ts";
 import { useDocument } from "#composeables/useDocument.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
@@ -1090,36 +1089,41 @@ function dispatchSaveStatus() {
   );
 }
 
+function markSaved() {
+  saveState.value = "saved";
+  dispatchSaveStatus();
+  if (saveStateTimer) clearTimeout(saveStateTimer);
+  saveStateTimer = setTimeout(() => {
+    if (saveState.value === "saved") {
+      saveState.value = "idle";
+      dispatchSaveStatus();
+    }
+  }, 1600);
+}
+
 async function manualSave() {
   if (!isReady) return;
+
+  // A collaborative canvas is persisted server-side straight from the Yjs
+  // update stream (see scheduleYRoomDraftPersist in the realtime websocket
+  // handler): every local edit is already broadcast to the server, which
+  // serializes and stores it. PUTing the whole serialized snapshot from the
+  // client would just duplicate that work — and a large canvas is tens of MB,
+  // so echoing it on every edit stalled the single-threaded server for every
+  // connected client. So for a document-backed canvas we only reflect save
+  // status locally and let the server own persistence.
+  if (props.documentId) {
+    markSaved();
+    return;
+  }
+
+  // Legacy path: a canvas not yet backed by a document has no Yjs room, so it
+  // still needs an explicit create.
   saveState.value = "saving";
   dispatchSaveStatus();
-
   try {
-    const content = serializeSnapshot();
-    if (props.documentId) {
-      const response = await fetch(
-        `/api/v1/spaces/${props.spaceId}/documents/${props.documentId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content }),
-        },
-      );
-      if (!response.ok) throw new Error(await response.text());
-    } else {
-      await saveDocument(content);
-    }
-
-    saveState.value = "saved";
-    dispatchSaveStatus();
-    if (saveStateTimer) clearTimeout(saveStateTimer);
-    saveStateTimer = setTimeout(() => {
-      if (saveState.value === "saved") {
-        saveState.value = "idle";
-        dispatchSaveStatus();
-      }
-    }, 1600);
+    await saveDocument(serializeSnapshot());
+    markSaved();
   } catch (err) {
     saveState.value = "idle";
     toast.error(err instanceof Error ? err.message : String(err));

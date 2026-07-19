@@ -1630,13 +1630,22 @@ export class ApiClient {
             throw new Error(`API request failed: ${response.status} ${error}`);
           }
 
-          return (await response.json()) as { document: DocumentWithProperties };
+          return (await response.json()) as {
+            document: Omit<DocumentWithProperties, "content">;
+          };
         },
         async (response) => {
-          await this.replaceDocumentReplica(spaceId, response.document);
+          // The PUT response intentionally omits `content` to avoid echoing the
+          // whole (potentially tens-of-MB) document back. We already hold the
+          // canonical content — it's exactly what we just sent — so merge it
+          // onto the server metadata when refreshing the replica.
+          await this.replaceDocumentReplica(spaceId, {
+            ...response.document,
+            content,
+          });
         },
       );
-      return response.document;
+      return { ...response.document, content };
     },
 
     /**

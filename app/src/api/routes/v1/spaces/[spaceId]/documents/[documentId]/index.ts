@@ -53,7 +53,11 @@ import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { getMimeType, toHtmlIfMarkdown } from "#utils/documentContent.ts";
 import { htmlToMarkdown } from "#utils/documentMarkdown.ts";
-import { readOnlyDocumentTypes, workflowRunDocumentType } from "#utils/documentTypes.ts";
+import {
+  contentIsHtml,
+  readOnlyDocumentTypes,
+  workflowRunDocumentType,
+} from "#utils/documentTypes.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { stripScriptTags } from "#utils/utils.ts";
 import { getLiveDocumentContent } from "#utils/yjsRooms.ts";
@@ -509,9 +513,15 @@ export const PUT: ApiRouteHandler = (context) =>
     }
 
     // TODO: propper sanitization needed, parse html doc and only use allowed elements and attributes.
-    const contentSanitized = stripScriptTags(content);
+    // Canvas/app documents store serialized JSON, not HTML — stripping script
+    // tags there is meaningless and, on tens-of-MB canvases, an expensive
+    // event-loop-blocking regex scan, so skip it for non-HTML types.
+    const contentSanitized = contentIsHtml(nextType) ? stripScriptTags(content) : content;
 
     let document = await updateDocument(spaceId, id, contentSanitized, userId, nextType);
+    if (!document) {
+      throw notFoundResponse("Document");
+    }
 
     if (userId) {
       const revision = await createRevision(spaceId, id, contentSanitized, userId, {
@@ -530,7 +540,13 @@ export const PUT: ApiRouteHandler = (context) =>
       }
     }
 
-    return jsonResponse({ document });
+    // Omit `content` from the response. Echoing the (potentially tens-of-MB)
+    // document back doubles the serialization cost of every save and blocks the
+    // event loop while `JSON.stringify` runs. The client already holds the
+    // content it just sent, so it only needs the canonical metadata (revs,
+    // timestamps) to reconcile its optimistic state.
+    const { content: _omittedContent, ...documentMetadata } = document;
+    return jsonResponse({ document: documentMetadata });
   }, "Failed to update document");
 
 export const PATCH: ApiRouteHandler = (context) =>
