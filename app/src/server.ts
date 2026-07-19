@@ -12,6 +12,11 @@ import {
   stopEmailNotificationWorker,
 } from "./notifications/worker.ts";
 import { appLogger } from "./observability/logger.ts";
+import {
+  METRICS_CONTENT_TYPE,
+  recordHttpRequest,
+  renderPrometheusMetrics,
+} from "./observability/metrics.ts";
 import { startTracing } from "./observability/trace.ts";
 import { attachRealtimeWebSocketServer } from "./realtime/websocket.ts";
 import {
@@ -46,6 +51,7 @@ app.use("*", async (c, next) => {
   const res = c.env.outgoing;
   const startTime = Date.now();
   req.time = new Date(startTime).toString();
+  recordHttpRequest();
   appLogger.info("HTTP request", {
     method: req.method,
     host: c.req.header("host") ?? req.headers.host,
@@ -86,6 +92,12 @@ app.use("*", async (c, next) => {
 
   await next();
 });
+
+// Operational metrics in Prometheus exposition format. Kept outside the API
+// router so it is reachable even in API-only deployments and without auth.
+app.get("/metrics", (c) =>
+  c.body(renderPrometheusMetrics(), 200, { "Content-Type": METRICS_CONTENT_TYPE }),
+);
 
 function buildHeaders(req: IncomingMessage): Headers {
   const headers = new Headers();

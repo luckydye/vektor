@@ -6,6 +6,10 @@ import { verifyDocumentRole, verifySpaceRole } from "#db/api.ts";
 import { subscribeToSyncEvents } from "#db/ws.ts";
 import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import { appLogger } from "#observability/logger.ts";
+import {
+  decrementWebSocketConnections,
+  incrementWebSocketConnections,
+} from "#observability/metrics.ts";
 import { tracedSync } from "#observability/trace.ts";
 import {
   isDocumentRealtimeTopic,
@@ -293,6 +297,8 @@ export function attachRealtimeWebSocketServer(server: Server): RealtimeWebSocket
     }
 
     websocketServer.handleUpgrade(request, socket, head, (websocket) => {
+      incrementWebSocketConnections();
+      websocket.once("close", decrementWebSocketConnections);
       void handleRealtimeWebSocket(websocket, request, match[1]);
     });
   });
