@@ -53,8 +53,7 @@ function asActiveSpace(
   record: SpaceIndexRecord | undefined,
 ): ActiveSpaceIndexRecord | null {
   if (
-    !record ||
-    record.status !== "active" ||
+    record?.status !== "active" ||
     !record.spaceId ||
     !record.name ||
     !record.slug ||
@@ -604,7 +603,7 @@ export async function reconcileLocalSpaceIndex(): Promise<void> {
   for (const indexed of indexedDatabases) {
     if (!indexed.spaceId) continue;
     const filePath = getDatabaseFilePath(indexed.databaseUrl);
-    if (!filePath || !filePath.startsWith(`${spacesDirectory}${path.sep}`)) continue;
+    if (!filePath?.startsWith(`${spacesDirectory}${path.sep}`)) continue;
     if (!discoveredPaths.has(path.resolve(filePath))) {
       await markSpaceDeleted(indexed.spaceId);
     }

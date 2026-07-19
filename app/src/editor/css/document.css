@@ -1,10 +1,9 @@
-@reference "../../styles/index.css";
-
 @import "./tables.css";
 @import "./lists.css";
 @import "./layout.css";
 @import "./tiptap.css";
 
+@reference "../../styles/index.css";
 
 /* Resets */
 

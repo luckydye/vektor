@@ -1,25 +1,25 @@
 import { ref } from "vue";
 import * as Y from "yjs";
 import { penToolIcon } from "#assets/icons.ts";
-import type { TranslationKey } from "#utils/lang.ts";
 import {
   buildFreehandStroke,
   createFreehandStrokeBuilder,
-  drawRetainedFreehandSelection,
   drawFreehandStroke,
+  drawRetainedFreehandSelection,
   drawSnapGuides,
-  fillFreehandStrokeMask,
   type FreehandPoint,
   type FreehandStroke,
   type FreehandStrokeBuilder,
   type FreehandStrokeOptions,
   type FreehandStrokeStyle,
+  fillFreehandStrokeMask,
   type RetainedFreehandSelectionGroup,
+  retainFreehandOutlines,
   type ScreenSize,
   type SnapGuide,
   type WorldTransform,
-  retainFreehandOutlines,
-} from "../viewport/index.ts";
+} from "#canvas/viewport/index.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 import type {
   CanvasPointerGestureSample,
   CanvasStroke,
@@ -1097,10 +1097,7 @@ export class CanvasInkRenderer {
     return true;
   }
 
-  #retainFallbackCache(
-    previousCache: StaticInkRasterCache | null,
-    color: string,
-  ) {
+  #retainFallbackCache(previousCache: StaticInkRasterCache | null, color: string) {
     if (!previousCache) return;
     const existingFallback = this.#fallbackCache;
     const keepExisting =
@@ -1451,11 +1448,7 @@ export class CanvasSelectionRenderer {
     );
     const intermediateRefreshReady =
       performance.now() - this.#lastBuildAt >= buildCooldown;
-    if (
-      deferRefresh &&
-      cache?.selection !== selection &&
-      !intermediateRefreshReady
-    ) {
+    if (deferRefresh && cache?.selection !== selection && !intermediateRefreshReady) {
       this.#draw(context, dpr, screen, transform);
       return;
     }

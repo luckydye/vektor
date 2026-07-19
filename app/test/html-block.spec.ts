@@ -13,7 +13,8 @@ describe("HTML block parsing", () => {
       {
         type: "htmlBlock",
         attrs: {
-          "data-html": '<section class="dashboard" style="color: red"><p>Dashboard</p></section>',
+          "data-html":
+            '<section class="dashboard" style="color: red"><p>Dashboard</p></section>',
         },
       },
     ]);
@@ -34,10 +35,7 @@ describe("HTML block parsing", () => {
   });
 
   it("does not hoist unknown markup nested inside a list item", () => {
-    const json = generateJSON(
-      "<ul><li><div>nested</div></li></ul>",
-      contentExtensions(),
-    );
+    const json = generateJSON("<ul><li><div>nested</div></li></ul>", contentExtensions());
 
     expect(JSON.stringify(json)).not.toContain("htmlBlock");
   });
@@ -54,7 +52,8 @@ describe("HTML block parsing", () => {
   });
 
   it("round-trips table markup without parsing it as document content", () => {
-    const source = '<table><tbody><tr><td style="text-align:right">117</td></tr></tbody></table>';
+    const source =
+      '<table><tbody><tr><td style="text-align:right">117</td></tr></tbody></table>';
     const serialized = generateHTML(
       {
         type: "doc",

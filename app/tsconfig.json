@@ -9,7 +9,7 @@
     "test",
     "generated",
     "generated/**",
-    "src/viewport/vector-tile.ts"
+    "src/canvas/viewport/vector-tile.ts"
   ],
   "compilerOptions": {
     "jsx": "preserve",

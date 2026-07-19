@@ -9,9 +9,9 @@ import { extensions } from "#utils/extensions.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
-  homeIcon,
   commandPaletteIcon,
   extensionIcon,
+  homeIcon,
   searchIcon,
   settingsIcon,
 } from "~/src/assets/icons.ts";

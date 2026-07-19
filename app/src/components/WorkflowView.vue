@@ -10,10 +10,10 @@ import { downloadExcelRows, parseCsvRows } from "#utils/excelExport.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
-  downloadIcon,
   chevronLeftThinIcon,
   chevronRightSmallIcon,
   documentIcon,
+  downloadIcon,
   fileAttachmentIcon,
   spinnerIcon,
 } from "~/src/assets/icons.ts";
@@ -680,10 +680,7 @@ const statusBadgeClass: Record<string, string> = {
                 :href="outputDocumentHref"
                 class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-neutral-200 bg-white dark:bg-neutral-100 hover:border-sky-300 hover:bg-sky-50 dark:hover:border-neutral-300 dark:hover:bg-neutral-200 transition-colors text-size-medium font-medium text-neutral-800"
               >
-                <div
-                  class="svg-icon w-4 h-4 text-neutral-400"
-                  v-html="documentIcon"
-                />
+                <div class="svg-icon w-4 h-4 text-neutral-400" v-html="documentIcon" />
                 {{ outputDocumentTitle ?? "Open document" }}
               </a>
 

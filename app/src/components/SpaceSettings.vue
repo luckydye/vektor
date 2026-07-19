@@ -78,10 +78,7 @@
                     <div
                       class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 rounded-lg"
                     >
-                      <div
-                        class="svg-icon w-4 h-4 text-white"
-                        v-html="editEntryIcon"
-                      />
+                      <div class="svg-icon w-4 h-4 text-white" v-html="editEntryIcon" />
                     </div>
                   </label>
                   <ButtonSecondary

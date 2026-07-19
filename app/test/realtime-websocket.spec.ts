@@ -59,7 +59,7 @@ function connectWebSocket(baseUrl: string, spaceId: string): Promise<SocketFrame
   const waitForFrame = (type: WsMsgType, timeoutMs = 5_000): Promise<Uint8Array> => {
     const existingIndex = frames.findIndex((frame) => frame.type === type);
     if (existingIndex >= 0) {
-      return Promise.resolve(frames.splice(existingIndex, 1)[0]!.payload);
+      return Promise.resolve(frames.splice(existingIndex, 1)[0]?.payload);
     }
 
     return new Promise((resolve, reject) => {

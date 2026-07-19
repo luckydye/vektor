@@ -12,14 +12,14 @@ import { propertyValueIncludes, propertyValueToText } from "#utils/documentPrope
 import { currentLang, t } from "#utils/lang.ts";
 import { getTextColor, spacePath } from "#utils/utils.ts";
 import {
+  addIcon,
   categoryIcon,
   chevronRightThinIcon,
-  documentIcon,
   contextMenuMoreIcon,
+  deleteEntryIcon,
+  documentIcon,
   dragDotsIcon,
   editEntryIcon,
-  addIcon,
-  deleteEntryIcon,
 } from "~/src/assets/icons.ts";
 import Dialog from "./Dialog.vue";
 import DocumentTreeItem from "./DocumentTreeItem.vue";
@@ -610,11 +610,7 @@ defineExpose({ isEditMode, toggleEditMode });
                   :title="t('New document in this category')"
                   @click.stop
                 >
-                  <div
-                    class="svg-icon w-3.5 h-3.5"
-                    aria-hidden="true"
-                    v-html="addIcon"
-                  />
+                  <div class="svg-icon w-3.5 h-3.5" aria-hidden="true" v-html="addIcon" />
                   <span class="sr-only">{{ t("New document in this category") }}</span>
                 </a>
                 <button

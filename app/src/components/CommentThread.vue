@@ -232,6 +232,7 @@ watch(
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(document-mention),
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(a[href*="/doc/"]) {
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
@@ -245,6 +246,7 @@ watch(
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(document-mention:hover),
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .comment-markdown :deep(a[href*="/doc/"]:hover) {
   background: var(--color-primary-50);
   border-color: var(--color-primary-200);

@@ -84,7 +84,7 @@ Only routes with `menuItem` defined appear in the navigation. The `icon` field i
 Your frontend entry must export `activate` and optionally `deactivate` functions:
 
 ```ts
-import type { ExtensionContext } from "@wiki/app/src/utils/extensions";
+import type { ExtensionContext } from "@vektorapp/app/src/utils/extensions";
 
 export function activate(ctx: ExtensionContext): void {
   // Set up your extension here
@@ -363,7 +363,7 @@ const isHost = clientId === Math.min(...connectedClientIds);
 ### Actions Only
 
 ```ts
-import type { ExtensionContext } from "@wiki/app/src/utils/extensions";
+import type { ExtensionContext } from "@vektorapp/app/src/utils/extensions";
 
 export function activate({ actions, api, spaceId, getActiveEditor, collaboration }: ExtensionContext): void {
   actions.register("word-count", {
@@ -424,7 +424,7 @@ export function deactivate(): void {
 
 ```ts
 // src/view.ts - separate entry for views
-import type { ExtensionContext } from "@wiki/app/src/utils/extensions";
+import type { ExtensionContext } from "@vektorapp/app/src/utils/extensions";
 
 export function activate({ views, api, spaceId }: ExtensionContext): void {
   views.register("analytics", async (container) => {

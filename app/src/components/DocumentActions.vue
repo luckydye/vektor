@@ -439,7 +439,10 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div id="document-actions" class="flex gap-4xs items-start flex-none pointer-events-auto">
+  <div
+    id="document-actions"
+    class="flex gap-4xs items-start flex-none pointer-events-auto"
+  >
     <div class="flex-1 mr-3">
       <Contributors v-if="documentId" :documentId="documentId" />
     </div>

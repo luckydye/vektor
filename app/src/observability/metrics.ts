@@ -77,9 +77,7 @@ export function decrementWebSocketConnections(): void {
 
 const MONITOR_INTERVAL_MS = 500;
 const MONITOR_WINDOW_SECONDS = 60;
-const MONITOR_SAMPLES = Math.ceil(
-  (MONITOR_WINDOW_SECONDS * 1000) / MONITOR_INTERVAL_MS,
-);
+const MONITOR_SAMPLES = Math.ceil((MONITOR_WINDOW_SECONDS * 1000) / MONITOR_INTERVAL_MS);
 
 let eventLoopDelayLastMs = 0;
 

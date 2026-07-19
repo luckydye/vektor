@@ -2,11 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
-import {
-  cancelIcon,
-  playCircleFilledIcon,
-  spinnerIcon,
-} from "~/src/assets/icons.ts";
+import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{
   documentId: string;
@@ -91,11 +87,7 @@ onUnmounted(() => {
     :disabled="starting"
     @click="startRun"
   >
-    <div
-      v-if="starting"
-      class="svg-icon w-3.5 h-3.5 animate-spin"
-      v-html="spinnerIcon"
-    />
+    <div v-if="starting" class="svg-icon w-3.5 h-3.5 animate-spin" v-html="spinnerIcon" />
     <div v-else class="svg-icon w-3.5 h-3.5" v-html="playCircleFilledIcon" />
     {{ starting ? "Starting…" : "Run Workflow" }}
   </button>

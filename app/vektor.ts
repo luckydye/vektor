@@ -229,14 +229,14 @@ async function main(): Promise<void> {
         return;
       }
 
-      for (const [nodeId, node] of Object.entries(result.nodes)) {
-        process.stdout.write(
-          `${nodeId}: ${node.status}${node.error ? ` — ${node.error}` : ""}\n`,
-        );
+      // Logs already streamed to stderr while polling; summarise the outcome.
+      if (result.error) {
+        process.stderr.write(`Error: ${result.error}\n`);
       }
-      if (result.output) {
-        process.stdout.write(`Output: ${JSON.stringify(result.output, null, 2)}\n`);
+      if (result.resultArtifact) {
+        process.stdout.write(`Result: ${result.resultArtifact.url}\n`);
       }
+      process.stdout.write(`Status: ${result.status}\n`);
       if (result.status === "failed") process.exit(1);
       return;
     }

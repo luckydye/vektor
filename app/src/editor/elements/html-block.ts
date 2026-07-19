@@ -41,7 +41,8 @@ if (typeof customElements !== "undefined" && !customElements.get("html-block")) 
 
         const container = document.createElement("div");
         container.innerHTML = stripScriptTags(htmlString);
-        container.contentEditable = this.getAttribute("contenteditable") === "true" ? "true" : "false";
+        container.contentEditable =
+          this.getAttribute("contenteditable") === "true" ? "true" : "false";
         container.addEventListener("input", () => {
           const html = container.innerHTML;
           this.dispatchEvent(new CustomEvent("change", { detail: html }));

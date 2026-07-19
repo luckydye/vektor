@@ -3,10 +3,10 @@ import { computed, ref } from "vue";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useQuery } from "#composeables/query.ts";
 import {
-  dateIcon,
-  chevronRightThinIcon,
-  cancelIcon,
   addIcon,
+  cancelIcon,
+  chevronRightThinIcon,
+  dateIcon,
 } from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/calendar";
 import "@atrium-ui/elements/popover";

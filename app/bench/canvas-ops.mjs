@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { heapStats } from "bun:jsc";
 /**
  * Micro-benchmark of the server-side canvas Yjs operations on a real (large)
  * canvas document, to find which op dominates CPU/memory on the collaboration
@@ -12,12 +13,12 @@
  *   bun --cpu-prof-md --heap-prof bench/canvas-ops.mjs
  */
 import { Database } from "bun:sqlite";
-import { heapStats } from "bun:jsc";
 import { bench, run } from "mitata";
 import * as Y from "yjs";
 import { parseCanvasContent, seedCanvasDoc } from "#utils/canvasYjs.ts";
 
-const DB_PATH = process.env.BENCH_DB ?? "data/spaces/8624ada5-822e-479a-8202-f7a656e9d8ee.db";
+const DB_PATH =
+  process.env.BENCH_DB ?? "data/spaces/8624ada5-822e-479a-8202-f7a656e9d8ee.db";
 const DOC_ID = process.env.BENCH_DOC ?? "doc_5bdef611-6543-4de0-b6c2-531400849e07";
 
 function canvasSnapshotFromDoc(doc) {
@@ -26,7 +27,11 @@ function canvasSnapshotFromDoc(doc) {
       id,
       ...(map instanceof Y.Map ? map.toJSON() : {}),
     }));
-  return { version: 1, shapes: collect("canvas.shapes"), strokes: collect("canvas.strokes") };
+  return {
+    version: 1,
+    shapes: collect("canvas.shapes"),
+    strokes: collect("canvas.strokes"),
+  };
 }
 
 const mb = (b) => (b / 1048576).toFixed(1);
@@ -51,7 +56,9 @@ console.log(`\ncontent = ${mb(content.length)}MB (${content.length} bytes)`);
 heap("baseline");
 
 const parsed = time("parseCanvasContent", () => parseCanvasContent(content));
-console.log(`  parsed: shapes=${parsed.shapes?.length ?? "?"} strokes=${parsed.strokes?.length ?? "?"}`);
+console.log(
+  `  parsed: shapes=${parsed.shapes?.length ?? "?"} strokes=${parsed.strokes?.length ?? "?"}`,
+);
 
 const ydoc = new Y.Doc();
 time("seedCanvasDoc (build Yjs doc)", () => seedCanvasDoc(ydoc, parsed));
@@ -70,7 +77,9 @@ console.log(
 );
 
 time("encodeStateAsUpdate (once)", () => Y.encodeStateAsUpdate(ydoc));
-time("canvasSnapshotFromDoc+stringify (once)", () => JSON.stringify(canvasSnapshotFromDoc(ydoc)));
+time("canvasSnapshotFromDoc+stringify (once)", () =>
+  JSON.stringify(canvasSnapshotFromDoc(ydoc)),
+);
 heap("after ops");
 
 bench("encodeStateAsUpdate", () => {

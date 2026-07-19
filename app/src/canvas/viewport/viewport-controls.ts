@@ -180,7 +180,9 @@ export function createViewportControls({
     }
     if (starts.size !== 2) return;
 
-    const startedAt = Math.min(...Array.from(starts.values(), (start) => start.timeStamp));
+    const startedAt = Math.min(
+      ...Array.from(starts.values(), (start) => start.timeStamp),
+    );
     const latestStartedAt = Math.max(
       ...Array.from(starts.values(), (start) => start.timeStamp),
     );

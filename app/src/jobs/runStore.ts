@@ -160,7 +160,7 @@ function nullableProperty(value: string | null): string {
 }
 
 function deserializeRun(
-  runId: string,
+  _runId: string,
   doc: DocumentWithProperties,
 ): RunState | undefined {
   if (doc.type !== workflowRunDocumentType || !doc.parentId) return undefined;

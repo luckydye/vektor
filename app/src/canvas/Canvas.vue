@@ -20,6 +20,7 @@ import type { CanvasPresenceState } from "#editor/collaboration.ts";
 import {
   copyIcon,
   cutIcon,
+  deleteElementIcon,
   fitViewToElementsIcon,
   lockElementIcon,
   pasteIcon,
@@ -27,7 +28,6 @@ import {
   redoIcon,
   selectToolIcon,
   shapesToolIcon,
-  deleteElementIcon,
   undoIcon,
   unlockElementIcon,
   uploadFileIcon,
@@ -36,12 +36,12 @@ import {
   activeDrawStrokeMode,
   activeShapeId,
   type CanvasElementContext,
-  type CanvasShapeLibraryItem,
   type CanvasSelectionSnapshot,
+  type CanvasShapeLibraryItem,
   cloneFreehandPoint,
+  createCanvasExtensionManager,
   createCanvasInkRenderer,
   createCanvasSelectionRenderer,
-  createCanvasExtensionManager,
   createStrokeMap,
   DRAW_STROKE_MODES,
   FREEHAND_STYLE,
@@ -88,6 +88,7 @@ import "#editor/elements/rich-text-editor.ts";
 import "#editor/elements/toolbar.ts";
 import "@atrium-ui/elements/popover";
 import { useToast } from "#composeables/useToast.ts";
+import { getAvatarColor } from "#utils/avatarColor.ts";
 import {
   CANVAS_CLIPBOARD_MIME,
   type CanvasClipboard,
@@ -97,7 +98,6 @@ import {
   documentClipboardToCanvasShapes,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
-import { getAvatarColor } from "#utils/avatarColor.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
@@ -1015,11 +1015,7 @@ function syncStrokesFromY() {
   // additions arrive with no commit in flight — patch the cache incrementally
   // instead of rebuilding the whole ink raster from every stroke (which made
   // each incoming stroke O(total strokes), collapsing sync on dense canvases).
-  if (
-    additiveOnly &&
-    addedStrokes.length > 0 &&
-    !inkRenderer.isCommittingCacheUpdate
-  ) {
+  if (additiveOnly && addedStrokes.length > 0 && !inkRenderer.isCommittingCacheUpdate) {
     inkRenderer.commitAddedStrokes(addedStrokes, () => {
       strokes.value = next;
       renderInk();
@@ -3575,11 +3571,7 @@ onUnmounted(() => {
     }"
   >
     <div v-if="hasToolProperties" class="canvas-properties-bar">
-      <div
-        v-if="hasToolProperties"
-        class="canvas-tool-properties"
-        @pointerdown.stop
-      >
+      <div v-if="hasToolProperties" class="canvas-tool-properties" @pointerdown.stop>
         <span
           v-if="activeTool === 'draw'"
           class="canvas-draw-modes"
@@ -3751,11 +3743,7 @@ onUnmounted(() => {
         :disabled="!canUndo"
         @click="undo"
       >
-        <div
-          class="svg-icon canvas-tool-icon"
-          aria-hidden="true"
-          v-html="undoIcon"
-        />
+        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="undoIcon" />
       </button>
       <button
         type="button"
@@ -3765,11 +3753,7 @@ onUnmounted(() => {
         :disabled="!canRedo"
         @click="redo"
       >
-        <div
-          class="svg-icon canvas-tool-icon"
-          aria-hidden="true"
-          v-html="redoIcon"
-        />
+        <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="redoIcon" />
       </button>
       <span class="canvas-divider"></span>
       <button
@@ -4019,7 +4003,11 @@ onUnmounted(() => {
             :aria-label="t('Lock')"
             @click="lockSelectedElements(); contextMenuPos = null"
           >
-            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="lockElementIcon" />
+            <div
+              class="svg-icon canvas-tool-icon"
+              aria-hidden="true"
+              v-html="lockElementIcon"
+            />
           </button>
           <span class="canvas-divider"></span>
           <button
@@ -4036,11 +4024,7 @@ onUnmounted(() => {
             :aria-label="t('Cut')"
             @click="cutSelectionToClipboard(); contextMenuPos = null"
           >
-            <div
-              class="svg-icon canvas-tool-icon"
-              aria-hidden="true"
-              v-html="cutIcon"
-            />
+            <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="cutIcon" />
           </button>
           <span class="canvas-divider"></span>
         </template>
@@ -4050,11 +4034,7 @@ onUnmounted(() => {
           :aria-label="t('Paste')"
           @click="pasteFromContextMenu"
         >
-          <div
-            class="svg-icon canvas-tool-icon"
-            aria-hidden="true"
-            v-html="pasteIcon"
-          />
+          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="pasteIcon" />
         </button>
         <button
           type="button"
@@ -4062,7 +4042,11 @@ onUnmounted(() => {
           :aria-label="t('Upload file')"
           @click="uploadFromContextMenu"
         >
-          <div class="svg-icon canvas-tool-icon" aria-hidden="true" v-html="uploadFileIcon" />
+          <div
+            class="svg-icon canvas-tool-icon"
+            aria-hidden="true"
+            v-html="uploadFileIcon"
+          />
         </button>
         <template v-if="selectedShapeIds.size > 0 || selectedStrokeIds.size > 0">
           <span class="canvas-divider"></span>

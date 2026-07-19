@@ -36,9 +36,9 @@ const avatarStyles = `
     box-sizing: border-box;
     overflow: hidden;
     flex: none;
-    border: 1px solid var(--color-neutral-100, #f5f5f5);
+    border: 1px solid var(--color-neutral-800);
     border-radius: 9999px;
-    background: var(--color-neutral-200, #e5e5e5);
+    background: var(--color-neutral-100);
   }
 
   .avatar-image {
@@ -47,7 +47,6 @@ const avatarStyles = `
     height: 100%;
     object-fit: cover;
   }
-
 `;
 
 function getAvatarSize(value: string | number | null): number {

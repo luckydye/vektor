@@ -6,15 +6,15 @@
 import type { AuditLog } from "#api/client.ts";
 import { currentLang, type TranslationKey, t } from "#utils/lang.ts";
 import {
-  deleteEntryIcon,
+  addIcon,
   commentIcon,
+  deleteEntryIcon,
   documentIcon,
   editDocumentIcon,
   editEntryIcon,
   eyeIcon,
   infoIcon,
   lockElementIcon,
-  addIcon,
   publishIcon,
   refreshIcon,
   unlockElementIcon,

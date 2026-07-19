@@ -83,19 +83,21 @@ async function load() {
   if (!currentSpaceId.value || !props.documentId) return;
   isLoading.value = true;
   try {
-    const [docPerms, docTreePerms, spacePerms, members, categoryList] = await Promise.all([
-      api.permissions.list(currentSpaceId.value, "role", {
-        resourceType: "document",
-        resourceId: props.documentId,
-      }),
-      api.permissions.list(currentSpaceId.value, "role", {
-        resourceType: "document_tree",
-        resourceId: props.documentId,
-      }),
-      api.permissions.list(currentSpaceId.value, "role"),
-      api.spaceMembers.get(currentSpaceId.value),
-      api.categories.get(currentSpaceId.value),
-    ]);
+    const [docPerms, docTreePerms, spacePerms, members, categoryList] = await Promise.all(
+      [
+        api.permissions.list(currentSpaceId.value, "role", {
+          resourceType: "document",
+          resourceId: props.documentId,
+        }),
+        api.permissions.list(currentSpaceId.value, "role", {
+          resourceType: "document_tree",
+          resourceId: props.documentId,
+        }),
+        api.permissions.list(currentSpaceId.value, "role"),
+        api.spaceMembers.get(currentSpaceId.value),
+        api.categories.get(currentSpaceId.value),
+      ],
+    );
 
     categories.value = categoryList || [];
     if (!selectedCategoryId.value && categories.value.length > 0) {

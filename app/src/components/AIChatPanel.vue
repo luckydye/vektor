@@ -14,16 +14,16 @@ import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   activityIcon,
+  addIcon,
   agentChatIcon,
   confirmationIcon,
   copyIcon,
-  linkIcon,
+  deleteEntryIcon,
   editEntryIcon,
-  addIcon,
+  linkIcon,
   sendMessageIcon,
   stopIcon,
   thinkingIcon,
-  deleteEntryIcon,
 } from "~/src/assets/icons.ts";
 import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
 import type { ChatStreamEvent } from "./ai-chat/types.ts";
@@ -1052,34 +1052,34 @@ onUnmounted(() => {
                   <div class="svg-icon w-4 h-4 tool-message-icon" v-html="linkIcon" />
                 </div>
                 <div class="flex-1 min-w-0">
-                <button
-                  type="button"
-                  class="max-w-full text-left border tool-message-bg rounded-lg overflow-hidden cursor-pointer transition-colors hover:bg-neutral-100"
-                  :class="isToolMessageExpanded(message, index) ? 'w-full' : 'inline-block'"
-                  @click="toggleToolMessageExpanded(message, index)"
-                >
-                  <div
-                    class="px-3 py-1.5 tool-message-header text-[11px] flex items-center gap-1.5 min-w-0"
-                    :class="isToolMessageExpanded(message, index) ? 'border-b' : ''"
+                  <button
+                    type="button"
+                    class="max-w-full text-left border tool-message-bg rounded-lg overflow-hidden cursor-pointer transition-colors hover:bg-neutral-100"
+                    :class="isToolMessageExpanded(message, index) ? 'w-full' : 'inline-block'"
+                    @click="toggleToolMessageExpanded(message, index)"
                   >
-                    <span class="tool-message-label shrink-0">Used</span>
-                    <span class="font-semibold tool-message-name truncate">
-                      {{ message.toolName || 'Tool' }}
-                    </span>
-                    <span
-                      v-if="formatCollapsedToolInput(message)"
-                      class="min-w-0 flex-1 truncate text-neutral-500 font-normal"
+                    <div
+                      class="px-3 py-1.5 tool-message-header text-[11px] flex items-center gap-1.5 min-w-0"
+                      :class="isToolMessageExpanded(message, index) ? 'border-b' : ''"
                     >
-                      {{ formatCollapsedToolInput(message) }}
-                    </span>
-                  </div>
-                  <pre
-                    v-if="isToolMessageExpanded(message, index)"
-                    class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
-                    :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
-                >{{ formatToolPreview(message) }}</pre>
-                </button>
-              </div>
+                      <span class="tool-message-label shrink-0">Used</span>
+                      <span class="font-semibold tool-message-name truncate">
+                        {{ message.toolName || 'Tool' }}
+                      </span>
+                      <span
+                        v-if="formatCollapsedToolInput(message)"
+                        class="min-w-0 flex-1 truncate text-neutral-500 font-normal"
+                      >
+                        {{ formatCollapsedToolInput(message) }}
+                      </span>
+                    </div>
+                    <pre
+                      v-if="isToolMessageExpanded(message, index)"
+                      class="px-3.5 py-3 text-size-small leading-relaxed whitespace-pre-wrap overflow-x-auto transition-all"
+                      :class="message.isError ? 'text-red-700 tool-error-bg' : 'text-neutral-700'"
+                    >{{ formatToolPreview(message) }}</pre>
+                  </button>
+                </div>
               </div>
             </template>
             <div
@@ -1321,7 +1321,9 @@ details[open] .details-chevron {
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(document-mention),
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(a[href^="doc:"]),
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(a[href*="/doc/"]) {
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
@@ -1335,7 +1337,9 @@ details[open] .details-chevron {
 }
 /* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(document-mention:hover),
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(a[href^="doc:"]:hover),
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Vue scoped-style selector is handled by the Vue compiler. */
 .markdown-content :deep(a[href*="/doc/"]:hover) {
   background: var(--color-primary-50);
   border-color: var(--color-primary-200);

@@ -23,6 +23,9 @@
           }
         }
       },
+      "a11y": {
+        "noSvgWithoutTitle": "off"
+      },
       "nursery": {
         "useSortedClasses": {
           "level": "warn",
@@ -143,6 +146,8 @@
       "!**/.output",
       "!**/vendor",
       "!**/public",
+      "!**/assets/icons",
+      "!**/assets/avatars",
       "!**/dist"
     ]
   }

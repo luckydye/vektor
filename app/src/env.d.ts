@@ -1,7 +1,7 @@
 /// <reference path="../.astro/types.d.ts" />
 
 // Vue SFCs are only type-checked in isolation by editor tooling (Volar);
-// `tsgo` has no Vue plugin, so plain .ts files importing a .vue component
+// `tsc` has no Vue plugin, so plain .ts files importing a .vue component
 // need this ambient fallback to resolve the module at all.
 declare module "*.vue" {
   import type { DefineComponent } from "vue";

@@ -213,10 +213,7 @@ Actions.register("ui:toggle:palatte", {
         >
           <!-- Search input -->
           <div class="flex items-center gap-3 px-4 py-3 border-b border-neutral-100">
-            <div
-              class="svg-icon w-4 h-4 text-neutral flex-none"
-              v-html="searchIcon"
-            />
+            <div class="svg-icon w-4 h-4 text-neutral flex-none" v-html="searchIcon" />
             <input
               ref="searchInput"
               v-model="searchQuery"

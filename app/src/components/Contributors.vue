@@ -96,7 +96,11 @@ const remainingCount = computed(() => {
             class="block rounded-full transition-shadow duration-200"
             :class="{ 'ring-2 ring-green-500 ring-offset-1 ring-offset-background': collaborator.isPresent }"
           >
-            <vektor-avatar size="small" :user-id="collaborator.key" :user="collaborator.user" />
+            <vektor-avatar
+              size="small"
+              :user-id="collaborator.key"
+              :user="collaborator.user"
+            />
           </span>
         </span>
       </TransitionGroup>
@@ -138,7 +142,11 @@ const remainingCount = computed(() => {
               class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
             >
               <div class="relative">
-                <vektor-avatar size="small" :user-id="collaborator.key" :user="collaborator.user" />
+                <vektor-avatar
+                  size="small"
+                  :user-id="collaborator.key"
+                  :user="collaborator.user"
+                />
               </div>
               <span class="min-w-0 flex-1 text-interactive text-neutral-950 truncate">
                 {{ collaborator.user.name }}

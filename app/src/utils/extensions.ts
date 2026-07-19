@@ -37,7 +37,7 @@ export type { SuggestionItem, SuggestionProvider };
  */
 export type ViewRenderFn = (
   container: HTMLElement,
-) => void | (() => void) | Promise<void | (() => void)>;
+) => void | (() => void) | Promise<undefined | (() => void)>;
 
 export type VektorGlobal = Omit<ExtensionContext, "extensionId"> & {
   /** All loaded extensions in the current space */

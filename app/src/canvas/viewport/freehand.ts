@@ -308,8 +308,7 @@ function addVelocityWidths(
     }
     return Math.max(1, point.time - previous.time);
   };
-  const smoothingForElapsed = (dt: number) =>
-    Math.pow(smoothing, dt / referenceFrameMs);
+  const smoothingForElapsed = (dt: number) => smoothing ** (dt / referenceFrameMs);
 
   // When a point carries stylus pressure, width is driven by pressure directly.
   // Otherwise it is derived from pointer velocity (slower strokes are thicker).

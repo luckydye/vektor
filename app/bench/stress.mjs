@@ -17,11 +17,24 @@ const T = { Error: 3, YjsJoin: 4, YjsUpdate: 5, PresenceJoin: 6, PresenceUpdate:
 const enc = new TextEncoder();
 const t0 = Date.now();
 const log = (m) => console.log(`[+${((Date.now() - t0) / 1000).toFixed(1)}s] ${m}`);
-function frameJson(type, p) { const j = enc.encode(JSON.stringify(p)); const f = new Uint8Array(1 + j.length); f[0] = type; f.set(j, 1); return f; }
-function frameYjsJoin(id) { return frameJson(T.YjsJoin, { documentId: id }); }
+function frameJson(type, p) {
+  const j = enc.encode(JSON.stringify(p));
+  const f = new Uint8Array(1 + j.length);
+  f[0] = type;
+  f.set(j, 1);
+  return f;
+}
+function frameYjsJoin(id) {
+  return frameJson(T.YjsJoin, { documentId: id });
+}
 function frameYjsUpdate(id, update) {
-  const idb = enc.encode(id); const f = new Uint8Array(1 + 4 + idb.length + update.length);
-  f[0] = T.YjsUpdate; new DataView(f.buffer).setUint32(1, idb.length, false); f.set(idb, 5); f.set(update, 5 + idb.length); return f;
+  const idb = enc.encode(id);
+  const f = new Uint8Array(1 + 4 + idb.length + update.length);
+  f[0] = T.YjsUpdate;
+  new DataView(f.buffer).setUint32(1, idb.length, false);
+  f.set(idb, 5);
+  f.set(update, 5 + idb.length);
+  return f;
 }
 const url = `ws://${HOST}/events/${SPACE}`;
 let joins = 0;
@@ -32,34 +45,59 @@ function reconnector(i) {
   if (stopped) return;
   const ws = new WebSocket(url);
   ws.binaryType = "arraybuffer";
-  ws.onopen = () => { try { ws.send(frameYjsJoin(DOC)); joins++; } catch {} };
+  ws.onopen = () => {
+    try {
+      ws.send(frameYjsJoin(DOC));
+      joins++;
+    } catch {}
+  };
   ws.onmessage = () => {};
   ws.onerror = () => {};
   const closeAfter = 500 + Math.floor((i % 5) * 120);
-  setTimeout(() => { try { ws.close(); } catch {} ; setTimeout(() => reconnector(i), 100); }, closeAfter);
+  setTimeout(() => {
+    try {
+      ws.close();
+    } catch {}
+    setTimeout(() => reconnector(i), 100);
+  }, closeAfter);
 }
 
 // Draw/erase churn: keep a synced doc, add strokes and delete old ones.
 class Drawer {
   constructor(i) {
-    this.i = i; this.n = 0; this.ids = []; this.synced = false;
+    this.i = i;
+    this.n = 0;
+    this.ids = [];
+    this.synced = false;
     this.doc = new Y.Doc();
-    this.doc.on("update", (u, origin) => { if (origin !== "remote" && this.ws?.readyState === 1) this.ws.send(frameYjsUpdate(DOC, u)); });
+    this.doc.on("update", (u, origin) => {
+      if (origin !== "remote" && this.ws?.readyState === 1)
+        this.ws.send(frameYjsUpdate(DOC, u));
+    });
     this.connect();
   }
   connect() {
-    this.ws = new WebSocket(url); this.ws.binaryType = "arraybuffer";
-    this.ws.onopen = () => { this.ws.send(frameYjsJoin(DOC)); };
+    this.ws = new WebSocket(url);
+    this.ws.binaryType = "arraybuffer";
+    this.ws.onopen = () => {
+      this.ws.send(frameYjsJoin(DOC));
+    };
     this.ws.onmessage = (e) => {
       const u = new Uint8Array(e.data);
       if (u[0] === T.YjsUpdate) {
-        const p = u.subarray(1); const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
+        const p = u.subarray(1);
+        const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
         const idLen = dv.getUint32(0, false);
-        try { Y.applyUpdate(this.doc, p.subarray(4 + idLen), "remote"); this.synced = true; } catch {}
+        try {
+          Y.applyUpdate(this.doc, p.subarray(4 + idLen), "remote");
+          this.synced = true;
+        } catch {}
       }
     };
     this.ws.onerror = () => {};
-    this.ws.onclose = () => { if (!stopped) setTimeout(() => this.connect(), 300); };
+    this.ws.onclose = () => {
+      if (!stopped) setTimeout(() => this.connect(), 300);
+    };
   }
   tick() {
     if (!this.synced || this.ws.readyState !== 1) return;
@@ -67,14 +105,19 @@ class Drawer {
     const id = `stress-${this.i}-${this.n++}`;
     const pts = Array.from({ length: 60 }, (_, k) => ({ x: k, y: k, width: 2 }));
     this.doc.transact(() => {
-      const m = new Y.Map(); m.set("points", pts); m.set("style", { color: "#abcdef" }); m.set("updatedAt", Date.now());
+      const m = new Y.Map();
+      m.set("points", pts);
+      m.set("style", { color: "#abcdef" });
+      m.set("updatedAt", Date.now());
       strokes.set(id, m);
     });
     this.ids.push(id);
     // Erase an older stroke to create tombstones.
     if (this.ids.length > 5) {
       const old = this.ids.shift();
-      this.doc.transact(() => { strokes.delete(old); });
+      this.doc.transact(() => {
+        strokes.delete(old);
+      });
     }
   }
 }
@@ -82,12 +125,23 @@ class Drawer {
 log(`cfg reconnectors=${RECONNECTORS} drawers=${DRAWERS} seconds=${SECONDS}`);
 for (let i = 0; i < RECONNECTORS; i++) setTimeout(() => reconnector(i), i * 60);
 const drawers = Array.from({ length: DRAWERS }, (_, i) => new Drawer(i));
-const drawTimer = setInterval(() => { for (const d of drawers) d.tick(); }, 250);
-const statTimer = setInterval(() => log(`joins=${joins} strokesDrawn=${drawers.reduce((a, d) => a + d.n, 0)}`), 5000);
+const drawTimer = setInterval(() => {
+  for (const d of drawers) d.tick();
+}, 250);
+const statTimer = setInterval(
+  () => log(`joins=${joins} strokesDrawn=${drawers.reduce((a, d) => a + d.n, 0)}`),
+  5000,
+);
 
 setTimeout(() => {
-  stopped = true; clearInterval(drawTimer); clearInterval(statTimer);
+  stopped = true;
+  clearInterval(drawTimer);
+  clearInterval(statTimer);
   log(`DONE joins=${joins} strokesDrawn=${drawers.reduce((a, d) => a + d.n, 0)}`);
-  for (const d of drawers) { try { d.ws.close(); } catch {} }
+  for (const d of drawers) {
+    try {
+      d.ws.close();
+    } catch {}
+  }
   setTimeout(() => process.exit(0), 500);
 }, SECONDS * 1000);

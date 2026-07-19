@@ -8,10 +8,10 @@ import { propertyValueToScalar, propertyValueToText } from "#utils/documentPrope
 import { currentLang, t } from "#utils/lang.ts";
 import { formatDate, normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import {
-  dateIcon,
-  chevronDownIcon,
   activityIcon,
   cancelIcon,
+  chevronDownIcon,
+  dateIcon,
   documentIcon,
 } from "~/src/assets/icons.ts";
 

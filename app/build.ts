@@ -196,7 +196,7 @@ const result = await Bun.build({
   entrypoints: ["./vektor.ts"],
   compile: true,
   // @ts-expect-error — `outfile` is valid alongside `compile` at runtime (see
-  // Bun.build's own docs), but tsgo's bundled bun-types doesn't reflect it.
+  // Bun.build's own docs), but tsc's bundled bun-types doesn't reflect it.
   outfile: "./vektor",
   // lightningcss bundles a Rust-compiled native binary (../pkg) that bun
   // cannot resolve. It's pulled in transitively by Astro's SSR output but

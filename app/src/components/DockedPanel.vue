@@ -6,11 +6,7 @@ import {
 } from "#composeables/useDockedWindows.ts";
 import { useIsDesktop } from "#composeables/useIsDesktop.ts";
 import { getInsets, type Insets, onInsets } from "#utils/insets.ts";
-import {
-  cancelIcon,
-  dragDotsIcon,
-  resizeHandleIcon,
-} from "~/src/assets/icons.ts";
+import { cancelIcon, dragDotsIcon, resizeHandleIcon } from "~/src/assets/icons.ts";
 import Dialog from "./Dialog.vue";
 
 const props = defineProps<{

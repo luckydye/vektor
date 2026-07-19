@@ -1,9 +1,9 @@
-import type { TranslationKey } from "#utils/lang.ts";
 import type {
   FreehandPoint,
   FreehandStroke,
   FreehandStrokeStyle,
-} from "../viewport/index.ts";
+} from "#canvas/viewport/index.ts";
+import type { TranslationKey } from "#utils/lang.ts";
 
 // Extension and tool identifiers are deliberately open strings. The manager
 // validates registrations at runtime; adding an extension must not require

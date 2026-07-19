@@ -144,10 +144,14 @@ ul[data-type="taskList"] input[type="checkbox"]:checked::before {
   opacity: 1;
 }
 
-ul[data-type="taskList"] li[data-type="taskItem"] > label:hover > input[type="checkbox"]:checked {
+ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > label:hover
+  > input[type="checkbox"]:checked {
   border-color: var(--color-primary-700);
   background-color: var(--color-primary-700);
-  box-shadow: 0 0.125rem 0.375rem color-mix(in srgb, var(--color-primary-600) 35%, transparent);
+  box-shadow: 0 0.125rem 0.375rem
+    color-mix(in srgb, var(--color-primary-600) 35%, transparent);
 }
 
 ul[data-type="taskList"] input[type="checkbox"]:active {

@@ -77,7 +77,7 @@ export function deactivate(ctx: ExtensionContext): void {
 function createPackageJson(id: string): string {
   return JSON.stringify(
     {
-      name: `@wiki-ext/${id}`,
+      name: `@vektorapp-ext/${id}`,
       version: "1.0.0",
       type: "module",
       scripts: {

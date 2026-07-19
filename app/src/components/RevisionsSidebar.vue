@@ -10,8 +10,8 @@ import { t } from "#utils/lang.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   activityIcon,
-  copyIcon,
   contextMenuMoreIcon,
+  copyIcon,
   eyeIcon,
   pasteIcon,
   publishIcon,

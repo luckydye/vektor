@@ -1,5 +1,5 @@
 {
-  "name": "@wiki/app",
+  "name": "@vektorapp/app",
   "version": "0.0.26",
   "type": "module",
   "scripts": {

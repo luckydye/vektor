@@ -407,10 +407,7 @@ const batchArchive = async (ids: string[]) => {
       v-else-if="hasSearched && !isSearching && !searchError"
       class="text-center py-12"
     >
-      <div
-        class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300"
-        v-html="searchIcon"
-      />
+      <div class="svg-icon w-12 h-12 mx-auto mb-4 text-neutral-300" v-html="searchIcon" />
       <h3 class="text-size-large font-semibold text-neutral-800 mb-2">
         No results found
       </h3>
