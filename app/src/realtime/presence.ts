@@ -114,14 +114,17 @@ export class PresenceConnection {
   }
 
   private async update(update: PresenceUpdatePayload): Promise<void> {
-    try {
-      await verifyDocumentRole(this.spaceId, update.room, this.userId, "viewer");
-    } catch {
-      this.websocket.send(wsEncode(WsMsgType.Error, { message: "Forbidden" }));
+    const roomKey = `${this.spaceId}:${update.room}`;
+    // Presence access is verified once in join(); a connection may only update
+    // the presence entries it created. Re-running verifyDocumentRole here would
+    // issue several DB queries per presence frame (pointer-move rate), which is
+    // the dominant server cost under active collaboration. Gating on the joined
+    // set keeps it authorized without the per-frame lookup.
+    if (!this.joinedRooms.get(roomKey)?.has(update.clientId)) {
       return;
     }
 
-    const room = yRooms.get(`${this.spaceId}:${update.room}`);
+    const room = yRooms.get(roomKey);
     const existingPresence = room?.presences.get(update.clientId);
     if (!room || !existingPresence) {
       return;

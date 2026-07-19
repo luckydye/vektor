@@ -981,15 +981,26 @@ function syncShapesFromY() {
 
 function syncStrokesFromY() {
   const previous = new Map(strokes.value.map((stroke) => [stroke.id, stroke]));
-  strokes.value = [...yStrokes.entries()]
+  const addedStrokes: CanvasStroke[] = [];
+  let hasContentChange = false;
+  const next = [...yStrokes.entries()]
     .map(([id, value]) => {
       const existing = previous.get(id);
       const updatedAt = value.get("updatedAt");
-      return existing && existing.updatedAt === updatedAt
-        ? existing
-        : toStroke(id, value);
+      if (existing && existing.updatedAt === updatedAt) return existing;
+      const stroke = toStroke(id, value);
+      if (existing) hasContentChange = true;
+      else addedStrokes.push(stroke);
+      return stroke;
     })
     .sort((a, b) => a.updatedAt - b.updatedAt || a.id.localeCompare(b.id));
+
+  // Purely additive when no existing stroke changed and none were removed — the
+  // common collaboration case of a peer drawing new strokes. Edits, moves and
+  // deletions fall through to a full raster rebuild.
+  const additiveOnly =
+    !hasContentChange && next.length === previous.size + addedStrokes.length;
+
   let pruned = false;
   for (const id of selectedStrokeIds.value) {
     const source = yStrokes.get(id);
@@ -999,6 +1010,25 @@ function syncStrokesFromY() {
     }
   }
   if (pruned) selectedStrokeIds.value = new Set(selectedStrokeIds.value);
+
+  // A local draw already patched the cache with its stroke via
+  // commitAddedStroke, so re-patching here would double-paint it. Remote
+  // additions arrive with no commit in flight — patch the cache incrementally
+  // instead of rebuilding the whole ink raster from every stroke (which made
+  // each incoming stroke O(total strokes), collapsing sync on dense canvases).
+  if (
+    additiveOnly &&
+    addedStrokes.length > 0 &&
+    !inkRenderer.isCommittingCacheUpdate
+  ) {
+    inkRenderer.commitAddedStrokes(addedStrokes, () => {
+      strokes.value = next;
+      renderInk();
+    });
+    return;
+  }
+
+  strokes.value = next;
   renderInk();
 }
 

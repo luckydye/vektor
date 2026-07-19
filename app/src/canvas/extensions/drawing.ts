@@ -789,6 +789,29 @@ export class CanvasInkRenderer {
     this.#withCacheCommit(cacheUpdated, commit);
   }
 
+  /**
+   * Incrementally paints newly added strokes into the raster cache and adopts
+   * the updated stroke list inside `commit`, so a batch of additions (e.g.
+   * strokes streamed in from a collaborator) reuses the existing cache instead
+   * of forcing a full rebuild. Falls back to a rebuild if the cache can't be
+   * patched (missing/mismatched surface).
+   */
+  commitAddedStrokes(strokes: CanvasStroke[], commit: () => void) {
+    const cacheUpdated =
+      strokes.length > 0 &&
+      this.#updateCacheStrokes(strokes, { dx: 0, dy: 0 }, "source-over");
+    this.#withCacheCommit(cacheUpdated, commit);
+  }
+
+  /**
+   * True while a caller-driven cache commit is in flight. Lets the stroke sync
+   * detect that the cache was already patched by the initiator (a local draw)
+   * and avoid patching the same strokes twice.
+   */
+  get isCommittingCacheUpdate() {
+    return this.#committingCacheUpdate;
+  }
+
   commitStrokeTransform(commit: (state: Readonly<CanvasStrokeTransform>) => void) {
     const state = this.#strokeTransform;
     if (!state) return false;
