@@ -1,4 +1,5 @@
 import * as html5parser from "html5parser";
+import { appLogger } from "#observability/logger.ts";
 
 export interface ExtractedMention {
   email: string;
@@ -52,7 +53,7 @@ export function extractMentionsFromHtml(html: string): ExtractedMention[] {
       }
     });
   } catch (error) {
-    console.error("Failed to parse HTML for mentions:", error);
+    appLogger.error("Failed to parse HTML for mentions", { error });
   }
 
   return mentions;

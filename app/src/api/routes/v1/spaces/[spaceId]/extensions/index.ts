@@ -23,6 +23,7 @@ import {
 } from "#db/extensions.ts";
 import { getSpace } from "#db/spaces.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
+import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 /**
@@ -210,7 +211,7 @@ export const POST: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to upload extension",
       onError: (error) => {
-        console.error("Upload extension error:", error);
+        appLogger.error("Upload extension error", { error });
         return errorResponse("Failed to upload extension", 500);
       },
     },

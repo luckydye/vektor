@@ -7,6 +7,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { extractFile, getExtensionPackage } from "#db/extensions.ts";
+import { appLogger } from "#observability/logger.ts";
 import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/servedFiles.ts";
 
 const MIME_TYPES: Record<string, string> = {
@@ -62,9 +63,9 @@ export const GET: ApiRouteHandler = (context) =>
     try {
       fileData = extractFile(packageBuffer, assetPath);
     } catch (err) {
-      console.warn(
-        `Failed to extract extension asset '${assetPath}' for '${extensionId}':`,
-        err,
+      appLogger.warn(
+        `Failed to extract extension asset '${assetPath}' for '${extensionId}'`,
+        { error: err },
       );
       return notFoundResponse("Asset");
     }

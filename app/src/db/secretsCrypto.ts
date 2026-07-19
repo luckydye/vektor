@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { config } from "#config";
+import { appLogger } from "#observability/logger.ts";
 
 type EncryptedValue = {
   ciphertext: string;
@@ -36,7 +37,7 @@ function getEncryptionKey(): Buffer {
   // provision a dedicated VEKTOR_SECRETS_ENCRYPTION_KEY.
   if (!warnedAboutFallbackKey && config().NODE_ENV === "production") {
     warnedAboutFallbackKey = true;
-    console.warn(
+    appLogger.warn(
       "[secrets] VEKTOR_SECRETS_ENCRYPTION_KEY is not set; deriving the encryption " +
         "key from AUTH_SECRET. Set a dedicated 32-byte key in production.",
     );

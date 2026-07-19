@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
+import { appLogger } from "#observability/logger.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
@@ -57,7 +58,7 @@ async function updateDocumentEmbeddingBestEffort(
   try {
     await updateDocumentEmbedding(spaceId, documentId);
   } catch (error) {
-    console.warn("Failed to update document embedding", {
+    appLogger.warn("Failed to update document embedding", {
       error,
       spaceId,
       documentId,
@@ -1050,7 +1051,7 @@ async function countMentionsForUser(
 
     return count;
   } catch (error) {
-    console.error("Failed to count mentions:", error);
+    appLogger.error("Failed to count mentions", { error });
     return 0;
   }
 }

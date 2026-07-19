@@ -15,6 +15,7 @@ import { updateDocumentEmbedding } from "#db/search.ts";
 import { extractFileTextFromBuffer } from "#files/extractText.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { isSafeUploadIdPart } from "#files/uploads.ts";
+import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 const MAX_FILE_SIZE = 1280 * 1024 * 1024; // 1.25GB
@@ -37,7 +38,7 @@ export const GET: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to list uploads",
       onError: (error) => {
-        console.error("List uploads error:", error);
+        appLogger.error("List uploads error", { error });
         return errorResponse("Failed to list uploads", 500);
       },
     },
@@ -119,7 +120,7 @@ export const POST: ApiRouteHandler = (context) =>
       if (documentId) {
         // Re-index the parent document (reads from file table, no FS scan)
         updateDocumentEmbedding(spaceId, documentId).catch((err) => {
-          console.warn("Failed to re-index document after upload:", err);
+          appLogger.warn("Failed to re-index document after upload", { error: err });
         });
       }
 
@@ -128,7 +129,7 @@ export const POST: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to upload file",
       onError: (error) => {
-        console.error("Upload file error:", error);
+        appLogger.error("Upload file error", { error });
         return errorResponse("Failed to upload file", 500);
       },
     },

@@ -18,6 +18,7 @@ import {
   isOAuthIntegrationProvider,
 } from "#integrations/oauthProviders.ts";
 import { appendQueryParams, normalizeRedirectPath } from "#integrations/oauthUtils.ts";
+import { appLogger } from "#observability/logger.ts";
 
 function redirectToPath(path: string): Response {
   return Response.redirect(path, 302);
@@ -138,7 +139,7 @@ export const GET: ApiRouteHandler = async (context) => {
       statePayload.redirectTo,
     );
   } catch (error) {
-    console.error("OAuth integration callback error:", error);
+    appLogger.error("OAuth integration callback error", { error });
     const message = error instanceof Error ? error.message : "OAuth callback failed";
     return redirectWithResult({
       integration: providerParam,

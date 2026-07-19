@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable } from "node:stream";
+import { appLogger } from "#observability/logger.ts";
 
 import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
 import { getNativeImage } from "./native.ts";
@@ -143,7 +144,9 @@ export async function applyTransform(
     });
     return Buffer.from(out);
   } catch (e) {
-    console.error("[transforms] native transform failed — serving original", e);
+    appLogger.error("[transforms] native transform failed — serving original", {
+      error: e,
+    });
     return null;
   }
 }
@@ -234,7 +237,7 @@ export async function serveTransformed(
     await mkdir(dirname(cachePath), { recursive: true });
     await writeFile(cachePath, buffer);
   } catch (err) {
-    console.error("Failed to write transform cache", { cachePath, err });
+    appLogger.error("Failed to write transform cache", { cachePath, error: err });
   }
 
   return new Response(new Uint8Array(buffer), {

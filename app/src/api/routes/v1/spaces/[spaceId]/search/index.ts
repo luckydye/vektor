@@ -7,6 +7,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { type PropertyFilter, searchDocuments } from "#db/search.ts";
+import { appLogger } from "#observability/logger.ts";
 import { authenticateSpaceAccess } from "#utils/auth.ts";
 
 export const GET: ApiRouteHandler = (context) =>
@@ -81,7 +82,7 @@ export const GET: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to search documents",
       onError: (error) => {
-        console.error(error);
+        appLogger.error("Search request failed", { error });
         return errorResponse("Failed to search documents", 500);
       },
     },

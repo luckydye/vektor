@@ -10,6 +10,7 @@ import { file as fileTable } from "#db/schema/space.ts";
 import { getFileStorage } from "#files/storage.ts";
 import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
+import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
 import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
 
@@ -167,7 +168,7 @@ export const GET: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to serve file",
       onError: (error) => {
-        console.error("File serve error:", error);
+        appLogger.error("File serve error", { error });
         return new Response("Failed to serve file", { status: 500 });
       },
     },
@@ -195,7 +196,7 @@ export const DELETE: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to delete file",
       onError: (error) => {
-        console.error("File delete error:", error);
+        appLogger.error("File delete error", { error });
         return new Response("Failed to delete file", { status: 500 });
       },
     },

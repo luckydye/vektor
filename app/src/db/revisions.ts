@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { and, desc, eq } from "drizzle-orm";
 import { notFoundResponse } from "#db/api.ts";
+import { appLogger } from "#observability/logger.ts";
 import { createAuditLog } from "./auditLogs.ts";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
@@ -37,7 +38,7 @@ export function decompressHtml(compressed: Buffer): string {
     const decompressed = brotliDecompressSync(compressed);
     return decompressed.toString("utf-8");
   } catch (error) {
-    console.error("Failed to decompress HTML:", error);
+    appLogger.error("Failed to decompress HTML", { error });
     throw new Error("Failed to decompress revision content");
   }
 }
@@ -262,10 +263,9 @@ export async function getRevisionContent(
   try {
     return decompressHtml(revisionRecord.snapshot);
   } catch (error) {
-    console.error(
-      `Failed to decompress revision ${rev} for document ${documentId}:`,
+    appLogger.error(`Failed to decompress revision ${rev} for document ${documentId}`, {
       error,
-    );
+    });
     return null;
   }
 }

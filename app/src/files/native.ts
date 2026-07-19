@@ -1,4 +1,5 @@
 import type * as NativeImage from "#native/image/generated/index.d.ts";
+import { appLogger } from "#observability/logger.ts";
 import { getNativeAddon } from "#utils/nativeAddon.ts";
 
 export type NativeAddon = typeof NativeImage;
@@ -22,7 +23,9 @@ export async function getNativeImage(): Promise<NativeAddon | null> {
     _addon = await addonPromise;
   } catch (e) {
     addonPromise = undefined;
-    console.warn("[native] image addon unavailable — image transforms disabled", e);
+    appLogger.warn("[native] image addon unavailable — image transforms disabled", {
+      error: e,
+    });
     _addon = null;
   }
   return _addon;

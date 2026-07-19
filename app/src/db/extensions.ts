@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { config } from "#config";
 import { getLocalExtension, getLocalExtensionPackage } from "#jobs/localJobs.ts";
+import { appLogger } from "#observability/logger.ts";
 import {
   type ExtensionManifest,
   type ExtensionRoute,
@@ -308,9 +309,9 @@ export function safeExtractManifest(
     return { manifest: extractManifest(zipBuffer) };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid extension package";
-    console.warn(
-      `Skipping invalid extension manifest${extensionIdForLog ? ` for '${extensionIdForLog}'` : ""}:`,
-      err,
+    appLogger.warn(
+      `Skipping invalid extension manifest${extensionIdForLog ? ` for '${extensionIdForLog}'` : ""}`,
+      { error: err },
     );
     return { manifest: null, error: message };
   }

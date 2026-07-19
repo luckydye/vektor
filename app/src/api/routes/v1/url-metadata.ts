@@ -9,6 +9,7 @@ import {
 } from "#db/api.ts";
 import { getDocumentBySlug } from "#db/documents.ts";
 import { getSpaceBySlug } from "#db/spaces.ts";
+import { appLogger } from "#observability/logger.ts";
 import { createVektorDocumentAddress } from "#utils/documentAddress.ts";
 import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
@@ -566,7 +567,7 @@ export const GET: ApiRouteHandler = (context) =>
     {
       fallbackMessage: "Failed to fetch link preview",
       onError: (error) => {
-        console.error("Link preview fetch error:", error);
+        appLogger.error("Link preview fetch error", { error });
         return errorResponse("Failed to fetch link preview", 500);
       },
     },
