@@ -9,8 +9,13 @@ import {
   watch,
 } from "vue";
 import * as Y from "yjs";
+import { getAvatarColor } from "#utils/avatarColor.ts";
 import type { PresenceEnvelope, PresenceUser } from "#utils/realtime.ts";
 import { joinPresenceRoom, joinYjsRoom } from "#utils/sync.ts";
+import {
+  CANVAS_CURSOR_COLOR_CHANGE_EVENT,
+  readCanvasCursorColorOverride,
+} from "#utils/userPreferences.ts";
 import { useUserProfile } from "./useUserProfile.ts";
 
 export type CollaborationPresenceProfile<TState> = {
@@ -19,13 +24,13 @@ export type CollaborationPresenceProfile<TState> = {
   state: TState | null;
 };
 
-function getPresenceColor(seed: string) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
+/**
+ * The local user's presence color: the explicit cursor-color preference when
+ * set, otherwise the automatic avatar-derived color. Shared by canvas and
+ * editor presence so a user shows up in one consistent color everywhere.
+ */
+function presenceColor(user: { email?: string | null; id: string }): string {
+  return readCanvasCursorColorOverride() ?? getAvatarColor(user.email || user.id);
 }
 
 export type CollaborationSession<TPresenceState = unknown> = ReturnType<
@@ -224,7 +229,7 @@ export function useCollaboration<TPresenceState>(options: {
                 name: localUser.name,
                 email: localUser.email,
                 image: localUser.image,
-                color: getPresenceColor(localUser.id),
+                color: presenceColor(localUser),
               },
               state: localPresenceState.value,
             } satisfies CollaborationPresenceProfile<TPresenceState>,
@@ -281,7 +286,7 @@ export function useCollaboration<TPresenceState>(options: {
         name: user.value.name,
         email: user.value.email,
         image: user.value.image,
-        color: getPresenceColor(user.value.id),
+        color: presenceColor(user.value),
       },
       (event) => {
         if (event.type === "presence-snapshot") {
@@ -327,15 +332,33 @@ export function useCollaboration<TPresenceState>(options: {
     leave();
   });
 
+  // The presence `user` (and its color) is only sent on join, so re-announce
+  // when the cursor-color preference changes to broadcast the new color to
+  // peers in both editor and canvas rooms.
+  function handleCursorColorPreferenceChange() {
+    syncRoomPresenceProfiles();
+    if (!presenceHandle) return;
+    clearPresence();
+    void setupPresence();
+  }
+
   if (typeof window !== "undefined") {
     window.addEventListener("pagehide", clearPresence);
     window.addEventListener("beforeunload", clearPresence);
+    window.addEventListener(
+      CANVAS_CURSOR_COLOR_CHANGE_EVENT,
+      handleCursorColorPreferenceChange,
+    );
   }
 
   onUnmounted(() => {
     if (typeof window !== "undefined") {
       window.removeEventListener("pagehide", clearPresence);
       window.removeEventListener("beforeunload", clearPresence);
+      window.removeEventListener(
+        CANVAS_CURSOR_COLOR_CHANGE_EVENT,
+        handleCursorColorPreferenceChange,
+      );
     }
     leave();
   });

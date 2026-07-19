@@ -8,10 +8,12 @@ import {
   type OAuthIntegrationProvider,
 } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { useUserProfile } from "#composeables/useUserProfile.ts";
+import { getAvatarColor } from "#utils/avatarColor.ts";
 import { t } from "#utils/lang.ts";
 import {
-  DEFAULT_CANVAS_CURSOR_COLOR,
-  readCanvasCursorColor,
+  clearCanvasCursorColor,
+  readCanvasCursorColorOverride,
   saveCanvasCursorColor,
 } from "#utils/userPreferences.ts";
 import { chevronLeftLargeIcon } from "~/src/assets/icons.ts";
@@ -21,7 +23,16 @@ type ThemePreference = "system" | "light" | "dark";
 
 const THEME_STORAGE_KEY = "user-theme-preference";
 const themePreference = ref<ThemePreference>("system");
-const cursorColor = ref<string>(DEFAULT_CANVAS_CURSOR_COLOR);
+const currentUser = useUserProfile();
+// `null` means "automatic" — the presence color follows the user's avatar.
+const cursorColorOverride = ref<string | null>(readCanvasCursorColorOverride());
+const automaticCursorColor = computed(() =>
+  getAvatarColor(currentUser.value?.email || currentUser.value?.id),
+);
+const cursorColor = computed(
+  () => cursorColorOverride.value ?? automaticCursorColor.value,
+);
+const isAutomaticCursorColor = computed(() => cursorColorOverride.value === null);
 const integrationProviders: OAuthIntegrationProvider[] = ["gitlab", "youtrack"];
 const integrationConnections = ref<OAuthIntegrationConnection[]>([]);
 const isLoadingIntegrations = ref(false);
@@ -78,7 +89,12 @@ const handleThemeChange = (event: Event) => {
 };
 
 const setCursorColor = (color: string) => {
-  cursorColor.value = saveCanvasCursorColor(color);
+  cursorColorOverride.value = saveCanvasCursorColor(color);
+};
+
+const resetCursorColor = () => {
+  clearCanvasCursorColor();
+  cursorColorOverride.value = null;
 };
 
 const loadIntegrations = async () => {
@@ -147,7 +163,7 @@ onMounted(() => {
   } else {
     setThemePreference("system");
   }
-  cursorColor.value = readCanvasCursorColor();
+  cursorColorOverride.value = readCanvasCursorColorOverride();
 
   const url = new URL(window.location.href);
   const integrationStatus = url.searchParams.get("status");
@@ -207,17 +223,27 @@ watch(
       </section>
 
       <section class="mt-4">
-        <p class="text-size-small font-medium text-neutral-700 mb-1.5">
-          {{ t("Canvas cursor color") }}
-        </p>
+        <div class="flex items-center justify-between mb-1.5">
+          <p class="text-size-small font-medium text-neutral-700">
+            {{ t("Cursor color") }}
+          </p>
+          <button
+            v-if="!isAutomaticCursorColor"
+            type="button"
+            @click="resetCursorColor"
+            class="text-label font-medium text-neutral-500 hover:text-neutral-900 transition-colors"
+          >
+            {{ t("Reset to automatic") }}
+          </button>
+        </div>
         <a-popover-trigger>
           <button
             slot="trigger"
             type="button"
             class="w-full px-2.5 py-1.5 rounded-md border border-neutral-100 bg-background text-size-medium text-foreground hover:bg-neutral-50 transition-colors flex items-center justify-between gap-3"
-            :aria-label="t('Canvas cursor color')"
+            :aria-label="t('Cursor color')"
           >
-            <span>{{ cursorColor }}</span>
+            <span>{{ isAutomaticCursorColor ? t("Automatic") : cursorColor }}</span>
             <span
               class="w-5 h-5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(15,23,42,0.2),0_1px_2px_rgba(15,23,42,0.18)]"
               :style="{ background: cursorColor }"

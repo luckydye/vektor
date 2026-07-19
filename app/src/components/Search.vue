@@ -212,21 +212,57 @@ const canSearch = computed(() => {
 
 // Batch operations
 const isBatchArchiving = ref(false);
+const batchError = ref<string | null>(null);
+
+// Files (search results backed by the file table) aren't documents and can't be
+// archived — their id is a file path, so the document endpoint would 404.
+const isFileId = (id: string) => {
+  const item = [...sortedResults.value, ...allDocuments.value].find((d) => d.id === id);
+  return item?.type === "file" || Boolean(item?.fileUrl);
+};
 
 const batchArchive = async (ids: string[]) => {
-  const count = ids.length;
+  batchError.value = null;
+
+  const archivableIds = ids.filter((id) => !isFileId(id));
+  const skippedFiles = ids.length - archivableIds.length;
+
+  if (archivableIds.length === 0) {
+    batchError.value =
+      skippedFiles > 0 ? "Files can't be archived." : "Nothing to archive.";
+    return;
+  }
+
+  const count = archivableIds.length;
   if (!confirm(`Archive ${count} document${count !== 1 ? "s" : ""}?`)) return;
 
   isBatchArchiving.value = true;
-  try {
-    for (const id of ids) {
+  const failed: string[] = [];
+  for (const id of archivableIds) {
+    try {
       await api.document.archive(props.spaceId, id);
+    } catch (error) {
+      console.error("Failed to archive document", id, error);
+      failed.push(id);
     }
-    window.location.reload();
-  } catch (error) {
-    console.error("Failed to archive documents", error);
-    isBatchArchiving.value = false;
   }
+
+  if (failed.length > 0) {
+    isBatchArchiving.value = false;
+    batchError.value = `Failed to archive ${failed.length} of ${count} document${
+      count !== 1 ? "s" : ""
+    }.`;
+    return;
+  }
+
+  if (skippedFiles > 0) {
+    // Everything archivable succeeded, but some selected files were skipped.
+    batchError.value = `Archived ${count} document${
+      count !== 1 ? "s" : ""
+    }; skipped ${skippedFiles} file${skippedFiles !== 1 ? "s" : ""}.`;
+  }
+
+  window.location.reload();
 };
 </script>
 
@@ -287,6 +323,15 @@ const batchArchive = async (ids: string[]) => {
     >
       <div class="svg-icon w-5 h-5 shrink-0" v-html="alertCircleIcon" />
       {{ searchError.message ?? "Search failed" }}
+    </div>
+
+    <!-- Batch action feedback -->
+    <div
+      v-if="batchError"
+      class="flex items-center gap-3 p-4 mb-6 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-size-medium"
+    >
+      <div class="svg-icon w-5 h-5 shrink-0" v-html="alertCircleIcon" />
+      {{ batchError }}
     </div>
 
     <!-- Browse mode: grouped document list -->

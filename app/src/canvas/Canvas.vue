@@ -98,11 +98,12 @@ import {
   documentClipboardToCanvasShapes,
   serializeCanvasClipboard,
 } from "#utils/clipboard.ts";
+import { getAvatarColor } from "#utils/avatarColor.ts";
 import { type TranslationKey, t } from "#utils/lang.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   CANVAS_CURSOR_COLOR_STORAGE_KEY,
-  readCanvasCursorColor,
+  readCanvasCursorColorOverride,
 } from "#utils/userPreferences.ts";
 import {
   buildTransform,
@@ -272,7 +273,6 @@ const activeColors = reactive<Record<string, string>>(
   Object.fromEntries(colorPalettes.map((entry) => [entry.type, entry.palette[0]])),
 );
 const penColor = ref<string>(PEN_COLORS[0]);
-const cursorColor = ref<string>(readCanvasCursorColor());
 // Backdrop grid style, driven by the document's "gridtype" property. "grid"
 // draws ruled lines, "dots" a dot grid, and "clean" leaves the backdrop empty.
 type GridType = "grid" | "clean" | "dots";
@@ -288,6 +288,14 @@ const { document: documentData, saveDocument } = useDocument(props.documentId, "
 const { currentSpace } = useSpace();
 const currentUser = useUserProfile();
 const currentUserId = computed(() => currentUser.value?.id);
+// The explicit cursor-color preference overrides the automatic avatar color.
+// `null` means "automatic", so the presence color matches the user's avatar.
+const cursorColorOverride = ref<string | null>(readCanvasCursorColorOverride());
+const cursorColor = computed<string>(
+  () =>
+    cursorColorOverride.value ??
+    getAvatarColor(currentUser.value?.email || currentUser.value?.id),
+);
 const userCanEditCanvas = computed(() => canEdit(currentSpace.value?.userRole));
 // Singleton extension-owned editor session. The host only mounts the supplied
 // tag/props and invokes its finish callback.
@@ -390,7 +398,7 @@ const remoteCanvasSelections = computed(() =>
           cursorColor:
             state.cursorColor ||
             presence.user.color ||
-            getPresenceColor(presence.user.id),
+            getAvatarColor(presence.user.email || presence.user.id),
           itemId,
           bounds: shapeBounds(shape),
         },
@@ -407,7 +415,7 @@ const remoteCanvasStrokeSelections = computed(() =>
     color:
       presence.state?.cursorColor ||
       presence.user.color ||
-      getPresenceColor(presence.user.id),
+      getAvatarColor(presence.user.email || presence.user.id),
   })),
 );
 
@@ -771,15 +779,6 @@ function rectContains(outer: Rect, inner: Rect) {
     inner.x + inner.width <= outer.x + outer.width &&
     inner.y + inner.height <= outer.y + outer.height
   );
-}
-
-function getPresenceColor(seed: string) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return `hsl(${Math.abs(hash) % 360} 70% 55%)`;
 }
 
 function toNumber(value: unknown, fallback: number) {
@@ -1741,17 +1740,9 @@ function setSelectedStrokeColor(color: string) {
   });
 }
 
-function syncCursorColor(color = readCanvasCursorColor()) {
-  cursorColor.value = color;
+function syncCursorColor() {
+  cursorColorOverride.value = readCanvasCursorColorOverride();
   updatePresence();
-}
-
-function handleCursorColorPreferenceChange(event: Event) {
-  const color =
-    event instanceof CustomEvent && typeof event.detail?.color === "string"
-      ? event.detail.color
-      : readCanvasCursorColor();
-  syncCursorColor(color);
 }
 
 function handleStorageChange(event: StorageEvent) {
@@ -3493,10 +3484,7 @@ onMounted(() => {
   colorSchemeMedia.addEventListener("change", updateThemeMode);
 
   syncCursorColor();
-  window.addEventListener(
-    CANVAS_CURSOR_COLOR_CHANGE_EVENT,
-    handleCursorColorPreferenceChange,
-  );
+  window.addEventListener(CANVAS_CURSOR_COLOR_CHANGE_EVENT, syncCursorColor);
   window.addEventListener("storage", handleStorageChange);
 
   updatePresence();
@@ -3533,10 +3521,7 @@ onUnmounted(() => {
   window.removeEventListener("copy", handleCopy);
   window.removeEventListener("cut", handleCut);
   window.removeEventListener("paste", handlePaste);
-  window.removeEventListener(
-    CANVAS_CURSOR_COLOR_CHANGE_EVENT,
-    handleCursorColorPreferenceChange,
-  );
+  window.removeEventListener(CANVAS_CURSOR_COLOR_CHANGE_EVENT, syncCursorColor);
   window.removeEventListener("storage", handleStorageChange);
   if (saveTimer) clearTimeout(saveTimer);
   if (saveStateTimer) clearTimeout(saveStateTimer);
@@ -3962,7 +3947,7 @@ onUnmounted(() => {
           '--presence-color':
             presence.state!.cursorColor ||
             presence.user.color ||
-            getPresenceColor(presence.user.id),
+            getAvatarColor(presence.user.email || presence.user.id),
         }"
       >
         <div
@@ -5103,7 +5088,10 @@ onUnmounted(() => {
 .canvas-presence-cursor {
   position: absolute;
   left: -3px;
-  top: -2px;
+  top: -3px;
+  /* select-tool.svg points up-right; flip it so the remote cursor points
+     up-left with its tip on the pointer, matching the local canvas cursor. */
+  transform: scaleX(-1);
   filter: drop-shadow(0 1px 1.5px rgba(15, 23, 42, 0.3));
 }
 

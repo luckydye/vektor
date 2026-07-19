@@ -3,6 +3,7 @@ import type { EditorState } from "@tiptap/pm/state";
 import { getRelativeSelection } from "y-prosemirror";
 import * as Y from "yjs";
 import type { CanvasTool } from "#canvas/extensions/types.ts";
+import { getAvatarColor } from "#utils/avatarColor.ts";
 
 type ProsemirrorMapping = Map<Y.AbstractType<unknown>, unknown>;
 
@@ -42,21 +43,6 @@ export type YSyncState = {
   type: Y.XmlFragment;
   binding: { mapping: ProsemirrorMapping };
 };
-
-const PRESENCE_COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-  "#14b8a6",
-  "#06b6d4",
-  "#3b82f6",
-  "#6366f1",
-  "#8b5cf6",
-  "#d946ef",
-  "#ec4899",
-  "#f43f5e",
-];
 
 function isYSyncState(value: unknown): value is YSyncState {
   const state = value as Partial<YSyncState> | null | undefined;
@@ -123,19 +109,10 @@ export function currentEditorPresenceState(
   }
 }
 
-export function getPresenceColor(seed: string) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return PRESENCE_COLORS[Math.abs(hash) % PRESENCE_COLORS.length];
-}
-
 export function colorForPresenceProfile(profile: DocumentPresenceProfile) {
   if (profile.user.color && /^#[0-9a-f]{6}$/i.test(profile.user.color)) {
     return profile.user.color;
   }
 
-  return getPresenceColor(profile.user.id || profile.clientId);
+  return getAvatarColor(profile.user.id || profile.clientId);
 }
