@@ -7,6 +7,10 @@
  * directly by Prometheus/Grafana or read by hand during debugging.
  */
 
+import { eq, sql } from "drizzle-orm";
+import { getAuthDb } from "#db/connection.ts";
+import { spaceIndex, user } from "#db/schema/auth.ts";
+
 /** Rolling window, in seconds, used to compute the HTTP request rate. */
 const REQUEST_RATE_WINDOW_SECONDS = 60;
 
@@ -144,6 +148,30 @@ function rollingCpuUtilizationRatio(): number {
   return cpuMicros / 1000 / wallMs;
 }
 
+// ---------------------------------------------------------------------------
+// Tenancy counts
+//
+// Sourced from the auth database's index tables rather than in-memory state so
+// they stay accurate across restarts and multiple app instances. Only "active"
+// spaces are counted; provisioning/deleted index rows are excluded.
+// ---------------------------------------------------------------------------
+
+/** Number of active spaces registered in the space index. */
+async function activeSpaceCount(): Promise<number> {
+  const row = await getAuthDb()
+    .select({ total: sql<number>`count(*)` })
+    .from(spaceIndex)
+    .where(eq(spaceIndex.status, "active"))
+    .get();
+  return row?.total ?? 0;
+}
+
+/** Number of registered users. */
+async function userCount(): Promise<number> {
+  const row = await getAuthDb().select({ total: sql<number>`count(*)` }).from(user).get();
+  return row?.total ?? 0;
+}
+
 interface MetricLine {
   name: string;
   help: string;
@@ -151,9 +179,10 @@ interface MetricLine {
   value: number;
 }
 
-function collectMetrics(): MetricLine[] {
+async function collectMetrics(): Promise<MetricLine[]> {
   const memory = process.memoryUsage();
   const cpu = process.cpuUsage();
+  const [spaces, users] = await Promise.all([activeSpaceCount(), userCount()]);
 
   return [
     {
@@ -179,6 +208,18 @@ function collectMetrics(): MetricLine[] {
       help: "Currently open realtime WebSocket connections.",
       type: "gauge",
       value: activeWebSocketConnections,
+    },
+    {
+      name: "vektor_spaces_total",
+      help: "Number of active spaces.",
+      type: "gauge",
+      value: spaces,
+    },
+    {
+      name: "vektor_users_total",
+      help: "Number of registered users.",
+      type: "gauge",
+      value: users,
     },
     {
       name: "vektor_process_cpu_user_seconds_total",
@@ -253,9 +294,9 @@ function collectMetrics(): MetricLine[] {
 export const METRICS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 
 /** Renders the current metrics snapshot in Prometheus exposition format. */
-export function renderPrometheusMetrics(): string {
+export async function renderPrometheusMetrics(): Promise<string> {
   const lines: string[] = [];
-  for (const metric of collectMetrics()) {
+  for (const metric of await collectMetrics()) {
     lines.push(`# HELP ${metric.name} ${metric.help}`);
     lines.push(`# TYPE ${metric.name} ${metric.type}`);
     lines.push(`${metric.name} ${metric.value}`);

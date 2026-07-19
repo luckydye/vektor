@@ -146,8 +146,7 @@
       "!**/.output",
       "!**/vendor",
       "!**/public",
-      "!**/assets/icons",
-      "!**/assets/avatars",
+      "!**/assets/**/*",
       "!**/dist"
     ]
   }

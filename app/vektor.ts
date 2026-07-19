@@ -261,12 +261,17 @@ async function main(): Promise<void> {
     if (subcommand === "upload") {
       const url = resolveHost();
       const token = config().CLI_ACCESS_TOKEN;
+
+      if (!token) {
+        throw new Error("Access Token required");
+      }
+
       const space = await resolveSpaceId(url, token);
       await commandUpload(
         extensionId?.startsWith("--") ? undefined : extensionId,
         url,
         space,
-        token!,
+        token,
       );
       return;
     }

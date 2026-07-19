@@ -95,8 +95,8 @@ app.use("*", async (c, next) => {
 
 // Operational metrics in Prometheus exposition format. Kept outside the API
 // router so it is reachable even in API-only deployments and without auth.
-app.get("/metrics", (c) =>
-  c.body(renderPrometheusMetrics(), 200, { "Content-Type": METRICS_CONTENT_TYPE }),
+app.get("/metrics", async (c) =>
+  c.body(await renderPrometheusMetrics(), 200, { "Content-Type": METRICS_CONTENT_TYPE }),
 );
 
 function buildHeaders(req: IncomingMessage): Headers {
