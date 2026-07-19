@@ -10,9 +10,24 @@ const EVENT_LOOP_BLOCK_THRESHOLD_MS = 200;
 const GC_PAUSE_THRESHOLD_MS = 100;
 const SLOW_OP_THRESHOLD_MS = 100;
 
-function rssMB(): number {
-  return Math.round(process.memoryUsage().rss / 1048576);
+// `process.memoryUsage()` is surprisingly expensive at multi-GB RSS (it walks
+// the process memory maps), so calling it per traced op dominated CPU under
+// load. The lag monitor samples RSS once per tick with the cheap rss-only API
+// and caches it; per-op logs read the cached value instead of sampling.
+const sampleRss: () => number =
+  typeof process.memoryUsage.rss === "function"
+    ? () => process.memoryUsage.rss()
+    : () => process.memoryUsage().rss;
+
+let cachedRssMB = Math.round(sampleRss() / 1048576);
+function refreshRssMB(): number {
+  cachedRssMB = Math.round(sampleRss() / 1048576);
+  return cachedRssMB;
 }
+function rssMB(): number {
+  return cachedRssMB;
+}
+// Only computed at the (rare) moments we actually log a block/jump/gc pause.
 function heapMB(): number {
   return Math.round(process.memoryUsage().heapUsed / 1048576);
 }
@@ -30,20 +45,21 @@ export function startTracing(): void {
   started = true;
 
   let last = performance.now();
-  let lastRss = rssMB();
+  let lastRss = refreshRssMB();
   const timer = setInterval(() => {
     const now = performance.now();
     const lag = now - last - EVENT_LOOP_SAMPLE_MS;
+    // Refresh the cached RSS once per tick (cheap rss-only sample).
+    const rss = refreshRssMB();
     if (lag > EVENT_LOOP_BLOCK_THRESHOLD_MS) {
       appLogger.warn("[trace] event-loop blocked", {
         lagMs: Math.round(lag),
-        rssMB: rssMB(),
+        rssMB: rss,
         heapMB: heapMB(),
       });
     }
     // Surface large allocations (they drive the GC/paging stalls). Report a jump
     // even when the loop wasn't blocked, so we see growth leading into a freeze.
-    const rss = rssMB();
     if (rss - lastRss >= 150) {
       appLogger.warn("[trace] rss jump", {
         fromMB: lastRss,

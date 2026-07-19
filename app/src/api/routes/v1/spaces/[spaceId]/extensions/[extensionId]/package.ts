@@ -1,13 +1,13 @@
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { Feature } from "#db/acl.ts";
 import {
   notFoundResponse,
   requireParam,
   requireUser,
-  verifySpaceOwnership,
+  verifyFeatureAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getExtensionPackage } from "#db/extensions.ts";
-import { getSpace } from "#db/spaces.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/extensions/:extensionId/package
@@ -20,7 +20,7 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const extensionId = requireParam(context.var.params, "extensionId");
 
-    await verifySpaceOwnership(spaceId, user.id, getSpace);
+    await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
 
     const pkg = await getExtensionPackage(spaceId, extensionId);
     if (!pkg) {

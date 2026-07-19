@@ -1,4 +1,5 @@
 import type { ApiRouteHandler } from "#api/server/types.ts";
+import { Feature } from "#db/acl.ts";
 import {
   jsonResponse,
   notFoundResponse,
@@ -7,11 +8,10 @@ import {
   requireUser,
   successResponse,
   verifyExtensionAccess,
-  verifySpaceOwnership,
+  verifyFeatureAccess,
   withApiErrorHandling,
 } from "#db/api.ts";
 import { deleteExtension, getExtension, setExtensionEnabled } from "#db/extensions.ts";
-import { getSpace } from "#db/spaces.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 
 /**
@@ -62,7 +62,7 @@ export const PATCH: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const extensionId = requireParam(context.var.params, "extensionId");
 
-    await verifySpaceOwnership(spaceId, user.id, getSpace);
+    await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
 
     const body = await parseJsonBody<{ enabled?: unknown }>(context.req.raw);
     if (typeof body.enabled !== "boolean") {
@@ -102,8 +102,8 @@ export const DELETE: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const extensionId = requireParam(context.var.params, "extensionId");
 
-    // Only owners can delete extensions
-    await verifySpaceOwnership(spaceId, user.id, getSpace);
+    // Deleting an extension requires the space-wide manage_extensions capability
+    await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, user.id);
 
     const deleted = await deleteExtension(spaceId, extensionId);
     if (!deleted) {

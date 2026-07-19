@@ -9,7 +9,7 @@ import {
   forbiddenResponse,
   jsonResponse,
   requireParam,
-  verifySpaceOwnership,
+  verifyFeatureAccess,
   verifyTokenFeature,
   withApiErrorHandling,
 } from "#db/api.ts";
@@ -21,7 +21,6 @@ import {
   listExtensionsWithErrors,
   updateExtension,
 } from "#db/extensions.ts";
-import { getSpace } from "#db/spaces.ts";
 import { parseJobToken } from "#jobs/jobToken.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
@@ -152,7 +151,13 @@ export const POST: ApiRouteHandler = (context) =>
       } else {
         const auth = await authenticateRequest(context, spaceId);
         if (auth.type === "user") {
-          await verifySpaceOwnership(spaceId, auth.user.id, getSpace);
+          // Installing an extension runs its code in every member's browser, so
+          // it is gated on the space-wide `manage_extensions` capability rather
+          // than on being the space creator. The `owner` role holds this by
+          // default (see DEFAULT_FEATURES in acl.ts), which matches the
+          // client-side gate in usePermissions.ts — so a granted co-owner, not
+          // only the original creator, may upload.
+          await verifyFeatureAccess(spaceId, Feature.MANAGE_EXTENSIONS, auth.user.id);
           createdBy = auth.user.id;
         } else {
           // Tokens may install/update extensions only with the space-wide

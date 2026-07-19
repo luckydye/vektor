@@ -23,8 +23,6 @@ export interface YRoom {
   doc?: Y.Doc;
   clients: Set<WebSocket>;
   presences: Map<string, PresenceEnvelope>;
-  /** Hash of the last content persisted, to skip no-op writes without re-reading the DB. */
-  lastPersistedHash?: number;
   /** Timestamp (ms) of the last persist attempt, used to throttle serialize frequency. */
   lastPersistAt?: number;
 }
@@ -255,16 +253,6 @@ const PERSIST_DEBOUNCE_MS = 1000;
 // disconnects still flush via persistYRoomDraftBestEffort in the close handler.
 const MIN_PERSIST_INTERVAL_MS = 5000;
 
-/** FNV-1a 32-bit hash over a string in one pass (no large intermediate allocation). */
-function hashContent(content: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < content.length; i += 1) {
-    hash ^= content.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
 function serializeRoomContent(
   spaceId: string,
   documentId: string,
@@ -290,10 +278,11 @@ export async function persistYRoomDraft(key: string): Promise<void> {
 
   room.lastPersistAt = Date.now();
 
-  // Metadata only — serializing the room already yields the content to save, so
-  // we never need the stored content here (previously getDocument pulled the
-  // whole content column, tens of MB, on every 1s debounce tick). A cheap hash
-  // of the serialized content skips no-op writes without a DB read.
+  // Metadata only — serializing the live room already yields the content to
+  // save, so we never load the stored content here (previously getDocument
+  // pulled the whole content column, tens of MB, on every debounce tick).
+  // Persist only ever schedules after a real Yjs update and is throttled, so we
+  // just write; no dedup read/hash needed.
   const meta = await getDocument(ids.spaceId, ids.documentId);
   if (!meta) return;
 
@@ -304,15 +293,12 @@ export async function persistYRoomDraft(key: string): Promise<void> {
       stripScriptTags(serializeRoomContent(ids.spaceId, ids.documentId, doc, meta.type)),
     { documentId: ids.documentId, type: meta.type },
   );
-  const hash = hashContent(content);
-  if (room.lastPersistedHash === hash) return;
 
   await traced(
     "persist.write",
     () => updateDocument(ids.spaceId, ids.documentId, content, undefined, meta.type),
     { documentId: ids.documentId, bytes: content.length },
   );
-  room.lastPersistedHash = hash;
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
