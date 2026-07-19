@@ -10,7 +10,7 @@ import {
   hasPermission,
   ResourceType,
 } from "./acl.ts";
-import { getDocument } from "./documents.ts";
+import { documentExists } from "./documents.ts";
 import { getSpace } from "./spaces.ts";
 
 export function jsonResponse(data: unknown, status = 200): Response {
@@ -335,9 +335,10 @@ export async function verifyDocumentRole(
 ): Promise<void> {
   // Reject references to documents that do not exist before evaluating access,
   // mirroring verifySpaceRole. Otherwise no-auth mode (where hasPermission short
-  // -circuits to true) would authorize any documentId, real or not.
-  const doc = await getDocument(spaceId, documentId);
-  if (!doc) {
+  // -circuits to true) would authorize any documentId, real or not. Use an
+  // id-only existence check — loading the full document (with its content
+  // column) here cost tens of MB per auth call on large canvases.
+  if (!(await documentExists(spaceId, documentId))) {
     throw notFoundResponse("Document");
   }
 

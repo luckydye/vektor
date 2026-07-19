@@ -256,13 +256,20 @@ export async function updateDocumentEmbedding(
 ): Promise<void> {
   const db = await getSpaceDb(spaceId);
 
-  const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
+  // Check the type without loading `content` — canvases (which can be tens of
+  // MB) are never embedded, so pulling the content column here just to bail out
+  // wasted memory on every canvas save.
+  const meta = await db
+    .select({ type: document.type })
+    .from(document)
+    .where(eq(document.id, documentId))
+    .get();
 
-  if (!doc) {
+  if (!meta) {
     return;
   }
 
-  if (doc.type === "canvas") {
+  if (meta.type === "canvas") {
     await db
       .update(document)
       .set({
@@ -272,6 +279,12 @@ export async function updateDocumentEmbedding(
         searchUpdatedAt: null,
       })
       .where(eq(document.id, documentId));
+    return;
+  }
+
+  const doc = await db.select().from(document).where(eq(document.id, documentId)).get();
+
+  if (!doc) {
     return;
   }
 

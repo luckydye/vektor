@@ -24,10 +24,12 @@ import { createAuditLog } from "#db/auditLogs.ts";
 import { getSpaceDb } from "#db/db.ts";
 import {
   archiveDocument,
+  type DocumentMeta,
   deleteDocument,
   deleteDocumentProperty,
   getDocument,
   getDocumentBySlug,
+  getDocumentContent,
   InvalidDocumentParentError,
   restoreDocument,
   setDocumentParent,
@@ -338,26 +340,34 @@ export const GET: ApiRouteHandler = (context) =>
       );
     }
 
-    let document = await getDocument(spaceId, id);
-    if (!document) {
+    const meta = await getDocument(spaceId, id);
+    if (!meta) {
       throw notFoundResponse("Document");
     }
-    if (document.type === workflowRunDocumentType) {
+    if (meta.type === workflowRunDocumentType) {
       throw notFoundResponse("Document");
     }
 
+    // getDocument is metadata-only; this route returns the body, so load it
+    // explicitly (from the live room when there is one, else the stored column).
+    let document: DocumentMeta & { content: string };
     if (live) {
       document = {
-        ...document,
+        ...meta,
         content: getLiveDocumentContent(
           spaceId,
           id,
-          document.type,
-          document.content ?? "",
+          meta.type,
+          (await getDocumentContent(spaceId, id)) ?? "",
         ),
       };
-    } else if (!draft && document.publishedRev !== null) {
-      document = await resolvePublishedDocumentContent(spaceId, document);
+    } else if (!draft && meta.publishedRev !== null) {
+      document = await resolvePublishedDocumentContent(spaceId, {
+        ...meta,
+        content: (await getDocumentContent(spaceId, id)) ?? "",
+      });
+    } else {
+      document = { ...meta, content: (await getDocumentContent(spaceId, id)) ?? "" };
     }
 
     const accept = context.req.raw.headers.get("Accept") ?? "";

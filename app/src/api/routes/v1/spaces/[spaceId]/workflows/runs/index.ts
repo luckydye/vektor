@@ -10,7 +10,7 @@ import {
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getDocument } from "#db/documents.ts";
+import { getDocument, getDocumentContent } from "#db/documents.ts";
 import {
   createRun,
   ensureSpaceRecovered,
@@ -137,7 +137,7 @@ export const POST: ApiRouteHandler = (context) =>
       }
 
       // Always run the current draft — workflows are scripts, not versioned publications.
-      const code = doc.content;
+      const code = await getDocumentContent(spaceId, documentId);
 
       if (!code?.trim()) {
         return badRequestResponse("Workflow script is empty");

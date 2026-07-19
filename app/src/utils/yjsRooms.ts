@@ -5,9 +5,10 @@ import { Node } from "@tiptap/pm/model";
 import type { WebSocket } from "ws";
 import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
-import { getDocument, updateDocument } from "#db/documents.ts";
+import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
+import { traced, tracedSync } from "#observability/trace.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -22,6 +23,10 @@ export interface YRoom {
   doc?: Y.Doc;
   clients: Set<WebSocket>;
   presences: Map<string, PresenceEnvelope>;
+  /** Hash of the last content persisted, to skip no-op writes without re-reading the DB. */
+  lastPersistedHash?: number;
+  /** Timestamp (ms) of the last persist attempt, used to throttle serialize frequency. */
+  lastPersistAt?: number;
 }
 
 export const yRooms = new Map<string, YRoom>();
@@ -50,12 +55,19 @@ function loadCanvasYDoc(content: string): Y.Doc {
 }
 
 export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
-  const dbDoc = await getDocument(spaceId, documentId);
-  if (!dbDoc?.content) return new Y.Doc();
-  if (dbDoc.type === "canvas") return loadCanvasYDoc(dbDoc.content);
+  const meta = await getDocument(spaceId, documentId);
+  if (!meta) return new Y.Doc();
+  const content = await getDocumentContent(spaceId, documentId);
+  if (!content) return new Y.Doc();
+  if (meta.type === "canvas") {
+    return tracedSync("loadYDoc.canvas", () => loadCanvasYDoc(content), {
+      documentId,
+      bytes: content.length,
+    });
+  }
 
   const extensions = contentExtensions({ spaceId, documentId });
-  const json = generateJSON(dbDoc.content, extensions);
+  const json = generateJSON(content, extensions);
   const schema = getSchema(extensions);
   const pmDoc = Node.fromJSON(schema, json);
   return prosemirrorToYDoc(pmDoc, "default");
@@ -238,6 +250,20 @@ function broadcastToRoom(room: YRoom, frame: Uint8Array): void {
 
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const PERSIST_DEBOUNCE_MS = 1000;
+// Serializing a large canvas (tens of MB JSON.stringify) blocks the event loop
+// for ~100ms+, so cap how often it runs during sustained editing. Clean
+// disconnects still flush via persistYRoomDraftBestEffort in the close handler.
+const MIN_PERSIST_INTERVAL_MS = 5000;
+
+/** FNV-1a 32-bit hash over a string in one pass (no large intermediate allocation). */
+function hashContent(content: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < content.length; i += 1) {
+    hash ^= content.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
 
 function serializeRoomContent(
   spaceId: string,
@@ -262,15 +288,31 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   const room = yRooms.get(key);
   if (!room?.doc) return;
 
-  const dbDoc = await getDocument(ids.spaceId, ids.documentId);
-  if (!dbDoc) return;
+  room.lastPersistAt = Date.now();
 
-  const content = stripScriptTags(
-    serializeRoomContent(ids.spaceId, ids.documentId, room.doc, dbDoc.type),
+  // Metadata only — serializing the room already yields the content to save, so
+  // we never need the stored content here (previously getDocument pulled the
+  // whole content column, tens of MB, on every 1s debounce tick). A cheap hash
+  // of the serialized content skips no-op writes without a DB read.
+  const meta = await getDocument(ids.spaceId, ids.documentId);
+  if (!meta) return;
+
+  const doc = room.doc;
+  const content = tracedSync(
+    "persist.serialize",
+    () =>
+      stripScriptTags(serializeRoomContent(ids.spaceId, ids.documentId, doc, meta.type)),
+    { documentId: ids.documentId, type: meta.type },
   );
-  if (content === (dbDoc.content ?? "")) return;
+  const hash = hashContent(content);
+  if (room.lastPersistedHash === hash) return;
 
-  await updateDocument(ids.spaceId, ids.documentId, content, undefined, dbDoc.type);
+  await traced(
+    "persist.write",
+    () => updateDocument(ids.spaceId, ids.documentId, content, undefined, meta.type),
+    { documentId: ids.documentId, bytes: content.length },
+  );
+  room.lastPersistedHash = hash;
 }
 
 /** Persists a room from a fire-and-forget lifecycle hook without leaking a rejection. */
@@ -284,10 +326,18 @@ export function scheduleYRoomDraftPersist(key: string): void {
   const existing = persistTimers.get(key);
   if (existing) clearTimeout(existing);
 
+  // Debounce quick bursts, but never persist more than once per
+  // MIN_PERSIST_INTERVAL_MS — the serialize is the event-loop-blocking cost.
+  const room = yRooms.get(key);
+  const sinceLast = room?.lastPersistAt
+    ? Date.now() - room.lastPersistAt
+    : Number.POSITIVE_INFINITY;
+  const delay = Math.max(PERSIST_DEBOUNCE_MS, MIN_PERSIST_INTERVAL_MS - sinceLast);
+
   const timer = setTimeout(() => {
     persistTimers.delete(key);
     persistYRoomDraftBestEffort(key);
-  }, PERSIST_DEBOUNCE_MS);
+  }, delay);
   timer.unref?.();
   persistTimers.set(key, timer);
 }
@@ -489,7 +539,7 @@ export async function transformDocumentContent(
 
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
-    const persisted = dbDoc.content ?? "";
+    const persisted = (await getDocumentContent(spaceId, documentId)) ?? "";
     const base =
       dbDoc.type === "canvas" || isJsonContent(persisted)
         ? persisted

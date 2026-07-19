@@ -231,39 +231,84 @@ export async function createDocument(
   };
 }
 
+/** Document fields excluding the (potentially very large) `content` column. */
+export type DocumentMeta = Omit<DocumentWithProperties, "content">;
+
+/**
+ * Loads a document's metadata WITHOUT its `content` column. `content` can be
+ * tens of MB (large canvases), so the default read is metadata-only; callers
+ * that actually need the body call `getDocumentContent` separately. This keeps
+ * the hot paths (auth, save bookkeeping, listings) from pulling the whole
+ * column into memory.
+ */
 export async function getDocument(
   spaceId: string,
   id: string,
-): Promise<DocumentWithProperties | null> {
+): Promise<DocumentMeta | null> {
   const db = await getSpaceDb(spaceId);
-  const doc = await db.select().from(document).where(eq(document.id, id)).get();
+  const doc = await db
+    .select({
+      id: document.id,
+      slug: document.slug,
+      type: document.type,
+      currentRev: document.currentRev,
+      publishedRev: document.publishedRev,
+      parentId: document.parentId,
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+      createdBy: document.createdBy,
+      readonly: document.readonly,
+      archived: document.archived,
+    })
+    .from(document)
+    .where(eq(document.id, id))
+    .get();
 
   if (!doc) {
     return null;
   }
 
   const props = await db.select().from(property).where(eq(property.documentId, id)).all();
-
   const properties: Record<string, DocumentPropertyValue> = {};
   for (const prop of props) {
     properties[prop.key] = parseStoredPropertyValue(prop.value);
   }
 
-  return {
-    id: doc.id,
-    slug: doc.slug,
-    type: doc.type,
-    content: doc.content,
-    currentRev: doc.currentRev,
-    publishedRev: doc.publishedRev,
-    properties,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    createdBy: doc.createdBy,
-    parentId: doc.parentId || null,
-    readonly: doc.readonly,
-    archived: doc.archived,
-  };
+  return { ...doc, parentId: doc.parentId || null, properties };
+}
+
+/**
+ * Loads only a document's `content` column. Pair with `getDocument` when both
+ * metadata and body are needed.
+ */
+export async function getDocumentContent(
+  spaceId: string,
+  id: string,
+): Promise<string | null> {
+  const db = await getSpaceDb(spaceId);
+  const row = await db
+    .select({ content: document.content })
+    .from(document)
+    .where(eq(document.id, id))
+    .get();
+  return row?.content ?? null;
+}
+
+/**
+ * Existence check that selects only the id column. Auth checks
+ * (verifyDocumentRole) only need to know the document exists — using
+ * getDocument here would pull the entire `content` column (tens of MB for large
+ * canvases) into memory on every request, which saturated the server under
+ * presence/collaboration traffic.
+ */
+export async function documentExists(spaceId: string, id: string): Promise<boolean> {
+  const db = await getSpaceDb(spaceId);
+  const row = await db
+    .select({ id: document.id })
+    .from(document)
+    .where(eq(document.id, id))
+    .get();
+  return row != null;
 }
 
 export async function getDocumentBySlug(
@@ -313,6 +358,9 @@ export async function updateDocument(
   type?: string | null,
 ): Promise<DocumentWithProperties | null> {
   const db = await getSpaceDb(spaceId);
+  // getDocument is metadata-only — `existing.content` is never read here (the
+  // write uses the new `content`), so we avoid loading the old content (tens of
+  // MB on large canvases) every save.
   const existing = await getDocument(spaceId, id);
   if (!existing) {
     return null;
