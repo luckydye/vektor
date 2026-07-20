@@ -30,7 +30,7 @@ const handleClick = () => {
     @click="handleClick"
   >
     <div v-if="icon" v-html="icon" class="w-[18px] h-[18px] shrink-0" />
-    <span class="text-size-normal font-normal text-neutral-950 capitalize">
+    <span class="text-size-normal font-normal text-neutral-950 capitalize leading-[1rem]">
       {{ label }}
     </span>
   </button>

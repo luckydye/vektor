@@ -159,11 +159,31 @@ mark {
 .tiptap .ProseMirror,
 [part="content"] {
   overflow-wrap: break-word;
-  /* Preserve literal tabs and runs of spaces (and still wrap long lines) so a
-     Tab keypress renders as real indentation instead of collapsing to a single
-     space. ProseMirror is designed to run with pre-wrap. */
-  white-space: pre-wrap;
   tab-size: 4;
+}
+
+/* Preserve literal tabs and runs of spaces (and still wrap long lines) so a
+   Tab keypress renders as real indentation instead of collapsing to a single
+   space. ProseMirror is designed to run with pre-wrap, and it emits no
+   whitespace text nodes between top-level blocks, so the root can be pre-wrap. */
+.tiptap .ProseMirror {
+  white-space: pre-wrap;
+}
+
+/* Read mode is different: the serialized HTML joins top-level blocks with
+   newlines (see normalizeHtmlContent/toCleanHtml in utils/yjsRooms.ts). If the
+   container were pre-wrap, those inter-block newlines would render as line
+   boxes wedged between adjacent blocks and stop their vertical margins from
+   collapsing — so read mode showed larger gaps than the editor until
+   hydration. Keep the container at `normal` (whitespace-only text nodes between
+   blocks collapse away, restoring margin collapsing) and re-apply pre-wrap to
+   the text blocks themselves so tabs and space runs inside them survive. */
+[part="content"] {
+  white-space: normal;
+}
+
+[part="content"] :where(p, h1, h2, h3, h4, li, blockquote, pre, td, th) {
+  white-space: pre-wrap;
 }
 
 :host {

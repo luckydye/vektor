@@ -514,10 +514,10 @@ watchEffect(() => {
           </button>
           <a-popover class="group" placements="bottom-end">
             <div
-              class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100"
+              class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 mt-2"
             >
               <div
-                class="bg-background border border-neutral-100 rounded-lg p-[4px] flex flex-col gap-[4px] min-w-[220px]"
+                class="bg-background border border-neutral-100 rounded-lg p-[4px] flex flex-col gap-[4px] w-[220px]"
                 style="box-shadow: -2px 2px 24px 0px rgba(0, 0, 0, 0.1)"
               >
                 <button
