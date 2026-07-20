@@ -236,7 +236,7 @@ onUnmounted(() => {
       <button
         @click.stop="toggleCollapse"
         type="button"
-        class="hidden md:block absolute bottom-7.5 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
+        class="hidden md:block absolute bottom-7 -right-3 z-50 p-2 rounded-full bg-background hover:bg-neutral-100 transition-colors text-neutral-600 hover:text-neutral-900"
         :title="currentWidth === minWidth ? 'Expand sidebar' : 'Collapse sidebar'"
       >
         <Icon

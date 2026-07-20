@@ -4168,7 +4168,7 @@ onUnmounted(() => {
 
 .canvas-toolbar {
   position: absolute;
-  bottom: 16px;
+  bottom: 1.25rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
