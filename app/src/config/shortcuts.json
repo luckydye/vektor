@@ -1,9 +1,9 @@
 {
   "meta-shift-b": "ui:toggle:sidebar",
-  "meta-k": [
-    "ui:toggle:palatte",
-    "format:link"
-  ],
+  "meta-k": "ui:toggle:palatte",
+  "ctrl-k": "ui:toggle:palatte",
+  "meta-shift-k": "format:link",
+  "ctrl-shift-k": "format:link",
   "e": "document:edit",
   "escape": "document:cancel",
   "meta-l": "revisions:toggle",
@@ -42,6 +42,8 @@
   "ctrl-shift-digit8": "format:list:bullet",
   "meta-shift-digit9": "format:list:task",
   "ctrl-shift-digit9": "format:list:task",
+  "tab": "format:indent",
+  "shift-tab": "format:outdent",
 
   "meta-shift-l": "format:align:left",
   "ctrl-shift-l": "format:align:left",
@@ -57,7 +59,6 @@
   "shift-enter": "format:hardbreak",
   "ctrl-enter": "format:hardbreak",
 
-  "ctrl-k": "format:link",
   "meta-z": "format:undo",
   "ctrl-z": "format:undo",
   "meta-shift-z": "format:redo",

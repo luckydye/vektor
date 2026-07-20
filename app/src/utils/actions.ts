@@ -145,6 +145,13 @@ export class Actions {
    * Handle key event from key down and up event
    */
   static handleKey(event: KeyboardEvent, _keydown: boolean | undefined) {
+    // If the editor (or any closer handler) already consumed this key, don't
+    // also run a global shortcut for it. This lets a key be bound in both the
+    // editor keymap and shortcuts.json (e.g. Tab -> format:indent) — the editor
+    // handles the keystroke and preventDefault()s it, while the shortcut mapping
+    // still exists so the command palette can display the binding.
+    if (event.defaultPrevented) return;
+
     // The document editor's contenteditable lives inside a custom element's
     // shadow root, so document.activeElement resolves to the shadow host, not
     // the focused field. Descend through shadow roots to find the real one.

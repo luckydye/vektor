@@ -3,9 +3,11 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { html, render } from "lit-html";
 import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
+import { api } from "~/src/api/client.ts";
 import {
   addIcon,
   dateIcon,
+  documentIcon,
   extensionIcon,
   fileAttachmentIcon,
   fourColumnsIcon,
@@ -36,6 +38,34 @@ interface ContentItem {
 type ColumnLayoutCommandChain = {
   setColumnLayout(options: { columns: number }): { run(): boolean };
 };
+
+async function createDocumentAndInsertMention(editor: Editor, spaceId: string) {
+  const title = window.prompt("New document title:")?.trim();
+  if (!title) return;
+
+  const doc = await api.documents.post(spaceId, {
+    content: "<p></p>",
+    properties: { title },
+  });
+
+  // Match the href form produced by the @-mention suggestion popup for a
+  // navigable document reference: `/${spaceSlug}/doc/${id}`.
+  const spaceSlug = window.location.pathname.split("/").filter(Boolean)[0];
+  const href = spaceSlug ? `/${spaceSlug}/doc/${doc.id}` : null;
+  if (!href) return;
+
+  editor
+    .chain()
+    .focus()
+    .insertContent([
+      {
+        type: "documentMention",
+        attrs: { documentId: doc.id, label: title, href },
+      },
+      { type: "text", text: " " },
+    ])
+    .run();
+}
 
 function createContentItems(spaceId: string, documentId?: string): ContentItem[] {
   const items: ContentItem[] = [
@@ -119,6 +149,14 @@ function createContentItems(spaceId: string, documentId?: string): ContentItem[]
       icon: dateIcon,
       command: (editor) => {
         editor.chain().focus().insertDatePicker().run();
+      },
+    },
+    {
+      title: "New document",
+      description: "Create a new document and insert a link to it",
+      icon: documentIcon,
+      command: (editor) => {
+        void createDocumentAndInsertMention(editor, spaceId);
       },
     },
   ];

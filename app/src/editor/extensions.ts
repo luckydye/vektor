@@ -9,6 +9,13 @@ import {
 } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { cancelCount, editing } from "#composeables/useEditor.ts";
+import {
+  INDENT_STEP_EM,
+  INDENT_TYPES,
+  MAX_INDENT,
+  indentEditor,
+  outdentEditor,
+} from "#editor/indent.ts";
 import { Actions } from "#utils/actions.ts";
 import {
   canvasClipboardFromDataTransfer,
@@ -333,42 +340,12 @@ const BaseSelectionShortcuts = Extension.create({
   },
 });
 
-const INDENT_TYPES = ["paragraph", "heading"];
-const MAX_INDENT = 10;
-const INDENT_STEP_EM = 2;
-
-/**
- * Shift the indent level of every indentable block touched by the current
- * selection by `delta`, clamped to [0, MAX_INDENT]. Returns whether anything
- * changed (so keymaps can decide whether they handled the event).
- */
-function shiftBlockIndent(editor: Editor, delta: number): boolean {
-  const { state } = editor.view;
-  const { from, to } = state.selection;
-  const tr = state.tr;
-  let changed = false;
-
-  state.doc.nodesBetween(from, to, (node, pos) => {
-    if (!INDENT_TYPES.includes(node.type.name)) return;
-    const current = (node.attrs.indent as number) || 0;
-    const next = Math.min(Math.max(current + delta, 0), MAX_INDENT);
-    if (next !== current) {
-      tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: next });
-      changed = true;
-    }
-  });
-
-  if (changed) editor.view.dispatch(tr);
-  return changed;
-}
-
 /**
  * Adds a numeric `indent` attribute to block nodes (rendered as a left margin)
- * and wires up code-editor-style Tab / Shift-Tab:
- *  - inside a list  -> sink / lift the list item (unchanged behaviour)
- *  - inside a table -> defer to the table's own cell navigation
- *  - with a selection -> indent / outdent every selected block
- *  - collapsed cursor -> Tab inserts a literal tab, Shift-Tab outdents the block
+ * and wires up code-editor-style Tab / Shift-Tab. The actual indent/outdent
+ * logic lives in #editor/indent.ts so the `format:indent` / `format:outdent`
+ * command-palette actions share it exactly. A handler returning `false` (inside
+ * a table) defers to the table's own cell navigation.
  */
 const BlockIndent = Extension.create({
   name: "blockIndent",
@@ -398,56 +375,8 @@ const BlockIndent = Extension.create({
 
   addKeyboardShortcuts() {
     return {
-      Tab: () => {
-        const editor = this.editor;
-        // Let tables handle Tab as cell navigation.
-        if (editor.isActive("tableCell") || editor.isActive("tableHeader")) {
-          return false;
-        }
-        // In a list, Tab only nests the item (or no-ops at a boundary) — never
-        // inserts a raw tab.
-        if (editor.isActive("taskItem")) {
-          if (editor.can().sinkListItem("taskItem")) {
-            editor.chain().focus().sinkListItem("taskItem").run();
-          }
-          return true;
-        }
-        if (editor.isActive("listItem")) {
-          if (editor.can().sinkListItem("listItem")) {
-            editor.chain().focus().sinkListItem("listItem").run();
-          }
-          return true;
-        }
-        // A selection spanning blocks indents the whole block(s).
-        if (!editor.state.selection.empty) {
-          shiftBlockIndent(editor, 1);
-          return true;
-        }
-        // Collapsed cursor: insert a literal tab. Use a raw transaction so the
-        // character survives (insertContent parses as HTML and would collapse it).
-        editor.view.dispatch(editor.state.tr.insertText("\t"));
-        return true;
-      },
-      "Shift-Tab": () => {
-        const editor = this.editor;
-        if (editor.isActive("tableCell") || editor.isActive("tableHeader")) {
-          return false;
-        }
-        if (editor.isActive("taskItem")) {
-          if (editor.can().liftListItem("taskItem")) {
-            editor.chain().focus().liftListItem("taskItem").run();
-          }
-          return true;
-        }
-        if (editor.isActive("listItem")) {
-          if (editor.can().liftListItem("listItem")) {
-            editor.chain().focus().liftListItem("listItem").run();
-          }
-          return true;
-        }
-        shiftBlockIndent(editor, -1);
-        return true;
-      },
+      Tab: () => indentEditor(this.editor),
+      "Shift-Tab": () => outdentEditor(this.editor),
     };
   },
 });

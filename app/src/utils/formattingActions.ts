@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/core";
+import { indentEditor, outdentEditor } from "#editor/indent.ts";
 import { Actions } from "./actions.ts";
 import { t } from "./lang.ts";
 
@@ -184,35 +185,23 @@ export function registerFormattingActions(getEditor: () => Editor) {
     },
   });
 
-  Actions.register("format:list:indent", {
-    title: t("Indent List Item"),
-    description: t("Indent the current list item"),
+  Actions.register("format:indent", {
+    title: t("Indent"),
+    description: t("Indent the current block or list item"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
-      const editor = getEditor();
-      // Check taskItem first since isActive is more reliable than can() for determining node type
-      if (editor.isActive("taskItem") && editor.can().sinkListItem("taskItem")) {
-        editor.chain().focus().sinkListItem("taskItem").run();
-      } else if (editor.can().sinkListItem("listItem")) {
-        editor.chain().focus().sinkListItem("listItem").run();
-      }
+      indentEditor(getEditor());
     },
   });
 
-  Actions.register("format:list:outdent", {
-    title: t("Outdent List Item"),
-    description: t("Outdent the current list item"),
+  Actions.register("format:outdent", {
+    title: t("Outdent"),
+    description: t("Outdent the current block or list item"),
     group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
-      const editor = getEditor();
-      // Check taskItem first since isActive is more reliable than can() for determining node type
-      if (editor.isActive("taskItem") && editor.can().liftListItem("taskItem")) {
-        editor.chain().focus().liftListItem("taskItem").run();
-      } else if (editor.can().liftListItem("listItem")) {
-        editor.chain().focus().liftListItem("listItem").run();
-      }
+      outdentEditor(getEditor());
     },
   });
 
@@ -302,7 +291,7 @@ export function registerFormattingActions(getEditor: () => Editor) {
   Actions.register("format:link", {
     title: t("Insert Link"),
     description: t("Add or edit a hyperlink"),
-    // group: "formatting",
+    group: "formatting",
     run: async () => {
       if (!isEditorAvailable()) return;
       const editor = getEditor();
@@ -658,8 +647,8 @@ export function unregisterFormattingActions() {
     "format:list:bullet",
     "format:list:ordered",
     "format:list:task",
-    "format:list:indent",
-    "format:list:outdent",
+    "format:indent",
+    "format:outdent",
     "format:align:left",
     "format:align:center",
     "format:align:right",
