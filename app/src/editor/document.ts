@@ -123,6 +123,19 @@ function createEditor(
       return;
     }
 
+    // Keep the handle alive while the pointer is in the left gutter zone (where
+    // the handle lives) so it can be reached without the drag handle vanishing.
+    const dom = editor?.view?.dom;
+    if (event && dom) {
+      const rect = dom.getBoundingClientRect();
+      const inGutter =
+        event.clientY >= rect.top - 8 &&
+        event.clientY <= rect.bottom + 8 &&
+        event.clientX >= rect.left - 64 &&
+        event.clientX <= rect.right + 8;
+      if (inGutter) return;
+    }
+
     hasPointerPosition = false;
     editor?.commands.setMeta("hideDragHandle", true);
   };

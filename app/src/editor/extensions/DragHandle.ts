@@ -5,6 +5,13 @@ import type { EditorView } from "@tiptap/pm/view";
 
 type PositionStrategy = "absolute" | "fixed";
 
+// The handle appears whenever the pointer is within this activation zone around
+// the editor — the content plus a left gutter — so it tracks the nearest line by
+// proximity instead of requiring a hover directly over a block. This also lets
+// the pointer travel out into the gutter to grab the handle without it vanishing.
+const ACTIVATION_GUTTER = 64;
+const ACTIVATION_PAD = 8;
+
 type ReferenceElement = {
   getBoundingClientRect(): DOMRect | ClientRect;
 };
@@ -35,29 +42,85 @@ declare module "@tiptap/core" {
   }
 }
 
-function topLevelBlockFromElement(view: EditorView, element: Element | null) {
+function isListElement(element: Element) {
+  return element.nodeName === "UL" || element.nodeName === "OL";
+}
+
+// Resolve the block the drag handle should attach to. This is normally a
+// direct child of the editor (a top-level block), but inside a list each
+// individual list item is its own draggable unit — so the innermost <li>
+// ancestor of the pointer wins over the enclosing list.
+function draggableBlockFromElement(view: EditorView, element: Element | null) {
   let current = element;
 
-  while (current?.parentElement && current.parentElement !== view.dom) {
+  while (current && current !== view.dom) {
+    if (current instanceof HTMLElement) {
+      if (current.nodeName === "LI") return current;
+      if (current.parentElement === view.dom) return current;
+    }
     current = current.parentElement;
   }
 
-  return current?.parentElement === view.dom ? (current as HTMLElement) : null;
+  return null;
+}
+
+// Flatten the editor into the set of blocks the handle can attach to: top-level
+// blocks, but lists are expanded into their (recursively nested) list items.
+function collectDraggableBlocks(view: EditorView) {
+  const blocks: HTMLElement[] = [];
+
+  const walk = (parent: Element) => {
+    for (const child of parent.children) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (isListElement(child)) {
+        walk(child);
+      } else if (child.nodeName === "LI") {
+        blocks.push(child);
+        for (const nested of child.children) {
+          if (nested instanceof HTMLElement && isListElement(nested)) {
+            walk(nested);
+          }
+        }
+      } else {
+        blocks.push(child);
+      }
+    }
+  };
+
+  walk(view.dom);
+  return blocks;
+}
+
+// Resolve the document position that starts the node rendered as `block`.
+// `posAtDOM(block, 0)` is enough for top-level textblocks (it lands on the
+// position before the node), but a list item is a block *container*, so that
+// call lands inside it — before its inner paragraph. Walk up from there to the
+// position of the <li> node itself so the whole item is selected, not its text.
+function resolveBlockPos(view: EditorView, block: HTMLElement) {
+  const insidePos = view.posAtDOM(block, 0);
+  if (block.nodeName !== "LI") return insidePos;
+
+  const $pos = view.state.doc.resolve(insidePos);
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const before = $pos.before(depth);
+    if (view.nodeDOM(before) === block) return before;
+  }
+
+  return insidePos;
 }
 
 function blockAtPoint(view: EditorView, clientX: number, clientY: number) {
   const root = view.root as Document | ShadowRoot;
   for (const element of root.elementsFromPoint(clientX, clientY)) {
     if (!view.dom.contains(element)) continue;
-    const block = topLevelBlockFromElement(view, element);
+    const block = draggableBlockFromElement(view, element);
     if (block) return block;
   }
 
   let closestBlock: HTMLElement | null = null;
   let closestDistance = Number.POSITIVE_INFINITY;
 
-  for (const child of view.dom.children) {
-    if (!(child instanceof HTMLElement)) continue;
+  for (const child of collectDraggableBlocks(view)) {
     const rect = child.getBoundingClientRect();
     const distance =
       clientY < rect.top
@@ -164,8 +227,26 @@ export const DragHandle = Extension.create<DragHandleOptions>({
       const strategy = options.computePositionConfig?.strategy ?? "absolute";
       const handleRect = element.getBoundingClientRect();
 
-      let left = rect.left - handleRect.width;
-      let top = rect.top;
+      // Vertically center the handle on the block's first line of text (rather
+      // than its top edge) so it lines up with the line the pointer is on.
+      const style = getComputedStyle(block);
+      const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+      let lineHeight = Number.parseFloat(style.lineHeight);
+      if (Number.isNaN(lineHeight)) {
+        lineHeight = (Number.parseFloat(style.fontSize) || 16) * 1.2;
+      }
+
+      // For list items, anchor to the left edge of the enclosing list so the
+      // handle clears the bullet/number marker (which sits in the list's
+      // padding) instead of covering it.
+      let anchorLeft = rect.left;
+      if (block.nodeName === "LI") {
+        const list = block.closest("ul, ol");
+        if (list) anchorLeft = list.getBoundingClientRect().left;
+      }
+
+      let left = anchorLeft - handleRect.width;
+      let top = rect.top + paddingTop + lineHeight / 2 - handleRect.height / 2;
 
       if (strategy === "absolute") {
         const parentRect = wrapper.parentElement?.getBoundingClientRect();
@@ -190,7 +271,7 @@ export const DragHandle = Extension.create<DragHandleOptions>({
 
       let pos: number;
       try {
-        pos = view.posAtDOM(block, 0);
+        pos = resolveBlockPos(view, block);
       } catch {
         clearCurrentNode();
         return;
@@ -296,6 +377,51 @@ export const DragHandle = Extension.create<DragHandleOptions>({
           element.addEventListener("dragstart", handleDragStart);
           element.addEventListener("dragend", handleDragEnd);
 
+          // Proximity detection: the handle lives in a gutter outside the
+          // editor DOM, so track the pointer globally and show the block nearest
+          // the cursor whenever it is inside the editor's activation zone.
+          const processPointer = (x: number, y: number) => {
+            if (locked || !editor.isEditable) return;
+
+            const rect = view.dom.getBoundingClientRect();
+            const inZone =
+              y >= rect.top - ACTIVATION_PAD &&
+              y <= rect.bottom + ACTIVATION_PAD &&
+              x >= rect.left - ACTIVATION_GUTTER &&
+              x <= rect.right + ACTIVATION_PAD;
+
+            if (!inZone) {
+              clearCurrentNode();
+              return;
+            }
+
+            const block = blockAtPoint(view, x, y);
+            if (block) showForBlock(view, block);
+            else clearCurrentNode();
+          };
+
+          const onDocumentMouseMove = (event: MouseEvent) => {
+            pendingPointer = { x: event.clientX, y: event.clientY };
+            if (animationFrame !== null) return;
+
+            animationFrame = requestAnimationFrame(() => {
+              animationFrame = null;
+              if (!pendingPointer) return;
+              const { x, y } = pendingPointer;
+              pendingPointer = null;
+              processPointer(x, y);
+            });
+          };
+
+          // Listen on the editor's root node (the shadow root, or the document
+          // when not in a shadow tree). Both the content and the left gutter
+          // live inside it, and moves there — including the synthetic mousemove
+          // document.ts dispatches on scroll — bubble up to it.
+          const rootNode = view.dom.getRootNode() as Document | ShadowRoot;
+          rootNode.addEventListener("mousemove", onDocumentMouseMove as EventListener, {
+            passive: true,
+          });
+
           return {
             update: (nextView, previousState) => {
               element.draggable = !locked;
@@ -306,7 +432,7 @@ export const DragHandle = Extension.create<DragHandleOptions>({
               if (nextView.state.doc.eq(previousState.doc) || currentNodePos < 0) return;
 
               const dom = nextView.nodeDOM(currentNodePos);
-              const block = topLevelBlockFromElement(
+              const block = draggableBlockFromElement(
                 nextView,
                 dom instanceof Element ? dom : null,
               );
@@ -315,6 +441,10 @@ export const DragHandle = Extension.create<DragHandleOptions>({
             },
             destroy: () => {
               if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+              rootNode.removeEventListener(
+                "mousemove",
+                onDocumentMouseMove as EventListener,
+              );
               element.removeEventListener("dragstart", handleDragStart);
               element.removeEventListener("dragend", handleDragEnd);
               removeDragPreview();
@@ -326,31 +456,6 @@ export const DragHandle = Extension.create<DragHandleOptions>({
           handleDOMEvents: {
             keydown: (view) => {
               if (!locked && view.hasFocus()) clearCurrentNode();
-              return false;
-            },
-            mouseleave: (_view, event) => {
-              if (!locked && !wrapper.contains(event.relatedTarget as Node | null)) {
-                clearCurrentNode();
-              }
-              return false;
-            },
-            mousemove: (view, event) => {
-              if (locked) return false;
-
-              pendingPointer = { x: event.clientX, y: event.clientY };
-              if (animationFrame !== null) return false;
-
-              animationFrame = requestAnimationFrame(() => {
-                animationFrame = null;
-                if (!pendingPointer) return;
-
-                const { x, y } = pendingPointer;
-                pendingPointer = null;
-                const block = blockAtPoint(view, x, y);
-                if (block) showForBlock(view, block);
-                else clearCurrentNode();
-              });
-
               return false;
             },
           },

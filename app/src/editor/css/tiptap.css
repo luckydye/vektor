@@ -24,6 +24,15 @@
 
 .custom-drag-handle {
   z-index: 9999;
+  /* Transparent hit area: the visible dots are drawn by ::after, but the
+     padding enlarges the grab target so the cursor can travel from the text
+     into the handle (which sits in the gutter outside the editor) without
+     slipping through a dead zone and dismissing the handle. */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.4rem 0.5rem;
+  box-sizing: content-box;
 
   &::after {
     display: flex;

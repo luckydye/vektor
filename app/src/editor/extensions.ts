@@ -59,6 +59,7 @@ import { HtmlBlock } from "./extensions/HtmlBlock.ts";
 import { ImageUpload } from "./extensions/ImageUpload.ts";
 import { MarkdownPaste } from "./extensions/MarkdownPaste.ts";
 import { Mentions } from "./extensions/Mentions.ts";
+import { TableReorder } from "./extensions/TableReorder.ts";
 import { TicketLink } from "./extensions/TicketLink.ts";
 import { TableEditing } from "./extensions/table.ts";
 import { VideoUpload } from "./extensions/VideoUpload.ts";
@@ -477,6 +478,7 @@ export function documentExtensions(
     }),
     CanvasClipboardPaste,
     TableEditing,
+    TableReorder,
     TaskItem.configure({ nested: true }).extend({
       addKeyboardShortcuts() {
         return {

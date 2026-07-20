@@ -105,3 +105,46 @@ table {
 .resize-cursor {
   cursor: col-resize;
 }
+
+/* Row / column reorder handles */
+.table-reorder-handle {
+  position: fixed;
+  z-index: 40;
+  display: none;
+  background-color: var(--color-neutral-200);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-full);
+  transition: background-color 0.12s ease;
+}
+
+.table-reorder-handle:hover {
+  background-color: var(--color-primary-400);
+  border-color: var(--color-primary-500);
+}
+
+.table-reorder-handle-col {
+  height: 12px;
+  cursor: grab;
+}
+
+.table-reorder-handle-row {
+  width: 12px;
+  cursor: grab;
+}
+
+.table-reorder-handle:active {
+  cursor: grabbing;
+}
+
+.table-reorder-drop-indicator {
+  position: fixed;
+  z-index: 41;
+  display: none;
+  background-color: var(--color-primary-500);
+  border-radius: var(--radius-full);
+  pointer-events: none;
+}
+
+.table-reorder-active {
+  cursor: grabbing;
+}
