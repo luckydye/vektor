@@ -54,10 +54,7 @@ const showShareDialog = ref(false);
 const emailMuted = ref(false);
 const emailPreferenceLoaded = ref(false);
 const isSaving = computed(() => saveStatus.value === "saving");
-const canPublishCurrentDraft = computed(
-  () => !documentId.value || !hasPublishedVersion.value || hasChanges.value,
-);
-const publishDisabled = computed(() => isSaving.value || !canPublishCurrentDraft.value);
+const publishDisabled = computed(() => isSaving.value);
 const suggestionSaveDisabled = computed(() => isSaving.value || !hasChanges.value);
 const isNewDocument = computed(() => !documentId.value);
 const showCancel = computed(() => !isNewDocument.value && hasPublishedVersion.value);
@@ -68,6 +65,19 @@ function registerEditAction() {
     description: t("Start editing mode for current document"),
     group: "edit",
     run: async () => startEditing(),
+  });
+}
+
+function registerCancelAction() {
+  Actions.register("document:cancel", {
+    title: t("Cancel Editing"),
+    description: t("Discard editing mode for current document"),
+    group: "edit",
+    run: async () => {
+      if (editing.value) {
+        cancelEditing();
+      }
+    },
   });
 }
 
@@ -202,6 +212,7 @@ function handleContextMenuMousedown(event: MouseEvent) {
 
 onMounted(async () => {
   registerEditAction();
+  registerCancelAction();
 
   Actions.subscribe("actions:register", () => {
     actions.value = Actions.group("document");
@@ -218,6 +229,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   Actions.unregister("document:edit");
+  Actions.unregister("document:cancel");
   Actions.unregister("document:share");
   Actions.unregister("document:mute-email");
   Actions.unregister("document:unmute-email");

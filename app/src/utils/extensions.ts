@@ -659,6 +659,7 @@ if (typeof customElements !== "undefined") {
 
 class ExtensionViewBlockElement extends HTMLElement {
   private cleanup: (() => void) | null = null;
+  private rendering = false;
 
   connectedCallback() {
     this.tryRender();
@@ -674,21 +675,30 @@ class ExtensionViewBlockElement extends HTMLElement {
   }
 
   private tryRender = () => {
-    if (this.cleanup) return;
+    // Guard against concurrent renders: `cleanup` is only set once the async
+    // render resolves, so without `rendering` a second trigger (e.g. the
+    // `extensions:loaded` event firing mid-render) would render the view twice.
+    if (this.cleanup || this.rendering) return;
     const extensionId = this.getAttribute("data-extension-id");
     const routePath = this.getAttribute("data-route-path");
     if (!extensionId || !routePath) return;
 
-    extensions.renderInlineView(extensionId, routePath, this).then((fn) => {
-      if (!this.isConnected) {
-        fn?.();
-        return;
-      }
-      if (fn) {
-        window.removeEventListener("extensions:loaded", this.tryRender);
-        this.cleanup = fn;
-      }
-    });
+    this.rendering = true;
+    extensions
+      .renderInlineView(extensionId, routePath, this)
+      .then((fn) => {
+        if (!this.isConnected) {
+          fn?.();
+          return;
+        }
+        if (fn) {
+          window.removeEventListener("extensions:loaded", this.tryRender);
+          this.cleanup = fn;
+        }
+      })
+      .finally(() => {
+        this.rendering = false;
+      });
   };
 }
 

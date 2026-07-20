@@ -204,7 +204,7 @@ watch(
   </div>
 
   <!-- Tabbed settings layout -->
-  <SettingsLayout :tabs="tabs" compact class="min-h-[200px]">
+  <SettingsLayout :tabs="tabs" class="min-h-[200px]">
     <!-- Appearance tab -->
     <template #appearance>
       <section>

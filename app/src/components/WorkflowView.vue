@@ -529,7 +529,7 @@ const statusBadgeClass: Record<string, string> = {
 
     <!-- Tabs: Results / Run Details / History -->
     <a-tabs ref="workflowTabsEl" @tab-selected="handleWorkflowTabSelected">
-      <a-tabs-list class="block h-[51px] py-4xs overflow-clip">
+      <a-tabs-list class="block py-4xs overflow-clip">
         <a-tabs-tab
           class="inline-flex h-[27px] items-center justify-center px-5xs rounded-sm text-label hover:[&_span]:bg-gray-200 [&[selected]]:opacity-100 opacity-60 [&[selected]_span]:bg-gray-100 [&[selected]:hover_span]:bg-gray-100"
         >

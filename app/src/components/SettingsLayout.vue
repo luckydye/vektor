@@ -7,14 +7,10 @@ interface Tab {
   label: string;
 }
 
-const props = withDefaults(
-  defineProps<{
-    tabs: Tab[];
-    initialTab?: string;
-    compact?: boolean;
-  }>(),
-  { compact: false },
-);
+const props = defineProps<{
+  tabs: Tab[];
+  initialTab?: string;
+}>();
 
 const emit = defineEmits<{
   "tab-change": [id: string];
@@ -76,7 +72,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-0 h-full">
+  <div class="flex flex-col min-h-0 h-full p-2">
     <!-- Skeleton shown until a-tabs upgrades -->
     <template v-if="!ready">
       <div class="flex h-[51px] items-start gap-[10px] py-4xs">
@@ -91,7 +87,7 @@ onMounted(async () => {
           />
         </div>
       </div>
-      <div :class="[compact ? 'px-4 py-3' : 'py-4', 'space-y-3']">
+      <div class="px-2 py-4 space-y-3">
         <div class="h-3 w-2/3 rounded bg-neutral-100 animate-pulse" />
         <div class="h-3 w-1/2 rounded bg-neutral-100 animate-pulse" />
         <div class="h-3 w-3/4 rounded bg-neutral-100 animate-pulse" />
@@ -99,7 +95,7 @@ onMounted(async () => {
     </template>
 
     <a-tabs v-else ref="tabsEl" @tab-selected="onTabSelected">
-      <a-tabs-list class="block h-[51px] py-4xs overflow-clip">
+      <a-tabs-list class="block py-4xs overflow-clip">
         <a-tabs-tab
           v-for="tab in tabs"
           :key="tab.id"
@@ -113,7 +109,7 @@ onMounted(async () => {
         </a-tabs-tab>
       </a-tabs-list>
       <a-tabs-panel v-for="tab in tabs" :key="tab.id" class="block min-w-0">
-        <div :class="[compact ? 'px-4' : '', 'px-2 py-4']">
+        <div class="px-2 py-4">
           <slot :name="tab.id" />
         </div>
       </a-tabs-panel>

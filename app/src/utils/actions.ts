@@ -145,11 +145,27 @@ export class Actions {
    * Handle key event from key down and up event
    */
   static handleKey(event: KeyboardEvent, _keydown: boolean | undefined) {
-    // cancel if inside specified element
-    const ignoredElements = ["INPUT"];
+    // The document editor's contenteditable lives inside a custom element's
+    // shadow root, so document.activeElement resolves to the shadow host, not
+    // the focused field. Descend through shadow roots to find the real one.
+    let activeElement = document.activeElement as HTMLElement | null;
+    while (activeElement?.shadowRoot?.activeElement) {
+      activeElement = activeElement.shadowRoot.activeElement as HTMLElement;
+    }
+    const activeNodeName = activeElement?.nodeName;
 
-    const activeNodeName = document.activeElement?.nodeName;
+    // cancel if inside a plain text field (title, search, ...)
+    const ignoredElements = ["INPUT"];
     if (activeNodeName && ignoredElements.includes(activeNodeName)) {
+      return;
+    }
+
+    // inside an editable region (the document editor is contenteditable,
+    // not an <input>): let bare printable keys type normally and only allow
+    // modifier combos (meta-b, ...) and control keys (Escape, ...) through.
+    const isEditable = activeElement?.isContentEditable || activeNodeName === "TEXTAREA";
+    const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
+    if (isEditable && !hasModifier && event.key.length === 1) {
       return;
     }
 

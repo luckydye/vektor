@@ -85,7 +85,7 @@ onUnmounted(() => {
     <div
       v-if="visible"
       role="dialog"
-      class="relative z-10 flex justify-center px-xs pt-6 pb-8 pointer-events-none"
+      class="relative z-10 flex justify-center pt-6 pb-8 pointer-events-none"
       aria-label="Select document type"
     >
       <div

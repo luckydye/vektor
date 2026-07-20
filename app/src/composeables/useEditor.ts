@@ -109,6 +109,10 @@ export function useEditor(options?: UseEditorOptions): EditorState | DocumentEdi
   }
 
   async function finishEditing(mode: SaveMode) {
+    // Guard against re-entrancy (double-clicked button, or a shortcut firing
+    // via both the editor keymap and the global handler) so we never publish
+    // the same draft twice.
+    if (saveStatus.value === "saving") return;
     clearSaveStatusTimer();
     saveStatus.value = "saving";
     saveError.value = null;

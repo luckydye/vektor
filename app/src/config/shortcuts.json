@@ -4,7 +4,8 @@
     "ui:toggle:palatte",
     "format:link"
   ],
-  "meta-e": "document:edit",
+  "e": "document:edit",
+  "escape": "document:cancel",
   "meta-l": "revisions:toggle",
   "meta-enter": [
     "ai-chat:toggle",
@@ -41,8 +42,6 @@
   "ctrl-shift-digit8": "format:list:bullet",
   "meta-shift-digit9": "format:list:task",
   "ctrl-shift-digit9": "format:list:task",
-  "tab": "format:list:indent",
-  "shift-tab": "format:list:outdent",
 
   "meta-shift-l": "format:align:left",
   "ctrl-shift-l": "format:align:left",
