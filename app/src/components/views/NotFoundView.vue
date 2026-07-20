@@ -1,3 +1,9 @@
+<script setup lang="ts">
+import { usePageTitle } from "#composeables/usePageTitle.ts";
+
+usePageTitle("Not found");
+</script>
+
 <template>
   <div
     class="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-neutral-500"

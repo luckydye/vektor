@@ -20,6 +20,7 @@ import WorkflowView from "#components/WorkflowView.vue";
 import { useQuery } from "#composeables/query.ts";
 import { useDocumentContext } from "#composeables/useDocument.ts";
 import { useEditor } from "#composeables/useEditor.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { optionalPropertyValueToText } from "#utils/documentProperties.ts";
@@ -272,14 +273,7 @@ onUnmounted(() => {
   resetDocumentContext();
 });
 
-watch(
-  title,
-  (t) => {
-    if (typeof document === "undefined") return;
-    if (t) document.title = `${t} - ${currentSpace.value?.name ?? ""} - Vektor`;
-  },
-  { immediate: true },
-);
+usePageTitle(title);
 
 // Keep the shared document context in sync with the current document.
 // Runs during setup (SSR + client) so the context is correct before any child

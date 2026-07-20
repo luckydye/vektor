@@ -2,11 +2,14 @@
 import { computed } from "vue";
 import NoAccess from "#components/NoAccess.vue";
 import SpaceSettings from "#components/SpaceSettings.vue";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { canAccessSettings } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
 const isOwner = computed(() => canAccessSettings(currentSpace.value?.userRole));
+
+usePageTitle("Settings");
 </script>
 
 <template>

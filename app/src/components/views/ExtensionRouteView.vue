@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { useRoute } from "vue-router";
 import ExtensionView from "#components/ExtensionView.vue";
 import { useExtensions } from "#composeables/useExtensions.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
@@ -25,6 +26,8 @@ const match = computed(() => {
   }
   return null;
 });
+
+usePageTitle(() => match.value?.route.title ?? null);
 </script>
 
 <template>

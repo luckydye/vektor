@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import Search from "#components/Search.vue";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
+
+usePageTitle("Search");
 </script>
 
 <template>

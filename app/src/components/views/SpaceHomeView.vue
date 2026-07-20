@@ -5,10 +5,13 @@ import PinnedDocument from "#components/PinnedDocument.vue";
 import RecentDocuments from "#components/RecentDocuments.vue";
 import SpaceActivityFeed from "#components/SpaceActivityFeed.vue";
 import { useExtensions } from "#composeables/useExtensions.ts";
+import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 
 const { currentSpace } = useSpace();
 const { extensions } = useExtensions();
+
+usePageTitle(null);
 
 const homeTopViews = computed(() =>
   extensions.value.flatMap((ext) =>
