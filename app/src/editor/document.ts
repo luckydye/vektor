@@ -229,6 +229,13 @@ function createEditor(
       if (!editor.view.dom.contains(element)) continue;
       if (element.closest(".wiki-inline-suggestion")) continue;
 
+      // Inside a list, the drop indicator should snap between list items (that
+      // is where a dragged item actually lands), not before/after the whole list.
+      const listItem = element.closest<HTMLElement>("li");
+      if (listItem && editor.view.dom.contains(listItem)) {
+        return listItem;
+      }
+
       const columnItem = element.closest<HTMLElement>('div[data-type="column-item"]');
       if (columnItem && editor.view.dom.contains(columnItem)) {
         let current: HTMLElement | null = element;
