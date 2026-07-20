@@ -41,7 +41,7 @@ export function allowsChildDocumentType(
  * type defaults to "document".
  */
 export const commentableDocumentTypes: readonly string[] = ["document"];
-export const documentEditorTypes: readonly string[] = ["document", "workflow"];
+export const documentEditorTypes: readonly string[] = ["document", "workflow", "record"];
 
 export function supportsComments(type: string | null | undefined): boolean {
   return commentableDocumentTypes.includes(type ?? "document");
