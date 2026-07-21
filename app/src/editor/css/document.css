@@ -414,6 +414,7 @@ html-block {
   display: block;
   margin-top: 1rem;
   margin-bottom: 1rem;
+  white-space: normal;
 }
 
 code {
