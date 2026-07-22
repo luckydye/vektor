@@ -28,6 +28,15 @@ export async function ensureColumnExists(
   );
 }
 
+export async function tableExists(db: Database, tableName: string): Promise<boolean> {
+  const rows = await db.all<{ name: string }>(
+    sql.raw(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${tableName}'`,
+    ),
+  );
+  return rows.length > 0;
+}
+
 export async function prepareAuthDb(authDb: Database) {
   // Generate CREATE TABLE statements from Drizzle schemas
   const userSQL = generateCreateTableSQL(authSchema.user);
@@ -170,11 +179,36 @@ export async function initSpaceDbSchema(spaceDb: Database, options: { local: boo
   await spaceDb.run(sql.raw(aiChatSessionSQL));
   await ensureColumnExists(spaceDb, "ai_chat_session", "shell_snapshot", "TEXT");
 
-  const jobScheduleSQL = generateCreateTableSQL(spaceSchema.jobSchedule);
-  await spaceDb.run(sql.raw(jobScheduleSQL));
+  // Schedules now always target a workflow document rather than an
+  // extension-manifest job; rename the table and column on databases
+  // created before this change. Rows that previously pointed at an
+  // extension job id become stale — they'll fail to resolve as a workflow
+  // document and get logged as a broken schedule, same as any other
+  // invalid reference.
+  if (
+    (await tableExists(spaceDb, "job_schedule")) &&
+    !(await tableExists(spaceDb, "workflow_schedule"))
+  ) {
+    await spaceDb.run(sql.raw("ALTER TABLE job_schedule RENAME TO workflow_schedule"));
+  }
+  const workflowScheduleSQL = generateCreateTableSQL(spaceSchema.workflowSchedule);
+  await spaceDb.run(sql.raw(workflowScheduleSQL));
+  const workflowScheduleColumns = await getExistingColumnNames(
+    spaceDb,
+    "workflow_schedule",
+  );
+  if (
+    workflowScheduleColumns.has("job_id") &&
+    !workflowScheduleColumns.has("document_id")
+  ) {
+    await spaceDb.run(
+      sql.raw("ALTER TABLE workflow_schedule RENAME COLUMN job_id TO document_id"),
+    );
+  }
+  await spaceDb.run(sql.raw("DROP INDEX IF EXISTS job_schedule_next_run_at_idx"));
   await spaceDb.run(
     sql.raw(
-      "CREATE INDEX IF NOT EXISTS job_schedule_next_run_at_idx ON job_schedule (enabled, next_run_at)",
+      "CREATE INDEX IF NOT EXISTS workflow_schedule_next_run_at_idx ON workflow_schedule (enabled, next_run_at)",
     ),
   );
 

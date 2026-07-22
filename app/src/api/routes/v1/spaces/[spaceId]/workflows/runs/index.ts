@@ -10,15 +10,14 @@ import {
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
-import { getDocument, getDocumentContent } from "#db/documents.ts";
+import { getDocument } from "#db/documents.ts";
 import {
-  createRun,
   ensureSpaceRecovered,
   getLatestRunIdForDoc,
   getRunForRead,
   listRuns,
 } from "#jobs/runStore.ts";
-import { executeWorkflowScript } from "#jobs/workflowScript.ts";
+import { startWorkflowRun } from "#jobs/workflowRuns.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
@@ -136,25 +135,11 @@ export const POST: ApiRouteHandler = (context) =>
         return badRequestResponse("Document type must be 'workflow'");
       }
 
-      // Always run the current draft — workflows are scripts, not versioned publications.
-      const code = await getDocumentContent(spaceId, documentId);
-
-      if (!code?.trim()) {
-        return badRequestResponse("Workflow script is empty");
-      }
-
-      const runId = await createRun(
-        spaceId,
-        documentId,
-        doc.createdBy,
+      const runId = await startWorkflowRun(spaceId, documentId, {
         initiatedByUserId,
-        sourceExtensionId ?? null,
-        inputs ?? {},
-      );
-      // Fire and forget — errors are recorded in run state
-      executeWorkflowScript(spaceId, runId, code, {
+        sourceExtensionId,
         runtimeInputs: inputs,
-      }).catch(() => {});
+      });
 
       return jsonResponse({ runId }, 202);
     },

@@ -87,7 +87,7 @@ export async function runJob(
     sandbox?: Sandbox | null;
     /** How this run was initiated; persisted to the job_run table. */
     trigger?: JobRunTrigger;
-    /** job_schedule id when the run was fired by the cron scheduler. */
+    /** Historical: workflow_schedule id, set when cron scheduling still fired extension jobs directly. */
     scheduleId?: string | null;
   },
 ): Promise<Record<string, unknown>> {

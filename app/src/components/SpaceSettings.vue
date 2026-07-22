@@ -769,7 +769,9 @@
     <!-- Jobs -->
     <template #jobs>
       <section>
-        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">Jobs</h2>
+        <h2 class="text-size-large font-semibold text-neutral-900 mb-4">
+          Jobs & Workflows
+        </h2>
         <JobsSettings />
       </section>
     </template>
@@ -855,7 +857,7 @@ const tabs = [
   { id: "general", label: "General" },
   { id: "integrations", label: "Integrations" },
   { id: "agent", label: "Agent" },
-  { id: "jobs", label: "Jobs" },
+  { id: "jobs", label: "Workflows" },
   { id: "archive", label: "Archive" },
 ] as const;
 

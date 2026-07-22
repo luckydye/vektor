@@ -1,8 +1,8 @@
 <template>
   <div>
-    <!-- Scheduled Jobs -->
+    <!-- Scheduled Workflows -->
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-size-medium font-semibold text-neutral-900">Scheduled Jobs</h2>
+      <h2 class="text-size-medium font-semibold text-neutral-900">Scheduled Workflows</h2>
       <button
         type="button"
         v-if="!isCreatingSchedule"
@@ -30,19 +30,24 @@
           <div>
             <!-- biome-ignore lint/a11y/noLabelWithoutControl: The Vue template control association is resolved by the rendered component. -->
             <label class="block text-size-small font-medium text-neutral-700 mb-1"
-              >Job</label
+              >Workflow</label
             >
             <select
-              v-model="newScheduleJobId"
+              v-model="newScheduleDocumentId"
               required
               class="w-full px-3 py-1.5 text-size-medium border border-neutral-100 rounded-md focus-ring"
             >
               <option value="" disabled>
-                {{ availableJobs.length > 0 ? 'Select job' : 'No jobs available' }}
+                {{ availableWorkflows.length > 0
+                    ? 'Select workflow'
+                    : 'No workflow documents available' }}
               </option>
-              <option v-for="job in availableJobs" :key="job.id" :value="job.id">
-                {{ job.name }}
-                ({{ job.extensionName }})
+              <option
+                v-for="workflow in availableWorkflows"
+                :key="workflow.id"
+                :value="workflow.id"
+              >
+                {{ workflow.title }}
               </option>
             </select>
           </div>
@@ -86,7 +91,7 @@
           </button>
           <button
             type="submit"
-            :disabled="isSubmittingSchedule || !newScheduleJobId"
+            :disabled="isSubmittingSchedule || !newScheduleDocumentId"
             class="px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
             {{ isSubmittingSchedule ? 'Creating...' : 'Create Schedule' }}
@@ -105,7 +110,7 @@
       v-else-if="schedules.length === 0 && !isCreatingSchedule"
       class="text-center py-6 text-size-medium text-neutral-500"
     >
-      No scheduled jobs
+      No scheduled workflows
     </div>
     <div
       v-else-if="schedules.length > 0"
@@ -117,7 +122,7 @@
             <th
               class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
             >
-              Job
+              Workflow
             </th>
             <th
               class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
@@ -154,7 +159,7 @@
                   class="w-2 h-2 rounded-full shrink-0"
                 ></span>
                 <span class="font-medium text-neutral-900"
-                  >{{ jobName(schedule.jobId) }}</span
+                  >{{ workflowName(schedule.documentId) }}</span
                 >
               </div>
             </td>
@@ -194,10 +199,109 @@
       </table>
     </div>
 
-    <!-- Recent Job Runs -->
+    <!-- Recent Workflow Runs -->
     <div class="mt-8 pt-6 border-t border-neutral-100">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-size-medium font-semibold text-neutral-900">Recent Job Runs</h2>
+        <h2 class="text-size-medium font-semibold text-neutral-900">
+          Recent Workflow Runs
+        </h2>
+        <button
+          type="button"
+          @click="refreshWorkflowRuns"
+          :disabled="isLoadingWorkflowRuns"
+          class="text-size-small text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+        >
+          {{ isLoadingWorkflowRuns ? 'Refreshing...' : 'Refresh' }}
+        </button>
+      </div>
+
+      <div
+        v-if="workflowRunsQueryError"
+        class="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm text-size-medium text-red-600"
+      >
+        {{ workflowRunsQueryError?.message ?? 'Failed to load workflow runs' }}
+      </div>
+
+      <div
+        v-if="isLoadingWorkflowRuns && workflowRuns.length === 0"
+        class="text-center py-6 text-size-medium text-neutral-500"
+      >
+        Loading runs...
+      </div>
+      <div
+        v-else-if="workflowRuns.length === 0"
+        class="text-center py-6 text-size-medium text-neutral-500"
+      >
+        No workflow runs yet
+      </div>
+      <div v-else class="overflow-x-auto border border-neutral-100 rounded-md">
+        <table class="min-w-full text-size-medium">
+          <thead class="bg-neutral-50">
+            <tr>
+              <th
+                class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
+                Status
+              </th>
+              <th
+                class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
+                Workflow
+              </th>
+              <th
+                class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
+                Started
+              </th>
+              <th
+                class="px-4 py-2.5 text-left text-size-small font-medium text-neutral-500 uppercase tracking-wide"
+              >
+                Finished
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-100">
+            <tr
+              v-for="run in workflowRuns"
+              :key="run.runId"
+              class="hover:bg-neutral-50 cursor-pointer"
+              @click="goToWorkflowRun(run)"
+            >
+              <td class="px-4 py-2.5 whitespace-nowrap">
+                <span
+                  :class="statusClasses(run.status)"
+                  class="px-1.5 py-0.5 text-size-small rounded-sm"
+                  >{{ run.status }}</span
+                >
+              </td>
+              <td class="px-4 py-2.5 font-medium text-neutral-900">
+                {{ run.documentTitle }}
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
+                {{ run.startedAt ? formatDateTime(run.startedAt) : '—' }}
+              </td>
+              <td class="px-4 py-2.5 whitespace-nowrap text-neutral-500">
+                {{ run.finishedAt ? formatDateTime(run.finishedAt) : '—' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <Pager
+        class="mt-3 pt-3"
+        :page="workflowRunsPage"
+        :total-pages="workflowRunsTotalPages"
+        :disabled="isFetchingWorkflowRuns"
+        @change="workflowRunsGoToPage"
+      />
+    </div>
+
+    <!-- Recent Extension Job Runs -->
+    <div class="mt-8 pt-6 border-t border-neutral-100">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-size-medium font-semibold text-neutral-900">
+          Recent Extension Job Runs
+        </h2>
         <button
           type="button"
           @click="refreshRuns"
@@ -309,30 +413,63 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { api, type JobRun, type JobSchedule } from "#api/client.ts";
+import { useRouter } from "vue-router";
+import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
 import { usePagedList } from "#composeables/usePagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueToText } from "#utils/documentProperties.ts";
 import Pager from "./Pager.vue";
 
+type WorkflowRunRow = Awaited<ReturnType<typeof api.workflows.listRuns>>["runs"][number];
+
 const { currentSpace } = useSpace();
+const router = useRouter();
 
 // Schedules state
-const schedules = ref<JobSchedule[]>([]);
+const schedules = ref<WorkflowSchedule[]>([]);
 const isLoadingSchedules = ref(false);
 const scheduleError = ref<string | null>(null);
 const isCreatingSchedule = ref(false);
 const isSubmittingSchedule = ref(false);
-const newScheduleJobId = ref("");
+const newScheduleDocumentId = ref("");
 const newScheduleCron = ref("");
 const newScheduleTimezone = ref("");
 
-// Available jobs from extension manifests, for the create form and name lookup
+// Workflow documents in the space, for the create form and name lookup
+interface AvailableWorkflow {
+  id: string;
+  title: string;
+}
+const availableWorkflows = ref<AvailableWorkflow[]>([]);
+
+// Extension jobs, for the "Recent Extension Job Runs" name lookup only
+// (scheduling now targets workflows, not extension jobs directly).
 interface AvailableJob {
   id: string;
   name: string;
   extensionName: string;
 }
 const availableJobs = ref<AvailableJob[]>([]);
+
+const {
+  items: workflowRuns,
+  isLoading: isLoadingWorkflowRuns,
+  isFetching: isFetchingWorkflowRuns,
+  error: workflowRunsQueryError,
+  page: workflowRunsPage,
+  totalPages: workflowRunsTotalPages,
+  goToPage: workflowRunsGoToPage,
+  refresh: refreshWorkflowRuns,
+} = usePagedList({
+  queryKey: computed(() => ["workflow_runs", currentSpace.value?.id]),
+  fetcher: ({ limit, offset }) =>
+    api.workflows.listRuns(currentSpace.value?.id, { limit, offset }).then((r) => ({
+      items: r.runs,
+      total: r.total,
+    })),
+  enabled: computed(() => !!currentSpace.value?.id),
+  pageSize: 25,
+});
 
 const {
   items: runs,
@@ -356,13 +493,25 @@ const {
 
 const expandedRunId = ref<string | null>(null);
 
+function workflowName(documentId: string): string {
+  return availableWorkflows.value.find((w) => w.id === documentId)?.title ?? documentId;
+}
+
+function goToWorkflowRun(run: WorkflowRunRow) {
+  router.push({
+    path: `/doc/${run.documentSlug ?? run.documentId}`,
+    query: { run: run.runId },
+  });
+}
+
 function jobName(jobId: string): string {
   return availableJobs.value.find((j) => j.id === jobId)?.name ?? jobId;
 }
 
-function statusClasses(status: JobRun["status"]): string {
+function statusClasses(status: string): string {
   switch (status) {
     case "success":
+    case "completed":
       return "bg-green-100 text-green-700";
     case "failed":
     case "timeout":
@@ -413,12 +562,29 @@ async function loadAvailableJobs() {
   }
 }
 
+async function loadAvailableWorkflows() {
+  if (!currentSpace.value?.id) return;
+  try {
+    const { documents } = await api.documents.get(currentSpace.value.id, {
+      type: "workflow",
+      limit: 200,
+    });
+    availableWorkflows.value = documents.map((doc) => ({
+      id: doc.id,
+      title: doc.properties.title ? propertyValueToText(doc.properties.title) : doc.slug,
+    }));
+  } catch (error) {
+    console.error("Failed to load workflow documents", error);
+    availableWorkflows.value = [];
+  }
+}
+
 async function loadSchedules() {
   if (!currentSpace.value?.id) return;
   isLoadingSchedules.value = true;
   scheduleError.value = null;
   try {
-    const response = await api.jobs.listSchedules(currentSpace.value.id);
+    const response = await api.workflows.listSchedules(currentSpace.value.id);
     schedules.value = response.schedules || [];
   } catch (err) {
     scheduleError.value = err instanceof Error ? err.message : "Failed to load schedules";
@@ -429,7 +595,7 @@ async function loadSchedules() {
 
 function handleStartCreateSchedule() {
   isCreatingSchedule.value = true;
-  newScheduleJobId.value = "";
+  newScheduleDocumentId.value = "";
   newScheduleCron.value = "";
   newScheduleTimezone.value = "";
   scheduleError.value = null;
@@ -441,13 +607,17 @@ function handleCancelCreateSchedule() {
 }
 
 async function handleCreateSchedule() {
-  if (!currentSpace.value?.id || !newScheduleJobId.value || !newScheduleCron.value.trim())
+  if (
+    !currentSpace.value?.id ||
+    !newScheduleDocumentId.value ||
+    !newScheduleCron.value.trim()
+  )
     return;
   isSubmittingSchedule.value = true;
   scheduleError.value = null;
   try {
-    await api.jobs.createSchedule(currentSpace.value.id, {
-      jobId: newScheduleJobId.value,
+    await api.workflows.createSchedule(currentSpace.value.id, {
+      documentId: newScheduleDocumentId.value,
       cronExpression: newScheduleCron.value.trim(),
       ...(newScheduleTimezone.value.trim()
         ? { timezone: newScheduleTimezone.value.trim() }
@@ -463,11 +633,11 @@ async function handleCreateSchedule() {
   }
 }
 
-async function handleToggleSchedule(schedule: JobSchedule) {
+async function handleToggleSchedule(schedule: WorkflowSchedule) {
   if (!currentSpace.value?.id) return;
   scheduleError.value = null;
   try {
-    await api.jobs.updateSchedule(currentSpace.value.id, schedule.id, {
+    await api.workflows.updateSchedule(currentSpace.value.id, schedule.id, {
       enabled: !schedule.enabled,
     });
     await loadSchedules();
@@ -482,7 +652,7 @@ async function handleDeleteSchedule(scheduleId: string) {
   if (!confirm("Delete this schedule? Run history is preserved.")) return;
   scheduleError.value = null;
   try {
-    await api.jobs.deleteSchedule(currentSpace.value.id, scheduleId);
+    await api.workflows.deleteSchedule(currentSpace.value.id, scheduleId);
     await loadSchedules();
   } catch (err) {
     scheduleError.value =
@@ -492,6 +662,7 @@ async function handleDeleteSchedule(scheduleId: string) {
 
 function loadAll() {
   loadAvailableJobs();
+  loadAvailableWorkflows();
   loadSchedules();
 }
 

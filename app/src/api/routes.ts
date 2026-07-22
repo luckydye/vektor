@@ -42,8 +42,6 @@ import * as integrationProxy from "./routes/v1/spaces/[spaceId]/integrations/[pr
 import * as integrations from "./routes/v1/spaces/[spaceId]/integrations/index.ts";
 import * as jobsRun from "./routes/v1/spaces/[spaceId]/jobs/run.ts";
 import * as jobRuns from "./routes/v1/spaces/[spaceId]/jobs/runs.ts";
-import * as jobSchedule from "./routes/v1/spaces/[spaceId]/jobs/schedules/[scheduleId].ts";
-import * as jobSchedules from "./routes/v1/spaces/[spaceId]/jobs/schedules/index.ts";
 import * as members from "./routes/v1/spaces/[spaceId]/members.ts";
 import * as permissions from "./routes/v1/spaces/[spaceId]/permissions/index.ts";
 import * as permissionsMe from "./routes/v1/spaces/[spaceId]/permissions/me.ts";
@@ -57,6 +55,8 @@ import * as uploadFile from "./routes/v1/spaces/[spaceId]/uploads/[...path].ts";
 import * as uploads from "./routes/v1/spaces/[spaceId]/uploads/index.ts";
 import * as workflowRun from "./routes/v1/spaces/[spaceId]/workflows/runs/[runId].ts";
 import * as workflowRuns from "./routes/v1/spaces/[spaceId]/workflows/runs/index.ts";
+import * as workflowSchedule from "./routes/v1/spaces/[spaceId]/workflows/schedules/[scheduleId].ts";
+import * as workflowSchedules from "./routes/v1/spaces/[spaceId]/workflows/schedules/index.ts";
 import * as spaces from "./routes/v1/spaces/index.ts";
 import * as urlMetadata from "./routes/v1/url-metadata.ts";
 import * as users from "./routes/v1/users/index.ts";
@@ -181,11 +181,6 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces/[spaceId]/jobs/run", module: jobsRun },
   { pattern: "/api/v1/spaces/[spaceId]/jobs/runs", module: jobRuns },
-  { pattern: "/api/v1/spaces/[spaceId]/jobs/schedules", module: jobSchedules },
-  {
-    pattern: "/api/v1/spaces/[spaceId]/jobs/schedules/[scheduleId]",
-    module: jobSchedule,
-  },
 
   { pattern: "/api/v1/spaces/[spaceId]/permissions", module: permissions },
   { pattern: "/api/v1/spaces/[spaceId]/permissions/me", module: permissionsMe },
@@ -206,6 +201,11 @@ export const apiRoutes: ApiRoute[] = [
 
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs", module: workflowRuns },
   { pattern: "/api/v1/spaces/[spaceId]/workflows/runs/[runId]", module: workflowRun },
+  { pattern: "/api/v1/spaces/[spaceId]/workflows/schedules", module: workflowSchedules },
+  {
+    pattern: "/api/v1/spaces/[spaceId]/workflows/schedules/[scheduleId]",
+    module: workflowSchedule,
+  },
 
   { pattern: "/api/v1/proxy-media", module: proxyMedia },
   { pattern: "/api/v1/url-metadata", module: urlMetadata },

@@ -1,7 +1,7 @@
 /**
- * /api/v1/spaces/:spaceId/jobs/schedules/:scheduleId
+ * /api/v1/spaces/:spaceId/workflows/schedules/:scheduleId
  *
- * GET:    fetch a job schedule (viewer)
+ * GET:    fetch a workflow schedule (editor)
  * PATCH:  update cronExpression/timezone/inputs/enabled (editor)
  * DELETE: remove the schedule (editor); run history is preserved
  */
@@ -18,12 +18,12 @@ import {
 } from "#db/api.ts";
 import { getSpaceDb } from "#db/db.ts";
 import {
-  deleteJobSchedule,
-  getJobSchedule,
-  toJobScheduleDto,
-  updateJobSchedule,
+  deleteWorkflowSchedule,
+  getWorkflowSchedule,
+  toWorkflowScheduleDto,
+  updateWorkflowSchedule,
   validateCronExpression,
-} from "#db/jobSchedules.ts";
+} from "#db/workflowSchedules.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -31,17 +31,17 @@ export const GET: ApiRouteHandler = (context) =>
     const spaceId = requireParam(context.var.params, "spaceId");
     const scheduleId = requireParam(context.var.params, "scheduleId");
 
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await verifySpaceRole(spaceId, user.id, "editor");
 
     const db = await getSpaceDb(spaceId);
-    const schedule = await getJobSchedule(db, scheduleId);
+    const schedule = await getWorkflowSchedule(db, scheduleId);
 
     if (!schedule) {
-      throw notFoundResponse("Job schedule");
+      throw notFoundResponse("Workflow schedule");
     }
 
-    return jsonResponse({ schedule: toJobScheduleDto(schedule) });
-  }, "Failed to get job schedule");
+    return jsonResponse({ schedule: toWorkflowScheduleDto(schedule) });
+  }, "Failed to get workflow schedule");
 
 export const PATCH: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -52,10 +52,10 @@ export const PATCH: ApiRouteHandler = (context) =>
     await verifySpaceRole(spaceId, user.id, "editor");
 
     const db = await getSpaceDb(spaceId);
-    const existing = await getJobSchedule(db, scheduleId);
+    const existing = await getWorkflowSchedule(db, scheduleId);
 
     if (!existing) {
-      throw notFoundResponse("Job schedule");
+      throw notFoundResponse("Workflow schedule");
     }
 
     const body = await parseJsonBody(context.req.raw);
@@ -91,15 +91,15 @@ export const PATCH: ApiRouteHandler = (context) =>
       }
     }
 
-    const schedule = await updateJobSchedule(db, scheduleId, {
+    const schedule = await updateWorkflowSchedule(db, scheduleId, {
       cronExpression,
       timezone,
       inputs: inputs as Record<string, unknown> | null | undefined,
       enabled,
     });
 
-    return jsonResponse({ schedule: toJobScheduleDto(schedule) });
-  }, "Failed to update job schedule");
+    return jsonResponse({ schedule: toWorkflowScheduleDto(schedule) });
+  }, "Failed to update workflow schedule");
 
 export const DELETE: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -110,13 +110,13 @@ export const DELETE: ApiRouteHandler = (context) =>
     await verifySpaceRole(spaceId, user.id, "editor");
 
     const db = await getSpaceDb(spaceId);
-    const schedule = await getJobSchedule(db, scheduleId);
+    const schedule = await getWorkflowSchedule(db, scheduleId);
 
     if (!schedule) {
-      throw notFoundResponse("Job schedule");
+      throw notFoundResponse("Workflow schedule");
     }
 
-    await deleteJobSchedule(db, scheduleId);
+    await deleteWorkflowSchedule(db, scheduleId);
 
     return jsonResponse({ success: true });
-  }, "Failed to delete job schedule");
+  }, "Failed to delete workflow schedule");

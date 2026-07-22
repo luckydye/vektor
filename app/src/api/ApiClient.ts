@@ -139,9 +139,9 @@ export interface Connection {
   updatedAt: Date | string;
 }
 
-export interface JobSchedule {
+export interface WorkflowSchedule {
   id: string;
-  jobId: string;
+  documentId: string;
   cronExpression: string;
   timezone: string | null;
   inputs: Record<string, unknown>;
@@ -2689,6 +2689,66 @@ export class ApiClient {
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`, query);
       return response;
     },
+
+    /**
+     * List cron schedules that run workflow documents in a space
+     */
+    listSchedules: async (spaceId: string) => {
+      return await this.apiGet<{ schedules: WorkflowSchedule[] }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/schedules`,
+      );
+    },
+
+    /**
+     * Create a schedule that runs a workflow document on a cron expression
+     */
+    createSchedule: async (
+      spaceId: string,
+      body: {
+        documentId: string;
+        cronExpression: string;
+        timezone?: string;
+        inputs?: Record<string, unknown>;
+        enabled?: boolean;
+      },
+    ) => {
+      return await this.apiPost<{ schedule: WorkflowSchedule }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/schedules`,
+        body,
+      );
+    },
+
+    /**
+     * Update a workflow schedule
+     */
+    updateSchedule: async (
+      spaceId: string,
+      scheduleId: string,
+      body: {
+        cronExpression?: string;
+        timezone?: string | null;
+        inputs?: Record<string, unknown> | null;
+        enabled?: boolean;
+      },
+    ) => {
+      return await this.apiPatch<{ schedule: WorkflowSchedule }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/schedules/${scheduleId}`,
+        body,
+      );
+    },
+
+    /**
+     * Delete a workflow schedule (run history is preserved)
+     */
+    deleteSchedule: async (spaceId: string, scheduleId: string) => {
+      await this.apiDelete(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/schedules/${scheduleId}`,
+      );
+    },
   };
 
   jobs = {
@@ -2731,66 +2791,6 @@ export class ApiClient {
         limit: number;
         offset: number;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/jobs/runs`, options);
-    },
-
-    /**
-     * List job schedules in a space
-     */
-    listSchedules: async (spaceId: string) => {
-      return await this.apiGet<{ schedules: JobSchedule[] }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/jobs/schedules`,
-      );
-    },
-
-    /**
-     * Create a job schedule
-     */
-    createSchedule: async (
-      spaceId: string,
-      body: {
-        jobId: string;
-        cronExpression: string;
-        timezone?: string;
-        inputs?: Record<string, unknown>;
-        enabled?: boolean;
-      },
-    ) => {
-      return await this.apiPost<{ schedule: JobSchedule }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/jobs/schedules`,
-        body,
-      );
-    },
-
-    /**
-     * Update a job schedule
-     */
-    updateSchedule: async (
-      spaceId: string,
-      scheduleId: string,
-      body: {
-        cronExpression?: string;
-        timezone?: string | null;
-        inputs?: Record<string, unknown> | null;
-        enabled?: boolean;
-      },
-    ) => {
-      return await this.apiPatch<{ schedule: JobSchedule }>(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/jobs/schedules/${scheduleId}`,
-        body,
-      );
-    },
-
-    /**
-     * Delete a job schedule (run history is preserved)
-     */
-    deleteSchedule: async (spaceId: string, scheduleId: string) => {
-      await this.apiDelete(
-        this.baseUrl,
-        `/api/v1/spaces/${spaceId}/jobs/schedules/${scheduleId}`,
-      );
     },
   };
 

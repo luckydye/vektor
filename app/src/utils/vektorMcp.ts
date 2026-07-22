@@ -384,6 +384,55 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
       },
     },
     {
+      name: "schedule_workflow",
+      description:
+        "Create a cron schedule that runs a workflow document on a recurring basis. " +
+        "cronExpression is a standard 5-field expression (minute hour day month weekday), " +
+        'e.g. "*/5 * * * *" for every 5 minutes — minute resolution is the finest cron ' +
+        'cadence supported. For a cadence faster than a minute (e.g. "poll every 10 ' +
+        'seconds"), loop with a delay inside the workflow script itself instead of trying ' +
+        "to express that in cronExpression.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          documentId: { type: "string", description: "Workflow document ID to run" },
+          cronExpression: {
+            type: "string",
+            description: 'Standard 5-field cron expression, e.g. "0 6 * * 1"',
+          },
+          timezone: {
+            type: "string",
+            description: "IANA timezone for evaluating the expression",
+          },
+          inputs: {
+            type: "object",
+            description: "Runtime inputs passed to the workflow script on each run",
+          },
+          enabled: {
+            type: "boolean",
+            description: "Whether the schedule is active (default true)",
+          },
+        },
+        required: ["documentId", "cronExpression"],
+      },
+    },
+    {
+      name: "list_workflow_schedules",
+      description: "List cron schedules for workflow documents in the current space.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "delete_workflow_schedule",
+      description: "Delete a workflow cron schedule. Run history is preserved.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          scheduleId: { type: "string", description: "Schedule ID to delete" },
+        },
+        required: ["scheduleId"],
+      },
+    },
+    {
       name: "get_documentation",
       description:
         "Get Vektor documentation for a specific section (api, extensions, workflows).",
@@ -657,6 +706,43 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
       return await apiRequest(
         config,
         `/api/v1/spaces/${config.spaceId}/workflows/runs${buildQuery({ documentId, sourceExtensionId })}`,
+      );
+    }
+    case "schedule_workflow": {
+      const documentId = expectString(args, "documentId");
+      const cronExpression = expectString(args, "cronExpression");
+      const timezone = expectString(args, "timezone", { optional: true });
+      const inputs = expectObject(args, "inputs", { optional: true });
+      const enabled = typeof args.enabled === "boolean" ? args.enabled : undefined;
+      const body: Record<string, unknown> = { documentId, cronExpression };
+      if (timezone) body.timezone = timezone;
+      if (inputs) body.inputs = inputs;
+      if (enabled !== undefined) body.enabled = enabled;
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/workflows/schedules`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: new URL(config.apiUrl).origin,
+          },
+          body: JSON.stringify(body),
+        },
+      );
+    }
+    case "list_workflow_schedules": {
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/workflows/schedules`,
+      );
+    }
+    case "delete_workflow_schedule": {
+      const scheduleId = expectString(args, "scheduleId");
+      return await apiRequest(
+        config,
+        `/api/v1/spaces/${config.spaceId}/workflows/schedules/${encodeURIComponent(scheduleId)}`,
+        { method: "DELETE", headers: { Origin: new URL(config.apiUrl).origin } },
       );
     }
     case "get_documentation": {

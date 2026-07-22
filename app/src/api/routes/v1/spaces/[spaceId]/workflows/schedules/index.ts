@@ -1,11 +1,12 @@
 /**
- * /api/v1/spaces/:spaceId/jobs/schedules
+ * /api/v1/spaces/:spaceId/workflows/schedules
  *
- * GET:  list job schedules for the space (viewer)
- * POST: create a job schedule (editor — same role as running a job)
+ * GET:  list workflow schedules for the space (editor)
+ * POST: create a schedule that runs a workflow document (editor — same role
+ *       as starting a workflow run)
  *
  * Body: {
- *   jobId: string,
+ *   documentId: string,       // a document of type "workflow"
  *   cronExpression: string,   // standard 5-field cron, e.g. "0 6 * * 1"
  *   timezone?: string,        // IANA timezone
  *   inputs?: Record<string, unknown>,
@@ -23,26 +24,26 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getSpaceDb } from "#db/db.ts";
-import { listExtensions } from "#db/extensions.ts";
+import { getDocument } from "#db/documents.ts";
 import {
-  createJobSchedule,
-  listJobSchedules,
-  toJobScheduleDto,
+  createWorkflowSchedule,
+  listWorkflowSchedules,
+  toWorkflowScheduleDto,
   validateCronExpression,
-} from "#db/jobSchedules.ts";
+} from "#db/workflowSchedules.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
 
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await verifySpaceRole(spaceId, user.id, "editor");
 
     const db = await getSpaceDb(spaceId);
-    const schedules = await listJobSchedules(db);
+    const schedules = await listWorkflowSchedules(db);
 
-    return jsonResponse({ schedules: schedules.map(toJobScheduleDto) });
-  }, "Failed to list job schedules");
+    return jsonResponse({ schedules: schedules.map(toWorkflowScheduleDto) });
+  }, "Failed to list workflow schedules");
 
 export const POST: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
@@ -52,10 +53,10 @@ export const POST: ApiRouteHandler = (context) =>
     await verifySpaceRole(spaceId, user.id, "editor");
 
     const body = await parseJsonBody(context.req.raw);
-    const { jobId, cronExpression, timezone, inputs, enabled } = body;
+    const { documentId, cronExpression, timezone, inputs, enabled } = body;
 
-    if (!jobId || typeof jobId !== "string") {
-      throw badRequestResponse("jobId is required and must be a string");
+    if (!documentId || typeof documentId !== "string") {
+      throw badRequestResponse("documentId is required and must be a string");
     }
 
     if (!cronExpression || typeof cronExpression !== "string") {
@@ -83,18 +84,18 @@ export const POST: ApiRouteHandler = (context) =>
       throw badRequestResponse(`Invalid cron expression: ${validation.message}`);
     }
 
-    // Validate the job exists in some extension of the space
-    const extensions = await listExtensions(spaceId);
-    const jobExists = extensions.some((ext) =>
-      ext.manifest.jobs?.some((j) => j.id === jobId),
-    );
-    if (!jobExists) {
-      throw badRequestResponse(`Job "${jobId}" not found`);
+    // The schedule must target an existing workflow document.
+    const doc = await getDocument(spaceId, documentId);
+    if (!doc) {
+      throw badRequestResponse(`Document "${documentId}" not found`);
+    }
+    if (doc.type !== "workflow") {
+      throw badRequestResponse("Document type must be 'workflow'");
     }
 
     const db = await getSpaceDb(spaceId);
-    const schedule = await createJobSchedule(db, {
-      jobId,
+    const schedule = await createWorkflowSchedule(db, {
+      documentId,
       cronExpression,
       timezone,
       inputs: inputs as Record<string, unknown> | null | undefined,
@@ -102,5 +103,5 @@ export const POST: ApiRouteHandler = (context) =>
       createdBy: user.id,
     });
 
-    return jsonResponse({ schedule: toJobScheduleDto(schedule) });
-  }, "Failed to create job schedule");
+    return jsonResponse({ schedule: toWorkflowScheduleDto(schedule) });
+  }, "Failed to create workflow schedule");

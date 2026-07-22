@@ -2,7 +2,11 @@ import { CronExpressionParser } from "cron-parser";
 import { and, eq, isNull, lte } from "drizzle-orm";
 import type { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
-import { type JobSchedule, type JobScheduleInsert, jobSchedule } from "./schema/space.ts";
+import {
+  type WorkflowSchedule,
+  type WorkflowScheduleInsert,
+  workflowSchedule,
+} from "./schema/space.ts";
 
 type SpaceDb = Awaited<ReturnType<typeof getSpaceDb>>;
 
@@ -34,25 +38,25 @@ export function computeNextRunAt(
   return interval.next().toDate();
 }
 
-export async function createJobSchedule(
+export async function createWorkflowSchedule(
   db: SpaceDb,
   params: {
-    jobId: string;
+    documentId: string;
     cronExpression: string;
     timezone?: string | null;
     inputs?: Record<string, unknown> | null;
     enabled?: boolean;
     createdBy: string;
   },
-): Promise<JobSchedule> {
+): Promise<WorkflowSchedule> {
   const now = new Date();
   const enabled = params.enabled ?? true;
 
   const result = await db
-    .insert(jobSchedule)
+    .insert(workflowSchedule)
     .values({
-      id: createId("jobSchedule"),
-      jobId: params.jobId,
+      id: createId("workflowSchedule"),
+      documentId: params.documentId,
       cronExpression: params.cronExpression,
       timezone: params.timezone ?? null,
       inputs: params.inputs ? JSON.stringify(params.inputs) : null,
@@ -67,26 +71,30 @@ export async function createJobSchedule(
     .returning();
 
   if (!result[0]) {
-    throw new Error("Failed to create job schedule");
+    throw new Error("Failed to create workflow schedule");
   }
 
   return result[0];
 }
 
-export async function getJobSchedule(
+export async function getWorkflowSchedule(
   db: SpaceDb,
   id: string,
-): Promise<JobSchedule | null> {
-  const result = await db.select().from(jobSchedule).where(eq(jobSchedule.id, id)).get();
+): Promise<WorkflowSchedule | null> {
+  const result = await db
+    .select()
+    .from(workflowSchedule)
+    .where(eq(workflowSchedule.id, id))
+    .get();
 
   return result || null;
 }
 
-export async function listJobSchedules(db: SpaceDb): Promise<JobSchedule[]> {
-  return db.select().from(jobSchedule).all();
+export async function listWorkflowSchedules(db: SpaceDb): Promise<WorkflowSchedule[]> {
+  return db.select().from(workflowSchedule).all();
 }
 
-export async function updateJobSchedule(
+export async function updateWorkflowSchedule(
   db: SpaceDb,
   id: string,
   params: {
@@ -95,13 +103,13 @@ export async function updateJobSchedule(
     inputs?: Record<string, unknown> | null;
     enabled?: boolean;
   },
-): Promise<JobSchedule> {
-  const existing = await getJobSchedule(db, id);
+): Promise<WorkflowSchedule> {
+  const existing = await getWorkflowSchedule(db, id);
   if (!existing) {
-    throw new Error("Job schedule not found");
+    throw new Error("Workflow schedule not found");
   }
 
-  const updates: Partial<JobScheduleInsert> = {
+  const updates: Partial<WorkflowScheduleInsert> = {
     updatedAt: new Date(),
   };
 
@@ -131,48 +139,50 @@ export async function updateJobSchedule(
   }
 
   const result = await db
-    .update(jobSchedule)
+    .update(workflowSchedule)
     .set(updates)
-    .where(eq(jobSchedule.id, id))
+    .where(eq(workflowSchedule.id, id))
     .returning();
 
   if (!result[0]) {
-    throw new Error("Job schedule not found");
+    throw new Error("Workflow schedule not found");
   }
 
   return result[0];
 }
 
-export async function deleteJobSchedule(db: SpaceDb, id: string): Promise<void> {
-  await db.delete(jobSchedule).where(eq(jobSchedule.id, id));
+export async function deleteWorkflowSchedule(db: SpaceDb, id: string): Promise<void> {
+  await db.delete(workflowSchedule).where(eq(workflowSchedule.id, id));
 }
 
 /**
  * Atomically claim all due schedules: advance next_run_at past `now` and set
- * last_run_at in the same statement that selects them, so a slow job cannot
+ * last_run_at in the same statement that selects them, so a slow run cannot
  * be picked up again by the next tick. Missed occurrences (e.g. server was
  * down) collapse into a single fire.
  */
-export async function claimDueJobSchedules(
+export async function claimDueWorkflowSchedules(
   db: SpaceDb,
   now: Date = new Date(),
-): Promise<JobSchedule[]> {
+): Promise<WorkflowSchedule[]> {
   // Backfill next_run_at for enabled schedules that lost it (e.g. rows
   // written by an older version). They start firing from their next
   // occurrence rather than immediately.
   const missing = await db
     .select()
-    .from(jobSchedule)
-    .where(and(eq(jobSchedule.enabled, true), isNull(jobSchedule.nextRunAt)))
+    .from(workflowSchedule)
+    .where(and(eq(workflowSchedule.enabled, true), isNull(workflowSchedule.nextRunAt)))
     .all();
   for (const schedule of missing) {
     try {
       await db
-        .update(jobSchedule)
+        .update(workflowSchedule)
         .set({
           nextRunAt: computeNextRunAt(schedule.cronExpression, schedule.timezone, now),
         })
-        .where(and(eq(jobSchedule.id, schedule.id), isNull(jobSchedule.nextRunAt)));
+        .where(
+          and(eq(workflowSchedule.id, schedule.id), isNull(workflowSchedule.nextRunAt)),
+        );
     } catch {
       // Invalid stored expression — leave it dormant rather than failing the tick.
     }
@@ -180,11 +190,11 @@ export async function claimDueJobSchedules(
 
   const due = await db
     .select()
-    .from(jobSchedule)
-    .where(and(eq(jobSchedule.enabled, true), lte(jobSchedule.nextRunAt, now)))
+    .from(workflowSchedule)
+    .where(and(eq(workflowSchedule.enabled, true), lte(workflowSchedule.nextRunAt, now)))
     .all();
 
-  const claimed: JobSchedule[] = [];
+  const claimed: WorkflowSchedule[] = [];
   for (const schedule of due) {
     let nextRunAt: Date | null = null;
     try {
@@ -194,18 +204,18 @@ export async function claimDueJobSchedules(
     }
 
     const result = await db
-      .update(jobSchedule)
+      .update(workflowSchedule)
       .set({ nextRunAt, lastRunAt: now })
       .where(
         and(
-          eq(jobSchedule.id, schedule.id),
-          eq(jobSchedule.enabled, true),
-          lte(jobSchedule.nextRunAt, now),
+          eq(workflowSchedule.id, schedule.id),
+          eq(workflowSchedule.enabled, true),
+          lte(workflowSchedule.nextRunAt, now),
         ),
       )
-      .returning({ id: jobSchedule.id });
+      .returning({ id: workflowSchedule.id });
 
-    // Guarded update: only the claimer that actually advanced the row runs the job.
+    // Guarded update: only the claimer that actually advanced the row runs the workflow.
     if (result[0]) {
       claimed.push(schedule);
     }
@@ -214,7 +224,9 @@ export async function claimDueJobSchedules(
   return claimed;
 }
 
-export function parseJobScheduleInputs(schedule: JobSchedule): Record<string, unknown> {
+export function parseWorkflowScheduleInputs(
+  schedule: WorkflowSchedule,
+): Record<string, unknown> {
   if (!schedule.inputs) return {};
   try {
     const parsed = JSON.parse(schedule.inputs) as unknown;
@@ -226,13 +238,13 @@ export function parseJobScheduleInputs(schedule: JobSchedule): Record<string, un
   }
 }
 
-export function toJobScheduleDto(schedule: JobSchedule) {
+export function toWorkflowScheduleDto(schedule: WorkflowSchedule) {
   return {
     id: schedule.id,
-    jobId: schedule.jobId,
+    documentId: schedule.documentId,
     cronExpression: schedule.cronExpression,
     timezone: schedule.timezone,
-    inputs: parseJobScheduleInputs(schedule),
+    inputs: parseWorkflowScheduleInputs(schedule),
     enabled: schedule.enabled,
     nextRunAt: schedule.nextRunAt,
     lastRunAt: schedule.lastRunAt,

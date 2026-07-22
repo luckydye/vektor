@@ -4,7 +4,6 @@ const idPrefixes = {
   comment: "comment",
   document: "doc",
   emailNotification: "email_notification",
-  jobSchedule: "sched",
   oauthIntegration: "oauth",
   oauthIntegrationState: "oauth_state",
   preference: "pref",
@@ -13,6 +12,7 @@ const idPrefixes = {
   run: "run",
   secret: "secret",
   space: "space",
+  workflowSchedule: "sched",
 } as const;
 
 export type IdType = keyof typeof idPrefixes;
