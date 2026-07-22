@@ -1,0 +1,24 @@
+# Vektor
+
+> A self-hosted documentation platform. Organize knowledge across multiple
+> spaces, collaborate in real time with a rich tiptap-based editor, and
+> integrate via a REST API or custom extensions. Deploys as a single binary
+> with no external dependencies.
+
+This instance exposes its own API and extension documentation over HTTP —
+no repository access needed to explore them.
+
+## Docs
+
+- [Documentation overview](/docs): index of all guides below
+- [REST API reference](/docs/api): endpoints for spaces, documents, workflows,
+  and extensions, mounted under `/api/v1`
+- [Extension API](/docs/extensions): manifest format and API surface for
+  building extensions that add jobs, tools, and UI
+
+## Notes
+
+- The API accepts session cookies or `Authorization: Bearer at_...` access
+  tokens — see `/docs/api` for details.
+- `/`, and most other routes, require an authenticated session; the `/docs/*`
+  pages above are public and require no authentication.

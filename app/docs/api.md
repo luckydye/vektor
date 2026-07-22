@@ -18,11 +18,6 @@ Most endpoints accept one or more of:
 - **Access token** — `Authorization: Bearer at_<token>`. Long-lived, scoped via ACL
   grants (`token:<tokenId>` identity) to specific resources/permissions. Created via
   the access-tokens endpoints.
-- **Job token** — `X-Job-Token: <hmac>` + `X-Space-Id: <spaceId>` headers. A
-  short-lived, server-minted HMAC credential used for job-to-job and
-  extension/workflow calls. If the token carries a `userId`, it is scoped to that
-  user's real ACL permissions; a user-less token is a fully-trusted system credential
-  within its space.
 - **Public/unauthenticated** — permitted only where the space (or document/category)
   grants the `public` group a role.
 
@@ -80,7 +75,7 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 | GET/POST | `/spaces/:spaceId/uploads` | List uploaded files / upload a new file |
 | GET/DELETE | `/spaces/:spaceId/uploads/*path` | Serve (with transforms/range) / delete an uploaded file |
 | GET/POST | `/spaces/:spaceId/secrets` | List secret names / create a secret |
-| GET/PUT/DELETE/HEAD | `/spaces/:spaceId/secrets/:name` | Read (job-scoped) / upsert / delete / check existence of a secret |
+| GET/PUT/DELETE/HEAD | `/spaces/:spaceId/secrets/:name` | Read / upsert / delete / check existence of a secret |
 | GET/PUT/DELETE | `/spaces/:spaceId/settings/ai-provider` | Read / set / clear the space's AI provider config |
 | GET | `/spaces/:spaceId/integrations` | List OAuth integration connection states |
 | GET/DELETE | `/spaces/:spaceId/integrations/:provider` | Read / disconnect a single integration |
@@ -156,9 +151,7 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 
 Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
-- **Auth**: `X-Job-Token`/`X-Space-Id` (job-to-job re-use of an existing token) OR
-  session/access-token authenticated as viewer-or-above on the space
-  (`authenticateJobTokenOrSpaceRole`, minting a fresh job token server-side).
+- **Auth**: session or access token, authenticated as viewer-or-above on the space.
 - **Body**: `{ jsonrpc: "2.0", id?, method, params }`. Supported `method`s:
   - `session/prompt` — params: `sessionId` (string, required), `spaceId` (string,
     required), `documentId?` (string), `additionalContext?` (string), `prompt`
@@ -176,8 +169,7 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `POST /chat/completions`
 
-- **Auth**: session cookie OR `X-Job-Token` + `X-Space-Id` header (job token verified
-  against the space id).
+- **Auth**: session cookie.
 - **Headers**: `X-Space-Id` (required).
 - **Body**: passthrough OpenAI-style chat completion request; the server injects
   `model` for OpenAI-compatible providers.
@@ -292,7 +284,7 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `GET /spaces/:spaceId/properties`
 
-- **Auth**: `authenticateSpaceAccess(viewer)` (session, token, job token, or public).
+- **Auth**: session, access token, or public; `viewer` role.
 - **Returns**: `200 { properties: PropertyInfo[] }` — all document property
   keys/types/values used across the space (for filter UIs).
 
@@ -316,33 +308,33 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `POST /spaces/:spaceId/categories`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`.
+- **Auth**: session or access token; `editor` role.
 - **Body**: `name` (string, required), `slug` (string, required), `description?`,
   `color?`, `icon?` (strings).
 - **Returns**: `201 { category }`.
 
 ### `PUT /spaces/:spaceId/categories` (reorder)
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`.
+- **Auth**: session or access token; `editor` role.
 - **Body**: `{ categoryIds: string[] }` (non-empty array; new display order).
 - **Returns**: `200 { success: true }`.
 
 ### `GET /spaces/:spaceId/categories/:id`
 
-- **Auth**: job token (space-viewer) / session (category-or-space viewer) / access
-  token (category viewer permission) / public (category public-viewer).
+- **Auth**: session (category-or-space viewer) / access token (category viewer
+  permission) / public (category public-viewer).
 - **Returns**: `200 { category }`. `404` if missing.
 
 ### `PUT /spaces/:spaceId/categories/:id`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor, { type: CATEGORY, id })`.
+- **Auth**: session or access token; `editor` role on this category.
 - **Body**: same fields as create (`name`, `slug` required; `description`, `color`,
   `icon` optional).
 - **Returns**: `200 { category }`. `404` if not found.
 
 ### `DELETE /spaces/:spaceId/categories/:id`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor, { type: CATEGORY, id })`.
+- **Auth**: session or access token; `editor` role on this category.
 - **Returns**: `200 { success: true }`.
 
 ---
@@ -457,13 +449,13 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `POST /spaces/:spaceId/uploads`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`.
+- **Auth**: session or access token; `editor` role.
 - **Body**: multipart form — `file` (blob, required), `filename?`, `documentId?`
   (must pass `isSafeUploadIdPart`).
-- **Behavior**: 1.25GB size cap for user uploads (job-authenticated uploads are
-  trusted, uncapped). Content-addressed storage key (`sha256[:2]/sha256.ext`). Text
-  is extracted synchronously and stored for search; if `documentId` given, the
-  parent document's embedding is re-indexed asynchronously.
+- **Behavior**: 1.25GB size cap per upload. Content-addressed storage key
+  (`sha256[:2]/sha256.ext`). Text is extracted synchronously and stored for search;
+  if `documentId` given, the parent document's embedding is re-indexed
+  asynchronously.
 - **Returns**: `200 { url, key }`. `400` for missing file / invalid `documentId` /
   oversize.
 
@@ -480,7 +472,7 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
 
 ### `DELETE /spaces/:spaceId/uploads/*path`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`.
+- **Auth**: session or access token; `editor` role.
 - **Returns**: `204` (idempotent — removes storage object + file-table row).
 
 ---
@@ -504,9 +496,7 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
 
 ### `GET /spaces/:spaceId/secrets/:name`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(viewer)` — the credential must carry a
-  concrete `userId` (job token without a user → `403 "Job is not associated with a
-  user"`).
+- **Auth**: session or access token; `viewer` role.
 - **Behavior**: `getSpaceSecretValueForUser` performs per-user secret-access
   filtering; if the secret exists but this user can't read it → `403`; if it doesn't
   exist at all → `404`.
@@ -596,8 +586,7 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
 
 ### `POST /spaces/:spaceId/integrations/:provider/proxy`
 
-- **Auth**: session OR `X-Job-Token` (job token must carry a `userId`); either way
-  `verifySpaceRole(viewer)` is enforced for the resolved user.
+- **Auth**: session; `verifySpaceRole(viewer)`.
 - **Body**: `{ method?: "GET"|"POST"|"PUT"|"PATCH"|"DELETE" (default GET), path:
   string (required), headers?: Record<string,string> (only `accept`/`content-type`
   forwarded), body?: string }`.
@@ -616,7 +605,7 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
 
 ### `POST /spaces/:spaceId/jobs/run`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`.
+- **Auth**: session or access token; `editor` role.
 - **Body**: `{ jobId: string (required), inputs?: Record<string, unknown>, stream?:
   boolean }`. `jobId`s are unique within a space (no `extensionId` needed); the
   handler resolves which extension/entry owns the job.
@@ -641,8 +630,8 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
 
 ### `GET /spaces/:spaceId/workflows/runs`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(viewer)`. Runs are filtered to ones
-  whose backing document the caller (if user-scoped) can read.
+- **Auth**: session or access token; `viewer` role. Runs are filtered to ones whose
+  backing document the caller can read.
 - **Query**: `documentId?` (returns just the latest run for that document, `404` if
   none/inaccessible), `sourceExtensionId?` (filter), `filterDocumentId?` (narrow list
   to one document), `limit`/`offset` (default 20/max 200, only used in list mode).
@@ -653,7 +642,7 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
 
 ### `POST /spaces/:spaceId/workflows/runs`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`.
+- **Auth**: session or access token; `editor` role.
 - **Body**: `{ documentId: string (required), inputs?: Record<string, unknown>,
   sourceExtensionId?: string }`. Target document must exist and have
   `type === "workflow"` (else `400`/`404`).
@@ -662,8 +651,7 @@ Space-scoped secret values (e.g. API keys used by extensions/jobs).
 
 ### `GET /spaces/:spaceId/workflows/runs/:runId`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(viewer)`, plus a document-read ACL
-  check for user-scoped callers.
+- **Auth**: session or access token; `viewer` role, plus a document-read ACL check.
 - **Returns**: `200 { runId, documentId, status, createdAt, startedAt, completedAt,
   sourceExtensionId, runtimeInputs, error, logs, resultArtifact: {key,url}|null,
   logArtifact: {key,url}|null }`. `404` if the run doesn't exist or isn't readable.
@@ -765,8 +753,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `POST /spaces/:spaceId/documents`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)` (must resolve to a concrete
-  user id — anonymous job tokens get `403`).
+- **Auth**: session or access token; `editor` role.
 - **Body**: JSON (`Content-Type: application/json`) — `content` (string, required),
   `properties?` (object of property inits, e.g. `{ title, slug, ... }`),
   `parentId?`, `type?`, `slug?`, `createdAt?`/`updatedAt?` (ISO strings),
@@ -784,8 +771,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/documents/:documentId`
 
-- **Auth**: job token / session / access token / public, gated on `viewer` role
-  normally, or `editor` when `draft=true` or `live=true` (unpublished content).
+- **Auth**: session / access token / public, gated on `viewer` role normally, or
+  `editor` when `draft=true` or `live=true` (unpublished content).
   `spaceId` path param may be either the space id or its slug; `documentId` may be
   either the doc id or its slug.
 - **Query**: `rev?` (int ≥1 — fetch a specific revision instead of current content),
@@ -801,23 +788,21 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `PUT /spaces/:spaceId/documents/:documentId`
 
-- **Auth**: job token (editor, scoped) / session or access token (editor, via
-  `authenticateRequest` + `verifyDocumentRole`/`verifyTokenPermission`).
+- **Auth**: session or access token; `editor` role.
 - **Query**: `publish=true` — also publish the newly created revision.
 - **Body**: JSON — either `{ content: string }` (full content replacement, creates a
   revision) or `{ restore: true }` (revert to the currently-published revision;
   cannot combine with `content`). Or raw body (non-JSON content type).
 - **Behavior**: readonly documents (`document.readonly` or in
-  `readOnlyDocumentTypes`) reject non-job writes with `403`. Script tags are
-  stripped from HTML-type content before saving.
+  `readOnlyDocumentTypes`) always reject writes with `403`. Script tags are stripped
+  from HTML-type content before saving.
 - **Returns**: `200 { document }` — **`content` field is omitted** from the response
   to avoid re-serializing large payloads (client already has what it sent). `404` if
   document missing.
 
 ### `PATCH /spaces/:spaceId/documents/:documentId`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor, { type: DOCUMENT, id })`, plus
-  the resolved user must independently pass `verifyDocumentRole(editor)`.
+- **Auth**: session or access token; `editor` role on this document.
 - **Body**: exactly one of these patch shapes (properties patch cannot combine with
   the others):
   - `properties: Record<string, PropertyPatchValue>` — each value is `null` (delete
@@ -833,9 +818,8 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `DELETE /spaces/:spaceId/documents/:documentId`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor, { type: DOCUMENT, id })`;
-  `permanent=true` additionally requires `owner` role (else `editor` suffices for
-  archive).
+- **Auth**: session or access token; `editor` role on this document (`permanent=true`
+  additionally requires `owner`; `editor` suffices for archive).
 - **Query**: `permanent` (`"true"` — hard delete; default is soft archive).
 - **Returns**: `200 { success: true }`.
 
@@ -912,14 +896,12 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `POST /spaces/:spaceId/documents/:documentId/edit`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor, { type: DOCUMENT, id })`; a
-  session-authenticated caller must also independently hold `verifyDocumentRole
-  (editor)` on the document itself.
+- **Auth**: session or access token; `editor` role on this document.
 - **Body**: `{ operations: <edit-operation spec> }` — parsed/validated by
   `parseEditOperations`.
-- **Behavior**: readonly documents reject non-job requests with `403`. Applies the
-  operations to the live collaboration document (Yjs room) if open, so it merges
-  with concurrent edits instead of overwriting; falls back to the stored content
+- **Behavior**: readonly documents always reject with `403`. Applies the operations
+  to the live collaboration document (Yjs room) if open, so it merges with
+  concurrent edits instead of overwriting; falls back to the stored content
   otherwise. Script tags stripped from the result.
 - **Returns**: `200 { document, live: boolean }` (`live` indicates whether the edit
   was applied to an open collab room). `400` for invalid operations.
@@ -969,18 +951,17 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/extensions`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`. Job callers see all
-  extensions (including disabled); user-session callers only see ones they can
-  access (`canAccessExtension` — editor-on-space or explicit extension ACL).
+- **Auth**: session or access token; `editor` role. Only extensions the caller can
+  access are returned (`canAccessExtension` — editor-on-space or explicit extension
+  ACL).
 - **Returns**: `200 { extensions: Array<{ id, name, version, description, enabled,
   source, sourceRef, sourcePublisher, entries, routes, jobs, createdAt, updatedAt,
   createdBy }>, errors: manifestErrors }`.
 
 ### `POST /spaces/:spaceId/extensions` (install/update)
 
-- **Auth**: job token (must carry a `userId` with the `manage_extensions` feature —
-  anonymous job tokens rejected) OR session/access-token holding the
-  `manage_extensions` feature (`verifyFeatureAccess`/`verifyTokenFeature`).
+- **Auth**: session or access token holding the `manage_extensions` feature
+  (`verifyFeatureAccess`/`verifyTokenFeature`).
 - **Body**: multipart form — `file` (a `.zip`, ≤5MB, required; must contain
   `manifest.json`).
 - **Behavior**: extension id comes from the manifest (`manifest.id`); if it already
@@ -991,8 +972,7 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 
 ### `GET /spaces/:spaceId/extensions/:extensionId`
 
-- **Auth**: `authenticateJobTokenOrSpaceRole(editor)`; user-session callers
-  additionally need `verifyExtensionAccess`.
+- **Auth**: session or access token; `editor` role, plus `verifyExtensionAccess`.
 - **Returns**: `200` extension metadata object. `404` if missing.
 
 ### `PATCH /spaces/:spaceId/extensions/:extensionId` (enable/disable)
