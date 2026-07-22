@@ -30,7 +30,8 @@ export interface RealtimeEventMessage {
 }
 
 export interface PresenceUser {
-  email?: string | null;
+  // Deliberately no email: presence is broadcast to every room participant
+  // (viewer role), so it must not carry PII. Avatars/colors seed by `id`.
   id: string;
   name: string;
   image?: string | null;

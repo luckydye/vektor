@@ -43,19 +43,15 @@ export const GET: ApiRouteHandler = (context) =>
       return jsonResponse({ contributors: [] });
     }
 
-    // Fetch user information from auth database
+    // Fetch user information from auth database. Only id/name/image — the
+    // client shows the contributor name and an id-seeded avatar; email is PII
+    // and is never needed here, so it is not selected or returned.
     const authDb = getAuthDb();
     const userIdsArray = Array.from(userIds);
-    const contributors: {
-      id: string;
-      name: string;
-      email: string;
-      image: string | null;
-    }[] = await authDb
+    const contributors = await authDb
       .select({
         id: user.id,
         name: user.name,
-        email: user.email,
         image: user.image,
       })
       .from(user)

@@ -40,11 +40,13 @@ export const GET: ApiRouteHandler = (context) =>
 
     const comments = await listComments(spaceId, ResourceType.DOCUMENT, documentId);
 
-    // Fetch user data for comment creators
+    // Fetch user data for comment creators. Only id/name/image — the client
+    // renders the author name and an id-seeded avatar; email is PII and is
+    // never needed here, so it is not selected or returned.
     const authDb = getAuthDb();
     const userIds = [...new Set(comments.map((c) => c.createdBy))];
     const users = await authDb
-      .select()
+      .select({ id: userTable.id, name: userTable.name, image: userTable.image })
       .from(userTable)
       .where(inArray(userTable.id, userIds))
       .all();
@@ -60,7 +62,6 @@ export const GET: ApiRouteHandler = (context) =>
           ? {
               id: commentUser.id,
               name: commentUser.name,
-              email: commentUser.email,
               image: commentUser.image,
             }
           : null,

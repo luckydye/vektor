@@ -81,7 +81,6 @@ export interface DocumentMember {
 export interface DocumentContributor {
   userId: string;
   name: string;
-  email: string;
   image?: string | null;
   contributionCount: number;
   lastContribution: Date | string;
@@ -412,7 +411,6 @@ export interface Comment {
   createdByUser?: {
     id: string;
     name: string | null;
-    email: string;
     image: string | null;
   } | null;
 }

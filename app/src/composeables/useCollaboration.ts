@@ -29,7 +29,7 @@ export type CollaborationPresenceProfile<TState> = {
  * set, otherwise the automatic avatar-derived color. Shared by canvas and
  * editor presence so a user shows up in one consistent color everywhere.
  */
-function presenceColor(user: { email?: string | null; id: string }): string {
+function presenceColor(user: { id: string }): string {
   return readCanvasCursorColorOverride() ?? getAvatarColor(user.id);
 }
 
@@ -227,7 +227,6 @@ export function useCollaboration<TPresenceState>(options: {
               user: {
                 id: localUser.id,
                 name: localUser.name,
-                email: localUser.email,
                 image: localUser.image,
                 color: presenceColor(localUser),
               },
@@ -284,7 +283,6 @@ export function useCollaboration<TPresenceState>(options: {
       {
         id: user.value.id,
         name: user.value.name,
-        email: user.value.email,
         image: user.value.image,
         color: presenceColor(user.value),
       },

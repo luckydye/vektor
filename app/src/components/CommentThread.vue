@@ -14,7 +14,6 @@ export interface Comment {
   createdAt: string;
   createdBy: string;
   createdByUser?: {
-    email?: string | null;
     image?: string | null;
     name?: string | null;
   } | null;
@@ -56,7 +55,7 @@ const getUser = (comment: Comment) => {
 
 const getUserName = (comment: Comment): string => {
   const user = getUser(comment);
-  return user?.name || user?.email || comment.createdBy;
+  return user?.name || comment.createdBy;
 };
 
 function getRelativeTime(dateString: string) {

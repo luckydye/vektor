@@ -14,7 +14,6 @@ interface Collaborator {
   key: string;
   user: {
     name: string;
-    email?: string;
     image?: string | null;
   };
   isPresent: boolean;
@@ -48,7 +47,6 @@ const collaborators = computed(() => {
         ? {
             ...contributor.user,
             ...profile.user,
-            email: profile.user.email ?? contributor.user.email,
           }
         : profile.user,
       isPresent: true,
