@@ -421,7 +421,8 @@ code {
   background-color: var(--color-neutral-100);
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius-sm);
-  font-size: 0.875rem;
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
   font-family:
     ui-monospace, SFMono-Regular, "SF Mono", Monaco, Inconsolata, "Liberation Mono",
     "Courier New", monospace;

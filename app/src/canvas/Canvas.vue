@@ -291,9 +291,7 @@ const currentUserId = computed(() => currentUser.value?.id);
 // `null` means "automatic", so the presence color matches the user's avatar.
 const cursorColorOverride = ref<string | null>(readCanvasCursorColorOverride());
 const cursorColor = computed<string>(
-  () =>
-    cursorColorOverride.value ??
-    getAvatarColor(currentUser.value?.email || currentUser.value?.id),
+  () => cursorColorOverride.value ?? getAvatarColor(currentUser.value?.id),
 );
 const userCanEditCanvas = computed(() => canEdit(currentSpace.value?.userRole));
 // Singleton extension-owned editor session. The host only mounts the supplied
@@ -395,9 +393,7 @@ const remoteCanvasSelections = computed(() =>
           clientId: presence.clientId,
           user: presence.user,
           cursorColor:
-            state.cursorColor ||
-            presence.user.color ||
-            getAvatarColor(presence.user.email || presence.user.id),
+            state.cursorColor || presence.user.color || getAvatarColor(presence.user.id),
           itemId,
           bounds: shapeBounds(shape),
         },
@@ -414,7 +410,7 @@ const remoteCanvasStrokeSelections = computed(() =>
     color:
       presence.state?.cursorColor ||
       presence.user.color ||
-      getAvatarColor(presence.user.email || presence.user.id),
+      getAvatarColor(presence.user.id),
   })),
 );
 
@@ -3965,7 +3961,7 @@ onUnmounted(() => {
           '--presence-color':
             presence.state!.cursorColor ||
             presence.user.color ||
-            getAvatarColor(presence.user.email || presence.user.id),
+            getAvatarColor(presence.user.id),
         }"
       >
         <div

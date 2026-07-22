@@ -14,6 +14,7 @@ type MentionItem = {
   image?: string | null;
   type: "person" | "document";
   slug?: string;
+  userId?: string;
 };
 
 type MentionProps = SuggestionProps<MentionItem, MentionItem>;
@@ -94,6 +95,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
               email: member.user?.email || "",
               image: member.user?.image || null,
               type: "person" as const,
+              userId: member.userId,
             }));
 
           const docs: MentionItem[] = state.cachedDocs
@@ -280,6 +282,7 @@ export const MentionSuggestions = Mentions.extend<MentionOptions>({
                       >
                         <vektor-avatar
                           .user=${{
+                            id: item.userId,
                             name: item.label,
                             email: item.email,
                             image: item.image,

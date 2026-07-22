@@ -1,0 +1,195 @@
+---
+import LandingLayout from "#layouts/LandingLayout.astro";
+
+export interface Props {
+  title?: string;
+}
+
+const { title = "Docs - Vektor" } = Astro.props;
+
+const docsNavigation = [
+  {
+    title: "Documentation",
+    links: [
+      { href: "/docs", label: "Overview" },
+      { href: "/docs/api", label: "API" },
+      { href: "/docs/extensions", label: "Extensions" },
+    ],
+  },
+];
+
+const currentPath = new URL(Astro.request.url).pathname.replace(/\/$/, "") || "/docs";
+---
+
+<LandingLayout title={title}>
+  <div class="min-h-screen flex flex-col">
+    <header
+      class="sticky top-0 z-10 border-b border-primary-600/12 bg-background/80 backdrop-blur-sm"
+    >
+      <div class="max-w-7xl mx-auto flex items-center gap-3 px-5 sm:px-6 h-16">
+        <a href="/" class="docs-logo shrink-0">
+          <img src="/favicon_dark.png" alt="" class="docs-logo-mark docs-logo-mark-light" />
+          <img src="/favicon_light.png" alt="" class="docs-logo-mark docs-logo-mark-dark" />
+          Vektor
+        </a>
+        <span class="text-neutral-300">/</span>
+        <a
+          href="/docs"
+          class="text-size-medium font-medium text-neutral-500 hover:text-primary-700 transition-colors"
+        >
+          Docs
+        </a>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto px-5 sm:px-6">
+      <div class="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12">
+        <!-- Sidebar -->
+        <aside class="hidden lg:block border-r border-primary-600/12">
+          <nav class="sticky top-20 py-10 pr-6" aria-label="Documentation">
+            {
+              docsNavigation.map((group) => (
+                <div class="mb-8">
+                  <p class="docs-nav-title">{group.title}</p>
+                  <ul class="mt-3 space-y-0.5">
+                    {group.links.map((link) => (
+                      <li>
+                        <a
+                          href={link.href}
+                          class:list={[
+                            "docs-nav-link",
+                            currentPath === link.href && "docs-nav-link-active",
+                          ]}
+                        >
+                          {link.label}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            }
+          </nav>
+        </aside>
+
+        <!-- Content -->
+        <article class="min-w-0 py-10 lg:py-14">
+          <!-- Mobile section nav -->
+          <details class="mb-8 lg:hidden">
+            <summary
+              class="flex cursor-pointer items-center justify-between rounded-xl border border-primary-600/20 bg-primary-600/5 px-4 py-3 text-size-medium font-semibold text-primary-700"
+            >
+              Browse documentation
+              <svg
+                aria-hidden="true"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="mt-3 rounded-xl border border-primary-600/15 p-4">
+              {
+                docsNavigation.map((group) => (
+                  <div class="mb-4 last:mb-0">
+                    <p class="docs-nav-title">{group.title}</p>
+                    <ul class="mt-2 space-y-0.5">
+                      {group.links.map((link) => (
+                        <li>
+                          <a
+                            href={link.href}
+                            class:list={[
+                              "docs-nav-link",
+                              currentPath === link.href && "docs-nav-link-active",
+                            ]}
+                          >
+                            {link.label}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              }
+            </div>
+          </details>
+
+          <div class="max-w-[48rem]">
+            <slot />
+          </div>
+        </article>
+      </div>
+    </main>
+  </div>
+</LandingLayout>
+
+<style>
+  .docs-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    color: var(--color-neutral-900);
+  }
+
+  .docs-logo-mark {
+    display: block;
+    height: 1.75rem;
+    width: 1.75rem;
+    object-fit: contain;
+  }
+
+  .docs-logo-mark-dark {
+    display: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .docs-logo-mark-light {
+      display: none;
+    }
+
+    .docs-logo-mark-dark {
+      display: block;
+    }
+  }
+
+  .docs-nav-title {
+    color: var(--color-neutral-500);
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .docs-nav-link {
+    display: block;
+    border-radius: var(--radius-md);
+    padding: 0.4rem 0.7rem;
+    margin-left: -0.7rem;
+    color: var(--color-neutral-700);
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    transition:
+      color 150ms ease,
+      background-color 150ms ease;
+  }
+
+  .docs-nav-link:hover {
+    color: var(--color-primary-700);
+    background-color: color-mix(in srgb, var(--color-primary-600) 6%, transparent);
+  }
+
+  .docs-nav-link-active {
+    color: var(--color-primary-700);
+    font-weight: 650;
+    background-color: color-mix(in srgb, var(--color-primary-600) 9%, transparent);
+  }
+</style>

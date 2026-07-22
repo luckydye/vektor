@@ -30,7 +30,7 @@ export type CollaborationPresenceProfile<TState> = {
  * editor presence so a user shows up in one consistent color everywhere.
  */
 function presenceColor(user: { email?: string | null; id: string }): string {
-  return readCanvasCursorColorOverride() ?? getAvatarColor(user.email || user.id);
+  return readCanvasCursorColorOverride() ?? getAvatarColor(user.id);
 }
 
 export type CollaborationSession<TPresenceState = unknown> = ReturnType<

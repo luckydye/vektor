@@ -26,9 +26,7 @@ const themePreference = ref<ThemePreference>("system");
 const currentUser = useUserProfile();
 // `null` means "automatic" — the presence color follows the user's avatar.
 const cursorColorOverride = ref<string | null>(readCanvasCursorColorOverride());
-const automaticCursorColor = computed(() =>
-  getAvatarColor(currentUser.value?.email || currentUser.value?.id),
-);
+const automaticCursorColor = computed(() => getAvatarColor(currentUser.value?.id));
 const cursorColor = computed(
   () => cursorColorOverride.value ?? automaticCursorColor.value,
 );

@@ -1,20 +1,55 @@
 ---
-import docStyles from "#editor/css/document.css?inline";
-import BaseLayout from "#layouts/BaseLayout.astro";
+import DocsLayout from "#layouts/DocsLayout.astro";
+
+const pages = [
+  {
+    href: "/docs/api",
+    title: "API",
+    description: "REST endpoints for spaces, documents, workflows, and extensions.",
+  },
+  {
+    href: "/docs/extensions",
+    title: "Extensions",
+    description: "Build and package extensions that add jobs, tools, and UI to Vektor.",
+  },
+];
 ---
 
-<BaseLayout title="Document - Vektor">
-  <document-view>
-    <template shadowrootmode="open">
-      <style set:html={docStyles}></style>
+<DocsLayout title="Docs - Vektor">
+  <h1 class="text-2xl font-semibold text-neutral-900 mb-2" style="letter-spacing: -0.02em">
+    Documentation
+  </h1>
+  <p class="text-neutral-500 mb-8">
+    Guides and references for building on and integrating with Vektor.
+  </p>
 
-      <div>
-        <ul>
-          <li><a href="/docs/extensions">Extensions</a></li>
-          <li><a href="/docs/api">API</a></li>
-          <li><a href="/docs/workflows">Workflows</a></li>
-        </ul>
-      </div>
-    </template>
-  </document-view>
-</BaseLayout>
+  <div class="grid gap-4 sm:grid-cols-2">
+    {
+      pages.map((page) => (
+        <a
+          href={page.href}
+          class="group block p-5 rounded-xl border border-neutral-200 bg-background hover:border-primary-300 hover:shadow-sm transition-all"
+        >
+          <h2 class="font-semibold text-neutral-900 mb-1 flex items-center gap-1.5">
+            {page.title}
+            <svg
+              aria-hidden="true"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-neutral-400 group-hover:text-primary-500 group-hover:translate-x-0.5 transition-all"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </h2>
+          <p class="text-size-medium text-neutral-500">{page.description}</p>
+        </a>
+      ))
+    }
+  </div>
+</DocsLayout>
