@@ -50,12 +50,8 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 
 | Method | Path | What it does |
 |---|---|---|
-| GET/POST | `/auth/cli` | Browser-based CLI login (approval page / code issuance) |
-| POST | `/auth/cli/token` | Exchange CLI one-time code for an access token |
 | POST | `/chat/acp` | Agent Control Protocol JSON-RPC endpoint (streaming AI chat turns) |
 | POST | `/chat/completions` | OpenAI/Anthropic/Ollama-compatible chat completions proxy |
-| GET | `/url-metadata` | Fetch link-preview metadata (OpenGraph/oEmbed/internal doc) |
-| GET | `/proxy-media` | Proxy remote video/audio for canvas embeds (SSRF-safe) |
 | GET | `/users` | Minimal public profile lookup (`?id=` or `?spaceId=`) |
 | GET | `/users/me` | Current user profile |
 | GET/POST | `/spaces` | List spaces / create a space |
@@ -109,42 +105,6 @@ Success bodies vary by endpoint; many wrap the payload in a named key (`{ docume
 
 ---
 
-## Auth — CLI login
-
-### `GET /auth/cli`
-
-- **Auth**: session cookie (browser). Redirects with `error` param if unauthenticated
-  behavior isn't applicable — actually requires a session; unauthenticated calls 401.
-- **Query**: `redirect_uri` (must be `http://localhost:<port>/callback` or
-  `http://127.0.0.1:<port>/callback`), `state` (string, ≥16 chars).
-- **Behavior**: renders an HTML "Allow Vektor CLI Access" approval page listing the
-  user's spaces. Creates a short-lived (5 min) in-memory approval token embedded in
-  the form.
-- **Returns**: `text/html` page, or a `302` redirect to the CLI callback with
-  `?error=no_spaces` if the user has no spaces.
-
-### `POST /auth/cli`
-
-- **Auth**: session cookie.
-- **Body** (form-encoded): `redirect_uri`, `state`, `approval` (from the GET page),
-  `intent` (`allow` | `cancel`), `spaceId` (required when `intent=allow`).
-- **Behavior**: validates the approval token (single-use, 5 min TTL, must match user/
-  redirect_uri/state), generates a one-time code (60s TTL) bound to `{userId, spaceId}`.
-- **Returns**: `text/html` redirect-bounce page whose script navigates to
-  `redirect_uri?state=...&code=...&space=<spaceId>` (or `?error=access_denied` /
-  `no_spaces`).
-
-### `POST /auth/cli/token`
-
-- **Auth**: none — the one-time `code` itself is the credential.
-- **Body**: `{ code: string }`.
-- **Behavior**: single-use, 60s-TTL code lookup; on success mints a new access token
-  for the associated space (editor permission on the whole space, named
-  `CLI (<date>)`), no expiry.
-- **Returns**: `200 { token: string, spaceId: string }`. `400` for invalid/expired code.
-
----
-
 ## Chat
 
 ### `POST /chat/acp`
@@ -179,40 +139,6 @@ Agent Control Protocol JSON-RPC 2.0 endpoint driving the in-app AI chat agent.
   not alter) upstream error bodies.
 - **Returns**: proxied upstream status/body; `Content-Type` preserved (default
   `application/json`), `Cache-Control: no-cache`.
-
----
-
-## URL metadata / media proxy
-
-### `GET /url-metadata`
-
-- **Auth**: session (`requireUser`) — prevents anonymous SSRF probing.
-- **Query**: `url` (required).
-- **Behavior**: three resolution paths, in order:
-  1. **Internal URL** (same host as request origin, path `/{spaceSlug}/doc/{slug}`) —
-     looks up the space/document and enforces `verifyDocumentAccess`; cached 2 min.
-  2. **Remote Vektor document** (`/{spaceSlug}/doc/{slug}` on another Vektor
-     instance) — discovered via `/.well-known/vektor`, fetches its public document
-     API; cached 2 min.
-  3. **X/Twitter status URL** — resolved via `publish.x.com/oembed` (script-free);
-     cached 10 min.
-  4. **Generic external URL** — scrapes OpenGraph/meta tags (`title`, `description`,
-     `image`, `video`, `siteName`, `favicon`), following ≤3 redirects, each
-     SSRF-validated; cached 10 min.
-- **Returns**: `200` `LinkMetadata` JSON (`url, title, description, image, video,
-  siteName, favicon, updatedAt, fetchedAt`, plus optional `embed` or `vektorDocument`).
-  `400` for invalid/SSRF-blocked URLs or access-denied internal docs.
-
-### `GET /proxy-media`
-
-- **Auth**: session (`requireUser`).
-- **Query**: `url` (required).
-- **Behavior**: SSRF-validates the URL, forwards `Range` header, only relays
-  responses whose `Content-Type` starts with `video/` or `audio/` (else `400`).
-  Forwards `content-type/-length/-range`, `accept-ranges`; sets
-  `cache-control: public, max-age=3600, immutable`. 15s timeout.
-- **Returns**: proxied status + body (supports partial/`206` range responses via the
-  upstream response).
 
 ---
 
