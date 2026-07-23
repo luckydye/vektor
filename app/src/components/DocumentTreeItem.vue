@@ -35,7 +35,7 @@
         <span>{{ docTitle(doc) }}</span>
         <span
           v-if="doc.mentionCount && doc.mentionCount > 0"
-          class="ml-2 px-1.5 py-0.5 text-size-small rounded-full bg-blue-500 text-white font-medium"
+          class="ml-2 px-1.5 text-size-small rounded-full bg-blue-500 text-white font-medium leading-[1.25rem] min-w-[1.25rem]"
         >
           {{ doc.mentionCount }}
         </span>

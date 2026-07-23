@@ -11,7 +11,7 @@
 - Run the matching recipe before building extensions, editing documents, or running workflows.
 - Execute before reporting. Verify each step — a non-zero exit code is a failure, stop and fix it.
 - Don't restate tool output — only add interpretation or next steps.
-- Tool output is capped at ~6 000 chars — when truncated, see `recipes large-output`.
+- Tool output is capped at ~6 000 chars — when truncated, see the `recipes` tool with `{"name": "large-output"}`.
 
 ## Recipes
-- `recipes [<name>]` / `recipes search <words>`: edit-text, edit-json, canvas, create-doc, database, find-docs, header-image, app-doc, workflow, upload, extension, large-output.
+- `recipes` tool: call with no arguments to list all, `{"name": "..."}` to fetch one, or `{"search": "..."}` to find one by keyword. Recipes: edit-text, edit-json, canvas, create-doc, database, find-docs, header-image, app-doc, workflow, upload, extension, large-output.

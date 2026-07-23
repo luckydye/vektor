@@ -1,5 +1,3 @@
-import { defineCommand } from "just-bash";
-
 // Plain-text recipe bodies, embedded via Bun's `with { type: "text" }`.
 // Kept as `.txt` rather than `.md` because Astro's ambient `*.md` module
 // type treats markdown as page content (default export `AstroComponentFactory`),
@@ -60,7 +58,7 @@ function listRecipes(): string {
   const lines = Object.entries(RECIPES).map(
     ([name, recipe]) => `${name.padEnd(14)} ${recipe.title}`,
   );
-  return `${lines.join("\n")}\n\nusage: recipes <name> | recipes search <words>\n`;
+  return `${lines.join("\n")}\n\ncall recipes with {"name": "<name>"} or {"search": "<words>"}\n`;
 }
 
 function searchRecipes(words: string[]): string {
@@ -81,28 +79,28 @@ function searchRecipes(words: string[]): string {
     .join("\n")}\n`;
 }
 
-export function recipesCommand() {
-  return defineCommand("recipes", async (args, _ctx) => {
-    const [first, ...rest] = args.filter((arg) => !arg.startsWith("-"));
-
-    if (!first || first === "list") {
-      return { stdout: listRecipes(), stderr: "", exitCode: 0 };
-    }
-
-    const direct = RECIPES[first];
+/**
+ * Backing implementation for the `recipes` tool. Fetch a recipe directly by
+ * `name`, or find one by `search` terms; omit both to list all recipes.
+ */
+export function queryRecipes(args: { name?: string; search?: string }): string {
+  const name = args.name?.trim();
+  if (name) {
+    const direct = RECIPES[name];
     if (direct) {
-      return { stdout: `# ${direct.title}\n${direct.body}\n`, stderr: "", exitCode: 0 };
+      return `# ${direct.title}\n${direct.body}\n`;
     }
+    return `No recipe named '${name}'.\n\n${listRecipes()}`;
+  }
 
-    const terms = first === "search" ? rest : [first, ...rest];
-    const result = searchRecipes(terms);
+  const search = args.search?.trim();
+  if (search) {
+    const result = searchRecipes(search.split(/\s+/));
     if (result) {
-      return { stdout: result, stderr: "", exitCode: 0 };
+      return result;
     }
-    return {
-      stdout: "",
-      stderr: `recipes: no recipe matching '${terms.join(" ")}'\n\n${listRecipes()}`,
-      exitCode: 1,
-    };
-  });
+    return `No recipe matching '${search}'.\n\n${listRecipes()}`;
+  }
+
+  return listRecipes();
 }

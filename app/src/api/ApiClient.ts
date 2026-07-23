@@ -82,8 +82,6 @@ export interface DocumentContributor {
   userId: string;
   name: string;
   image?: string | null;
-  contributionCount: number;
-  lastContribution: Date | string;
 }
 
 export interface Revision {

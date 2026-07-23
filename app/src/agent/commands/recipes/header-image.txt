@@ -5,7 +5,7 @@ keywords: header, image, cover, poster, artwork, upload, document
 
 1. Read the target with `get_current_document` (current page) or `read_document` so the image search is based on the document's actual title and context.
 2. Find a suitable image. Prefer an authoritative or clearly identified source, and download the original image rather than a thumbnail when possible.
-3. Run `recipes upload`, then upload the local image:
+3. Call the `recipes` tool with `{"name": "upload"}`, then upload the local image:
    upload poster.jpg
 4. Copy the `url` from the upload result into the document's `headerImage` property:
    {"documentId":"<document-id>","properties":{"headerImage":"<uploaded-url>"}}

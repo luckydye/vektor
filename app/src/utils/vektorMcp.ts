@@ -435,13 +435,13 @@ export async function listTools(config: VektorMcpConfig): Promise<McpTool[]> {
     {
       name: "get_documentation",
       description:
-        "Get Vektor documentation for a specific section (api, extensions, workflows).",
+        "Get Vektor documentation for a specific section (api, extensions) as raw markdown.",
       inputSchema: {
         type: "object",
         properties: {
           section: {
             type: "string",
-            enum: ["api", "extensions", "workflows"],
+            enum: ["api", "extensions"],
             description: "The documentation section to retrieve.",
           },
         },
@@ -747,7 +747,7 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     }
     case "get_documentation": {
       const section = expectString(args, "section");
-      return await apiRequest(config, `/docs/${section}`);
+      return await apiRequest(config, `/docs/${section}.md`);
     }
     case "integration_api_request": {
       const provider = expectString(args, "provider");

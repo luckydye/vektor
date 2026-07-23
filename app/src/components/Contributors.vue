@@ -17,6 +17,7 @@ interface Collaborator {
     image?: string | null;
   };
   isPresent: boolean;
+  isCollaborator: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -34,6 +35,7 @@ const collaborators = computed(() => {
       key: contributor.userId,
       user: contributor,
       isPresent: false,
+      isCollaborator: true,
     });
   }
 
@@ -50,6 +52,7 @@ const collaborators = computed(() => {
           }
         : profile.user,
       isPresent: true,
+      isCollaborator: contributor?.isCollaborator ?? false,
     });
   }
 
@@ -63,6 +66,10 @@ const displayCollaborators = computed(() => collaborators.value.slice(0, props.m
 const remainingCount = computed(() => {
   return Math.max(0, collaborators.value.length - props.max);
 });
+
+const actualCollaborators = computed(() =>
+  collaborators.value.filter((collaborator) => collaborator.isCollaborator),
+);
 </script>
 
 <template>
@@ -135,7 +142,7 @@ const remainingCount = computed(() => {
             class="overflow-y-auto max-h-[240px] flex flex-col"
           >
             <div
-              v-for="collaborator in collaborators"
+              v-for="collaborator in actualCollaborators"
               :key="collaborator.key"
               class="flex items-center gap-3xs px-4xs py-4xs rounded-md"
             >

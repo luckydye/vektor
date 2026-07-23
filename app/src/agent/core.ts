@@ -15,7 +15,7 @@ import { gitlabCommand } from "./commands/gitlab.ts";
 import { htmlTableToCsvCommand, htmlToCsvCommand } from "./commands/htmlToCsv.ts";
 import { jsExecCommand } from "./commands/jsExec.ts";
 import systemPromptRaw from "./commands/recipes/system-prompt.txt" with { type: "text" };
-import { getRecipe, recipesCommand } from "./commands/recipes.ts";
+import { getRecipe, queryRecipes } from "./commands/recipes.ts";
 import { runtimeStubCommands } from "./commands/runtimeStubs.ts";
 import { uploadCommand } from "./commands/upload.ts";
 import { unzipCommand, zipCommand, zipinfoCommand } from "./commands/zip.ts";
@@ -101,7 +101,7 @@ function documentEditingSection(
   umlauts) and bypass collaborative editing. There is no temp-file step.
 ${
   recipe
-    ? `- Playbook (\`recipes ${recipeName}\`):\n${recipe.body
+    ? `- Playbook (\`recipes\` tool, name: "${recipeName}"):\n${recipe.body
         .split("\n")
         .map((l) => `  ${l}`)
         .join("\n")}`
@@ -194,9 +194,9 @@ async function listFiles(
 /**
  * Turns a model tool call into a shell command for the bash sandbox. `bash`
  * carries the full command line in `command`. Small models frequently name a
- * CLI command directly as the tool (js-exec, recipes, …) and put the
- * payload in `command`/`code`/`script`/`input`; rebuild a runnable line from
- * the tool name and that payload instead of rejecting it.
+ * CLI command directly as the tool (e.g. js-exec) and put the payload in
+ * `command`/`code`/`script`/`input`; rebuild a runnable line from the tool
+ * name and that payload instead of rejecting it.
  */
 export function buildShellCommand(toolName: string, args: unknown): string {
   const record = (args && typeof args === "object" ? args : {}) as Record<
@@ -379,6 +379,29 @@ export async function runAgentPrompt(options: {
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "recipes",
+        description:
+          "List, search, or fetch a step-by-step playbook for a common task (editing " +
+          "documents, canvases, workflows, uploads, etc). Call with no arguments to list " +
+          "all recipes.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: 'Exact recipe name to fetch, e.g. "canvas".',
+            },
+            search: {
+              type: "string",
+              description: "Search terms to find a recipe by keyword.",
+            },
+          },
+        },
+      },
+    },
     ...vektorTools.map((tool) => ({
       type: "function",
       function: {
@@ -501,12 +524,22 @@ export async function runAgentPrompt(options: {
             await bash.fs.writeFile(resolvedPath, content, "utf8");
           }
           result = `${mode === "append" ? "Appended" : "Wrote"} ${Buffer.byteLength(content, "utf8")} bytes to ${resolvedPath}.`;
+        } else if (toolCall.function.name === "recipes") {
+          const name = record.name;
+          const search = record.search;
+          if (name !== undefined && typeof name !== "string") {
+            throw new Error('recipes "name" must be a string.');
+          }
+          if (search !== undefined && typeof search !== "string") {
+            throw new Error('recipes "search" must be a string.');
+          }
+          result = queryRecipes({ name, search });
         } else if (vektorToolNames.has(toolCall.function.name)) {
           result = await callVektorTool(mcpConfig, toolCall.function.name, record);
         } else {
           // Small models sometimes call a shell command directly as a "tool"
-          // (e.g. js-exec, recipes). Route unknown tool names through
-          // bash by reconstructing the command line for backwards compatibility.
+          // (e.g. js-exec). Route unknown tool names through bash by
+          // reconstructing the command line for backwards compatibility.
           const cmd = buildShellCommand(toolCall.function.name, args);
           if (!cmd) {
             throw new Error('No command provided. Call bash with {"command": "…"}.');
@@ -575,7 +608,6 @@ export function createAgentShell(
       zipCommand,
       zipinfoCommand,
       unzipCommand,
-      recipesCommand(),
       htmlToCsvCommand,
       htmlTableToCsvCommand,
       uploadCommand(mcpConfigRef),

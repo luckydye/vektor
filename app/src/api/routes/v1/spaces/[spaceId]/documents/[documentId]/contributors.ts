@@ -50,7 +50,7 @@ export const GET: ApiRouteHandler = (context) =>
     const userIdsArray = Array.from(userIds);
     const contributors = await authDb
       .select({
-        id: user.id,
+        userId: user.id,
         name: user.name,
         image: user.image,
       })
