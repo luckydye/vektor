@@ -4,13 +4,13 @@ import {
   DOCUMENT_LINK_MIME,
   documentReferenceKey,
   droppedDocumentReference,
-} from "#canvas/elements/documentLink.ts";
+} from "#canvas/extensions/documentLink.ts";
 import {
   canvasFilesFromDataTransfer,
   createFileShape,
   isPdfFile,
-} from "#canvas/elements/files.ts";
-import { mediaFilesFromDataTransfer } from "#canvas/elements/media.ts";
+} from "#canvas/extensions/files.ts";
+import { mediaFilesFromDataTransfer } from "#canvas/extensions/media.ts";
 import { createVektorDocumentAddress } from "#utils/documentAddress.ts";
 
 function transferWithFileAndItem(file: File): DataTransfer {
@@ -56,11 +56,11 @@ describe("canvas data transfer helpers", () => {
       filename: "report.PDF",
     });
 
-    expect(isPdfFile(shape.src)).toBe(true);
-    expect(shape.width).toBe(420);
-    expect(shape.height).toBe(560);
-    expect(shape.x).toBe(290);
-    expect(shape.y).toBe(220);
+    expect(isPdfFile(shape.data.src as string)).toBe(true);
+    expect(shape.frame.width).toBe(420);
+    expect(shape.frame.height).toBe(560);
+    expect(shape.frame.x).toBe(290);
+    expect(shape.frame.y).toBe(220);
   });
 
   it("preserves target space metadata for dragged document links", () => {
@@ -96,8 +96,8 @@ describe("canvas data transfer helpers", () => {
       { x: 200, y: 200 },
     );
 
-    expect(shape?.docAddress).toBe(address);
-    expect(shape?.src).toBe("https://example.com/other/doc/page");
+    expect(shape?.data.docAddress).toBe(address);
+    expect(shape?.data.src).toBe("https://example.com/other/doc/page");
   });
 
   it("keys document references by remote origin", () => {

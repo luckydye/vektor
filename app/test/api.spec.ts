@@ -353,21 +353,28 @@ describe("API Tests - Documents", () => {
   });
 
   it("should update document content", async () => {
+    const updatedContent = "# Updated Document\n\nThis content has been updated.";
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}`,
       {
         method: "PUT",
         body: JSON.stringify({
-          content: "# Updated Document\n\nThis content has been updated.",
+          content: updatedContent,
         }),
       },
     );
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.document.content).toBe(
-      "# Updated Document\n\nThis content has been updated.",
+    expect(data.document.id).toBe(testDocumentId);
+
+    // The PUT response omits `content` (see the handler); confirm the update
+    // persisted via a subsequent GET instead.
+    const fetched = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${testDocumentId}`,
     );
+    const fetchedData = await fetched.json();
+    expect(fetchedData.document.content).toBe(updatedContent);
   });
 
   it("should create a child document", async () => {

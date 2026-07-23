@@ -211,19 +211,26 @@ describe("API Tests - Readonly Documents", () => {
   });
 
   it("should allow updates after removing readonly status", async () => {
+    const updatedContent = "# Updated After Unlock\n\nThis should work now.";
     const response = await apiRequest(
       `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
       {
         method: "PUT",
         body: JSON.stringify({
-          content: "# Updated After Unlock\n\nThis should work now.",
+          content: updatedContent,
         }),
       },
     );
 
     expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.document.content).toBe("# Updated After Unlock\n\nThis should work now.");
+
+    // The PUT response omits `content` (see the handler); confirm the update
+    // persisted via a subsequent GET instead.
+    const fetched = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${readonlyTestDocId}`,
+    );
+    const fetchedData = await fetched.json();
+    expect(fetchedData.document.content).toBe(updatedContent);
   });
 
   it("should allow saving revisions after removing readonly status", async () => {

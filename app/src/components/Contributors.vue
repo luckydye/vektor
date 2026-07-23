@@ -123,7 +123,7 @@ const actualCollaborators = computed(() =>
       </div>
     </button>
 
-    <a-popover class="group" placements="bottom-center">
+    <a-popover class="group" placements="bottom">
       <div
         class="w-max opacity-0 transition-opacity duration-100 group-[[enabled]]:opacity-100 my-3xs"
       >

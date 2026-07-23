@@ -6,6 +6,13 @@ import {
   seedCanvasDoc,
 } from "#utils/canvasYjs.ts";
 
+function shapeRotation(doc: Y.Doc, id: string): unknown {
+  const frame = doc.getMap<Y.Map<unknown>>(CANVAS_SHAPES_KEY).get(id)?.get("frame") as
+    | Y.Map<unknown>
+    | undefined;
+  return frame?.get("rotation");
+}
+
 describe("canvas shape rotation persistence", () => {
   it("defaults older snapshots to an unrotated shape", () => {
     const doc = new Y.Doc();
@@ -14,19 +21,13 @@ describe("canvas shape rotation persistence", () => {
         {
           id: "legacy-shape",
           type: "note",
-          x: 10,
-          y: 20,
-          width: 200,
-          height: 120,
-          text: "Note",
-          color: "#fef3c7",
+          frame: { x: 10, y: 20, width: 200, height: 120 },
+          style: { color: "#fef3c7" },
         },
       ],
     });
 
-    expect(
-      doc.getMap<Y.Map<unknown>>(CANVAS_SHAPES_KEY).get("legacy-shape")?.get("rotation"),
-    ).toBe(0);
+    expect(shapeRotation(doc, "legacy-shape")).toBe(0);
   });
 
   it("preserves a persisted rotation", () => {
@@ -36,20 +37,13 @@ describe("canvas shape rotation persistence", () => {
         {
           id: "rotated-shape",
           type: "note",
-          x: 10,
-          y: 20,
-          width: 200,
-          height: 120,
-          rotation: 135,
-          text: "Note",
-          color: "#fef3c7",
+          frame: { x: 10, y: 20, width: 200, height: 120, rotation: 135 },
+          style: { color: "#fef3c7" },
         },
       ],
     });
 
-    expect(
-      doc.getMap<Y.Map<unknown>>(CANVAS_SHAPES_KEY).get("rotated-shape")?.get("rotation"),
-    ).toBe(135);
+    expect(shapeRotation(doc, "rotated-shape")).toBe(135);
   });
 
   it("keeps stamped shapes identifiable after persistence", () => {

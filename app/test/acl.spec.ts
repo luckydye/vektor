@@ -2997,9 +2997,8 @@ describe("ACL API Tests - Contributors", () => {
       session1Token,
     );
     const { contributors } = await resp.json();
-    const creator = contributors.find((c: any) => c.id === testUser1.id);
+    const creator = contributors.find((c: any) => c.userId === testUser1.id);
     expect(creator).toBeDefined();
-    expect(creator.email).toBe(testUser1.email);
     expect(creator.name).toBe(testUser1.name);
   });
 
@@ -3011,9 +3010,8 @@ describe("ACL API Tests - Contributors", () => {
     const { contributors } = await resp.json();
     expect(contributors.length).toBeGreaterThan(0);
     for (const c of contributors) {
-      expect(typeof c.id).toBe("string");
+      expect(typeof c.userId).toBe("string");
       expect(typeof c.name).toBe("string");
-      expect(typeof c.email).toBe("string");
       expect("image" in c).toBe(true);
     }
   });
@@ -3032,7 +3030,7 @@ describe("ACL API Tests - Contributors", () => {
       session1Token,
     );
     const { contributors } = await resp.json();
-    expect(contributors.find((c: any) => c.id === testUser1.id)).toBeDefined();
+    expect(contributors.find((c: any) => c.userId === testUser1.id)).toBeDefined();
   });
 
   it("should return unique contributors only (multiple saves by same user)", async () => {
@@ -3057,7 +3055,7 @@ describe("ACL API Tests - Contributors", () => {
       session1Token,
     );
     const { contributors } = await resp.json();
-    expect(contributors.filter((c: any) => c.id === testUser1.id).length).toBe(1);
+    expect(contributors.filter((c: any) => c.userId === testUser1.id).length).toBe(1);
   });
 
   it("should return empty array for non-existent document", async () => {

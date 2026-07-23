@@ -17,12 +17,21 @@ function getDocumentReferenceId(href: string): string | null {
   return href.match(/^\/[^/]+\/doc\/([^/?#]+)/)?.[1] ?? null;
 }
 
+function getUserMentionEmail(href: string): string | null {
+  if (href.startsWith("mention:")) return decodeURIComponent(href.slice("mention:".length)) || null;
+  return null;
+}
+
 markdownRenderer.link = function ({ href, title, tokens }) {
   const label = this.parser.parseInline(tokens);
-  const safeHref = /^(?:https?:|mailto:|doc:|\/|#)/i.test(href) ? href : "#";
+  const safeHref = /^(?:https?:|mailto:|doc:|mention:|\/|#)/i.test(href) ? href : "#";
   const documentId = getDocumentReferenceId(safeHref);
   if (documentId) {
     return `<document-mention data-document-id="${escapeHtml(documentId)}" data-href="${escapeHtml(safeHref)}">${label}</document-mention>`;
+  }
+  const mentionEmail = getUserMentionEmail(safeHref);
+  if (mentionEmail) {
+    return `<user-mention email="${escapeHtml(mentionEmail)}">${label}</user-mention>`;
   }
   const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
   return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noopener noreferrer">${label}</a>`;
@@ -72,7 +81,11 @@ function serializeNode(node: JSONContent, depth = 0): string {
   switch (node.type) {
     case "mention": {
       const label = String(node.attrs?.label ?? node.attrs?.id ?? "").replace(/^@/, "");
-      return label ? `@${escapeMarkdownText(label)}` : "";
+      const id = String(node.attrs?.id ?? "");
+      if (!label) return "";
+      if (!id) return `@${escapeMarkdownText(label)}`;
+      const href = encodeURIComponent(id).replace(/[()]/g, "\\$&");
+      return `[@${escapeMarkdownText(label)}](mention:${href})`;
     }
     case "documentMention": {
       const label = String(node.attrs?.label ?? node.attrs?.documentId ?? "").replace(

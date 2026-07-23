@@ -262,7 +262,7 @@ describe("in-memory server — documents", () => {
 
     expect(res.status).toBe(200);
     const { document } = await res.json();
-    expect(document.content).toBe(updatedContent);
+    expect(document.content).toBeUndefined();
 
     // Confirm the change persists in a subsequent GET
     const { document: fetched } = await apiJson<{

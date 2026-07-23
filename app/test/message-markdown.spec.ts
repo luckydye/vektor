@@ -50,7 +50,33 @@ describe("message markdown", () => {
           },
         ],
       }),
+    ).toBe("Hello [@Jane Doe](mention:jane%40example.com)");
+  });
+
+  test("serializes mentions without an id as plain text", () => {
+    expect(
+      tiptapJsonToMarkdown({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "mention",
+                attrs: { label: "Jane Doe" },
+              },
+            ],
+          },
+        ],
+      }),
     ).toBe("Hello @Jane Doe");
+  });
+
+  test("renders mention links as user-mention elements", () => {
+    const html = renderMessageMarkdown("[@Jane Doe](mention:jane%40example.com)");
+    expect(html).toContain('<user-mention email="jane@example.com">');
+    expect(html).toContain("Jane Doe</user-mention>");
   });
 
   test("renders formatting and blocks unsafe HTML and links", () => {
