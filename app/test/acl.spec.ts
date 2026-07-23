@@ -882,6 +882,60 @@ describe("ACL API Tests - Access Control", () => {
     expect(response.status).toBe(200);
   });
 
+  it("should allow a document-only ACL grantee to see the containing space and the granted document", async () => {
+    const docOnlyUserData = await createAclTestUser("Document Only ACL User");
+    const docOnlyUserId = docOnlyUserData.userId;
+    const docOnlyUserToken = docOnlyUserData.token;
+
+    // Create a document with no space-level membership for this user
+    const docResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Document Only ACL Document",
+          properties: {
+            title: "Document Only ACL Document",
+          },
+        }),
+      },
+    );
+    const docOnlyDocument = (await docResponse.json()).document;
+
+    // Grant document-only access, no space-level role
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: docOnlyUserId,
+        resourceType: "document",
+        resourceId: docOnlyDocument.id,
+        action: "grant",
+      }),
+    });
+
+    // The user can access the granted document directly
+    const documentAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${docOnlyDocument.id}`,
+      docOnlyUserToken,
+    );
+    expect(documentAccess.status).toBe(200);
+
+    // The user should also be able to see the containing space in their spaces list
+    const spacesListResponse = await apiRequest("/api/v1/spaces", docOnlyUserToken);
+    expect(spacesListResponse.status).toBe(200);
+    const spaces = await spacesListResponse.json();
+    expect(Array.isArray(spaces)).toBe(true);
+    const containingSpace = spaces.find((s: any) => s.id === testSpaceId);
+    expect(containingSpace).toBeDefined();
+
+    // And access the space directly
+    const spaceAccess = await apiRequest(`/api/v1/spaces/${testSpaceId}`, docOnlyUserToken);
+    expect(spaceAccess.status).toBe(200);
+  });
+
   it("should allow document tree access for descendants", async () => {
     const treeUserData = await createAclTestUser("Document Tree User");
     const treeUserId = treeUserData.userId;
@@ -1243,6 +1297,85 @@ describe("ACL API Tests - Access Control", () => {
       categoryUserToken,
     );
     expect(revokedDocumentAccess.status).toBe(403);
+  });
+
+  it("should allow a category-only ACL grantee to see the containing space and the granted category", async () => {
+    const categoryOnlyUserData = await createAclTestUser("Category Only ACL User");
+    const categoryOnlyUserId = categoryOnlyUserData.userId;
+    const categoryOnlyUserToken = categoryOnlyUserData.token;
+    const unique = Date.now();
+
+    // Create a category with no space-level membership for this user
+    const categoryResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Category Only ACL",
+          slug: `category-only-acl-${unique}`,
+        }),
+      },
+    );
+    const categoryOnlyCategory = (await categoryResponse.json()).category;
+
+    // Create a document within the category to confirm resource access
+    const documentResponse = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents`,
+      session1Token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          content: "# Category Only ACL Document",
+          properties: {
+            title: "Category Only ACL Document",
+            category: categoryOnlyCategory.slug,
+          },
+        }),
+      },
+    );
+    const categoryOnlyDocument = (await documentResponse.json()).document;
+
+    // Grant category-only access, no space-level role
+    await apiRequest(`/api/v1/spaces/${testSpaceId}/permissions`, session1Token, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "role",
+        roleOrFeature: "viewer",
+        userId: categoryOnlyUserId,
+        resourceType: "category",
+        resourceId: categoryOnlyCategory.id,
+        action: "grant",
+      }),
+    });
+
+    // The user can access the granted category and its document directly
+    const categoryAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/categories/${categoryOnlyCategory.id}`,
+      categoryOnlyUserToken,
+    );
+    expect(categoryAccess.status).toBe(200);
+
+    const documentAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}/documents/${categoryOnlyDocument.id}`,
+      categoryOnlyUserToken,
+    );
+    expect(documentAccess.status).toBe(200);
+
+    // The user should also be able to see the containing space in their spaces list
+    const spacesListResponse = await apiRequest("/api/v1/spaces", categoryOnlyUserToken);
+    expect(spacesListResponse.status).toBe(200);
+    const spaces = await spacesListResponse.json();
+    expect(Array.isArray(spaces)).toBe(true);
+    const containingSpace = spaces.find((s: any) => s.id === testSpaceId);
+    expect(containingSpace).toBeDefined();
+
+    // And access the space directly
+    const spaceAccess = await apiRequest(
+      `/api/v1/spaces/${testSpaceId}`,
+      categoryOnlyUserToken,
+    );
+    expect(spaceAccess.status).toBe(200);
   });
 });
 
