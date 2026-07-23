@@ -84,6 +84,7 @@ const actualCollaborators = computed(() =>
       type="button"
       class="flex items-center"
       data-tooltip="Collaborators"
+      data-tooltip-pos="bottom"
     >
       <TransitionGroup name="collaborator" tag="span" class="flex items-center">
         <span
