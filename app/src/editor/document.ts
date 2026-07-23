@@ -18,12 +18,20 @@ import { DragHandle } from "./extensions/DragHandle.ts";
 import { Dropcursor } from "./extensions/Dropcursor.ts";
 import { ExtensionSuggestions } from "./extensions/ExtensionSuggestions.ts";
 import {
+  attachmentFilesFromDataTransfer,
+  insertFileAttachmentsAt,
+} from "./extensions/FileAttachment.ts";
+import {
   imageFilesFromDataTransfer,
   insertImageFilesAt,
 } from "./extensions/ImageUpload.ts";
 import { InlineSuggestions } from "./extensions/InlineSuggestions.ts";
 import { MentionSuggestions } from "./extensions/MentionSuggestions.ts";
 import { TrailingNodePlus } from "./extensions/TrailingNodePlus.ts";
+import {
+  insertVideoFilesAt,
+  videoFilesFromDataTransfer,
+} from "./extensions/VideoUpload.ts";
 import {
   createBaseEditor,
   documentExtensions,
@@ -554,7 +562,10 @@ export class DocumentView extends HTMLElement {
     this.hideBlockDropIndicators();
 
     const images = imageFilesFromDataTransfer(event.dataTransfer);
-    if (images.length === 0) {
+    const videos = videoFilesFromDataTransfer(event.dataTransfer);
+    const attachments = attachmentFilesFromDataTransfer(event.dataTransfer);
+
+    if (images.length === 0 && videos.length === 0 && attachments.length === 0) {
       return;
     }
 
@@ -567,17 +578,41 @@ export class DocumentView extends HTMLElement {
     });
     const insertPos = coordinates?.pos ?? editor.state.selection.from;
     const context = this.resolvedEditorContext();
-    const inserted = insertImageFilesAt(
-      editor,
-      editor.view,
-      images,
-      insertPos,
-      context.spaceId ?? "",
-      context.documentId,
-    );
+    const spaceId = context.spaceId ?? "";
 
-    if (!inserted) {
-      alert("Image upload is not available in this editor.");
+    const insertedImages =
+      images.length > 0 &&
+      insertImageFilesAt(
+        editor,
+        editor.view,
+        images,
+        insertPos,
+        spaceId,
+        context.documentId,
+      );
+    const insertedVideos =
+      videos.length > 0 &&
+      insertVideoFilesAt(
+        editor,
+        editor.view,
+        videos,
+        insertPos,
+        spaceId,
+        context.documentId,
+      );
+    const insertedAttachments =
+      attachments.length > 0 &&
+      insertFileAttachmentsAt(
+        editor,
+        editor.view,
+        attachments,
+        insertPos,
+        spaceId,
+        context.documentId,
+      );
+
+    if (!insertedImages && !insertedVideos && !insertedAttachments) {
+      alert("Upload is not available in this editor.");
     }
   };
 

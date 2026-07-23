@@ -98,6 +98,31 @@ function insertPlaceholderAndUpload(
     .catch((error) => replacePlaceholderWithError(editor, error));
 }
 
+export function insertVideoFilesAt(
+  editor: Editor,
+  view: EditorView,
+  files: File[],
+  insertPos: number,
+  spaceId: string,
+  documentId?: string,
+): boolean {
+  const videos = files.filter((file) => isVideoFile(file));
+  if (!spaceId || videos.length === 0) return false;
+
+  videos.forEach((file, index) => {
+    insertPlaceholderAndUpload(
+      editor,
+      view,
+      file,
+      insertPos + index * PLACEHOLDER_TEXT.length,
+      spaceId,
+      documentId,
+    );
+  });
+
+  return true;
+}
+
 class ResizableVideoView extends ResizableNodeView {
   video: HTMLVideoElement;
 
@@ -176,9 +201,6 @@ export const VideoUpload = Node.create<VideoUploadOptions>({
           handleDrop(view, event) {
             if (!spaceId) return false;
 
-            const hasFiles = event.dataTransfer?.files?.length;
-            if (!hasFiles) return false;
-
             const videos = videoFilesFromDataTransfer(event.dataTransfer);
             if (videos.length === 0) return false;
 
@@ -190,18 +212,14 @@ export const VideoUpload = Node.create<VideoUploadOptions>({
             });
             const insertPos = coordinates?.pos ?? view.state.selection.from;
 
-            videos.forEach((file, index) => {
-              insertPlaceholderAndUpload(
-                editor,
-                view,
-                file,
-                insertPos + index * PLACEHOLDER_TEXT.length,
-                spaceId,
-                documentId,
-              );
-            });
-
-            return true;
+            return insertVideoFilesAt(
+              editor,
+              view,
+              videos,
+              insertPos,
+              spaceId,
+              documentId,
+            );
           },
 
           handlePaste(view, event) {
