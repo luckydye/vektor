@@ -89,6 +89,15 @@ function startEditing() {
   editing.value = true;
 }
 
+function openWorkflowEditor() {
+  toggleDockedWindow("workflow-editor", { side: "right", width: 720, mode: "floating" });
+}
+
+function openWorkflowEditorFromMenu(e: Event) {
+  openWorkflowEditor();
+  e.target?.dispatchEvent(new CustomEvent("exit", { bubbles: true }));
+}
+
 Actions.register("document:print", {
   title: t("Print"),
   icon: () => "print",
@@ -468,8 +477,8 @@ watchEffect(() => {
     <button
       v-if="documentType === 'workflow' && documentId && userCanEdit"
       type="button"
-      class="button-primary px-3"
-      @click="toggleDockedWindow('workflow-editor', { side: 'right', width: 720, mode: 'floating' })"
+      class="button-primary px-3 max-md:hidden"
+      @click="openWorkflowEditor"
     >
       <Icon name="edit" />
       <span>Edit</span>
@@ -478,7 +487,7 @@ watchEffect(() => {
     <button
       v-if="canUseDocumentEditor && !editing"
       type="button"
-      class="button-primary px-3"
+      class="button-primary px-3 max-md:hidden"
       @click="startEditing"
     >
       <Icon name="edit" />
@@ -556,6 +565,28 @@ watchEffect(() => {
         :documentTitle="title"
       />
       <ContextMenu>
+        <ContextMenuItem
+          v-if="documentType === 'workflow' && documentId && userCanEdit"
+          class="md:hidden"
+          :onClick="openWorkflowEditorFromMenu"
+        >
+          <div class="aspect-sqaure flex-none w-[1rem]">
+            <Icon name="edit" />
+          </div>
+          <span class="block w-full text-left mr-2">{{ t("Edit") }}</span>
+        </ContextMenuItem>
+
+        <ContextMenuItem
+          v-if="canUseDocumentEditor && !editing"
+          class="md:hidden"
+          :onClick="(event) => runContextMenuAction(event, 'document:edit')"
+        >
+          <div class="aspect-sqaure flex-none w-[1rem]">
+            <Icon name="edit" />
+          </div>
+          <span class="block w-full text-left mr-2">{{ t("Edit") }}</span>
+        </ContextMenuItem>
+
         <ContextMenuItem
           v-for="[ name, options ] of actions"
           :onClick="(event) => runContextMenuAction(event, name)"
