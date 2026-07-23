@@ -12,6 +12,7 @@ import { getAuthDb } from "#db/connection.ts";
 import { spaceIndex, user } from "#db/schema/auth.ts";
 import { activeRuns } from "#jobs/runStore.ts";
 import { getJobQueueStats } from "#jobs/scheduler.ts";
+import { getOpStats } from "./trace.ts";
 
 /** Rolling window, in seconds, used to compute the HTTP request rate. */
 const REQUEST_RATE_WINDOW_SECONDS = 60;
@@ -179,6 +180,39 @@ interface MetricLine {
   help: string;
   type: "counter" | "gauge";
   value: number;
+  labels?: Record<string, string>;
+}
+
+/** Renders a Prometheus label set, e.g. `{op="yjs.applyUpdate"}`. */
+function formatLabels(labels: Record<string, string>): string {
+  const pairs = Object.entries(labels).map(
+    ([key, value]) => `${key}="${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
+  );
+  return `{${pairs.join(",")}}`;
+}
+
+/** Per-label operation timing, as counter pairs Prometheus can average. */
+function opStatsMetrics(): MetricLine[] {
+  const lines: MetricLine[] = [];
+  for (const { label, count, totalMs } of getOpStats()) {
+    lines.push(
+      {
+        name: "vektor_op_duration_seconds_sum",
+        help: "Cumulative time spent in traced operations, in seconds.",
+        type: "counter",
+        value: totalMs / 1000,
+        labels: { op: label },
+      },
+      {
+        name: "vektor_op_duration_seconds_count",
+        help: "Number of times a traced operation has run.",
+        type: "counter",
+        value: count,
+        labels: { op: label },
+      },
+    );
+  }
+  return lines;
 }
 
 async function collectMetrics(): Promise<MetricLine[]> {
@@ -326,6 +360,7 @@ async function collectMetrics(): Promise<MetricLine[]> {
       type: "gauge",
       value: activeRuns.size,
     },
+    ...opStatsMetrics(),
   ];
 }
 
@@ -335,10 +370,15 @@ export const METRICS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 /** Renders the current metrics snapshot in Prometheus exposition format. */
 export async function renderPrometheusMetrics(): Promise<string> {
   const lines: string[] = [];
+  const seenNames = new Set<string>();
   for (const metric of await collectMetrics()) {
-    lines.push(`# HELP ${metric.name} ${metric.help}`);
-    lines.push(`# TYPE ${metric.name} ${metric.type}`);
-    lines.push(`${metric.name} ${metric.value}`);
+    if (!seenNames.has(metric.name)) {
+      seenNames.add(metric.name);
+      lines.push(`# HELP ${metric.name} ${metric.help}`);
+      lines.push(`# TYPE ${metric.name} ${metric.type}`);
+    }
+    const labels = metric.labels ? formatLabels(metric.labels) : "";
+    lines.push(`${metric.name}${labels} ${metric.value}`);
   }
   return `${lines.join("\n")}\n`;
 }

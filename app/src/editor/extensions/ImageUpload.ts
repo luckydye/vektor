@@ -256,16 +256,13 @@ export const ImageUpload = Image.extend<ImageUploadOptions>({
               left: event.clientX,
               top: event.clientY,
             });
-
-            if (!coordinates) {
-              return false;
-            }
+            const insertPos = coordinates?.pos ?? view.state.selection.from;
 
             return insertImageFilesAt(
               editor,
               view,
               images,
-              coordinates.pos,
+              insertPos,
               spaceId,
               documentId,
             );

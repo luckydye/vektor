@@ -128,18 +128,13 @@ async function handleRealtimeWebSocket(
   });
 
   websocket.on("message", async (rawMessage: Buffer | ArrayBuffer | Buffer[]) => {
-    const messageStart = performance.now();
-    let messageType = -1;
-    let messageBytes = 0;
     try {
       const messageBuffer = Array.isArray(rawMessage)
         ? Buffer.concat(rawMessage)
         : Buffer.isBuffer(rawMessage)
           ? rawMessage
           : Buffer.from(rawMessage);
-      messageBytes = messageBuffer.length;
       const { type, payload } = wsDecode(messageBuffer);
-      messageType = type;
 
       if (type === WsMsgType.YjsUpdate) {
         const { documentId, update } = wsDecodeYjsUpdate(payload);
@@ -151,25 +146,19 @@ async function handleRealtimeWebSocket(
         const room = yRooms.get(roomKey);
         if (!room?.doc) return;
 
-        tracedSync(
-          "yjs.applyUpdate",
-          () => Y.applyUpdate(room.doc as Y.Doc, update, websocket),
-          { documentId, bytes: update.length, clients: room.clients.size },
+        tracedSync("yjs.applyUpdate", () =>
+          Y.applyUpdate(room.doc as Y.Doc, update, websocket),
         );
         scheduleYRoomDraftPersist(roomKey);
 
         const frame = wsEncodeYjsUpdate(documentId, update);
-        tracedSync(
-          "yjs.broadcast",
-          () => {
-            for (const client of room.clients) {
-              if (client !== websocket && client.readyState === 1) {
-                client.send(frame);
-              }
+        tracedSync("yjs.broadcast", () => {
+          for (const client of room.clients) {
+            if (client !== websocket && client.readyState === 1) {
+              client.send(frame);
             }
-          },
-          { documentId, bytes: frame.length, clients: room.clients.size },
-        );
+          }
+        });
         return;
       }
 
@@ -201,18 +190,11 @@ async function handleRealtimeWebSocket(
         yjsRooms.add(roomKey);
         if (canEdit) yjsEditableRooms.add(roomKey);
 
-        const stateUpdate = tracedSync(
-          "yjs.encodeState",
-          () => Y.encodeStateAsUpdate(room.doc as Y.Doc),
-          { documentId, clients: room.clients.size },
+        const stateUpdate = tracedSync("yjs.encodeState", () =>
+          Y.encodeStateAsUpdate(room.doc as Y.Doc),
         );
-        tracedSync(
-          "yjs.sendState",
-          () => websocket.send(wsEncodeYjsUpdate(documentId, stateUpdate)),
-          {
-            documentId,
-            bytes: stateUpdate.length,
-          },
+        tracedSync("yjs.sendState", () =>
+          websocket.send(wsEncodeYjsUpdate(documentId, stateUpdate)),
         );
         return;
       }
@@ -249,15 +231,6 @@ async function handleRealtimeWebSocket(
     } catch (error) {
       appLogger.warn("Failed to handle realtime message", { error, spaceId });
       websocket.send(wsEncode(WsMsgType.Error, { message: "Invalid message" }));
-    } finally {
-      const ms = performance.now() - messageStart;
-      if (ms >= 200) {
-        appLogger.warn("[trace] slow message", {
-          type: messageType,
-          ms: Math.round(ms),
-          bytes: messageBytes,
-        });
-      }
     }
   });
 

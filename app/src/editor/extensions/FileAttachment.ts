@@ -72,6 +72,14 @@ async function uploadFile(
   return result.url;
 }
 
+export function attachmentFilesFromDataTransfer(
+  data: DataTransfer | null | undefined,
+): File[] {
+  return Array.from(data?.files || []).filter(
+    (file) => isSupportedDocumentFile(file) && !isImageFile(file),
+  );
+}
+
 // Simple NodeView wrapper that uses the file-attachment custom element
 class FileAttachmentView implements NodeView {
   dom: HTMLElement;
@@ -115,6 +123,52 @@ class FileAttachmentView implements NodeView {
   }
 
   destroy(): void {}
+}
+
+function insertPlaceholderAndUpload(
+  editor: Editor,
+  view: EditorView,
+  file: File,
+  insertPos: number,
+  spaceId: string,
+  documentId?: string,
+): void {
+  const placeholderText = `⏳ Uploading ${file.name}...`;
+
+  const tr = view.state.tr;
+  tr.insertText(placeholderText, insertPos);
+  view.dispatch(tr);
+
+  uploadFile(file, spaceId, documentId)
+    .then((url) => {
+      replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
+    })
+    .catch((error) => {
+      replacePlaceholderWithError(editor, placeholderText, error);
+    });
+}
+
+export function insertFileAttachmentsAt(
+  editor: Editor,
+  view: EditorView,
+  files: File[],
+  insertPos: number,
+  spaceId: string,
+  documentId?: string,
+): boolean {
+  const attachments = files.filter(
+    (file) => isSupportedDocumentFile(file) && !isImageFile(file),
+  );
+  if (!spaceId || attachments.length === 0) return false;
+
+  let pos = insertPos;
+  attachments.forEach((file) => {
+    const placeholderLength = `⏳ Uploading ${file.name}...`.length;
+    insertPlaceholderAndUpload(editor, view, file, pos, spaceId, documentId);
+    pos += placeholderLength;
+  });
+
+  return true;
 }
 
 export const FileAttachment = Node.create<FileAttachmentOptions>({
@@ -165,26 +219,6 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
     const spaceId = this.options.spaceId;
     const documentId = this.options.documentId;
 
-    function insertPlaceholderAndUpload(
-      view: EditorView,
-      file: File,
-      insertPos: number,
-    ): void {
-      const placeholderText = `⏳ Uploading ${file.name}...`;
-
-      const tr = view.state.tr;
-      tr.insertText(placeholderText, insertPos);
-      view.dispatch(tr);
-
-      uploadFile(file, spaceId, documentId)
-        .then((url) => {
-          replacePlaceholderWithAttachment(editor, placeholderText, url, file.name);
-        })
-        .catch((error) => {
-          replacePlaceholderWithError(editor, placeholderText, error);
-        });
-    }
-
     return [
       new Plugin({
         key: new PluginKey("fileAttachmentPlugin"),
@@ -208,7 +242,14 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
               const file = item.getAsFile();
               if (!file) continue;
 
-              insertPlaceholderAndUpload(view, file, view.state.selection.from);
+              insertPlaceholderAndUpload(
+                editor,
+                view,
+                file,
+                view.state.selection.from,
+                spaceId,
+                documentId,
+              );
             }
 
             return true;
@@ -219,13 +260,7 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
               return false;
             }
 
-            const hasFiles = event.dataTransfer?.files?.length;
-            if (!hasFiles) return false;
-
-            const files = Array.from(event.dataTransfer.files).filter(
-              (file) => isSupportedDocumentFile(file) && !isImageFile(file),
-            );
-
+            const files = attachmentFilesFromDataTransfer(event.dataTransfer);
             if (files.length === 0) return false;
 
             event.preventDefault();
@@ -234,14 +269,16 @@ export const FileAttachment = Node.create<FileAttachmentOptions>({
               left: event.clientX,
               top: event.clientY,
             });
+            const insertPos = coordinates?.pos ?? view.state.selection.from;
 
-            if (!coordinates) return false;
-
-            for (const file of files) {
-              insertPlaceholderAndUpload(view, file, coordinates.pos);
-            }
-
-            return true;
+            return insertFileAttachmentsAt(
+              editor,
+              view,
+              files,
+              insertPos,
+              spaceId,
+              documentId,
+            );
           },
         },
       }),

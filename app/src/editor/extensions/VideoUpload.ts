@@ -188,15 +188,14 @@ export const VideoUpload = Node.create<VideoUploadOptions>({
               left: event.clientX,
               top: event.clientY,
             });
-
-            if (!coordinates) return false;
+            const insertPos = coordinates?.pos ?? view.state.selection.from;
 
             videos.forEach((file, index) => {
               insertPlaceholderAndUpload(
                 editor,
                 view,
                 file,
-                coordinates.pos + index * PLACEHOLDER_TEXT.length,
+                insertPos + index * PLACEHOLDER_TEXT.length,
                 spaceId,
                 documentId,
               );

@@ -58,10 +58,7 @@ export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.D
   const content = await getDocumentContent(spaceId, documentId);
   if (!content) return new Y.Doc();
   if (meta.type === "canvas") {
-    return tracedSync("loadYDoc.canvas", () => loadCanvasYDoc(content), {
-      documentId,
-      bytes: content.length,
-    });
+    return tracedSync("loadYDoc.canvas", () => loadCanvasYDoc(content));
   }
 
   const extensions = contentExtensions({ spaceId, documentId });
@@ -287,17 +284,12 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   if (!meta) return;
 
   const doc = room.doc;
-  const content = tracedSync(
-    "persist.serialize",
-    () =>
-      stripScriptTags(serializeRoomContent(ids.spaceId, ids.documentId, doc, meta.type)),
-    { documentId: ids.documentId, type: meta.type },
+  const content = tracedSync("persist.serialize", () =>
+    stripScriptTags(serializeRoomContent(ids.spaceId, ids.documentId, doc, meta.type)),
   );
 
-  await traced(
-    "persist.write",
-    () => updateDocument(ids.spaceId, ids.documentId, content, undefined, meta.type),
-    { documentId: ids.documentId, bytes: content.length },
+  await traced("persist.write", () =>
+    updateDocument(ids.spaceId, ids.documentId, content, undefined, meta.type),
   );
 }
 
