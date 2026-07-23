@@ -17,7 +17,6 @@ import {
   recordHttpRequest,
   renderPrometheusMetrics,
 } from "./observability/metrics.ts";
-import { startTracing } from "./observability/trace.ts";
 import { attachRealtimeWebSocketServer } from "./realtime/websocket.ts";
 import {
   createEmbeddedClientAssetMiddleware,
@@ -278,7 +277,6 @@ server.listen(port, host, () => {
   appLogger.info("Server listening", { host, port });
 });
 
-startTracing();
 startCronScheduler();
 startEmailNotificationWorker();
 

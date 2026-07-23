@@ -10,6 +10,8 @@
 import { eq, sql } from "drizzle-orm";
 import { getAuthDb } from "#db/connection.ts";
 import { spaceIndex, user } from "#db/schema/auth.ts";
+import { activeRuns } from "#jobs/runStore.ts";
+import { getJobQueueStats } from "#jobs/scheduler.ts";
 
 /** Rolling window, in seconds, used to compute the HTTP request rate. */
 const REQUEST_RATE_WINDOW_SECONDS = 60;
@@ -183,6 +185,7 @@ async function collectMetrics(): Promise<MetricLine[]> {
   const memory = process.memoryUsage();
   const cpu = process.cpuUsage();
   const [spaces, users] = await Promise.all([activeSpaceCount(), userCount()]);
+  const jobQueue = getJobQueueStats();
 
   return [
     {
@@ -286,6 +289,42 @@ async function collectMetrics(): Promise<MetricLine[]> {
       help: "Memory allocated for ArrayBuffers and SharedArrayBuffers.",
       type: "gauge",
       value: memory.arrayBuffers,
+    },
+    {
+      name: "vektor_job_queue_active",
+      help: "Job executions currently holding a worker slot.",
+      type: "gauge",
+      value: jobQueue.active,
+    },
+    {
+      name: "vektor_job_queue_waiting",
+      help: "Job executions waiting for a free worker slot.",
+      type: "gauge",
+      value: jobQueue.waiting,
+    },
+    {
+      name: "vektor_jobs_queued_total",
+      help: "Total number of job executions queued since start.",
+      type: "counter",
+      value: jobQueue.queuedTotal,
+    },
+    {
+      name: "vektor_jobs_succeeded_total",
+      help: "Total number of job executions that completed successfully since start.",
+      type: "counter",
+      value: jobQueue.succeededTotal,
+    },
+    {
+      name: "vektor_jobs_failed_total",
+      help: "Total number of job executions that failed, were cancelled, or timed out since start.",
+      type: "counter",
+      value: jobQueue.failedTotal,
+    },
+    {
+      name: "vektor_workflow_runs_active",
+      help: "Workflow runs currently executing in-process.",
+      type: "gauge",
+      value: activeRuns.size,
     },
   ];
 }

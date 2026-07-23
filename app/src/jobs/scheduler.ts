@@ -35,6 +35,39 @@ const MAX_CONCURRENT_JOBS = 3;
 
 let activeJobs = 0;
 const waitQueue: Array<() => void> = [];
+let jobsQueuedTotal = 0;
+let jobsSucceededTotal = 0;
+let jobsFailedTotal = 0;
+
+/** Snapshot of in-process job queue/execution state, for `/metrics`. */
+export function getJobQueueStats(): {
+  active: number;
+  waiting: number;
+  queuedTotal: number;
+  succeededTotal: number;
+  failedTotal: number;
+} {
+  return {
+    active: activeJobs,
+    waiting: waitQueue.length,
+    queuedTotal: jobsQueuedTotal,
+    succeededTotal: jobsSucceededTotal,
+    failedTotal: jobsFailedTotal,
+  };
+}
+
+async function finishJobRun(
+  spaceId: string,
+  executionId: string,
+  result: Parameters<typeof recordJobRunFinished>[2],
+): Promise<void> {
+  if (result.status === "success") {
+    jobsSucceededTotal += 1;
+  } else {
+    jobsFailedTotal += 1;
+  }
+  await recordJobRunFinished(spaceId, executionId, result);
+}
 
 function releaseJobSlot(): void {
   activeJobs = Math.max(0, activeJobs - 1);
@@ -102,6 +135,7 @@ export async function runJob(
   } = options ?? {};
 
   const executionId = crypto.randomUUID();
+  jobsQueuedTotal += 1;
   await recordJobRunQueued(spaceId, {
     id: executionId,
     scheduleId: scheduleId ?? null,
@@ -118,10 +152,10 @@ export async function runJob(
         signal,
         initiatedByUserId,
       });
-      await recordJobRunFinished(spaceId, executionId, { status: "success" });
+      await finishJobRun(spaceId, executionId, { status: "success" });
       return outputs;
     } catch (error) {
-      await recordJobRunFinished(spaceId, executionId, {
+      await finishJobRun(spaceId, executionId, {
         status: classifyJobError(error),
         error: error instanceof Error ? error.message : String(error),
       });
@@ -133,7 +167,7 @@ export async function runJob(
   // explicitly opted into. Callers normally pass a sandbox via resolveJobSandbox().
   if (!isUnsandboxedExecutionAllowed()) {
     const error = new SandboxRequiredError();
-    await recordJobRunFinished(spaceId, executionId, {
+    await finishJobRun(spaceId, executionId, {
       status: classifyJobError(error),
       error: error.message,
     });
@@ -147,7 +181,7 @@ export async function runJob(
 
     await acquireJobSlot(signal);
   } catch (error) {
-    await recordJobRunFinished(spaceId, executionId, {
+    await finishJobRun(spaceId, executionId, {
       status: classifyJobError(error),
       error: error instanceof Error ? error.message : String(error),
     });
@@ -270,10 +304,10 @@ export async function runJob(
         });
       });
     })();
-    await recordJobRunFinished(spaceId, executionId, { status: "success" });
+    await finishJobRun(spaceId, executionId, { status: "success" });
     return outputs;
   } catch (error) {
-    await recordJobRunFinished(spaceId, executionId, {
+    await finishJobRun(spaceId, executionId, {
       status: classifyJobError(error),
       error: error instanceof Error ? error.message : String(error),
     });
