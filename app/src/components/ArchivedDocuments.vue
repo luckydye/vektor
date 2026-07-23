@@ -22,7 +22,7 @@ const {
 
 const { data: categories } = useQuery({
   queryKey: computed(() => ["categories", props.spaceId]),
-  queryFn: () => api.categories.get(props.spaceId),
+  queryFn: () => api.categories.get(props.spaceId).then((r) => r.categories),
 });
 
 async function handleRestore(documentId: string) {

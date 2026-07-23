@@ -6,6 +6,7 @@ import { getTokenUserId, validateAccessToken } from "./accessTokens.ts";
 import {
   type Feature,
   getUserGroups,
+  hasAnyResourceScopedAccess,
   hasFeature,
   hasPermission,
   ResourceType,
@@ -284,6 +285,36 @@ export async function verifySpaceRole(
   );
   if (!hasRole) {
     throw forbiddenResponse();
+  }
+}
+
+/**
+ * Like `verifySpaceRole(..., "viewer")`, but also lets through a user who
+ * holds no space-wide grant but does hold a document/tree/category grant
+ * somewhere in the space — they need to be able to reach the space
+ * container their resource lives in. Only use this for endpoints that
+ * expose bare space metadata; endpoints that list space-wide collections
+ * (members, uploads, integrations, etc.) must keep using `verifySpaceRole`
+ * directly so resource-scoped grantees aren't handed unrelated data.
+ */
+export async function verifyResourceAccess(
+  spaceId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    await verifySpaceRole(spaceId, userId, "viewer");
+    return;
+  } catch (error) {
+    // Only widen on "forbidden" (no space-wide grant) — a 404 (space
+    // doesn't exist) or any other error must propagate unchanged.
+    if (!(error instanceof Response) || error.status !== 403) {
+      throw error;
+    }
+    const userGroups = await getUserGroups(userId);
+    if (await hasAnyResourceScopedAccess(spaceId, userId, userGroups)) {
+      return;
+    }
+    throw error;
   }
 }
 

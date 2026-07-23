@@ -1,6 +1,7 @@
 import type { AstroGlobal } from "astro";
 import {
   getUserGroups,
+  hasAnyResourceScopedAccess,
   hasPermission,
   listUserPermissions,
   ResourceType,
@@ -76,10 +77,13 @@ export async function resolveUserSpaceRole(
 }
 
 /**
- * ACL check for space pages: the caller must have viewer access to the space.
- * Unauthenticated callers are evaluated against the `public` group, so spaces
- * that grant viewer to `public` are accessible without a session.
- * Returns a 403 Response to return from the page, or null if access is granted.
+ * ACL check for space pages: the caller must have viewer access to the space,
+ * or hold some document/tree/category grant inside it — they need to be able
+ * to reach the space container their resource lives in even without a
+ * space-wide role. Unauthenticated callers are evaluated against the `public`
+ * group, so spaces that grant viewer to `public` are accessible without a
+ * session. Returns a 403 Response to return from the page, or null if access
+ * is granted.
  */
 export async function requireSpaceViewer(
   astro: Pick<AstroGlobal, "locals">,
@@ -89,14 +93,16 @@ export async function requireSpaceViewer(
   const userId = user?.id || "";
   const userGroups = user ? await getUserGroups(user.id) : ["public"];
 
-  const hasAccess = await hasPermission(
-    space.id,
-    ResourceType.SPACE,
-    space.id,
-    userId,
-    "viewer",
-    userGroups,
-  );
+  const hasAccess =
+    (await hasPermission(
+      space.id,
+      ResourceType.SPACE,
+      space.id,
+      userId,
+      "viewer",
+      userGroups,
+    )) ||
+    (!!user && (await hasAnyResourceScopedAccess(space.id, userId, userGroups)));
 
   if (!hasAccess) {
     if (!astro.locals.session) {

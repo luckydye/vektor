@@ -8,6 +8,7 @@ import {
   countSpaceMembers,
   getUserGroups,
   grantPermission,
+  hasAnyResourceScopedAccess,
   hasPermission,
   listUserPermissions,
   ResourceType,
@@ -223,6 +224,11 @@ export async function listUserSpaces(userId: string): Promise<Space[]> {
       );
       if (spacePermission) {
         userSpaces.push({ ...space, userRole: spacePermission.permission });
+      } else if (await hasAnyResourceScopedAccess(space.id, userId, userGroups)) {
+        // No space-wide grant, but the user has a document/tree/category
+        // grant in this space — surface the space so they can reach it.
+        // Leave userRole unset so space-wide UI stays gated as before.
+        userSpaces.push({ ...space });
       }
     } catch {}
   }

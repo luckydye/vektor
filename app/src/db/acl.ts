@@ -571,6 +571,40 @@ export async function listUserPermissions(
   }));
 }
 
+/**
+ * Whether the user (directly or via group) holds any ACL grant scoped to a
+ * document, document tree, or category within this space. Used to make a
+ * space visible/viewable to members who only have resource-scoped access,
+ * without granting them any space-wide permission.
+ */
+export async function hasAnyResourceScopedAccess(
+  spaceId: string,
+  userId: string,
+  userGroups?: string[],
+): Promise<boolean> {
+  const db = await getSpaceDb(spaceId);
+
+  const resourceTypeCondition = inArray(acl.resourceType, [
+    ResourceType.DOCUMENT,
+    ResourceType.DOCUMENT_TREE,
+    ResourceType.CATEGORY,
+  ]);
+
+  const granteeConditions = [eq(acl.userId, userId)];
+  if (userGroups && userGroups.length > 0) {
+    granteeConditions.push(and(isNull(acl.userId), inArray(acl.groupId, userGroups))!);
+  }
+
+  const row = await db
+    .select({ resourceId: acl.resourceId })
+    .from(acl)
+    .where(and(resourceTypeCondition, or(...granteeConditions)))
+    .limit(1)
+    .get();
+
+  return !!row;
+}
+
 export async function hasPermission(
   spaceId: string,
   resourceType: ResourceType,
@@ -1225,4 +1259,37 @@ export async function getSpaceMembersWithGroups(spaceId: string): Promise<{
   }
 
   return { directUserIds, groupMembers, groupsToCheck };
+}
+
+/**
+ * Direct (non-group) userIds granted access to a document, document tree, or
+ * category in this space. Used to resolve display names for members-table
+ * rows that only hold a resource-scoped grant — they wouldn't otherwise
+ * appear anywhere `getSpaceMembersWithGroups` (space-level only) looks.
+ */
+export async function getResourceScopedGranteeUserIds(
+  spaceId: string,
+): Promise<Set<string>> {
+  const db = await getSpaceDb(spaceId);
+
+  const rows = await db
+    .selectDistinct({ userId: acl.userId })
+    .from(acl)
+    .where(
+      and(
+        inArray(acl.resourceType, [
+          ResourceType.DOCUMENT,
+          ResourceType.DOCUMENT_TREE,
+          ResourceType.CATEGORY,
+        ]),
+        isNull(acl.groupId),
+      ),
+    )
+    .all();
+
+  const userIds = new Set<string>();
+  for (const row of rows) {
+    if (row.userId) userIds.add(row.userId);
+  }
+  return userIds;
 }

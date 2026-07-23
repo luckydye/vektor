@@ -127,6 +127,13 @@ export interface Category {
   updatedAt: Date | string;
 }
 
+export interface CategoriesListResponse {
+  categories: Category[];
+  // True when the space has categories this user isn't able to see — lets
+  // the UI distinguish "no categories exist" from "you have no access".
+  hasHiddenCategories: boolean;
+}
+
 export interface Connection {
   id: string;
   label: string;
@@ -1221,28 +1228,25 @@ export class ApiClient {
      * List categories in a space
      */
     get: async (spaceId: string) => {
-      const response = await this.apiGet<{ categories: Category[] }>(
+      return await this.apiGet<CategoriesListResponse>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/categories`,
       );
-      return response.categories;
     },
 
     getCached: async (spaceId: string) => {
-      return (
-        await this.readReplica<{ categories: Category[] }>(
-          `/api/v1/spaces/${spaceId}/categories`,
-        )
-      )?.categories;
+      return await this.readReplica<CategoriesListResponse>(
+        `/api/v1/spaces/${spaceId}/categories`,
+      );
     },
 
     subscribeCached: (
       spaceId: string,
-      callback: (categories: Category[] | undefined) => void,
+      callback: (response: CategoriesListResponse | undefined) => void,
     ) => {
-      return this.subscribeToReplica<{ categories: Category[] }>(
+      return this.subscribeToReplica<CategoriesListResponse>(
         `/api/v1/spaces/${spaceId}/categories`,
-        (response) => callback(response?.categories),
+        callback,
       );
     },
 
@@ -1264,7 +1268,7 @@ export class ApiClient {
         `/api/v1/spaces/${spaceId}/categories`,
         body,
       );
-      await this.updateRemoteReplica<{ categories: Category[] }>(
+      await this.updateRemoteReplica<CategoriesListResponse>(
         `/api/v1/spaces/${spaceId}/categories`,
         (cached) => ({
           ...cached,
@@ -1331,7 +1335,7 @@ export class ApiClient {
             this.optimisticReplica<{ category: Category }>(detailPath, (cached) =>
               cached ? { category: { ...cached.category, ...body } } : cached,
             ),
-            this.optimisticReplica<{ categories: Category[] }>(listPath, (cached) =>
+            this.optimisticReplica<CategoriesListResponse>(listPath, (cached) =>
               cached
                 ? {
                     ...cached,
@@ -1346,7 +1350,7 @@ export class ApiClient {
         async (response) => {
           await Promise.all([
             this.replaceReplica(detailPath, response),
-            this.updateRemoteReplica<{ categories: Category[] }>(listPath, (cached) => ({
+            this.updateRemoteReplica<CategoriesListResponse>(listPath, (cached) => ({
               ...cached,
               categories: cached.categories.map((category) =>
                 category.id === id ? response.category : category,
@@ -1365,7 +1369,7 @@ export class ApiClient {
       const listPath = `/api/v1/spaces/${spaceId}/categories`;
       await this.withOptimisticReplica(
         () =>
-          this.optimisticReplica<{ categories: Category[] }>(listPath, (cached) =>
+          this.optimisticReplica<CategoriesListResponse>(listPath, (cached) =>
             cached
               ? {
                   ...cached,
@@ -1375,7 +1379,7 @@ export class ApiClient {
           ),
         () => this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/categories/${id}`),
         async () => {
-          await this.updateRemoteReplica<{ categories: Category[] }>(
+          await this.updateRemoteReplica<CategoriesListResponse>(
             listPath,
             (cached) => ({
               ...cached,

@@ -111,11 +111,16 @@ export const GET: ApiRouteHandler = (context) =>
     const visibleIds = await visibleCategoryIds(context, spaceId);
 
     const categories = await listCategories(spaceId);
+    const visibleCategories = visibleIds
+      ? categories.filter((category) => visibleIds.has(category.id))
+      : categories;
 
     return jsonResponse({
-      categories: visibleIds
-        ? categories.filter((category) => visibleIds.has(category.id))
-        : categories,
+      categories: visibleCategories,
+      // Lets the client tell "this space truly has no categories" apart from
+      // "categories exist here, but none are visible to you" — the two
+      // render very different empty states.
+      hasHiddenCategories: visibleCategories.length < categories.length,
     });
   }, "Failed to list categories");
 

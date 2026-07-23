@@ -1,6 +1,7 @@
 import { inArray } from "drizzle-orm";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import {
+  getResourceScopedGranteeUserIds,
   getSpaceMembersWithGroups,
   getUserGroups,
   hasPermission,
@@ -43,9 +44,17 @@ export const GET: ApiRouteHandler = (context) =>
       const permissions = await listPermissions(spaceId, ResourceType.SPACE, spaceId);
       const { directUserIds, groupMembers } = await getSpaceMembersWithGroups(spaceId);
 
+      // Users who only hold a document/tree/category grant (no space-wide
+      // role) still need to resolve to a name/avatar wherever this endpoint
+      // is used to look up "who is userId X" — comments, revisions,
+      // mentions, the members table itself.
+      const resourceScopedUserIds = await getResourceScopedGranteeUserIds(spaceId);
+
       // Fetch user data for all members
       const authDb = getAuthDb();
-      const allUserIds = [...directUserIds, ...groupMembers.keys()];
+      const allUserIds = [
+        ...new Set([...directUserIds, ...groupMembers.keys(), ...resourceScopedUserIds]),
+      ];
       const users = await authDb
         .select()
         .from(userTable)
@@ -115,6 +124,30 @@ export const GET: ApiRouteHandler = (context) =>
             }
           }
         }
+      }
+
+      // Add resource-scoped-only grantees (no space-wide role, not covered
+      // by any of the entries above) purely so their name/avatar resolves.
+      const alreadyListedUserIds = new Set(
+        members.map((m) => m.userId).filter((id): id is string => !!id),
+      );
+      for (const userId of resourceScopedUserIds) {
+        if (alreadyListedUserIds.has(userId)) continue;
+        const userData = userMap.get(userId);
+        if (!userData) continue;
+        members.push({
+          spaceId,
+          userId,
+          groupId: undefined,
+          role: "",
+          joinedAt: userData.createdAt,
+          user: {
+            id: userData.id,
+            name: userData.name,
+            email: canSeeEmails ? userData.email : undefined,
+            image: userData.image,
+          },
+        });
       }
 
       return jsonResponse(members);

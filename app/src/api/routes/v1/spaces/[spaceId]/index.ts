@@ -7,6 +7,7 @@ import {
   requirePreferencesSize,
   requireUser,
   successResponse,
+  verifyResourceAccess,
   verifySpaceRole,
   withApiErrorHandling,
 } from "#db/api.ts";
@@ -16,7 +17,7 @@ export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {
     const user = requireUser(context);
     const spaceId = requireParam(context.var.params, "spaceId");
-    await verifySpaceRole(spaceId, user.id, "viewer");
+    await verifyResourceAccess(spaceId, user.id);
     const space = await getSpace(spaceId);
     return jsonResponse(space);
   }, "Failed to get space");

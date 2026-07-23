@@ -33,7 +33,10 @@ export function useCategories() {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  const categories = computed(() => categoriesData.value || []);
+  const categories = computed(() => categoriesData.value?.categories || []);
+  const hasHiddenCategories = computed(
+    () => categoriesData.value?.hasHiddenCategories ?? false,
+  );
 
   const createCategoryMutation = useMutation({
     mutationFn: async (params: {
@@ -144,6 +147,7 @@ export function useCategories() {
 
   return {
     categories,
+    hasHiddenCategories,
     isLoading,
     error,
     refresh,

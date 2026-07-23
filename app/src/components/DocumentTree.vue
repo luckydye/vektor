@@ -29,6 +29,7 @@ const { documentSlug: activeDocSlug } = useRoute();
 const toast = useToast();
 const {
   categories,
+  hasHiddenCategories,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -538,7 +539,11 @@ defineExpose({ isEditMode, toggleEditMode });
           </button>
         </div>
         <p v-else class="px-3 py-4 text-center text-size-normal text-neutral-500">
-          {{ t("No categories yet") }}
+          {{
+            hasHiddenCategories
+              ? t("You don't have access to any categories in this space")
+              : t("No categories yet")
+          }}
         </p>
       </div>
 

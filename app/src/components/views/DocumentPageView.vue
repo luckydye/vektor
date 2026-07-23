@@ -97,7 +97,7 @@ const categoriesQuery = useQuery({
   queryKey: computed(() => ["categories", currentSpace.value?.id]),
   queryFn: async () => {
     if (!currentSpace.value?.id) return [];
-    return await api.categories.get(currentSpace.value.id);
+    return (await api.categories.get(currentSpace.value.id)).categories;
   },
   enabled: computed(() => !isDraft.value && !!currentSpace.value?.id),
 });

@@ -47,7 +47,7 @@ async function fetchPermissions() {
       api.categories.get(currentSpace.value.id),
     ]);
 
-    categories.value = categoryList || [];
+    categories.value = categoryList?.categories || [];
 
     const categoryResponses = await Promise.all(
       categories.value.map((category) =>

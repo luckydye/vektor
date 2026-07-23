@@ -99,7 +99,7 @@ async function load() {
       ],
     );
 
-    categories.value = categoryList || [];
+    categories.value = categoryList?.categories || [];
     if (!selectedCategoryId.value && categories.value.length > 0) {
       selectedCategoryId.value = categories.value[0].id;
     }
