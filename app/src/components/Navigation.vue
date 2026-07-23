@@ -185,7 +185,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
       class="flex-1 overflow-y-auto overflow-x-hidden min-w-[60px]"
     >
       <nav class="@container flex flex-col gap-3xs">
-        <div class="pl-4xs pr-2xs flex-none flex flex-col gap-0.5 pt-4xs">
+        <div class="px-3xs flex-none flex flex-col gap-0.5 pt-5xs">
           <div class="flex items-center gap-px">
             <MenuLink
               class="flex-1"
@@ -196,7 +196,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
             />
             <button
               type="button"
-              class="@max-sm:hidden inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-9 min-h-[36px]"
+              class="@max-sm:hidden inline-flex items-center justify-center rounded-md text-neutral-800 transition-colors hover:transition-none hover:bg-primary-50 active:bg-primary-100 cursor-pointer flex-none w-8 min-h-[32px]"
               :title="t('Command Palette')"
               @click="Actions.run('ui:toggle:palatte')"
             >
@@ -226,7 +226,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         <!-- Extension Menu Links -->
         <div
           v-if="extensionMenuLinks.length > 0 && !isLoading"
-          class="pl-4xs pr-2xs flex-none flex flex-col gap-0.5"
+          class="px-3xs flex-none flex flex-col gap-0.5"
         >
           <MenuLink
             v-for="link in extensionMenuLinks"
@@ -239,10 +239,10 @@ Actions.mapShortcut("meta-shift-f", "find:open");
         </div>
 
         <!-- Document Tree -->
-        <div class="@max-xs:hidden px-5xs py-m">
-          <div class="flex items-center justify-between gap-3xs px-4xs mb-2 min-h-[24px]">
+        <div class="@max-xs:hidden px-5xs py-s">
+          <div class="flex items-center justify-between gap-3xs px-5xs mb-1 min-h-[20px]">
             <h3
-              class="text-size-small font-medium text-neutral-900 uppercase tracking-wider opacity-50"
+              class="text-size-extra-small font-medium text-neutral-900 uppercase tracking-wider opacity-50"
             >
               {{ t('Categories') }}
             </h3>
@@ -250,7 +250,7 @@ Actions.mapShortcut("meta-shift-f", "find:open");
               type="button"
               v-if="documentTree?.isEditMode"
               @click="documentTree?.toggleEditMode()"
-              class="px-1.5 py-0.5 text-size-small font-medium text-blue-600 hover:text-blue-700 rounded-sm transition-colors"
+              class="px-1 py-0.5 text-size-extra-small font-medium text-blue-600 hover:text-blue-700 rounded-sm transition-colors"
               :title="t('Done rearranging')"
             >
               {{ t('Done') }}

@@ -521,23 +521,23 @@ defineExpose({ isEditMode, toggleEditMode });
         >
           <div class="svg-icon w-6 h-6 text-neutral-400" v-html="categoryIcon" />
           <div>
-            <p class="text-size-medium font-medium text-neutral-900">
+            <p class="text-size-normal font-medium text-neutral-900">
               {{ t("No categories yet") }}
             </p>
-            <p class="text-size-small text-neutral-500 mt-0.5">
+            <p class="text-size-extra-small text-neutral-500 mt-0.5">
               {{ t("Group your documents into categories to organize this space.") }}
             </p>
           </div>
           <button
             type="button"
             @click="startCreating"
-            class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-medium font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+            class="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-size-normal font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
           >
             <div class="svg-icon w-4 h-4" v-html="addIcon" />
             <span>{{ t("Create category") }}</span>
           </button>
         </div>
-        <p v-else class="px-3 py-4 text-center text-size-medium text-neutral-500">
+        <p v-else class="px-3 py-4 text-center text-size-normal text-neutral-500">
           {{ t("No categories yet") }}
         </p>
       </div>
@@ -563,7 +563,7 @@ defineExpose({ isEditMode, toggleEditMode });
             @contextmenu.prevent="openContextMenu($event.clientX, $event.clientY, category)"
           >
             <div
-              class="group/category flex items-center gap-2 text-size-medium text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
+              class="group/category flex items-center gap-2 text-size-normal text-neutral-900 hover:bg-neutral-100 active:bg-neutral-200 rounded-md"
               :class="{
               'bg-blue-50 border border-blue-300': dragOverIndex === categories.findIndex(c => c.id === category.id) && isEditMode,
               'cursor-move': isEditMode
@@ -572,10 +572,10 @@ defineExpose({ isEditMode, toggleEditMode });
               <button
                 type="button"
                 @click="!isEditMode && toggleItem(category.id)"
-                class="flex items-center gap-2 flex-1 text-left px-1.5 py-1.5"
+                class="flex items-center gap-2 flex-1 text-left px-1 py-1"
               >
                 <div
-                  class="flex-none relative w-6 h-6 rounded-sm flex items-center justify-center text-size-small font-semibold"
+                  class="flex-none relative w-6 h-6 rounded-sm flex items-center justify-center text-size-extra-small font-semibold"
                   :style="{
                 backgroundColor: category.color || '#E5E7EB',
                 color: getTextColor(category.color)
@@ -696,14 +696,14 @@ defineExpose({ isEditMode, toggleEditMode });
               class="category-context-panel min-w-[224px] origin-top-left scale-95 rounded-lg border border-neutral-100 bg-background p-5xs shadow-large transition-transform duration-150 group-[&[enabled]]:scale-100"
               @contextmenu.prevent
             >
-              <div class="px-3xs py-5xs text-size-small text-neutral-500 truncate">
+              <div class="px-3xs py-5xs text-size-extra-small text-neutral-500 truncate">
                 {{ contextMenu.category.name }}
               </div>
 
               <button
                 type="button"
                 @click="contextNewDocument(contextMenu.category)"
-                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-normal text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
               >
                 <div class="svg-icon w-4 h-4 flex-none" v-html="documentIcon" />
                 <span>{{ t("New document") }}</span>
@@ -711,7 +711,7 @@ defineExpose({ isEditMode, toggleEditMode });
               <button
                 type="button"
                 @click="contextEditCategory(contextMenu.category)"
-                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-normal text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
               >
                 <div class="svg-icon w-4 h-4 flex-none" v-html="editEntryIcon" />
                 <span>{{ t("Edit category") }}</span>
@@ -722,7 +722,7 @@ defineExpose({ isEditMode, toggleEditMode });
               <button
                 type="button"
                 @click="contextNewCategory()"
-                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-normal text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
               >
                 <div class="svg-icon w-4 h-4 flex-none" v-html="addIcon" />
                 <span>{{ t("New category") }}</span>
@@ -730,7 +730,7 @@ defineExpose({ isEditMode, toggleEditMode });
               <button
                 type="button"
                 @click="contextRearrange()"
-                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-normal text-neutral-900 rounded-md transition-colors hover:bg-primary-50 active:bg-primary-100"
               >
                 <div class="svg-icon w-4 h-4 flex-none" v-html="dragDotsIcon" />
                 <span>{{ t("Rearrange categories") }}</span>
@@ -742,7 +742,7 @@ defineExpose({ isEditMode, toggleEditMode });
                 type="button"
                 @click="contextDeleteCategory(contextMenu.category)"
                 :disabled="deletingIds.has(contextMenu.category.id)"
-                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-medium text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+                class="flex items-center gap-2.5 px-3xs py-5xs w-full text-left text-size-normal text-red-600 rounded-md transition-colors hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
               >
                 <div class="svg-icon w-4 h-4 flex-none" v-html="deleteEntryIcon" />
                 <span>{{ t("Delete category") }}</span>

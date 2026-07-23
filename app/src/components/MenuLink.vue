@@ -15,14 +15,14 @@ const props = defineProps<{
   <a
     :href="props.href"
     :class="twMerge(
-      'button-with-icon inline-flex items-center px-[0.8rem] rounded-md font-normal text-neutral-800 transition-colors hover:transition-none cursor-pointer',
+      'button-with-icon inline-flex items-center px-4xs rounded-md font-normal text-neutral-800 transition-colors hover:transition-none cursor-pointer',
       '@max-xs:justify-center',
       isActive ? 'bg-primary-100 text-primary-700' : 'hover:bg-primary-50 active:bg-primary-100',
-      'min-h-[36px]',
+      'min-h-[32px]',
       'overflow-hidden whitespace-nowrap',
     )"
   >
-    <div class="flex-1 flex items-center @max-xs:justify-center text-size-medium">
+    <div class="flex-1 flex items-center @max-xs:justify-center text-size-normal">
       <div v-html="icon" class="icon inline flex-none" />
       <span class="@max-xs:hidden">{{ text }}</span>
     </div>
@@ -31,7 +31,7 @@ const props = defineProps<{
 
     <span
       v-if="badge !== undefined && badge > 0"
-      class="ml-auto bg-primary-100 text-neutral-800 px-1.5 py-0.5 rounded-sm text-size-small font-medium"
+      class="ml-auto bg-primary-100 text-neutral-800 px-1.5 py-0.5 rounded-sm text-size-extra-small font-medium"
     >
       {{ badge }}
     </span>

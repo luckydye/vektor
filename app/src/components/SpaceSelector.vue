@@ -118,12 +118,12 @@ const handleCreateDoc = (event: Event) => {
             <div class="relative h-9 flex-1 text-left">
               <div class="left-0 w-full h-full">
                 <div
-                  class="whitespace-nowrap text-base leading-[1.35em] font-normal text-foreground overflow-hidden text-ellipsis"
+                  class="whitespace-nowrap text-size-medium leading-[1.35em] font-normal text-foreground overflow-hidden text-ellipsis"
                 >
                   {{ currentSpace?.name || spaceName || t("Select Space") }}
                 </div>
                 <div
-                  class="whitespace-nowrap text-label leading-[1.35em] text-neutral-600 overflow-hidden text-ellipsis"
+                  class="whitespace-nowrap text-size-normal leading-[1.35em] text-neutral-600 overflow-hidden text-ellipsis"
                 >
                   {{ memberCountLabel }}
                 </div>
@@ -174,7 +174,7 @@ const handleCreateDoc = (event: Event) => {
                   />
                 </div>
                 <div class="flex-1 min-w-0">
-                  <div class="text-interactive font-medium text-foreground truncate">
+                  <div class="text-size-small font-medium text-foreground truncate">
                     {{ space.name }}
                   </div>
                 </div>
@@ -188,7 +188,7 @@ const handleCreateDoc = (event: Event) => {
                   class="flex items-center gap-2.5 px-3xs py-4xs w-full rounded-md transition-colors hover:bg-neutral-100 text-neutral-500"
                 >
                   <Icon name="plus" />
-                  <span class="text-interactive leading-none font-medium">
+                  <span class="text-size-small leading-none font-medium">
                     {{ t("Create new Space") }}
                   </span>
                 </button>
@@ -200,13 +200,13 @@ const handleCreateDoc = (event: Event) => {
     </a-popover-trigger>
 
     <!-- Action Buttons -->
-    <div class="@max-sm:hidden flex items-center gap-2xs flex-none py-5xs pr-3xs">
+    <div class="@max-sm:hidden flex items-center gap-2xs flex-none py-5xs pr-4xs">
       <ButtonSecondary
         v-if="props.canCreateDocs"
         :aria-label="t('New document')"
         @click="handleCreateDoc"
       >
-        <Icon name="plus" class="-mx-1" />
+        <Icon name="plus" class="-mx-1.5" />
       </ButtonSecondary>
     </div>
   </div>

@@ -75,10 +75,10 @@ onMounted(() => {
             <div class="p-4 border-b border-neutral-100">
               <div class="flex items-center gap-3">
                 <div class="flex-1 min-w-0">
-                  <p class="text-base font-medium text-foreground truncate">
+                  <p class="text-size-medium font-medium text-foreground truncate">
                     {{ user?.name || t("Anonymous User") }}
                   </p>
-                  <p class="text-label text-neutral-600 truncate">
+                  <p class="text-size-normal text-neutral-600 truncate">
                     {{ user?.email || t("No email") }}
                   </p>
                 </div>
@@ -90,21 +90,21 @@ onMounted(() => {
               <button
                 type="button"
                 @click="openPreferences"
-                class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
+                class="w-full text-left px-3xs py-3xs text-size-small text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="preferencesIcon" />
                 <span class="leading-none font-medium">{{ t("Preferences") }}</span>
               </button>
               <a
                 href="mailto:t.havlicek@s-v.de"
-                class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
+                class="w-full text-left px-3xs py-3xs text-size-small text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="sendFeedbackIcon" />
                 <span class="leading-none font-medium">{{ t("Send feedback") }}</span>
               </a>
               <a
                 href="https://github.com/luckydye/vektor"
-                class="w-full text-left px-3xs py-3xs text-interactive text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
+                class="w-full text-left px-3xs py-3xs text-size-small text-foreground hover:bg-neutral-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="sourceCodeIcon" />
                 <span class="leading-none font-medium">{{ t("Source") }}</span>
@@ -112,7 +112,7 @@ onMounted(() => {
               <button
                 type="button"
                 @click="handleLogout"
-                class="w-full text-left px-3xs py-3xs text-interactive text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
+                class="w-full text-left px-3xs py-3xs text-size-small text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 flex items-center gap-2.5"
               >
                 <div class="svg-icon w-4 h-4" v-html="signOutIcon" />
                 <span class="leading-none font-medium">{{ t("Sign Out") }}</span>

@@ -26,7 +26,7 @@
       <a
         :href="getDocumentUrl(doc.slug)"
         :class="[
-        'flex-1 px-2 py-1.5 text-size-medium rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
+        'flex-1 px-1.5 py-1 text-size-normal rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive
           ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'
@@ -35,7 +35,7 @@
         <span>{{ docTitle(doc) }}</span>
         <span
           v-if="doc.mentionCount && doc.mentionCount > 0"
-          class="ml-2 px-1.5 text-size-small rounded-full bg-blue-500 text-white font-medium leading-[1.25rem] min-w-[1.25rem]"
+          class="ml-2 px-1.5 text-size-extra-small rounded-full bg-blue-500 text-white font-medium leading-[1.25rem] min-w-[1.25rem]"
         >
           {{ doc.mentionCount }}
         </span>
