@@ -48,13 +48,14 @@ if (
       };
 
       private render() {
-        const actions = [...Actions.group("edit"), ...Actions.group("formatting")];
+        const actions = [...Actions.group("formatting")];
 
         return html`
           <style>
             .container {
               pointer-events: auto;
               white-space: nowrap;
+              margin-left: -0.5rem;
             }
             a-shortcut {
               --background-color: transparent;

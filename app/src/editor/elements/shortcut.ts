@@ -1,7 +1,6 @@
 import { html, render } from "lit-html";
 import * as ICON from "#assets/icons.ts";
-
-const OS = navigator.platform;
+import { isMac } from "#utils/actions.ts";
 
 customElements.define(
   "a-shortcut",
@@ -34,10 +33,11 @@ customElements.define(
       const combinations = this.shortcut?.split(",").map((c) => c.trim());
 
       const prefferedCombination =
-        combinations?.find((c) => OS === "MacIntel" && c.includes("meta")) ||
-        combinations?.[0];
+        combinations?.find((c) => isMac && c.includes("meta")) || combinations?.[0];
 
-      const keys = prefferedCombination?.split("-").map((key) => {
+      const keys = prefferedCombination?.split("-").map((rawKey) => {
+        // "mod" is the platform-aware modifier: Cmd on macOS, Ctrl elsewhere.
+        const key = rawKey.toLowerCase() === "mod" ? (isMac ? "meta" : "ctrl") : rawKey;
         const icon = document.createElement("span");
         icon.className = "key";
         const icons = ICON as Record<string, string>;

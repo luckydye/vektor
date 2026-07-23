@@ -11,6 +11,13 @@ interface PressedKeysMap {
   [key: string]: boolean;
 }
 
+// "mod" is the platform-aware modifier: Cmd on macOS, Ctrl elsewhere. Lets
+// shortcuts.json define a single binding (e.g. "mod-b") instead of separate
+// "meta-b" / "ctrl-b" entries.
+export const isMac =
+  typeof navigator !== "undefined" &&
+  /mac/i.test(navigator.platform ?? navigator.userAgent ?? "");
+
 const globalActions = new Map<string, ActionOptions>();
 const globalShortcuts = new Map<string, Set<string>>();
 
@@ -226,6 +233,9 @@ export class Actions {
         const keys = shortcut.toLocaleLowerCase().split("-");
         for (const key of keys) {
           switch (key) {
+            case "mod":
+              mappedShortcut[isMac ? "meta" : "ctrl"] = true;
+              break;
             case "meta":
               mappedShortcut.meta = true;
               break;

@@ -248,16 +248,13 @@ if (
       private mountEditor() {
         const headingsEnabled = this.headingsEnabled;
 
-        // The custom base marks don't ship keyboard shortcuts (the document
-        // editor binds them through an app-level Actions registry, which the
-        // canvas/chat editors don't use). Bind the common ones here so Cmd+B
-        // etc. work in a standalone rich-text-editor.
+        // Bold/Italic/Underline shortcuts ship on the marks themselves
+        // (baseExtensions.ts). List and heading toggles don't have a home on
+        // a mark, so bind those here for the standalone rich-text-editor.
         const KeyboardShortcuts = Extension.create({
           name: "richTextKeyboardShortcuts",
           addKeyboardShortcuts() {
             const shortcuts: Record<string, () => boolean> = {
-              "Mod-b": () => this.editor.chain().focus().toggleBold().run(),
-              "Mod-i": () => this.editor.chain().focus().toggleItalic().run(),
               "Mod-Shift-8": () => this.editor.chain().focus().toggleBulletList().run(),
               "Mod-Shift-7": () => this.editor.chain().focus().toggleOrderedList().run(),
             };

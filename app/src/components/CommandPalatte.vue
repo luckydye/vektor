@@ -279,7 +279,7 @@ Actions.register("ui:toggle:palatte", {
                     :class="index === selectedIndex ? 'text-primary-600' : 'text-neutral-400'"
                     v-html="result.type === 'document' ? documentIcon : boltIcon"
                   />
-                  <div class="flex-1 min-w-0 flex flex-col py-1.5 gap-5xs">
+                  <div class="flex-1 min-w-0 flex flex-col py-1.5">
                     <span class="text-size-medium truncate font-normal">
                       {{ result.type === "document"
                         ? documentTitle(result.data)
@@ -299,13 +299,10 @@ Actions.register("ui:toggle:palatte", {
                     </span>
                   </div>
                   <div class="flex items-center gap-1 flex-none">
-                    <kbd
-                      v-for="shortcut in Actions.getShortcutsForAction(result.id)"
-                      :key="shortcut"
-                      class="px-1.5 py-0.5 bg-neutral-100 border border-neutral-100 rounded-sm font-mono text-[10px] capitalize"
-                    >
-                      {{ shortcut }}
-                    </kbd>
+                    <a-shortcut
+                      v-if="result.type === 'action'"
+                      :data-shortcut="Actions.getShortcutsForAction(result.id)?.values().next().value"
+                    ></a-shortcut>
                   </div>
                   <div
                     class="svg-icon w-3.5 h-3.5 text-neutral flex-none transition-opacity"

@@ -229,6 +229,14 @@ export const Bold = Mark.create({
           commands.unsetMark(this.name),
     };
   },
+  addKeyboardShortcuts() {
+    return {
+      // Browsers apply their own native bold formatting to contenteditable on
+      // Mod-b, ahead of the window-level shortcuts.json handler. Binding it
+      // here lets ProseMirror's keymap preventDefault it and run our command.
+      "Mod-b": () => this.editor.commands.toggleBold(),
+    };
+  },
 });
 
 export const Italic = Mark.create({
@@ -263,6 +271,11 @@ export const Italic = Mark.create({
         () =>
         ({ commands }) =>
           commands.unsetMark(this.name),
+    };
+  },
+  addKeyboardShortcuts() {
+    return {
+      "Mod-i": () => this.editor.commands.toggleItalic(),
     };
   },
 });
@@ -326,6 +339,11 @@ export const Underline = Mark.create({
         () =>
         ({ commands }) =>
           commands.unsetMark(this.name),
+    };
+  },
+  addKeyboardShortcuts() {
+    return {
+      "Mod-u": () => this.editor.commands.toggleUnderline(),
     };
   },
 });
