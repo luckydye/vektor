@@ -287,13 +287,16 @@
           </tbody>
         </table>
       </div>
-      <Pager
-        class="mt-3 pt-3"
-        :page="workflowRunsPage"
-        :total-pages="workflowRunsTotalPages"
-        :disabled="isFetchingWorkflowRuns"
-        @change="workflowRunsGoToPage"
-      />
+      <div v-if="hasMoreWorkflowRuns" class="flex justify-center mt-3 pt-3">
+        <button
+          type="button"
+          @click="() => fetchNextWorkflowRunsPage()"
+          :disabled="isFetchingNextWorkflowRunsPage"
+          class="px-4 py-1.5 text-size-small border border-neutral-100 rounded-md hover:border-primary-300 hover:text-primary-600 disabled:opacity-50"
+        >
+          {{ isFetchingNextWorkflowRunsPage ? 'Loading…' : 'Load more' }}
+        </button>
+      </div>
     </div>
 
     <!-- Recent Extension Job Runs -->
@@ -415,12 +418,14 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
 import { usePagedList } from "#composeables/usePagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
 import Pager from "./Pager.vue";
 
-type WorkflowRunRow = Awaited<ReturnType<typeof api.workflows.listRuns>>["runs"][number];
+type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
+type WorkflowRunRow = WorkflowRunsPage["runs"][number];
 
 const { currentSpace } = useSpace();
 const router = useRouter();
@@ -451,25 +456,32 @@ interface AvailableJob {
 }
 const availableJobs = ref<AvailableJob[]>([]);
 
+const WORKFLOW_RUNS_PAGE_SIZE = 25;
+
 const {
-  items: workflowRuns,
+  data: workflowRunsData,
   isLoading: isLoadingWorkflowRuns,
   isFetching: isFetchingWorkflowRuns,
   error: workflowRunsQueryError,
-  page: workflowRunsPage,
-  totalPages: workflowRunsTotalPages,
-  goToPage: workflowRunsGoToPage,
-  refresh: refreshWorkflowRuns,
-} = usePagedList({
+  fetchNextPage: fetchNextWorkflowRunsPage,
+  hasNextPage: hasMoreWorkflowRuns,
+  isFetchingNextPage: isFetchingNextWorkflowRunsPage,
+  refetch: refreshWorkflowRuns,
+} = useInfiniteQuery<WorkflowRunsPage, string | undefined>({
   queryKey: computed(() => ["workflow_runs", currentSpace.value?.id]),
-  fetcher: ({ limit, offset }) =>
-    api.workflows.listRuns(currentSpace.value?.id, { limit, offset }).then((r) => ({
-      items: r.runs,
-      total: r.total,
-    })),
+  queryFn: ({ pageParam }) =>
+    api.workflows.listRuns(currentSpace.value?.id, {
+      limit: WORKFLOW_RUNS_PAGE_SIZE,
+      cursor: pageParam,
+    }),
+  getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  initialPageParam: undefined,
   enabled: computed(() => !!currentSpace.value?.id),
-  pageSize: 25,
 });
+
+const workflowRuns = computed<WorkflowRunRow[]>(
+  () => workflowRunsData.value?.pages.flatMap((page) => page.runs) ?? [],
+);
 
 const {
   items: runs,

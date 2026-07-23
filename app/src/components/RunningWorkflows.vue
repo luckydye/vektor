@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
-import { usePagedList } from "#composeables/usePagedList.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { realtimeTopics } from "#utils/realtime.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import { spinnerIcon } from "~/src/assets/icons.ts";
-import Pager from "./Pager.vue";
 
 const { currentSpace } = useSpace();
 
@@ -26,24 +25,33 @@ const props = defineProps<{
   spaceId: string;
 }>();
 
+type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
+
+const WORKFLOW_RUNS_PAGE_SIZE = 20;
+
 const {
-  items: runs,
+  data: runsData,
   isLoading,
-  page,
-  totalPages,
-  goToPage,
-  refresh,
-} = usePagedList<WorkflowRun>({
+  fetchNextPage,
+  hasNextPage: hasMoreRuns,
+  isFetchingNextPage,
+  refetch: refresh,
+} = useInfiniteQuery<WorkflowRunsPage, string | undefined>({
   queryKey: computed(() => ["workflow_runs", props.spaceId]),
-  fetcher: ({ limit, offset }) =>
-    api.workflows.listRuns(props.spaceId, { limit, offset }).then((r) => ({
-      items: [...r.runs].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      ),
-      total: r.total,
-    })),
-  pageSize: 20,
+  queryFn: ({ pageParam }) =>
+    api.workflows.listRuns(props.spaceId, {
+      limit: WORKFLOW_RUNS_PAGE_SIZE,
+      cursor: pageParam,
+    }),
+  getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  initialPageParam: undefined,
 });
+
+const runs = computed<WorkflowRun[]>(() =>
+  (runsData.value?.pages.flatMap((page) => page.runs) ?? []).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  ),
+);
 
 const now = ref(Date.now());
 let unsubscribe: (() => void) | null = null;
@@ -251,6 +259,15 @@ const groupedRuns = computed(() => {
         </div>
       </div>
     </div>
-    <Pager class="mt-4 pt-4" :page="page" :total-pages="totalPages" @change="goToPage" />
+    <div v-if="hasMoreRuns" class="flex justify-center mt-4 pt-4">
+      <button
+        type="button"
+        @click="() => fetchNextPage()"
+        :disabled="isFetchingNextPage"
+        class="px-4 py-1.5 text-size-small border border-neutral-100 rounded-md hover:border-primary-300 hover:text-primary-600 disabled:opacity-50"
+      >
+        {{ isFetchingNextPage ? 'Loading…' : 'Load more' }}
+      </button>
+    </div>
   </div>
 </template>

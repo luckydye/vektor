@@ -6,7 +6,6 @@ import {
   jsonResponse,
   notFoundResponse,
   parseJsonBody,
-  parsePaginationParams,
   requireParam,
   withApiErrorHandling,
 } from "#db/api.ts";
@@ -25,7 +24,8 @@ import { propertyValueToText } from "#utils/documentProperties.ts";
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
  * With documentId: returns { runId, status } for the latest run of that document, or 404.
- * Without documentId: returns { runs: [{ runId, documentId, status, documentTitle }] } for runs in the space.
+ * Without documentId: returns { runs: [...], nextCursor } for runs in the space, cursor-paginated
+ * (pass the previous response's nextCursor back as ?cursor= to fetch the next page).
  * Optional query: sourceExtensionId filters runs created directly by that extension.
  */
 export const GET: ApiRouteHandler = (context) =>
@@ -67,26 +67,25 @@ export const GET: ApiRouteHandler = (context) =>
       return jsonResponse({ runId, status: run.status });
     }
 
-    const { limit, offset } = parsePaginationParams(
-      new URL(context.req.url).searchParams,
-      {
-        defaultLimit: 20,
-        maxLimit: 200,
-      },
-    );
+    const limitParam = new URL(context.req.url).searchParams.get("limit");
+    const limitNum = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 200) : 20;
+    const cursor = new URL(context.req.url).searchParams.get("cursor") || undefined;
 
-    // List runs for this space, newest first. filterDocumentId narrows to one document.
-    const spaceRuns = (
-      await listRuns(spaceId, { sourceExtensionId, documentId: filterDocumentId })
-    ).map(({ runId, run }) => [runId, run] as const);
+    // List runs for this space, newest first, cursor-paginated at the DB
+    // level — never the full run history. filterDocumentId narrows to one document.
+    const { runs: spaceRuns, nextCursor } = await listRuns(spaceId, {
+      sourceExtensionId,
+      documentId: filterDocumentId,
+      cursor,
+      limit,
+    });
     const readableRuns: typeof spaceRuns = [];
     for (const entry of spaceRuns) {
-      if (await canReadDocument(entry[1].documentId)) readableRuns.push(entry);
+      if (await canReadDocument(entry.run.documentId)) readableRuns.push(entry);
     }
-    const total = readableRuns.length;
-    const pageRuns = readableRuns.slice(offset, offset + limit);
     const allRuns = await Promise.all(
-      pageRuns.map(async ([runId, run]) => {
+      readableRuns.map(async ({ runId, run }) => {
         const doc = await getDocument(spaceId, run.documentId);
         return {
           runId,
@@ -105,7 +104,7 @@ export const GET: ApiRouteHandler = (context) =>
       }),
     );
 
-    return jsonResponse({ runs: allRuns, total, limit, offset });
+    return jsonResponse({ runs: allRuns, limit, nextCursor });
   }, "Failed to get runs");
 
 /**

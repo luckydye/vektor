@@ -2665,7 +2665,7 @@ export class ApiClient {
         sourceExtensionId?: string;
         filterDocumentId?: string;
         limit?: number;
-        offset?: number;
+        cursor?: string;
       },
     ) => {
       const response = await this.apiGet<{
@@ -2681,9 +2681,8 @@ export class ApiClient {
           sourceExtensionId: string | null;
           runtimeInputs: Record<string, unknown>;
         }[];
-        total: number;
         limit: number;
-        offset: number;
+        nextCursor: string | null;
       }>(this.baseUrl, `/api/v1/spaces/${spaceId}/workflows/runs`, query);
       return response;
     },

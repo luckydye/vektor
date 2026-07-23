@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { getSpaceDb } from "#db/db.ts";
 import {
   assertDocumentCanParent,
@@ -289,29 +289,71 @@ function emitRunChanged(runId: string, run: RunState): void {
 const recoveredSpaces = new Set<string>();
 const recoveryPromises = new Map<string, Promise<void>>();
 
+const RUN_LIST_RECOVERY_PAGE_SIZE = 200;
+
+// Cursor encodes the (createdAt, id) position of the last returned run.
+function encodeRunListCursor(createdAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify({ t: createdAt.getTime(), id })).toString(
+    "base64url",
+  );
+}
+
+function decodeRunListCursor(cursor: string): { createdAt: Date; id: string } | null {
+  try {
+    const { t, id } = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (typeof t !== "number" || typeof id !== "string") return null;
+    return { createdAt: new Date(t), id };
+  } catch {
+    return null;
+  }
+}
+
 async function listStoredRuns(
   spaceId: string,
-  documentId?: string | null,
-): Promise<Array<{ runId: string; run: RunState }>> {
+  options?: { documentId?: string | null; cursor?: string | null; limit?: number },
+): Promise<{ runs: Array<{ runId: string; run: RunState }>; nextCursor: string | null }> {
   const db = await getSpaceDb(spaceId);
   const conditions = [eq(document.type, workflowRunDocumentType)];
-  if (documentId) conditions.push(eq(document.parentId, documentId));
+  if (options?.documentId) conditions.push(eq(document.parentId, options.documentId));
+
+  const pos = options?.cursor ? decodeRunListCursor(options.cursor) : null;
+  if (pos) {
+    const seek = or(
+      lt(document.createdAt, pos.createdAt),
+      and(sql`${document.createdAt} = ${pos.createdAt}`, lt(document.id, pos.id)),
+    );
+    if (seek) conditions.push(seek);
+  }
+
+  const limit = options?.limit ?? 50;
+  const fetchLimit = limit + 1;
   const rows = await db
-    .select({ id: document.id })
+    .select({ id: document.id, createdAt: document.createdAt })
     .from(document)
     .where(and(...conditions))
-    .orderBy(desc(document.createdAt))
+    .orderBy(desc(document.createdAt), desc(document.id))
+    .limit(fetchLimit)
     .all();
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasMore && lastRow ? encodeRunListCursor(lastRow.createdAt, lastRow.id) : null;
+
   const runs = await Promise.all(
-    rows.map(async ({ id }) => {
+    pageRows.map(async ({ id }) => {
       const doc = await getDocument(spaceId, id);
       const run = doc ? deserializeRun(id, doc) : undefined;
       return run ? { runId: id, run: { ...run, spaceId } } : undefined;
     }),
   );
-  return runs.filter((entry): entry is { runId: string; run: RunState } =>
-    Boolean(entry),
-  );
+  return {
+    runs: runs.filter((entry): entry is { runId: string; run: RunState } =>
+      Boolean(entry),
+    ),
+    nextCursor,
+  };
 }
 
 function applyRecovery(run: RunState, recoveredAt: Date): void {
@@ -322,18 +364,25 @@ function applyRecovery(run: RunState, recoveredAt: Date): void {
 
 async function recoverSpace(spaceId: string): Promise<void> {
   try {
-    const runs = await listStoredRuns(spaceId);
     const recoveredAt = new Date();
-    for (const { runId, run } of runs) {
-      if (
-        activeRuns.has(runId) ||
-        (run.status !== "pending" && run.status !== "running")
-      ) {
-        continue;
+    let cursor: string | null | undefined;
+    do {
+      const { runs, nextCursor } = await listStoredRuns(spaceId, {
+        cursor,
+        limit: RUN_LIST_RECOVERY_PAGE_SIZE,
+      });
+      for (const { runId, run } of runs) {
+        if (
+          activeRuns.has(runId) ||
+          (run.status !== "pending" && run.status !== "running")
+        ) {
+          continue;
+        }
+        applyRecovery(run, recoveredAt);
+        await persistRunToDocument(runId, run);
       }
-      applyRecovery(run, recoveredAt);
-      await persistRunToDocument(runId, run);
-    }
+      cursor = nextCursor;
+    } while (cursor);
     recoveredSpaces.add(spaceId);
   } catch (error) {
     appLogger.warn("Failed to recover workflow run documents", { spaceId, error });
@@ -492,36 +541,54 @@ export async function getRunForRead(
   return run ? { ...run, spaceId } : undefined;
 }
 
+/**
+ * Cursor-paginated run history for a space, newest first. Each page is fetched
+ * with a bounded, indexed query — never the whole run history — so cost stays
+ * flat regardless of how many runs a workflow has accumulated over time.
+ */
 export async function listRuns(
   spaceId: string,
-  options?: { sourceExtensionId?: string | null; documentId?: string | null },
-): Promise<Array<{ runId: string; run: RunState }>> {
-  const merged = new Map<string, RunState>();
-  for (const { runId, run } of await listStoredRuns(spaceId, options?.documentId)) {
-    merged.set(runId, run);
-  }
-  for (const [runId, run] of activeRuns) {
-    if (run.spaceId === spaceId) merged.set(runId, run);
-  }
-  let entries = [...merged.entries()];
-  if (options?.sourceExtensionId) {
-    entries = entries.filter(
-      ([, run]) => run.sourceExtensionId === options.sourceExtensionId,
-    );
-  }
-  if (options?.documentId) {
-    entries = entries.filter(([, run]) => run.documentId === options.documentId);
-  }
-  entries.sort(([, a], [, b]) => b.createdAt.getTime() - a.createdAt.getTime());
-  return entries.map(([runId, run]) => ({ runId, run }));
+  options?: {
+    sourceExtensionId?: string | null;
+    documentId?: string | null;
+    cursor?: string | null;
+    limit?: number;
+  },
+): Promise<{ runs: Array<{ runId: string; run: RunState }>; nextCursor: string | null }> {
+  const { runs: stored, nextCursor } = await listStoredRuns(spaceId, {
+    documentId: options?.documentId,
+    cursor: options?.cursor,
+    limit: options?.limit,
+  });
+  // Overlay in-memory state for runs whose latest status/fields haven't been
+  // flushed to the document store yet (writes are chained, not awaited, on
+  // every transition).
+  const merged = stored.map(({ runId, run }) => {
+    const active = activeRuns.get(runId);
+    return active && active.spaceId === spaceId ? { runId, run: active } : { runId, run };
+  });
+  const filtered = options?.sourceExtensionId
+    ? merged.filter(({ run }) => run.sourceExtensionId === options.sourceExtensionId)
+    : merged;
+  return { runs: filtered, nextCursor };
 }
 
+/** Newest run for a document — a bounded lookup, not a full history scan. */
 export async function getLatestRunIdForDoc(
   spaceId: string,
   documentId: string,
 ): Promise<string | undefined> {
-  const runs = await listRuns(spaceId, { documentId });
-  return runs[0]?.runId;
+  const { runs } = await listStoredRuns(spaceId, { documentId, limit: 1 });
+  let latestId = runs[0]?.runId;
+  let latestCreatedAt = runs[0]?.run.createdAt;
+  for (const [runId, run] of activeRuns) {
+    if (run.spaceId !== spaceId || run.documentId !== documentId) continue;
+    if (!latestCreatedAt || run.createdAt > latestCreatedAt) {
+      latestId = runId;
+      latestCreatedAt = run.createdAt;
+    }
+  }
+  return latestId;
 }
 
 export async function readRunLogs(run: RunState): Promise<string[]> {

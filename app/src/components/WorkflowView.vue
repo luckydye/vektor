@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
-import { usePagedList } from "#composeables/usePagedList.ts";
+import { useInfiniteQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
@@ -19,7 +19,6 @@ import {
 } from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/tabs";
 import DataTable from "./DataTable.vue";
-import Pager from "./Pager.vue";
 
 const props = defineProps<{
   documentId: string;
@@ -85,20 +84,31 @@ function handleWorkflowTabSelected(event: Event) {
   animateWorkflowTabPanel(index, direction);
 }
 
+type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;
+
+const WORKFLOW_RUNS_PAGE_SIZE = 20;
+
 const {
-  items: runList,
-  page: runPage,
-  totalPages: runTotalPages,
-  goToPage: runGoToPage,
-  refresh: refreshRuns,
-} = usePagedList<RunSummary>({
+  data: runListData,
+  fetchNextPage: fetchNextRunsPage,
+  hasNextPage: hasMoreRuns,
+  isFetchingNextPage: isFetchingNextRunsPage,
+  refetch: refreshRuns,
+} = useInfiniteQuery<WorkflowRunsPage, string | undefined>({
   queryKey: computed(() => ["workflow_runs", props.spaceId, props.documentId]),
-  fetcher: ({ limit, offset }) =>
-    api.workflows
-      .listRuns(props.spaceId, { filterDocumentId: props.documentId, limit, offset })
-      .then((r) => ({ items: r.runs, total: r.total })),
-  pageSize: 20,
+  queryFn: ({ pageParam }) =>
+    api.workflows.listRuns(props.spaceId, {
+      filterDocumentId: props.documentId,
+      limit: WORKFLOW_RUNS_PAGE_SIZE,
+      cursor: pageParam,
+    }),
+  getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  initialPageParam: undefined,
 });
+
+const runList = computed<RunSummary[]>(
+  () => runListData.value?.pages.flatMap((page) => page.runs) ?? [],
+);
 
 function runIdFromUrl(): string | null {
   const runParam = new URLSearchParams(window.location.search).get("run")?.trim();
@@ -798,7 +808,7 @@ const statusBadgeClass: Record<string, string> = {
       <!-- History panel -->
       <a-tabs-panel>
         <div class="pt-2">
-          <div v-if="runList.length > 0 || runTotalPages > 1">
+          <div v-if="runList.length > 0 || hasMoreRuns">
             <div
               class="grid grid-cols-[1fr_120px_140px] items-center h-9 border-b border-neutral-100 bg-neutral-50 sticky top-0 z-10 transition-colors"
             >
@@ -913,12 +923,16 @@ const statusBadgeClass: Record<string, string> = {
               </div>
             </div>
 
-            <Pager
-              class="mt-4 pt-3 mb-12"
-              :page="runPage"
-              :total-pages="runTotalPages"
-              @change="runGoToPage"
-            />
+            <div v-if="hasMoreRuns" class="flex justify-center mt-4 pt-3 mb-12">
+              <button
+                type="button"
+                @click="() => fetchNextRunsPage()"
+                :disabled="isFetchingNextRunsPage"
+                class="px-4 py-1.5 text-size-small border border-neutral-100 rounded-md hover:border-primary-300 hover:text-primary-600 disabled:opacity-50"
+              >
+                {{ isFetchingNextRunsPage ? 'Loading…' : 'Load more' }}
+              </button>
+            </div>
           </div>
           <p v-else class="text-size-medium text-neutral-400 py-8 text-center">
             No runs yet.
