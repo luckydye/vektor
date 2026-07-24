@@ -572,9 +572,9 @@ watchEffect(() => {
         <inset-view
           v-if="!isDraft && !editing && !isCanvas"
           :class="twMerge(
-                    'flex items-center justify-between px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
-                      isCanvas && 'pointer-events-auto',
-                    )"
+          'flex items-center justify-end px-xs md:px-xl print:px-0 mt-2xs mb-4xs',
+            isCanvas && 'pointer-events-auto',
+          )"
         >
           <div
             v-if="doc?.updatedAt"
