@@ -1,8 +1,11 @@
 # Vektor
 
-A self-hosted documentation platform built for teams. Organize knowledge across multiple spaces, collaborate in real time with the richly customizable [tiptap](https://tiptap.dev/) editor, and deploy anywhere as a single binary with no external dependencies.
+A simple self-hosted documentation platform built for teams. Organize knowledge across multiple spaces, collaborate in real time and deploy anywhere as a single binary with no external dependencies.
 
-Authentication is handled by [better-auth](https://www.better-auth.com/) — plug in any OAuth2 provider or bring your own auth layer.
+Collaboration software has drifted toward centralized clouds, where your knowledge lives on someone else's servers, behind someone else's terms, priced per seat and locked behind an account. Vektor aims to be the alternative: a single binary you can deploy in minutes and fully own, that works offline, keeps access control clear and central, and stays open source and free to use. Your content should live on infrastructure you control.
+
+And it should do this without asking you to settle. Real-time, multiplayer editing that feels as good as the hosted tools, wrapped in something trivial to stand up alone and just as easy to share with others. Because owning your data should never mean choosing between staying in control and actually enjoying the tools you use every day.
+
 
 ## Features
 
@@ -11,7 +14,6 @@ Authentication is handled by [better-auth](https://www.better-auth.com/) — plu
 - **Rich editor** — powered by [tiptap](https://tiptap.dev/) with full formatting, embeds, and extensibility
 - **Flexible auth** — connect any OAuth2 provider or implement a custom authentication system via [better-auth](https://www.better-auth.com/)
 - **Single binary** — ships as one self-contained executable, no runtime or database setup required
-- **Cross-platform** — runs on Linux (x86_64) and macOS (arm64)
 
 ## Install
 
