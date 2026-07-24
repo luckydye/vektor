@@ -292,6 +292,75 @@ describe("Document edit operations", () => {
     ws.close();
   });
 
+  it("appends and prepends incrementally through a live Yjs room", async () => {
+    const documentId = await createDocument("<h1>Title</h1>\n<p>one</p>");
+
+    const ws = new WebSocket(`${BASE_URL.replace("http", "ws")}/events/${testSpaceId}`);
+    ws.binaryType = "arraybuffer";
+    const updates: Uint8Array[] = [];
+    const presenceFrames: Uint8Array[] = [];
+    ws.addEventListener("message", (event) => {
+      const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
+      if (frame.type === WsMsgType.YjsUpdate) updates.push(frame.payload);
+      else if (frame.type === WsMsgType.PresenceUpdate) presenceFrames.push(frame.payload);
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.addEventListener("open", () => resolve());
+      ws.addEventListener("error", () => reject(new Error("websocket error")));
+    });
+
+    ws.send(wsEncode(WsMsgType.YjsJoin, { documentId }));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const clientDoc = new Y.Doc();
+    for (const payload of updates.splice(0)) {
+      Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(payload).update);
+    }
+
+    // Concurrent client edit through the websocket — the incremental server
+    // append must merge with this, not overwrite it.
+    const stateBefore = Y.encodeStateVector(clientDoc);
+    const clientPara = new Y.XmlElement("paragraph");
+    clientPara.insert(0, [new Y.XmlText("from client")]);
+    clientDoc.getXmlFragment("default").push([clientPara]);
+    ws.send(wsEncodeYjsUpdate(documentId, Y.encodeStateAsUpdate(clientDoc, stateBefore)));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    // Append via `insert $` — exercises the incremental block-splice fast path.
+    const appendRes = await editDocument(documentId, [
+      { op: "insert", line: "$", content: "<p>appended</p>" },
+    ]);
+    expect(appendRes.status).toBe(200);
+    expect((await appendRes.json()).live).toBe(true);
+
+    // The append is broadcast as an incremental Yjs update and carries an
+    // Agent presence cursor anchored on the newly inserted block.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(updates.length).toBeGreaterThan(0);
+    for (const payload of updates.splice(0)) {
+      Y.applyUpdate(clientDoc, wsDecodeYjsUpdate(payload).update);
+    }
+    expect(presenceFrames.length).toBeGreaterThan(0);
+
+    // Prepend via `insert 1`.
+    const prependRes = await editDocument(documentId, [
+      { op: "insert", line: "1", content: "<p>prepended</p>" },
+    ]);
+    expect(prependRes.status).toBe(200);
+
+    const persisted = await readContent(documentId);
+    // Merged with the concurrent client edit and preserved original content.
+    expect(persisted).toContain("<p>appended</p>");
+    expect(persisted).toContain("<p>prepended</p>");
+    expect(persisted).toContain("from client");
+    expect(persisted).toContain("<h1>Title</h1>");
+    expect(persisted).toContain("<p>one</p>");
+    // Ordering: prepend at the very start, append after the original body.
+    expect(persisted.indexOf("prepended")).toBeLessThan(persisted.indexOf("Title"));
+    expect(persisted.indexOf("<p>one</p>")).toBeLessThan(persisted.indexOf("appended"));
+
+    ws.close();
+  });
+
   it("applies canvas edits through a live Yjs room", async () => {
     const documentId = await createDocument(
       JSON.stringify({

@@ -58,8 +58,11 @@ export const POST: ApiRouteHandler = (context) =>
     let result: Awaited<ReturnType<typeof transformDocumentContent>>;
     try {
       const operations = parseEditOperations(body.operations);
-      result = await transformDocumentContent(spaceId, id, (content) =>
-        stripScriptTags(applyEditOperations(content, operations)),
+      result = await transformDocumentContent(
+        spaceId,
+        id,
+        (content) => stripScriptTags(applyEditOperations(content, operations)),
+        operations,
       );
     } catch (error) {
       throw badRequestResponse(error instanceof Error ? error.message : "Invalid edit");

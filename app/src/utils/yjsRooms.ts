@@ -3,12 +3,12 @@ import { getSchema } from "@tiptap/core";
 import { generateHTML, generateJSON } from "@tiptap/html";
 import { Node } from "@tiptap/pm/model";
 import type { WebSocket } from "ws";
-import { prosemirrorToYDoc, updateYFragment, yDocToProsemirrorJSON } from "y-prosemirror";
+import { prosemirrorJSONToYXmlFragment, updateYFragment } from "y-prosemirror";
 import * as Y from "yjs";
 import { getDocument, getDocumentContent, updateDocument } from "#db/documents.ts";
 import { contentExtensions } from "#editor/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
-import { traced, tracedSync } from "#observability/trace.ts";
+import { traced } from "#observability/trace.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
@@ -16,7 +16,9 @@ import {
   wsEncode,
   wsEncodeYjsUpdate,
 } from "#utils/realtime.ts";
-import { parseCanvasContent, seedCanvasDoc } from "./canvasYjs.ts";
+import type { EditOperation } from "./documentEdit.ts";
+import { canvasSnapshotFromDoc, toCleanHtml } from "./serializationCore.ts";
+import { deserializeDocContent, serializeDocContent } from "./serializationPool.ts";
 import { stripScriptTags } from "./utils.ts";
 
 export interface YRoom {
@@ -42,30 +44,16 @@ function splitRoomKey(key: string): { spaceId: string; documentId: string } | nu
   };
 }
 
-function loadCanvasYDoc(content: string): Y.Doc {
-  const ydoc = new Y.Doc();
-  // The server is the single source of truth for room state: it seeds the doc
-  // from persisted content and sends it to clients on join. Clients never seed
-  // their own docs (that would assign different Yjs ids to the same shapes and
-  // diverge). The deterministic seed keeps ids stable across room reloads.
-  seedCanvasDoc(ydoc, parseCanvasContent(content));
-  return ydoc;
-}
-
 export async function loadYDoc(spaceId: string, documentId: string): Promise<Y.Doc> {
   const meta = await getDocument(spaceId, documentId);
   if (!meta) return new Y.Doc();
   const content = await getDocumentContent(spaceId, documentId);
   if (!content) return new Y.Doc();
-  if (meta.type === "canvas") {
-    return tracedSync("loadYDoc.canvas", () => loadCanvasYDoc(content));
-  }
-
-  const extensions = contentExtensions({ spaceId, documentId });
-  const json = generateJSON(content, extensions);
-  const schema = getSchema(extensions);
-  const pmDoc = Node.fromJSON(schema, json);
-  return prosemirrorToYDoc(pmDoc, "default");
+  // Off-thread: parsing a large document (HTML → ProseMirror → Yjs) blocks the
+  // event loop and spikes memory; the pool falls back to in-process on failure.
+  return traced("loadYDoc", () =>
+    deserializeDocContent(spaceId, documentId, meta.type, content),
+  );
 }
 
 export function getRoom(spaceId: string, documentId: string): YRoom {
@@ -79,48 +67,6 @@ export function getRoom(spaceId: string, documentId: string): YRoom {
     yRooms.set(key, room);
   }
   return room;
-}
-
-/**
- * Serializes the live Y.Doc to HTML with one top-level block per line, so
- * line-based edit operations have a deterministic line structure. The
- * server-side @tiptap/html build adds an xmlns attribute to elements; strip
- * it so the output matches client-produced content.
- */
-function toCleanHtml(
-  doc: Y.Doc,
-  extensions: ReturnType<typeof contentExtensions>,
-): string {
-  const json = yDocToProsemirrorJSON(doc, "default") as {
-    type: string;
-    content?: JSONContent[];
-  };
-  return (json.content ?? [])
-    .map((node) =>
-      generateHTML({ type: json.type, content: [node] }, extensions).replaceAll(
-        ' xmlns="http://www.w3.org/1999/xhtml"',
-        "",
-      ),
-    )
-    .join("\n");
-}
-
-/** Serializes a canvas room doc back to the snapshot content format. */
-function canvasSnapshotFromDoc(doc: Y.Doc): {
-  version: 1;
-  shapes: Record<string, unknown>[];
-  strokes: Record<string, unknown>[];
-} {
-  const collect = (name: string) =>
-    [...doc.getMap<Y.Map<unknown>>(name).entries()].map(([id, map]) => ({
-      id,
-      ...(map instanceof Y.Map ? map.toJSON() : {}),
-    }));
-  return {
-    version: 1,
-    shapes: collect("canvas.shapes"),
-    strokes: collect("canvas.strokes"),
-  };
 }
 
 /**
@@ -250,16 +196,6 @@ const PERSIST_DEBOUNCE_MS = 1000;
 // disconnects still flush via persistYRoomDraftBestEffort in the close handler.
 const MIN_PERSIST_INTERVAL_MS = 5000;
 
-function serializeRoomContent(
-  spaceId: string,
-  documentId: string,
-  doc: Y.Doc,
-  type: string | null | undefined,
-): string {
-  if (type === "canvas") return JSON.stringify(canvasSnapshotFromDoc(doc));
-  return toCleanHtml(doc, contentExtensions({ spaceId, documentId }));
-}
-
 export async function persistYRoomDraft(key: string): Promise<void> {
   const timer = persistTimers.get(key);
   if (timer) {
@@ -284,8 +220,10 @@ export async function persistYRoomDraft(key: string): Promise<void> {
   if (!meta) return;
 
   const doc = room.doc;
-  const content = tracedSync("persist.serialize", () =>
-    stripScriptTags(serializeRoomContent(ids.spaceId, ids.documentId, doc, meta.type)),
+  const content = stripScriptTags(
+    await traced("persist.serialize", () =>
+      serializeDocContent(ids.spaceId, ids.documentId, meta.type, doc),
+    ),
   );
 
   await traced("persist.write", () =>
@@ -427,9 +365,32 @@ function broadcastAgentPresence(
       Math.max(newLines.length - suffix, anchorIndex),
       fragment.length,
     );
+    broadcastAgentPresenceRange(key, documentId, room, doc, anchorIndex, headIndex);
+  } catch {
+    // Presence is cosmetic — never fail the edit over it.
+  }
+}
 
+/**
+ * Shows the "Agent" presence cursor spanning an explicit top-level block range
+ * [anchorIndex, headIndex). Used by the incremental edit path, which knows the
+ * changed range directly and so avoids serializing the whole doc to diff it.
+ */
+function broadcastAgentPresenceRange(
+  key: string,
+  documentId: string,
+  room: YRoom,
+  doc: Y.Doc,
+  anchorIndex: number,
+  headIndex: number,
+): void {
+  try {
+    const fragment = doc.getXmlFragment("default");
+    const clamp = (index: number) => Math.min(Math.max(index, 0), fragment.length);
     const toJson = (index: number) =>
-      Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(fragment, index));
+      Y.relativePositionToJSON(
+        Y.createRelativePositionFromTypeIndex(fragment, clamp(index)),
+      );
 
     setAgentPresence(key, documentId, room, {
       kind: "editor",
@@ -505,10 +466,97 @@ function changedCanvasShapes(
  * Returns the resulting content (to be persisted by the caller), or null if
  * the document does not exist. Errors thrown by the transform propagate.
  */
+/**
+ * Detects edits that map to a positional splice of whole top-level blocks
+ * without re-parsing the rest of the document. Only append (`insert` at `$`)
+ * and prepend (`insert` at line `1`) qualify: they resolve to fragment index
+ * `length`/`0` regardless of whether any existing block serializes to multiple
+ * HTML lines (e.g. a code block with embedded newlines), which is the case
+ * that makes arbitrary line→block mapping ambiguous. Everything else returns
+ * null and takes the full round-trip, so behaviour is never worse than before.
+ */
+function asBlockSpliceInsert(
+  operations: EditOperation[] | undefined,
+): { position: "start" | "end"; content: string } | null {
+  if (operations?.length !== 1) return null;
+  const op = operations[0];
+  if (op?.op !== "insert") return null;
+  if (op.line === "$") return { position: "end", content: op.content };
+  if (op.line === "1") return { position: "start", content: op.content };
+  return null;
+}
+
+/**
+ * Applies an append/prepend by parsing only the inserted content and splicing
+ * the resulting blocks into the live Yjs fragment — avoiding a `generateJSON`
+ * parse (the memory-dominant jsdom step), `Node.fromJSON`, and `updateYFragment`
+ * diff over the entire document. Returns false if the insert produced no blocks
+ * so the caller can fall back to the full path.
+ */
+function applyBlockSpliceInsert(
+  spaceId: string,
+  documentId: string,
+  room: YRoom,
+  doc: Y.Doc,
+  splice: { position: "start" | "end"; content: string },
+  onUpdate: (update: Uint8Array) => void,
+  extensions: ReturnType<typeof contentExtensions>,
+  schema: ReturnType<typeof getSchema>,
+): boolean {
+  const newHtml = stripScriptTags(splice.content);
+  const json = generateJSON(newHtml, extensions) as {
+    type: string;
+    content?: JSONContent[];
+  };
+  const blocks = json.content ?? [];
+  if (blocks.length === 0) return false;
+
+  const fragment = doc.getXmlFragment("default");
+
+  // Build the new blocks in a throwaway doc (cost is O(inserted content)), then
+  // clone the integrated nodes so they can be inserted into the live fragment.
+  const tmpDoc = new Y.Doc();
+  prosemirrorJSONToYXmlFragment(
+    schema,
+    { type: "doc", content: blocks },
+    tmpDoc.getXmlFragment("default"),
+  );
+  // Prosemirror block nodes map to XmlElement/XmlText only, never XmlHook;
+  // clone the integrated nodes so they can be re-inserted into the live doc.
+  const newNodes: (Y.XmlElement | Y.XmlText)[] = [];
+  for (const node of tmpDoc.getXmlFragment("default").toArray()) {
+    if (node instanceof Y.XmlHook) continue;
+    newNodes.push(node.clone());
+  }
+  if (newNodes.length === 0) return false;
+
+  const insertIndex = splice.position === "end" ? fragment.length : 0;
+
+  doc.on("update", onUpdate);
+  try {
+    doc.transact(() => {
+      fragment.insert(insertIndex, newNodes);
+    }, "server-edit");
+  } finally {
+    doc.off("update", onUpdate);
+  }
+
+  broadcastAgentPresenceRange(
+    roomKey(spaceId, documentId),
+    documentId,
+    room,
+    doc,
+    insertIndex,
+    insertIndex + newNodes.length,
+  );
+  return true;
+}
+
 export async function transformDocumentContent(
   spaceId: string,
   documentId: string,
   transform: (content: string) => string,
+  operations?: EditOperation[],
 ): Promise<{ content: string; live: boolean } | null> {
   const dbDoc = await getDocument(spaceId, documentId);
   if (!dbDoc) {
@@ -571,7 +619,33 @@ export async function transformDocumentContent(
   const extensions = contentExtensions({ spaceId, documentId });
   const schema = getSchema(extensions);
 
-  const currentHtml = toCleanHtml(doc, extensions);
+  // Fast path: append/prepend splices only the new blocks into the fragment,
+  // so cost is O(inserted content) rather than O(document). Broadcast is the
+  // same incremental Yjs update; only the return serialization stays O(n).
+  const splice = asBlockSpliceInsert(operations);
+  if (
+    splice &&
+    applyBlockSpliceInsert(
+      spaceId,
+      documentId,
+      room,
+      doc,
+      splice,
+      captureUpdate,
+      extensions,
+      schema,
+    )
+  ) {
+    for (const update of updates) {
+      broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
+    }
+    return {
+      content: await serializeDocContent(spaceId, documentId, dbDoc.type, doc),
+      live: true,
+    };
+  }
+
+  const currentHtml = await serializeDocContent(spaceId, documentId, dbDoc.type, doc);
   const nextHtml = transform(currentHtml);
   const nextPmDoc = Node.fromJSON(schema, generateJSON(nextHtml, extensions));
 
@@ -591,7 +665,7 @@ export async function transformDocumentContent(
     broadcastToRoom(room, wsEncodeYjsUpdate(documentId, update));
   }
 
-  const content = toCleanHtml(doc, extensions);
+  const content = await serializeDocContent(spaceId, documentId, dbDoc.type, doc);
   broadcastAgentPresence(
     roomKey(spaceId, documentId),
     documentId,

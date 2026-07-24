@@ -23,6 +23,7 @@ import {
   createFileSystemClientAssetMiddleware,
 } from "./utils/clientAssets.ts";
 import { APP_CSP } from "./utils/csp.ts";
+import { stopSerializationPool } from "./utils/serializationPool.ts";
 
 type AstroMiddleware = (
   req: IncomingMessage,
@@ -293,6 +294,7 @@ async function shutdown(reason: string, exitCode = 0) {
 
   stopCronScheduler();
   stopEmailNotificationWorker();
+  stopSerializationPool();
 
   forcedShutdownTimer = setTimeout(() => {
     appLogger.error("Forced shutdown timeout reached", { reason, timeoutMs: 10_000 });
