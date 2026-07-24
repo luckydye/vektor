@@ -26,7 +26,7 @@
       <a
         :href="getDocumentUrl(doc.slug)"
         :class="[
-        'flex-1 px-1.5 py-1 text-size-normal rounded-md flex items-center justify-between whitespace-nowrap text-ellipsis',
+        'flex-1 px-1.5 py-1 text-size-normal rounded-sm flex items-center justify-between whitespace-nowrap text-ellipsis',
         isActive
           ? 'bg-primary-200 text-neutral-700'
           : 'text-neutral-600 hover:bg-neutral-100 active:bg-neutral-200 hover:text-neutral-900'

@@ -337,7 +337,6 @@ watchEffect(() => {
                             'sticky top-0 z-10',
                         )"
             >
-              <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
               <div>
                   <Breadcrumbs
                     v-if="!isDraft"
@@ -478,7 +477,7 @@ watchEffect(() => {
             )"
           >
             <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
-            <div>
+            <div v-else>
                 <Breadcrumbs
                   v-if="!isDraft"
                   :category="docCategory"

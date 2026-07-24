@@ -27,6 +27,7 @@
   --container-sm: 180px;
 
   /* spacing */
+  --spacing-6xs: 0.125rem; /* 2px */
   --spacing-5xs: 0.25rem; /* 4px */
   --spacing-4xs: 0.5rem; /* 8px */
   --spacing-3xs: 0.75rem; /* 12px */

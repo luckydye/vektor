@@ -165,10 +165,9 @@ onMounted(() => {
       type="button"
       :data-tooltip="showTooltip === false ? undefined : nameLabel || property.name"
       :class="{
-        'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
-        'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
+        'text-interactive flex items-center gap-4xs py-6xs px-4xs rounded-lg transition-colors': true,
+        'bg-primary-50 hover:bg-primary-100 border border-primary-100': variant === 'special',
         'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
-        'py-1': true,
         'cursor-pointer': property !== null && !readonly,
         'cursor-default': property === null || readonly,
       }"
@@ -212,10 +211,9 @@ onMounted(() => {
       v-else
       type="button"
       :class="{
-        'text-interactive flex items-center gap-4xs px-3xs rounded-lg transition-colors': true,
-        'bg-primary-50 hover:bg-primary-100 border-0': variant === 'special',
+        'text-interactive flex items-center gap-4xs py-6xs px-4xs rounded-lg transition-colors': true,
+        'bg-primary-50 hover:bg-primary-100 border border-primary-100': variant === 'special',
         'bg-background hover:bg-primary-10 border border-primary-200': variant === 'default',
-        'py-1': true,
         'cursor-pointer': property !== null && !readonly,
         'cursor-default': property === null || readonly,
       }"
