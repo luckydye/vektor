@@ -20,7 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import * as XLSX from "xlsx";
+import { writeXlsx } from "#utils/xlsx.ts";
 import { createZipBuffer } from "#utils/zip.ts";
 import {
   createApiRequest,
@@ -243,16 +243,16 @@ describe("job runtime: protocol", () => {
 
 describe("job runtime: native helpers", () => {
   it("parses a spreadsheet through the host, not a bundled parser", async () => {
-    const sheet = XLSX.utils.aoa_to_sheet([
-      ["Name", "Amount"],
-      ["first", 10],
-      ["second", 20],
+    const bytes = writeXlsx([
+      {
+        name: "Data",
+        rows: [
+          ["Name", "Amount"],
+          ["first", 10],
+          ["second", 20],
+        ],
+      },
     ]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, "Data");
-    const bytes = new Uint8Array(
-      XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer,
-    );
 
     const fileUrl = await upload(
       "rows.xlsx",

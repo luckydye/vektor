@@ -7,7 +7,7 @@ import { useInfiniteQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { propertyValueToText } from "#documents/properties.ts";
 import { realtimeTopics } from "#realtime/protocol.ts";
-import { downloadExcelRows, parseCsvRows } from "#utils/excelExport.ts";
+import { downloadExcelRows, parseCsvRows } from "#utils/xlsx.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
   chevronLeftThinIcon,

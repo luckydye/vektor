@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useSpace } from "#composeables/useSpace.ts";
-import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/excelExport.ts";
-import { downloadExcelSheets, sanitizeSheetName } from "#utils/excelExport.ts";
+import type { ExcelCell, ExcelCellFill, ExcelSheet } from "#utils/xlsx.ts";
+import { downloadExcelSheets, sanitizeSheetName } from "#utils/xlsx.ts";
 import { spacePath } from "#utils/utils.ts";
 import { downloadIcon } from "~/src/assets/icons.ts";
 import type { ExcelExportConfig } from "./ExcelExportDialog.vue";

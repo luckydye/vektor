@@ -517,9 +517,9 @@ to add one is to add it to the host's capability table — not to import it.
 | `jobCache` | Disk cache, isolated per job id |
 | `sleep`, `setTimeout` | Timers |
 
-Prefer the native helpers over bundling a library: `spreadsheet.toRows()` and
-`zip.read()` do the same work as `xlsx` and `fflate` without shipping a
-megabyte of JavaScript to be run by an interpreter.
+Prefer the native helpers over bundling a library: `spreadsheet.toRows()` reads
+XLSX and CSV, while `zip.read()` handles archives, without shipping a large
+JavaScript parser to be run by an interpreter.
 
 `exec` accepts only a fixed set of conversion tools (`pandoc`, `htmlq`,
 `rsvg-convert`, `qpdf`, `gs`, `libreoffice`), never a path, and runs without a

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { xlsxToText } from "#utils/xlsx.ts";
 import { unzipSync } from "#utils/zip.ts";
 
 const TEXT_MIME_TYPES = new Set([
@@ -40,12 +41,7 @@ function extractDocxText(buffer: Buffer): string {
 
 function extractXlsxText(buffer: Buffer): string {
   try {
-    const files = unzipSync(new Uint8Array(buffer));
-    // Shared strings table contains the actual cell text
-    const sharedBytes = files["xl/sharedStrings.xml"];
-    if (!sharedBytes) return "";
-    const xml = new TextDecoder().decode(sharedBytes);
-    return stripXmlTags(xml);
+    return xlsxToText(new Uint8Array(buffer));
   } catch {
     return "";
   }

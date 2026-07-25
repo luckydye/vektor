@@ -24,9 +24,9 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, normalize, relative, sep } from "node:path";
-import * as XLSX from "xlsx";
 import { config, getLocalOrigin } from "#config";
 import { createJobToken } from "#jobs/jobToken.ts";
+import { readXlsxRows } from "#utils/xlsx.ts";
 import { createZipBuffer, unzipSync } from "#utils/zip.ts";
 import { agentPrompt } from "./agentCapability.ts";
 import type { CapabilityTable } from "./types.ts";
@@ -460,34 +460,15 @@ export function createCapabilities(context: CapabilityContext): Capabilities {
      */
     spreadsheetToRows: ((bytes: unknown, rawOptions: unknown) => {
       const options = asRecord(rawOptions);
-      const workbook = XLSX.read(new Uint8Array(asBuffer(bytes)), {
-        type: "array",
+      return readXlsxRows(new Uint8Array(asBuffer(bytes)), {
         cellDates: options.cellDates === true,
         raw: options.raw === true,
+        blankRows: options.blankRows === true,
+        sheet:
+          typeof options.sheet === "string" || typeof options.sheet === "number"
+            ? options.sheet
+            : undefined,
       });
-      // A sheet may be named or indexed; unspecified means the first one.
-      const sheetName =
-        typeof options.sheet === "string" && options.sheet
-          ? options.sheet
-          : typeof options.sheet === "number"
-            ? workbook.SheetNames[options.sheet]
-            : workbook.SheetNames[0];
-      const sheet = sheetName ? workbook.Sheets[sheetName] : undefined;
-      if (!sheet) {
-        throw new Error(
-          `spreadsheet: no sheet ${JSON.stringify(options.sheet ?? 0)}; have ${workbook.SheetNames.join(", ")}`,
-        );
-      }
-
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-        header: 1,
-        blankrows: options.blankRows === true,
-        // Empty cells become null rather than being skipped, so every row keeps
-        // its column alignment.
-        defval: null,
-        raw: options.raw === true,
-      });
-      return { sheet: sheetName, sheets: workbook.SheetNames, rows };
     }) as never,
 
     // ── scratch filesystem ───────────────────────────────────────────────────
