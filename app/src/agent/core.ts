@@ -8,7 +8,7 @@ import {
   callTool as callVektorTool,
   listTools as listVektorTools,
   type VektorMcpConfig,
-} from "#mcp/tools.ts";
+} from "#agent/tools.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { gitlabCommand } from "./commands/gitlab.ts";

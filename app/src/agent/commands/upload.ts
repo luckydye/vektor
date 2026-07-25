@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 import { defineCommand } from "just-bash";
-import { uploadFile, type VektorMcpConfig } from "#mcp/tools.ts";
+import { uploadFile, type VektorMcpConfig } from "#agent/tools.ts";
 
 export function uploadCommand(mcpConfigRef: { current: VektorMcpConfig }) {
   return defineCommand("upload", async (args, ctx) => {

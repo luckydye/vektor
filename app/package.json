@@ -67,7 +67,6 @@
     "#integrations/*": "./src/integrations/*",
     "#jobs/*": "./src/jobs/*",
     "#layouts/*": "./src/layouts/*",
-    "#mcp/*": "./src/mcp/*",
     "#observability/*": "./src/observability/*",
     "#pages/*": "./src/pages/*",
     "#realtime/*": "./src/realtime/*",

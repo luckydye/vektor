@@ -6,7 +6,7 @@ import {
   listTools,
   parseLooseObject,
   type VektorMcpConfig,
-} from "#mcp/tools.ts";
+} from "#agent/tools.ts";
 import { resolveHost, resolveSpaceId } from "./resolve.ts";
 
 /**
