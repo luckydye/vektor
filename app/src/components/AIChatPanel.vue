@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ inheritAttrs: false });
 
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { api } from "#api/client.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import type { UIMessage } from "#composeables/useChatSessions.ts";
@@ -9,6 +9,7 @@ import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
+import { isAIProviderConfigured } from "#utils/aiProviderPreferences.ts";
 import { t } from "#utils/lang.ts";
 import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
@@ -49,8 +50,12 @@ type UploadedAttachment = {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-const { currentSpaceId } = useSpace();
-const { toggle: toggleWindow, windows: dockedWindows } = useDockedWindows();
+const { currentSpace, currentSpaceId } = useSpace();
+const {
+  toggle: toggleWindow,
+  close: closeWindow,
+  windows: dockedWindows,
+} = useDockedWindows();
 const { uploadFiles } = useUploads();
 const isOpen = computed(() => dockedWindows.value.get("ai-chat")?.open ?? false);
 const messageInput = ref("");
@@ -821,15 +826,35 @@ function scrollThinkingToBottom() {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-Actions.register("ai-chat:toggle", {
-  title: t("AI Chat"),
-  icon: () => "agent-chat",
-  description: t("Open AI chat to ask questions about this document"),
-  group: "document",
-  run: async () => {
-    toggleWindow("ai-chat", { side: "right", width: 380 });
+// The agent only works when the space has an AI provider configured, so the
+// action stays unregistered (and out of the command palette) until it is. The
+// provider lives in the space preferences the space payload already carries, so
+// this works for every role that may use the agent — viewer included.
+const isAgentConfigured = computed(() =>
+  isAIProviderConfigured(currentSpace.value?.preferences),
+);
+
+watch(
+  isAgentConfigured,
+  (configured) => {
+    if (!configured) {
+      Actions.unregister("ai-chat:toggle");
+      // Persisted UI state can restore the panel in a space with no provider.
+      if (isOpen.value) closeWindow("ai-chat");
+      return;
+    }
+    Actions.register("ai-chat:toggle", {
+      title: t("AI Chat"),
+      icon: () => "agent-chat",
+      description: t("Open AI chat to ask questions about this document"),
+      group: "document",
+      run: async () => {
+        toggleWindow("ai-chat", { side: "right", width: 380 });
+      },
+    });
   },
-});
+  { immediate: true },
+);
 
 onMounted(() => {
   loadUIState();

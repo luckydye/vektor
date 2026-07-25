@@ -17,6 +17,10 @@ import {
   listRuns,
 } from "#jobs/runStore.ts";
 import { startWorkflowRun } from "#jobs/workflowRuns.ts";
+import {
+  readRunResumeState,
+  type WorkflowStepCache,
+} from "#jobs/workflowStepCache.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
 import { propertyValueToText } from "#utils/documentProperties.ts";
@@ -123,8 +127,37 @@ export const POST: ApiRouteHandler = (context) =>
         documentId?: string;
         inputs?: Record<string, unknown>;
         sourceExtensionId?: string;
+        resumeFromRunId?: string;
       }>(context.req.raw);
-      const { documentId, inputs, sourceExtensionId } = body;
+      const { sourceExtensionId, resumeFromRunId } = body;
+
+      // Resume-from-failure: inherit the prior run's document + inputs and seed
+      // its step cache so completed steps replay instead of re-executing. The
+      // body may still override documentId/inputs.
+      let documentId = body.documentId;
+      let inputs = body.inputs;
+      let seedCache: WorkflowStepCache | undefined;
+      if (resumeFromRunId) {
+        await ensureSpaceRecovered(spaceId);
+        const priorRun = await getRunForRead(spaceId, resumeFromRunId);
+        if (!priorRun) return notFoundResponse("Run");
+        if (priorRun.status === "pending" || priorRun.status === "running") {
+          return badRequestResponse("Cannot resume a run that is still in progress");
+        }
+        // The inputs come from the run's resume artifact, not its document
+        // properties: the stored properties are summarized for display (secrets
+        // redacted, long values truncated), so resuming from them would run the
+        // workflow with corrupted inputs and miss every cached step.
+        const resumeState = await readRunResumeState(spaceId, resumeFromRunId);
+        if (!resumeState) {
+          return badRequestResponse(
+            "This run has no resume state; start a new run instead",
+          );
+        }
+        documentId ??= priorRun.documentId;
+        inputs ??= resumeState.inputs;
+        seedCache = resumeState.steps;
+      }
 
       if (!documentId) return badRequestResponse("documentId is required");
 
@@ -138,6 +171,7 @@ export const POST: ApiRouteHandler = (context) =>
         initiatedByUserId,
         sourceExtensionId,
         runtimeInputs: inputs,
+        seedCache,
       });
 
       return jsonResponse({ runId }, 202);

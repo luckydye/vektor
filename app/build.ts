@@ -105,6 +105,28 @@ function getLibsqlNativeAddonPath(): string {
 
 await generateClientAssetsModule();
 
+/**
+ * Pre-bundle the serialization worker into a single self-contained file so it
+ * can be embedded in the standalone binary. Bun's `--compile` does not emit a
+ * loadable worker entry for `new Worker(new URL(...))`, so serializationPool.ts
+ * loads this bundle via `serializationWorkerEmbed.ts` (`with { type: "file" }`)
+ * in the compiled binary. The worker pulls in the full editor/schema graph, so
+ * this must be bundled (not left as a bare `.ts` with unresolved imports).
+ */
+export async function generateSerializationWorkerBundle() {
+  const result = await Bun.build({
+    entrypoints: [join(appDir, "src/utils/serializationWorker.ts")],
+    target: "bun",
+    outdir: join(appDir, "generated"),
+    naming: "serialization-worker.js",
+  });
+  if (!result.success) {
+    throw new AggregateError(result.logs, "Failed to bundle serialization worker");
+  }
+}
+
+await generateSerializationWorkerBundle();
+
 // Patch dist/server/entry.mjs so resolveClientDir works inside the compiled
 // Bun binary. @astrojs/node@11 walks up from import.meta.url looking for a
 // "server" path segment, which doesn't exist when bundled (import.meta.url

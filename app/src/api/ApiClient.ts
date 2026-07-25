@@ -1379,13 +1379,10 @@ export class ApiClient {
           ),
         () => this.apiDelete(this.baseUrl, `/api/v1/spaces/${spaceId}/categories/${id}`),
         async () => {
-          await this.updateRemoteReplica<CategoriesListResponse>(
-            listPath,
-            (cached) => ({
-              ...cached,
-              categories: cached.categories.filter((category) => category.id !== id),
-            }),
-          );
+          await this.updateRemoteReplica<CategoriesListResponse>(listPath, (cached) => ({
+            ...cached,
+            categories: cached.categories.filter((category) => category.id !== id),
+          }));
         },
       );
     },
@@ -2658,6 +2655,19 @@ export class ApiClient {
       await this.apiPost<{ ok: true }>(
         this.baseUrl,
         `/api/v1/spaces/${spaceId}/workflows/runs/${runId}`,
+      );
+    },
+
+    /**
+     * Retry a terminal run, resuming from its cached step results. Starts a new
+     * run for the same document + inputs; steps that already succeeded replay
+     * from cache and only failed/changed steps re-execute.
+     */
+    retryRun: async (spaceId: string, runId: string): Promise<{ runId: string }> => {
+      return await this.apiPost<{ runId: string }>(
+        this.baseUrl,
+        `/api/v1/spaces/${spaceId}/workflows/runs`,
+        { resumeFromRunId: runId },
       );
     },
 

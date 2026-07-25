@@ -56,11 +56,26 @@ function failWorkerRequests(entry: PoolWorker, reason: string): void {
   }
 }
 
-function spawnWorker(): PoolWorker | null {
+let workerSpecPromise: Promise<string | URL> | null = null;
+
+/**
+ * Resolves where to load the worker from. In a standalone compiled binary the
+ * source `.ts` isn't on disk, so we load the pre-bundled, self-contained worker
+ * that build.ts embedded via `with { type: "file" }`. In dev/tests (run straight
+ * from source with `bun`), we load the `.ts` directly. `$bunfs` in import.meta.url
+ * is Bun's virtual filesystem, present only in the compiled executable.
+ */
+function resolveWorkerSpec(): Promise<string | URL> {
+  if (workerSpecPromise) return workerSpecPromise;
+  workerSpecPromise = import.meta.url.includes("$bunfs")
+    ? import("./serializationWorkerEmbed.ts").then((m) => m.serializationWorkerPath)
+    : Promise.resolve(new URL("./serializationWorker.ts", import.meta.url));
+  return workerSpecPromise;
+}
+
+function spawnWorker(spec: string | URL): PoolWorker | null {
   try {
-    const worker = new Worker(new URL("./serializationWorker.ts", import.meta.url), {
-      type: "module",
-    });
+    const worker = new Worker(spec, { type: "module" });
     const entry: PoolWorker = { worker, inFlight: 0 };
 
     worker.addEventListener("message", (event: MessageEvent<SerializationResponse>) => {
@@ -87,19 +102,38 @@ function spawnWorker(): PoolWorker | null {
   }
 }
 
-function ensurePool(): PoolWorker[] | null {
-  if (!workers || workers.length === 0) {
-    workers = [];
-    for (let i = 0; i < POOL_SIZE; i++) {
-      const spawned = spawnWorker();
-      if (spawned) workers.push(spawned);
-    }
-    if (workers.length === 0) {
-      workers = null;
-      return null;
-    }
+async function buildPool(): Promise<PoolWorker[] | null> {
+  let spec: string | URL;
+  try {
+    spec = await resolveWorkerSpec();
+  } catch (error) {
+    appLogger.warn("Failed to resolve serialization worker; using in-process fallback", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   }
+  const spawned: PoolWorker[] = [];
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const worker = spawnWorker(spec);
+    if (worker) spawned.push(worker);
+  }
+  if (spawned.length === 0) return null;
+  workers = spawned;
   return workers;
+}
+
+// Resolving the worker spec is async, so the pool build must be shared: two
+// concurrent first-time dispatches would otherwise each spawn POOL_SIZE workers
+// and the losing set would be unreachable — never terminated on shutdown, each
+// still holding the full editor/schema graph resident.
+let poolPromise: Promise<PoolWorker[] | null> | null = null;
+
+function ensurePool(): Promise<PoolWorker[] | null> {
+  if (workers && workers.length > 0) return Promise.resolve(workers);
+  poolPromise ??= buildPool().finally(() => {
+    poolPromise = null;
+  });
+  return poolPromise;
 }
 
 function pickWorker(pool: PoolWorker[]): PoolWorker {
@@ -115,11 +149,11 @@ function pickWorker(pool: PoolWorker[]): PoolWorker {
 // `Omit<Union, "id">` collapses to only the shared keys).
 type WithoutId<T> = T extends unknown ? Omit<T, "id"> : never;
 
-function dispatch(
+async function dispatch(
   request: WithoutId<SerializationRequest>,
 ): Promise<SerializationResponse> {
-  const pool = ensurePool();
-  if (!pool) return Promise.reject(new Error("serialization pool disabled"));
+  const pool = await ensurePool();
+  if (!pool) throw new Error("serialization pool unavailable");
 
   const entry = pickWorker(pool);
   const id = nextRequestId++;

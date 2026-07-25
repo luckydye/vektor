@@ -1,6 +1,7 @@
 import { getDocument, getDocumentContent } from "#db/documents.ts";
 import { createRun } from "./runStore.ts";
 import { executeWorkflowScript } from "./workflowScript.ts";
+import type { WorkflowStepCache } from "./workflowStepCache.ts";
 
 /**
  * Starts a workflow run and returns its run id immediately; execution
@@ -14,6 +15,8 @@ export async function startWorkflowRun(
     initiatedByUserId: string | null;
     sourceExtensionId?: string | null;
     runtimeInputs?: Record<string, unknown>;
+    /** Prior run's step cache to resume from; matching steps replay instead of re-running. */
+    seedCache?: WorkflowStepCache;
   },
 ): Promise<string> {
   const doc = await getDocument(spaceId, documentId);
@@ -41,6 +44,7 @@ export async function startWorkflowRun(
   // Fire and forget — errors are recorded in run state.
   executeWorkflowScript(spaceId, runId, code, {
     runtimeInputs: options.runtimeInputs,
+    seedCache: options.seedCache,
   }).catch(() => {});
 
   return runId;

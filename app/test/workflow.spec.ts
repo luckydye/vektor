@@ -57,6 +57,9 @@ let serverProcess: ReturnType<typeof Bun.spawn>;
 let serverLogs = "";
 let spaceId: string;
 let workflowDocId: string;
+// Set by the first run so the resume test can retry it.
+let completedRunId: string | null = null;
+let completedRunResult: unknown;
 
 // ---------------------------------------------------------------------------
 // Server lifecycle + helpers
@@ -252,6 +255,8 @@ describe("workflow: sitemap download + HTML-to-markdown conversion", () => {
     // The script returns { result: mdFiles.result } where result is the
     // JSON table produced by for-each-file after running convert on each page.
     const result = (await readRunResult(run)).result;
+    completedRunId = runId;
+    completedRunResult = result;
     expect(result).toBeDefined();
     expect(typeof result).toBe("string");
 
@@ -267,4 +272,36 @@ describe("workflow: sitemap download + HTML-to-markdown conversion", () => {
 
     expect(resultStr).not.toMatch(HTML_TAG);
   }, 90_000); // generous timeout for external network fetches + conversion
+
+  it("resumes a prior run from its cached steps instead of re-executing them", async () => {
+    if (!completedRunId) throw new Error("The run test must succeed before this one");
+
+    const { runId } = await apiJson<{ runId: string }>(
+      `/api/v1/spaces/${spaceId}/workflows/runs`,
+      {
+        method: "POST",
+        body: JSON.stringify({ resumeFromRunId: completedRunId }),
+      },
+    );
+    expect(runId).not.toBe(completedRunId);
+
+    const run = await pollRunUntilDone(spaceId, runId);
+    if (run.status !== "completed") {
+      throw new Error(`Resumed run ended unexpectedly:\n${summariseFailure(run)}`);
+    }
+
+    // Both steps must come back from the cache — no sitemap fetch, no reconvert —
+    // and the replayed result must be identical to the original run's.
+    const replayed = run.logs.filter((line) => line.includes("resume: replayed cached"));
+    expect(replayed.length).toBe(2);
+    expect((await readRunResult(run)).result).toEqual(completedRunResult);
+  }, 60_000);
+
+  it("rejects resuming a run that does not exist", async () => {
+    const res = await apiRequest(`/api/v1/spaces/${spaceId}/workflows/runs`, {
+      method: "POST",
+      body: JSON.stringify({ resumeFromRunId: "doc_missing" }),
+    });
+    expect(res.status).toBe(404);
+  });
 });

@@ -1,13 +1,17 @@
 import { getFileStorage } from "#files/storage.ts";
 
-export type WorkflowArtifactKind = "result" | "logs";
+export type WorkflowArtifactKind = "result" | "logs" | "resume";
 
 export type WorkflowArtifact = {
   key: string;
   url: string;
 };
 
-function artifactKey(runId: string, kind: WorkflowArtifactKind): string {
+/**
+ * Artifact paths are derived from (runId, kind), so an artifact can be read back
+ * without the run recording where it went.
+ */
+export function workflowArtifactKey(runId: string, kind: WorkflowArtifactKind): string {
   return `artifacts/workflow/${runId}/${kind}.json`;
 }
 
@@ -23,7 +27,7 @@ export async function writeWorkflowArtifact(
   kind: WorkflowArtifactKind,
   value: unknown,
 ): Promise<WorkflowArtifact> {
-  const key = artifactKey(runId, kind);
+  const key = workflowArtifactKey(runId, kind);
   const body = Buffer.from(JSON.stringify(value), "utf8");
   const storage = getFileStorage();
   const url = await storage.put(spaceId, key, body, "application/json");

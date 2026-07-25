@@ -105,6 +105,21 @@ describe("Document edit operations", () => {
     );
   });
 
+  it("appends without a live room without re-parsing the whole document", async () => {
+    // A compact, multi-block single line: the old non-live path ran a
+    // whole-document generateJSON parse (normalizeHtmlContent) that re-flowed
+    // blocks onto separate lines and — on large append-only logs — OOM'd the
+    // process. Append (`insert $`) must skip that parse, leaving stored blocks
+    // untouched and only tacking the new block on the end.
+    const documentId = await createDocument("<p>a</p><p>b</p>");
+    const response = await editDocument(documentId, [
+      { op: "insert", line: "$", content: "<p>c</p>" },
+    ]);
+    expect(response.status).toBe(200);
+    expect((await response.json()).live).toBe(false);
+    expect(await readContent(documentId)).toBe("<p>a</p><p>b</p>\n<p>c</p>");
+  });
+
   it("normalizes compact single-line html for line edits and live reads", async () => {
     const documentId = await createDocument("<h1>Title</h1><p>one</p><p>two</p>");
 
@@ -302,7 +317,8 @@ describe("Document edit operations", () => {
     ws.addEventListener("message", (event) => {
       const frame = wsDecode(new Uint8Array(event.data as ArrayBuffer));
       if (frame.type === WsMsgType.YjsUpdate) updates.push(frame.payload);
-      else if (frame.type === WsMsgType.PresenceUpdate) presenceFrames.push(frame.payload);
+      else if (frame.type === WsMsgType.PresenceUpdate)
+        presenceFrames.push(frame.payload);
     });
     await new Promise<void>((resolve, reject) => {
       ws.addEventListener("open", () => resolve());

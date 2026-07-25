@@ -566,10 +566,19 @@ export async function transformDocumentContent(
   const room = yRooms.get(roomKey(spaceId, documentId));
   if (!room?.doc) {
     const persisted = (await getDocumentContent(spaceId, documentId)) ?? "";
-    const base =
-      dbDoc.type === "canvas" || isJsonContent(persisted)
-        ? persisted
-        : normalizeHtmlContent(spaceId, documentId, persisted);
+    // Append/prepend splice at the very end/start, so they don't need the
+    // content re-flowed to one-block-per-line — skip normalizeHtmlContent,
+    // whose whole-document generateJSON parse is O(doc) and is what OOMs the
+    // process on large append-only logs edited without a live room (e.g. the
+    // metrics-logger job). Other ops still normalize so mid-document line
+    // references stay accurate.
+    const skipNormalize =
+      dbDoc.type === "canvas" ||
+      isJsonContent(persisted) ||
+      asBlockSpliceInsert(operations) !== null;
+    const base = skipNormalize
+      ? persisted
+      : normalizeHtmlContent(spaceId, documentId, persisted);
     return { content: transform(base), live: false };
   }
 

@@ -15,6 +15,7 @@ import {
   documentIcon,
   downloadIcon,
   fileAttachmentIcon,
+  refreshIcon,
   spinnerIcon,
 } from "~/src/assets/icons.ts";
 import "@atrium-ui/elements/tabs";
@@ -179,6 +180,32 @@ async function selectRun(runId: string, options: { updateUrl?: boolean } = {}) {
   selectedRunResult.value = null;
   await fetchSelectedRunDetail();
 }
+
+const retrying = ref(false);
+const retryError = ref<string | null>(null);
+
+// Retry a failed or cancelled run: starts a new run seeded from this one's
+// cached step results, so completed steps replay instantly and only the
+// failed/changed steps re-execute. Selects the new run so its progress is shown.
+async function retrySelectedRun() {
+  if (!selectedRunId.value || retrying.value) return;
+  retrying.value = true;
+  retryError.value = null;
+  try {
+    const { runId } = await api.workflows.retryRun(props.spaceId, selectedRunId.value);
+    await selectRun(runId);
+  } catch (err) {
+    retryError.value = err instanceof Error ? err.message : "Failed to retry run";
+  } finally {
+    retrying.value = false;
+  }
+}
+
+const canRetrySelectedRun = computed(
+  () =>
+    selectedRunDetail.value?.status === "failed" ||
+    selectedRunDetail.value?.status === "cancelled",
+);
 
 const selectedRun = computed(() =>
   runList.value.find((r) => r.runId === selectedRunId.value),
@@ -728,8 +755,32 @@ const statusBadgeClass: Record<string, string> = {
             </p>
           </template>
 
+          <div v-else-if="canRetrySelectedRun" class="space-y-3">
+            <p class="text-size-medium text-red-600">
+              {{ selectedRunDetail?.error ?? (selectedRunDetail?.status === 'cancelled' ? 'Run cancelled.' : 'Run failed.') }}
+            </p>
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 px-3 py-1.5 text-size-medium font-medium rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              :disabled="retrying"
+              title="Start a new run, replaying already-completed steps from cache"
+              @click="retrySelectedRun"
+            >
+              <div
+                v-if="retrying"
+                class="svg-icon w-3.5 h-3.5 animate-spin"
+                v-html="spinnerIcon"
+              />
+              <div v-else class="svg-icon w-3.5 h-3.5" v-html="refreshIcon" />
+              {{ retrying ? "Retrying…" : "Retry" }}
+            </button>
+            <p v-if="retryError" class="text-size-small text-red-600">
+              {{ retryError }}
+            </p>
+          </div>
+
           <p v-else class="text-size-medium text-neutral-400">
-            {{ !selectedRunDetail ? (selectedRunError ?? 'Select a run from History to see results.') : selectedRunDetail.status === 'failed' ? 'Run failed.' : 'Run did not complete.' }}
+            {{ !selectedRunDetail ? (selectedRunError ?? 'Select a run from History to see results.') : 'Run did not complete.' }}
           </p>
         </div>
       </a-tabs-panel>

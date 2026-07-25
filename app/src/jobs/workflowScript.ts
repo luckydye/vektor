@@ -13,6 +13,12 @@ import {
 } from "./runStore.ts";
 import { resolveJobSandbox } from "./sandbox.ts";
 import { runJob } from "./scheduler.ts";
+import {
+  createStepCacheWriter,
+  stepCacheKey,
+  type WorkflowStepCache,
+  writeRunResumeState,
+} from "./workflowStepCache.ts";
 
 /**
  * Execute a JavaScript workflow script in a Boa (native Rust) sandbox.
@@ -31,6 +37,13 @@ export async function executeWorkflowScript(
   code: string,
   options?: {
     runtimeInputs?: Record<string, unknown>;
+    /**
+     * Seed cache from a prior run. `runJob` calls whose (extension, job,
+     * inputs) match an entry replay the cached output instead of executing,
+     * letting a retry resume past already-completed steps. Empty for fresh
+     * runs, which then behave exactly as before.
+     */
+    seedCache?: WorkflowStepCache;
   },
 ): Promise<void> {
   const run = getRun(runId);
@@ -39,6 +52,31 @@ export async function executeWorkflowScript(
   setRunStatus(runId, "running");
   const controller = new AbortController();
   setRunAbort(runId, () => controller.abort());
+
+  // Read-only cache from the run we're resuming; never mutated. The writer
+  // accumulates every successful runJob output this run (including replayed seed
+  // hits, so a chain of retries keeps resuming) under a size budget.
+  const seedCache = options?.seedCache ?? {};
+  const runtimeInputs = options?.runtimeInputs ?? {};
+  const stepCache = createStepCacheWriter(seedCache);
+
+  // Persist the exact inputs up front so a retry reproduces the script's `input`
+  // faithfully — the copy on the run document is summarized for display and is
+  // not safe to resume from.
+  const persistResumeState = async () => {
+    const dropped = stepCache.droppedSteps();
+    if (dropped > 0) {
+      appendRunLog(
+        runId,
+        `resume: ${dropped} step result(s) exceeded the cache budget and will re-run on retry`,
+      );
+    }
+    await writeRunResumeState(spaceId, runId, {
+      inputs: runtimeInputs,
+      steps: stepCache.snapshot(),
+    });
+  };
+  await persistResumeState();
 
   const sandbox = await resolveJobSandbox();
 
@@ -52,7 +90,7 @@ export async function executeWorkflowScript(
   } = await getNativeExec();
 
   try {
-    vmId = workflowVmCreate(code, options?.runtimeInputs ?? {});
+    vmId = workflowVmCreate(code, runtimeInputs);
 
     // Step-driven event loop: advance the VM until it's done, handling
     // log messages and runJob calls as they appear.
@@ -84,6 +122,24 @@ export async function executeWorkflowScript(
       if (event.type === "pending_job") {
         const { jobId, extensionId, workflowJobId, inputs } = event;
         if (!jobId || !extensionId || !workflowJobId) continue;
+
+        const jobInputsForKey =
+          inputs && typeof inputs === "object" && !Array.isArray(inputs)
+            ? (inputs as Record<string, unknown>)
+            : {};
+        const cacheKey = stepCacheKey(extensionId, workflowJobId, jobInputsForKey);
+
+        // Resume: replay a prior run's successful output without re-executing.
+        const cached = seedCache[cacheKey];
+        if (cached) {
+          appendRunLog(
+            runId,
+            `[${extensionId}/${workflowJobId}] resume: replayed cached result (skipped)`,
+          );
+          if (vmId !== null) workflowVmResolveJob(vmId, jobId, cached);
+          await new Promise<void>((r) => setTimeout(r, 10));
+          continue;
+        }
 
         // Run the job asynchronously and resolve/reject the VM promise.
         // We do NOT await here — let the loop continue stepping while the job runs.
@@ -136,6 +192,7 @@ export async function executeWorkflowScript(
               else unwrapped[k] = v;
             }
 
+            stepCache.record(cacheKey, unwrapped);
             if (vmId !== null) workflowVmResolveJob(vmId, jobId, unwrapped);
           } catch (err) {
             const error = err instanceof Error ? err.message : String(err);
@@ -156,6 +213,7 @@ export async function executeWorkflowScript(
       }
     }
 
+    await persistResumeState();
     await writeRunLogs(runId);
     await finalizeRun(runId);
   } catch (err) {
@@ -163,6 +221,9 @@ export async function executeWorkflowScript(
     appendRunLog(runId, error);
     setRunError(runId, error);
     setRunStatus(runId, "failed");
+    // Persist whatever completed so a retry can resume past these steps. This
+    // also covers cancellation, which reaches us as an abort error.
+    await persistResumeState();
     await writeRunLogs(runId);
     await finalizeRun(runId);
   } finally {

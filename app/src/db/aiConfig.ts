@@ -1,16 +1,17 @@
 import { eq, inArray } from "drizzle-orm";
 import type { AIProvider } from "#provider/types.ts";
+import {
+  AI_BASE_URL_KEY,
+  AI_MODEL_KEY,
+  AI_PREF_KEYS,
+  AI_PROVIDER_KEY,
+} from "#utils/aiProviderPreferences.ts";
 import { getSpaceDb } from "./db.ts";
 import { createId } from "./ids.ts";
 import { preference, spaceSecret } from "./schema/space.ts";
 import { decryptSecret, encryptSecret } from "./secretsCrypto.ts";
 
-const AI_PROVIDER_KEY = "ai:provider";
-const AI_MODEL_KEY = "ai:model";
-const AI_BASE_URL_KEY = "ai:baseUrl";
 const AI_API_KEY_SECRET = "__ai_api_key";
-
-const AI_PREF_KEYS = [AI_PROVIDER_KEY, AI_MODEL_KEY, AI_BASE_URL_KEY];
 
 export async function getAIProvider(spaceId: string): Promise<AIProvider> {
   const db = await getSpaceDb(spaceId);
