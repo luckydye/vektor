@@ -677,10 +677,9 @@ Per-user, per-space saved chat session state (used by the ACP chat UI).
 - **Behavior**: content is never included in list responses (fetched separately per
   document). `record`-type documents are excluded when filtering by category.
 - **Returns**: shape depends on query — `{ documentsByCategory, categorySlugs }`
-  (grouped), `{ documents, total, limit, offset: 0 }` (category/flat — returns the
-  full filtered result set, unpaginated; `offset` is always `0`), or
-  `{ documents, total, limit, nextCursor }` (`parentId` or default cursor-paginated
-  listing).
+  (grouped), `{ documents, total, limit }` (category/flat — returns the full
+  filtered result set, unpaginated), or `{ documents, total, limit, nextCursor }`
+  (`parentId` or default cursor-paginated listing).
 
 ### `POST /spaces/:spaceId/documents`
 

@@ -109,7 +109,6 @@ export const GET: ApiRouteHandler = (context) =>
         documents,
         total: documents.length,
         limit: documents.length,
-        offset: 0,
       });
     }
 
