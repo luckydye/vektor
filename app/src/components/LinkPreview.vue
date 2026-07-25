@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import type { LinkMetadata } from "#api/routes/v1/url-metadata.ts";
-import { formatRelativeTime } from "#utils/utils.ts";
+import { formatRelativeTime } from "#utils/datetime.ts";
 import { documentIcon } from "~/src/assets/icons.ts";
 
 const activePreview = ref<{

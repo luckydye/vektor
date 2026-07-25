@@ -1,3 +1,5 @@
+import { hexToHsl, hslToHex } from "#utils/color.ts";
+
 const compoundOffsets = [30, 150, 210, 330];
 const defaultPrimaryHue = 283;
 
@@ -29,42 +31,10 @@ function getPrimaryColorHue(): number {
 
   const expandedHex =
     hex.length === 3 ? [...hex].map((value) => value.repeat(2)).join("") : hex;
-  const red = Number.parseInt(expandedHex.slice(0, 2), 16) / 255;
-  const green = Number.parseInt(expandedHex.slice(2, 4), 16) / 255;
-  const blue = Number.parseInt(expandedHex.slice(4, 6), 16) / 255;
-  const max = Math.max(red, green, blue);
-  const min = Math.min(red, green, blue);
-  const delta = max - min;
+  const [hue, saturation] = hexToHsl(expandedHex);
 
-  if (delta === 0) return defaultPrimaryHue;
-  if (max === red) return (60 * ((green - blue) / delta) + 360) % 360;
-  if (max === green) return 60 * ((blue - red) / delta + 2);
-  return 60 * ((red - green) / delta + 4);
-}
-
-function hslToHex(hue: number, saturation: number, lightness: number): string {
-  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
-  const hueSegment = hue / 60;
-  const secondary = chroma * (1 - Math.abs((hueSegment % 2) - 1));
-  const match = lightness - chroma / 2;
-
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-
-  if (hueSegment < 1) [red, green] = [chroma, secondary];
-  else if (hueSegment < 2) [red, green] = [secondary, chroma];
-  else if (hueSegment < 3) [green, blue] = [chroma, secondary];
-  else if (hueSegment < 4) [green, blue] = [secondary, chroma];
-  else if (hueSegment < 5) [red, blue] = [secondary, chroma];
-  else [red, blue] = [chroma, secondary];
-
-  const componentToHex = (component: number) =>
-    Math.round((component + match) * 255)
-      .toString(16)
-      .padStart(2, "0");
-
-  return `#${componentToHex(red)}${componentToHex(green)}${componentToHex(blue)}`;
+  // A greyscale primary carries no usable hue — fall back to the brand default.
+  return saturation === 0 ? defaultPrimaryHue : hue;
 }
 
 /**

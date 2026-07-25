@@ -1,14 +1,14 @@
 import { Bash } from "just-bash";
 import { getAIProvider } from "#db/aiConfig.ts";
-import { callAnthropic } from "#provider/anthropic.ts";
-import { callOllama } from "#provider/ollama.ts";
-import { callOpenAICompatible } from "#provider/openaiCompatible.ts";
-import type { AIProvider, ChatMessage } from "#provider/types.ts";
 import {
   callTool as callVektorTool,
   listTools as listVektorTools,
   type VektorMcpConfig,
-} from "#utils/vektorMcp.ts";
+} from "#mcp/tools.ts";
+import { callAnthropic } from "#provider/anthropic.ts";
+import { callOllama } from "#provider/ollama.ts";
+import { callOpenAICompatible } from "#provider/openaiCompatible.ts";
+import type { AIProvider, ChatMessage } from "#provider/types.ts";
 import { curlCommand } from "./commands/curl.ts";
 import { extensionCommand } from "./commands/extension.ts";
 import { gitlabCommand } from "./commands/gitlab.ts";

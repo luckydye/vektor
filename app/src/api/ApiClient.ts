@@ -16,7 +16,7 @@ import {
   wsDecodeYjsUpdate,
   wsEncode,
   wsEncodeYjsUpdate,
-} from "#utils/realtime.ts";
+} from "#realtime/protocol.ts";
 import { ApiReplica, type OptimisticReplicaOperation } from "./ApiReplica.ts";
 
 export interface User {

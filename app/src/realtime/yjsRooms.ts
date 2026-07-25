@@ -9,17 +9,17 @@ import { getDocument, getDocumentContent, updateDocument } from "#db/documents.t
 import { contentExtensions } from "#editor/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
 import { traced } from "#observability/trace.ts";
+import { canvasSnapshotFromDoc, toCleanHtml } from "#serialization/core.ts";
+import { deserializeDocContent, serializeDocContent } from "#serialization/pool.ts";
+import type { EditOperation } from "#documents/edit.ts";
+import { stripScriptTags } from "#utils/html.ts";
 import {
   type PresenceEnvelope,
   type PresenceUser,
   WsMsgType,
   wsEncode,
   wsEncodeYjsUpdate,
-} from "#utils/realtime.ts";
-import type { EditOperation } from "./documentEdit.ts";
-import { canvasSnapshotFromDoc, toCleanHtml } from "./serializationCore.ts";
-import { deserializeDocContent, serializeDocContent } from "./serializationPool.ts";
-import { stripScriptTags } from "./utils.ts";
+} from "./protocol.ts";
 
 export interface YRoom {
   doc?: Y.Doc;

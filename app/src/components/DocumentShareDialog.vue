@@ -5,7 +5,6 @@ import { api } from "#api/client.ts";
 import { isOwner } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { getUserInitials } from "#utils/utils.ts";
 import { Dialog } from "~/src/components/index.ts";
 import "./AvatarElement.ts";
 
@@ -407,19 +406,10 @@ function canRemoveSpaceMember(perm: any) {
                 class="flex items-center gap-2.5 py-2"
               >
                 <vektor-avatar
-                  v-if="perm.permission.userId"
                   size="28"
-                  :user-id="perm.permission.userId"
+                  :user-id="perm.permission.userId || undefined"
                   :user="getMemberUser(perm)"
                 />
-                <div
-                  v-else
-                  class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center"
-                >
-                  <span class="text-neutral-700 text-size-small font-medium leading-none">
-                    {{ getUserInitials(getMemberName(perm)) }}
-                  </span>
-                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-size-medium text-neutral-900 truncate">
                     {{ getMemberName(perm) }}
@@ -533,19 +523,10 @@ function canRemoveSpaceMember(perm: any) {
                 class="flex items-center gap-2.5 py-2"
               >
                 <vektor-avatar
-                  v-if="perm.permission.userId"
                   size="28"
-                  :user-id="perm.permission.userId"
+                  :user-id="perm.permission.userId || undefined"
                   :user="getMemberUser(perm)"
                 />
-                <div
-                  v-else
-                  class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center"
-                >
-                  <span class="text-neutral-700 text-size-small font-medium leading-none">
-                    {{ getUserInitials(getMemberName(perm)) }}
-                  </span>
-                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-size-medium text-neutral-900 truncate">
                     {{ getMemberName(perm) }}
@@ -632,19 +613,10 @@ function canRemoveSpaceMember(perm: any) {
                 class="flex items-center gap-2.5 py-2"
               >
                 <vektor-avatar
-                  v-if="perm.permission.userId"
                   size="28"
-                  :user-id="perm.permission.userId"
+                  :user-id="perm.permission.userId || undefined"
                   :user="getMemberUser(perm)"
                 />
-                <div
-                  v-else
-                  class="flex-shrink-0 h-7 w-7 rounded-full bg-neutral-200 flex items-center justify-center"
-                >
-                  <span class="text-neutral-700 text-size-small font-medium leading-none">
-                    {{ getUserInitials(getMemberName(perm)) }}
-                  </span>
-                </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-size-medium text-neutral-900 truncate">
                     {{ getMemberName(perm) }}

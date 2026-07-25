@@ -8,9 +8,10 @@ import { canEdit } from "#composeables/usePermissions.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useToast } from "#composeables/useToast.ts";
-import { propertyValueIncludes, propertyValueToText } from "#utils/documentProperties.ts";
+import { propertyValueIncludes, propertyValueToText } from "#documents/properties.ts";
+import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
-import { getTextColor, spacePath } from "#utils/utils.ts";
+import { spacePath } from "#utils/utils.ts";
 import {
   addIcon,
   categoryIcon,
@@ -539,11 +540,9 @@ defineExpose({ isEditMode, toggleEditMode });
           </button>
         </div>
         <p v-else class="px-3 py-4 text-center text-size-normal text-neutral-500">
-          {{
-            hasHiddenCategories
+          {{ hasHiddenCategories
               ? t("You don't have access to any categories in this space")
-              : t("No categories yet")
-          }}
+              : t("No categories yet") }}
         </p>
       </div>
 

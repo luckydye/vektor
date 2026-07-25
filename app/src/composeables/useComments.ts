@@ -1,13 +1,38 @@
 import { computed, type Ref, ref } from "vue";
 import type { Comment } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
-import {
-  isPositionReference,
-  resolveReferenceSelector,
-} from "#utils/commentReference.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery } from "./query.ts";
 import { useSync } from "./useSync.ts";
+
+/**
+ * Comment references come in three shapes:
+ * - a JSON envelope `{"selector": "...", "rev": 3}` wrapping a selector
+ * - a CSS selector / element id anchoring the comment to an element
+ * - a plain number: a y offset in px relative to the top of the
+ *   `document-view` content (scroll-independent)
+ */
+
+/** Unwrap the `{selector, rev}` JSON envelope if present. */
+export function resolveReferenceSelector(reference: string): string {
+  if (reference.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(reference);
+      if (typeof parsed?.selector === "string") return parsed.selector;
+    } catch {}
+  }
+  return reference;
+}
+
+/** True if the reference is a y-position (numeric) reference. */
+export function isPositionReference(reference: string): boolean {
+  return /^-?\d+(\.\d+)?$/.test(reference);
+}
+
+/** True if the reference targets an inline comment-anchor mark in the editor. */
+export function isInlineAnchorReference(reference: string): boolean {
+  return reference.startsWith("[data-comment-id=");
+}
 
 export function useComments(options: {
   spaceId: Ref<string | undefined>;

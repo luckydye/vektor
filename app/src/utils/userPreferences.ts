@@ -1,10 +1,8 @@
+import { isHexColor } from "#utils/color.ts";
+
 export const CANVAS_CURSOR_COLOR_STORAGE_KEY = "user-canvas-cursor-color";
 export const CANVAS_CURSOR_COLOR_CHANGE_EVENT = "user-canvas-cursor-color-change";
 export const DEFAULT_CANVAS_CURSOR_COLOR = "#3b82f6";
-
-export function isHexColor(value: string | null): value is string {
-  return /^#[0-9a-f]{6}$/i.test(value ?? "");
-}
 
 /**
  * The stored cursor-color override, or `null` when the user hasn't picked one.

@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import { spinnerIcon } from "~/src/assets/icons.ts";
 

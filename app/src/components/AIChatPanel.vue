@@ -10,7 +10,7 @@ import { useSpace } from "#composeables/useSpace.ts";
 import { useUploads } from "#composeables/useUploads.ts";
 import { Actions } from "#utils/actions.ts";
 import { t } from "#utils/lang.ts";
-import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
+import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
   activityIcon,

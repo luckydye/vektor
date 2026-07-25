@@ -11,11 +11,11 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocument, updateDocument } from "#db/documents.ts";
+import { applyEditOperations, parseEditOperations } from "#documents/edit.ts";
+import { readOnlyDocumentTypes } from "#documents/types.ts";
+import { transformDocumentContent } from "#realtime/yjsRooms.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import { applyEditOperations, parseEditOperations } from "#utils/documentEdit.ts";
-import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
-import { stripScriptTags } from "#utils/utils.ts";
-import { transformDocumentContent } from "#utils/yjsRooms.ts";
+import { stripScriptTags } from "#utils/html.ts";
 
 /**
  * Applies partial edit operations to a document through the collaboration

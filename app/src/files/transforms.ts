@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { Readable } from "node:stream";
 import { appLogger } from "#observability/logger.ts";
 
-import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
+import { servedFileSecurityHeaders } from "#utils/servedFiles.ts";
 import { getNativeImage } from "./native.ts";
 import type { FileStorageAdapter } from "./storage.ts";
 import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";
@@ -183,9 +183,7 @@ export async function serveTransformed(
     "Content-Type": mimeType,
     "Content-Length": String(contentLength),
     "Cache-Control": "public, max-age=31536000, immutable",
-    "Content-Disposition": contentDisposition(outputExt),
-    "Content-Security-Policy": SERVED_FILE_CSP,
-    "X-Content-Type-Options": "nosniff",
+    ...servedFileSecurityHeaders(outputExt),
   });
 
   // Cache hit — stream directly
@@ -225,9 +223,7 @@ export async function serveTransformed(
         // Deliberately not "immutable": this is a degraded fallback that
         // should be re-fetched (and transformed) once the addon is available.
         "Cache-Control": "no-store",
-        "Content-Disposition": contentDisposition(origExt),
-        "Content-Security-Policy": SERVED_FILE_CSP,
-        "X-Content-Type-Options": "nosniff",
+        ...servedFileSecurityHeaders(origExt),
       },
     });
   }

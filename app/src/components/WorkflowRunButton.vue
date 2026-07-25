@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "#api/client.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { cancelIcon, playCircleFilledIcon, spinnerIcon } from "~/src/assets/icons.ts";
 
 const props = defineProps<{

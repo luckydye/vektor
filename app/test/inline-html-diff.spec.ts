@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { inlineHtmlDiff } from "#utils/inlineHtmlDiff.ts";
+import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
 
 describe("inlineHtmlDiff", () => {
   it("returns unchanged content verbatim when nothing differs", () => {

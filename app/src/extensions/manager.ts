@@ -11,7 +11,7 @@ import {
   type SuggestionProvider,
   unregisterSuggestionProvider,
 } from "#editor/extensions/ExtensionSuggestions.ts";
-import { type ActionOptions, Actions } from "./actions.ts";
+import { type ActionOptions, Actions } from "#utils/actions.ts";
 
 export type { SuggestionItem, SuggestionProvider };
 
@@ -184,7 +184,7 @@ export class Extensions {
   async fetchExtensions(spaceId: string): Promise<ExtensionInfo[]> {
     let result: {
       extensions: ExtensionInfo[];
-      errors: import("../api/ApiClient.ts").ExtensionManifestError[];
+      errors: import("#api/ApiClient.ts").ExtensionManifestError[];
     };
     try {
       result = await api.extensions.get(spaceId);

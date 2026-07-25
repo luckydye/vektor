@@ -8,8 +8,8 @@ import {
   WsMsgType,
   wsDecodeJson,
   wsEncode,
-} from "#utils/realtime.ts";
-import { getRoom, type YRoom, yRooms } from "#utils/yjsRooms.ts";
+} from "./protocol.ts";
+import { getRoom, type YRoom, yRooms } from "./yjsRooms.ts";
 
 function broadcastPresence(
   room: YRoom,

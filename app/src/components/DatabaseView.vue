@@ -9,7 +9,7 @@ import { useToast } from "#composeables/useToast.ts";
 import {
   type DocumentPropertyValue,
   propertyValueToText,
-} from "#utils/documentProperties.ts";
+} from "#documents/properties.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
   addIcon,

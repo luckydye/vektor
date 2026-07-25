@@ -1,13 +1,5 @@
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+import { escapeHtml } from "#utils/html.ts";
 
 function excerpt(value: string, maxLength = 500): string {
   const compact = value

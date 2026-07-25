@@ -14,6 +14,7 @@ import { resetEditingState, useEditor } from "#composeables/useEditor.ts";
 import { useInlineSuggestions } from "#composeables/useInlineSuggestions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useSync } from "#composeables/useSync.ts";
+import { supportsComments, supportsDocumentEditor } from "#documents/types.ts";
 import { setActiveEditor } from "#editor/activeEditor.ts";
 import {
   type CanvasPresenceState,
@@ -22,14 +23,13 @@ import {
   type DocumentPresenceState,
 } from "#editor/collaboration.ts";
 import docStyles from "#editor/css/document.css?inline";
-import { Actions } from "#utils/actions.ts";
-import { supportsComments, supportsDocumentEditor } from "#utils/documentTypes.ts";
-import { extensions } from "#utils/extensions.ts";
 import {
   registerFormattingActions,
   unregisterFormattingActions,
-} from "#utils/formattingActions.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+} from "#editor/formattingActions.ts";
+import { extensions } from "#extensions/manager.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
+import { Actions } from "#utils/actions.ts";
 import CommentBubble from "./CommentBubble.vue";
 import CommentOverlays from "./CommentOverlays.vue";
 import "#editor/elements/table-view.ts";

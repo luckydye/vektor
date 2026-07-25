@@ -10,8 +10,8 @@ import {
 } from "vue";
 import * as Y from "yjs";
 import { api } from "#api/client.ts";
+import type { PresenceEnvelope, PresenceUser } from "#realtime/protocol.ts";
 import { getAvatarColor } from "#utils/avatarColor.ts";
-import type { PresenceEnvelope, PresenceUser } from "#utils/realtime.ts";
 import {
   CANVAS_CURSOR_COLOR_CHANGE_EVENT,
   readCanvasCursorColorOverride,

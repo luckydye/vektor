@@ -6,7 +6,7 @@ import {
   type ExtensionRoute,
   type ExtensionRouteMenuItem,
 } from "#api/client.ts";
-import { extensions } from "#utils/extensions.ts";
+import { extensions } from "#extensions/manager.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 

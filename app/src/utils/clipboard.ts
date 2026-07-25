@@ -3,8 +3,8 @@ import type {
   CanvasShape,
   CanvasStrokeSnapshot,
 } from "#canvas/extensions/types.ts";
-import { htmlToMarkdown } from "./documentMarkdown.ts";
-import { messageMarkdownToHtml } from "./messageMarkdown.ts";
+import { escapeHtml } from "#utils/html.ts";
+import { htmlToMarkdown, renderMessageMarkdown } from "./markdown.ts";
 
 export const CANVAS_CLIPBOARD_MARKER = "vektor-canvas-clipboard";
 export const CANVAS_CLIPBOARD_MIME = "application/x-vektor-canvas";
@@ -25,18 +25,6 @@ const MEDIA_MIN_SIZE = { width: 80, height: 60 };
 const TEXT_SIZE = { width: 280, height: 88 };
 const FILE_SIZE = { width: 220, height: 150 };
 const PASTE_GAP = 18;
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value).replace(/'/g, "&#39;");
-}
 
 function shapeSortKey(shape: CanvasSerializedShape) {
   return `${String(Math.round(shape.frame.y)).padStart(8, "0")}:${String(
@@ -139,7 +127,7 @@ export function canvasClipboardToDocumentHtml(
 
   if (options.includeMetadata !== false) {
     html.push(
-      `<div data-vektor-canvas-clipboard="${escapeAttribute(
+      `<div data-vektor-canvas-clipboard="${escapeHtml(
         serializeCanvasClipboard(payload),
       )}" style="display:none"></div>`,
     );
@@ -150,7 +138,7 @@ export function canvasClipboardToDocumentHtml(
     const src = shapeDataString(shape, "src");
     const alt = shapeDataString(shape, "alt");
     if (shape.type === "text" || shape.type === "note") {
-      const rendered = messageMarkdownToHtml(text);
+      const rendered = renderMessageMarkdown(text);
       if (rendered.trim()) html.push(rendered);
       continue;
     }
@@ -162,7 +150,7 @@ export function canvasClipboardToDocumentHtml(
 
     if (shape.type === "image" && src) {
       html.push(
-        `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(
+        `<img src="${escapeHtml(src)}" alt="${escapeHtml(
           alt,
         )}" width="${Math.round(shape.frame.width ?? 0)}" height="${Math.round(shape.frame.height ?? 0)}">`,
       );
@@ -171,7 +159,7 @@ export function canvasClipboardToDocumentHtml(
 
     if (shape.type === "video" && src) {
       html.push(
-        `<video src="${escapeAttribute(src)}" controls width="${Math.round(
+        `<video src="${escapeHtml(src)}" controls width="${Math.round(
           shape.frame.width ?? 0,
         )}" height="${Math.round(shape.frame.height ?? 0)}"></video>`,
       );
@@ -180,7 +168,7 @@ export function canvasClipboardToDocumentHtml(
 
     if (shape.type === "file" && src) {
       html.push(
-        `<file-attachment src="${escapeAttribute(src)}" filename="${escapeAttribute(
+        `<file-attachment src="${escapeHtml(src)}" filename="${escapeHtml(
           alt || text || "file",
         )}"></file-attachment>`,
       );
@@ -189,7 +177,7 @@ export function canvasClipboardToDocumentHtml(
 
     if (shape.type === "link" && src) {
       const label = text || src;
-      html.push(`<p><a href="${escapeAttribute(src)}">${escapeHtml(label)}</a></p>`);
+      html.push(`<p><a href="${escapeHtml(src)}">${escapeHtml(label)}</a></p>`);
       continue;
     }
 

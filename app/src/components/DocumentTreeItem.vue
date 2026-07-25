@@ -73,7 +73,7 @@ import {
   propertyValueIncludes,
   propertyValueToScalar,
   propertyValueToText,
-} from "#utils/documentProperties.ts";
+} from "#documents/properties.ts";
 import { t } from "#utils/lang.ts";
 import { spacePath } from "#utils/utils.ts";
 import { chevronRightThinIcon } from "~/src/assets/icons.ts";

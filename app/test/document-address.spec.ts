@@ -3,7 +3,7 @@ import { remoteDocumentPathParts } from "#api/routes/v1/url-metadata.ts";
 import {
   createVektorDocumentAddress,
   parseVektorDocumentAddress,
-} from "#utils/documentAddress.ts";
+} from "#documents/address.ts";
 
 describe("Vektor document addresses", () => {
   it("returns null for malformed percent-encoding", () => {

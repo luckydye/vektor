@@ -12,7 +12,7 @@ import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
-import { contentDisposition, SERVED_FILE_CSP } from "#utils/servedFiles.ts";
+import { servedFileSecurityHeaders } from "#utils/servedFiles.ts";
 
 const MIME_TYPES: Record<string, string> = {
   // Images
@@ -116,9 +116,7 @@ export const GET: ApiRouteHandler = (context) =>
         "Accept-Ranges": "bytes",
         // Prevent stored XSS: force download for active types (svg/html),
         // disallow MIME sniffing, and sandbox any rendered content.
-        "Content-Disposition": contentDisposition(extension),
-        "Content-Security-Policy": SERVED_FILE_CSP,
-        "X-Content-Type-Options": "nosniff",
+        ...servedFileSecurityHeaders(extension),
       };
 
       const rangeHeader = context.req.raw.headers.get("range");

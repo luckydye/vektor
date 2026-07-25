@@ -25,10 +25,10 @@ import type { Comment } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { useComments } from "#composeables/useComments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
-import { propertyValueToText } from "#utils/documentProperties.ts";
-import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
-import { formatRelativeTime } from "#utils/utils.ts";
+import { formatRelativeTime } from "#utils/datetime.ts";
+import { renderMessageMarkdown } from "#utils/markdown.ts";
 import "./AvatarElement.ts";
 import {
   cancelIcon,

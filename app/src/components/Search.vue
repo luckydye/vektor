@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api, type PropertyFilter } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { usePagedList } from "#composeables/usePagedList.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import {
   alertCircleIcon,
   cancelIcon,
@@ -22,6 +22,7 @@ const props = defineProps<{
 }>();
 
 const { currentSpace } = useSpace();
+const router = useRouter();
 const userCanEdit = computed(() => canEdit(currentSpace.value?.userRole));
 
 const searchQuery = ref("");
@@ -71,18 +72,18 @@ const {
 const sortedResults = computed(() => [...results.value].sort((a, b) => a.rank - b.rank));
 
 const updateUrlParams = () => {
-  const url = new URL(window.location.href);
+  const query = { ...router.currentRoute.value.query };
   if (searchQuery.value.trim()) {
-    url.searchParams.set("q", searchQuery.value);
+    query.q = searchQuery.value;
   } else {
-    url.searchParams.delete("q");
+    delete query.q;
   }
   if (activeFilters.value.length > 0) {
-    url.searchParams.set("filters", JSON.stringify(activeFilters.value));
+    query.filters = JSON.stringify(activeFilters.value);
   } else {
-    url.searchParams.delete("filters");
+    delete query.filters;
   }
-  replaceBrowserUrl(url);
+  void router.replace({ query });
 };
 
 // Infinite query for documents (when not searching)

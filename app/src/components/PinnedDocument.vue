@@ -3,8 +3,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import { api, type DocumentWithProperties } from "#api/client.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import docStyles from "#editor/css/document.css?inline";
-import { propertyValueToText } from "#utils/documentProperties.ts";
 import { spacePath } from "#utils/utils.ts";
 import { pinToHomeIcon } from "~/src/assets/icons.ts";
 

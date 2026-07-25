@@ -1,4 +1,4 @@
-import { parseVektorDocumentAddress } from "#utils/documentAddress.ts";
+import { parseVektorDocumentAddress } from "#documents/address.ts";
 
 const DOCUMENT_LINK_MIME = "application/x-vektor-document-link";
 

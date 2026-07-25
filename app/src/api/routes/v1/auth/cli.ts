@@ -16,6 +16,7 @@ import { randomBytes } from "node:crypto";
 import type { ApiRouteHandler } from "#api/server/types.ts";
 import { badRequestResponse, requireUser, withApiErrorHandling } from "#db/api.ts";
 import { listUserSpaces, type Space } from "#db/spaces.ts";
+import { escapeHtml } from "#utils/html.ts";
 
 // One-time codes: code → { userId, spaceId, expiresAt }
 export const pendingCliCodes = new Map<
@@ -42,15 +43,6 @@ function isLocalhostUri(uri: string): boolean {
   } catch {
     return false;
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function safeHexColor(value: string | undefined): string {

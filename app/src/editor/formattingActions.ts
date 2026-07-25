@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core";
-import { indentEditor, outdentEditor } from "#editor/indent.ts";
-import { Actions } from "./actions.ts";
-import { t } from "./lang.ts";
+import { Actions } from "#utils/actions.ts";
+import { t } from "#utils/lang.ts";
+import { indentEditor, outdentEditor } from "./indent.ts";
 
 /**
  * Register all formatting actions

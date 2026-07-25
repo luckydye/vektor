@@ -2,8 +2,8 @@
 import { nextTick, ref, watch } from "vue";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { renderMessageMarkdown } from "#utils/messageMarkdown.ts";
-import { formatRelativeTime } from "#utils/utils.ts";
+import { formatRelativeTime } from "#utils/datetime.ts";
+import { renderMessageMarkdown } from "#utils/markdown.ts";
 import { cancelIcon, confirmationIcon, deleteEntryIcon } from "~/src/assets/icons.ts";
 import "./AvatarElement.ts";
 import ButtonGhost from "./ButtonGhost.vue";

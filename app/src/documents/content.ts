@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import { escapeHtml } from "#utils/html.ts";
 
 // Custom renderer so task lists produce TipTap-compatible markup:
 //   <ul data-type="taskList">
@@ -77,15 +78,6 @@ export function getDocumentTypeForContentType(
 export function getMimeType(contentType: string | null): string | null {
   if (!contentType) return null;
   return contentType.split(";")[0]?.trim().toLowerCase() || null;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function parseCsv(content: string): string[][] {

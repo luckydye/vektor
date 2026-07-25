@@ -27,7 +27,7 @@ import { enqueueCommentCreatedEmails } from "#db/emailNotifications.ts";
 import { user as userTable } from "#db/schema/auth.ts";
 import { sendSyncEvent } from "#db/ws.ts";
 import { appLogger } from "#observability/logger.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 
 export const GET: ApiRouteHandler = (context) =>
   withApiErrorHandling(async () => {

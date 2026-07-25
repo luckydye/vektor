@@ -1,10 +1,6 @@
 import { pointInRotatedShape } from "#canvas/viewport/geometry.ts";
 import { useUploads } from "#composeables/useUploads.ts";
-import {
-  IMAGE_RESIZE_TIERS,
-  resizeImageUrl,
-  transformImageUrl,
-} from "#utils/imageUrlTransformers.ts";
+import { withTransformParams } from "#files/transformUrl.ts";
 import {
   isMediaFile,
   mediaTypeForFile,
@@ -22,6 +18,74 @@ import type {
 } from "./types.ts";
 
 const mediaMinSize = { width: 80, height: 60 };
+
+// Attempt to transform a pasted URL into a direct image fetch URL.
+// Returns null if no transformer matches.
+function transformImageUrl(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+
+  if (url.hostname === "unsplash.com" && /^\/photos\/[\w-]+/.test(url.pathname)) {
+    const id = url.pathname.split("/")[2];
+    return `https://unsplash.com/photos/${id}/download?force=true`;
+  }
+  if (url.hostname === "images.unsplash.com") return url.href;
+  if (
+    (url.hostname === "imgur.com" || url.hostname === "www.imgur.com") &&
+    /^\/(?!a\/|gallery\/)[\w]+$/.test(url.pathname)
+  ) {
+    return `https://i.imgur.com/${url.pathname.slice(1)}.jpg`;
+  }
+  if (url.hostname === "i.imgur.com") return url.href;
+  if (
+    (url.hostname === "www.pexels.com" || url.hostname === "pexels.com") &&
+    url.pathname.startsWith("/photo/")
+  ) {
+    const match = url.pathname.match(/(\d+)\/?$/);
+    if (!match) return url.href;
+    return `https://images.pexels.com/photos/${match[1]}/pexels-photo-${match[1]}.jpeg?auto=compress&cs=tinysrgb&w=1260`;
+  }
+  if (url.hostname === "i.redd.it") return url.href;
+  if (url.hostname === "preview.redd.it") {
+    const slug = url.pathname.split("/").filter(Boolean)[0] || "";
+    const idWithExt = slug.split("-").pop() || slug;
+    return `https://i.redd.it/${idWithExt}`;
+  }
+  if (url.hostname === "upload.wikimedia.org" || url.hostname === "commons.wikimedia.org")
+    return url.href;
+  if (url.hostname === "pbs.twimg.com") return url.href;
+  if (url.hostname.endsWith("staticflickr.com")) return url.href;
+  if (url.hostname.endsWith("cdninstagram.com")) return url.href;
+  // Direct image URL by extension — catch-all, must be last
+  if (/\.(jpe?g|png|webp|tiff?|avif|heic|bmp|gif)(\?.*)?$/i.test(url.pathname))
+    return url.href;
+
+  return null;
+}
+
+// Must be a subset of ALLOWED_DIMENSIONS in files/transforms.ts.
+const IMAGE_RESIZE_TIERS = [320, 1280] as const;
+
+// Returns a URL for the smallest server-side resize tier that covers targetPx.
+// Only affects local upload URLs (/api/v1/spaces/…); everything else is
+// returned unchanged because only local uploads go through the resize pipeline.
+function resizeImageUrl(url: string, targetPx: number): string {
+  let tier = 0;
+  for (const t of IMAGE_RESIZE_TIERS) {
+    if (targetPx <= t) {
+      tier = t;
+      break;
+    }
+  }
+  // targetPx exceeds the largest preset — serve the full-resolution original.
+  if (tier === 0) return url;
+  return withTransformParams(url, { w: tier });
+}
 
 function parseMediaData(
   data: Record<string, unknown>,

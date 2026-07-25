@@ -7,12 +7,12 @@ import {
   type ParsedVektorDocumentAddress,
   parseVektorDocumentAddress,
   type VektorDocumentAddress,
-} from "#utils/documentAddress.ts";
-import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
+} from "#documents/address.ts";
 import {
   type DocumentPropertyValue,
   propertyValueToText,
-} from "#utils/documentProperties.ts";
+} from "#documents/properties.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import {
   CANVAS_ELEMENT_EVENTS,
   CanvasElementBase,

@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import { api } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { useUserProfile } from "#composeables/useUserProfile.ts";
-import { formatDate } from "#utils/utils.ts";
+import { formatDate } from "#utils/datetime.ts";
 import {
   confirmationIcon,
   copyIcon,

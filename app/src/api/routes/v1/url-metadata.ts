@@ -9,10 +9,10 @@ import {
 } from "#db/api.ts";
 import { getDocumentBySlug } from "#db/documents.ts";
 import { getSpaceBySlug } from "#db/spaces.ts";
+import { createVektorDocumentAddress } from "#documents/address.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
-import { createVektorDocumentAddress } from "#utils/documentAddress.ts";
-import { sanitizeVektorDocumentPreviewHtml } from "#utils/documentHtmlSanitizer.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
+import { sanitizeVektorDocumentPreviewHtml } from "#utils/html.ts";
 import { assertPublicUrl, SsrfError } from "#utils/ssrf.ts";
 
 export interface LinkMetadata {

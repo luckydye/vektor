@@ -421,7 +421,7 @@ import { api, type JobRun, type WorkflowSchedule } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { usePagedList } from "#composeables/usePagedList.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import Pager from "./Pager.vue";
 
 type WorkflowRunsPage = Awaited<ReturnType<typeof api.workflows.listRuns>>;

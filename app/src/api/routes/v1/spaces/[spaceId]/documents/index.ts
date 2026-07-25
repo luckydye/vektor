@@ -17,16 +17,16 @@ import {
   type PropertyInit,
 } from "#db/documents.ts";
 import {
+  getDocumentTypeForContentType,
+  getMimeType,
+  toHtmlIfMarkdown,
+} from "#documents/content.ts";
+import { propertyValueToText } from "#documents/properties.ts";
+import {
   authenticateJobTokenOrSpaceRole,
   authenticateSpaceAccess,
   spaceAccessToViewer,
 } from "#utils/auth.ts";
-import {
-  getDocumentTypeForContentType,
-  getMimeType,
-  toHtmlIfMarkdown,
-} from "#utils/documentContent.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
 
 function propertyInitToSlugText(value: PropertyInit | undefined): string | undefined {
   if (value === undefined) return undefined;

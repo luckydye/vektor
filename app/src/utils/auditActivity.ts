@@ -4,8 +4,9 @@
  */
 
 import type { AuditLog } from "#api/client.ts";
-import { currentLang, type TranslationKey, t } from "#utils/lang.ts";
-import { formatRelativeTime, normalizeTimestamp } from "./utils.ts";
+import { currentLang, type TranslationKey, t } from "./lang.ts";
+import { formatRelativeTime } from "./datetime.ts";
+import { normalizeTimestamp } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
 // Event labels
@@ -86,14 +87,6 @@ export function formatPropertyKey(key?: string): string {
 // Time formatting
 // ---------------------------------------------------------------------------
 
-/**
- * Verbose relative time for an activity entry: "5 minutes ago", "3 hours ago",
- * "12 days ago", falling back to an absolute date past 30 days.
- */
-export function formatActivityTime(dateString: string | Date): string {
-  return formatRelativeTime(dateString, { maxDays: 30 });
-}
-
 /** Full day heading an activity group is bucketed under. */
 export function getActivityDate(dateString: string | Date): string {
   return normalizeTimestamp(dateString as string).toLocaleDateString(currentLang(), {
@@ -119,7 +112,8 @@ export function getActivityBucketLabel(dateString: string | Date): string {
       (startOfToday.getTime() - startOfDate.getTime()) / 86400000,
     );
 
-    if (diffDays === 0) return formatActivityTime(date);
+    // Verbose relative time for today's entries; older buckets get a date.
+    if (diffDays === 0) return formatRelativeTime(date, { maxDays: 30 });
     if (diffDays === 1) return t("Yesterday");
     if (diffDays < 7) return date.toLocaleDateString(currentLang(), { weekday: "long" });
     return date.toLocaleDateString(currentLang(), {

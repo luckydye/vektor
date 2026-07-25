@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { dev } from "astro";
 import { Hono } from "hono";
+import { stopSerializationPool } from "#serialization/pool.ts";
 import { sendWebResponse } from "./api/server/response.ts";
 import { apiRouter } from "./api/server/router.ts";
 import type { ApiBindings } from "./api/server/types.ts";
@@ -23,7 +24,6 @@ import {
   createFileSystemClientAssetMiddleware,
 } from "./utils/clientAssets.ts";
 import { APP_CSP } from "./utils/csp.ts";
-import { stopSerializationPool } from "./utils/serializationPool.ts";
 
 type AstroMiddleware = (
   req: IncomingMessage,

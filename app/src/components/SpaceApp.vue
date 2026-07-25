@@ -12,13 +12,12 @@ import { provideDocumentContext } from "#composeables/useDocument.ts";
 import { useRoute } from "#composeables/useRoute.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import shortcuts from "#config/shortcuts.json";
+import { extensions } from "#extensions/manager.ts";
 import { Actions } from "#utils/actions.js";
-import { extensions } from "#utils/extensions.ts";
 import { history } from "#utils/history.ts";
 import { currentLang, languageInjectionKey } from "#utils/lang.ts";
 // Side effect: registers the Vue-injected locale lookup with `lang.ts`, which
 // stays framework-free so server-side document serialization does not load Vue.
-import "#utils/langVue.ts";
 import { parseSidebarWidth } from "#utils/sidebarState.ts";
 import AIChatPanel from "./AIChatPanel.vue";
 import CalDAVSetupDialog from "./CalDAVSetupDialog.vue";
@@ -88,7 +87,11 @@ const router = createRouter({
 });
 
 if (!isServer) {
-  router.afterEach((to) => {
+  router.afterEach((to, from) => {
+    // Query/hash-only replacements are UI state written to the URL (an open
+    // revision, the current search terms, the selected workflow run), not pages
+    // the user navigated to — keep them out of the recently-visited list.
+    if (to.path === from.path) return;
     history.log(to.fullPath, document.title);
   });
 }

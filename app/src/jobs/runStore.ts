@@ -8,9 +8,9 @@ import {
 import { createId } from "#db/ids.ts";
 import { document, property } from "#db/schema/space.ts";
 import { sendSyncEvent } from "#db/ws.ts";
+import { workflowRunDocumentType } from "#documents/types.ts";
 import { appLogger } from "#observability/logger.ts";
-import { workflowRunDocumentType } from "#utils/documentTypes.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { readWorkflowArtifact, writeWorkflowArtifact } from "./workflowArtifacts.ts";
 
 export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";

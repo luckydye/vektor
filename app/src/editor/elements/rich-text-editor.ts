@@ -6,7 +6,7 @@ import {
 } from "#editor/extensions/MentionSuggestions.ts";
 import { Placeholder } from "#editor/extensions/Placeholder.ts";
 import { createBaseEditor } from "#editor/extensions.ts";
-import { messageMarkdownToHtml, tiptapJsonToMarkdown } from "#utils/messageMarkdown.ts";
+import { renderMessageMarkdown, tiptapJsonToMarkdown } from "#utils/markdown.ts";
 
 export type RichTextEditorFormat = "bold" | "italic" | "bulletList" | "orderedList";
 
@@ -270,7 +270,7 @@ if (
 
         this.editor = createBaseEditor({
           element: this._mount,
-          content: messageMarkdownToHtml(this.lastValue),
+          content: renderMessageMarkdown(this.lastValue),
           injectCSS: false,
           extensions: [
             Placeholder.configure({ placeholder: this.placeholderText }),
@@ -415,7 +415,7 @@ if (
         if (v === this.lastValue) return;
         this.lastValue = v;
         if (!this.editor) return;
-        this.editor.commands.setContent(messageMarkdownToHtml(v), { emitUpdate: false });
+        this.editor.commands.setContent(renderMessageMarkdown(v), { emitUpdate: false });
       }
     },
   );

@@ -23,9 +23,10 @@ import { useEditor } from "#composeables/useEditor.ts";
 import { usePageTitle } from "#composeables/usePageTitle.ts";
 import { canEdit } from "#composeables/usePermissions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { optionalPropertyValueToText } from "#utils/documentProperties.ts";
-import { readOnlyDocumentTypes } from "#utils/documentTypes.ts";
-import { formatRelativeTime, spacePath } from "#utils/utils.ts";
+import { optionalPropertyValueToText } from "#documents/properties.ts";
+import { readOnlyDocumentTypes } from "#documents/types.ts";
+import { formatRelativeTime } from "#utils/datetime.ts";
+import { spacePath } from "#utils/utils.ts";
 
 const props = defineProps<{
   documentSlug?: string;
@@ -203,9 +204,7 @@ const effectiveLayout = computed(() =>
 );
 
 const updatedAtStr = computed(() =>
-  doc.value?.updatedAt
-    ? formatRelativeTime(doc.value.updatedAt, { now: now.value })
-    : "",
+  doc.value?.updatedAt ? formatRelativeTime(doc.value.updatedAt, { now: now.value }) : "",
 );
 
 const AUTO_CREATE_TYPES: Record<string, { title: string; content: string }> = {
@@ -330,12 +329,12 @@ watchEffect(() => {
                         )"
             >
               <div>
-                  <Breadcrumbs
-                    v-if="!isDraft"
-                    :category="docCategory"
-                    :parents="parentBreadcrumbs"
-                    :currentTitle="title"
-                  />
+                <Breadcrumbs
+                  v-if="!isDraft"
+                  :category="docCategory"
+                  :parents="parentBreadcrumbs"
+                  :currentTitle="title"
+                />
               </div>
               <DocumentActions :title="title" />
             </div>
@@ -389,12 +388,12 @@ watchEffect(() => {
                       )"
           >
             <div>
-                <Breadcrumbs
-                    v-if="!isDraft"
-                    :category="docCategory"
-                    :parents="parentBreadcrumbs"
-                    :currentTitle="title"
-                />
+              <Breadcrumbs
+                v-if="!isDraft"
+                :category="docCategory"
+                :parents="parentBreadcrumbs"
+                :currentTitle="title"
+              />
             </div>
             <DocumentActions :title="title" />
           </div>
@@ -454,13 +453,13 @@ watchEffect(() => {
         </template>
 
         <template v-else-if="!isApp">
-            <HeaderImage
-                v-if="!isDraft && !isWorkflow"
-                class="mt-4"
-                :documentId="doc.id"
-                :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)"
-            />
-        
+          <HeaderImage
+            v-if="!isDraft && !isWorkflow"
+            class="mt-4"
+            :documentId="doc.id"
+            :initialSrc="optionalPropertyValueToText(doc.properties?.headerImage)"
+          />
+
           <div
             :class="twMerge(
                 'flex flex-row items-center justify-between gap-6 px-xs md:px-xl py-4 min-h-7',
@@ -470,12 +469,12 @@ watchEffect(() => {
           >
             <div v-if="isWorkflow" id="workflow-breadcrumb-slot" />
             <div v-else>
-                <Breadcrumbs
-                  v-if="!isDraft"
-                  :category="docCategory"
-                  :parents="parentBreadcrumbs"
-                  :currentTitle="title"
-                />
+              <Breadcrumbs
+                v-if="!isDraft"
+                :category="docCategory"
+                :parents="parentBreadcrumbs"
+                :currentTitle="title"
+              />
             </div>
             <DocumentActions :title="title" />
           </div>

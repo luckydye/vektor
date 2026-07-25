@@ -1,13 +1,13 @@
 import type { AstroGlobal } from "astro";
+import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
 import {
   getUserGroups,
   hasAnyResourceScopedAccess,
   hasPermission,
   listUserPermissions,
   ResourceType,
-} from "#db/acl.ts";
-import { getSpaceBySlug, type Space } from "#db/spaces.ts";
-import { isNoAuthMode, LOCAL_USER_ID } from "#noAuth";
+} from "./acl.ts";
+import { getSpaceBySlug, type Space } from "./spaces.ts";
 
 type SpacePageResult =
   | { space: Space; response?: undefined }

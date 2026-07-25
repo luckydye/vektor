@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watchEffect } from "vue";
+import { useRouter } from "vue-router";
 import { useSpace } from "#composeables/useSpace.ts";
-import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import { activityIcon } from "~/src/assets/icons.ts";
 import AppView from "./AppView.vue";
 
@@ -12,6 +12,7 @@ const props = defineProps<{
 }>();
 
 const { currentSpaceId } = useSpace();
+const router = useRouter();
 
 const viewingRevision = ref(false);
 const revisionNumber = ref<number | null>(null);
@@ -65,11 +66,8 @@ function handleRevisionClose() {
   showingDiff.value = false;
   diffContent.value = "";
 
-  const params = new URLSearchParams(location.search);
-  params.delete("revision");
-  replaceBrowserUrl(
-    `${location.origin}${location.pathname}${params.toString() ? `?${params.toString()}` : ""}`,
-  );
+  const { revision: _removed, ...query } = router.currentRoute.value.query;
+  void router.replace({ query });
 }
 
 function closeRevisionView() {

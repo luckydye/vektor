@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import { withTransformParams } from "#files/transformUrl.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
-import { formatDate, spacePath } from "#utils/utils.ts";
+import { formatDate } from "#utils/datetime.ts";
+import { spacePath } from "#utils/utils.ts";
 
 defineProps<{
   doc: DocumentWithProperties;

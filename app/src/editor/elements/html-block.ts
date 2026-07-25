@@ -1,4 +1,4 @@
-import { stripScriptTags } from "~/src/utils/utils.ts";
+import { stripScriptTags } from "#utils/html.ts";
 
 if (typeof customElements !== "undefined" && !customElements.get("html-block")) {
   customElements.define(

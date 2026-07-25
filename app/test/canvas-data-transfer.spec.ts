@@ -11,7 +11,7 @@ import {
   isPdfFile,
 } from "#canvas/extensions/files.ts";
 import { mediaFilesFromDataTransfer } from "#canvas/extensions/media.ts";
-import { createVektorDocumentAddress } from "#utils/documentAddress.ts";
+import { createVektorDocumentAddress } from "#documents/address.ts";
 
 function transferWithFileAndItem(file: File): DataTransfer {
   return {

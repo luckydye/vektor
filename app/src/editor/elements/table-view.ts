@@ -1,3 +1,5 @@
+import { escapeHtml } from "#utils/html.ts";
+
 const STYLES = `
   :host {
     display: block;
@@ -128,14 +130,6 @@ const STYLES = `
     background: #3b82f6;
   }
 `;
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
 
 function colLabel(index: number): string {
   let label = "";

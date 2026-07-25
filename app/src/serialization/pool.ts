@@ -1,10 +1,7 @@
 import * as Y from "yjs";
 import { appLogger } from "#observability/logger.ts";
-import { contentFromDoc, docFromContent } from "./serializationCore.ts";
-import type {
-  SerializationRequest,
-  SerializationResponse,
-} from "./serializationWorker.ts";
+import { contentFromDoc, docFromContent } from "./core.ts";
+import type { SerializationRequest, SerializationResponse } from "./worker.ts";
 
 /**
  * A small pool of persistent workers that run document (de)serialization off
@@ -68,8 +65,8 @@ let workerSpecPromise: Promise<string | URL> | null = null;
 function resolveWorkerSpec(): Promise<string | URL> {
   if (workerSpecPromise) return workerSpecPromise;
   workerSpecPromise = import.meta.url.includes("$bunfs")
-    ? import("./serializationWorkerEmbed.ts").then((m) => m.serializationWorkerPath)
-    : Promise.resolve(new URL("./serializationWorker.ts", import.meta.url));
+    ? import("./workerEmbed.ts").then((m) => m.serializationWorkerPath)
+    : Promise.resolve(new URL("./worker.ts", import.meta.url));
   return workerSpecPromise;
 }
 

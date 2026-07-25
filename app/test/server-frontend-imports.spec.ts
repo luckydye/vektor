@@ -15,7 +15,7 @@ import { dirname, join, relative, resolve } from "node:path";
  * editor keymap's `useEditor` refs, and `lang.ts`'s injected locale).
  *
  * Client behaviour belongs in a separate module that the client injects — see
- * `HtmlBlockNodeView.ts`, `editSession.ts` and `langVue.ts` — or behind a
+ * `HtmlBlockNodeView.ts` and `editSession.ts` — or behind a
  * dynamic `import()` inside a browser-only code path. Both keep the module out
  * of the server's *static* graph, which is what this test walks.
  *
@@ -39,10 +39,10 @@ const FRONTEND_PACKAGES = [
 /** Server-side entry points into document handling. */
 const SERVER_ROOTS = [
   "src/editor/extensions.ts",
-  "src/utils/serializationCore.ts",
-  "src/utils/serializationWorker.ts",
-  "src/utils/serializationPool.ts",
-  "src/utils/yjsRooms.ts",
+  "src/serialization/core.ts",
+  "src/serialization/worker.ts",
+  "src/serialization/pool.ts",
+  "src/realtime/yjsRooms.ts",
 ];
 
 const aliases: Record<string, string> = JSON.parse(
@@ -198,7 +198,7 @@ describe("server document path", () => {
           ? ""
           : `${root} statically reaches a frontend library.\n\n` +
               `Move the browser-only code into a separate client module (see ` +
-              `HtmlBlockNodeView.ts / editSession.ts / langVue.ts) or load it with a ` +
+              `HtmlBlockNodeView.ts / editSession.ts) or load it with a ` +
               `dynamic import() inside the browser-only path.\n\n${violations.join("\n\n")}`,
       ).toEqual([]);
     });
@@ -207,6 +207,6 @@ describe("server document path", () => {
   it("detects a frontend import when one is introduced", () => {
     // Guards the walker itself: a root that legitimately imports Vue must be
     // reported, otherwise the assertions above could pass vacuously.
-    expect(findViolations("src/utils/langVue.ts").length).toBeGreaterThan(0);
+    expect(findViolations("src/utils/lang.ts").length).toBeGreaterThan(0);
   });
 });

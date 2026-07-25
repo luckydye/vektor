@@ -1,6 +1,6 @@
 import { type ComputedRef, type Ref, watchEffect } from "vue";
 import { api } from "#api/client.ts";
-import type { RealtimeEventMessage, RealtimeTopic } from "#utils/realtime.ts";
+import type { RealtimeEventMessage, RealtimeTopic } from "#realtime/protocol.ts";
 
 export function useSync(
   spaceId: Ref<string | null> | ComputedRef<string | null>,

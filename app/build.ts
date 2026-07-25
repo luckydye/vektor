@@ -108,14 +108,14 @@ await generateClientAssetsModule();
 /**
  * Pre-bundle the serialization worker into a single self-contained file so it
  * can be embedded in the standalone binary. Bun's `--compile` does not emit a
- * loadable worker entry for `new Worker(new URL(...))`, so serializationPool.ts
- * loads this bundle via `serializationWorkerEmbed.ts` (`with { type: "file" }`)
+ * loadable worker entry for `new Worker(new URL(...))`, so serialization/pool.ts
+ * loads this bundle via `serialization/workerEmbed.ts` (`with { type: "file" }`)
  * in the compiled binary. The worker pulls in the full editor/schema graph, so
  * this must be bundled (not left as a bare `.ts` with unresolved imports).
  */
 export async function generateSerializationWorkerBundle() {
   const result = await Bun.build({
-    entrypoints: [join(appDir, "src/utils/serializationWorker.ts")],
+    entrypoints: [join(appDir, "src/serialization/worker.ts")],
     target: "bun",
     outdir: join(appDir, "generated"),
     naming: "serialization-worker.js",

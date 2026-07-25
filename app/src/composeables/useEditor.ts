@@ -1,7 +1,7 @@
 import { computed, onUnmounted, type Ref, ref, watch } from "vue";
+import { supportsDocumentEditor } from "#documents/types.ts";
 import { setEditSessionCancelHandler } from "#editor/editSession.ts";
 import { Actions } from "#utils/actions.ts";
-import { supportsDocumentEditor } from "#utils/documentTypes.ts";
 import type { CollaborationSession } from "./useCollaboration.ts";
 import { type SaveStatus, useDocument } from "./useDocument.ts";
 import { useRevisions } from "./useRevisions.ts";

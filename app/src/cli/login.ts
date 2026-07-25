@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { escapeHtml } from "#utils/html.ts";
 import { resolveHost } from "./resolve.ts";
 
 function openBrowser(url: string): void {
@@ -128,15 +129,6 @@ export async function commandLogin(): Promise<void> {
     clearTimeout(timeout);
     server.stop();
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function htmlResponse(options: {

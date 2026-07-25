@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { api } from "#api/client.ts";
-import type { DocumentPropertyValue } from "#utils/documentProperties.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+import type { DocumentPropertyValue } from "#documents/properties.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { useMutation, useQuery, useQueryClient } from "./query.ts";
 import { useSpace } from "./useSpace.ts";
 import { useSync } from "./useSync.ts";

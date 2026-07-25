@@ -8,6 +8,7 @@
 // Usage in HTML:
 //   <file-attachment src="/api/v1/spaces/xxx/uploads/file.md" filename="readme.md"></file-attachment>
 
+import { escapeHtml } from "#utils/html.ts";
 import {
   archiveBoxIcon,
   csvFileIcon,
@@ -57,14 +58,6 @@ function getFileType(filename: string): FileType {
   if (TEXT_EXTENSIONS.includes(ext)) return "text";
   if (MODEL_EXTENSIONS.includes(ext)) return "model";
   return "unknown";
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function parseObjIndex(token: string, vertexCount: number): number | null {

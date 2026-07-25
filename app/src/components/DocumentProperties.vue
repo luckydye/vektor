@@ -8,9 +8,9 @@ import { useProperties } from "#composeables/useProperties.ts";
 import {
   isHiddenDocumentPropertyKey,
   propertyValueToScalar,
-} from "#utils/documentProperties.ts";
+} from "#documents/properties.ts";
+import { getTextColor } from "#utils/color.ts";
 import { currentLang, t } from "#utils/lang.ts";
-import { getTextColor } from "#utils/utils.ts";
 import {
   addIcon,
   dateIcon,

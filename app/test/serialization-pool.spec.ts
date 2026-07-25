@@ -1,11 +1,11 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import * as Y from "yjs";
-import { contentFromDoc } from "#utils/serializationCore.ts";
+import { contentFromDoc } from "#serialization/core.ts";
 import {
   deserializeDocContent,
   serializeDocContent,
   stopSerializationPool,
-} from "#utils/serializationPool.ts";
+} from "#serialization/pool.ts";
 
 afterAll(() => stopSerializationPool());
 
@@ -51,7 +51,7 @@ describe("serialization pool", () => {
   });
 
   it("matches the in-process fallback byte-for-byte", async () => {
-    // The worker and the in-process fallback share serializationCore, so their
+    // The worker and the in-process fallback share serialization/core, so their
     // output must be identical — this is what makes the fallback safe.
     const html = "<h1>Fallback</h1>\n<p>body</p>";
     const doc = await deserializeDocContent("space_b", "doc_b", null, html);

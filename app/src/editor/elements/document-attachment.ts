@@ -3,6 +3,7 @@
 // explicit open button.
 
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
+import { escapeHtml } from "#utils/html.ts";
 import { chevronRightThinIcon, csvFileIcon, documentIcon } from "~/src/assets/icons.ts";
 
 type DocumentPreviewStatus = "loading" | "loaded" | "error";
@@ -13,14 +14,6 @@ type WorkflowPreviewState =
   | { status: "no-run" }
   | { status: "error"; message: string }
   | { status: "loaded"; run: WorkflowRunStatus; output: Record<string, unknown> | null };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function isCanvasSnapshotContent(content: string): boolean {
   const trimmed = content.trimStart();

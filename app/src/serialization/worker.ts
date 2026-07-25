@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import * as Y from "yjs";
-import { contentFromDoc, docFromContent, docFromUpdate } from "./serializationCore.ts";
+import { contentFromDoc, docFromContent, docFromUpdate } from "./core.ts";
 
 /**
  * Serialization worker: runs the CPU- and allocation-heavy document

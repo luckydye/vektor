@@ -25,12 +25,10 @@
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { api } from "#api/client.ts";
-import { useSpace } from "#composeables/useSpace.ts";
-import { replaceBrowserUrl } from "#utils/browserHistory.ts";
-import { spacePath } from "#utils/utils.ts";
 
-const { currentSpace } = useSpace();
+const router = useRouter();
 
 const props = withDefaults(
   defineProps<{
@@ -106,7 +104,9 @@ async function updateTitle() {
       if (newSlug) {
         const currentPath = window.location.pathname;
         if (/\/doc\/[^/]+/.test(currentPath)) {
-          replaceBrowserUrl(spacePath(currentSpace.value?.slug, `/doc/${newSlug}`));
+          // Router paths are relative to its base ("/{spaceSlug}/"), so no
+          // spacePath() prefix here.
+          void router.replace(`/doc/${newSlug}`);
         }
       }
     } catch (error) {

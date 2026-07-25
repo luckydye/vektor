@@ -4,7 +4,7 @@ import { generateHTML } from "@tiptap/html";
 import { yDocToProsemirrorJSON } from "y-prosemirror";
 import * as Y from "yjs";
 import { contentExtensions } from "#editor/extensions.ts";
-import { docFromContent, toCleanHtml } from "#utils/serializationCore.ts";
+import { docFromContent, toCleanHtml } from "#serialization/core.ts";
 
 /**
  * `toCleanHtml` used to call `generateHTML` once per top-level block to get its

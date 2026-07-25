@@ -171,7 +171,7 @@ mark {
 }
 
 /* Read mode is different: the serialized HTML joins top-level blocks with
-   newlines (see normalizeHtmlContent/toCleanHtml in utils/yjsRooms.ts). If the
+   newlines (see normalizeHtmlContent/toCleanHtml in realtime/yjsRooms.ts). If the
    container were pre-wrap, those inter-block newlines would render as line
    boxes wedged between adjacent blocks and stop their vertical margins from
    collapsing — so read mode showed larger gaps than the editor until

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import type { WorkflowRunStatus } from "#api/ApiClient.ts";
 import { api } from "#api/client.ts";
 import { useInfiniteQuery } from "#composeables/query.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { replaceBrowserUrl } from "#utils/browserHistory.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
+import { propertyValueToText } from "#documents/properties.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 import { downloadExcelRows, parseCsvRows } from "#utils/excelExport.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
 import { spacePath } from "#utils/utils.ts";
 import {
   chevronLeftThinIcon,
@@ -27,6 +27,7 @@ const props = defineProps<{
 }>();
 
 const { currentSpace } = useSpace();
+const router = useRouter();
 
 type RunSummary = {
   runId: string;
@@ -126,10 +127,10 @@ function runIdFromUrl(): string | null {
 
 function setRunSearchParam(runId: string) {
   if (runIdFromUrl() === runId) return;
-  const url = new URL(window.location.href);
-  url.searchParams.set("run", runId);
-  url.hash = "";
-  replaceBrowserUrl(url);
+  void router.replace({
+    query: { ...router.currentRoute.value.query, run: runId },
+    hash: "",
+  });
 }
 
 // Follow the selected run with a per-run realtime subscription.

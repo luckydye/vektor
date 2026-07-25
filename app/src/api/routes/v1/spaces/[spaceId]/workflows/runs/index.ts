@@ -10,6 +10,7 @@ import {
   withApiErrorHandling,
 } from "#db/api.ts";
 import { getDocument } from "#db/documents.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import {
   ensureSpaceRecovered,
   getLatestRunIdForDoc,
@@ -17,13 +18,9 @@ import {
   listRuns,
 } from "#jobs/runStore.ts";
 import { startWorkflowRun } from "#jobs/workflowRuns.ts";
-import {
-  readRunResumeState,
-  type WorkflowStepCache,
-} from "#jobs/workflowStepCache.ts";
+import { readRunResumeState, type WorkflowStepCache } from "#jobs/workflowStepCache.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole } from "#utils/auth.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
 
 /**
  * GET /api/v1/spaces/:spaceId/workflows/runs?documentId=<id>
@@ -73,7 +70,8 @@ export const GET: ApiRouteHandler = (context) =>
 
     const limitParam = new URL(context.req.url).searchParams.get("limit");
     const limitNum = limitParam ? parseInt(limitParam, 10) : NaN;
-    const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 200) : 20;
+    const limit =
+      Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 200) : 20;
     const cursor = new URL(context.req.url).searchParams.get("cursor") || undefined;
 
     // List runs for this space, newest first, cursor-paginated at the DB

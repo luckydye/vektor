@@ -1,10 +1,11 @@
 import { eq, sql } from "drizzle-orm";
-import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
 import {
   type DocumentPropertyValue,
   parseStoredPropertyValue,
   propertyValueToText,
-} from "#utils/documentProperties.ts";
+} from "#documents/properties.ts";
+import { embedTexts, getEmbeddingModel } from "#embeddings/native.ts";
+import { escapeHtml } from "#utils/html.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import { listAccessibleResources, ResourceType } from "./acl.ts";
 import { getSpaceDb } from "./db.ts";
@@ -207,10 +208,6 @@ const SEMANTIC_RANKING_WEIGHT = 0.4;
 
 function scoreToRank(score: number): number {
   return 1 / (1 + Math.max(0, score));
-}
-
-function escapeHtml(input: string): string {
-  return input.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 export function buildSearchSnippet(query: string, text: string): string {

@@ -3,10 +3,11 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDocuments } from "#composeables/useDocuments.ts";
 import { useSpace } from "#composeables/useSpace.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import { Actions } from "#utils/actions.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
+import { formatRelativeTime } from "#utils/datetime.ts";
 import { history } from "#utils/history.ts";
-import { formatRelativeTime, spacePath } from "#utils/utils.ts";
+import { spacePath } from "#utils/utils.ts";
 import {
   boltIcon,
   chevronRightThinIcon,

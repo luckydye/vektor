@@ -11,6 +11,7 @@ import {
   incrementWebSocketConnections,
 } from "#observability/metrics.ts";
 import { tracedSync } from "#observability/trace.ts";
+import { PresenceConnection } from "./presence.ts";
 import {
   isDocumentRealtimeTopic,
   isWorkflowRunRealtimeTopic,
@@ -21,15 +22,14 @@ import {
   wsDecodeYjsUpdate,
   wsEncode,
   wsEncodeYjsUpdate,
-} from "#utils/realtime.ts";
+} from "./protocol.ts";
 import {
   getRoom,
   loadYDoc,
   persistYRoomDraftBestEffort,
   scheduleYRoomDraftPersist,
   yRooms,
-} from "#utils/yjsRooms.ts";
-import { PresenceConnection } from "./presence.ts";
+} from "./yjsRooms.ts";
 
 const realtimeSpaceTopics = new Set<string>([
   realtimeTopics.acl,

@@ -1,21 +1,9 @@
-export type JsonRpcId = string | number | null;
-
-export type JsonRpcRequest = {
-  jsonrpc: "2.0";
-  id?: JsonRpcId;
-  method: string;
-  params?: unknown;
-};
-
-export type JsonRpcResponse = {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  result?: unknown;
-  error?: {
-    code: number;
-    message: string;
-  };
-};
+/**
+ * The Vektor MCP tool surface: the tool catalogue plus the HTTP calls that back
+ * it. Shared by two consumers — the in-app agent loop (`#agent/core.ts`), which
+ * calls the tools directly, and the CLI's stdio MCP server (`#cli/mcp.ts`),
+ * which wraps them in JSON-RPC. Nothing here knows about JSON-RPC.
+ */
 
 type McpTool = {
   name: string;
@@ -36,30 +24,14 @@ export type VektorMcpConfig = {
   connectedProviders?: string[];
 };
 
-function createResult(id: JsonRpcId, result: unknown): JsonRpcResponse {
-  return {
-    jsonrpc: "2.0",
-    id,
-    result,
-  };
-}
-
-function createError(id: JsonRpcId, code: number, message: string): JsonRpcResponse {
-  return {
-    jsonrpc: "2.0",
-    id,
-    error: { code, message },
-  };
-}
-
-function assertObject(value: unknown, label: string): Record<string, unknown> {
+export function assertObject(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
   return value as Record<string, unknown>;
 }
 
-function parseLooseObject(value: unknown, label: string): Record<string, unknown> {
+export function parseLooseObject(value: unknown, label: string): Record<string, unknown> {
   if (value === undefined || value === null) {
     return {};
   }
@@ -74,13 +46,13 @@ function parseLooseObject(value: unknown, label: string): Record<string, unknown
   return assertObject(value, label);
 }
 
-function expectString(args: Record<string, unknown>, key: string): string;
-function expectString(
+export function expectString(args: Record<string, unknown>, key: string): string;
+export function expectString(
   args: Record<string, unknown>,
   key: string,
   options: { optional: true },
 ): string | undefined;
-function expectString(
+export function expectString(
   args: Record<string, unknown>,
   key: string,
   options: { optional?: boolean } = {},
@@ -770,93 +742,5 @@ export async function callTool(config: VektorMcpConfig, name: string, rawArgs: u
     }
     default:
       throw new Error(`Unknown tool: ${name}`);
-  }
-}
-
-function formatToolResult(result: unknown) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: typeof result === "string" ? result : JSON.stringify(result, null, 2),
-      },
-    ],
-  };
-}
-
-export function createParseErrorResponse(): JsonRpcResponse {
-  return createError(null, -32700, "Parse error");
-}
-
-export async function handleMcpRequest(
-  config: VektorMcpConfig,
-  request: JsonRpcRequest,
-): Promise<JsonRpcResponse | null> {
-  if (request.method.startsWith("notifications/")) {
-    return null;
-  }
-  if (request.id === undefined) {
-    return null;
-  }
-
-  try {
-    switch (request.method) {
-      case "initialize": {
-        const params = assertObject(request.params ?? {}, "initialize params");
-        const clientVersion =
-          typeof params.protocolVersion === "string"
-            ? params.protocolVersion
-            : "2024-11-05";
-        const SUPPORTED_VERSIONS = ["2025-03-26", "2024-11-05"];
-        const negotiatedVersion = SUPPORTED_VERSIONS.includes(clientVersion)
-          ? clientVersion
-          : SUPPORTED_VERSIONS[0];
-        return createResult(request.id, {
-          protocolVersion: negotiatedVersion,
-          capabilities: {
-            tools: {},
-          },
-          serverInfo: {
-            name: "vektor-mcp",
-            version: "1.0.0",
-          },
-        });
-      }
-      case "ping":
-        return createResult(request.id, {});
-      case "tools/list":
-        return createResult(request.id, { tools: await listTools(config) });
-      case "tools/call": {
-        const params = assertObject(request.params, "tools/call params");
-        const name =
-          expectString(params, "name", { optional: true }) ??
-          expectString(params, "tool", { optional: true }) ??
-          expectString(params, "toolName", { optional: true });
-        if (!name) {
-          throw new Error("Tool name is required");
-        }
-        const result = await callTool(
-          config,
-          name,
-          parseLooseObject(
-            params.arguments ?? params.input ?? params.params ?? params.args,
-            "tool arguments",
-          ),
-        );
-        return createResult(request.id, formatToolResult(result));
-      }
-      default:
-        return createError(request.id, -32601, `Method not found: ${request.method}`);
-    }
-  } catch (error) {
-    return createResult(request.id, {
-      content: [
-        {
-          type: "text",
-          text: error instanceof Error ? error.message : String(error),
-        },
-      ],
-      isError: true,
-    });
   }
 }

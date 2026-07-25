@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import type { AuditLog } from "#api/client.ts";
 import { useAuditLogs } from "#composeables/useAuditLogs.ts";
 import { useRevisions } from "#composeables/useRevisions.ts";
 import { useSpace } from "#composeables/useSpace.ts";
 import { Actions } from "#utils/actions.ts";
-import { replaceBrowserUrl } from "#utils/browserHistory.ts";
 import { t } from "#utils/lang.ts";
 import { normalizeTimestamp } from "#utils/utils.ts";
 import {
@@ -24,7 +24,7 @@ import "@atrium-ui/elements/popover";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
 import { useMembers } from "#composeables/useMembers.ts";
 import { useSync } from "#composeables/useSync.ts";
-import { realtimeTopics } from "#utils/realtime.ts";
+import { realtimeTopics } from "#realtime/protocol.ts";
 
 const props = defineProps({
   documentId: {
@@ -53,6 +53,7 @@ const {
 } = useAuditLogs(props.documentId);
 
 const { currentSpaceId } = useSpace();
+const router = useRouter();
 const { members } = useMembers();
 
 const publishedRev = ref<number | null>(null);
@@ -151,9 +152,9 @@ async function viewRevision(revisionId: number | null | undefined) {
   if (revision) {
     selectedRevisionNumber.value = revisionId;
 
-    const url = new URL(window.location.href);
-    url.searchParams.set("revision", revisionId.toString());
-    replaceBrowserUrl(url);
+    void router.replace({
+      query: { ...router.currentRoute.value.query, revision: String(revisionId) },
+    });
 
     dispatchWindowEvent(
       new CustomEvent("revision:view", {
@@ -247,9 +248,8 @@ onUnmounted(() => {
 
 function onRevisionClose() {
   selectedRevisionNumber.value = null;
-  const url = new URL(window.location.href);
-  url.searchParams.delete("revision");
-  replaceBrowserUrl(url);
+  const { revision: _removed, ...query } = router.currentRoute.value.query;
+  void router.replace({ query });
 }
 
 watch(

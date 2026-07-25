@@ -4,7 +4,7 @@ import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import type { DocumentWithProperties, SpaceMember } from "~/src/api/ApiClient.ts";
 import { documentIcon } from "~/src/assets/icons.ts";
 import "~/src/components/AvatarElement.ts";
-import { propertyValueToText } from "~/src/utils/documentProperties.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import { Mentions } from "./Mentions.ts";
 
 type MentionItem = {

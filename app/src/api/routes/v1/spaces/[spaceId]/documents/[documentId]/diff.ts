@@ -13,8 +13,8 @@ import {
 } from "#db/api.ts";
 import { getDocument } from "#db/documents.ts";
 import { getRevisionContent, getRevisionMetadata } from "#db/revisions.ts";
-import { inlineHtmlDiff } from "#utils/inlineHtmlDiff.ts";
-import { prettyPrintHtml } from "#utils/prettyHtml.ts";
+import { inlineHtmlDiff } from "#editor/inlineHtmlDiff.ts";
+import { prettyPrintHtml } from "#utils/html.ts";
 
 async function getRevision(rev: number, spaceId: string, id: string) {
   const metadata = await getRevisionMetadata(spaceId, id, rev);

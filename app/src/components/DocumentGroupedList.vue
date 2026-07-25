@@ -4,9 +4,10 @@ import "@atrium-ui/elements/popover";
 import { computed, onMounted, ref } from "vue";
 import type { Category, DocumentWithProperties } from "#api/client.ts";
 import { useSpace } from "#composeables/useSpace.ts";
-import { propertyValueToScalar, propertyValueToText } from "#utils/documentProperties.ts";
+import { propertyValueToScalar, propertyValueToText } from "#documents/properties.ts";
+import { formatDate } from "#utils/datetime.ts";
 import { currentLang, t } from "#utils/lang.ts";
-import { formatDate, normalizeTimestamp, spacePath } from "#utils/utils.ts";
+import { normalizeTimestamp, spacePath } from "#utils/utils.ts";
 import {
   activityIcon,
   cancelIcon,

@@ -15,8 +15,8 @@ import { user } from "#db/schema/auth.ts";
 import type { EmailNotificationOutbox } from "#db/schema/space.ts";
 import { listActiveSpaceIds } from "#db/spaceIndex.ts";
 import { getSpace } from "#db/spaces.ts";
+import { propertyValueToText } from "#documents/properties.ts";
 import { appLogger } from "#observability/logger.ts";
-import { propertyValueToText } from "#utils/documentProperties.ts";
 import { isEmailDeliveryAvailable, sendEmail } from "./email.ts";
 import { renderNotificationEmail } from "./render.ts";
 
