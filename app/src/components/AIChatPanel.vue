@@ -2,7 +2,7 @@
 defineOptions({ inheritAttrs: false });
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { api } from "#api/client.ts";
+import { useAIChat } from "#composeables/useAIChat.ts";
 import { useChatSessionHandling } from "#composeables/useChatSessionHandling.ts";
 import type { UIMessage } from "#composeables/useChatSessions.ts";
 import { useDockedWindows } from "#composeables/useDockedWindows.ts";
@@ -25,8 +25,6 @@ import {
   stopIcon,
   thinkingIcon,
 } from "~/src/assets/icons.ts";
-import { fetchStreamingCompletion } from "./ai-chat/providers/shared.ts";
-import type { ChatStreamEvent } from "./ai-chat/types.ts";
 import DockedPanel from "./DockedPanel.vue";
 import type { PendingAttachment } from "./MessageInput.vue";
 import MessageInput from "./MessageInput.vue";
@@ -68,9 +66,9 @@ const expandedToolMessages = ref<Set<string>>(new Set());
 const shouldFollowMessages = ref(true);
 const copiedAssistantMessageTimestamp = ref<number | null>(null);
 
-let abortController: AbortController | null = null;
 let scrollAnimationFrame: number | null = null;
 let clearCopiedAssistantMessageTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectSession = async (_pendingUserMessage: string) => {};
 
 function resetSessionDraft() {
   uploadError.value = "";
@@ -94,7 +92,7 @@ const {
   isGenerating,
   resetDraft: resetSessionDraft,
   scrollToBottom,
-  reconnectSession,
+  reconnectSession: (pendingUserMessage) => reconnectSession(pendingUserMessage),
 });
 
 // ── UI state persistence ──────────────────────────────────────────────────────
@@ -216,159 +214,22 @@ async function copyAssistantMessage(message: UIMessage) {
   }, 2000);
 }
 
-function parseReferencedDocuments(message: string): Array<{ id: string; title: string }> {
-  const references: Array<{ id: string; title: string }> = [];
-  const seen = new Set<string>();
-  const regex = /(?:@\[([^\]]+)\]|\[@([^\]]+)\])\(doc:([^)]+)\)/g;
-  for (const match of message.matchAll(regex)) {
-    const title = (match[1] ?? match[2])?.trim();
-    const id = match[3]?.trim();
-    if (!title || !id || seen.has(id)) continue;
-    seen.add(id);
-    references.push({ id, title });
-  }
-  return references;
-}
-
-function buildDocumentReferenceContext(message: string): string {
-  const refs = parseReferencedDocuments(message);
-  if (refs.length === 0) return "";
-  const lines = refs.map((doc) => `- ${doc.title} (documentId: ${doc.id})`);
-  return `Referenced documents:\n${lines.join("\n")}\nUse these document IDs with tools when relevant.`;
-}
-
-function appendAssistantMessageChunk(
-  text: string,
-  assistantMessageIndex: { value: number | null },
-) {
-  if (!text) return;
-  const existing =
-    assistantMessageIndex.value === null
-      ? null
-      : messages.value[assistantMessageIndex.value];
-  if (existing?.role !== "assistant") {
-    messages.value.push({
-      role: "assistant",
-      content: text,
-      timestamp: Date.now(),
-    });
-    assistantMessageIndex.value = messages.value.length - 1;
-    return;
-  }
-  existing.content += text;
-}
-
-function appendThinkingMessageChunk(
-  text: string,
-  thinkingMessageIndex: { value: number | null },
-) {
-  if (!text) return;
-  const existing =
-    thinkingMessageIndex.value === null
-      ? null
-      : messages.value[thinkingMessageIndex.value];
-  if (existing?.role !== "thinking") {
-    messages.value.push({
-      role: "thinking",
-      content: text,
-      timestamp: Date.now(),
-    });
-    thinkingMessageIndex.value = messages.value.length - 1;
-    scrollThinkingToBottom();
-    return;
-  }
-  existing.content += text;
-  scrollThinkingToBottom();
-}
-
-function appendToolEventMessage(
-  event: Extract<ChatStreamEvent, { type: "tool_call" | "tool_result" }>,
-) {
-  messages.value.push({
-    role: "tool",
-    content: event.type === "tool_call" ? event.toolArguments : event.content,
-    timestamp: Date.now(),
-    toolName: event.toolName,
-    toolCallId: event.toolCallId,
-    toolPhase: event.type === "tool_call" ? "call" : "result",
-    isError: event.type === "tool_result" ? event.isError : false,
-  });
-}
-
-function removeThinkingMessages(startIndex: number) {
-  messages.value = messages.value.filter(
-    (message, index) => !(index >= startIndex && message.role === "thinking"),
-  );
-}
-
-function applyStreamEvent(
-  event: ChatStreamEvent,
-  assistantMessageIndex: { value: number | null },
-  thinkingMessageIndex: { value: number | null },
-  responseStartIndex: number,
-) {
-  if (event.type === "text") {
-    removeThinkingMessages(responseStartIndex);
-    appendAssistantMessageChunk(event.text, assistantMessageIndex);
-  } else if (event.type === "thinking") {
-    appendThinkingMessageChunk(event.text, thinkingMessageIndex);
-  } else if (event.type === "status") {
-    appendStatusMessage(event.text);
-  } else if (event.type === "tool_progress") {
-    // Tool is actively running — the waitingState indicator already reflects this
-    // from the tool_call message at the tail; nothing extra to render.
-  } else {
-    // tool_call or tool_result
-    removeThinkingMessages(responseStartIndex);
-    assistantMessageIndex.value = null;
-    thinkingMessageIndex.value = null;
-    if (event.type === "tool_call") {
-      clearTransientStatusMessages(responseStartIndex);
-    }
-    appendToolEventMessage(event);
-  }
-  scrollToBottomIfFollowing();
-}
-
-function appendStatusMessage(text: string) {
-  const lastMessage = messages.value.at(-1);
-  if (lastMessage?.role === "status") {
-    const lines = lastMessage.content.split("\n").filter(Boolean);
-    if (lines.at(-1) !== text) {
-      lastMessage.content = `${lastMessage.content}\n${text}`;
-    }
-    lastMessage.timestamp = Date.now();
-    return;
-  }
-
-  messages.value.push({
-    role: "status",
-    content: text,
-    timestamp: Date.now(),
-  });
-}
-
-function clearTransientStatusMessages(startIndex: number) {
-  messages.value = messages.value.filter(
-    (message, index) => !(index >= startIndex && message.role === "status"),
-  );
-}
-
-function collectAssistantText(startIndex: number): string {
-  return messages.value
-    .slice(startIndex)
-    .filter((message) => message.role === "assistant")
-    .map((message) => message.content)
-    .join("");
-}
-
-function collectThinkingText(startIndex: number): string {
-  return messages.value
-    .slice(startIndex)
-    .filter((message) => message.role === "thinking")
-    .map((message) => message.content)
-    .join("");
-}
+const {
+  buildDocumentReferenceContext,
+  completeResponse,
+  cancelGeneration,
+  reconnectSession: reconnectChatSession,
+} = useAIChat({
+  currentSessionId,
+  currentSpaceId,
+  documentId: () => props.documentId,
+  messages,
+  isGenerating,
+  refreshCurrentSession,
+  scrollToBottomIfFollowing,
+  scrollThinkingToBottom,
+});
+reconnectSession = reconnectChatSession;
 
 function parseToolArguments(content: string): Record<string, unknown> | null {
   try {
@@ -600,78 +461,7 @@ function toggleToolMessageExpanded(message: UIMessage, index: number) {
   expandedToolMessages.value = next;
 }
 
-// ── Send to agent ─────────────────────────────────────────────────────────────
-
-async function streamAssistantResponse(
-  userMessage: string,
-  responseStartIndex: number,
-  additionalContext = "",
-) {
-  const assistantMessageIndex = { value: null as number | null };
-  const thinkingMessageIndex = { value: null as number | null };
-
-  await fetchStreamingCompletion({
-    url: "/api/v1/chat/acp",
-    sessionId: currentSessionId.value!,
-    spaceId: currentSpaceId.value!,
-    documentId: props.documentId || undefined,
-    userMessage,
-    additionalContext: additionalContext || undefined,
-    onEvent: (event) =>
-      applyStreamEvent(
-        event,
-        assistantMessageIndex,
-        thinkingMessageIndex,
-        responseStartIndex,
-      ),
-    signal: abortController?.signal,
-  });
-}
-
-async function reconnectSession(pendingUserMessage: string) {
-  if (isGenerating.value || !currentSessionId.value) return;
-  isGenerating.value = true;
-  abortController = new AbortController();
-  const responseStartIndex = messages.value.length;
-
-  try {
-    await streamAssistantResponse(
-      pendingUserMessage,
-      responseStartIndex,
-      buildDocumentReferenceContext(pendingUserMessage),
-    );
-    await refreshCurrentSession();
-  } catch (error) {
-    if (!(error instanceof DOMException && error.name === "AbortError")) {
-      const errorMessage =
-        error instanceof Error ? error.message : "AI generation failed";
-      messages.value.push({
-        role: "assistant",
-        content: `Sorry, I encountered an error: ${errorMessage}`,
-        timestamp: Date.now(),
-      });
-    }
-  } finally {
-    clearTransientStatusMessages(responseStartIndex);
-    removeThinkingMessages(responseStartIndex);
-    abortController = null;
-    isGenerating.value = false;
-    scrollToBottomIfFollowing();
-  }
-}
-
 // ── Send message ──────────────────────────────────────────────────────────────
-
-function cancelGeneration() {
-  // Send session/cancel so the server can abort the agent worker.
-  // Without this the server cannot distinguish an intentional cancel from an
-  // accidental disconnect, and the agent would keep running in the background.
-  if (currentSessionId.value && currentSpaceId.value) {
-    void api.aiChatSessions.cancel(currentSpaceId.value, currentSessionId.value);
-  }
-  abortController?.abort();
-  abortController = null;
-}
 
 async function sendMessage() {
   if (!canSend.value) return;
@@ -747,33 +537,7 @@ async function sendMessage() {
   messageInputEl.value?.clearAttachments();
   scrollToBottom();
 
-  isGenerating.value = true;
-  abortController = new AbortController();
-  const responseStartIndex = messages.value.length;
-
-  try {
-    await streamAssistantResponse(userDisplayText, responseStartIndex, additionalContext);
-    // Reload the session so sessions.value reflects the messages persistCompletedChatTurn saved.
-    await refreshCurrentSession();
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      // cancelled — server already notified via session/cancel
-    } else {
-      const errorMessage =
-        error instanceof Error ? error.message : "AI generation failed";
-      messages.value.push({
-        role: "assistant",
-        content: `Sorry, I encountered an error: ${errorMessage}`,
-        timestamp: Date.now(),
-      });
-    }
-  } finally {
-    clearTransientStatusMessages(responseStartIndex);
-    removeThinkingMessages(responseStartIndex);
-    abortController = null;
-    isGenerating.value = false;
-    scrollToBottomIfFollowing();
-  }
+  await completeResponse(userDisplayText, additionalContext);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

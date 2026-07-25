@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { Readable } from "node:stream";
 import { appLogger } from "#observability/logger.ts";
 
-import { servedFileSecurityHeaders } from "#utils/servedFiles.ts";
+import { servedFileSecurityHeaders } from "#utils/csp.ts";
 import { getNativeImage } from "./native.ts";
 import type { FileStorageAdapter } from "./storage.ts";
 import { getTransformCacheRoot, isWithinTransformCache } from "./uploads.ts";

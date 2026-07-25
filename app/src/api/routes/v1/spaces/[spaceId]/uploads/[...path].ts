@@ -12,7 +12,7 @@ import { parseTransformParams, serveTransformed } from "#files/transforms.ts";
 import { getUploadsRoot, isSafeUploadPath, isWithinUploadsRoot } from "#files/uploads.ts";
 import { appLogger } from "#observability/logger.ts";
 import { authenticateJobTokenOrSpaceRole, authenticateSpaceAccess } from "#utils/auth.ts";
-import { servedFileSecurityHeaders } from "#utils/servedFiles.ts";
+import { servedFileSecurityHeaders } from "#utils/csp.ts";
 
 const MIME_TYPES: Record<string, string> = {
   // Images

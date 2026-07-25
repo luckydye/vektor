@@ -8,7 +8,7 @@ import {
 } from "#db/api.ts";
 import { extractFile, getExtensionPackage } from "#db/extensions.ts";
 import { appLogger } from "#observability/logger.ts";
-import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/servedFiles.ts";
+import { EXTENSION_ASSET_CSP, EXTENSION_ASSET_CSP_SCRIPT } from "#utils/csp.ts";
 
 const MIME_TYPES: Record<string, string> = {
   js: "application/javascript",

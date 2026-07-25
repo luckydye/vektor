@@ -1,4 +1,4 @@
-import { figmaClipboardToFrames } from "#utils/clipboard.ts";
+import { figmaClipboardToFrames } from "#utils/figma.ts";
 import { createMediaShape } from "./media.ts";
 import type { CanvasInputHandler, CanvasShape } from "./types.ts";
 
